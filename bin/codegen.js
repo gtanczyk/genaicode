@@ -1,3 +1,5 @@
 #!/usr/bin/env node
 
-import "../src/main/codegen.js";
+import { runCodegen } from '../src/main/codegen.js';
+
+await runCodegen();

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "lint": "eslint . --ext js --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest",
     "prepare": "husky install"
   },
   "devDependencies": {
@@ -23,7 +24,8 @@
     "lint-staged": "^15.2.7",
     "openai": "^4.52.7",
     "prettier": "^3.1.0",
-    "styled-components": "^6.1.6"
+    "styled-components": "^6.1.6",
+    "vitest": "^2.0.4"
   },
   "lint-staged": {
     "*.{js,ts,css,md}": "prettier --write"
