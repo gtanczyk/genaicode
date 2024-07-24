@@ -1,20 +1,19 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { codegenOnly, gameOnly, taskFile } from '../cli/cli-params.js';
+import { taskFile } from '../cli/cli-params.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.join(path.dirname(__filename), '..', '..');
 
 const codegenDir = path.join(__dirname);
-const nukesDir = path.join(__dirname, '..', 'website', 'src', 'games', 'nukes');
 const rootDir = path.join(__dirname, '..');
 
 function findFiles(dir, recursive, ...exts) {
   const files = [];
   const items = fs.readdirSync(dir);
   for (const item of items) {
-    if (item === "node_modules" || item === "build") {
+    if (item === 'node_modules' || item === 'build') {
       continue;
     }
 
@@ -79,39 +78,16 @@ export function getDependencyList(entryFile) {
 const rootFiles = findFiles(rootDir, false, '.md');
 
 const codegenFiles = findFiles(codegenDir, true, '.js', '.md');
-const gameFiles = findFiles(nukesDir, true, '.ts', '.tsx', '.md');
 
 const codegenTaskFiles = findFiles(path.join(codegenDir, 'docs', 'tasks'), true, '.md');
 const codegenDesignFiles = findFiles(path.join(codegenDir, 'docs', 'design'), true, '.md');
 
-const gameTaskFiles = findFiles(path.join(nukesDir, 'docs','tasks'), true, '.md');
-const gameDesignFiles = findFiles(path.join(nukesDir, 'docs','design'), true, '.md');
-
 /** Get source files of the application */
 export function getSourceFiles() {
-  if (codegenOnly) {
-    return [
-      ...rootFiles,
-      ...codegenDesignFiles,
-      ...codegenFiles,
-      ...(taskFile ? codegenTaskFiles.filter((file) => file.includes(taskFile)) : []),
-    ];
-  }
-  if (gameOnly) {
-    return [
-      ...rootFiles,
-      ...codegenDesignFiles, // codegen design files are there to improve response quality
-      ...gameDesignFiles,
-      ...gameFiles,
-      ...(taskFile ? gameTaskFiles.filter((file) => file.includes(taskFile)) : []),
-    ];
-  }
   return [
     ...rootFiles,
-    ...gameDesignFiles,
     ...codegenDesignFiles,
     ...codegenFiles,
-    ...gameFiles,
-    ...(taskFile ? [...codegenTaskFiles, ...gameTaskFiles].filter((file) => file.includes(taskFile)) : []),
+    ...(taskFile ? codegenTaskFiles.filter((file) => file.includes(taskFile)) : []),
   ];
 }

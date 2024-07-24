@@ -32,8 +32,6 @@ The codegen script accepts the following options:
 - `--allow-file-delete`: Allow the codegen script to delete files.
 - `--allow-directory-create`: Allow codegen script to create directories
 - `--allow-file-move`: Allow the codegen script to move files.
-- `--codegen-only`: Limit the scope of codegen to the codegen tool itself (the `codegen/` directory).
-- `--game-only`: Limit the scope of codegen to the game itself (the `src/` directory).
 - `--chat-gpt`: Use the OpenAI model for code generation instead of Vertex AI with Google's Gemini Pro model.
 - `--anthropic`: Use Anthropic's Claude model for code generation.
 - `--explicit-prompt`: An explicit prompt to use for code generation.
@@ -47,12 +45,15 @@ Note: The `--chat-gpt` and `--anthropic` flags are mutually exclusive. If neithe
 ## Supported AI Models
 
 ### Vertex AI (Default)
+
 Uses Google's Vertex AI with the Gemini Pro model. This is the default option if no specific AI model flag is provided.
 
 ### OpenAI GPT
+
 Activated with the `--chat-gpt` flag. Uses OpenAI's GPT model for code generation.
 
 ### Anthropic Claude
+
 Activated with the `--anthropic` flag. Uses Anthropic's Claude model for code generation.
 
 ### Vertex AI Monkey Patch
@@ -60,7 +61,6 @@ Activated with the `--anthropic` flag. Uses Anthropic's Claude model for code ge
 The Codegen tool includes a monkey patch for the Vertex AI library to enable the use of the `tool_config` parameter. This patch is necessary because the official Vertex AI Node.js client library does not yet support the `tool_config` parameter, which is required for function calling.
 
 The patch is applied at runtime and modifies the `generateContent` function of the Vertex AI library to include the `tool_config` parameter in the request. This allows the Codegen tool to use function calling with Vertex AI, similar to how it works with other AI models.
-
 
 ## File Operations
 

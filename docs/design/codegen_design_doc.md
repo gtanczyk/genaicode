@@ -23,8 +23,6 @@ The tool accepts several CLI parameters to control its behavior:
 - `--allow-file-delete`: Allows the tool to delete files.
 - `--allow-directory-create`: Allows the tool to create directories.
 - `--allow-file-move`: Allows the tool to move files within the project structure.
-- `--codegen-only`: Limits the scope of code generation to the `codegen` directory.
-- `--game-only`: Limits the scope of code generation to the `src` directory.
 - `--chat-gpt`: Uses the OpenAI model for code generation instead of Vertex AI.
 - `--anthropic`: Uses Anthropic's Claude model for code generation.
 - `--explicit-prompt`: Provides an explicit prompt for code generation.

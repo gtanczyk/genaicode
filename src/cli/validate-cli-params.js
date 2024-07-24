@@ -5,15 +5,13 @@ const allowedParameters = [
   '--allow-file-delete',
   '--allow-directory-create',
   '--allow-file-move',
-  '--codegen-only',
-  '--game-only',
   '--chat-gpt',
   '--explicit-prompt=',
   '--task-file=',
   '--dependency-tree',
   '--verbose-prompt',
   '--anthropic',
-  '--require-explanations'
+  '--require-explanations',
 ];
 
 // Validate CLI parameters accordingly to those mentioned in README.md, fail the process if not valid, or unknown parameter is passed
