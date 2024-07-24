@@ -1,8 +1,12 @@
 {
   "name": "codegen",
-  "private": true,
   "version": "0.0.0",
+  "author": "Grzegorz Tańczyk",
   "type": "module",
+  "bin": "./bin/codegen.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "lint": "eslint . --ext js --report-unused-disable-directives --max-warnings 0",
     "prepare": "husky install"
