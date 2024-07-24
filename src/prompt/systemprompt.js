@@ -1,5 +1,3 @@
-import assert from 'node:assert';
-
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
 import { verbosePrompt } from '../cli/cli-params.js';
 import { verifySystemPromptLimit } from './limits.js';

@@ -21,7 +21,7 @@ export function getCodeGenPrompt() {
     codeGenFiles = Object.keys(getSourceCode());
   } else {
     codeGenFiles = Object.entries(getSourceCode())
-      .filter(([path, content]) => content.match(new RegExp("([^'^`]+)" + CODEGEN_TRIGGER)))
+      .filter(([, content]) => content.match(new RegExp("([^'^`]+)" + CODEGEN_TRIGGER)))
       .map(([path]) => path);
   }
 
@@ -66,7 +66,7 @@ ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
     console.log('Code gen prompt:');
     console.log(codeGenPrompt);
   }
-  
+
   verifyCodegenPromptLimit(codeGenPrompt);
 
   return codeGenPrompt;
