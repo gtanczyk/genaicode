@@ -1,6 +1,7 @@
 import fs from 'fs';
 
 import { getSourceFiles } from './find-files.js';
+import { verifySourceCodeLimit } from '../prompt/limits.js';
 
 /**
  * Read contents of source files and create a map with file path as key and file content as value
@@ -15,5 +16,7 @@ function readSourceFiles() {
 
 /** Print source code of all source files */
 export function getSourceCode() {
-  return readSourceFiles();
+  const sourceCode = readSourceFiles();
+  verifySourceCodeLimit(JSON.stringify(sourceCode));
+  return sourceCode;
 }

@@ -1,13 +1,28 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { taskFile } from '../cli/cli-params.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.join(path.dirname(__filename), '..', '..');
+// This file contains project codegen configuration
+const CODEGENRC_FILENAME = '.codegenrc';
 
-const codegenDir = path.join(__dirname);
-const rootDir = path.join(__dirname, '..');
+const cwd = process.cwd();
+
+// Find .codegenrc file
+let rcFilePath = cwd;
+while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
+  const parentDir = path.dirname(rcFilePath);
+  if (parentDir === rcFilePath) {
+    throw new Error(`${CODEGENRC_FILENAME} not found in any parent directory`);
+  }
+  rcFilePath = parentDir;
+}
+rcFilePath = path.join(rcFilePath, CODEGENRC_FILENAME);
+
+// Read rootDir from .codegenrc
+const rcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
+const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
+
+console.log('Detected codegen configuration', rcConfig);
+console.log('Root dir:', rootDir);
 
 function findFiles(dir, recursive, ...exts) {
   const files = [];
@@ -75,19 +90,9 @@ export function getDependencyList(entryFile) {
   return Array.from(result);
 }
 
-const rootFiles = findFiles(rootDir, false, '.md');
-
-const codegenFiles = findFiles(codegenDir, true, '.js', '.md');
-
-const codegenTaskFiles = findFiles(path.join(codegenDir, 'docs', 'tasks'), true, '.md');
-const codegenDesignFiles = findFiles(path.join(codegenDir, 'docs', 'design'), true, '.md');
+const rootFiles = findFiles(rootDir, true, '.md', '.js', '.ts', '.tsx', '.css');
 
 /** Get source files of the application */
 export function getSourceFiles() {
-  return [
-    ...rootFiles,
-    ...codegenDesignFiles,
-    ...codegenFiles,
-    ...(taskFile ? codegenTaskFiles.filter((file) => file.includes(taskFile)) : []),
-  ];
+  return [...rootFiles];
 }
