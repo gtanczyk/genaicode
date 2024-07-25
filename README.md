@@ -1,5 +1,7 @@
 # GenAIcode
 
+The GenAIcode tool is designed to automate code generation tasks using Vertex AI, OpenAI models, and Anthropic's Claude model. This tool is intended to enhance developer productivity by assisting with the generation of repetitive or complex code.
+
 ## Installation
 
 ```
@@ -10,8 +12,14 @@ echo '{"rootDir": "."}' > .genaicoderc
 ## Usage
 
 ```
+# For Vertex AI user:
+gcloud auth login
 export GOOGLE_CLOUD_PROJECT="..."
+
+# ChatGPT user:
 export OPENAI_API_KEY="sk-..."
+
+# Claude user
 export ANTHROPIC_API_KEY="..."
 
 node_modules/.bin/genaicode.js --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
