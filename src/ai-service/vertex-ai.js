@@ -51,12 +51,12 @@ export async function generateContent(systemPrompt, prompt) {
 
   const model = await getGenModel(systemPrompt);
 
-  // assert(
-  //   (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
-  //     .toString()
-  //     .includes(MONKEY_PATCH_TOOL_CONFIG),
-  //   'Vertex AI Tool Config was not monkey patched',
-  // );
+  assert(
+    (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
+      .toString()
+      .includes(MONKEY_PATCH_TOOL_CONFIG),
+    'Vertex AI Tool Config was not monkey patched',
+  );
 
   const result = await model.generateContent(req);
 

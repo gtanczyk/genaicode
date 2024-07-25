@@ -1,7 +1,16 @@
 {
   "name": "genaicode",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "author": "Grzegorz Tańczyk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gtanczyk/genaicode.git"
+  },
+  "keywords": [
+    "generate",
+    "code",
+    "ai"
+  ],
   "type": "module",
   "bin": "./bin/genaicode.js",
   "engines": {
