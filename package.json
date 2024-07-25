@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
@@ -12,7 +12,7 @@
     "ai"
   ],
   "type": "module",
-  "bin": "./bin/genaicode.js",
+  "bin": "./bin/genaicode.cjs",
   "engines": {
     "node": ">=18"
   },
