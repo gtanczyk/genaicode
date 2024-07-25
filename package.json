@@ -1,12 +1,17 @@
 {
   "name": "genaicode",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Grzegorz Tańczyk",
   "type": "module",
   "bin": "./bin/genaicode.js",
   "engines": {
     "node": ">=18"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "lint": "eslint . --ext js --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",

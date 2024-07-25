@@ -1,26 +1,21 @@
-# GenAiCode
+# GenAIcode
 
-This module is responsible for generating code using Vertex AI, Google's Gemini Pro model, OpenAI's GPT model, or Anthropic's Claude model.
-It is used to automate some of the development process.
+## Installation
 
-The main goal of this module is to help with generating repetitive code or code that is hard to write manually.
-It is not meant to replace developers, but to help them be more productive.
+```
+npm install -D genaicode
+echo '{"rootDir": "."}' > .genaicoderc
+```
 
 ## Usage
 
-To use the codegen module, simply run the following command:
-
 ```
-node codegen/index.js
+export GOOGLE_CLOUD_PROJECT="..."
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="..."
+
+node_modules/.bin/genaicode.js --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
 ```
-
-This will run the codegen script, which will:
-
-1. Read the source code of the application.
-2. Find the fragments marked with `@CODEGEN`
-3. Send the fragments to the selected AI model for code generation, depending on the flags used.
-4. Replace the fragments with the generated code.
-5. Save the updated source code.
 
 ## Options
 

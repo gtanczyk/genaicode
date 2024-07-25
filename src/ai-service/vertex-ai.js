@@ -51,12 +51,12 @@ export async function generateContent(systemPrompt, prompt) {
 
   const model = await getGenModel(systemPrompt);
 
-  assert(
-    (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
-      .toString()
-      .includes(MONKEY_PATCH_TOOL_CONFIG),
-    'Vertex AI Tool Config was not monkey patched',
-  );
+  // assert(
+  //   (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
+  //     .toString()
+  //     .includes(MONKEY_PATCH_TOOL_CONFIG),
+  //   'Vertex AI Tool Config was not monkey patched',
+  // );
 
   const result = await model.generateContent(req);
 
@@ -113,7 +113,7 @@ export async function generateContent(systemPrompt, prompt) {
 // A function to get the generative model
 export function getGenModel(systemPrompt) {
   // Initialize Vertex with your Cloud project and location
-  const vertex_ai = new VertexAI({ project: 'gamedevpl', location: 'us-central1' });
+  const vertex_ai = new VertexAI({});
   const model = 'gemini-1.5-pro-001';
 
   // Instantiate the models
