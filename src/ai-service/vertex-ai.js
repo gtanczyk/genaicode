@@ -160,13 +160,14 @@ export async function applyVertexMonkeyPatch() {
   }
 
   console.log('Apply vertex monkey patch');
-  const content = fs.readFileSync('node_modules/' + MONKEY_PATCH_FILE, 'utf-8');
+  const path = require.resolve(MONKEY_PATCH_FILE);
+  const content = fs.readFileSync(path, 'utf-8');
   const newContent = content.replaceAll(
     'data: generateContentRequest,',
     `// MONKEY PATCH TOOL_CONFIG
      data: {...generateContentRequest,tool_config: {function_calling_config: { mode: "ANY" }}},`,
   );
-  fs.writeFileSync('node_modules/' + MONKEY_PATCH_FILE, newContent, 'utf-8');
+  fs.writeFileSync(path, newContent, 'utf-8');
   console.log('Vertex monkey patch applied');
 }
 
