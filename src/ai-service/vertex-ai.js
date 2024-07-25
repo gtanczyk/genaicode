@@ -1,5 +1,4 @@
 import assert from 'node:assert';
-import fs from 'fs';
 import { VertexAI } from '@google-cloud/vertexai';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode } from '../files/read-files.js';
@@ -151,25 +150,6 @@ export function getGenModel(systemPrompt) {
 
 const MONKEY_PATCH_FILE = '@google-cloud/vertexai/build/src/functions/generate_content.js';
 const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
-
-// A function to monkey patch the vertex-ai.js
-export async function applyVertexMonkeyPatch() {
-  if (await verifyVertexMonkeyPatch()) {
-    console.log('Skip vertex monkey patch');
-    return;
-  }
-
-  console.log('Apply vertex monkey patch');
-  const path = require.resolve(MONKEY_PATCH_FILE);
-  const content = fs.readFileSync(path, 'utf-8');
-  const newContent = content.replaceAll(
-    'data: generateContentRequest,',
-    `// MONKEY PATCH TOOL_CONFIG
-     data: {...generateContentRequest,tool_config: {function_calling_config: { mode: "ANY" }}},`,
-  );
-  fs.writeFileSync(path, newContent, 'utf-8');
-  console.log('Vertex monkey patch applied');
-}
 
 export async function verifyVertexMonkeyPatch() {
   return (await import(MONKEY_PATCH_FILE)).generateContent.toString().includes(MONKEY_PATCH_TOOL_CONFIG);
