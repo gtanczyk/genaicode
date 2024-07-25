@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "author": "Grzegorz Tańczyk",
   "type": "module",
-  "bin": "./bin/codegen.js",
+  "bin": "./bin/genaicode.js",
   "engines": {
     "node": ">=18"
   },

@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 
 // This file contains project codegen configuration
-const CODEGENRC_FILENAME = '.codegenrc';
+const CODEGENRC_FILENAME = '.genaicoderc';
 
 const cwd = process.cwd();
 
-// Find .codegenrc file
+// Find .genaicoderc file
 let rcFilePath = cwd;
 while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
   const parentDir = path.dirname(rcFilePath);

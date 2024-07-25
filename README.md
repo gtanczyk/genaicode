@@ -1,4 +1,4 @@
-# codegen
+# GenAiCode
 
 This module is responsible for generating code using Vertex AI, Google's Gemini Pro model, OpenAI's GPT model, or Anthropic's Claude model.
 It is used to automate some of the development process.
