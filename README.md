@@ -4,8 +4,9 @@ The GenAIcode tool is designed to automate code generation tasks using Vertex AI
 
 ## Installation
 
+Create a `.genaicoderc` file in your project folder. The `rootDir` property indicates what should be the scope of working directory for `genaicode`. The tool will not go beyond that scope for neither analysis of source code, or suggesting changes.
+
 ```
-npm install -D genaicode
 echo '{"rootDir": "."}' > .genaicoderc
 ```
 
@@ -22,7 +23,7 @@ export OPENAI_API_KEY="sk-..."
 # Claude user
 export ANTHROPIC_API_KEY="..."
 
-node_modules/.bin/genaicode.js --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
+npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
 ```
 
 ## Options
