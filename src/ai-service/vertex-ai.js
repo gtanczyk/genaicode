@@ -7,14 +7,7 @@ import { getSourceCode } from '../files/read-files.js';
 export async function generateContent(systemPrompt, prompt) {
   const req = {
     contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            text: prompt,
-          },
-        ],
-      },
+      { role: 'user', parts: [{ text: 'I should provide you with application source code.' }] },
       {
         role: 'model',
         parts: [
@@ -37,6 +30,9 @@ export async function generateContent(systemPrompt, prompt) {
               name: 'getSourceCode',
               response: { name: 'getSourceCode', content: JSON.stringify(getSourceCode()) },
             },
+          },
+          {
+            text: prompt,
           },
         ],
       },

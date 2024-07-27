@@ -22,7 +22,7 @@ export async function generateContent(systemPrompt, prompt) {
       },
       {
         role: 'user',
-        content: prompt,
+        content: 'I should provide you with application source code.',
       },
       {
         role: 'assistant',
@@ -34,6 +34,10 @@ export async function generateContent(systemPrompt, prompt) {
         name: 'getSourceCode',
         content: JSON.stringify(getSourceCode()),
         tool_call_id: 'get_source_code',
+      },
+      {
+        role: 'user',
+        content: prompt,
       },
     ],
     tools: functionDefs.map((funDef) => ({ type: 'function', function: funDef })),

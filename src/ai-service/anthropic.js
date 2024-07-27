@@ -21,7 +21,7 @@ export async function generateContent(systemPrompt, prompt) {
     model: 'claude-3-5-sonnet-20240620',
     system: systemPrompt,
     messages: [
-      { role: 'user', content: prompt },
+      { role: 'user', content: 'I should provide you with application source code.' },
       {
         role: 'assistant',
         content: [
@@ -42,6 +42,7 @@ export async function generateContent(systemPrompt, prompt) {
             content: JSON.stringify(getSourceCode()),
             type: 'tool_result',
           },
+          { type: 'text', text: prompt },
         ],
       },
     ],
