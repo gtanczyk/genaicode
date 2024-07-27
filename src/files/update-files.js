@@ -3,7 +3,7 @@ import path from 'path';
 import assert from 'node:assert';
 import * as diff from 'diff';
 
-import { getSourceFiles } from './find-files.js';
+import { isAncestorDirectory, getSourceFiles, rootDir } from './find-files.js';
 import {
   allowDirectoryCreate,
   allowFileCreate,
@@ -20,10 +20,18 @@ export function updateFiles(functionCalls) {
   for (const { name, args } of functionCalls) {
     let { filePath, newContent, source, destination, patch } = args;
 
+    // Check if filePath is absolute, if not use rootDir as baseline
+    if (name !== 'moveFile') {
+      filePath = path.isAbsolute(filePath) ? filePath : path.join(rootDir, filePath);
+    } else {
+      source = path.isAbsolute(source) ? source : path.join(rootDir, source);
+      destination = path.isAbsolute(destination) ? destination : path.join(rootDir, destination);
+    }
+
     // ignore files which are not located inside project directory (sourceFiles)
     if (
       (name !== 'moveFile' && !isProjectPath(filePath)) ||
-      (name == 'moveFile' && !(isProjectPath(source) || isProjectPath(destination)))
+      (name === 'moveFile' && (!isProjectPath(source) || !isProjectPath(destination)))
     ) {
       console.log(`Skipping file: ${filePath || source}`);
       throw new Error(`File ${filePath || source} is not located inside project directory, something is wrong?`);
@@ -36,7 +44,7 @@ export function updateFiles(functionCalls) {
     } else if (name === 'createDirectory') {
       assert(allowDirectoryCreate, 'Directory create option was not enabled');
       console.log(`Creating directory: ${filePath}`);
-      fs.mkdirSync(filePath);
+      fs.mkdirSync(filePath, { recursive: true });
     } else if (name === 'updateFile' || name === 'createFile' || name === 'updateFilePartial') {
       if (name === 'updateFilePartial') {
         console.log(`Applying a patch: ${filePath} content`);
@@ -49,6 +57,9 @@ export function updateFiles(functionCalls) {
         console.log(`Creating file: ${filePath}`);
         assert(allowFileCreate, 'File create option was not enabled');
         assert(!fs.existsSync(filePath), 'File already exists');
+        if (allowDirectoryCreate) {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        }
       } else {
         console.log(`Updating file: ${filePath}`);
         assert(fs.existsSync(filePath), 'File does not exist');
@@ -66,20 +77,19 @@ export function updateFiles(functionCalls) {
       assert(fs.existsSync(source), 'Source file does not exist');
       assert(!fs.existsSync(destination), 'Destination file already exists');
       assert(allowFileMove, 'File move option was not enabled');
+      if (allowDirectoryCreate) {
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+      }
       fs.renameSync(source, destination);
     }
   }
-}
-
-function isAncestorDirectory(parent, dir) {
-  const relative = path.relative(parent, dir);
-  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function isProjectPath(filePath) {
   const sourceFiles = getSourceFiles();
 
   return (
+    isAncestorDirectory(rootDir, filePath) ||
     sourceFiles.includes(filePath) ||
     !sourceFiles.some(
       (sourceFile) =>

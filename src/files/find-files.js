@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import assert from 'node:assert';
 
 // This file contains project codegen configuration
 const CODEGENRC_FILENAME = '.genaicoderc';
@@ -17,9 +18,14 @@ while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
 }
 rcFilePath = path.join(rcFilePath, CODEGENRC_FILENAME);
 
+assert(fs.existsSync(rcFilePath), `${CODEGENRC_FILENAME} not found`);
+
 // Read rootDir from .codegenrc
-const rcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
-const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
+export const rcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
+export const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
+
+assert(rootDir, 'Root dir not configured');
+assert(isAncestorDirectory(path.dirname(rcFilePath), rootDir), 'Root dir is not located inside project directory');
 
 console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rootDir);
@@ -95,4 +101,10 @@ const rootFiles = findFiles(rootDir, true, '.md', '.js', '.ts', '.tsx', '.css');
 /** Get source files of the application */
 export function getSourceFiles() {
   return [...rootFiles];
+}
+
+/** Check if directory is ancestor of given directory */
+export function isAncestorDirectory(parent, dir) {
+  const relative = path.relative(parent, dir);
+  return parent === dir || (relative && !relative.startsWith('..') && !path.isAbsolute(relative));
 }
