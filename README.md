@@ -1,6 +1,6 @@
 # GenAIcode
 
-### 🚧 GenAIcod is Under development, use at own risk, feedback is welcomed! 🚧
+### 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
 
 The GenAIcode tool is designed to automate code generation tasks using Vertex AI, OpenAI models, and Anthropic's Claude model. This tool is intended to enhance developer productivity by assisting with the generation of repetitive or complex code.
 
