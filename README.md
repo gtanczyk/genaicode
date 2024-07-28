@@ -53,6 +53,7 @@ The codegen script accepts the following options:
 - `--dependency-tree`: Limit the scope of codegen only to files marked with `@CODEGEN` and their dependencies
 - `--verbose-prompt`: Print the prompt used for code generation.
 - `--require-explanations`: Require explanations for all code generation operations.
+- `--gemini-block-none`: Disable safety settings for Gemini Pro model (requires whitelisted Cloud project).
 
 Note: The `--chat-gpt`, `--anthropic`, and `--vertex-ai` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
 
@@ -65,6 +66,8 @@ Uses Google's Vertex AI with the Gemini Pro model. This is the default option if
 ### OpenAI GPT
 
 Activated with the `--chat-gpt` flag. Uses OpenAI's GPT model for code generation.
+
+When using Vertex AI with the Gemini Pro model, you can use the `--gemini-block-none` flag to disable safety settings. This option is only available for whitelisted Cloud projects and should be used with caution.
 
 ### Anthropic Claude
 

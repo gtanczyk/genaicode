@@ -19,6 +19,7 @@ export let explicitPrompt = params.find((param) => param.startsWith('--explicit-
 export const disableContextOptimization = params.includes('--disable-context-optimization');
 export const taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const requireExplanations = params.includes('--require-explanations');
+export const geminiBlockNone = params.includes('--gemini-block-none');
 
 if (taskFile) {
   if (explicitPrompt) {

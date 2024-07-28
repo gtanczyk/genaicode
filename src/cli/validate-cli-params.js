@@ -14,6 +14,7 @@ const allowedParameters = [
   '--verbose-prompt',
   '--require-explanations',
   '--disable-context-optimization',
+  '--gemini-block-none',
 ];
 
 // Validate CLI parameters accordingly to those mentioned in README.md, fail the process if not valid, or unknown parameter is passed

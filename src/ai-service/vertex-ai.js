@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { VertexAI } from '@google-cloud/vertexai';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { geminiBlockNone } from '../cli/cli-params.js';
 
 /**
  * This function generates content using the Gemini Pro model.
@@ -112,19 +113,19 @@ export function getGenModel(systemPrompt) {
     safetySettings: [
       {
         category: 'HARM_CATEGORY_HATE_SPEECH',
-        threshold: 'BLOCK_NONE',
+        threshold: geminiBlockNone ? 'BLOCK_NONE' : 'BLOCK_LOW_AND_ABOVE',
       },
       {
         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-        threshold: 'BLOCK_NONE',
+        threshold: geminiBlockNone ? 'BLOCK_NONE' : 'BLOCK_LOW_AND_ABOVE',
       },
       {
         category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-        threshold: 'BLOCK_NONE',
+        threshold: geminiBlockNone ? 'BLOCK_NONE' : 'BLOCK_LOW_AND_ABOVE',
       },
       {
         category: 'HARM_CATEGORY_HARASSMENT',
-        threshold: 'BLOCK_NONE',
+        threshold: geminiBlockNone ? 'BLOCK_NONE' : 'BLOCK_LOW_AND_ABOVE',
       },
     ],
     systemInstruction: {
