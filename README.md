@@ -46,19 +46,20 @@ The codegen script accepts the following options:
 - `--allow-file-move`: Allow the codegen script to move files.
 - `--chat-gpt`: Use the OpenAI model for code generation instead of Vertex AI with Google's Gemini Pro model.
 - `--anthropic`: Use Anthropic's Claude model for code generation.
+- `--vertex-ai`: Use Vertex AI with Google's Gemini Pro model for code generation (default if no AI model is specified).
 - `--explicit-prompt`: An explicit prompt to use for code generation.
 - `--task-file`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limit the scope of codegen only to files marked with `@CODEGEN` and their dependencies
 - `--verbose-prompt`: Print the prompt used for code generation.
 - `--require-explanations`: Require explanations for all code generation operations.
 
-Note: The `--chat-gpt` and `--anthropic` flags are mutually exclusive. If neither is specified, the default Vertex AI with Google's Gemini Pro model will be used.
+Note: The `--chat-gpt`, `--anthropic`, and `--vertex-ai` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
 
 ## Supported AI Models
 
 ### Vertex AI (Default)
 
-Uses Google's Vertex AI with the Gemini Pro model. This is the default option if no specific AI model flag is provided.
+Uses Google's Vertex AI with the Gemini Pro model. This is the default option if no specific AI model flag is provided. Can be explicitly selected with the `--vertex-ai` flag.
 
 ### OpenAI GPT
 

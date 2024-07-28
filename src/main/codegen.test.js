@@ -8,21 +8,34 @@ import * as anthropic from '../ai-service/anthropic.js';
 import * as updateFiles from '../files/update-files.js';
 import * as cliParams from '../cli/cli-params.js';
 
-vi.mock('../ai-service/vertex-ai.js', () => ({ __esModule: true, generateContent: vi.fn() }));
+vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../files/update-files.js');
-vi.mock('../cli/cli-params.js');
+vi.mock('../cli/cli-params.js', () => ({
+  requireExplanations: false,
+  considerAllFiles: false,
+  dependencyTree: false,
+  explicitPrompt: false,
+  allowFileCreate: false,
+  allowFileDelete: false,
+  allowDirectoryCreate: false,
+  allowFileMove: false,
+  verbosePrompt: false,
+}));
 
 describe('runCodegen', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     cliParams.anthropic = false;
     cliParams.chatGpt = false;
+    cliParams.vertexAi = false;
     cliParams.dryRun = false;
   });
 
   it('should run codegen with Vertex AI by default', async () => {
+    cliParams.vertexAi = true;
+
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Hello");' } },
     ];
@@ -59,7 +72,9 @@ describe('runCodegen', () => {
   });
 
   it('should not update files in dry run mode', async () => {
+    cliParams.vertexAi = true;
     cliParams.dryRun = true;
+
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Dry run");' } },
     ];

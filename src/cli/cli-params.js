@@ -10,6 +10,7 @@ export const allowDirectoryCreate = params.includes('--allow-directory-create');
 export const allowFileMove = params.includes('--allow-file-move');
 export const chatGpt = params.includes('--chat-gpt');
 export const anthropic = params.includes('--anthropic');
+export const vertexAi = params.includes('--vertex-ai');
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
@@ -30,6 +31,10 @@ if (considerAllFiles && dependencyTree) {
   throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
-if (chatGpt && anthropic) {
-  throw new Error('--chat-gpt and --anthropic are exclusive.');
+if ([chatGpt, anthropic, vertexAi].filter(Boolean).length > 1) {
+  throw new Error('--chat-gpt, --anthropic, and --vertex-ai are mutually exclusive.');
+}
+
+if (!chatGpt && !anthropic && !vertexAi) {
+  throw new Error('Missing --chat-gpt, --anthropic, or --vertex-ai');
 }

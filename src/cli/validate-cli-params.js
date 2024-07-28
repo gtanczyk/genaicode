@@ -6,11 +6,12 @@ const allowedParameters = [
   '--allow-directory-create',
   '--allow-file-move',
   '--chat-gpt',
+  '--vertex-ai',
+  '--anthropic',
   '--explicit-prompt=',
   '--task-file=',
   '--dependency-tree',
   '--verbose-prompt',
-  '--anthropic',
   '--require-explanations',
 ];
 

@@ -1,4 +1,6 @@
-import { dryRun, chatGpt, anthropic } from '../cli/cli-params.js';
+import assert from 'node:assert';
+
+import { dryRun, chatGpt, anthropic, vertexAi } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentGemini } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
@@ -14,11 +16,13 @@ export async function runCodegen() {
   validateCliParams();
 
   console.log('Generating response');
-  const functionCalls = await (anthropic
-    ? promptService(generateContentClaude)
-    : chatGpt
-      ? promptService(generateContentGPT)
-      : promptService(generateContentGemini));
+  const functionCalls = await (vertexAi
+    ? promptService(generateContentGemini)
+    : anthropic
+      ? promptService(generateContentClaude)
+      : chatGpt
+        ? promptService(generateContentGPT)
+        : assert(false, 'Please specify which AI service should be used'));
   console.log('Received function calls:', functionCalls);
 
   if (dryRun) {
