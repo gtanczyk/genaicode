@@ -1,5 +1,7 @@
 import fs from 'fs';
 
+import { serviceAutoDetect } from './service-autodetect.js';
+
 const params = process.argv.slice(2);
 
 export const dryRun = params.includes('--dry-run');
@@ -8,9 +10,9 @@ export const allowFileCreate = params.includes('--allow-file-create');
 export const allowFileDelete = params.includes('--allow-file-delete');
 export const allowDirectoryCreate = params.includes('--allow-directory-create');
 export const allowFileMove = params.includes('--allow-file-move');
-export const chatGpt = params.includes('--chat-gpt');
-export const anthropic = params.includes('--anthropic');
-export const vertexAi = params.includes('--vertex-ai');
+export let chatGpt = params.includes('--chat-gpt');
+export let anthropic = params.includes('--anthropic');
+export let vertexAi = params.includes('--vertex-ai');
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
@@ -36,5 +38,17 @@ if ([chatGpt, anthropic, vertexAi].filter(Boolean).length > 1) {
 }
 
 if (!chatGpt && !anthropic && !vertexAi) {
-  throw new Error('Missing --chat-gpt, --anthropic, or --vertex-ai');
+  const detected = serviceAutoDetect();
+  if (detected === 'anthropic') {
+    console.log('Autotected --anthropic');
+    anthropic = true;
+  } else if (detected === 'chat-gpt') {
+    console.log('Autotected --chat-gpt');
+    chatGpt = true;
+  } else if (detected === 'vertex-ai') {
+    console.log('Autotected --vertex-ai');
+    vertexAi = true;
+  } else {
+    throw new Error('Missing --chat-gpt, --anthropic, or --vertex-ai');
+  }
 }
