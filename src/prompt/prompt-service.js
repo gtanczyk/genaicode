@@ -14,7 +14,10 @@ export async function promptService(generateContentFn) {
     { type: 'user', functionResponse: { name: 'getSourceCode', content: messages.sourceCode }, text: messages.prompt },
   ];
 
-  const baseResult = await generateContentFn(basePrompt, functionDefs);
+  const baseResult = await generateContentFn(
+    basePrompt,
+    functionDefs.filter((fd) => ['getSourceCode', 'codegenSummary', 'explanation'].includes(fd.name)),
+  );
 
   if (baseResult.length === 1 && baseResult[0].name === 'codegenSummary') {
     console.log('Received codegen summary, will collect partial updates');

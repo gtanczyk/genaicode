@@ -1,10 +1,10 @@
-import { updateFiles } from '../files/update-files.js';
-import { generateContent as generateContentGemini } from '../ai-service/vertex-ai.js';
 import { dryRun, chatGpt, anthropic } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
+import { generateContent as generateContentGemini } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic.js';
 import { promptService } from '../prompt/prompt-service.js';
+import { updateFiles } from '../files/update-files.js';
 
 /** Executes codegen */
 export async function runCodegen() {

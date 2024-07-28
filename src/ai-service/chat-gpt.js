@@ -25,7 +25,7 @@ export async function generateContent(prompt, functionDefs) {
                 {
                   role: 'tool',
                   name: item.functionResponse.name,
-                  content: item.functionResponse.content,
+                  content: item.functionResponse.content ?? '',
                   tool_call_id: item.functionResponse.name,
                 },
               ]
@@ -38,11 +38,11 @@ export async function generateContent(prompt, functionDefs) {
       } else if (item.type === 'assistant') {
         return {
           role: 'assistant',
-          content: item.text,
+          ...(item.text ? { content: item.text } : {}),
           tool_calls: [
             {
               type: 'function',
-              function: { name: item.functionCall.name, arguments: item.functionCall.args ?? '{}' },
+              function: { name: item.functionCall.name, arguments: JSON.stringify(item.functionCall.args ?? {}) },
               id: item.functionCall.name,
             },
           ],

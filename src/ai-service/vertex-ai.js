@@ -7,42 +7,44 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
  */
 
 export async function generateContent(prompt, functionDefs) {
-  const req = {
-    contents: prompt
-      .filter((item) => item.type !== 'systemPrompt')
-      .map((item) => {
-        if (item.type === 'user') {
-          return {
-            role: 'user',
-            parts: [
-              ...(item.functionResponse
-                ? [
-                    {
-                      functionResponse: {
-                        name: item.functionResponse.name,
-                        response: { name: item.functionResponse.name, content: item.functionResponse.content },
-                      },
+  const messages = prompt
+    .filter((item) => item.type !== 'systemPrompt')
+    .map((item) => {
+      if (item.type === 'user') {
+        return {
+          role: 'user',
+          parts: [
+            ...(item.functionResponse
+              ? [
+                  {
+                    functionResponse: {
+                      name: item.functionResponse.name,
+                      response: { name: item.functionResponse.name, content: item.functionResponse.content },
                     },
-                  ]
-                : []),
-              { text: item.text },
-            ],
-          };
-        } else if (item.type === 'assistant') {
-          return {
-            role: 'model',
-            parts: [
-              ...(item.text ? [{ text: item.text }] : []),
-              {
-                functionCall: {
-                  name: item.functionCall.name,
-                  args: item.functionCall.args ?? {},
-                },
+                  },
+                ]
+              : []),
+            { text: item.text },
+          ],
+        };
+      } else if (item.type === 'assistant') {
+        return {
+          role: 'model',
+          parts: [
+            ...(item.text ? [{ text: item.text }] : []),
+            {
+              functionCall: {
+                name: item.functionCall.name,
+                args: item.functionCall.args ?? {},
               },
-            ],
-          };
-        }
-      }),
+            },
+          ],
+        };
+      }
+    });
+
+  const req = {
+    contents: messages,
     tools: [
       {
         functionDeclarations: functionDefs,

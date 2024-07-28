@@ -11,43 +11,45 @@ export async function generateContent(prompt, functionDefs) {
     },
   });
 
+  const messages = prompt
+    .filter((item) => item.type !== 'systemPrompt')
+    .map((item) => {
+      if (item.type === 'user') {
+        return {
+          role: 'user',
+          content: [
+            ...(item.functionResponse
+              ? [
+                  {
+                    tool_use_id: item.functionResponse.name,
+                    content: item.functionResponse.content,
+                    type: 'tool_result',
+                  },
+                ]
+              : []),
+            { type: 'text', text: item.text },
+          ],
+        };
+      } else if (item.type === 'assistant') {
+        return {
+          role: 'assistant',
+          content: [
+            ...(item.text ? [{ type: 'text', text: item.text }] : []),
+            {
+              id: item.functionCall.name,
+              name: item.functionCall.name,
+              input: item.functionCall.args ?? {},
+              type: 'tool_use',
+            },
+          ],
+        };
+      }
+    });
+
   const response = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20240620',
     system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
-    messages: prompt
-      .filter((item) => item.type !== 'systemPrompt')
-      .map((item) => {
-        if (item.type === 'user') {
-          return {
-            role: 'user',
-            content: [
-              ...(item.functionResponse
-                ? [
-                    {
-                      tool_use_id: item.functionResponse.name,
-                      content: item.functionResponse.content,
-                      type: 'tool_result',
-                    },
-                  ]
-                : []),
-              { type: 'text', text: item.text },
-            ],
-          };
-        } else if (item.type === 'assistant') {
-          return {
-            role: 'assistant',
-            content: [
-              ...(item.text ? [{ type: 'text', text: item.text }] : []),
-              {
-                id: item.functionCall.name,
-                name: item.functionCall.name,
-                input: item.functionCall.args ?? {},
-                type: 'tool_use',
-              },
-            ],
-          };
-        }
-      }),
+    messages,
     tools: functionDefs.map((fd) => ({
       name: fd.name,
       description: fd.description,
