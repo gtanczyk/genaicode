@@ -1,6 +1,7 @@
+import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { functionDefs } from './function-calling.js';
-import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { getSourceCode } from '../files/read-files.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -16,12 +17,35 @@ export async function generateContent(systemPrompt, prompt) {
     },
   });
 
-  const messages = prepareMessages(prompt);
-
   const response = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20240620',
     system: systemPrompt,
-    messages: mapCommonMessages(messages),
+    messages: [
+      { role: 'user', content: 'I should provide you with application source code.' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Please provide application source code.' },
+          {
+            id: 'get_source_code',
+            name: 'getSourceCode',
+            input: {},
+            type: 'tool_use',
+          },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'get_source_code',
+            content: JSON.stringify(getSourceCode()),
+            type: 'tool_result',
+          },
+          { type: 'text', text: prompt },
+        ],
+      },
+    ],
     tools: functionDefs.map((fd) => ({
       name: fd.name,
       description: fd.description,
@@ -32,12 +56,16 @@ export async function generateContent(systemPrompt, prompt) {
   });
 
   // Print token usage for Anthropic
-  const usage = {
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-  };
-  printTokenUsageAndCost(usage, 3 / 1000 / 1000, 15 / 1000 / 1000);
+  console.log('Token Usage:');
+  console.log('  - Input tokens: ', response.usage.input_tokens);
+  console.log('  - Output tokens: ', response.usage.output_tokens);
+  console.log('  - Total tokens: ', response.usage.input_tokens + response.usage.output_tokens);
+
+  // Calculate and print the estimated cost
+  const inputCost = (response.usage.input_tokens * 3) / 1000 / 1000;
+  const outputCost = (response.usage.output_tokens * 15) / 1000 / 1000;
+  const totalCost = inputCost + outputCost;
+  console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
 
   const responseMessages = response.content.filter((item) => item.type !== 'tool_use');
   if (responseMessages.length > 0) {
@@ -45,48 +73,18 @@ export async function generateContent(systemPrompt, prompt) {
   }
 
   const functionCalls = response.content.filter((item) => item.type === 'tool_use');
+  assert(
+    functionCalls.every((call) => functionDefs.some((fd) => fd.name === call.name)),
+    'Unknown function name',
+  );
 
-  return processFunctionCalls(functionCalls.map((item) => ({ name: item.name, args: item.input })));
-}
+  const explanations = functionCalls.filter((call) => call.name === 'explanation');
+  console.log(
+    'Explanations',
+    explanations.map((item) => item.input.text),
+  );
 
-function mapCommonMessages(messages) {
-  return messages.map((message) => {
-    if (message.role === 'user') {
-      return {
-        role: 'user',
-        content: message.parts
-          .map((part) => {
-            if (part.text) {
-              return { type: 'text', text: part.text };
-            } else if (part.functionResponse) {
-              return {
-                tool_use_id: part.functionResponse.name,
-                content: part.functionResponse.response.content,
-                type: 'tool_result',
-              };
-            }
-          })
-          .filter(Boolean),
-      };
-    } else if (message.role === 'model') {
-      return {
-        role: 'assistant',
-        content: message.parts
-          .map((part) => {
-            if (part.text) {
-              return { type: 'text', text: part.text };
-            } else if (part.functionCall) {
-              return {
-                id: part.functionCall.name,
-                name: part.functionCall.name,
-                input: part.functionCall.args,
-                type: 'tool_use',
-              };
-            }
-          })
-          .filter(Boolean),
-      };
-    }
-    return message; // Return unchanged if not user or model
-  });
+  return functionCalls
+    .filter((call) => call.name !== 'explanation')
+    .map((item) => ({ name: item.name, args: item.input }));
 }

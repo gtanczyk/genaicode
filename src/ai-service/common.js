@@ -4,40 +4,14 @@ import { getSourceCode } from '../files/read-files.js';
 
 /**
  * Common function to prepare messages for AI services
- * @returns {Array} Initial messages
  */
 export function prepareMessages(prompt) {
-  return [
-    { role: 'user', parts: [{ text: 'I should provide you with application source code.' }] },
-    {
-      role: 'model',
-      parts: [
-        {
-          text: 'Please provide application source code.',
-        },
-        {
-          functionCall: {
-            name: 'getSourceCode',
-            args: {},
-          },
-        },
-      ],
-    },
-    {
-      role: 'user',
-      parts: [
-        {
-          functionResponse: {
-            name: 'getSourceCode',
-            response: { name: 'getSourceCode', content: JSON.stringify(getSourceCode()) },
-          },
-        },
-        {
-          text: prompt,
-        },
-      ],
-    },
-  ];
+  return {
+    suggestSourceCode: 'I should provide you with application source code.',
+    requestSourceCode: 'Please provide application source code.',
+    prompt,
+    sourceCode: JSON.stringify(getSourceCode()),
+  };
 }
 
 /**

@@ -8,7 +8,7 @@ export async function generateContent(systemPrompt, prompt) {
   const messages = prepareMessages(prompt);
 
   const req = {
-    contents: messages,
+    contents: mapCommonMessages(messages),
     tools: [
       {
         functionDeclarations: functionDefs,
@@ -107,4 +107,38 @@ const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
 
 export async function verifyVertexMonkeyPatch() {
   return (await import(MONKEY_PATCH_FILE)).generateContent.toString().includes(MONKEY_PATCH_TOOL_CONFIG);
+}
+
+function mapCommonMessages(messages) {
+  return [
+    { role: 'user', parts: [{ text: messages.suggestSourceCode }] },
+    {
+      role: 'model',
+      parts: [
+        {
+          text: messages.requestSourceCode,
+        },
+        {
+          functionCall: {
+            name: 'getSourceCode',
+            args: {},
+          },
+        },
+      ],
+    },
+    {
+      role: 'user',
+      parts: [
+        {
+          functionResponse: {
+            name: 'getSourceCode',
+            response: { name: 'getSourceCode', content: messages.sourceCode },
+          },
+        },
+        {
+          text: messages.prompt,
+        },
+      ],
+    },
+  ];
 }
