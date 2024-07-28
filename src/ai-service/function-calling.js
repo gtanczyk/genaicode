@@ -13,13 +13,20 @@ export const functionDefs = [
       properties: {
         filePaths: {
           type: 'array',
-          description: 'A list of absolute paths of file that will be updated.',
+          description: 'A list of absolute paths of files that will be updated.',
+          items: {
+            type: 'string',
+          },
+        },
+        contextPaths: {
+          type: 'array',
+          description: 'A list of absolute paths of files that should be used to provided context.',
           items: {
             type: 'string',
           },
         },
       },
-      required: ['filePaths'],
+      required: ['filePaths', 'contextPaths'],
     },
   },
   {

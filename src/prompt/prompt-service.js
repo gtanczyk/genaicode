@@ -2,6 +2,7 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode } from '../files/read-files.js';
+import { disableContextOptimization } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn) {
@@ -20,7 +21,13 @@ export async function promptService(generateContentFn) {
   );
 
   if (baseResult.length === 1 && baseResult[0].name === 'codegenSummary') {
-    console.log('Received codegen summary, will collect partial updates');
+    console.log('Received codegen summary, will collect partial updates', baseResult[0].args);
+
+    if (baseResult[0].args.contextPaths.length > 0 && !disableContextOptimization) {
+      console.log('Optimize with context paths.');
+      basePrompt.find((item) => item.functionResponse?.name === 'getSourceCode').functionResponse.content =
+        messages.contextSourceCode(baseResult[0].args.contextPaths);
+    }
 
     const result = [];
 
@@ -54,6 +61,7 @@ function prepareMessages(prompt) {
     requestSourceCode: 'Please provide application source code.',
     prompt: prompt + '\n Start from generating codegen summary.',
     sourceCode: JSON.stringify(getSourceCode()),
+    contextSourceCode: (paths) => JSON.stringify(getSourceCode(paths)),
     partialPromptTemplate(path) {
       return `Thank you for providing the summary, now show me the actual codegen instruction for \`${path}\` file.`;
     },

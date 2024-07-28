@@ -13,6 +13,7 @@ const allowedParameters = [
   '--dependency-tree',
   '--verbose-prompt',
   '--require-explanations',
+  '--disable-context-optimization',
 ];
 
 // Validate CLI parameters accordingly to those mentioned in README.md, fail the process if not valid, or unknown parameter is passed

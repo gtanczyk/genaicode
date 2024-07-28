@@ -43,6 +43,7 @@ The codegen script accepts the following options:
 - `--allow-file-create`: Allow the codegen script to create new files.
 - `--allow-file-delete`: Allow the codegen script to delete files.
 - `--allow-directory-create`: Allow codegen script to create directories
+- `--disable-context-optimization`: Disable the optimization that uses context paths for more efficient code generation.
 - `--allow-file-move`: Allow the codegen script to move files.
 - `--chat-gpt`: Use the OpenAI model for code generation instead of Vertex AI with Google's Gemini Pro model.
 - `--anthropic`: Use Anthropic's Claude model for code generation.
