@@ -1,42 +1,14 @@
 import assert from 'node:assert';
 import { VertexAI } from '@google-cloud/vertexai';
 import { functionDefs } from './function-calling.js';
-import { getSourceCode } from '../files/read-files.js';
+import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from './common.js';
 
 // A function to generate content using the generative model
 export async function generateContent(systemPrompt, prompt) {
+  const messages = prepareMessages(prompt);
+
   const req = {
-    contents: [
-      { role: 'user', parts: [{ text: 'I should provide you with application source code.' }] },
-      {
-        role: 'model',
-        parts: [
-          {
-            text: 'Please provide application source code.',
-          },
-          {
-            functionCall: {
-              name: 'getSourceCode',
-              args: {},
-            },
-          },
-        ],
-      },
-      {
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: 'getSourceCode',
-              response: { name: 'getSourceCode', content: JSON.stringify(getSourceCode()) },
-            },
-          },
-          {
-            text: prompt,
-          },
-        ],
-      },
-    ],
+    contents: messages,
     tools: [
       {
         functionDeclarations: functionDefs,
@@ -53,16 +25,12 @@ export async function generateContent(systemPrompt, prompt) {
 
   // Print token usage
   const usageMetadata = result.response.usageMetadata;
-  console.log('Token Usage:');
-  console.log('  - Candidates tokens: ', usageMetadata.candidatesTokenCount);
-  console.log('  - Prompt tokens: ', usageMetadata.promptTokenCount);
-  console.log('  - Total tokens: ', usageMetadata.totalTokenCount);
-
-  // Calculate and print the estimated cost
-  const inputCost = (usageMetadata.promptTokenCount * 0.000125) / 1000;
-  const outputCost = (usageMetadata.candidatesTokenCount * 0.000375) / 1000;
-  const totalCost = inputCost + outputCost;
-  console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
+  const usage = {
+    inputTokens: usageMetadata.promptTokenCount,
+    outputTokens: usageMetadata.candidatesTokenCount,
+    totalTokens: usageMetadata.totalTokenCount,
+  };
+  printTokenUsageAndCost(usage, 0.000125 / 1000, 0.000375 / 1000);
 
   if (result.response.promptFeedback) {
     console.log('Prompt feedback:');
@@ -79,11 +47,6 @@ export async function generateContent(systemPrompt, prompt) {
     .flat()
     .filter((functionCall) => !!functionCall);
 
-  assert(
-    functionCalls.every((call) => functionDefs.some((fd) => fd.name === call.name)),
-    'Unknown function name',
-  );
-
   if (functionCalls.length === 0) {
     const textResponse = result.response.candidates
       .map((candidate) => candidate.content.parts?.map((part) => part.text))
@@ -93,12 +56,7 @@ export async function generateContent(systemPrompt, prompt) {
     console.log('No function calls, output text response if it exists:', textResponse);
   }
 
-  console.log(
-    'Explanations:',
-    functionCalls.filter((fn) => fn.name === 'explanation').map((call) => call.args.text),
-  );
-
-  return functionCalls.filter((fn) => fn.name !== 'explanation');
+  return processFunctionCalls(functionCalls);
 }
 
 // A function to get the generative model

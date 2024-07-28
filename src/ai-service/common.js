@@ -1,0 +1,78 @@
+import assert from 'node:assert';
+import { functionDefs } from './function-calling.js';
+import { getSourceCode } from '../files/read-files.js';
+
+/**
+ * Common function to prepare messages for AI services
+ * @returns {Array} Initial messages
+ */
+export function prepareMessages(prompt) {
+  return [
+    { role: 'user', parts: [{ text: 'I should provide you with application source code.' }] },
+    {
+      role: 'model',
+      parts: [
+        {
+          text: 'Please provide application source code.',
+        },
+        {
+          functionCall: {
+            name: 'getSourceCode',
+            args: {},
+          },
+        },
+      ],
+    },
+    {
+      role: 'user',
+      parts: [
+        {
+          functionResponse: {
+            name: 'getSourceCode',
+            response: { name: 'getSourceCode', content: JSON.stringify(getSourceCode()) },
+          },
+        },
+        {
+          text: prompt,
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * Common function to print token usage and estimated cost
+ * @param {Object} usage Token usage object
+ * @param {number} inputCostPerToken Cost per input token
+ * @param {number} outputCostPerToken Cost per output token
+ */
+export function printTokenUsageAndCost(usage, inputCostPerToken, outputCostPerToken) {
+  console.log('Token Usage:');
+  console.log('  - Input tokens: ', usage.inputTokens);
+  console.log('  - Output tokens: ', usage.outputTokens);
+  console.log('  - Total tokens: ', usage.totalTokens);
+
+  const inputCost = usage.inputTokens * inputCostPerToken;
+  const outputCost = usage.outputTokens * outputCostPerToken;
+  const totalCost = inputCost + outputCost;
+  console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
+}
+
+/**
+ * Common function to process function calls and explanations
+ * @param {Array} functionCalls Array of function calls
+ * @returns {Array} Processed function calls
+ */
+export function processFunctionCalls(functionCalls) {
+  assert(
+    functionCalls.every((call) => functionDefs.some((fd) => fd.name === call.name)),
+    'Unknown function name',
+  );
+
+  console.log(
+    'Explanations:',
+    functionCalls.filter((fn) => fn.name === 'explanation').map((call) => call.args.text),
+  );
+
+  return functionCalls.filter((fn) => fn.name !== 'explanation');
+}

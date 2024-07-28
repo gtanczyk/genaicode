@@ -28,6 +28,12 @@ export ANTHROPIC_API_KEY="..."
 npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
 ```
 
+## Demo
+
+This is an example of `npx genaicode` execution. The prompt was to refactor the code, and remove some duplication.
+
+![demo](media/demo-for-readme.gif 'demo')
+
 ## Options
 
 The codegen script accepts the following options:

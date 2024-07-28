@@ -17,6 +17,7 @@ function readSourceFiles() {
 /** Print source code of all source files */
 export function getSourceCode() {
   const sourceCode = readSourceFiles();
+  console.log(sourceCode);
   verifySourceCodeLimit(JSON.stringify(sourceCode));
   return sourceCode;
 }
