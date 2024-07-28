@@ -1,11 +1,10 @@
-import { getSystemPrompt } from '../prompt/systemprompt.js';
-import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 import { updateFiles } from '../files/update-files.js';
-import { generateContent } from '../ai-service/vertex-ai.js';
+import { generateContent as generateContentGemini } from '../ai-service/vertex-ai.js';
 import { dryRun, chatGpt, anthropic } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic.js';
+import { promptService } from '../prompt/prompt-service.js';
 
 /** Executes codegen */
 export async function runCodegen() {
@@ -15,10 +14,11 @@ export async function runCodegen() {
   validateCliParams();
 
   console.log('Generating response');
-  const functionCalls = await (anthropic ? generateContentClaude : chatGpt ? generateContentGPT : generateContent)(
-    getSystemPrompt(),
-    getCodeGenPrompt(),
-  );
+  const functionCalls = await (anthropic
+    ? promptService(generateContentClaude)
+    : chatGpt
+      ? promptService(generateContentGPT)
+      : promptService(generateContentGemini));
   console.log('Received function calls:', functionCalls);
 
   if (dryRun) {

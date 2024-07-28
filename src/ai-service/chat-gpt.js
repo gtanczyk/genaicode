@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { functionDefs } from './function-calling.js';
-import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 
 /**
  * This function generates content using the OpenAI chat model.
@@ -9,14 +8,52 @@ import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from '.
  * @param prompt Prompt for the chat model
  * @returns Array of function calls
  */
-export async function generateContent(systemPrompt, prompt) {
+export async function generateContent(prompt, functionDefs) {
   const openai = new OpenAI();
 
-  const messages = prepareMessages(prompt);
+  const messages = prompt
+    .map((item) => {
+      if (item.type === 'systemPrompt') {
+        return {
+          role: 'system',
+          content: item.systemPrompt,
+        };
+      } else if (item.type === 'user') {
+        return [
+          ...(item.functionResponse
+            ? [
+                {
+                  role: 'tool',
+                  name: item.functionResponse.name,
+                  content: item.functionResponse.content,
+                  tool_call_id: item.functionResponse.name,
+                },
+              ]
+            : []),
+          {
+            role: 'user',
+            content: item.text,
+          },
+        ];
+      } else if (item.type === 'assistant') {
+        return {
+          role: 'assistant',
+          content: item.text,
+          tool_calls: [
+            {
+              type: 'function',
+              function: { name: item.functionCall.name, arguments: item.functionCall.args ?? '{}' },
+              id: item.functionCall.name,
+            },
+          ],
+        };
+      }
+    })
+    .flat();
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
-    messages: mapCommonMessages(systemPrompt, messages),
+    messages,
     tools: functionDefs.map((funDef) => ({ type: 'function', function: funDef })),
     tool_choice: 'required',
   });
@@ -51,32 +88,4 @@ export async function generateContent(systemPrompt, prompt) {
   } else {
     throw new Error('No tool calls found in response');
   }
-}
-
-function mapCommonMessages(systemPrompt, messages) {
-  return [
-    {
-      role: 'system',
-      content: systemPrompt,
-    },
-    {
-      role: 'user',
-      content: messages.suggestSourceCode,
-    },
-    {
-      role: 'assistant',
-      content: messages.requestSourceCode,
-      tool_calls: [{ type: 'function', function: { name: 'getSourceCode', arguments: '{}' }, id: 'get_source_code' }],
-    },
-    {
-      role: 'tool',
-      name: 'getSourceCode',
-      content: messages.sourceCode,
-      tool_call_id: 'get_source_code',
-    },
-    {
-      role: 'user',
-      content: messages.prompt,
-    },
-  ];
 }

@@ -1,27 +1,53 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { functionDefs } from './function-calling.js';
-import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
- *
- * @param systemPrompt System prompt for the chat model
- * @param prompt Prompt for the chat model
- * @returns Array of function calls
  */
-export async function generateContent(systemPrompt, prompt) {
+export async function generateContent(prompt, functionDefs) {
   const anthropic = new Anthropic({
     defaultHeaders: {
       'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
     },
   });
 
-  const messages = prepareMessages(prompt);
-
   const response = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20240620',
-    system: systemPrompt,
-    messages: mapCommonMessages(messages),
+    system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
+    messages: prompt
+      .filter((item) => item.type !== 'systemPrompt')
+      .map((item) => {
+        if (item.type === 'user') {
+          return {
+            role: 'user',
+            content: [
+              ...(item.functionResponse
+                ? [
+                    {
+                      tool_use_id: item.functionResponse.name,
+                      content: item.functionResponse.content,
+                      type: 'tool_result',
+                    },
+                  ]
+                : []),
+              { type: 'text', text: item.text },
+            ],
+          };
+        } else if (item.type === 'assistant') {
+          return {
+            role: 'assistant',
+            content: [
+              ...(item.text ? [{ type: 'text', text: item.text }] : []),
+              {
+                id: item.functionCall.name,
+                name: item.functionCall.name,
+                input: item.functionCall.args ?? {},
+                type: 'tool_use',
+              },
+            ],
+          };
+        }
+      }),
     tools: functionDefs.map((fd) => ({
       name: fd.name,
       description: fd.description,
@@ -52,33 +78,4 @@ export async function generateContent(systemPrompt, prompt) {
     }));
 
   return processFunctionCalls(functionCalls);
-}
-
-function mapCommonMessages(messages) {
-  return [
-    { role: 'user', content: messages.suggestSourceCode },
-    {
-      role: 'assistant',
-      content: [
-        { type: 'text', text: messages.requestSourceCode },
-        {
-          id: 'get_source_code',
-          name: 'getSourceCode',
-          input: {},
-          type: 'tool_use',
-        },
-      ],
-    },
-    {
-      role: 'user',
-      content: [
-        {
-          tool_use_id: 'get_source_code',
-          content: messages.sourceCode,
-          type: 'tool_result',
-        },
-        { type: 'text', text: messages.prompt },
-      ],
-    },
-  ];
 }

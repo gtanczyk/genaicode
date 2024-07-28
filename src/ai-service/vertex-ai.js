@@ -1,14 +1,48 @@
 import assert from 'node:assert';
 import { VertexAI } from '@google-cloud/vertexai';
-import { functionDefs } from './function-calling.js';
-import { prepareMessages, printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 
-// A function to generate content using the generative model
-export async function generateContent(systemPrompt, prompt) {
-  const messages = prepareMessages(prompt);
+/**
+ * This function generates content using the Gemini Pro model.
+ */
 
+export async function generateContent(prompt, functionDefs) {
   const req = {
-    contents: mapCommonMessages(messages),
+    contents: prompt
+      .filter((item) => item.type !== 'systemPrompt')
+      .map((item) => {
+        if (item.type === 'user') {
+          return {
+            role: 'user',
+            parts: [
+              ...(item.functionResponse
+                ? [
+                    {
+                      functionResponse: {
+                        name: item.functionResponse.name,
+                        response: { name: item.functionResponse.name, content: item.functionResponse.content },
+                      },
+                    },
+                  ]
+                : []),
+              { text: item.text },
+            ],
+          };
+        } else if (item.type === 'assistant') {
+          return {
+            role: 'model',
+            parts: [
+              ...(item.text ? [{ text: item.text }] : []),
+              {
+                functionCall: {
+                  name: item.functionCall.name,
+                  args: item.functionCall.args ?? {},
+                },
+              },
+            ],
+          };
+        }
+      }),
     tools: [
       {
         functionDeclarations: functionDefs,
@@ -17,7 +51,7 @@ export async function generateContent(systemPrompt, prompt) {
     // TODO: add tool_config once [it is supported](https://github.com/googleapis/nodejs-vertexai/issues/331)
   };
 
-  const model = await getGenModel(systemPrompt);
+  const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt);
 
   assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
@@ -107,38 +141,4 @@ const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
 
 export async function verifyVertexMonkeyPatch() {
   return (await import(MONKEY_PATCH_FILE)).generateContent.toString().includes(MONKEY_PATCH_TOOL_CONFIG);
-}
-
-function mapCommonMessages(messages) {
-  return [
-    { role: 'user', parts: [{ text: messages.suggestSourceCode }] },
-    {
-      role: 'model',
-      parts: [
-        {
-          text: messages.requestSourceCode,
-        },
-        {
-          functionCall: {
-            name: 'getSourceCode',
-            args: {},
-          },
-        },
-      ],
-    },
-    {
-      role: 'user',
-      parts: [
-        {
-          functionResponse: {
-            name: 'getSourceCode',
-            response: { name: 'getSourceCode', content: messages.sourceCode },
-          },
-        },
-        {
-          text: messages.prompt,
-        },
-      ],
-    },
-  ];
 }

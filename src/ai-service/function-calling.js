@@ -5,11 +5,29 @@ import { requireExplanations } from '../cli/cli-params.js';
  */
 export const functionDefs = [
   {
-    name: 'updateFile',
+    name: 'codegenSummary',
+    description:
+      'This function is called with a summary of proposed updates. It contains a list of file paths that will be updated.',
     parameters: {
       type: 'object',
-      description:
-        'Update a file with new content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
+      properties: {
+        filePaths: {
+          type: 'array',
+          description: 'A list of absolute paths of file that will be updated.',
+          items: {
+            type: 'string',
+          },
+        },
+      },
+      required: ['filePaths'],
+    },
+  },
+  {
+    name: 'updateFile',
+    description:
+      'Update a file with new content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
+    parameters: {
+      type: 'object',
       properties: {
         filePath: {
           type: 'string',
@@ -29,10 +47,10 @@ export const functionDefs = [
   },
   {
     name: 'updateFilePartial',
+    description:
+      'Partially update a file content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
     parameters: {
       type: 'object',
-      description:
-        'Partially update a file content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
       properties: {
         filePath: {
           type: 'string',

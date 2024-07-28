@@ -1,18 +1,5 @@
 import assert from 'node:assert';
 import { functionDefs } from './function-calling.js';
-import { getSourceCode } from '../files/read-files.js';
-
-/**
- * Common function to prepare messages for AI services
- */
-export function prepareMessages(prompt) {
-  return {
-    suggestSourceCode: 'I should provide you with application source code.',
-    requestSourceCode: 'Please provide application source code.',
-    prompt,
-    sourceCode: JSON.stringify(getSourceCode()),
-  };
-}
 
 /**
  * Common function to print token usage and estimated cost
