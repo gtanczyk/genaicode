@@ -4,7 +4,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 /**
  * This function generates content using the Anthropic Claude model.
  */
-export async function generateContent(prompt, functionDefs) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName) {
   const anthropic = new Anthropic({
     defaultHeaders: {
       'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
@@ -51,7 +51,7 @@ export async function generateContent(prompt, functionDefs) {
       description: fd.description,
       input_schema: fd.parameters,
     })),
-    tool_choice: { type: 'any' },
+    tool_choice: requiredFunctionName ? { type: 'tool', name: requiredFunctionName } : { type: 'any' },
     max_tokens: 8192,
   });
 

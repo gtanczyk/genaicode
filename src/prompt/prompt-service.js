@@ -23,9 +23,10 @@ export async function promptService(generateContentFn) {
   };
   prompt.push(getSourceCodeResponse);
 
-  const baseResult = await generateContentFn(
+  let baseResult = await generateContentFn(
     prompt,
     functionDefs.filter((fd) => ['codegenSummary', 'explanation'].includes(fd.name)),
+    'codegenSummary',
   );
 
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
@@ -64,7 +65,10 @@ export async function promptService(generateContentFn) {
         prompt.push({ type: 'user', text: messages.partialPromptTemplate(path) });
       }
 
-      const partialResult = await generateContentFn(prompt, functionDefs);
+      const partialResult = await generateContentFn(
+        prompt,
+        functionDefs.filter((fd) => fd.name !== 'getSourceCode' && fd.name !== 'explanation'),
+      );
 
       // add the code gen result to the context, as the subsequent code gen may depend on the result
       prompt.push(

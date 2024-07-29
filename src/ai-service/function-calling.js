@@ -5,6 +5,16 @@ import { requireExplanations } from '../cli/cli-params.js';
  */
 export const functionDefs = [
   {
+    name: 'getSourceCode',
+    description:
+      'This function returns source code of the application in Map format, where absolute file path is the key, and file content is the value',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'codegenSummary',
     description:
       'This function is called with a summary of proposed updates. It contains a list of file paths that will be subject to code generation request, and also a list of file paths that make sense to use as a context for code generation requests.',
@@ -26,8 +36,12 @@ export const functionDefs = [
             type: 'string',
           },
         },
+        explanation: {
+          type: 'string',
+          description: 'Explanation of planned changes or explanation of reasoning for no code changes',
+        },
       },
-      required: ['filePaths', 'contextPaths'],
+      required: ['filePaths', 'contextPaths', 'explanation'],
     },
   },
   {

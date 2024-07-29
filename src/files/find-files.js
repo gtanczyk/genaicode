@@ -20,7 +20,7 @@ rcFilePath = path.join(rcFilePath, CODEGENRC_FILENAME);
 
 assert(fs.existsSync(rcFilePath), `${CODEGENRC_FILENAME} not found`);
 
-// Read rootDir from .codegenrc
+// Read rootDir and extensions from .genaicoderc
 export const rcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
 export const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
 
@@ -30,7 +30,13 @@ assert(isAncestorDirectory(path.dirname(rcFilePath), rootDir), 'Root dir is not 
 console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rootDir);
 
-function findFiles(dir, recursive, ...exts) {
+// Default extensions if not specified in .genaicoderc
+const DEFAULT_EXTENSIONS = ['.md', '.js', '.ts', '.tsx', '.css', '.scss', '.py', '.go', '.c', '.h', '.cpp'];
+
+// Use extensions from .genaicoderc if available, otherwise use default
+const extensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
+
+function findFiles(dir, recursive) {
   const files = [];
   const items = fs.readdirSync(dir);
   for (const item of items) {
@@ -41,9 +47,9 @@ function findFiles(dir, recursive, ...exts) {
     const fullPath = path.join(dir, item);
     if (fs.statSync(fullPath).isDirectory()) {
       if (recursive) {
-        files.push(...findFiles(fullPath, true, ...exts));
+        files.push(...findFiles(fullPath, true));
       }
-    } else if (exts.includes(path.extname(fullPath))) {
+    } else if (extensions.includes(path.extname(fullPath))) {
       files.push(fullPath);
     }
   }
@@ -52,7 +58,7 @@ function findFiles(dir, recursive, ...exts) {
 
 function getDependencies(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
-  const dependencyRegex = /import\s+.+?\s+from\s+['"](.+?)['"]/g;
+  const dependencyRegex = /import\s+.+?\s+from\s+['"](.+?\/?[^'"]+)['"]/g;
   const dependencies = [];
   let match;
   while ((match = dependencyRegex.exec(content)) !== null) {
@@ -64,12 +70,12 @@ function getDependencies(filePath) {
     if (fs.existsSync(resolvedPath)) {
       dependencies.push(resolvedPath);
     } else {
-      if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
-        if (fs.existsSync(resolvedPath + '.ts')) {
-          dependencies.push(resolvedPath + '.ts');
-        }
-        if (fs.existsSync(resolvedPath + '.tsx')) {
-          dependencies.push(resolvedPath + '.tsx');
+      // @CODEGEN: Move this list to a constant on top of ile
+      const possibleExtensions = ['.ts', '.js', '.tsx', '.jsx'];
+      for (const ext of possibleExtensions) {
+        const extendedPath = resolvedPath + ext;
+        if (fs.existsSync(extendedPath)) {
+          dependencies.push(extendedPath);
         }
       }
     }
@@ -96,7 +102,7 @@ export function getDependencyList(entryFile) {
   return Array.from(result);
 }
 
-const rootFiles = findFiles(rootDir, true, '.md', '.js', '.ts', '.tsx', '.css');
+const rootFiles = findFiles(rootDir, true);
 
 /** Get source files of the application */
 export function getSourceFiles() {

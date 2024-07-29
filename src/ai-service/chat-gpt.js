@@ -3,12 +3,8 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 
 /**
  * This function generates content using the OpenAI chat model.
- *
- * @param systemPrompt System prompt for the chat model
- * @param prompt Prompt for the chat model
- * @returns Array of function calls
  */
-export async function generateContent(prompt, functionDefs) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName) {
   const openai = new OpenAI();
 
   const messages = prompt
@@ -49,7 +45,7 @@ export async function generateContent(prompt, functionDefs) {
     model: 'gpt-4o',
     messages,
     tools: functionDefs.map((funDef) => ({ type: 'function', function: funDef })),
-    tool_choice: 'required',
+    tool_choice: requiredFunctionName ? { type: 'function', function: { name: requiredFunctionName } } : 'required',
   });
 
   // Print token usage for chat gpt

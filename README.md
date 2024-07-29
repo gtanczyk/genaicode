@@ -36,6 +36,24 @@ This is an example of `npx genaicode` execution. The prompt was to refactor the 
 
 ![demo](media/demo-for-readme.gif 'demo')
 
+## Configuration
+
+The `.genaicoderc` file supports the following options:
+
+- `rootDir`: Specifies the root directory for the project (required).
+- `extensions`: An array of file extensions to be considered by GenAIcode (optional).
+
+Example configuration:
+
+```json
+{
+  "rootDir": ".",
+  "extensions": [".md", ".js", ".ts", ".tsx", ".css"]
+}
+```
+
+If the `extensions` option is not specified, GenAIcode will use a default set of extensions: `.md`, `.js`, `.ts`, `.tsx`, `.css`, `.scss`, `.py`, `.go`, `.c`, `.h`, `.cpp`.
+
 ## Options
 
 The codegen script accepts the following options:
@@ -94,6 +112,8 @@ The codegen tool can perform various file operations based on the provided flags
 ## Dependency Tree
 
 When using the `--dependency-tree` flag, the tool will analyze the dependencies of files marked with `@CODEGEN` and include them in the code generation process. This ensures that all relevant files are considered, even if they're not directly marked for code generation.
+
+Note: The dependency tree feature currently only works for JavaScript/TypeScript codebases with ESM modules.
 
 ## Verbose Mode
 
