@@ -7,13 +7,13 @@ export const functionDefs = [
   {
     name: 'codegenSummary',
     description:
-      'This function is called with a summary of proposed updates. It contains a list of file paths that will be updated.',
+      'This function is called with a summary of proposed updates. It contains a list of file paths that will be subject to code generation request, and also a list of file paths that make sense to use as a context for code generation requests.',
     parameters: {
       type: 'object',
       properties: {
         filePaths: {
           type: 'array',
-          description: 'A list of absolute paths of files that will be updated.',
+          description: 'An array of absolute paths of files that will be updated.',
           items: {
             type: 'string',
           },
@@ -21,7 +21,7 @@ export const functionDefs = [
         contextPaths: {
           type: 'array',
           description:
-            'A list of absolute paths of files that should be used to provided context. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+            'An array of absolute paths of files that should be used to provided context. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
           items: {
             type: 'string',
           },

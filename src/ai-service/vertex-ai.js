@@ -54,13 +54,7 @@ export async function generateContent(prompt, functionDefs) {
 
   assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
-  let result;
-  try {
-    result = await model.generateContent(req);
-  } catch (e) {
-    console.log(JSON.stringify(messages, null, 4));
-    throw e;
-  }
+  const result = await model.generateContent(req);
 
   // Print token usage
   const usageMetadata = result.response.usageMetadata;

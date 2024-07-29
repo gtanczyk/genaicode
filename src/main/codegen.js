@@ -29,7 +29,7 @@ export async function runCodegen() {
     console.log('Dry run mode, not updating files');
   } else {
     console.log('Update files');
-    updateFiles(functionCalls);
+    updateFiles(functionCalls.filter((call) => call.name !== 'explanation'));
     console.log('Done!');
   }
 }

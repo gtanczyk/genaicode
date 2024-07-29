@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
@@ -33,6 +34,10 @@ export async function promptService(generateContentFn) {
     // Second stage: for each file request the actual code updates
     console.log('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
 
+    // Sometimes the result happens to be a string
+    assert(Array.isArray(codegenSummaryRequest.args.filePaths), 'filePaths is not an array');
+    assert(Array.isArray(codegenSummaryRequest.args.contextPaths), 'contextPaths is not an array');
+
     if (codegenSummaryRequest.args.contextPaths.length > 0 && !disableContextOptimization) {
       console.log('Optimize with context paths.');
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
@@ -61,6 +66,7 @@ export async function promptService(generateContentFn) {
 
       const partialResult = await generateContentFn(prompt, functionDefs);
 
+      // add the code gen result to the context, as the subsequent code gen may depend on the result
       prompt.push(
         { type: 'assistant', functionCalls: partialResult },
         {
