@@ -18,15 +18,11 @@ export async function generateContent(prompt, functionDefs) {
         return {
           role: 'user',
           content: [
-            ...(item.functionResponse
-              ? [
-                  {
-                    tool_use_id: item.functionResponse.name,
-                    content: item.functionResponse.content,
-                    type: 'tool_result',
-                  },
-                ]
-              : []),
+            ...(item.functionResponses ?? []).map((response) => ({
+              tool_use_id: response.name,
+              content: response.content,
+              type: 'tool_result',
+            })),
             { type: 'text', text: item.text },
           ],
         };
@@ -35,12 +31,12 @@ export async function generateContent(prompt, functionDefs) {
           role: 'assistant',
           content: [
             ...(item.text ? [{ type: 'text', text: item.text }] : []),
-            {
-              id: item.functionCall.name,
-              name: item.functionCall.name,
-              input: item.functionCall.args ?? {},
+            ...item.functionCalls.map((call) => ({
+              id: call.name,
+              name: call.name,
+              input: call.args ?? {},
               type: 'tool_use',
-            },
+            })),
           ],
         };
       }

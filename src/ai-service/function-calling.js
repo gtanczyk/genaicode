@@ -20,7 +20,8 @@ export const functionDefs = [
         },
         contextPaths: {
           type: 'array',
-          description: 'A list of absolute paths of files that should be used to provided context.',
+          description:
+            'A list of absolute paths of files that should be used to provided context. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
           items: {
             type: 'string',
           },

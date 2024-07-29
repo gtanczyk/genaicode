@@ -25,9 +25,10 @@ export function printTokenUsageAndCost(usage, inputCostPerToken, outputCostPerTo
  * @returns {Array} Processed function calls
  */
 export function processFunctionCalls(functionCalls) {
+  const unknownFunctionCalls = functionCalls.filter((call) => !functionDefs.some((fd) => fd.name === call.name));
   assert(
-    functionCalls.every((call) => functionDefs.some((fd) => fd.name === call.name)),
-    'Unknown function name',
+    unknownFunctionCalls.length === 0,
+    'Unknown function name: ' + unknownFunctionCalls.map((call) => call.name).join(', '),
   );
 
   console.log(
@@ -35,5 +36,5 @@ export function processFunctionCalls(functionCalls) {
     functionCalls.filter((fn) => fn.name === 'explanation').map((call) => call.args.text),
   );
 
-  return functionCalls.filter((fn) => fn.name !== 'explanation');
+  return functionCalls; //.filter((fn) => fn.name !== 'explanation');
 }

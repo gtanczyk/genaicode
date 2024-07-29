@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
@@ -20,6 +20,7 @@
   "files": [
     "bin",
     "src",
+    "media",
     "README.md",
     "LICENSE"
   ],

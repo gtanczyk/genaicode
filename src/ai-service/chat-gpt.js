@@ -20,16 +20,12 @@ export async function generateContent(prompt, functionDefs) {
         };
       } else if (item.type === 'user') {
         return [
-          ...(item.functionResponse
-            ? [
-                {
-                  role: 'tool',
-                  name: item.functionResponse.name,
-                  content: item.functionResponse.content ?? '',
-                  tool_call_id: item.functionResponse.name,
-                },
-              ]
-            : []),
+          ...(item.functionResponses ?? []).map((response) => ({
+            role: 'tool',
+            name: response.name,
+            content: response.content ?? '',
+            tool_call_id: response.name,
+          })),
           {
             role: 'user',
             content: item.text,
@@ -39,13 +35,11 @@ export async function generateContent(prompt, functionDefs) {
         return {
           role: 'assistant',
           ...(item.text ? { content: item.text } : {}),
-          tool_calls: [
-            {
-              type: 'function',
-              function: { name: item.functionCall.name, arguments: JSON.stringify(item.functionCall.args ?? {}) },
-              id: item.functionCall.name,
-            },
-          ],
+          tool_calls: item.functionCalls.map((call) => ({
+            type: 'function',
+            function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
+            id: call.name,
+          })),
         };
       }
     })

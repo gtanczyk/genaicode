@@ -15,16 +15,12 @@ export async function generateContent(prompt, functionDefs) {
         return {
           role: 'user',
           parts: [
-            ...(item.functionResponse
-              ? [
-                  {
-                    functionResponse: {
-                      name: item.functionResponse.name,
-                      response: { name: item.functionResponse.name, content: item.functionResponse.content },
-                    },
-                  },
-                ]
-              : []),
+            ...(item.functionResponses ?? []).map((response) => ({
+              functionResponse: {
+                name: response.name,
+                response: { name: response.name, content: response.content },
+              },
+            })),
             { text: item.text },
           ],
         };
@@ -33,12 +29,12 @@ export async function generateContent(prompt, functionDefs) {
           role: 'model',
           parts: [
             ...(item.text ? [{ text: item.text }] : []),
-            {
+            ...item.functionCalls.map((call) => ({
               functionCall: {
-                name: item.functionCall.name,
-                args: item.functionCall.args ?? {},
+                name: call.name,
+                args: call.args ?? {},
               },
-            },
+            })),
           ],
         };
       }
@@ -58,7 +54,13 @@ export async function generateContent(prompt, functionDefs) {
 
   assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
-  const result = await model.generateContent(req);
+  let result;
+  try {
+    result = await model.generateContent(req);
+  } catch (e) {
+    console.log(JSON.stringify(messages, null, 4));
+    throw e;
+  }
 
   // Print token usage
   const usageMetadata = result.response.usageMetadata;
