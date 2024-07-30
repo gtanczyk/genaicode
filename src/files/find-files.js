@@ -7,6 +7,9 @@ const CODEGENRC_FILENAME = '.genaicoderc';
 
 const cwd = process.cwd();
 
+// List of possible extensions for dependency resolution
+const POSSIBLE_DEPENDENCY_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx'];
+
 // Find .genaicoderc file
 let rcFilePath = cwd;
 while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
@@ -70,8 +73,7 @@ function getDependencies(filePath) {
     if (fs.existsSync(resolvedPath)) {
       dependencies.push(resolvedPath);
     } else {
-      // @CODEGEN: Move this list to a constant on top of ile
-      const possibleExtensions = ['.ts', '.js', '.tsx', '.jsx'];
+      const possibleExtensions = POSSIBLE_DEPENDENCY_EXTENSIONS;
       for (const ext of possibleExtensions) {
         const extendedPath = resolvedPath + ext;
         if (fs.existsSync(extendedPath)) {
