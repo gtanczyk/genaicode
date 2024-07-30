@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
@@ -12,7 +12,7 @@
     "ai"
   ],
   "type": "module",
-  "bin": "./bin/genaicode.js",
+  "bin": "./bin/genaicode.cjs",
   "engines": {
     "node": ">=18"
   },
@@ -45,7 +45,8 @@
     "@anthropic-ai/sdk": "^0.24.3",
     "@google-cloud/vertexai": "^1.3.0",
     "diff": "^5.2.0",
-    "openai": "^4.52.7"
+    "openai": "^4.52.7",
+    "please-upgrade-node": "^3.2.0"
   },
   "lint-staged": {
     "*.{js,ts,css,md}": "prettier --write"

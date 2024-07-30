@@ -14,7 +14,7 @@ export function getSystemPrompt() {
 
   Instructions will be passed to you either directly via message, with a file, or using the ${CODEGEN_TRIGGER} comment in the code.
 
-  You should parse my application source code and then suggest changes.
+  You should parse my application source code and then suggest changes using appropriate tools.
 
   The root directory of my application is \`${rootDir}\` and you should limit the changes only to this path.
 

@@ -101,7 +101,7 @@ function prepareMessages(prompt) {
     sourceCode: JSON.stringify(getSourceCode()),
     contextSourceCode: (paths) => JSON.stringify(getSourceCode(paths)),
     partialPromptTemplate(path) {
-      return `Thank you for providing the summary, now show me the actual codegen instruction for \`${path}\` file.`;
+      return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;
     },
   };
 }

@@ -2,6 +2,11 @@
 
 const fs = require('fs');
 
+// Add node version check
+const pkg = require('../package.json');
+const pleaseUpgradeNode = require('please-upgrade-node');
+pleaseUpgradeNode(pkg);
+
 const MONKEY_PATCH_FILE = '@google-cloud/vertexai/build/src/functions/generate_content.js';
 const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
 

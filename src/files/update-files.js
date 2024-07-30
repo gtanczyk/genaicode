@@ -48,7 +48,7 @@ export function updateFiles(functionCalls) {
     } else if (name === 'updateFile' || name === 'createFile' || name === 'updateFilePartial') {
       if (name === 'updateFilePartial') {
         console.log(`Applying a patch: ${filePath} content`);
-        newContent = applyPatch(fs.readFileSync(filePath, 'utf-8'), patch);
+        newContent = diff.applyPatch(fs.readFileSync(filePath, 'utf-8'), patch);
         assert(!!newContent, 'Patch was not successful');
       }
 
@@ -97,8 +97,4 @@ function isProjectPath(filePath) {
         isAncestorDirectory(path.dirname(sourceFile), path.dirname(filePath)),
     )
   );
-}
-
-function applyPatch(original, patch) {
-  return diff.applyPatch(original, patch);
 }
