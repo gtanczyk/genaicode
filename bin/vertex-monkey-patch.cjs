@@ -8,6 +8,12 @@ const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
 console.log('Apply vertex monkey patch');
 const path = require.resolve(MONKEY_PATCH_FILE);
 const content = fs.readFileSync(path, 'utf-8');
+
+if (!content) {
+  console.log('Could not find file:', path);
+  return;
+}
+
 if (content.includes(MONKEY_PATCH_TOOL_CONFIG)) {
   console.log('Patch already applied');
   return;
