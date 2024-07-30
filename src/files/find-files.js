@@ -34,7 +34,7 @@ console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rootDir);
 
 // Default extensions if not specified in .genaicoderc
-const DEFAULT_EXTENSIONS = ['.md', '.js', '.ts', '.tsx', '.css', '.scss', '.py', '.go', '.c', '.h', '.cpp'];
+const DEFAULT_EXTENSIONS = ['.md', '.js', '.ts', '.tsx', '.css', '.scss', '.py', '.go', '.c', '.h', '.cpp', '.txt'];
 
 // Use extensions from .genaicoderc if available, otherwise use default
 const extensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
