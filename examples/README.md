@@ -14,6 +14,7 @@ Examples of applications generated entirely with `npx genaicode`:
     ```
 
 - [Golang Hello World App](./golang_hello_world/) was generated using the `--explicit-prompt` option:
+
   - first command:
     ```bash
     npx genaicode --explicit-prompt="Create an example hello world application using golang, including README with instructions how to compile it and run it" --allow-file-create
@@ -22,3 +23,8 @@ Examples of applications generated entirely with `npx genaicode`:
     ```bash
     npx genaicode --explicit-prompt="I want the Hello, World! text to be colored"
     ```
+
+- [Java Hello World App](./java_hello_world/):
+  ```bash
+  npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
+  ```
