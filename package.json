@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
@@ -28,7 +28,6 @@
     "lint": "eslint . --ext js --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",
     "prepare": "husky install",
-    "genaicode": "bin/genaicode.js",
     "postinstall": "bin/vertex-monkey-patch.cjs"
   },
   "devDependencies": {
