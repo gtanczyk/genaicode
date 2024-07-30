@@ -7,7 +7,7 @@ import { geminiBlockNone } from '../cli/cli-params.js';
  * This function generates content using the Gemini Pro model.
  */
 
-export async function generateContent(prompt, functionDefs) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName) {
   const messages = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
@@ -48,6 +48,12 @@ export async function generateContent(prompt, functionDefs) {
       },
     ],
     // TODO: add tool_config once [it is supported](https://github.com/googleapis/nodejs-vertexai/issues/331)
+    toolConfig: {
+      functionCallingConfig: {
+        mode: 'ANY',
+        ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+      },
+    },
   };
 
   const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt);
@@ -135,9 +141,8 @@ export function getGenModel(systemPrompt) {
   });
 }
 
-const MONKEY_PATCH_FILE = '@google-cloud/vertexai/build/src/functions/generate_content.js';
-const MONKEY_PATCH_TOOL_CONFIG = `// MONKEY PATCH TOOL_CONFIG`;
-
 export async function verifyVertexMonkeyPatch() {
-  return (await import(MONKEY_PATCH_FILE)).generateContent.toString().includes(MONKEY_PATCH_TOOL_CONFIG);
+  return (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
+    .toString()
+    .includes('// MONKEY PATCH TOOL_CONFIG');
 }

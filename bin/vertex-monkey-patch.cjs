@@ -16,7 +16,7 @@ if (content.includes(MONKEY_PATCH_TOOL_CONFIG)) {
 const newContent = content.replaceAll(
   'data: generateContentRequest,',
   `// MONKEY PATCH TOOL_CONFIG
-     data: {...generateContentRequest,tool_config: {function_calling_config: { mode: "ANY" }}},`,
+        data: {...generateContentRequest,tool_config: {function_calling_config: { mode: "ANY", allowed_function_names: request.toolConfig.functionCallingConfig.allowedFunctionNames }}},`,
 );
 fs.writeFileSync(path, newContent, 'utf-8');
 console.log('Vertex monkey patch applied');
