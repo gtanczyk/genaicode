@@ -42,13 +42,15 @@ The `.genaicoderc` file supports the following options:
 
 - `rootDir`: Specifies the root directory for the project (required).
 - `extensions`: An array of file extensions to be considered by GenAIcode (optional).
+- `ignorePaths`: An array of directory or file paths that should be ignored during the code analysis and generation process. Useful for excluding `node_modules` or build directories.
 
 Example configuration:
 
 ```json
 {
   "rootDir": ".",
-  "extensions": [".md", ".js", ".ts", ".tsx", ".css"]
+  "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
+  "ignorePaths": ["node_modules", "build"]
 }
 ```
 

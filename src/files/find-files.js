@@ -48,6 +48,11 @@ function findFiles(dir, recursive) {
     }
 
     const fullPath = path.join(dir, item);
+
+    if (rcConfig.ignorePaths?.some((ignorePath) => fullPath.endsWith(ignorePath))) {
+      continue;
+    }
+
     if (fs.statSync(fullPath).isDirectory()) {
       if (recursive) {
         files.push(...findFiles(fullPath, true));

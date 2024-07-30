@@ -1,3 +1,7 @@
 {
-    "rootDir": "."
+  "rootDir": ".",
+  "ignorePaths": [
+    "examples/python_hello_world",
+    "node_modules"
+  ]
 }

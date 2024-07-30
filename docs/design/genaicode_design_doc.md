@@ -132,6 +132,40 @@ The configurable extensions feature affects various parts of the tool's function
 
 It's important to note that the dependency tree feature currently only works for JavaScript/TypeScript codebases with ESM modules. This limitation is independent of the configurable extensions feature.
 
+## Ignore Paths
+
+The GenAIcode tool now supports an `ignorePaths` feature, allowing users to specify directories or files that should be excluded from the code analysis and generation process.
+
+### Configuration
+
+Users can specify paths to be ignored by adding an `ignorePaths` array to their `.genaicoderc` file:
+
+```json
+{
+  "rootDir": ".",
+  "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
+  "ignorePaths": ["node_modules", "build", "dist"]
+}
+```
+
+### Usage
+
+The `ignorePaths` feature affects the following aspects of the tool's functionality:
+
+1. **File Discovery**: When scanning the project directory, any file or directory matching the specified ignore paths will be excluded from consideration.
+2. **Code Generation**: The tool will not generate or modify code in files that match the ignore paths.
+3. **Dependency Analysis**: When using the dependency tree feature, files in ignored paths will not be considered as dependencies.
+
+### Benefits
+
+- **Performance**: By excluding large directories like `node_modules`, the tool can run faster and consume less memory.
+- **Focus**: Users can ensure that the tool only operates on relevant parts of their project, ignoring build artifacts or third-party code.
+- **Customization**: Projects with specific directory structures or naming conventions can easily customize which paths should be included or excluded from the code generation process.
+
+### Implementation
+
+The `ignorePaths` feature is implemented in the `findFiles` function within the `find-files.js` module. When traversing the directory structure, the function checks each path against the `ignorePaths` array and skips any matching files or directories.
+
 ## Conclusion
 
-The GenAIcode tool is a versatile and powerful assistant for developers, capable of leveraging multiple AI models to generate code efficiently. By supporting various configuration options, AI models, and now configurable file extensions, it provides flexibility to suit different project needs and developer preferences. The tool's ability to handle various file operations, consider dependencies, optimize context, provide token usage feedback, and now support custom file extension configurations makes it a comprehensive solution for automated code generation and management.
+The GenAIcode tool is a versatile and powerful assistant for developers, capable of leveraging multiple AI models to generate code efficiently. By supporting various configuration options, AI models, configurable file extensions, and now the ability to ignore specific paths, it provides flexibility to suit different project needs and developer preferences. The tool's ability to handle various file operations, consider dependencies, optimize context, provide token usage feedback, and support custom configurations makes it a comprehensive solution for automated code generation and management.

@@ -67,7 +67,7 @@ export async function promptService(generateContentFn) {
 
       const partialResult = await generateContentFn(
         prompt,
-        functionDefs.filter((fd) => fd.name !== 'getSourceCode' && fd.name !== 'explanation'),
+        functionDefs.filter((fd) => !['getSourceCode', 'explanation', 'codegenSummary'].includes(fd.name)),
       );
 
       // add the code gen result to the context, as the subsequent code gen may depend on the result
