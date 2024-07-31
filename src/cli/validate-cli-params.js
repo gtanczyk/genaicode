@@ -7,6 +7,7 @@ const allowedParameters = [
   '--allow-file-move',
   '--chat-gpt',
   '--vertex-ai',
+  '--vertex-ai-claude',
   '--anthropic',
   '--explicit-prompt=',
   '--task-file=',
@@ -26,7 +27,7 @@ export function validateCliParams() {
       console.error(`Invalid parameter: ${param}, all parameters must start with --`);
       process.exit(1);
     }
-    if (!allowedParameters.some((p) => param.startsWith(p))) {
+    if (!allowedParameters.some((p) => (p.endsWith('=') && param.startsWith(p)) || param === p)) {
       console.error(`Invalid parameter: ${param}, allowed parameters are: ${allowedParameters.join(', ')}`);
       process.exit(1);
     }

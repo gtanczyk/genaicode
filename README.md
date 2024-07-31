@@ -13,7 +13,7 @@
 
 ---
 
-The GenAIcode tool is designed to automate code generation tasks using Vertex AI, OpenAI models, and Anthropic's Claude model. This tool is intended to enhance developer productivity by assisting with the generation of repetitive or complex code.
+The GenAIcode tool is designed to automate code generation tasks using Vertex AI, OpenAI models, Anthropic's Claude model, and Claude via Vertex AI. This tool is intended to enhance developer productivity by assisting with the generation of repetitive or complex code.
 
 ## Installation
 
@@ -35,6 +35,11 @@ export OPENAI_API_KEY="sk-..."
 
 # Claude user
 export ANTHROPIC_API_KEY="..."
+
+# For Claude via Vertex AI user:
+gcloud auth login
+export GOOGLE_CLOUD_PROJECT="..."
+export GOOGLE_CLOUD_REGION="..."
 
 npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
 ```
@@ -79,6 +84,7 @@ The codegen script accepts the following options:
 - `--chat-gpt`: Use the OpenAI model for code generation instead of Vertex AI with Google's Gemini Pro model.
 - `--anthropic`: Use Anthropic's Claude model for code generation.
 - `--vertex-ai`: Use Vertex AI with Google's Gemini Pro model for code generation (default if no AI model is specified).
+- `--vertex-ai-claude`: Use Claude via Vertex AI for code generation.
 - `--explicit-prompt`: An explicit prompt to use for code generation.
 - `--task-file`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limit the scope of codegen only to files marked with `@CODEGEN` and their dependencies
@@ -86,7 +92,7 @@ The codegen script accepts the following options:
 - `--require-explanations`: Require explanations for all code generation operations.
 - `--gemini-block-none`: Disable safety settings for Gemini Pro model (requires whitelisted Cloud project).
 
-Note: The `--chat-gpt`, `--anthropic`, and `--vertex-ai` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
+Note: The `--chat-gpt`, `--anthropic`, `--vertex-ai`, and `--vertex-ai-claude` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
 
 ## Supported AI Models
 
@@ -103,6 +109,10 @@ When using Vertex AI with the Gemini Pro model, you can use the `--gemini-block-
 ### Anthropic Claude
 
 Activated with the `--anthropic` flag. Uses Anthropic's Claude model for code generation.
+
+### Claude via Vertex AI
+
+Activated with the `--vertex-ai-claude` flag. Uses Anthropic's Claude model via Vertex AI for code generation. This option requires setting both `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_REGION` environment variables.
 
 ### Vertex AI Monkey Patch
 

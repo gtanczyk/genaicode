@@ -2,13 +2,13 @@
 
 ## Overview
 
-The GenAIcode tool is designed to automate code generation tasks using Vertex AI (with Google's Gemini Pro model), OpenAI's GPT model, and Anthropic's Claude model. This tool enhances developer productivity by assisting with the generation of repetitive or complex code, and provides flexibility in choosing the AI service that best suits the project's needs.
+The GenAIcode tool is designed to automate code generation tasks using Vertex AI (with Google's Gemini Pro model), OpenAI's GPT model, Anthropic's Claude model, and Claude via Vertex AI. This tool enhances developer productivity by assisting with the generation of repetitive or complex code, and provides flexibility in choosing the AI service that best suits the project's needs.
 
 ## How It Works
 
 1. **Reading Source Code**: The GenAIcode tool reads the entire source code of the application.
 2. **Identifying GenAIcode Fragments**: It identifies fragments marked with `@CODEGEN` comments which indicate sections where code generation is required.
-3. **Generating Code**: Depending on the configuration, the tool sends these fragments to either Vertex AI, OpenAI's chat model, or Anthropic's Claude model to generate the required code.
+3. **Generating Code**: Depending on the configuration, the tool sends these fragments to either Vertex AI, OpenAI's chat model, Anthropic's Claude model, or Claude via Vertex AI to generate the required code.
 4. **Updating Source Code**: The tool replaces the identified fragments with the generated code and updates the source code files.
 
 ## Components
@@ -26,6 +26,7 @@ The tool accepts several CLI parameters to control its behavior:
 - `--chat-gpt`: Uses the OpenAI model for code generation.
 - `--anthropic`: Uses Anthropic's Claude model for code generation.
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation (default).
+- `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
 - `--explicit-prompt`: Provides an explicit prompt for code generation.
 - `--task-file`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limits the scope of code generation to files marked with `@CODEGEN` and their dependencies.
@@ -38,7 +39,7 @@ The tool accepts several CLI parameters to control its behavior:
 
 1. **Initialization**: The tool initializes by parsing the CLI parameters and reading the source code files.
 2. **Prompt Construction**: Based on the CLI parameters and identified `@CODEGEN` fragments, the tool constructs the system and code generation prompts.
-3. **Code Generation**: It sends the prompts to the specified AI model (Vertex AI, OpenAI, or Anthropic) and receives the generated code.
+3. **Code Generation**: It sends the prompts to the specified AI model (Vertex AI, OpenAI, Anthropic, or Claude via Vertex AI) and receives the generated code.
 4. **File Updates**: The tool updates the files with the generated code. If in dry-run mode, it only prints the changes without applying them.
 5. **Feedback and Cost Estimation**: The tool provides feedback on the token usage and estimated cost for the code generation process.
 
@@ -55,6 +56,10 @@ When the `--chat-gpt` flag is used, the tool switches to OpenAI's GPT model. Thi
 ### Anthropic Claude
 
 The `--anthropic` flag enables the use of Anthropic's Claude model. Claude is designed to be helpful, harmless, and honest, making it suitable for code generation tasks that require a high degree of reliability and safety.
+
+### Claude via Vertex AI
+
+The `--vertex-ai-claude` flag enables the use of Anthropic's Claude model through Vertex AI. This option combines the capabilities of Claude with the infrastructure of Vertex AI, providing an alternative way to access Claude's functionality. It requires setting both `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_REGION` environment variables.
 
 ## File Operations
 
@@ -95,6 +100,7 @@ The tool now provides feedback on token usage and estimated cost for each AI mod
 - For Vertex AI: Input and output characters are counted and priced separately.
 - For OpenAI GPT: Input and output tokens are counted and priced separately.
 - For Anthropic Claude: Input and output tokens are counted and priced separately.
+- For Claude via Vertex AI: Input and output tokens are counted and priced based on Vertex AI pricing.
 
 This information is displayed at the end of each code generation process, helping users understand the resource usage and associated costs.
 

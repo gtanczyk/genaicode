@@ -13,6 +13,7 @@ export const allowFileMove = params.includes('--allow-file-move');
 export let chatGpt = params.includes('--chat-gpt');
 export let anthropic = params.includes('--anthropic');
 export let vertexAi = params.includes('--vertex-ai');
+export let vertexAiClaude = params.includes('--vertex-ai-claude');
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
@@ -35,11 +36,11 @@ if (considerAllFiles && dependencyTree) {
   throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
-if ([chatGpt, anthropic, vertexAi].filter(Boolean).length > 1) {
-  throw new Error('--chat-gpt, --anthropic, and --vertex-ai are mutually exclusive.');
+if ([chatGpt, anthropic, vertexAi, vertexAiClaude].filter(Boolean).length > 1) {
+  throw new Error('--chat-gpt, --anthropic, --vertex-ai, and --vertex-ai-claude are mutually exclusive.');
 }
 
-if (!chatGpt && !anthropic && !vertexAi) {
+if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude) {
   const detected = serviceAutoDetect();
   if (detected === 'anthropic') {
     console.log('Autotected --anthropic');
@@ -51,6 +52,6 @@ if (!chatGpt && !anthropic && !vertexAi) {
     console.log('Autotected --vertex-ai');
     vertexAi = true;
   } else {
-    throw new Error('Missing --chat-gpt, --anthropic, or --vertex-ai');
+    throw new Error('Missing --chat-gpt, --anthropic, --vertex-ai, or --vertex-ai-claude');
   }
 }

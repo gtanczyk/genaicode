@@ -43,7 +43,10 @@ export async function promptService(generateContentFn) {
       console.log('Optimize with context paths.');
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
       getSourceCodeResponse.functionResponses.find((item) => item.name === 'getSourceCode').content =
-        messages.contextSourceCode(codegenSummaryRequest.args.contextPaths);
+        messages.contextSourceCode([
+          ...codegenSummaryRequest.args.filePaths,
+          ...codegenSummaryRequest.args.contextPaths,
+        ]);
     }
 
     // Store the first stage response entirey in conversation history
