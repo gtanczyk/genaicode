@@ -1,4 +1,7 @@
 import assert from 'node:assert';
+import fs from 'fs';
+import * as diff from 'diff';
+
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
@@ -68,10 +71,40 @@ export async function promptService(generateContentFn) {
         prompt.push({ type: 'user', text: messages.partialPromptTemplate(path) });
       }
 
-      const partialResult = await generateContentFn(
+      let partialResult = await generateContentFn(
         prompt,
         functionDefs.filter((fd) => !['getSourceCode', 'explanation', 'codegenSummary'].includes(fd.name)),
       );
+
+      let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
+      assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
+
+      // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
+      const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
+      if (patchFileCall) {
+        const { filePath, patch } = patchFileCall.args;
+        console.log('Verification of patch for file:', filePath);
+
+        const currentContent = fs.readFileSync(filePath, 'utf-8');
+        const updatedContent = diff.applyPatch(currentContent, patch);
+        if (!updatedContent) {
+          console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
+
+          // Rerun content generation without patchFile function
+          partialResult = await generateContentFn(
+            prompt,
+            functionDefs.filter(
+              (fd) => !['getSourceCode', 'explanation', 'codegenSummary', 'patchFile'].includes(fd.name),
+            ),
+          );
+
+          let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
+          assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
+          assert(!partialResult.find((call) => call.name === 'patchFile'), 'Unexpected patchFile in retry response');
+        } else {
+          console.log('Patch verifed successfully');
+        }
+      }
 
       // add the code gen result to the context, as the subsequent code gen may depend on the result
       prompt.push(

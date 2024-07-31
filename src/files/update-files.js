@@ -11,6 +11,7 @@ import {
   allowFileMove,
   anthropic,
   chatGpt,
+  vertexAiClaude,
 } from '../cli/cli-params.js';
 
 /**
@@ -45,8 +46,8 @@ export function updateFiles(functionCalls) {
       assert(allowDirectoryCreate, 'Directory create option was not enabled');
       console.log(`Creating directory: ${filePath}`);
       fs.mkdirSync(filePath, { recursive: true });
-    } else if (name === 'updateFile' || name === 'createFile' || name === 'updateFilePartial') {
-      if (name === 'updateFilePartial') {
+    } else if (name === 'updateFile' || name === 'createFile' || name === 'patchFile') {
+      if (name === 'patchFile') {
         console.log(`Applying a patch: ${filePath} content`);
         newContent = diff.applyPatch(fs.readFileSync(filePath, 'utf-8'), patch);
         assert(!!newContent, 'Patch was not successful');
@@ -66,7 +67,7 @@ export function updateFiles(functionCalls) {
       }
       fs.writeFileSync(
         filePath,
-        chatGpt || anthropic
+        chatGpt || anthropic || vertexAiClaude
           ? newContent
           : // Fixing a problem caused by vertex function calling. Possibly not a good fix
             newContent.replace(/\\n/g, '\n').replace(/\\'/g, "'"),

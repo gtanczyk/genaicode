@@ -68,7 +68,7 @@ export const functionDefs = [
     },
   },
   {
-    name: 'updateFilePartial',
+    name: 'patchFile',
     description:
       'Partially update a file content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
     parameters: {
@@ -76,11 +76,24 @@ export const functionDefs = [
       properties: {
         filePath: {
           type: 'string',
-          description: 'The file path to update.',
+          description: 'The file path to patch.',
         },
         patch: {
           type: 'string',
-          description: 'Modification to the file expressed in a diff format.',
+          description: `Modification to the file expressed in patch format. Example patch:
+
+\`\`\`
+Index: filename.js
+===================================================================
+--- filename.js
++++ filename.js
+@@ -1,2 +1,3 @@
+ line1
++line3
+ line2
+\\ No newline at end of file
+\`\`\`
+          `,
         },
         explanation: {
           type: 'string',
