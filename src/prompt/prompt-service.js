@@ -85,8 +85,15 @@ export async function promptService(generateContentFn) {
         const { filePath, patch } = patchFileCall.args;
         console.log('Verification of patch for file:', filePath);
 
+        let updatedContent;
         const currentContent = fs.readFileSync(filePath, 'utf-8');
-        const updatedContent = diff.applyPatch(currentContent, patch);
+
+        try {
+          updatedContent = diff.applyPatch(currentContent, patch);
+        } catch (e) {
+          console.log('Error when applying patch', e);
+        }
+
         if (!updatedContent) {
           console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
