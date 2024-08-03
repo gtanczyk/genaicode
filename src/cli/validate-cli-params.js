@@ -16,6 +16,7 @@ const allowedParameters = [
   '--require-explanations',
   '--disable-context-optimization',
   '--gemini-block-none',
+  '--disable-initial-lint',
 ];
 
 // Validate CLI parameters accordingly to those mentioned in README.md, fail the process if not valid, or unknown parameter is passed

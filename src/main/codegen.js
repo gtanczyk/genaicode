@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { exec } from 'child_process';
 import util from 'util';
 
-import { dryRun, chatGpt, anthropic, vertexAi, vertexAiClaude } from '../cli/cli-params.js';
+import { dryRun, chatGpt, anthropic, vertexAi, vertexAiClaude, disableInitialLint } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
@@ -21,6 +21,22 @@ export async function runCodegen() {
   console.log(`Received parameters: ${process.argv.slice(2).join(' ')}`);
 
   validateCliParams();
+
+  if (rcConfig.lintCommand && !disableInitialLint) {
+    try {
+      console.log(`Executing lint command: ${rcConfig.lintCommand}`);
+      await execPromise(rcConfig.lintCommand);
+      console.log('Lint command executed successfully');
+    } catch (error) {
+      console.log(
+        'Lint command failed. Aborting codegen, please fix lint issues before running codegen, or use --disable-initial-lint',
+      );
+      console.log('Lint errors:', error.stdout, error.stderr);
+      process.exit(1);
+    }
+  } else if (rcConfig.lintCommand && disableInitialLint) {
+    console.log('Initial lint was skipped.');
+  }
 
   const generateContent = vertexAiClaude
     ? generateContentVertexAiClaude

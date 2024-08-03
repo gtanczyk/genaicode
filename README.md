@@ -95,6 +95,7 @@ The codegen script accepts the following options:
 - `--verbose-prompt`: Print the prompt used for code generation.
 - `--require-explanations`: Require explanations for all code generation operations.
 - `--gemini-block-none`: Disable safety settings for Gemini Pro model (requires whitelisted Cloud project).
+- `--disable-initial-lint`: Skip the initial lint check before running the code generation process.
 
 Note: The `--chat-gpt`, `--anthropic`, `--vertex-ai`, and `--vertex-ai-claude` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
 
@@ -153,3 +154,11 @@ The `--require-explanations` flag makes it mandatory for the AI model to provide
 The `lintCommand` option in the `.genaicoderc` file allows you to specify a command that will be executed after the initial code generation. This command is typically used to run linters or other code quality tools. If the lint command returns an error, the error output is provided to the code generator for a second pass, with the goal of fixing the reported issues.
 
 This feature helps ensure that the generated code meets your project's coding standards and passes all linter checks. It's particularly useful for maintaining code quality and consistency across your project.
+
+## Disabling Initial Lint
+
+The `--disable-initial-lint` option allows you to skip the initial lint check before running the code generation process. This can be useful in scenarios where you want to bypass the initial linting step, such as when you're working on a project that temporarily doesn't pass linting or when you want to focus solely on code generation without immediate lint checks.
+
+When this option is used, the tool will proceed directly to code generation without running the lint command specified in the `.genaicoderc` file. However, the lint command will still be run after code generation if it's specified in the configuration.
+
+Use this option with caution, as it may result in generated code that doesn't meet your project's linting standards. It's recommended to run the linter manually after using this option to ensure code quality.

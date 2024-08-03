@@ -22,6 +22,7 @@ export const disableContextOptimization = params.includes('--disable-context-opt
 export const taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
+export const disableInitialLint = params.includes('--disable-initial-lint');
 
 // New: Export the lintCommand from rcConfig
 export const lintCommand = rcConfig.lintCommand || null;

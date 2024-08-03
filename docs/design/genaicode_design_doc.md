@@ -34,14 +34,18 @@ The tool accepts several CLI parameters to control its behavior:
 - `--require-explanations`: Requires explanations for all code generation operations.
 - `--disable-context-optimization`: Disables the optimization that uses context paths for more efficient code generation.
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
+- `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
 
 ### Main Execution Flow
 
 1. **Initialization**: The tool initializes by parsing the CLI parameters and reading the source code files.
-2. **Prompt Construction**: Based on the CLI parameters and identified `@CODEGEN` fragments, the tool constructs the system and code generation prompts.
-3. **Code Generation**: It sends the prompts to the specified AI model (Vertex AI, OpenAI, Anthropic, or Claude via Vertex AI) and receives the generated code.
-4. **File Updates**: The tool updates the files with the generated code. If in dry-run mode, it only prints the changes without applying them.
-5. **Feedback and Cost Estimation**: The tool provides feedback on the token usage and estimated cost for the code generation process.
+2. **Initial Lint Check**: If a lint command is specified in the configuration and `--disable-initial-lint` is not used, the tool runs the lint command to check for any existing issues.
+3. **Prompt Construction**: Based on the CLI parameters and identified `@CODEGEN` fragments, the tool constructs the system and code generation prompts.
+4. **Code Generation**: It sends the prompts to the specified AI model (Vertex AI, OpenAI, Anthropic, or Claude via Vertex AI) and receives the generated code.
+5. **File Updates**: The tool updates the files with the generated code. If in dry-run mode, it only prints the changes without applying them.
+6. **Post-Generation Lint**: If a lint command is specified, the tool runs it again to check the generated code.
+7. **Lint Fix (if needed)**: If the post-generation lint fails, the tool attempts to fix the issues by sending the lint errors back to the AI model for correction.
+8. **Feedback and Cost Estimation**: The tool provides feedback on the token usage and estimated cost for the code generation process.
 
 ## AI Models
 
@@ -172,6 +176,86 @@ The `ignorePaths` feature affects the following aspects of the tool's functional
 
 The `ignorePaths` feature is implemented in the `findFiles` function within the `find-files.js` module. When traversing the directory structure, the function checks each path against the `ignorePaths` array and skips any matching files or directories.
 
+## Lint Command Integration
+
+The GenAIcode tool now includes a lint command integration feature, allowing users to specify a lint command in their `.genaicoderc` file. This feature helps maintain code quality throughout the generation process.
+
+### Configuration
+
+Users can specify a lint command by adding a `lintCommand` property to their `.genaicoderc` file:
+
+```json
+{
+  "rootDir": ".",
+  "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
+  "lintCommand": "npm run lint"
+}
+```
+
+### Usage
+
+The lint command is used in two ways:
+
+1. **Initial Lint Check**: Before code generation, the tool runs the specified lint command to check for any existing issues. This step can be skipped using the `--disable-initial-lint` flag.
+
+2. **Post-Generation Lint**: After code generation, the tool runs the lint command again to check the generated code.
+
+### Lint Fix Process
+
+If the post-generation lint fails, the tool attempts to fix the issues by:
+
+1. Capturing the lint error output.
+2. Sending the error information back to the AI model.
+3. Requesting code changes to fix the lint issues.
+4. Applying the suggested fixes.
+5. Running the lint command again to verify the fixes.
+
+### Benefits
+
+- **Code Quality**: Ensures that generated code adheres to project-specific coding standards.
+- **Consistency**: Maintains consistency between existing code and newly generated code.
+- **Automation**: Reduces manual intervention needed to fix linting issues in generated code.
+
+### Implementation
+
+The lint command integration is primarily implemented in the `runCodegen` function within the `codegen.js` module. It uses the `child_process.exec` function to run the lint command and process its output.
+
+## Disabling Initial Lint
+
+The `--disable-initial-lint` option allows users to skip the initial lint check before running the code generation process.
+
+### Usage
+
+Users can add this flag when running the GenAIcode tool:
+
+```
+npx genaicode --disable-initial-lint
+```
+
+### Behavior
+
+When this flag is used:
+
+1. The tool skips the initial lint check that would normally run before code generation.
+2. Code generation proceeds immediately without considering pre-existing lint issues.
+3. The post-generation lint check (if configured) still runs after code generation.
+
+### Benefits
+
+- **Faster Execution**: Useful when users are confident in their existing code's lint status or when they want to focus solely on code generation.
+- **Flexibility**: Allows for code generation in projects that may temporarily not pass linting standards.
+
+### Considerations
+
+- Users should be aware that skipping the initial lint might result in generated code that doesn't immediately align with project linting standards.
+- It's recommended to run a manual lint check after using this option to ensure overall code quality.
+
+### Implementation
+
+The `--disable-initial-lint` flag is processed in the CLI parameters parsing section and influences the execution flow in the `runCodegen` function within the `codegen.js` module.
+
 ## Conclusion
 
 The GenAIcode tool is a versatile and powerful assistant for developers, capable of leveraging multiple AI models to generate code efficiently. By supporting various configuration options, AI models, configurable file extensions, and now the ability to ignore specific paths, it provides flexibility to suit different project needs and developer preferences. The tool's ability to handle various file operations, consider dependencies, optimize context, provide token usage feedback, and support custom configurations makes it a comprehensive solution for automated code generation and management.
+
+The addition of the lint command integration and the option to disable initial lint checks further enhances the tool's capabilities, allowing for better code quality control and more flexible usage scenarios. These features demonstrate the tool's ongoing development to meet the diverse needs of developers and projects.
