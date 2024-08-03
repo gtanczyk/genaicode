@@ -57,6 +57,7 @@ The `.genaicoderc` file supports the following options:
 - `rootDir`: Specifies the root directory for the project (required).
 - `extensions`: An array of file extensions to be considered by GenAIcode (optional).
 - `ignorePaths`: An array of directory or file paths that should be ignored during the code analysis and generation process. Useful for excluding `node_modules` or build directories.
+- `lintCommand`: A command to run after initial code generation to verify changes (optional).
 
 Example configuration:
 
@@ -64,11 +65,14 @@ Example configuration:
 {
   "rootDir": ".",
   "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
-  "ignorePaths": ["node_modules", "build"]
+  "ignorePaths": ["node_modules", "build"],
+  "lintCommand": "npm run lint"
 }
 ```
 
 If the `extensions` option is not specified, GenAIcode will use a default set of extensions: `.md`, `.js`, `.ts`, `.tsx`, `.css`, `.scss`, `.py`, `.go`, `.c`, `.h`, `.cpp`.
+
+The `lintCommand` option allows you to specify a command that will be run after the initial code generation. If this command returns an error, the output will be provided to the code generator for a second pass, with the objective of fixing those errors.
 
 ## Options
 
@@ -143,3 +147,9 @@ The `--verbose-prompt` flag allows you to see the prompts being sent to the AI m
 ## Requiring Explanations
 
 The `--require-explanations` flag makes it mandatory for the AI model to provide explanations for all code generation operations. This can be useful for understanding the reasoning behind the changes, but may consume more tokens.
+
+## Lint Command
+
+The `lintCommand` option in the `.genaicoderc` file allows you to specify a command that will be executed after the initial code generation. This command is typically used to run linters or other code quality tools. If the lint command returns an error, the error output is provided to the code generator for a second pass, with the goal of fixing the reported issues.
+
+This feature helps ensure that the generated code meets your project's coding standards and passes all linter checks. It's particularly useful for maintaining code quality and consistency across your project.

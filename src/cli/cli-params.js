@@ -1,6 +1,7 @@
 import fs from 'fs';
 
 import { serviceAutoDetect } from './service-autodetect.js';
+import { rcConfig } from '../files/find-files.js';
 
 const params = process.argv.slice(2);
 
@@ -21,6 +22,9 @@ export const disableContextOptimization = params.includes('--disable-context-opt
 export const taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
+
+// New: Export the lintCommand from rcConfig
+export const lintCommand = rcConfig.lintCommand || null;
 
 if (taskFile) {
   if (explicitPrompt) {
@@ -43,15 +47,20 @@ if ([chatGpt, anthropic, vertexAi, vertexAiClaude].filter(Boolean).length > 1) {
 if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude) {
   const detected = serviceAutoDetect();
   if (detected === 'anthropic') {
-    console.log('Autotected --anthropic');
+    console.log('Autodetected --anthropic');
     anthropic = true;
   } else if (detected === 'chat-gpt') {
-    console.log('Autotected --chat-gpt');
+    console.log('Autodetected --chat-gpt');
     chatGpt = true;
   } else if (detected === 'vertex-ai') {
-    console.log('Autotected --vertex-ai');
+    console.log('Autodetected --vertex-ai');
     vertexAi = true;
   } else {
     throw new Error('Missing --chat-gpt, --anthropic, --vertex-ai, or --vertex-ai-claude');
   }
+}
+
+// New: Log the lintCommand if it's set
+if (lintCommand) {
+  console.log(`Lint command detected: ${lintCommand}`);
 }

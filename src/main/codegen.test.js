@@ -7,6 +7,7 @@ import * as chatGpt from '../ai-service/chat-gpt.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as updateFiles from '../files/update-files.js';
+import '../files/find-files.js';
 import * as cliParams from '../cli/cli-params.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
@@ -25,6 +26,14 @@ vi.mock('../cli/cli-params.js', () => ({
   allowFileMove: false,
   verbosePrompt: false,
   vertexAiClaude: false,
+}));
+vi.mock('../files/find-files.js', () => ({
+  rootDir: '/mocked/root/dir',
+  rcConfig: {
+    rootDir: '.',
+    extensions: ['.js', '.ts', '.tsx', '.jsx'],
+  },
+  getSourceFiles: () => [],
 }));
 
 describe('runCodegen', () => {

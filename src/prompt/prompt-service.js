@@ -9,8 +9,8 @@ import { getSourceCode } from '../files/read-files.js';
 import { disableContextOptimization } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
-export async function promptService(generateContentFn) {
-  const messages = prepareMessages(getCodeGenPrompt());
+export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
+  const messages = prepareMessages(codegenPrompt);
 
   // First stage: generate code generation summary, which should not take a lot of output tokens
   const prompt = [
