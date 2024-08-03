@@ -39,7 +39,8 @@ export const functionDefs = [
               path: { type: 'string', description: 'An absolute path of the project file that will be updated' },
               updateToolName: {
                 type: 'string',
-                descript: 'A name of the tool that will be used to perform the update.',
+                enum: ['updateFile', 'patchFile', 'createFile', 'deleteFile', 'createDirectory', 'moveFile'],
+                description: 'A name of the tool that will be used to perform the update.',
               },
             },
             required: ['path', 'updateToolName'],
