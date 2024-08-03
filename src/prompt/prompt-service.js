@@ -13,10 +13,12 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
   const messages = prepareMessages(codegenPrompt);
 
   // First stage: generate code generation summary, which should not take a lot of output tokens
+  const getSourceCodeRequest = { name: 'getSourceCode' };
+
   const prompt = [
     { type: 'systemPrompt', systemPrompt: getSystemPrompt() },
     { type: 'user', text: messages.suggestSourceCode },
-    { type: 'assistant', text: messages.requestSourceCode, functionCalls: [{ name: 'getSourceCode' }] },
+    { type: 'assistant', text: messages.requestSourceCode, functionCalls: [getSourceCodeRequest] },
   ];
 
   const getSourceCodeResponse = {
@@ -39,17 +41,20 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
     console.log('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
 
     // Sometimes the result happens to be a string
-    assert(Array.isArray(codegenSummaryRequest.args.filePaths), 'filePaths is not an array');
+    assert(Array.isArray(codegenSummaryRequest.args.files), 'files is not an array');
     assert(Array.isArray(codegenSummaryRequest.args.contextPaths), 'contextPaths is not an array');
 
     if (codegenSummaryRequest.args.contextPaths.length > 0 && !disableContextOptimization) {
       console.log('Optimize with context paths.');
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
-      getSourceCodeResponse.functionResponses.find((item) => item.name === 'getSourceCode').content =
-        messages.contextSourceCode([
-          ...codegenSummaryRequest.args.filePaths,
+      getSourceCodeRequest.args = {
+        filePaths: [
+          ...codegenSummaryRequest.args.files.map((file) => file.path),
           ...codegenSummaryRequest.args.contextPaths,
-        ]);
+        ],
+      };
+      getSourceCodeResponse.functionResponses.find((item) => item.name === 'getSourceCode').content =
+        messages.contextSourceCode(getSourceCodeRequest.args.filePaths);
     }
 
     // Store the first stage response entirey in conversation history
@@ -61,19 +66,20 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
 
     const result = [];
 
-    for (const path of codegenSummaryRequest.args.filePaths) {
-      console.log('Collecting partial update for:', path);
+    for (const file of codegenSummaryRequest.args.files) {
+      console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {
-        prompt.slice(-1)[0].text = messages.partialPromptTemplate(path);
+        prompt.slice(-1)[0].text = messages.partialPromptTemplate(file.path);
       } else {
-        prompt.push({ type: 'user', text: messages.partialPromptTemplate(path) });
+        prompt.push({ type: 'user', text: messages.partialPromptTemplate(file.path) });
       }
 
       let partialResult = await generateContentFn(
         prompt,
         functionDefs.filter((fd) => !['getSourceCode', 'explanation', 'codegenSummary'].includes(fd.name)),
+        file.updateToolName,
       );
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
@@ -103,6 +109,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
             functionDefs.filter(
               (fd) => !['getSourceCode', 'explanation', 'codegenSummary', 'patchFile'].includes(fd.name),
             ),
+            'updateFile',
           );
 
           let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');

@@ -11,7 +11,7 @@ import { generateContent as generateContentVertexAiClaude } from '../ai-service/
 import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
 import { rcConfig } from '../files/find-files.js';
-import { verifyCodegenPromptLimit } from '../prompt/limits.js';
+import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
 
 const execPromise = util.promisify(exec);
 
@@ -22,16 +22,18 @@ export async function runCodegen() {
 
   validateCliParams();
 
-  console.log('Generating response');
-  let functionCalls = await (vertexAiClaude
-    ? promptService(generateContentVertexAiClaude)
+  const generateContent = vertexAiClaude
+    ? generateContentVertexAiClaude
     : vertexAi
-      ? promptService(generateContentVertexAi)
+      ? generateContentVertexAi
       : anthropic
-        ? promptService(generateContentAnthropic)
+        ? generateContentAnthropic
         : chatGpt
-          ? promptService(generateContentGPT)
-          : assert(false, 'Please specify which AI service should be used'));
+          ? generateContentGPT
+          : assert(false, 'Please specify which AI service should be used');
+
+  console.log('Generating response');
+  let functionCalls = await promptService(generateContent);
   console.log('Received function calls:', functionCalls);
 
   if (dryRun) {
@@ -51,24 +53,10 @@ export async function runCodegen() {
         console.log('Lint command failed. Attempting to fix issues...');
 
         // Prepare the lint error output for the second pass
-        const lintErrorPrompt =
-          verifyCodegenPromptLimit(`The following lint errors were encountered after the initial code generation:
-        
-        ${error.stdout}
-        ${error.stderr}
-        
-        Please suggest changes to fix these lint errors.`);
+        const lintErrorPrompt = getLintFixPrompt(rcConfig.lintCommand, error.stdout, error.stderr);
 
         console.log('Generating response for lint fixes');
-        const lintFixFunctionCalls = await (vertexAiClaude
-          ? promptService(generateContentVertexAiClaude, lintErrorPrompt)
-          : vertexAi
-            ? promptService(generateContentVertexAi, lintErrorPrompt)
-            : anthropic
-              ? promptService(generateContentAnthropic, lintErrorPrompt)
-              : chatGpt
-                ? promptService(generateContentGPT, lintErrorPrompt)
-                : assert(false, 'Please specify which AI service should be used'));
+        const lintFixFunctionCalls = await promptService(generateContent, lintErrorPrompt);
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
 

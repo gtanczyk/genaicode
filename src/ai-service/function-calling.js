@@ -7,10 +7,18 @@ export const functionDefs = [
   {
     name: 'getSourceCode',
     description:
-      'This function returns source code of the application in Map format, where absolute file path is the key, and file content is the value',
+      'This function returns source code of the application in Map format, where absolute file path is the key, and file content is the value. This function can be called only once during the conversation, and only if suggested by the user.',
     parameters: {
       type: 'object',
-      properties: {},
+      properties: {
+        filePaths: {
+          type: 'array',
+          description: 'An array of absolute paths of files that should be used to provided context.',
+          items: {
+            type: 'string',
+          },
+        },
+      },
       required: [],
     },
   },
@@ -21,11 +29,20 @@ export const functionDefs = [
     parameters: {
       type: 'object',
       properties: {
-        filePaths: {
+        files: {
           type: 'array',
-          description: 'An array of absolute paths of files that will be updated.',
+          description: 'An array of proposed file updates.',
           items: {
-            type: 'string',
+            type: 'object',
+            description: 'Proposed update of a file, the path, and the method of update',
+            properties: {
+              path: { type: 'string', description: 'An absolute path of the project file that will be updated' },
+              updateToolName: {
+                type: 'string',
+                descript: 'A name of the tool that will be used to perform the update.',
+              },
+            },
+            required: ['path', 'updateToolName'],
           },
         },
         contextPaths: {
@@ -41,7 +58,7 @@ export const functionDefs = [
           description: 'Explanation of planned changes or explanation of reasoning for no code changes',
         },
       },
-      required: ['filePaths', 'contextPaths', 'explanation'],
+      required: ['files', 'contextPaths', 'explanation'],
     },
   },
   {

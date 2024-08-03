@@ -71,3 +71,32 @@ ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
 
   return codeGenPrompt;
 }
+
+/** Get lint fix prompt */
+export function getLintFixPrompt(command, stdout, stderr) {
+  const lintFixPrompt = `The following lint errors were encountered after the initial code generation:
+
+Lint command: ${command}
+Lint command stdout:
+
+\`\`\`
+${stdout}
+\`\`\`
+
+Lint command stderr:
+
+\`\`\`
+${stderr}
+\`\`\`
+        
+Please suggest changes to fix these lint errors.`;
+
+  if (verbosePrompt) {
+    console.log('Lint fix prompt:');
+    console.log(lintFixPrompt);
+  }
+
+  verifyCodegenPromptLimit(lintFixPrompt);
+
+  return lintFixPrompt;
+}
