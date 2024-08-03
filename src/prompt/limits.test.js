@@ -21,8 +21,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for a prompt exceeding the limit', () => {
-      const invalidPrompt = 'B '.repeat(201);
-      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 202 > 200');
+      const invalidPrompt = 'B '.repeat(501);
+      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 502 > 500');
     });
   });
 
