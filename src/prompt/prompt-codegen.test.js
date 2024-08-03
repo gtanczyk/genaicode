@@ -1,3 +1,5 @@
+/*eslint-disable no-import-assign*/
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getCodeGenPrompt, getLintFixPrompt } from './prompt-codegen.js';
 import * as findFiles from '../files/find-files.js';
@@ -12,18 +14,32 @@ vi.mock('../files/find-files.js', () => ({
 vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
 }));
-vi.mock('../cli/cli-params.js');
+vi.mock('../cli/cli-params.js', () => ({
+  requireExplanations: false,
+  considerAllFiles: false,
+  dependencyTree: false,
+  explicitPrompt: false,
+  allowFileCreate: false,
+  allowFileDelete: false,
+  allowDirectoryCreate: false,
+  allowFileMove: false,
+  verbosePrompt: false,
+}));
 vi.mock('./limits.js');
 
 describe('getCodeGenPrompt', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
   it('should generate prompt for all files when considerAllFiles is true', () => {
     vi.spyOn(findFiles, 'getSourceFiles').mockReturnValue(['file1.js', 'file2.js']);
-    vi.spyOn(cliParams, 'considerAllFiles', 'get').mockReturnValue(true);
-    vi.spyOn(cliParams, 'explicitPrompt', 'get').mockReturnValue(null);
-    vi.spyOn(cliParams, 'allowFileCreate', 'get').mockReturnValue(false);
-    vi.spyOn(cliParams, 'allowFileDelete', 'get').mockReturnValue(false);
-    vi.spyOn(cliParams, 'allowDirectoryCreate', 'get').mockReturnValue(false);
-    vi.spyOn(cliParams, 'allowFileMove', 'get').mockReturnValue(false);
+    cliParams.considerAllFiles = true;
+    cliParams.explicitPrompt = null;
+    cliParams.allowFileCreate = false;
+    cliParams.allowFileDelete = false;
+    cliParams.allowDirectoryCreate = false;
+    cliParams.allowFileMove = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
 
     const prompt = getCodeGenPrompt();
@@ -40,7 +56,7 @@ describe('getCodeGenPrompt', () => {
 
 describe('getLintFixPrompt', () => {
   beforeEach(() => {
-    vi.spyOn(cliParams, 'verbosePrompt', 'get').mockReturnValue(false);
+    cliParams.verbosePrompt = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
   });
 
@@ -81,7 +97,7 @@ describe('getLintFixPrompt', () => {
   });
 
   it('should log the prompt when verbosePrompt is true', () => {
-    vi.spyOn(cliParams, 'verbosePrompt', 'get').mockReturnValue(true);
+    cliParams.verbosePrompt = true;
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const command = 'eslint --fix';
