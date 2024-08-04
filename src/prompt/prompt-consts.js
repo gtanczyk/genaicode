@@ -1,1 +1,1 @@
-export const CODEGEN_TRIGGER = '@CODEGEN';
+export const CODEGEN_TRIGGER = '@' + 'CODEGEN';

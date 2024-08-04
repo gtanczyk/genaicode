@@ -9,6 +9,7 @@ import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as updateFiles from '../files/update-files.js';
 import '../files/find-files.js';
 import * as cliParams from '../cli/cli-params.js';
+import * as cliOptions from '../cli/cli-options.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -37,6 +38,9 @@ vi.mock('../files/find-files.js', () => ({
   },
   getSourceFiles: () => [],
 }));
+vi.mock('../cli/cli-options.js', () => ({
+  printHelpMessage: vi.fn(),
+}));
 
 describe('runCodegen', () => {
   beforeEach(() => {
@@ -46,6 +50,7 @@ describe('runCodegen', () => {
     cliParams.vertexAi = false;
     cliParams.vertexAiClaude = false;
     cliParams.dryRun = false;
+    cliParams.helpRequested = false;
   });
 
   it('should run codegen with Vertex AI by default', async () => {
@@ -128,5 +133,18 @@ describe('runCodegen', () => {
 
     expect(vertexAi.generateContent).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), 0.5);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+  });
+
+  it('should print help message and not run codegen when --help option is provided', async () => {
+    cliParams.helpRequested = true;
+
+    await runCodegen();
+
+    expect(cliOptions.printHelpMessage).toHaveBeenCalled();
+    expect(vertexAi.generateContent).not.toHaveBeenCalled();
+    expect(chatGpt.generateContent).not.toHaveBeenCalled();
+    expect(anthropic.generateContent).not.toHaveBeenCalled();
+    expect(vertexAiClaude.generateContent).not.toHaveBeenCalled();
+    expect(updateFiles.updateFiles).not.toHaveBeenCalled();
   });
 });

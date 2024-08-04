@@ -10,7 +10,7 @@ const cliOptions = [
   },
   {
     name: '--consider-all-files',
-    description: "Consider all files for code generation, even if they don't contain the @CODEGEN comments.",
+    description: "Consider all files for code generation, even if they don't contain the @" + 'CODEGEN comments.',
   },
   {
     name: '--allow-file-create',
@@ -55,7 +55,7 @@ const cliOptions = [
   },
   {
     name: '--dependency-tree',
-    description: 'Limit the scope of codegen only to files marked with @CODEGEN and their dependencies.',
+    description: 'Limit the scope of codegen only to files marked with @' + 'CODEGEN and their dependencies.',
   },
   {
     name: '--verbose-prompt',
