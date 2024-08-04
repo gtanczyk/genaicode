@@ -2,7 +2,15 @@ import assert from 'node:assert';
 import { exec } from 'child_process';
 import util from 'util';
 
-import { dryRun, chatGpt, anthropic, vertexAi, vertexAiClaude, disableInitialLint } from '../cli/cli-params.js';
+import {
+  dryRun,
+  chatGpt,
+  anthropic,
+  vertexAi,
+  vertexAiClaude,
+  disableInitialLint,
+  helpRequested,
+} from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
@@ -12,6 +20,7 @@ import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
 import { rcConfig } from '../files/find-files.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
+import { printHelpMessage } from '../cli/cli-options.js';
 
 const execPromise = util.promisify(exec);
 
@@ -21,6 +30,12 @@ export async function runCodegen() {
   console.log(`Received parameters: ${process.argv.slice(2).join(' ')}`);
 
   validateCliParams();
+
+  // Handle --help option
+  if (helpRequested) {
+    printHelpMessage();
+    return;
+  }
 
   if (rcConfig.lintCommand && !disableInitialLint) {
     try {

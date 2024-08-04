@@ -24,6 +24,9 @@ export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 
+// Add support for --help option
+export const helpRequested = params.includes('--help');
+
 // Export the lintCommand from rcConfig
 export const lintCommand = rcConfig.lintCommand || null;
 
@@ -50,7 +53,7 @@ if ([chatGpt, anthropic, vertexAi, vertexAiClaude].filter(Boolean).length > 1) {
   throw new Error('--chat-gpt, --anthropic, --vertex-ai, and --vertex-ai-claude are mutually exclusive.');
 }
 
-if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude) {
+if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !helpRequested) {
   const detected = serviceAutoDetect();
   if (detected === 'anthropic') {
     console.log('Autodetected --anthropic');

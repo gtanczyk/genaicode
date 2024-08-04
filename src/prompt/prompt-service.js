@@ -64,15 +64,22 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
 
     for (const file of codegenSummaryRequest.args.files) {
       console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
+      console.log('- Prompt:', file.prompt);
+      console.log('- Temperature', file.temperature);
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {
-        prompt.slice(-1)[0].text = messages.partialPromptTemplate(file.path);
+        prompt.slice(-1)[0].text = file.prompt ?? messages.partialPromptTemplate(file.path);
       } else {
-        prompt.push({ type: 'user', text: messages.partialPromptTemplate(file.path) });
+        prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.path) });
       }
 
-      let partialResult = await generateContentFn(prompt, functionDefs, file.updateToolName, temperature);
+      let partialResult = await generateContentFn(
+        prompt,
+        functionDefs,
+        file.updateToolName,
+        file.temperature ?? temperature,
+      );
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
       assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));

@@ -1,4 +1,4 @@
-import { requireExplanations } from '../cli/cli-params.js';
+import { requireExplanations, temperature } from '../cli/cli-params.js';
 
 /**
  * Function definitions for function calling feature
@@ -42,8 +42,19 @@ export const functionDefs = [
                 enum: ['updateFile', 'patchFile', 'createFile', 'deleteFile', 'createDirectory', 'moveFile'],
                 description: 'A name of the tool that will be used to perform the update.',
               },
+              temperature: {
+                type: 'number',
+                description:
+                  'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for more creative solution, the value should be lower, but stil within [0.0, 2.0] range. The default value is: ' +
+                  temperature,
+              },
+              prompt: {
+                type: 'string',
+                description:
+                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes.',
+              },
             },
-            required: ['path', 'updateToolName'],
+            required: ['path', 'updateToolName', 'temperature', 'prompt'],
           },
         },
         contextPaths: {

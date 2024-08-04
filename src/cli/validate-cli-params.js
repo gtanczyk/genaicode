@@ -19,6 +19,7 @@ const allowedParameters = [
   '--gemini-block-none',
   '--disable-initial-lint',
   '--temperature=',
+  '--help',
 ];
 
 /**
@@ -28,6 +29,18 @@ const allowedParameters = [
  */
 export function validateCliParams() {
   const providedParameters = process.argv.slice(2);
+
+  // Check if --help is present
+  const helpRequested = providedParameters.includes('--help');
+
+  if (helpRequested) {
+    // If --help is present, no other parameters should be allowed
+    if (providedParameters.length > 1) {
+      console.error('The --help option cannot be used with other parameters.');
+      process.exit(1);
+    }
+    return; // Exit the function early as no further validation is needed
+  }
 
   providedParameters.forEach((param) => {
     if (!param.startsWith('--')) {

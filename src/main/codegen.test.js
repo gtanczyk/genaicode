@@ -26,6 +26,7 @@ vi.mock('../cli/cli-params.js', () => ({
   allowFileMove: false,
   verbosePrompt: false,
   vertexAiClaude: false,
+  helpRequested: false,
   temperature: 0.7,
 }));
 vi.mock('../files/find-files.js', () => ({
