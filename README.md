@@ -109,6 +109,7 @@ The codegen script accepts the following options:
 - `--gemini-block-none`: Disable safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skip the initial lint check before running the code generation process.
 - `--temperature`: Set the temperature parameter for the AI model (default: 0.7).
+- `--vision`: Enable vision capabilities for processing image inputs. This option allows the tool to analyze and generate code based on image content when used with compatible AI models.
 
 Note: The `--chat-gpt`, `--anthropic`, `--vertex-ai`, and `--vertex-ai-claude` flags are mutually exclusive. If none is specified, the default Vertex AI with Google's Gemini Pro model will be used.
 

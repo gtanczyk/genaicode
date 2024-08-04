@@ -36,6 +36,7 @@ The tool accepts several CLI parameters to control its behavior:
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
 - `--temperature`: Sets the temperature parameter for the AI model (default: 0.7).
+- `--vision`: Enables vision capabilities for processing image inputs. This option allows the tool to analyze and generate code based on image content when used with compatible AI models.
 
 ### Main Execution Flow
 
@@ -255,8 +256,56 @@ When this flag is used:
 
 The `--disable-initial-lint` flag is processed in the CLI parameters parsing section and influences the execution flow in the `runCodegen` function within the `codegen.js` module.
 
+## Vision Capabilities
+
+The `--vision` option enables the tool to process and analyze image inputs, extending its capabilities beyond text-based code generation. This feature is particularly useful for tasks that involve visual elements or require code generation based on image content.
+
+### Usage
+
+Users can enable vision capabilities by adding the `--vision` flag when running the GenAIcode tool:
+
+```
+npx genaicode --vision
+```
+
+### Functionality
+
+When the `--vision` option is enabled:
+
+1. The tool can accept image files as input alongside text-based prompts.
+2. Compatible AI models (such as Gemini Pro Vision) are used to analyze the image content.
+3. The tool can generate code based on the visual information extracted from the images.
+
+### Integration with AI Models
+
+- **Vertex AI with Gemini Pro Vision**: When used with Vertex AI and the `--vision` flag, the tool leverages the Gemini Pro Vision model, which is capable of processing both text and image inputs.
+- **Other AI Models**: The vision capability is primarily designed for use with Vertex AI's Gemini Pro Vision. Other AI models may have limited or no support for image processing.
+
+### Use Cases
+
+The vision capability can be particularly useful for:
+
+1. Generating UI code based on design mockups or screenshots.
+2. Creating image processing algorithms based on example images.
+3. Developing computer vision related code with visual references.
+4. Automating the creation of HTML/CSS based on visual designs.
+
+### Implementation
+
+The vision capability is implemented by:
+
+1. Modifying the prompt construction process to include image data when the `--vision` flag is present.
+2. Adapting the AI model interface to handle multi-modal inputs (text and images).
+3. Adjusting the code generation logic to interpret and utilize vision-based insights alongside text-based prompts.
+
+### Considerations
+
+- The effectiveness of the vision capability depends on the quality and relevance of the input images.
+- Users should ensure that they have the necessary rights and permissions for any images used in the code generation process.
+- The vision feature may increase token usage and processing time, potentially affecting costs and performance.
+
 ## Conclusion
 
 The GenAIcode tool is a versatile and powerful assistant for developers, capable of leveraging multiple AI models to generate code efficiently. By supporting various configuration options, AI models, configurable file extensions, and now the ability to ignore specific paths, it provides flexibility to suit different project needs and developer preferences. The tool's ability to handle various file operations, consider dependencies, optimize context, provide token usage feedback, and support custom configurations makes it a comprehensive solution for automated code generation and management.
 
-The addition of the lint command integration and the option to disable initial lint checks further enhances the tool's capabilities, allowing for better code quality control and more flexible usage scenarios. These features demonstrate the tool's ongoing development to meet the diverse needs of developers and projects.
+The addition of the lint command integration, the option to disable initial lint checks, and the new vision capabilities further enhances the tool's functionality, allowing for better code quality control, more flexible usage scenarios, and the ability to generate code based on visual inputs. These features demonstrate the tool's ongoing development to meet the diverse needs of developers and projects, pushing the boundaries of what's possible in AI-assisted code generation.

@@ -81,6 +81,11 @@ const cliOptions = [
     name: '--temperature=<value>',
     description: 'Set the temperature parameter for the AI model (default: 0.7).',
   },
+  {
+    name: '--vision',
+    description:
+      'Enable vision capabilities for processing image inputs. This option allows the tool to analyze and generate code based on image content when used with compatible AI models.',
+  },
 ];
 
 /**
