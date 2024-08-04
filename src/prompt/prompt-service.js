@@ -28,11 +28,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
   };
   prompt.push(getSourceCodeResponse);
 
-  let baseResult = await generateContentFn(
-    prompt,
-    functionDefs.filter((fd) => ['codegenSummary', 'explanation'].includes(fd.name)),
-    'codegenSummary',
-  );
+  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary');
 
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
@@ -76,11 +72,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
         prompt.push({ type: 'user', text: messages.partialPromptTemplate(file.path) });
       }
 
-      let partialResult = await generateContentFn(
-        prompt,
-        functionDefs.filter((fd) => !['getSourceCode', 'explanation', 'codegenSummary'].includes(fd.name)),
-        file.updateToolName,
-      );
+      let partialResult = await generateContentFn(prompt, functionDefs, file.updateToolName);
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
       assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
@@ -104,13 +96,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
           console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
           // Rerun content generation without patchFile function
-          partialResult = await generateContentFn(
-            prompt,
-            functionDefs.filter(
-              (fd) => !['getSourceCode', 'explanation', 'codegenSummary', 'patchFile'].includes(fd.name),
-            ),
-            'updateFile',
-          );
+          partialResult = await generateContentFn(prompt, functionDefs, 'updateFile');
 
           let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
           assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));

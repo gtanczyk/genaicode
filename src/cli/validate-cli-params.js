@@ -1,3 +1,4 @@
+// List of allowed CLI parameters
 const allowedParameters = [
   '--dry-run',
   '--consider-all-files',
@@ -19,7 +20,11 @@ const allowedParameters = [
   '--disable-initial-lint',
 ];
 
-// Validate CLI parameters accordingly to those mentioned in README.md, fail the process if not valid, or unknown parameter is passed
+/**
+ * Validate CLI parameters according to those mentioned in README.md
+ * Fail the process if not valid, or if an unknown parameter is passed
+ * @throws {Error} If an invalid parameter is provided
+ */
 export function validateCliParams() {
   const providedParameters = process.argv.slice(2);
 
@@ -33,4 +38,23 @@ export function validateCliParams() {
       process.exit(1);
     }
   });
+}
+
+/**
+ * Get the value of a CLI parameter
+ * @param {string} paramName - The name of the parameter to get the value for
+ * @returns {string|null} The value of the parameter, or null if not found
+ */
+export function getCliParamValue(paramName) {
+  const param = process.argv.find((arg) => arg.startsWith(`${paramName}=`));
+  return param ? param.split('=')[1] : null;
+}
+
+/**
+ * Check if a CLI parameter is present
+ * @param {string} paramName - The name of the parameter to check
+ * @returns {boolean} True if the parameter is present, false otherwise
+ */
+export function hasCliParam(paramName) {
+  return process.argv.includes(paramName);
 }
