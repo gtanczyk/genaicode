@@ -28,6 +28,7 @@ vi.mock('../cli/cli-params.js', () => ({
   verbosePrompt: false,
   vertexAiClaude: false,
   helpRequested: false,
+  vision: false,
   temperature: 0.7,
 }));
 vi.mock('../files/find-files.js', () => ({
@@ -37,6 +38,7 @@ vi.mock('../files/find-files.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   getSourceFiles: () => [],
+  getImageAssetFiles: () => [],
 }));
 vi.mock('../cli/cli-options.js', () => ({
   printHelpMessage: vi.fn(),

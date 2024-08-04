@@ -23,6 +23,7 @@ vi.mock('../cli/cli-params.js', () => ({
   allowFileMove: false,
   verbosePrompt: false,
   disableContextOptimization: false,
+  vision: false,
   temperature: 0.7,
 }));
 vi.mock('fs');
@@ -36,6 +37,7 @@ vi.mock('../files/find-files.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   getSourceFiles: () => [],
+  getImageAssetFiles: () => [],
 }));
 
 describe('promptService', () => {

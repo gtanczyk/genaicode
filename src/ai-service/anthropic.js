@@ -23,7 +23,18 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
               content: response.content,
               type: 'tool_result',
             })),
-            { type: 'text', text: item.text },
+            ...(item.images ?? []).map((image) => ({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: image.mediaType,
+                data: image.base64url,
+              },
+            })),
+            {
+              type: 'text',
+              text: item.text,
+            },
           ],
         };
       } else if (item.type === 'assistant') {

@@ -45,6 +45,8 @@
     "@anthropic-ai/vertex-sdk": "^0.4.1",
     "@google-cloud/vertexai": "^1.3.0",
     "diff": "^5.2.0",
+    "image-size": "^1.1.1",
+    "mime-types": "^2.1.35",
     "openai": "^4.52.7",
     "please-upgrade-node": "^3.2.0"
   },

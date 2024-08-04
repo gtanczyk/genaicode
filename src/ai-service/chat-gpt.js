@@ -24,7 +24,21 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
           })),
           {
             role: 'user',
-            content: item.text,
+            content:
+              item.images?.length > 0
+                ? [
+                    ...item.images.map((image) => ({
+                      type: 'image_url',
+                      image_url: {
+                        url: 'data:' + image.mediaType + ';base64,' + image.base64url,
+                      },
+                    })),
+                    {
+                      type: 'text',
+                      text: item.text,
+                    },
+                  ]
+                : item.text,
           },
         ];
       } else if (item.type === 'assistant') {

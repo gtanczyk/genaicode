@@ -34,6 +34,19 @@ It was generated using the `--explicit-prompt` option:
 npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
 ```
 
+## [Vision Example](./vision_example/)
+
+This example demonstrates vision capabilities, takes a sketch of a web page, and asks for generation of the page accordingly to the sketch:
+
+```bash
+npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --allow-file-create --dry-run
+```
+
+| Sketch                                                   | Result                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| <img src="./vision_example/vision_image.png" width=200/> | <img src="./vision_example/vision_result.png" width=200/><br/><br/><br/><br/><br/><br/> |
+|                                                          |                                                                                         |
+
 ## [Arcanoid Game](./arcanoid_game/)
 
 - first iteration:

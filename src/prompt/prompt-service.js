@@ -1,12 +1,13 @@
 import assert from 'node:assert';
 import fs from 'fs';
 import * as diff from 'diff';
+import mime from 'mime-types';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
-import { getSourceCode } from '../files/read-files.js';
-import { disableContextOptimization, temperature } from '../cli/cli-params.js';
+import { getSourceCode, getImageAssets } from '../files/read-files.js';
+import { disableContextOptimization, temperature, vision } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
@@ -24,9 +25,23 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
   const getSourceCodeResponse = {
     type: 'user',
     functionResponses: [{ name: 'getSourceCode', content: messages.sourceCode }],
-    text: messages.prompt,
   };
   prompt.push(getSourceCodeResponse);
+
+  if (vision) {
+    prompt.slice(-1)[0].text = messages.suggestImageAssets;
+    prompt.push(
+      ...[
+        { type: 'assistant', text: messages.requestImageAssets, functionCalls: [{ name: 'getImageAssets' }] },
+        {
+          type: 'user',
+          functionResponses: [{ name: 'getImageAssets', content: messages.imageAssets }],
+        },
+      ],
+    );
+  }
+
+  prompt.slice(-1)[0].text = messages.prompt;
 
   let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary', temperature);
 
@@ -66,12 +81,23 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
       console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
+      if (vision) {
+        console.log('- Context image assets', file.contextImageAssets);
+      }
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {
         prompt.slice(-1)[0].text = file.prompt ?? messages.partialPromptTemplate(file.path);
       } else {
         prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.path) });
+      }
+
+      if (vision) {
+        prompt.slice(-1)[0].images = file.contextImageAssets.map((path) => ({
+          path,
+          base64url: fs.readFileSync(path, 'base64'),
+          mediaType: mime.lookup(path),
+        }));
       }
 
       let partialResult = await generateContentFn(
@@ -140,9 +166,12 @@ function prepareMessages(prompt) {
   return {
     suggestSourceCode: 'I should provide you with application source code.',
     requestSourceCode: 'Please provide application source code.',
+    suggestImageAssets: 'I should also provide you with a summary of application image assets',
+    requestImageAssets: 'Please provide summary of application image assets.',
     prompt: prompt + '\n Start from generating codegen summary, this summary will be used to generate updates.',
     sourceCode: JSON.stringify(getSourceCode()),
     contextSourceCode: (paths) => JSON.stringify(getSourceCode(paths)),
+    imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;
     },

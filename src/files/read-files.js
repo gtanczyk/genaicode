@@ -1,6 +1,8 @@
 import fs from 'fs';
+import mime from 'mime-types';
+import sizeOf from 'image-size';
 
-import { getSourceFiles } from './find-files.js';
+import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 
 /**
@@ -21,4 +23,19 @@ export function getSourceCode(filterPaths) {
   const sourceCode = readSourceFiles(filterPaths);
   verifySourceCodeLimit(JSON.stringify(sourceCode));
   return sourceCode;
+}
+
+/** Get image asset files summary */
+export function getImageAssets() {
+  const imageAssets = {};
+  for (const file of getImageAssetFiles()) {
+    const dimensions = sizeOf(file);
+    imageAssets[file] = {
+      mimeType: mime.lookup(file),
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+  }
+  verifySourceCodeLimit(JSON.stringify(imageAssets));
+  return imageAssets;
 }

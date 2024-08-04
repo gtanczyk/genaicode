@@ -19,6 +19,7 @@ const allowedParameters = [
   '--gemini-block-none',
   '--disable-initial-lint',
   '--temperature=',
+  '--vision',
   '--help',
 ];
 

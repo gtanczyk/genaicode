@@ -29,6 +29,14 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
               tool_use_id: response.name,
               content: response.content,
             })),
+            ...(item.images ?? []).map((image) => ({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: image.mediaType,
+                data: image.base64url,
+              },
+            })),
             { type: 'text', text: item.text },
           ],
         };

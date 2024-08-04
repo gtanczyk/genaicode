@@ -23,6 +23,24 @@ export const functionDefs = [
     },
   },
   {
+    name: 'getImageAssets',
+    description:
+      'This function returns a map of application image assets. This map contains absolute file path, and basic metadata information. It does not contain contents. Contents must be requested using dedicated tool.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filePaths: {
+          type: 'array',
+          description: 'An array of absolute paths of files that should be used to provided context.',
+          items: {
+            type: 'string',
+          },
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'codegenSummary',
     description:
       'This function is called with a summary of proposed updates. It contains a list of file paths that will be subject to code generation request, and also a list of file paths that make sense to use as a context for code generation requests.',
@@ -53,8 +71,14 @@ export const functionDefs = [
                 description:
                   'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes.',
               },
+              contextImageAssets: {
+                type: 'array',
+                description:
+                  'A list of of absolute image asset paths that should be included to the context of LLm request',
+                items: { type: 'string' },
+              },
             },
-            required: ['path', 'updateToolName', 'temperature', 'prompt'],
+            required: ['path', 'updateToolName', 'temperature', 'prompt', 'contextImageAssets'],
           },
         },
         contextPaths: {

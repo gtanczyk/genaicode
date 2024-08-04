@@ -23,6 +23,7 @@ export const taskFile = params.find((param) => param.startsWith('--task-file'))?
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
+export const vision = params.includes('--vision');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -67,6 +68,10 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !helpRequested) {
   } else {
     throw new Error('Missing --chat-gpt, --anthropic, --vertex-ai, or --vertex-ai-claude');
   }
+}
+
+if (vertexAi && vision) {
+  throw new Error('--vision and --vertex-ai are currently not supported together.');
 }
 
 if (lintCommand) {

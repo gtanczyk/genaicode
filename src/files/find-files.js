@@ -52,9 +52,12 @@ const DEFAULT_EXTENSIONS = [
 ];
 
 // Use extensions from .genaicoderc if available, otherwise use default
-const extensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
+const sourceExtensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
 
-function findFiles(dir, recursive) {
+// Image extensions (driven by ai service limitations)
+const IMAGE_ASSET_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+
+function findFiles(dir, recursive, extensions) {
   const files = [];
   const items = fs.readdirSync(dir);
   for (const item of items) {
@@ -70,7 +73,7 @@ function findFiles(dir, recursive) {
 
     if (fs.statSync(fullPath).isDirectory()) {
       if (recursive) {
-        files.push(...findFiles(fullPath, true));
+        files.push(...findFiles(fullPath, true, extensions));
       }
     } else if (extensions.includes(path.extname(fullPath))) {
       files.push(fullPath);
@@ -124,11 +127,18 @@ export function getDependencyList(entryFile) {
   return Array.from(result);
 }
 
-const rootFiles = findFiles(rootDir, true);
+const sourceFiles = findFiles(rootDir, true, sourceExtensions);
 
 /** Get source files of the application */
 export function getSourceFiles() {
-  return [...rootFiles];
+  return [...sourceFiles];
+}
+
+const imageAssetFiles = findFiles(rootDir, true, IMAGE_ASSET_EXTENSIONS);
+
+/** Get source files of the application */
+export function getImageAssetFiles() {
+  return [...imageAssetFiles];
 }
 
 /** Check if directory is ancestor of given directory */

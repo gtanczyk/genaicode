@@ -21,6 +21,12 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
                 response: { name: response.name, content: response.content },
               },
             })),
+            ...(item.images ?? []).map((image) => ({
+              inlineData: {
+                mimeType: image.mediaType,
+                data: image.base64url,
+              },
+            })),
             { text: item.text },
           ],
         };
