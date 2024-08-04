@@ -26,6 +26,16 @@ describe('validateCliParams', () => {
     process.argv.push('invalid-param');
     expect(() => validateCliParams()).toThrow();
   });
+
+  it('should not throw for valid --temperature parameter', () => {
+    process.argv.push('--temperature=0.5');
+    expect(() => validateCliParams()).not.toThrow();
+  });
+
+  it('should throw for invalid --temperature parameter', () => {
+    process.argv.push('--temperature=invalid');
+    expect(() => validateCliParams()).toThrow();
+  });
 });
 
 describe('getCliParamValue', () => {
@@ -52,6 +62,11 @@ describe('getCliParamValue', () => {
   it('should return null for a non-existent parameter', () => {
     expect(getCliParamValue('--non-existent')).toBeNull();
   });
+
+  it('should return the value for --temperature parameter', () => {
+    process.argv.push('--temperature=0.5');
+    expect(getCliParamValue('--temperature')).toBe('0.5');
+  });
 });
 
 describe('hasCliParam', () => {
@@ -72,5 +87,10 @@ describe('hasCliParam', () => {
 
   it('should return false for a non-existent parameter', () => {
     expect(hasCliParam('--non-existent')).toBe(false);
+  });
+
+  it('should return true for --temperature parameter', () => {
+    process.argv.push('--temperature=0.5');
+    expect(hasCliParam('--temperature')).toBe(true);
   });
 });

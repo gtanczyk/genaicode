@@ -7,7 +7,7 @@ import { geminiBlockNone } from '../cli/cli-params.js';
  * This function generates content using the Gemini Pro model.
  */
 
-export async function generateContent(prompt, functionDefs, requiredFunctionName) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
   const messages = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
@@ -56,7 +56,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
     },
   };
 
-  const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt);
+  const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt, temperature);
 
   assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
@@ -99,7 +99,8 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
 }
 
 // A function to get the generative model
-export function getGenModel(systemPrompt) {
+// Modified to accept temperature parameter
+export function getGenModel(systemPrompt, temperature) {
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
   const model = 'gemini-1.5-pro-001';
@@ -109,7 +110,7 @@ export function getGenModel(systemPrompt) {
     model: model,
     generationConfig: {
       maxOutputTokens: 8192,
-      temperature: 0,
+      temperature: temperature,
       topP: 0.95,
     },
     safetySettings: [

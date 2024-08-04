@@ -26,6 +26,7 @@ vi.mock('../cli/cli-params.js', () => ({
   allowFileMove: false,
   verbosePrompt: false,
   vertexAiClaude: false,
+  temperature: 0.7,
 }));
 vi.mock('../files/find-files.js', () => ({
   rootDir: '/mocked/root/dir',
@@ -110,6 +111,21 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAiClaude.generateContent).toHaveBeenCalled();
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+  });
+
+  it('should pass the temperature parameter to the AI service', async () => {
+    cliParams.vertexAi = true;
+    cliParams.temperature = 0.5;
+
+    const mockFunctionCalls = [
+      { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Temperature test");' } },
+    ];
+    vertexAi.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+
+    await runCodegen();
+
+    expect(vertexAi.generateContent).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), 0.5);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 });

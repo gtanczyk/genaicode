@@ -6,7 +6,7 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode } from '../files/read-files.js';
-import { disableContextOptimization } from '../cli/cli-params.js';
+import { disableContextOptimization, temperature } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
@@ -28,7 +28,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
   };
   prompt.push(getSourceCodeResponse);
 
-  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary');
+  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary', temperature);
 
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
@@ -72,7 +72,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
         prompt.push({ type: 'user', text: messages.partialPromptTemplate(file.path) });
       }
 
-      let partialResult = await generateContentFn(prompt, functionDefs, file.updateToolName);
+      let partialResult = await generateContentFn(prompt, functionDefs, file.updateToolName, temperature);
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
       assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
@@ -96,7 +96,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
           console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
           // Rerun content generation without patchFile function
-          partialResult = await generateContentFn(prompt, functionDefs, 'updateFile');
+          partialResult = await generateContentFn(prompt, functionDefs, 'updateFile', temperature);
 
           let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
           assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));

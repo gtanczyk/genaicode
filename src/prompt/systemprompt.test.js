@@ -34,7 +34,9 @@ describe('getSystemPrompt', () => {
     );
     expect(systemPrompt).toContain('You can generate new code, or modify the existing one.');
     expect(systemPrompt).toContain(
-      'Instructions will be passed to you either directly via message, with a file, or using the @CODEGEN comment in the code.',
+      'Instructions will be passed to you either directly via message, with a file, or using the ' +
+        '@' +
+        'CODEGEN comment in the code.',
     );
     expect(systemPrompt).toContain(
       'The root directory of my application is `/mocked/root/dir` and you should limit the changes only to this path.',

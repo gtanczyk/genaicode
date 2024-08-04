@@ -35,6 +35,7 @@ The tool accepts several CLI parameters to control its behavior:
 - `--disable-context-optimization`: Disables the optimization that uses context paths for more efficient code generation.
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
+- `--temperature`: Sets the temperature parameter for the AI model (default: 0.7).
 
 ### Main Execution Flow
 

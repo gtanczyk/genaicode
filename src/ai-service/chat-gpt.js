@@ -4,7 +4,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 /**
  * This function generates content using the OpenAI chat model.
  */
-export async function generateContent(prompt, functionDefs, requiredFunctionName) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
   const openai = new OpenAI();
 
   const messages = prompt
@@ -46,6 +46,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
     messages,
     tools: functionDefs.map((funDef) => ({ type: 'function', function: funDef })),
     tool_choice: requiredFunctionName ? { type: 'function', function: { name: requiredFunctionName } } : 'required',
+    temperature: temperature,
   });
 
   // Print token usage for chat gpt

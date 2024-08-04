@@ -23,6 +23,7 @@ vi.mock('../cli/cli-params.js', () => ({
   allowFileMove: false,
   verbosePrompt: false,
   disableContextOptimization: false,
+  temperature: 0.7,
 }));
 vi.mock('fs');
 vi.mock('diff');

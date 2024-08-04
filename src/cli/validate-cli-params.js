@@ -18,6 +18,7 @@ const allowedParameters = [
   '--disable-context-optimization',
   '--gemini-block-none',
   '--disable-initial-lint',
+  '--temperature=',
 ];
 
 /**
@@ -38,6 +39,16 @@ export function validateCliParams() {
       process.exit(1);
     }
   });
+
+  // Validate temperature parameter, it must be a number between 0.0 and 2.0
+  const temperatureParam = providedParameters.find((param) => param.startsWith('--temperature='));
+  if (temperatureParam) {
+    const temperatureValue = parseFloat(temperatureParam.split('=')[1]);
+    if (isNaN(temperatureValue) || temperatureValue < 0.0 || temperatureValue > 2.0) {
+      console.error('Invalid temperature value. It must be a number between 0.0 and 2.0.');
+      process.exit(1);
+    }
+  }
 }
 
 /**
@@ -56,5 +67,5 @@ export function getCliParamValue(paramName) {
  * @returns {boolean} True if the parameter is present, false otherwise
  */
 export function hasCliParam(paramName) {
-  return process.argv.includes(paramName);
+  return process.argv.includes(paramName) || !!getCliParamValue(paramName);
 }

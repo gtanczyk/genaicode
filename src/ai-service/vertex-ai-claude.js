@@ -4,7 +4,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
  */
-export async function generateContent(prompt, functionDefs, requiredFunctionName) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT;
   const region = process.env.GOOGLE_CLOUD_REGION;
 
@@ -51,6 +51,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
   const response = await client.messages.create({
     model: 'claude-3-5-sonnet@20240620',
     max_tokens: 4096,
+    temperature: temperature,
     system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
     messages,
     tools: functionDefs.map((fd) => ({

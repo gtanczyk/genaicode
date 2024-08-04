@@ -24,8 +24,13 @@ export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 
-// New: Export the lintCommand from rcConfig
+// Export the lintCommand from rcConfig
 export const lintCommand = rcConfig.lintCommand || null;
+
+// Temperature parameter
+export const temperature = parseFloat(
+  params.find((param) => param.startsWith('--temperature='))?.split('=')[1] || '0.7',
+); // Default temperature value: 0.7
 
 if (taskFile) {
   if (explicitPrompt) {
@@ -61,7 +66,10 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude) {
   }
 }
 
-// New: Log the lintCommand if it's set
 if (lintCommand) {
   console.log(`Lint command detected: ${lintCommand}`);
+}
+
+if (temperature) {
+  console.log(`Temperature value: ${temperature}`);
 }
