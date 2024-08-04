@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="media/logo.png" alt="GenAIcode Logo" width="100%" height="auto">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/logo.png">
+    <source media="(prefers-color-scheme: light)" srcset="media/logo.png">
+    <img alt="GenAIcode Logo." src="media/logo.png" width="100%" height="auto">
+  </picture>
 </p>
 
 <div align="center">
