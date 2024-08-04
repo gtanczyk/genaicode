@@ -25,6 +25,12 @@ Examples of applications generated entirely with `npx genaicode`:
     ```
 
 - [Java Hello World App](./java_hello_world/):
+
   ```bash
   npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
+  ```
+
+- [Arcanoid Game][./arcanoid_game/]:
+  ```bash
+  npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcanoid game" --allow-file-create --allow-directory-create
   ```
