@@ -28,13 +28,13 @@ It was generated using the `--explicit-prompt` option:
   npx genaicode --explicit-prompt="I want the Hello, World! text to be colored"
   ```
 
-## [Java Hello World App](./java_hello_world/):
+## [Java Hello World App](./java_hello_world/)
 
 ```bash
 npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
 ```
 
-## [Arcanoid Game](./arcanoid_game/):
+## [Arcanoid Game](./arcanoid_game/)
 
 - first iteration:
 
