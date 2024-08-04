@@ -70,10 +70,6 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !helpRequested) {
   }
 }
 
-if (vertexAi && vision) {
-  throw new Error('--vision and --vertex-ai are currently not supported together.');
-}
-
 if (lintCommand) {
   console.log(`Lint command detected: ${lintCommand}`);
 }

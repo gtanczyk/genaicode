@@ -63,6 +63,10 @@ export function validateCliParams() {
       process.exit(1);
     }
   }
+
+  if (providedParameters.includes('--vision') && providedParameters.includes('--vertex-ai')) {
+    throw new Error('--vision and --vertex-ai are currently not supported together.');
+  }
 }
 
 /**

@@ -8,6 +8,9 @@ import * as anthropic from '../ai-service/anthropic.js';
 import * as cliParams from '../cli/cli-params.js';
 import fs from 'fs';
 import * as diff from 'diff';
+import mime from 'mime-types';
+import { getImageAssets } from '../files/read-files.js';
+import '../files/find-files.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -28,6 +31,7 @@ vi.mock('../cli/cli-params.js', () => ({
 }));
 vi.mock('fs');
 vi.mock('diff');
+vi.mock('mime-types');
 
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
@@ -40,6 +44,12 @@ vi.mock('../files/find-files.js', () => ({
   getImageAssetFiles: () => [],
 }));
 
+// Mock read-files module
+vi.mock('../files/read-files.js', () => ({
+  getSourceCode: () => ({}),
+  getImageAssets: vi.fn(() => ({})),
+}));
+
 describe('promptService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -47,6 +57,7 @@ describe('promptService', () => {
     cliParams.chatGpt = false;
     cliParams.vertexAi = false;
     cliParams.dryRun = false;
+    cliParams.vision = false;
   });
 
   it('should process the codegen summary and return the result with Vertex AI', async () => {
@@ -148,5 +159,126 @@ describe('promptService', () => {
     expect(fs.readFileSync).toHaveBeenCalledWith('test.js', 'utf-8');
     expect(diff.applyPatch).toHaveBeenCalledWith('Original content', 'invalid patch');
     expect(result).toEqual(mockValidUpdateCall);
+  });
+
+  // New tests for --vision functionality
+  it('should include image assets when vision flag is true', async () => {
+    cliParams.chatGpt = true;
+    cliParams.vision = true;
+    const mockImageAssets = {
+      '/path/to/image1.png': { width: 100, height: 100 },
+      '/path/to/image2.jpg': { width: 200, height: 200 },
+    };
+    const mockFunctionCalls = [
+      { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Vision test");' } },
+    ];
+
+    getImageAssets.mockReturnValue(mockImageAssets);
+    chatGpt.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+
+    await promptService(chatGpt.generateContent);
+
+    expect(chatGpt.generateContent).toHaveBeenCalled();
+    const calls = chatGpt.generateContent.mock.calls[0];
+    expect(calls[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          text: expect.stringContaining('I should also provide you with a summary of application image assets'),
+        }),
+        expect.objectContaining({
+          type: 'assistant',
+          text: expect.stringContaining('Please provide summary of application image assets.'),
+        }),
+        expect.objectContaining({
+          type: 'user',
+          functionResponses: [{ name: 'getImageAssets', content: JSON.stringify(mockImageAssets) }],
+        }),
+      ]),
+    );
+  });
+
+  it('should include image data in the prompt when processing files with vision', async () => {
+    cliParams.chatGpt = true;
+    cliParams.vision = true;
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [
+            {
+              path: 'test.js',
+              updateToolName: 'updateFile',
+              contextImageAssets: ['/path/to/image1.png', '/path/to/image2.jpg'],
+            },
+          ],
+          contextPaths: [],
+          explanation: 'Mock summary',
+        },
+      },
+    ];
+    const mockUpdateCall = [
+      {
+        name: 'updateFile',
+        args: {
+          filePath: 'test.js',
+          newContent: 'console.log("Updated with vision");',
+        },
+      },
+    ];
+
+    chatGpt.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    chatGpt.generateContent.mockResolvedValueOnce(mockUpdateCall);
+
+    fs.readFileSync.mockImplementation((path) => `mock-base64-data-for-${path}`);
+    mime.lookup.mockImplementation((path) => (path.endsWith('.png') ? 'image/png' : 'image/jpeg'));
+
+    await promptService(chatGpt.generateContent);
+
+    expect(chatGpt.generateContent).toHaveBeenCalledTimes(2);
+    const secondCall = chatGpt.generateContent.mock.calls[1];
+    expect(secondCall[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          text: expect.stringContaining('suggest changes for the `test.js` file'),
+          images: [
+            {
+              path: '/path/to/image1.png',
+              base64url: 'mock-base64-data-for-/path/to/image1.png',
+              mediaType: 'image/png',
+            },
+            {
+              path: '/path/to/image2.jpg',
+              base64url: 'mock-base64-data-for-/path/to/image2.jpg',
+              mediaType: 'image/jpeg',
+            },
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it('should not include image assets when vision flag is false', async () => {
+    cliParams.chatGpt = true;
+    cliParams.vision = false;
+    const mockFunctionCalls = [
+      { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("No vision test");' } },
+    ];
+
+    chatGpt.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+
+    await promptService(chatGpt.generateContent);
+
+    expect(chatGpt.generateContent).toHaveBeenCalled();
+    const calls = chatGpt.generateContent.mock.calls[0];
+    expect(calls[0]).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          text: expect.stringContaining('I should also provide you with a summary of application image assets'),
+        }),
+      ]),
+    );
   });
 });

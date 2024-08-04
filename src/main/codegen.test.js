@@ -53,6 +53,7 @@ describe('runCodegen', () => {
     cliParams.vertexAiClaude = false;
     cliParams.dryRun = false;
     cliParams.helpRequested = false;
+    cliParams.vision = false;
   });
 
   it('should run codegen with Vertex AI by default', async () => {
@@ -148,5 +149,38 @@ describe('runCodegen', () => {
     expect(anthropic.generateContent).not.toHaveBeenCalled();
     expect(vertexAiClaude.generateContent).not.toHaveBeenCalled();
     expect(updateFiles.updateFiles).not.toHaveBeenCalled();
+  });
+
+  // New test for --vision functionality
+  it('should run codegen with vision when vision flag is true', async () => {
+    cliParams.chatGpt = true;
+    cliParams.vision = true;
+
+    const mockFunctionCalls = [
+      { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Vision test");' } },
+    ];
+    chatGpt.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+
+    await runCodegen();
+
+    expect(chatGpt.generateContent).toHaveBeenCalled();
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    // Check if the generateContent function was called with the correct parameters
+    expect(chatGpt.generateContent.mock.calls[0][0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          text: expect.stringContaining('I should also provide you with a summary of application image assets'),
+        }),
+        expect.objectContaining({
+          type: 'assistant',
+          text: expect.stringContaining('Please provide summary of application image assets.'),
+        }),
+        expect.objectContaining({
+          type: 'user',
+          functionResponses: [{ name: 'getImageAssets', content: expect.any(String) }],
+        }),
+      ]),
+    );
   });
 });
