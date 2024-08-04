@@ -4,6 +4,7 @@
     "examples/python_hello_world",
     "examples/golang_hello_world",
     "examples/java_hello_world",
+    "examples/arcanoid_game",
     "node_modules"
   ],
   "lintCommand": "npm run lint"
