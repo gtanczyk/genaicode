@@ -30,7 +30,20 @@ Examples of applications generated entirely with `npx genaicode`:
   npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
   ```
 
-- [Arcanoid Game][./arcanoid_game/]:
+- [Arcanoid Game](./arcanoid_game/):
+
+  - first iteration:
+
   ```bash
   npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcanoid game" --allow-file-create --allow-directory-create
   ```
+
+  - result: ![first iteration](./arcanoid_game/arcanoid_first_iteration.gif 'first iteration')
+
+  - second iteration: Replace window.alert with html based messages
+
+  ```bash
+  npx genaicode --vertex-ai-claude --explicit-prompt="Instead of using window.alert to show messages, show them using HTML, and pause the game when a message is shown. Allow user to confirm the message to continue"
+  ```
+
+  - result: ![second iteration](./arcanoid_game/arcanoid_second_iteration.gif 'second iteration')

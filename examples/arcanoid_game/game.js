@@ -36,6 +36,7 @@ for (let c = 0; c < brickColumnCount; c++) {
 }
 
 let score = 0;
+let gamePaused = false;
 
 // Event listeners
 document.addEventListener('keydown', keyDownHandler);
@@ -106,8 +107,8 @@ function collisionDetection() {
           score++;
           updateScore();
           if (score === brickRowCount * brickColumnCount) {
-            alert('Congratulations! You win!');
-            document.location.reload();
+            showMessage('Congratulations! You win!');
+            gamePaused = true;
           }
         }
       }
@@ -141,8 +142,8 @@ function moveBall() {
     if (ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
       ball.dy = -ball.dy;
     } else {
-      alert('Game Over');
-      document.location.reload();
+      showMessage('Game Over');
+      gamePaused = true;
     }
   }
 }
@@ -153,10 +154,54 @@ function draw() {
   drawBall();
   drawPaddle();
   collisionDetection();
-  movePaddle();
-  moveBall();
+
+  if (!gamePaused) {
+    movePaddle();
+    moveBall();
+  }
 
   requestAnimationFrame(draw);
 }
 
+function showMessage(message) {
+  const messageContainer = document.getElementById('message-container');
+  const messageText = document.getElementById('message-text');
+  const continueButton = document.getElementById('continue-button');
+
+  messageText.textContent = message;
+  messageContainer.style.display = 'flex';
+
+  continueButton.onclick = () => {
+    messageContainer.style.display = 'none';
+    if (message === 'Game Over' || message === 'Congratulations! You win!') {
+      resetGame();
+    } else {
+      gamePaused = false;
+    }
+  };
+}
+
+function resetGame() {
+  score = 0;
+  updateScore();
+  gamePaused = false;
+
+  // Reset paddle position
+  paddle.x = canvas.width / 2 - paddle.width / 2;
+
+  // Reset ball position and direction
+  ball.x = canvas.width / 2;
+  ball.y = canvas.height - 30;
+  ball.dx = 3;
+  ball.dy = -3;
+
+  // Reset bricks
+  for (let c = 0; c < brickColumnCount; c++) {
+    for (let r = 0; r < brickRowCount; r++) {
+      bricks[c][r].status = 1;
+    }
+  }
+}
+
+// Start the game
 draw();
