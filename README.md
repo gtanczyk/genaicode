@@ -1,4 +1,10 @@
-# GenAIcode
+<p align="center">
+  <img src="media/logo.png" alt="GenAIcode Logo" width="100%" height="auto">
+</p>
+
+<div align="center">
+
+# Programming on steroids
 
   <a href="https://www.npmjs.com/package/genaicode">
     <img alt="npm version" src="https://img.shields.io/npm/v/genaicode.svg?style=flat-square"></a>
@@ -6,6 +12,8 @@
     <img alt="weekly downloads from npm" src="https://img.shields.io/npm/dw/genaicode.svg?style=flat-square"></a>
   <a href="https://github.com/gtanczyk/genaicode/actions?query=branch%3Amaster">
     <img alt="Github Actions Build Status" src="https://img.shields.io/github/actions/workflow/status/gtanczyk/genaicode/lint.yaml?label=Tests&style=flat-square"></a>
+
+</div>
 
 ---
 
