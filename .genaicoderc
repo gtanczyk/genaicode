@@ -5,6 +5,8 @@
     "examples/golang_hello_world",
     "examples/java_hello_world",
     "examples/arcanoid_game",
+    "examples/vision_example",
+    "docs/tasks",
     "node_modules"
   ],
   "lintCommand": "npm run lint"

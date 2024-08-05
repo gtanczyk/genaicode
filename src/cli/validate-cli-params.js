@@ -20,6 +20,7 @@ const allowedParameters = [
   '--disable-initial-lint',
   '--temperature=',
   '--vision',
+  '--imagen',
   '--help',
 ];
 

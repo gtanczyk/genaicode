@@ -24,6 +24,7 @@ export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
+export const imagen = params.includes('--imagen');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -76,4 +77,8 @@ if (lintCommand) {
 
 if (temperature) {
   console.log(`Temperature value: ${temperature}`);
+}
+
+if (imagen) {
+  console.log('Image generation functionality enabled');
 }

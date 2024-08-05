@@ -17,7 +17,7 @@ import {
 /**
  * @param functionCalls Result of the code generation, a map of file paths to new content
  */
-export function updateFiles(functionCalls) {
+export async function updateFiles(functionCalls) {
   for (const { name, args } of functionCalls) {
     let { filePath, newContent, source, destination, patch } = args;
 
@@ -82,6 +82,23 @@ export function updateFiles(functionCalls) {
         fs.mkdirSync(path.dirname(destination), { recursive: true });
       }
       fs.renameSync(source, destination);
+    } else if (name === 'downloadFile') {
+      console.log(`Downloading image: ${filePath}`);
+      assert(fs.existsSync(filePath) || allowFileCreate, 'File create option was not enabled and file does not exist');
+      if (allowDirectoryCreate) {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      }
+      try {
+        assert(args.downloadUrl, 'image url is not empty');
+        const imageResponse = await fetch(args.downloadUrl);
+        const arrayBuffer = await imageResponse.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        fs.writeFileSync(filePath, buffer);
+        console.log(`Image download and saved to: ${filePath}`);
+      } catch (error) {
+        console.error(`Failed to download image: ${error.message}`);
+        throw error;
+      }
     }
   }
 }

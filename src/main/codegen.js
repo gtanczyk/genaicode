@@ -71,7 +71,7 @@ export async function runCodegen() {
     console.log('Dry run mode, not updating files');
   } else {
     console.log('Update files');
-    updateFiles(functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'));
+    await updateFiles(functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'));
     console.log('Initial updates applied');
 
     // Check if lintCommand is specified in .genaicoderc

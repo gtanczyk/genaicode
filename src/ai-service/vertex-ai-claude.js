@@ -26,7 +26,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
           content: [
             ...(item.functionResponses ?? []).map((response) => ({
               type: 'tool_result',
-              tool_use_id: response.name,
+              tool_use_id: response.call_id ?? response.name,
               content: response.content,
             })),
             ...(item.images ?? []).map((image) => ({
@@ -47,7 +47,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
             ...(item.text ? [{ type: 'text', text: item.text }] : []),
             ...item.functionCalls.map((call) => ({
               type: 'tool_use',
-              id: call.name,
+              id: call.id ?? call.name,
               name: call.name,
               input: call.args ?? {},
             })),
@@ -86,6 +86,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
   const functionCalls = response.content
     .filter((item) => item.type === 'tool_use')
     .map((item) => ({
+      id: item.id,
       name: item.name,
       args: item.input,
     }));

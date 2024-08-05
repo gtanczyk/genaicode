@@ -27,6 +27,7 @@ vi.mock('../cli/cli-params.js', () => ({
   verbosePrompt: false,
   disableContextOptimization: false,
   vision: false,
+  imagen: false,
   temperature: 0.7,
 }));
 vi.mock('fs');
@@ -161,7 +162,6 @@ describe('promptService', () => {
     expect(result).toEqual(mockValidUpdateCall);
   });
 
-  // New tests for --vision functionality
   it('should include image assets when vision flag is true', async () => {
     cliParams.chatGpt = true;
     cliParams.vision = true;

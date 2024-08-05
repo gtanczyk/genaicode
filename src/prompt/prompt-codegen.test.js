@@ -24,6 +24,8 @@ vi.mock('../cli/cli-params.js', () => ({
   allowDirectoryCreate: false,
   allowFileMove: false,
   verbosePrompt: false,
+  imagen: false,
+  vision: false,
 }));
 vi.mock('./limits.js');
 

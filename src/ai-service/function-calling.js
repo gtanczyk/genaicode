@@ -57,7 +57,16 @@ export const functionDefs = [
               path: { type: 'string', description: 'An absolute path of the project file that will be updated' },
               updateToolName: {
                 type: 'string',
-                enum: ['updateFile', 'patchFile', 'createFile', 'deleteFile', 'createDirectory', 'moveFile'],
+                enum: [
+                  'updateFile',
+                  'patchFile',
+                  'createFile',
+                  'deleteFile',
+                  'createDirectory',
+                  'moveFile',
+                  'generateImage',
+                  'downloadFile',
+                ],
                 description: 'A name of the tool that will be used to perform the update.',
               },
               temperature: {
@@ -159,7 +168,7 @@ Index: filename.js
   {
     name: 'createFile',
     description:
-      'Create a new file with specified content. The file will be created inside of project folder structure.',
+      'Create a new file with specified content. The file will be created inside of project folder structure. This tool should not be used of creation if image files.',
     parameters: {
       type: 'object',
       properties: {
@@ -249,6 +258,55 @@ Index: filename.js
         },
       },
       required: ['source', 'destination'],
+    },
+  },
+  {
+    name: 'generateImage',
+    description: 'Generate an image using AI service and save it as a file.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The prompt to generate the image.',
+        },
+        filePath: {
+          type: 'string',
+          description: 'The file path to save the generated image.',
+        },
+        size: {
+          type: 'string',
+          enum: ['256x256', '512x512', '1024x1024'],
+          description: 'The size of the image to generate.',
+        },
+        explanation: {
+          type: 'string',
+          description: 'The explanation of the reasoning behind generating this image',
+        },
+      },
+      required: ['prompt', 'filePath', 'size'],
+    },
+  },
+  {
+    name: 'downloadFile',
+    description: 'Download file from url, and save to file',
+    parameters: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description: 'The file path to save the downloaded file.',
+        },
+        downloadUrl: {
+          type: 'string',
+          description: 'The url of the file that will be used for downloading.',
+        },
+        explanation: {
+          type: 'string',
+          description: 'The reasoning behind downloading this image.',
+        },
+      },
+      required: ['filePath', 'downloadUrl'],
     },
   },
 ].map((fd) => {

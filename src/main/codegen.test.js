@@ -29,6 +29,7 @@ vi.mock('../cli/cli-params.js', () => ({
   vertexAiClaude: false,
   helpRequested: false,
   vision: false,
+  imagen: false,
   temperature: 0.7,
 }));
 vi.mock('../files/find-files.js', () => ({
@@ -151,7 +152,6 @@ describe('runCodegen', () => {
     expect(updateFiles.updateFiles).not.toHaveBeenCalled();
   });
 
-  // New test for --vision functionality
   it('should run codegen with vision when vision flag is true', async () => {
     cliParams.chatGpt = true;
     cliParams.vision = true;

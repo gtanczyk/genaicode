@@ -19,7 +19,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
           role: 'user',
           content: [
             ...(item.functionResponses ?? []).map((response) => ({
-              tool_use_id: response.name,
+              tool_use_id: response.call_id ?? response.name,
               content: response.content,
               type: 'tool_result',
             })),
@@ -43,7 +43,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
           content: [
             ...(item.text ? [{ type: 'text', text: item.text }] : []),
             ...item.functionCalls.map((call) => ({
-              id: call.name,
+              id: call.id ?? call.name,
               name: call.name,
               input: call.args ?? {},
               type: 'tool_use',

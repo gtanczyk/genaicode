@@ -7,7 +7,8 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision } from '../cli/cli-params.js';
+import { disableContextOptimization, temperature, vision, imagen } from '../cli/cli-params.js';
+import { generateImage } from '../ai-service/open-ai-images.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
@@ -68,11 +69,11 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
         messages.contextSourceCode(getSourceCodeRequest.args.filePaths);
     }
 
-    // Store the first stage response entirey in conversation history
+    // Store the first stage response entirely in conversation history
     prompt.push({ type: 'assistant', functionCalls: baseResult });
     prompt.push({
       type: 'user',
-      functionResponses: baseResult.map((call) => ({ name: call.name })),
+      functionResponses: baseResult.map((call) => ({ name: call.name, call_id: call.id })),
     });
 
     const result = [];
@@ -110,6 +111,46 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
       assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
 
+      // Handle image generation requests
+      const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
+      if (generateImageCall) {
+        if (imagen) {
+          console.log('Processing image generation request:', generateImageCall.args);
+          try {
+            const { prompt: imagePrompt, filePath, size } = generateImageCall.args;
+            const generatedImageUrl = await generateImage(imagePrompt, size);
+
+            // Add a createFile call to the result to ensure the generated image is tracked
+            partialResult.push({
+              name: 'downloadFile',
+              args: {
+                filePath: filePath,
+                downloadUrl: generatedImageUrl,
+                explanation: `Downloading generated image based on prompt: "${imagePrompt}"`,
+              },
+            });
+          } catch (error) {
+            console.error('Error generating image:', error);
+            // Add an explanation about the failed image generation
+            partialResult.push({
+              name: 'explanation',
+              args: {
+                text: `Failed to generate image: ${error.message}`,
+              },
+            });
+          }
+        } else {
+          console.log('Image generation request ignored: --imagen option not provided');
+          partialResult = partialResult.filter((call) => call.name !== 'generateImage');
+          partialResult.push({
+            name: 'explanation',
+            args: {
+              text: 'Image generation request ignored because --imagen option was not provided.',
+            },
+          });
+        }
+      }
+
       // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
       const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
       if (patchFileCall) {
@@ -135,7 +176,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
           assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
           assert(!partialResult.find((call) => call.name === 'patchFile'), 'Unexpected patchFile in retry response');
         } else {
-          console.log('Patch verifed successfully');
+          console.log('Patch verified successfully');
         }
       }
 
@@ -144,7 +185,7 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
         { type: 'assistant', functionCalls: partialResult },
         {
           type: 'user',
-          functionResponses: partialResult.map((call) => ({ name: call.name })),
+          functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
         },
       );
 
