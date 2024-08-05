@@ -140,13 +140,6 @@ The GenAIcode tool offers several advanced features to enhance its code generati
   - The quality and relevance of generated images depend on the specificity and clarity of the prompts.
   - There may be usage limits or additional costs associated with the image generation service.
   - Generated images should be reviewed for appropriateness and may require manual adjustments.
-- **Example Usage**:
-  ```
-  @CODEGEN
-  // Generate a logo for our app
-  // Use imagen to create a 256x256 PNG image of a stylized tree logo
-  // Save it as 'src/assets/tree-logo.png'
-  ```
 - **Integration with Other Features**: The imagen feature can be used in conjunction with the vision capabilities, allowing for a workflow where generated images can be immediately analyzed and incorporated into the code generation process.
 
 These features collectively make GenAIcode a versatile and powerful tool for AI-assisted code generation, capable of adapting to various project requirements and development workflows. By leveraging these features, developers can fine-tune the code generation process to their specific needs, ensuring high-quality, context-aware, and project-compliant code outputs.

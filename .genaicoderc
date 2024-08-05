@@ -7,7 +7,11 @@
     "examples/arcanoid_game",
     "examples/vision_example",
     "docs/tasks",
-    "node_modules"
+    "node_modules",
+    ".github",
+    ".husky",
+    "coverage",
+    "package-lock.json"
   ],
   "lintCommand": "npm run lint"
 }

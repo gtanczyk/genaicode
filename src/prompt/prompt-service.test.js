@@ -11,6 +11,7 @@ import * as diff from 'diff';
 import mime from 'mime-types';
 import { getImageAssets } from '../files/read-files.js';
 import '../files/find-files.js';
+import * as dalleService from '../ai-service/dall-e.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -33,6 +34,7 @@ vi.mock('../cli/cli-params.js', () => ({
 vi.mock('fs');
 vi.mock('diff');
 vi.mock('mime-types');
+vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
@@ -59,6 +61,8 @@ describe('promptService', () => {
     cliParams.vertexAi = false;
     cliParams.dryRun = false;
     cliParams.vision = false;
+    cliParams.imagen = false;
+    cliParams.disableContextOptimization = false;
   });
 
   it('should process the codegen summary and return the result with Vertex AI', async () => {
@@ -280,5 +284,203 @@ describe('promptService', () => {
         }),
       ]),
     );
+  });
+
+  it('should handle context optimization', async () => {
+    cliParams.vertexAi = true;
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: ['context1.js', 'context2.js'],
+          explanation: 'Mock summary with context',
+        },
+      },
+    ];
+    const mockUpdateCall = [
+      {
+        name: 'updateFile',
+        args: {
+          filePath: 'test.js',
+          newContent: 'console.log("Updated with context");',
+        },
+      },
+    ];
+
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockUpdateCall);
+
+    await promptService(vertexAi.generateContent);
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    const firstCall = vertexAi.generateContent.mock.calls[0];
+    expect(firstCall[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          functionResponses: [
+            expect.objectContaining({
+              name: 'getSourceCode',
+              content: expect.any(String),
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it('should handle disableContextOptimization flag', async () => {
+    cliParams.vertexAi = true;
+    cliParams.disableContextOptimization = true;
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: ['context1.js', 'context2.js'],
+          explanation: 'Mock summary without context optimization',
+        },
+      },
+    ];
+    const mockUpdateCall = [
+      {
+        name: 'updateFile',
+        args: {
+          filePath: 'test.js',
+          newContent: 'console.log("Updated without context optimization");',
+        },
+      },
+    ];
+
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockUpdateCall);
+
+    await promptService(vertexAi.generateContent);
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    const firstCall = vertexAi.generateContent.mock.calls[0];
+    expect(firstCall[0]).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'user',
+          functionResponses: [
+            expect.objectContaining({
+              name: 'getSourceCode',
+              content: expect.stringContaining('context1.js'),
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it('should handle image generation requests', async () => {
+    cliParams.vertexAi = true;
+    cliParams.imagen = true;
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: [],
+          explanation: 'Mock summary with image generation',
+        },
+      },
+    ];
+    const mockGenerateImageCall = [
+      {
+        name: 'generateImage',
+        args: {
+          prompt: 'A test image',
+          filePath: '/path/to/generated/image.png',
+          size: '256x256',
+        },
+      },
+    ];
+    const mockDownloadFileCall = [
+      {
+        name: 'downloadFile',
+        args: {
+          filePath: '/path/to/generated/image.png',
+          explanation: 'Downloading generated image',
+          downloadUrl: 'https://example.com/generated-image.png',
+        },
+      },
+    ];
+
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockGenerateImageCall);
+    dalleService.generateImage.mockResolvedValue('https://example.com/generated-image.png');
+
+    const result = await promptService(vertexAi.generateContent);
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');
+    expect(result).toEqual(expect.arrayContaining(mockDownloadFileCall));
+  });
+
+  it('should handle image generation failure', async () => {
+    cliParams.vertexAi = true;
+    cliParams.imagen = true;
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: [],
+          explanation: 'Mock summary with image generation failure',
+        },
+      },
+    ];
+    const mockGenerateImageCall = [
+      {
+        name: 'generateImage',
+        args: {
+          prompt: 'A test image',
+          filePath: '/path/to/generated/image.png',
+          size: '256x256',
+        },
+      },
+    ];
+
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockGenerateImageCall);
+    dalleService.generateImage.mockRejectedValue(new Error('Image generation failed'));
+
+    const result = await promptService(vertexAi.generateContent);
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'explanation',
+          args: {
+            text: expect.stringContaining('Failed to generate image: Image generation failed'),
+          },
+        }),
+      ]),
+    );
+  });
+
+  it('should handle unexpected response without codegen summary', async () => {
+    cliParams.vertexAi = true;
+    const mockUnexpectedResponse = [
+      {
+        name: 'updateFile',
+        args: {
+          filePath: 'test.js',
+          newContent: 'console.log("Unexpected response");',
+        },
+      },
+    ];
+
+    vertexAi.generateContent.mockResolvedValueOnce(mockUnexpectedResponse);
+
+    const result = await promptService(vertexAi.generateContent);
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(mockUnexpectedResponse);
   });
 });

@@ -95,7 +95,7 @@ The `.genaicoderc` file allows you to configure various aspects of GenAIcode's b
 {
   "rootDir": ".",
   "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
-  "ignorePaths": ["node_modules", "build", "dist"],
+  "ignorePaths": ["node_modules", "build", "dist", "package-lock.json", "coverage"],
   "lintCommand": "npm run lint"
 }
 ```

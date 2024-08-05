@@ -49,6 +49,7 @@ const DEFAULT_EXTENSIONS = [
   '.txt',
   '.html',
   '.txt',
+  '.json',
 ];
 
 // Use extensions from .genaicoderc if available, otherwise use default
@@ -57,17 +58,16 @@ const sourceExtensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
 // Image extensions (driven by ai service limitations)
 const IMAGE_ASSET_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
+// A list of paths that are ignored by default
+const DEFAULT_IGNORE_PATHS = ['node_modules', 'build', 'dist', 'package-lock.json', 'coverage'];
+
 function findFiles(dir, recursive, extensions) {
   const files = [];
   const items = fs.readdirSync(dir);
   for (const item of items) {
-    if (item === 'node_modules' || item === 'build') {
-      continue;
-    }
-
     const fullPath = path.join(dir, item);
 
-    if (rcConfig.ignorePaths?.some((ignorePath) => fullPath.endsWith(ignorePath))) {
+    if ((rcConfig.ignorePaths ?? DEFAULT_IGNORE_PATHS).some((ignorePath) => fullPath.endsWith(ignorePath))) {
       continue;
     }
 
