@@ -78,7 +78,7 @@ export const functionDefs = [
               prompt: {
                 type: 'string',
                 description:
-                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes.',
+                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes for this particular file.',
               },
               contextImageAssets: {
                 type: 'array',

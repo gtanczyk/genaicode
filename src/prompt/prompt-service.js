@@ -114,38 +114,29 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
       if (generateImageCall) {
-        if (imagen) {
-          console.log('Processing image generation request:', generateImageCall.args);
-          try {
-            const { prompt: imagePrompt, filePath, size } = generateImageCall.args;
-            const generatedImageUrl = await generateImage(imagePrompt, size);
+        assert(imagen, 'Image generation requested, but --imagen option not provided');
 
-            // Add a createFile call to the result to ensure the generated image is tracked
-            partialResult.push({
-              name: 'downloadFile',
-              args: {
-                filePath: filePath,
-                downloadUrl: generatedImageUrl,
-                explanation: `Downloading generated image based on prompt: "${imagePrompt}"`,
-              },
-            });
-          } catch (error) {
-            console.error('Error generating image:', error);
-            // Add an explanation about the failed image generation
-            partialResult.push({
-              name: 'explanation',
-              args: {
-                text: `Failed to generate image: ${error.message}`,
-              },
-            });
-          }
-        } else {
-          console.log('Image generation request ignored: --imagen option not provided');
-          partialResult = partialResult.filter((call) => call.name !== 'generateImage');
+        console.log('Processing image generation request:', generateImageCall.args);
+        try {
+          const { prompt: imagePrompt, filePath, size } = generateImageCall.args;
+          const generatedImageUrl = await generateImage(imagePrompt, size);
+
+          // Add a createFile call to the result to ensure the generated image is tracked
+          partialResult.push({
+            name: 'downloadFile',
+            args: {
+              filePath: filePath,
+              downloadUrl: generatedImageUrl,
+              explanation: `Downloading generated image`,
+            },
+          });
+        } catch (error) {
+          console.error('Error generating image:', error);
+          // Add an explanation about the failed image generation
           partialResult.push({
             name: 'explanation',
             args: {
-              text: 'Image generation request ignored because --imagen option was not provided.',
+              text: `Failed to generate image: ${error.message}`,
             },
           });
         }
