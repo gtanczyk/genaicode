@@ -8,7 +8,7 @@ import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { disableContextOptimization, temperature, vision, imagen } from '../cli/cli-params.js';
-import { generateImage } from '../ai-service/open-ai-images.js';
+import { generateImage } from '../ai-service/dall-e.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
