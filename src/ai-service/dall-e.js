@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI();
-
 /**
  * Generate an image using OpenAI's DALL-E model and save it to a file
  * @param {string} prompt - The description of the image to generate
@@ -9,6 +7,8 @@ const openai = new OpenAI();
  * @returns {Promise<string>} - The url of the image
  */
 export async function generateImage(prompt, size = '1024x1024') {
+  const openai = new OpenAI();
+
   try {
     const response = await openai.images.generate({
       model: 'dall-e-3',
