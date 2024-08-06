@@ -4,7 +4,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 /**
  * This function generates content using the OpenAI chat model.
  */
-export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const openai = new OpenAI();
 
   const messages = prompt
@@ -55,8 +55,11 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
     })
     .flat();
 
+  const model = cheap ? 'gpt-4o-mini' : 'gpt-4o';
+  console.log(`Using OpenAI model: ${model}`);
+
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: model,
     messages,
     tools: functionDefs.map((funDef) => ({ type: 'function', function: funDef })),
     tool_choice: requiredFunctionName ? { type: 'function', function: { name: requiredFunctionName } } : 'required',

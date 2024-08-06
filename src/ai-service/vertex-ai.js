@@ -7,7 +7,7 @@ import { geminiBlockNone } from '../cli/cli-params.js';
  * This function generates content using the Gemini Pro model.
  */
 
-export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const messages = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
@@ -53,16 +53,15 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
         functionDeclarations: functionDefs,
       },
     ],
-    // TODO: add tool_config once [it is supported](https://github.com/googleapis/nodejs-vertexai/issues/331)
     toolConfig: {
       functionCallingConfig: {
-        mode: 'ANY',
-        ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+        mode: cheap ? undefined : 'ANY',
+        ...(!cheap && requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
       },
     },
   };
 
-  const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt, temperature);
+  const model = await getGenModel(prompt.find((item) => item.type === 'systemPrompt').systemPrompt, temperature, cheap);
 
   assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
@@ -105,11 +104,13 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
 }
 
 // A function to get the generative model
-// Modified to accept temperature parameter
-export function getGenModel(systemPrompt, temperature) {
+// Modified to accept temperature parameter and cheap flag
+export function getGenModel(systemPrompt, temperature, cheap = false) {
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
-  const model = 'gemini-1.5-pro-001';
+  const model = cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001';
+
+  console.log(`Using Vertex AI model: ${model}`);
 
   // Instantiate the models
   return vertex_ai.preview.getGenerativeModel({

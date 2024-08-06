@@ -21,6 +21,7 @@ const allowedParameters = [
   '--temperature=',
   '--vision',
   '--imagen=',
+  '--cheap',
   '--help',
 ];
 

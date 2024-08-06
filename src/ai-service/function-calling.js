@@ -72,13 +72,18 @@ export const functionDefs = [
               temperature: {
                 type: 'number',
                 description:
-                  'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for more creative solution, the value should be lower, but stil within [0.0, 2.0] range. The default value is: ' +
+                  'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for a more creative solution, the value should be lower, but stil within [0.0, 2.0] range. The default value is: ' +
                   temperature,
+              },
+              cheap: {
+                type: 'boolean',
+                description:
+                  'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
               },
               prompt: {
                 type: 'string',
                 description:
-                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
+                  'Prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
               },
               contextImageAssets: {
                 type: 'array',
@@ -87,13 +92,13 @@ export const functionDefs = [
                 items: { type: 'string' },
               },
             },
-            required: ['path', 'updateToolName', 'temperature', 'prompt', 'contextImageAssets'],
+            required: ['path', 'updateToolName', 'temperature', 'prompt', 'contextImageAssets', 'cheap'],
           },
         },
         contextPaths: {
           type: 'array',
           description:
-            'An array of absolute paths of files that should be used to provided context. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+            'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
           items: {
             type: 'string',
           },
@@ -280,12 +285,17 @@ Index: filename.js
           enum: ['256x256', '512x512', '1024x1024'],
           description: 'The size of the image to generate.',
         },
+        cheap: {
+          type: 'boolean',
+          description:
+            'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
+        },
         explanation: {
           type: 'string',
           description: 'The explanation of the reasoning behind generating this image',
         },
       },
-      required: ['prompt', 'filePath', 'size'],
+      required: ['prompt', 'filePath', 'size', 'cheap'],
     },
   },
   {

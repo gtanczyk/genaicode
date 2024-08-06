@@ -142,4 +142,20 @@ The GenAIcode tool offers several advanced features to enhance its code generati
   - Generated images should be reviewed for appropriateness and may require manual adjustments.
 - **Integration with Other Features**: The imagen feature can be used in conjunction with the vision capabilities, allowing for a workflow where generated images can be immediately analyzed and incorporated into the code generation process.
 
+## Cheaper Model Option
+
+- **Activation**: `--cheap` flag
+- **Description**: Uses a cheaper, faster AI model for code generation tasks.
+- **Benefits**:
+  - Reduces costs associated with AI model usage.
+  - Provides faster results for simpler tasks or when quick iterations are needed.
+- **Use Cases**:
+  - Generating boilerplate code or simple modifications.
+  - Rapid prototyping or exploratory code generation.
+  - Cost-effective solutions for projects with budget constraints.
+- **Considerations**:
+  - May produce lower quality results compared to more advanced models.
+  - Best suited for less complex tasks or when speed is prioritized over sophistication.
+- **Integration**: Can be combined with other flags to optimize the balance between cost, speed, and quality in the code generation process.
+
 These features collectively make GenAIcode a versatile and powerful tool for AI-assisted code generation, capable of adapting to various project requirements and development workflows. By leveraging these features, developers can fine-tune the code generation process to their specific needs, ensuring high-quality, context-aware, and project-compliant code outputs.

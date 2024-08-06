@@ -25,6 +25,7 @@ export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
 export const imagen = params.find((param) => param.startsWith('--imagen'))?.split('=')[1];
+export const cheap = params.includes('--cheap');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -81,4 +82,8 @@ if (temperature) {
 
 if (imagen) {
   console.log('Image generation functionality enabled');
+}
+
+if (cheap) {
+  console.log('Cheaper AI models will be used for content and image generation');
 }

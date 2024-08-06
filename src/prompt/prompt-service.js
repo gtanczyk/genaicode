@@ -7,7 +7,7 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision } from '../cli/cli-params.js';
+import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, generateImageFn, codegenPrompt = getCodeGenPrompt()) {
@@ -43,7 +43,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
 
   prompt.slice(-1)[0].text = messages.prompt;
 
-  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary', temperature);
+  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary', temperature, cheap);
 
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
@@ -81,6 +81,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
       console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
+      console.log('- Cheap', file.cheap);
       if (vision) {
         console.log('- Context image assets', file.contextImageAssets);
       }
@@ -105,6 +106,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
         functionDefs,
         file.updateToolName,
         file.temperature ?? temperature,
+        file.cheap === true,
       );
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
@@ -117,8 +119,8 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
 
         console.log('Processing image generation request:', generateImageCall.args);
         try {
-          const { prompt: imagePrompt, filePath, size } = generateImageCall.args;
-          const generatedImageUrl = await generateImageFn(imagePrompt, size);
+          const { prompt: imagePrompt, filePath, size, cheap } = generateImageCall.args;
+          const generatedImageUrl = await generateImageFn(imagePrompt, size, cheap === true);
 
           // Add a createFile call to the result to ensure the generated image is tracked
           partialResult.push({
@@ -160,7 +162,13 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
           console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
           // Rerun content generation without patchFile function
-          partialResult = await generateContentFn(prompt, functionDefs, 'updateFile', temperature);
+          partialResult = await generateContentFn(
+            prompt,
+            functionDefs,
+            'updateFile',
+            file.temperature,
+            file.cheap === true,
+          );
 
           let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
           assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
@@ -199,7 +207,9 @@ function prepareMessages(prompt) {
     requestSourceCode: 'Please provide application source code.',
     suggestImageAssets: 'I should also provide you with a summary of application image assets',
     requestImageAssets: 'Please provide summary of application image assets.',
-    prompt: prompt + '\n Start from generating codegen summary, this summary will be used to generate updates.',
+    prompt:
+      prompt +
+      '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
     sourceCode: JSON.stringify(getSourceCode()),
     contextSourceCode: (paths) => JSON.stringify(getSourceCode(paths)),
     imageAssets: JSON.stringify(getImageAssets()),

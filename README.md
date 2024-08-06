@@ -1,13 +1,3 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/logo.png">
-    <img alt="GenAIcode Logo." src="media/logo.png" width="100%" height="auto">
-  </picture>
-</p>
-
-<div align="center">
-
 # Programming on steroids
 
   <a href="https://www.npmjs.com/package/genaicode">
@@ -77,6 +67,7 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--temperature=<value>`: Sets the temperature parameter for the AI model (default: 0.7).
 - `--vision`: Enables vision capabilities for processing image inputs.
 - `--imagen`: Enables image generation capabilities using AI models.
+- `--cheap`: Uses a cheaper, faster model for code generation, which may provide lower quality results but is more cost-effective for simpler tasks.
 - `--help`: Displays the help message with all available options.
 
 ## Configuration (.genaicoderc)

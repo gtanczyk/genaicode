@@ -91,6 +91,10 @@ const cliOptions = [
     description:
       'Enable image generation functionality and specify the service to use (either "vertex-ai" or "dall-e").',
   },
+  {
+    name: '--cheap',
+    description: 'Switch to cheaper models in AI services for content and image generation.',
+  },
 ];
 
 /**

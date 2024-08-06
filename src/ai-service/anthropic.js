@@ -4,7 +4,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 /**
  * This function generates content using the Anthropic Claude model.
  */
-export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature) {
+export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const anthropic = new Anthropic({
     defaultHeaders: {
       'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
@@ -53,8 +53,11 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
       }
     });
 
+  const model = cheap ? 'claude-3-haiku-20240307' : 'claude-3-5-sonnet-20240620';
+  console.log(`Using Anthropic model: ${model}`);
+
   const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
+    model: model,
     system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
     messages,
     tools: functionDefs.map((fd) => ({
@@ -63,7 +66,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
       input_schema: fd.parameters,
     })),
     tool_choice: requiredFunctionName ? { type: 'tool', name: requiredFunctionName } : { type: 'any' },
-    max_tokens: 8192,
+    max_tokens: cheap ? 4096 : 8192,
     temperature: temperature,
   });
 

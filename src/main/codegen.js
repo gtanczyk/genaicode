@@ -11,6 +11,7 @@ import {
   disableInitialLint,
   helpRequested,
   imagen,
+  cheap,
 } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
@@ -94,7 +95,12 @@ export async function runCodegen() {
         const lintErrorPrompt = getLintFixPrompt(rcConfig.lintCommand, error.stdout, error.stderr);
 
         console.log('Generating response for lint fixes');
-        const lintFixFunctionCalls = await promptService(generateContent, generateImage, lintErrorPrompt);
+        const lintFixFunctionCalls = await promptService(
+          (prompt, functionDefs, requiredFunctionName, temperature) =>
+            generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap),
+          generateImage ? (prompt, size) => generateImage(prompt, size, cheap) : undefined,
+          lintErrorPrompt,
+        );
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
 
