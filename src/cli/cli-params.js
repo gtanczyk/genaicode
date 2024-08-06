@@ -11,6 +11,8 @@ export const allowFileCreate = params.includes('--allow-file-create');
 export const allowFileDelete = params.includes('--allow-file-delete');
 export const allowDirectoryCreate = params.includes('--allow-directory-create');
 export const allowFileMove = params.includes('--allow-file-move');
+export let chatGpt = params.includes('--chat-gpt');
+export let anthropic = params.includes('--anthropic');
 export let vertexAi = params.includes('--vertex-ai');
 export let vertexAiClaude = params.includes('--vertex-ai-claude');
 export const dependencyTree = params.includes('--dependency-tree');
@@ -21,6 +23,8 @@ export const taskFile = params.find((param) => param.startsWith('--task-file'))?
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
+export const vision = params.includes('--vision');
+export const imagen = params.includes('--imagen');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -47,17 +51,23 @@ if (considerAllFiles && dependencyTree) {
   throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
-if ([vertexAi, vertexAiClaude].filter(Boolean).length > 1) {
-  throw new Error('--vertex-ai and --vertex-ai-claude are mutually exclusive.');
+if ([chatGpt, anthropic, vertexAi, vertexAiClaude].filter(Boolean).length > 1) {
+  throw new Error('--chat-gpt, --anthropic, --vertex-ai, and --vertex-ai-claude are mutually exclusive.');
 }
 
-if (!vertexAi && !vertexAiClaude && !helpRequested) {
+if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !helpRequested) {
   const detected = serviceAutoDetect();
-  if (detected === 'vertex-ai') {
+  if (detected === 'anthropic') {
+    console.log('Autodetected --anthropic');
+    anthropic = true;
+  } else if (detected === 'chat-gpt') {
+    console.log('Autodetected --chat-gpt');
+    chatGpt = true;
+  } else if (detected === 'vertex-ai') {
     console.log('Autodetected --vertex-ai');
     vertexAi = true;
   } else {
-    throw new Error('Missing --vertex-ai or --vertex-ai-claude');
+    throw new Error('Missing --chat-gpt, --anthropic, --vertex-ai, or --vertex-ai-claude');
   }
 }
 
@@ -67,4 +77,8 @@ if (lintCommand) {
 
 if (temperature) {
   console.log(`Temperature value: ${temperature}`);
+}
+
+if (imagen) {
+  console.log('Image generation functionality enabled');
 }

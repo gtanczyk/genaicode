@@ -25,7 +25,7 @@
 
 ---
 
-The GenAIcode tool is designed to automate code generation tasks using genAI. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
+The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ The GenAIcode tool is designed to automate code generation tasks using genAI. Th
 echo '{"rootDir": "."}' > .genaicoderc
 ```
 
-2. Set up your preferred AI model:
+2. Set up AI service credentials:
 
 ```bash
 # For Vertex AI:
@@ -75,6 +75,8 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
 - `--temperature=<value>`: Sets the temperature parameter for the AI model (default: 0.7).
+- `--vision`: Enables vision capabilities for processing image inputs.
+- `--imagen`: Enables image generation capabilities using AI models.
 - `--help`: Displays the help message with all available options.
 
 ## Configuration (.genaicoderc)
@@ -106,7 +108,7 @@ npx genaicode [options]
 For example:
 
 ```bash
-npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation" --vertex-ai
+npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation"
 ```
 
 ## Examples

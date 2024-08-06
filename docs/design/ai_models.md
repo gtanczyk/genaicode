@@ -12,6 +12,22 @@ The GenAIcode tool supports multiple AI models to provide flexibility and optimi
   - Safety settings can be disabled with `--gemini-block-none` flag (requires whitelisted Cloud project)
 - **Best for**: General-purpose code generation tasks
 
+## OpenAI GPT
+
+- **Activation**: Use `--chat-gpt` flag
+- **Features**:
+  - Versatile performance across various coding tasks
+  - Strong language understanding and generation capabilities
+- **Best for**: Projects requiring diverse coding styles or languages
+
+## Anthropic Claude
+
+- **Activation**: Use `--anthropic` flag
+- **Features**:
+  - Designed to be helpful, harmless, and honest
+  - Strong focus on safety and reliability
+- **Best for**: Code generation tasks requiring high reliability and safety standards
+
 ## Claude via Vertex AI
 
 - **Activation**: Use `--vertex-ai-claude` flag
@@ -22,18 +38,21 @@ The GenAIcode tool supports multiple AI models to provide flexibility and optimi
 
 ## Model Comparison
 
-| Feature         | Vertex AI (Gemini Pro) | Claude via Vertex AI |
-| --------------- | ---------------------- | -------------------- |
-| Default         | Yes                    | No                   |
-| Activation Flag | None needed            | `--vertex-ai-claude` |
-| Specialization  | General-purpose        | Hybrid               |
-| Infrastructure  | Google Cloud           | Google Cloud         |
+| Feature             | Vertex AI (Gemini Pro)     | OpenAI GPT   | Anthropic Claude | Claude via Vertex AI |
+| ------------------- | -------------------------- | ------------ | ---------------- | -------------------- |
+| Default             | Yes                        | No           | No               | No                   |
+| Activation Flag     | None needed                | `--chat-gpt` | `--anthropic`    | `--vertex-ai-claude` |
+| Specialization      | General-purpose            | Versatile    | Safety-focused   | Hybrid               |
+| Infrastructure      | Google Cloud               | OpenAI       | Anthropic        | Google Cloud         |
+| Vision Capabilities | Yes (with `--vision` flag) | Limited      | Limited          | Limited              |
 
 ## Token Usage and Cost Estimation
 
 The tool provides feedback on token usage and estimated cost for each AI model:
 
 - **Vertex AI**: Input and output characters are counted and priced separately.
+- **OpenAI GPT**: Input and output tokens are counted and priced separately.
+- **Anthropic Claude**: Input and output tokens are counted and priced separately.
 - **Claude via Vertex AI**: Input and output tokens are counted and priced based on Vertex AI pricing.
 
 This information is displayed at the end of each code generation process, helping users understand the resource usage and associated costs.
@@ -42,9 +61,10 @@ This information is displayed at the end of each code generation process, helpin
 
 The choice of AI model depends on various factors:
 
-1. **Project Requirements**: Consider the specific needs of your project, such as code complexity or language diversity.
-2. **Infrastructure Compatibility**: If you're already using Google Cloud, choosing a compatible model might be beneficial.
+1. **Project Requirements**: Consider the specific needs of your project, such as code complexity, language diversity, or safety concerns.
+2. **Infrastructure Compatibility**: If you're already using a specific cloud provider, choosing a compatible model might be beneficial.
 3. **Cost Considerations**: Different models have different pricing structures. Consider your budget and expected usage.
 4. **Performance**: Some models might perform better for specific types of code generation tasks.
+5. **Safety and Reliability**: If your project has strict safety requirements, models like Claude might be more suitable.
 
 By offering multiple AI model options, GenAIcode ensures that developers can choose the most appropriate tool for their specific code generation needs, balancing factors like performance, cost, and project requirements.

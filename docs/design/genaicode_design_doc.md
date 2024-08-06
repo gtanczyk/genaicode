@@ -11,7 +11,7 @@ Welcome to the design documentation for the GenAIcode tool. This document provid
 
 ## Quick Start
 
-The GenAIcode tool is designed to automate code generation tasks using various AI models, including Vertex AI (with Google's Gemini Pro model), and Claude via Vertex AI. It enhances developer productivity by assisting with the generation of repetitive or complex code and provides flexibility in choosing the AI service that best suits the project's needs.
+The GenAIcode tool is designed to automate code generation tasks using genAI (for example Gemini Pro model or Claude on VertexAI). It enhances developer productivity by assisting with the generation of repetitive or complex code and provides flexibility in choosing the AI service that best suits the project's needs.
 
 For a comprehensive understanding of the tool's capabilities and how to use it effectively, please explore the linked documents above.
 

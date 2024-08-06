@@ -6,8 +6,10 @@ const allowedParameters = [
   '--allow-file-delete',
   '--allow-directory-create',
   '--allow-file-move',
+  '--chat-gpt',
   '--vertex-ai',
   '--vertex-ai-claude',
+  '--anthropic',
   '--explicit-prompt=',
   '--task-file=',
   '--dependency-tree',
@@ -17,6 +19,8 @@ const allowedParameters = [
   '--gemini-block-none',
   '--disable-initial-lint',
   '--temperature=',
+  '--vision',
+  '--imagen',
   '--help',
 ];
 
@@ -59,6 +63,10 @@ export function validateCliParams() {
       console.error('Invalid temperature value. It must be a number between 0.0 and 2.0.');
       process.exit(1);
     }
+  }
+
+  if (providedParameters.includes('--vision') && providedParameters.includes('--vertex-ai')) {
+    throw new Error('--vision and --vertex-ai are currently not supported together.');
   }
 }
 

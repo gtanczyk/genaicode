@@ -6,7 +6,7 @@ The GenAIcode tool is an advanced code generation assistant designed to enhance 
 
 ## Key Features
 
-1. **Multiple AI Model Support**: Utilizes Vertex AI (with Google's Gemini Pro model), Claude via Vertex AI.
+1. **Multiple AI Model Support**: Utilizes Vertex AI (with Google's Gemini Pro model), OpenAI's GPT model, Anthropic's Claude model, and Claude via Vertex AI.
 2. **Flexible Configuration**: Offers various CLI parameters to customize the tool's behavior according to project needs.
 3. **Intelligent Code Generation**: Identifies code fragments marked with `@CODEGEN` comments and generates appropriate code.
 4. **File Management**: Supports creating, updating, and deleting files within the project structure.
