@@ -12,6 +12,7 @@ import {
   verbosePrompt,
   vision,
   imagen,
+  vertexAiImagen,
 } from '../cli/cli-params.js';
 import { getDependencyList } from '../files/find-files.js';
 import { verifyCodegenPromptLimit } from './limits.js';
@@ -63,7 +64,7 @@ ${
 ${allowDirectoryCreate ? 'You are allowed to create new directories.' : 'Do not create new directories.'}
 ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
 ${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets.'}
-${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
+${imagen || vertexAiImagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
 `;
 
   if (verbosePrompt) {

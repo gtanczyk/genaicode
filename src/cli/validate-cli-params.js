@@ -21,6 +21,7 @@ const allowedParameters = [
   '--temperature=',
   '--vision',
   '--imagen',
+  '--vertex-ai-imagen',
   '--help',
 ];
 
