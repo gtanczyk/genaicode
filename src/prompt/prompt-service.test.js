@@ -413,7 +413,7 @@ describe('promptService', () => {
     vertexAi.generateContent.mockResolvedValueOnce(mockGenerateImageCall);
     dalleService.generateImage.mockResolvedValue('https://example.com/generated-image.png');
 
-    const result = await promptService(vertexAi.generateContent);
+    const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');
@@ -448,7 +448,7 @@ describe('promptService', () => {
     vertexAi.generateContent.mockResolvedValueOnce(mockGenerateImageCall);
     dalleService.generateImage.mockRejectedValue(new Error('Image generation failed'));
 
-    const result = await promptService(vertexAi.generateContent);
+    const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');

@@ -20,8 +20,7 @@ const allowedParameters = [
   '--disable-initial-lint',
   '--temperature=',
   '--vision',
-  '--imagen',
-  '--vertex-ai-imagen',
+  '--imagen=',
   '--help',
 ];
 
@@ -62,6 +61,16 @@ export function validateCliParams() {
     const temperatureValue = parseFloat(temperatureParam.split('=')[1]);
     if (isNaN(temperatureValue) || temperatureValue < 0.0 || temperatureValue > 2.0) {
       console.error('Invalid temperature value. It must be a number between 0.0 and 2.0.');
+      process.exit(1);
+    }
+  }
+
+  // Validate --imagen parameter
+  const imagenParam = providedParameters.find((param) => param.startsWith('--imagen='));
+  if (imagenParam) {
+    const imagenValue = imagenParam.split('=')[1];
+    if (imagenValue !== 'vertex-ai' && imagenValue !== 'dall-e') {
+      console.error('Invalid --imagen value. It must be either "vertex-ai" or "dall-e".');
       process.exit(1);
     }
   }

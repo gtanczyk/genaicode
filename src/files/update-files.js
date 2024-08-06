@@ -13,6 +13,7 @@ import {
   chatGpt,
   vertexAiClaude,
 } from '../cli/cli-params.js';
+import { getTempBuffer } from './temp-buffer.js';
 
 /**
  * @param functionCalls Result of the code generation, a map of file paths to new content
@@ -90,10 +91,15 @@ export async function updateFiles(functionCalls) {
       }
       try {
         assert(args.downloadUrl, 'image url is not empty');
-        const imageResponse = await fetch(args.downloadUrl);
-        const arrayBuffer = await imageResponse.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        fs.writeFileSync(filePath, buffer);
+        if (args.downloadUrl.startsWith('temp://')) {
+          assert(getTempBuffer(args.downloadUrl), 'Temp buffer not present but expected');
+          fs.writeFileSync(filePath, getTempBuffer(args.downloadUrl));
+        } else {
+          const imageResponse = await fetch(args.downloadUrl);
+          const arrayBuffer = await imageResponse.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          fs.writeFileSync(filePath, buffer);
+        }
         console.log(`Image download and saved to: ${filePath}`);
       } catch (error) {
         console.error(`Failed to download image: ${error.message}`);

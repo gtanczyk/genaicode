@@ -10,12 +10,16 @@ import {
   vertexAiClaude,
   disableInitialLint,
   helpRequested,
+  imagen,
 } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
+import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
+import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
+
 import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
 import { rcConfig } from '../files/find-files.js';
@@ -63,8 +67,11 @@ export async function runCodegen() {
           ? generateContentGPT
           : assert(false, 'Please specify which AI service should be used');
 
+  const generateImage =
+    imagen === 'vertex-ai' ? generateImageVertexAi : imagen === 'dall-e' ? generateImageDallE : undefined;
+
   console.log('Generating response');
-  let functionCalls = await promptService(generateContent);
+  let functionCalls = await promptService(generateContent, generateImage);
   console.log('Received function calls:', functionCalls);
 
   if (dryRun) {
@@ -87,7 +94,7 @@ export async function runCodegen() {
         const lintErrorPrompt = getLintFixPrompt(rcConfig.lintCommand, error.stdout, error.stderr);
 
         console.log('Generating response for lint fixes');
-        const lintFixFunctionCalls = await promptService(generateContent, lintErrorPrompt);
+        const lintFixFunctionCalls = await promptService(generateContent, generateImage, lintErrorPrompt);
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
 

@@ -7,12 +7,10 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision, imagen, vertexAiImagen } from '../cli/cli-params.js';
-import { generateImage } from '../ai-service/dall-e.js';
-import { generateImageWithImagen } from '../ai-service/vertex-ai-imagen.js';
+import { disableContextOptimization, temperature, vision } from '../cli/cli-params.js';
 
 /** A function that communicates with model using */
-export async function promptService(generateContentFn, codegenPrompt = getCodeGenPrompt()) {
+export async function promptService(generateContentFn, generateImageFn, codegenPrompt = getCodeGenPrompt()) {
   const messages = prepareMessages(codegenPrompt);
 
   // First stage: generate code generation summary, which should not take a lot of output tokens
@@ -115,21 +113,12 @@ export async function promptService(generateContentFn, codegenPrompt = getCodeGe
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
       if (generateImageCall) {
-        assert(
-          imagen || vertexAiImagen,
-          'Image generation requested, but neither --imagen nor --vertex-ai-imagen option provided',
-        );
+        assert(!!generateImageFn, 'Image generation requested, but a image generation service was not provided');
 
         console.log('Processing image generation request:', generateImageCall.args);
         try {
           const { prompt: imagePrompt, filePath, size } = generateImageCall.args;
-          let generatedImageUrl;
-
-          if (vertexAiImagen) {
-            generatedImageUrl = await generateImageWithImagen(imagePrompt, size);
-          } else {
-            generatedImageUrl = await generateImage(imagePrompt, size);
-          }
+          const generatedImageUrl = await generateImageFn(imagePrompt, size);
 
           // Add a createFile call to the result to ensure the generated image is tracked
           partialResult.push({

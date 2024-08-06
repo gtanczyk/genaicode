@@ -1,4 +1,5 @@
 import { PredictionServiceClient, helpers } from '@google-cloud/aiplatform';
+import { setTempBuffer } from '../files/temp-buffer.js';
 
 /**
  * Generate an image using Vertex AI's Imagen model and return the image URL
@@ -6,18 +7,18 @@ import { PredictionServiceClient, helpers } from '@google-cloud/aiplatform';
  * @param {string} size - The size of the image to generate ('256x256', '512x512', or '1024x1024')
  * @returns {Promise<string>} - The url of the generated image
  */
-export async function generateImageWithImagen(prompt, size = '1024x1024') {
+export async function generateImage(prompt) {
   // Initialize the PredictionServiceClient
   const client = new PredictionServiceClient({
-    apiEndpoint: 'us-central1-aiplatform.googleapis.com',
+    apiEndpoint: `${process.env.GOOGLE_CLOUD_REGION}-aiplatform.googleapis.com`,
   });
 
   // Set the project and location
   const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-  const location = 'us-central1';
+  const location = process.env.GOOGLE_CLOUD_REGION;
 
   // Set the model name
-  const modelName = 'imagegeneration@006';
+  const modelName = 'imagen-3.0-generate-001';
 
   try {
     // Prepare the request
@@ -29,32 +30,14 @@ export async function generateImageWithImagen(prompt, size = '1024x1024') {
           prompt: prompt,
         }),
       ],
-      parameters: [
-        {
-          key: 'personGeneration',
-          value: 'dont_allow',
-        },
-        {
-          key: 'safetySetting',
-          value: 'block_some',
-        },
-        {
-          key: 'includeRaiReason',
-          value: true,
-        },
-        {
-          key: 'language',
-          value: 'auto',
-        },
-        {
-          key: 'aspectRatio',
-          value: '1:1',
-        },
-        {
-          key: 'addWatermark',
-          value: true,
-        },
-      ],
+      parameters: helpers.toValue({
+        personGeneration: 'dont_allow',
+        safetySetting: 'block_some',
+        includeRaiReason: true,
+        language: 'auto',
+        aspectRatio: '1:1',
+        addWatermark: false,
+      }),
     };
 
     // Make the prediction request
@@ -64,16 +47,13 @@ export async function generateImageWithImagen(prompt, size = '1024x1024') {
       const prediction = helpers.fromValue(response.predictions[0]);
       if (prediction.bytesBase64Encoded) {
         console.log(`Image generated successfully`);
-        return `data:image/png;base64,${prediction.bytesBase64Encoded}`;
+        return setTempBuffer(Buffer.from(prediction.bytesBase64Encoded, 'base64'));
       }
     }
 
     throw new Error('No image generated in the response');
   } catch (error) {
-    console.error('Error generating image with Imagen:', error);
+    console.error('Error generating image:', error);
     throw error;
   }
 }
-
-// Example usage:
-await generateImageWithImagen('cat image', '512x512');

@@ -24,8 +24,7 @@ export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
-export const imagen = params.includes('--imagen');
-export const vertexAiImagen = params.includes('--vertex-ai-imagen');
+export const imagen = params.find((param) => param.startsWith('--imagen'))?.split('=')[1];
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -82,8 +81,4 @@ if (temperature) {
 
 if (imagen) {
   console.log('Image generation functionality enabled');
-}
-
-if (vertexAiImagen) {
-  console.log('Vertex AI Imagen image generation functionality enabled');
 }

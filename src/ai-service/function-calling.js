@@ -78,7 +78,7 @@ export const functionDefs = [
               prompt: {
                 type: 'string',
                 description:
-                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes for this particular file.',
+                  'Prompt that will be added to the LLM request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
               },
               contextImageAssets: {
                 type: 'array',
@@ -268,7 +268,8 @@ Index: filename.js
       properties: {
         prompt: {
           type: 'string',
-          description: 'The prompt to generate the image.',
+          description:
+            'The prompt that will be used to generate the image. This prompt must be detailed, it will be used by image generation model.',
         },
         filePath: {
           type: 'string',
