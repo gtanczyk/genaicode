@@ -30,6 +30,7 @@ vi.mock('../cli/cli-params.js', () => ({
   vision: false,
   imagen: false,
   temperature: 0.7,
+  cheap: false,
 }));
 vi.mock('fs');
 vi.mock('diff');
@@ -416,7 +417,7 @@ describe('promptService', () => {
     const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');
+    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256', false);
     expect(result).toEqual(expect.arrayContaining(mockDownloadFileCall));
   });
 
@@ -451,7 +452,7 @@ describe('promptService', () => {
     const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256');
+    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256', false);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

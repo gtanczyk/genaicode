@@ -33,6 +33,7 @@ vi.mock('../cli/cli-params.js', () => ({
   vision: false,
   imagen: false,
   temperature: 0.7,
+  cheap: false,
 }));
 vi.mock('../files/find-files.js', () => ({
   rootDir: '/mocked/root/dir',
@@ -140,7 +141,13 @@ describe('runCodegen', () => {
 
     await runCodegen();
 
-    expect(vertexAi.generateContent).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), 0.5);
+    expect(vertexAi.generateContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      0.5,
+      false,
+    );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -213,7 +220,7 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAi.generateContent).toHaveBeenCalled();
-    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', '512x512');
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', '512x512', false);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -241,7 +248,7 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
-    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', '1024x1024');
+    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', '1024x1024', false);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -249,5 +256,64 @@ describe('runCodegen', () => {
     cliParams.imagen = 'vertex-ai';
 
     await expect(runCodegen()).rejects.toThrow('Please specify which AI service should be used');
+  });
+
+  it('should pass the cheap parameter to the AI service when --cheap flag is true', async () => {
+    cliParams.vertexAi = true;
+    cliParams.cheap = true;
+
+    const mockFunctionCalls = [
+      { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Cheap test");' } },
+    ];
+    vertexAi.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+
+    await runCodegen();
+
+    expect(vertexAi.generateContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true,
+    );
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+  });
+
+  it('should pass the cheap parameter to the image generation service when --cheap flag is true', async () => {
+    cliParams.imagen = 'vertex-ai';
+    cliParams.vertexAi = true;
+    cliParams.cheap = true;
+
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: [],
+          explanation: 'Mock summary with cheap image generation',
+        },
+      },
+    ];
+    const mockFunctionCalls = [
+      {
+        name: 'generateImage',
+        args: { prompt: 'A simple landscape', filePath: 'landscape.png', size: '256x256', cheap: true },
+      },
+    ];
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+    vertexAiImagen.generateImage.mockResolvedValueOnce('mocked-cheap-image-data');
+
+    await runCodegen();
+
+    expect(vertexAi.generateContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true,
+    );
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A simple landscape', '256x256', true);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 });

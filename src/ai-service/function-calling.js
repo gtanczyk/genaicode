@@ -1,4 +1,4 @@
-import { requireExplanations, temperature } from '../cli/cli-params.js';
+import { requireExplanations, temperature, cheap } from '../cli/cli-params.js';
 
 /**
  * Function definitions for function calling feature
@@ -78,7 +78,8 @@ export const functionDefs = [
               cheap: {
                 type: 'boolean',
                 description:
-                  'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
+                  'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt. The default value is: ' +
+                  !!cheap,
               },
               prompt: {
                 type: 'string',
