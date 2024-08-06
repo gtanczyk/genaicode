@@ -12,8 +12,6 @@ The tool accepts various command-line interface (CLI) parameters to control its 
 - `--allow-file-delete`: Allows the tool to delete files.
 - `--allow-directory-create`: Allows the tool to create directories.
 - `--allow-file-move`: Allows the tool to move files within the project structure.
-- `--chat-gpt`: Uses the OpenAI model for code generation.
-- `--anthropic`: Uses Anthropic's Claude model for code generation.
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
 - `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
 - `--explicit-prompt`: Provides an explicit prompt for code generation.

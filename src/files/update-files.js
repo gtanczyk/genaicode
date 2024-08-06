@@ -9,8 +9,6 @@ import {
   allowFileCreate,
   allowFileDelete,
   allowFileMove,
-  anthropic,
-  chatGpt,
   vertexAiClaude,
 } from '../cli/cli-params.js';
 
@@ -67,7 +65,7 @@ export async function updateFiles(functionCalls) {
       }
       fs.writeFileSync(
         filePath,
-        chatGpt || anthropic || vertexAiClaude
+        vertexAiClaude
           ? newContent
           : // Fixing a problem caused by vertex function calling. Possibly not a good fix
             newContent.replace(/\\n/g, '\n').replace(/\\'/g, "'"),

@@ -13,5 +13,5 @@ Implementation plan:
 - update `function-calling.js` with `createDirectory` function definition
 - update `systemprompt.js` with `createDirectory` function definition
 - update `prompt-codegen.js` with mention of `createDirectory` function
-- update anthropic/chat-gpt/vertex-ai code to understand `createDirectory`
+- update vertex-ai code to understand `createDirectory`
 - update `update-files.js` to understand `createDirectory`

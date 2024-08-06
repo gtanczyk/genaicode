@@ -25,7 +25,7 @@
 
 ---
 
-The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
+The GenAIcode tool is designed to automate code generation tasks using genAI. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
 
 ## Quick Start
 
@@ -41,12 +41,6 @@ echo '{"rootDir": "."}' > .genaicoderc
 # For Vertex AI:
 gcloud auth login
 export GOOGLE_CLOUD_PROJECT="..."
-
-# For OpenAI:
-export OPENAI_API_KEY="sk-..."
-
-# For Anthropic Claude:
-export ANTHROPIC_API_KEY="..."
 
 # For Claude via Vertex AI:
 gcloud auth login
@@ -70,8 +64,6 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--allow-file-delete`: Allows the tool to delete files.
 - `--allow-directory-create`: Allows the tool to create directories.
 - `--allow-file-move`: Allows the tool to move files within the project structure.
-- `--chat-gpt`: Uses the OpenAI model for code generation.
-- `--anthropic`: Uses Anthropic's Claude model for code generation.
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
 - `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
 - `--explicit-prompt=<prompt>`: Provides an explicit prompt for code generation.
@@ -83,8 +75,6 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
 - `--temperature=<value>`: Sets the temperature parameter for the AI model (default: 0.7).
-- `--vision`: Enables vision capabilities for processing image inputs.
-- `--imagen`: Enables image generation capabilities using AI models.
 - `--help`: Displays the help message with all available options.
 
 ## Configuration (.genaicoderc)
@@ -116,7 +106,7 @@ npx genaicode [options]
 For example:
 
 ```bash
-npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation"
+npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation" --vertex-ai
 ```
 
 ## Examples

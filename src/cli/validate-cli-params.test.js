@@ -36,13 +36,6 @@ describe('validateCliParams', () => {
     process.argv.push('--temperature=invalid');
     expect(() => validateCliParams()).toThrow();
   });
-
-  it('should throw an error when both vision and vertexAi flags are true', () => {
-    process.argv.push('--vision');
-    process.argv.push('--vertex-ai');
-
-    expect(() => validateCliParams()).toThrow('--vision and --vertex-ai are currently not supported together.');
-  });
 });
 
 describe('getCliParamValue', () => {
