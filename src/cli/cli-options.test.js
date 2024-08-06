@@ -21,5 +21,30 @@ describe('CLI Options', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('should include the --imagen option in the help message', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      printHelpMessage();
+
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--imagen=<service>'));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Enable image generation functionality and specify the service to use (either "vertex-ai" or "dall-e").',
+        ),
+      );
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('cliOptions', () => {
+    it('should include the --imagen option', () => {
+      const imagenOption = cliOptions.find((option) => option.name === '--imagen=<service>');
+      expect(imagenOption).toBeDefined();
+      expect(imagenOption.description).toBe(
+        'Enable image generation functionality and specify the service to use (either "vertex-ai" or "dall-e").',
+      );
+    });
   });
 });

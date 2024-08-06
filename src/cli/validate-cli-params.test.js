@@ -43,6 +43,27 @@ describe('validateCliParams', () => {
 
     expect(() => validateCliParams()).toThrow('--vision and --vertex-ai are currently not supported together.');
   });
+
+  // New tests for --imagen parameter
+  it('should not throw for valid --imagen parameter with vertex-ai', () => {
+    process.argv.push('--imagen=vertex-ai');
+    expect(() => validateCliParams()).not.toThrow();
+  });
+
+  it('should not throw for valid --imagen parameter with dall-e', () => {
+    process.argv.push('--imagen=dall-e');
+    expect(() => validateCliParams()).not.toThrow();
+  });
+
+  it('should throw for invalid --imagen parameter value', () => {
+    process.argv.push('--imagen=invalid-service');
+    expect(() => validateCliParams()).toThrow('Invalid --imagen value. It must be either "vertex-ai" or "dall-e".');
+  });
+
+  it('should throw for --imagen parameter without value', () => {
+    process.argv.push('--imagen=');
+    expect(() => validateCliParams()).toThrow('Invalid --imagen value. It must be either "vertex-ai" or "dall-e".');
+  });
 });
 
 describe('getCliParamValue', () => {
@@ -74,6 +95,11 @@ describe('getCliParamValue', () => {
     process.argv.push('--temperature=0.5');
     expect(getCliParamValue('--temperature')).toBe('0.5');
   });
+
+  it('should return the value for --imagen parameter', () => {
+    process.argv.push('--imagen=vertex-ai');
+    expect(getCliParamValue('--imagen')).toBe('vertex-ai');
+  });
 });
 
 describe('hasCliParam', () => {
@@ -99,5 +125,10 @@ describe('hasCliParam', () => {
   it('should return true for --temperature parameter', () => {
     process.argv.push('--temperature=0.5');
     expect(hasCliParam('--temperature')).toBe(true);
+  });
+
+  it('should return true for --imagen parameter', () => {
+    process.argv.push('--imagen=dall-e');
+    expect(hasCliParam('--imagen')).toBe(true);
   });
 });

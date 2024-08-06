@@ -86,6 +86,11 @@ const cliOptions = [
     description:
       'Enable vision capabilities for processing image inputs. This option allows the tool to analyze and generate code based on image content when used with compatible AI models.',
   },
+  {
+    name: '--imagen=<service>',
+    description:
+      'Enable image generation functionality and specify the service to use (either "vertex-ai" or "dall-e").',
+  },
 ];
 
 /**

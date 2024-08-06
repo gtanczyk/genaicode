@@ -10,6 +10,8 @@ import * as updateFiles from '../files/update-files.js';
 import '../files/find-files.js';
 import * as cliParams from '../cli/cli-params.js';
 import * as cliOptions from '../cli/cli-options.js';
+import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
+import * as dallE from '../ai-service/dall-e.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -44,6 +46,8 @@ vi.mock('../files/find-files.js', () => ({
 vi.mock('../cli/cli-options.js', () => ({
   printHelpMessage: vi.fn(),
 }));
+vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
+vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 
 describe('runCodegen', () => {
   beforeEach(() => {
@@ -55,6 +59,7 @@ describe('runCodegen', () => {
     cliParams.dryRun = false;
     cliParams.helpRequested = false;
     cliParams.vision = false;
+    cliParams.imagen = false;
   });
 
   it('should run codegen with Vertex AI by default', async () => {
@@ -182,5 +187,67 @@ describe('runCodegen', () => {
         }),
       ]),
     );
+  });
+
+  it('should use Vertex AI Imagen when imagen flag is set to vertex-ai', async () => {
+    cliParams.imagen = 'vertex-ai';
+    cliParams.vertexAi = true;
+
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: [],
+          explanation: 'Mock summary with image generation failure',
+        },
+      },
+    ];
+    const mockFunctionCalls = [
+      { name: 'generateImage', args: { prompt: 'A beautiful landscape', filePath: 'landscape.png', size: '512x512' } },
+    ];
+    vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    vertexAi.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+    vertexAiImagen.generateImage.mockResolvedValueOnce('mocked-image-data');
+
+    await runCodegen();
+
+    expect(vertexAi.generateContent).toHaveBeenCalled();
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', '512x512');
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+  });
+
+  it('should use DALL-E when imagen flag is set to dall-e', async () => {
+    cliParams.imagen = 'dall-e';
+    cliParams.chatGpt = true;
+
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          contextPaths: [],
+          explanation: 'Mock summary with image generation failure',
+        },
+      },
+    ];
+    const mockFunctionCalls = [
+      { name: 'generateImage', args: { prompt: 'A futuristic city', filePath: 'city.png', size: '1024x1024' } },
+    ];
+    chatGpt.generateContent.mockResolvedValueOnce(mockCodegenSummary);
+    chatGpt.generateContent.mockResolvedValueOnce(mockFunctionCalls);
+    dallE.generateImage.mockResolvedValueOnce('mocked-image-data');
+
+    await runCodegen();
+
+    expect(chatGpt.generateContent).toHaveBeenCalled();
+    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', '1024x1024');
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+  });
+
+  it('should throw an error when imagen flag is set but no AI service is specified', async () => {
+    cliParams.imagen = 'vertex-ai';
+
+    await expect(runCodegen()).rejects.toThrow('Please specify which AI service should be used');
   });
 });

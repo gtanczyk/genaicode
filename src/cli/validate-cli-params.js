@@ -70,8 +70,7 @@ export function validateCliParams() {
   if (imagenParam) {
     const imagenValue = imagenParam.split('=')[1];
     if (imagenValue !== 'vertex-ai' && imagenValue !== 'dall-e') {
-      console.error('Invalid --imagen value. It must be either "vertex-ai" or "dall-e".');
-      process.exit(1);
+      throw new Error('Invalid --imagen value. It must be either "vertex-ai" or "dall-e".');
     }
   }
 
