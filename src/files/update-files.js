@@ -3,7 +3,8 @@ import path from 'path';
 import assert from 'node:assert';
 import * as diff from 'diff';
 
-import { isAncestorDirectory, getSourceFiles } from './find-files.js';
+import { getSourceFiles } from './find-files.js';
+import { isAncestorDirectory } from './file-utils.js';
 import { rcConfig } from '../main/config.js';
 import {
   allowDirectoryCreate,
