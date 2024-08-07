@@ -95,6 +95,11 @@ const cliOptions = [
     name: '--cheap',
     description: 'Switch to cheaper models in AI services for content and image generation.',
   },
+  {
+    name: '--content-mask=<path>',
+    description:
+      'Apply a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.',
+  },
 ];
 
 /**

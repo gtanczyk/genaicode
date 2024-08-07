@@ -23,7 +23,7 @@ export function getCodeGenPrompt() {
     codeGenFiles = Object.keys(getSourceCode());
   } else {
     codeGenFiles = Object.entries(getSourceCode())
-      .filter(([, content]) => content.match(new RegExp("([^'^`]+)" + CODEGEN_TRIGGER)))
+      .filter(([, { content }]) => content?.match(new RegExp("([^'^`]+)" + CODEGEN_TRIGGER)))
       .map(([path]) => path);
   }
 

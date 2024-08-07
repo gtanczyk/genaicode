@@ -1,5 +1,5 @@
 import fs from 'fs';
-
+import path from 'path';
 import { serviceAutoDetect } from './service-autodetect.js';
 import { rcConfig } from '../files/find-files.js';
 
@@ -19,7 +19,7 @@ export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
 export const disableContextOptimization = params.includes('--disable-context-optimization');
-export const taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
+export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
@@ -38,12 +38,18 @@ export const temperature = parseFloat(
   params.find((param) => param.startsWith('--temperature='))?.split('=')[1] || '0.7',
 ); // Default temperature value: 0.7
 
+// New content mask parameter
+export const contentMask = params.find((param) => param.startsWith('--content-mask='))?.split('=')[1] || null;
+
 if (taskFile) {
   if (explicitPrompt) {
     throw new Error('The --task-file option is exclusive with the --explicit-prompt option');
   }
   if (!fs.existsSync(taskFile)) {
     throw new Error(`The task file ${taskFile} does not exist`);
+  }
+  if (!path.isAbsolute(taskFile)) {
+    taskFile = path.join(process.cwd(), taskFile);
   }
   explicitPrompt = `I want you to perform a coding task. The task is described in the ${taskFile} file. Use those instructions.`;
 }
@@ -86,4 +92,8 @@ if (imagen) {
 
 if (cheap) {
   console.log('Cheaper AI models will be used for content and image generation');
+}
+
+if (contentMask) {
+  console.log(`Content mask: ${contentMask}`);
 }

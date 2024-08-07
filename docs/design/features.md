@@ -158,4 +158,31 @@ The GenAIcode tool offers several advanced features to enhance its code generati
   - Best suited for less complex tasks or when speed is prioritized over sophistication.
 - **Integration**: Can be combined with other flags to optimize the balance between cost, speed, and quality in the code generation process.
 
+## Content Mask
+
+- **Activation**: `--content-mask=<path>` parameter
+- **Description**: Applies a filter to limit the initial source code files included in the AI model request.
+- **Purpose**: To reduce the number of tokens in the initial request, focusing on a specific part of the project.
+- **How it works**:
+  1. The value provided should be a prefix of the path relative to the rootDir specified in `.genaicoderc`.
+  2. Only files within the specified path and its subdirectories will have their content included in the initial request.
+  3. Other files will still be listed but their content will be set to null.
+  4. The AI model can still request the content of excluded files if needed during the code generation process.
+- **Benefits**:
+  - Reduces the initial token count, potentially lowering costs and improving performance.
+  - Allows focusing on specific parts of the project for targeted code generation tasks.
+  - Helps manage large codebases more effectively.
+- **Use Cases**:
+  - Working on a specific feature or component within a large project.
+  - Refactoring a particular section of the codebase.
+  - Generating code for a new module while considering only relevant existing code.
+- **Example Usage**:
+  ```bash
+  npx genaicode --content-mask=src/components --explicit-prompt="Refactor the Button component"
+  ```
+- **Considerations**:
+  - The content mask path must exist within the project structure.
+  - It's important to choose an appropriate mask to ensure all necessary context is included.
+- **Integration**: Can be used in combination with other features like dependency tree analysis for more precise code generation.
+
 These features collectively make GenAIcode a versatile and powerful tool for AI-assisted code generation, capable of adapting to various project requirements and development workflows. By leveraging these features, developers can fine-tune the code generation process to their specific needs, ensuring high-quality, context-aware, and project-compliant code outputs.

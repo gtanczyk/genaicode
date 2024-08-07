@@ -1,3 +1,7 @@
+import fs from 'fs';
+import path from 'path';
+import { rcConfig } from '../files/find-files.js';
+
 // List of allowed CLI parameters
 const allowedParameters = [
   '--dry-run',
@@ -23,6 +27,7 @@ const allowedParameters = [
   '--imagen=',
   '--cheap',
   '--help',
+  '--content-mask=',
 ];
 
 /**
@@ -77,6 +82,18 @@ export function validateCliParams() {
 
   if (providedParameters.includes('--vision') && providedParameters.includes('--vertex-ai')) {
     throw new Error('--vision and --vertex-ai are currently not supported together.');
+  }
+
+  // Validate content mask parameter
+  const contentMaskParam = providedParameters.find((param) => param.startsWith('--content-mask='));
+  if (contentMaskParam) {
+    const contentMaskValue = contentMaskParam.split('=')[1];
+    const fullPath = path.join(rcConfig.rootDir, contentMaskValue);
+    if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
+      throw new Error(
+        `Invalid --content-mask value. The path "${contentMaskValue}" does not exist or is not a directory within the project.`,
+      );
+    }
   }
 }
 

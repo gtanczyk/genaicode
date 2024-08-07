@@ -68,6 +68,7 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--vision`: Enables vision capabilities for processing image inputs.
 - `--imagen`: Enables image generation capabilities using AI models.
 - `--cheap`: Uses a cheaper, faster model for code generation, which may provide lower quality results but is more cost-effective for simpler tasks.
+- `--content-mask=<path>`: Applies a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.
 - `--help`: Displays the help message with all available options.
 
 ## Configuration (.genaicoderc)
