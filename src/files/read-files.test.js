@@ -3,9 +3,10 @@ import fs from 'fs';
 import mime from 'mime-types';
 import sizeOf from 'image-size';
 import { getSourceCode, getImageAssets } from './read-files.js';
-import { getSourceFiles, getImageAssetFiles, rcConfig } from './find-files.js';
+import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import * as cliParams from '../cli/cli-params.js';
+import { rcConfig } from '../main/config.js';
 
 vi.mock('fs');
 vi.mock('mime-types');
@@ -13,12 +14,14 @@ vi.mock('image-size');
 vi.mock('./find-files.js', () => ({
   getImageAssetFiles: vi.fn(),
   getSourceFiles: vi.fn(),
-  rcConfig: { rootDir: '/home/project' },
 }));
 vi.mock('../prompt/limits.js');
 vi.mock('../cli/cli-params.js', () => ({
   taskFile: null,
   contentMask: null,
+}));
+vi.mock('../main/config.js', () => ({
+  rcConfig: { rootDir: '/home/project' },
 }));
 
 describe('read-files', () => {

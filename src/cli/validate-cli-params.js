@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { rcConfig } from '../files/find-files.js';
+import { rcConfig } from '../main/config.js';
 
 // List of allowed CLI parameters
 const allowedParameters = [

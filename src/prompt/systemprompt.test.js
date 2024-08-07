@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getSystemPrompt } from './systemprompt.js';
 import * as cliParams from '../cli/cli-params.js';
 import '../files/find-files.js';
+import '../main/config.js';
 
 vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
@@ -16,9 +17,11 @@ vi.mock('../cli/cli-params.js', () => ({
 }));
 
 vi.mock('../files/find-files.js', () => ({
-  rcConfig: {},
-  rootDir: '/mocked/root/dir',
   getSourceFiles: vi.fn(),
+}));
+
+vi.mock('../main/config.js', () => ({
+  rcConfig: { rootDir: '/mocked/root/dir' },
 }));
 
 describe('getSystemPrompt', () => {

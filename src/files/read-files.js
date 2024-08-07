@@ -3,7 +3,8 @@ import mime from 'mime-types';
 import sizeOf from 'image-size';
 import path from 'path';
 
-import { getSourceFiles, getImageAssetFiles, rcConfig } from './find-files.js';
+import { getSourceFiles, getImageAssetFiles } from './find-files.js';
+import { rcConfig } from '../main/config.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { taskFile, contentMask } from '../cli/cli-params.js';
 

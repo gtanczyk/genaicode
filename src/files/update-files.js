@@ -3,7 +3,8 @@ import path from 'path';
 import assert from 'node:assert';
 import * as diff from 'diff';
 
-import { isAncestorDirectory, getSourceFiles, rootDir } from './find-files.js';
+import { isAncestorDirectory, getSourceFiles } from './find-files.js';
+import { rcConfig } from '../main/config.js';
 import {
   allowDirectoryCreate,
   allowFileCreate,
@@ -24,10 +25,10 @@ export async function updateFiles(functionCalls) {
 
     // Check if filePath is absolute, if not use rootDir as baseline
     if (name !== 'moveFile') {
-      filePath = path.isAbsolute(filePath) ? filePath : path.join(rootDir, filePath);
+      filePath = path.isAbsolute(filePath) ? filePath : path.join(rcConfig.rootDir, filePath);
     } else {
-      source = path.isAbsolute(source) ? source : path.join(rootDir, source);
-      destination = path.isAbsolute(destination) ? destination : path.join(rootDir, destination);
+      source = path.isAbsolute(source) ? source : path.join(rcConfig.rootDir, source);
+      destination = path.isAbsolute(destination) ? destination : path.join(rcConfig.rootDir, destination);
     }
 
     // ignore files which are not located inside project directory (sourceFiles)
@@ -113,7 +114,7 @@ function isProjectPath(filePath) {
   const sourceFiles = getSourceFiles();
 
   return (
-    isAncestorDirectory(rootDir, filePath) ||
+    isAncestorDirectory(rcConfig.rootDir, filePath) ||
     sourceFiles.includes(filePath) ||
     !sourceFiles.some(
       (sourceFile) =>

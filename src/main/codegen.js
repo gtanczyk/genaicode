@@ -23,7 +23,7 @@ import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-
 
 import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
-import { rcConfig } from '../files/find-files.js';
+import { rcConfig } from '../main/config.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
 import { printHelpMessage } from '../cli/cli-options.js';
 

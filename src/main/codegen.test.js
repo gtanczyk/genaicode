@@ -12,6 +12,7 @@ import * as cliParams from '../cli/cli-params.js';
 import * as cliOptions from '../cli/cli-options.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import * as dallE from '../ai-service/dall-e.js';
+import './config.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -35,13 +36,9 @@ vi.mock('../cli/cli-params.js', () => ({
   temperature: 0.7,
   cheap: false,
   taskFile: undefined,
+  disableInitialLint: undefined,
 }));
 vi.mock('../files/find-files.js', () => ({
-  rootDir: '/mocked/root/dir',
-  rcConfig: {
-    rootDir: '.',
-    extensions: ['.js', '.ts', '.tsx', '.jsx'],
-  },
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
 }));
@@ -50,6 +47,13 @@ vi.mock('../cli/cli-options.js', () => ({
 }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
+vi.mock('./config.js', () => ({
+  rootDir: '/mocked/root/dir',
+  rcConfig: {
+    rootDir: '.',
+    extensions: ['.js', '.ts', '.tsx', '.jsx'],
+  },
+}));
 
 describe('runCodegen', () => {
   beforeEach(() => {

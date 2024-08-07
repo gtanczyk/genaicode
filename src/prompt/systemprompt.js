@@ -1,7 +1,7 @@
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
 import { verbosePrompt } from '../cli/cli-params.js';
 import { verifySystemPromptLimit } from './limits.js';
-import { rootDir } from '../files/find-files.js';
+import { rcConfig } from '../main/config.js';
 
 /** Generates a system prompt */
 export function getSystemPrompt() {
@@ -16,7 +16,7 @@ export function getSystemPrompt() {
 
   You should parse my application source code and then suggest changes using appropriate tools.
 
-  The root directory of my application is \`${rootDir}\` and you should limit the changes only to this path.
+  The root directory of my application is \`${rcConfig.rootDir}\` and you should limit the changes only to this path.
 
   When suggesting changes always use absolute file paths.
   `;

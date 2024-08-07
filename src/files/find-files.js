@@ -1,65 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import assert from 'node:assert';
-
-// This file contains project codegen configuration
-const CODEGENRC_FILENAME = '.genaicoderc';
-
-const cwd = process.cwd();
+import { rcConfig, sourceExtensions, IMAGE_ASSET_EXTENSIONS, ignorePaths } from '../main/config.js';
 
 // List of possible extensions for dependency resolution
 const POSSIBLE_DEPENDENCY_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx'];
-
-// Find .genaicoderc file
-let rcFilePath = cwd;
-while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
-  const parentDir = path.dirname(rcFilePath);
-  if (parentDir === rcFilePath) {
-    throw new Error(`${CODEGENRC_FILENAME} not found in any parent directory`);
-  }
-  rcFilePath = parentDir;
-}
-rcFilePath = path.join(rcFilePath, CODEGENRC_FILENAME);
-
-assert(fs.existsSync(rcFilePath), `${CODEGENRC_FILENAME} not found`);
-
-// Read rootDir and extensions from .genaicoderc
-export const rcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
-export const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
-
-assert(rootDir, 'Root dir not configured');
-assert(isAncestorDirectory(path.dirname(rcFilePath), rootDir), 'Root dir is not located inside project directory');
-
-console.log('Detected codegen configuration', rcConfig);
-console.log('Root dir:', rootDir);
-
-// Default extensions if not specified in .genaicoderc
-const DEFAULT_EXTENSIONS = [
-  '.md',
-  '.js',
-  '.ts',
-  '.tsx',
-  '.css',
-  '.scss',
-  '.py',
-  '.go',
-  '.c',
-  '.h',
-  '.cpp',
-  '.txt',
-  '.html',
-  '.txt',
-  '.json',
-];
-
-// Use extensions from .genaicoderc if available, otherwise use default
-const sourceExtensions = rcConfig.extensions || DEFAULT_EXTENSIONS;
-
-// Image extensions (driven by ai service limitations)
-const IMAGE_ASSET_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-
-// A list of paths that are ignored by default
-const DEFAULT_IGNORE_PATHS = ['node_modules', 'build', 'dist', 'package-lock.json', 'coverage'];
 
 function findFiles(dir, recursive, extensions) {
   const files = [];
@@ -67,7 +11,7 @@ function findFiles(dir, recursive, extensions) {
   for (const item of items) {
     const fullPath = path.join(dir, item);
 
-    if ((rcConfig.ignorePaths ?? DEFAULT_IGNORE_PATHS).some((ignorePath) => fullPath.endsWith(ignorePath))) {
+    if (ignorePaths.some((ignorePath) => fullPath.endsWith(ignorePath))) {
       continue;
     }
 
@@ -127,14 +71,14 @@ export function getDependencyList(entryFile) {
   return Array.from(result);
 }
 
-const sourceFiles = findFiles(rootDir, true, sourceExtensions);
+const sourceFiles = findFiles(rcConfig.rootDir, true, sourceExtensions);
 
 /** Get source files of the application */
 export function getSourceFiles() {
   return [...sourceFiles];
 }
 
-const imageAssetFiles = findFiles(rootDir, true, IMAGE_ASSET_EXTENSIONS);
+const imageAssetFiles = findFiles(rcConfig.rootDir, true, IMAGE_ASSET_EXTENSIONS);
 
 /** Get source files of the application */
 export function getImageAssetFiles() {

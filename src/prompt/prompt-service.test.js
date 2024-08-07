@@ -39,11 +39,6 @@ vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
-  rootDir: '/mocked/root/dir',
-  rcConfig: {
-    rootDir: '.',
-    extensions: ['.js', '.ts', '.tsx', '.jsx'],
-  },
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
 }));
@@ -52,6 +47,14 @@ vi.mock('../files/find-files.js', () => ({
 vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
   getImageAssets: vi.fn(() => ({})),
+}));
+
+vi.mock('../main/config.js', () => ({
+  rootDir: '/mocked/root/dir',
+  rcConfig: {
+    rootDir: '.',
+    extensions: ['.js', '.ts', '.tsx', '.jsx'],
+  },
 }));
 
 describe('promptService', () => {
