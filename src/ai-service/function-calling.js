@@ -66,6 +66,9 @@ export const functionDefs = [
                   'moveFile',
                   'generateImage',
                   'downloadFile',
+                  'splitImage',
+                  'resizeImage',
+                  'imglyRemoveBackground',
                 ],
                 description: 'A name of the tool that will be used to perform the update.',
               },
@@ -281,9 +284,24 @@ Index: filename.js
           type: 'string',
           description: 'The file path to save the generated image.',
         },
-        size: {
+        contextImagePath: {
           type: 'string',
-          enum: ['256x256', '512x512', '1024x1024'],
+          description:
+            'Path to a image file that will be used as a context for image generation. It is useful if there is a need to edit an image with genAI.',
+        },
+        size: {
+          type: 'object',
+          properties: {
+            width: {
+              type: 'number',
+              description: 'width of the image',
+            },
+            height: {
+              type: 'number',
+              description: 'height of the image',
+            },
+          },
+          required: ['width', 'height'],
           description: 'The size of the image to generate.',
         },
         cheap: {
@@ -319,6 +337,103 @@ Index: filename.js
         },
       },
       required: ['filePath', 'downloadUrl'],
+    },
+  },
+  {
+    name: 'imglyRemoveBackground',
+    description: 'Removes background from an image using @imgly/background-removal-node',
+    parameters: {
+      type: 'object',
+      properties: {
+        inputFilePath: {
+          type: 'string',
+          description: 'The file path of the input image.',
+        },
+        outputFilePath: {
+          type: 'string',
+          description: 'The file path to save the output image with removed background.',
+        },
+        explanation: {
+          type: 'string',
+          description: 'The explanation of the reasoning behind removing the background from this image',
+        },
+      },
+      required: ['inputFilePath', 'outputFilePath'],
+    },
+  },
+  {
+    name: 'resizeImage',
+    description: 'Resize image to the desired size',
+    parameters: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description: 'The file path of the image.',
+        },
+        size: {
+          type: 'object',
+          properties: {
+            width: {
+              type: 'number',
+              description: 'width of the image',
+            },
+            height: {
+              type: 'number',
+              description: 'height of the image',
+            },
+          },
+          required: ['width', 'height'],
+          description: 'The size of the image to generate.',
+        },
+        explanation: {
+          type: 'string',
+          description: 'The explanation of the reasoning behind removing the background from this image',
+        },
+      },
+      required: ['filePath', 'size'],
+    },
+  },
+  {
+    name: 'splitImage',
+    description: 'Split an image into multiple parts and save them as separate files.',
+    parameters: {
+      type: 'object',
+      properties: {
+        inputFilePath: {
+          type: 'string',
+          description: 'The file path of the input image to be split.',
+        },
+        parts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              rect: {
+                type: 'object',
+                properties: {
+                  x: { type: 'number', description: 'The x-coordinate of the top-left corner of the rectangle.' },
+                  y: { type: 'number', description: 'The y-coordinate of the top-left corner of the rectangle.' },
+                  width: { type: 'number', description: 'The width of the rectangle.' },
+                  height: { type: 'number', description: 'The height of the rectangle.' },
+                },
+                required: ['x', 'y', 'width', 'height'],
+              },
+              outputFilePath: {
+                type: 'string',
+                description: 'The file path to save the extracted part of the image.',
+              },
+            },
+            required: ['rect', 'outputFilePath'],
+          },
+          description: 'An array of parts to extract from the image, each with a rectangle and output file path.',
+        },
+        explanation: {
+          type: 'string',
+          description: 'The explanation of the reasoning behind splitting this image',
+        },
+      },
+      required: ['inputFilePath', 'parts'],
     },
   },
 ].map((fd) => {

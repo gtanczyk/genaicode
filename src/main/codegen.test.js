@@ -225,7 +225,7 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAi.generateContent).toHaveBeenCalled();
-    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', '512x512', false);
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', undefined, '512x512', false);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -253,7 +253,7 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
-    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', '1024x1024', false);
+    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', undefined, '1024x1024', false);
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -302,7 +302,12 @@ describe('runCodegen', () => {
     const mockFunctionCalls = [
       {
         name: 'generateImage',
-        args: { prompt: 'A simple landscape', filePath: 'landscape.png', size: '256x256', cheap: true },
+        args: {
+          prompt: 'A simple landscape',
+          filePath: 'landscape.png',
+          size: { width: 256, height: 256 },
+          cheap: true,
+        },
       },
     ];
     vertexAi.generateContent.mockResolvedValueOnce(mockCodegenSummary);
@@ -318,7 +323,12 @@ describe('runCodegen', () => {
       expect.anything(),
       true,
     );
-    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A simple landscape', '256x256', true);
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith(
+      'A simple landscape',
+      undefined,
+      { width: 256, height: 256 },
+      true,
+    );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 });

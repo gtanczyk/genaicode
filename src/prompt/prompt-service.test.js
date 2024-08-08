@@ -398,7 +398,7 @@ describe('promptService', () => {
         args: {
           prompt: 'A test image',
           filePath: '/path/to/generated/image.png',
-          size: '256x256',
+          size: { width: 256, height: 256 },
         },
       },
     ];
@@ -420,7 +420,12 @@ describe('promptService', () => {
     const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256', false);
+    expect(dalleService.generateImage).toHaveBeenCalledWith(
+      'A test image',
+      undefined,
+      { width: 256, height: 256 },
+      false,
+    );
     expect(result).toEqual(expect.arrayContaining(mockDownloadFileCall));
   });
 
@@ -443,7 +448,7 @@ describe('promptService', () => {
         args: {
           prompt: 'A test image',
           filePath: '/path/to/generated/image.png',
-          size: '256x256',
+          size: { width: 256, height: 256 },
         },
       },
     ];
@@ -455,7 +460,12 @@ describe('promptService', () => {
     const result = await promptService(vertexAi.generateContent, dalleService.generateImage);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(dalleService.generateImage).toHaveBeenCalledWith('A test image', '256x256', false);
+    expect(dalleService.generateImage).toHaveBeenCalledWith(
+      'A test image',
+      undefined,
+      { width: 256, height: 256 },
+      false,
+    );
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

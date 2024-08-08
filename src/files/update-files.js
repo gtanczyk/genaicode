@@ -16,29 +16,60 @@ import {
   vertexAiClaude,
 } from '../cli/cli-params.js';
 import { getTempBuffer } from './temp-buffer.js';
+import { imglyRemoveBackground } from '../images/imgly-remove-background.js';
+import { splitImage } from '../images/split-image.js';
+import { resizeImageFile } from '../images/resize-image.js';
 
 /**
  * @param functionCalls Result of the code generation, a map of file paths to new content
  */
 export async function updateFiles(functionCalls) {
   for (const { name, args } of functionCalls) {
-    let { filePath, newContent, source, destination, patch } = args;
+    let {
+      filePath,
+      newContent,
+      source,
+      destination,
+      patch,
+      inputFilePath,
+      outputFilePath,
+      backgroundColor,
+      parts,
+      size,
+    } = args;
 
     // Check if filePath is absolute, if not use rootDir as baseline
-    if (name !== 'moveFile') {
+    if (name !== 'moveFile' && name !== 'imglyRemoveBackground' && name !== 'splitImage') {
       filePath = path.isAbsolute(filePath) ? filePath : path.join(rcConfig.rootDir, filePath);
-    } else {
+    } else if (name === 'moveFile') {
       source = path.isAbsolute(source) ? source : path.join(rcConfig.rootDir, source);
       destination = path.isAbsolute(destination) ? destination : path.join(rcConfig.rootDir, destination);
+    } else if (name === 'imglyRemoveBackground' || name === 'splitImage') {
+      inputFilePath = path.isAbsolute(inputFilePath) ? inputFilePath : path.join(rcConfig.rootDir, inputFilePath);
+      if (name === 'imglyRemoveBackground') {
+        outputFilePath = path.isAbsolute(outputFilePath) ? outputFilePath : path.join(rcConfig.rootDir, outputFilePath);
+      } else if (name === 'splitImage') {
+        parts.forEach(
+          (part) =>
+            (part.outputFilePath = path.isAbsolute(part.outputFilePath)
+              ? part.outputFilePath
+              : path.join(rcConfig.rootDir, part.outputFilePath)),
+        );
+      }
     }
 
     // ignore files which are not located inside project directory (sourceFiles)
     if (
-      (name !== 'moveFile' && !isProjectPath(filePath)) ||
-      (name === 'moveFile' && (!isProjectPath(source) || !isProjectPath(destination)))
+      (name !== 'moveFile' && name !== 'imglyRemoveBackground' && name !== 'splitImage' && !isProjectPath(filePath)) ||
+      (name === 'moveFile' && (!isProjectPath(source) || !isProjectPath(destination))) ||
+      (name === 'imglyRemoveBackground' && (!isProjectPath(inputFilePath) || !isProjectPath(outputFilePath))) ||
+      (name === 'splitImage' &&
+        (!isProjectPath(inputFilePath) || parts.some((part) => !isProjectPath(part.outputFilePath))))
     ) {
-      console.log(`Skipping file: ${filePath || source}`);
-      throw new Error(`File ${filePath || source} is not located inside project directory, something is wrong?`);
+      console.log(`Skipping file: ${filePath || source || inputFilePath}`);
+      throw new Error(
+        `File ${filePath || source || inputFilePath} is not located inside project directory, something is wrong?`,
+      );
     }
 
     if (name === 'deleteFile') {
@@ -105,6 +136,54 @@ export async function updateFiles(functionCalls) {
         console.log(`Image download and saved to: ${filePath}`);
       } catch (error) {
         console.error(`Failed to download image: ${error.message}`);
+        throw error;
+      }
+    } else if (name === 'imglyRemoveBackground') {
+      console.log(`Removing background from image: ${inputFilePath}`);
+      assert(fs.existsSync(inputFilePath), 'Input file does not exist');
+      assert(
+        allowFileCreate || fs.existsSync(outputFilePath),
+        'File create option was not enabled and output file does not exist',
+      );
+      if (allowDirectoryCreate) {
+        fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
+      }
+      try {
+        await imglyRemoveBackground(inputFilePath, outputFilePath, backgroundColor);
+        console.log(`Background removed and image saved to: ${outputFilePath}`);
+      } catch (error) {
+        console.error(`Failed to remove background: ${error.message}`);
+        throw error;
+      }
+    } else if (name === 'splitImage') {
+      console.log(`Splitting image: ${inputFilePath}`, parts);
+      assert(fs.existsSync(inputFilePath), 'Input file does not exist');
+      assert(Array.isArray(parts) && parts.length > 0, 'Parts array must not be empty');
+      for (const part of parts) {
+        assert(
+          allowFileCreate || fs.existsSync(part.outputFilePath),
+          'File create option was not enabled and output file does not exist',
+        );
+        if (allowDirectoryCreate) {
+          fs.mkdirSync(path.dirname(part.outputFilePath), { recursive: true });
+        }
+      }
+      try {
+        await splitImage(inputFilePath, parts);
+        console.log(`Image split successfully`);
+      } catch (error) {
+        console.error(`Failed to split image: ${error.message}`);
+        throw error;
+      }
+    } else if (name === 'resizeImage') {
+      console.log(`Resizing image: ${filePath}`, size);
+      assert(fs.existsSync(filePath), 'Input file does not exist');
+
+      try {
+        await resizeImageFile(filePath, size);
+        console.log(`Image resized successfully`);
+      } catch (error) {
+        console.error(`Failed to resize image: ${error.message}`);
         throw error;
       }
     }

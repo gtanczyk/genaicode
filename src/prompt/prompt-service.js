@@ -119,8 +119,8 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
 
         console.log('Processing image generation request:', generateImageCall.args);
         try {
-          const { prompt: imagePrompt, filePath, size, cheap } = generateImageCall.args;
-          const generatedImageUrl = await generateImageFn(imagePrompt, size, cheap === true);
+          const { prompt: imagePrompt, filePath, contextImagePath, size, cheap } = generateImageCall.args;
+          const generatedImageUrl = await generateImageFn(imagePrompt, contextImagePath, size, cheap === true);
 
           // Add a createFile call to the result to ensure the generated image is tracked
           partialResult.push({
