@@ -68,3 +68,16 @@ npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcan
 - result: window.alert is replaced with nice html based image
 
   <img src="./arcanoid_game/arcanoid_second_iteration.gif" width="250" alt="second iteration" />
+
+## [Image Operations](./image-operations/)
+
+An example that demonstrates the image generation/editing capabilities.
+
+Commands:
+
+```bash
+npx genaicode --allow-file-create --task-file="1_triangle.md" --imagen=vertex-ai
+npx genaicode --allow-file-create --task-file="2_remove_background.md"
+npx genaicode --allow-file-create --task-file="3_genai_edit_image.md" --imagen=dall-e
+npx genaicode --allow-file-create --task-file="4_split_image.md" --vision
+```

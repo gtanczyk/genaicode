@@ -37,10 +37,14 @@ export async function generateImage(prompt, contextImagePath, size, cheap = fals
       instances: [
         helpers.toValue({
           prompt: prompt,
-          image: {
-            bytesBase64Encoded: fs.readFileSync(contextImagePath, 'base64'),
-            mediaType: mime.lookup(contextImagePath),
-          },
+          ...(contextImagePath
+            ? {
+                image: {
+                  bytesBase64Encoded: fs.readFileSync(contextImagePath, 'base64'),
+                  mediaType: mime.lookup(contextImagePath),
+                },
+              }
+            : {}),
         }),
       ],
       parameters: helpers.toValue({
