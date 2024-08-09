@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 import { functionDefs } from './function-calling.js';
 
+// Mock cli-params.js
+vi.mock('../cli/cli-params.js', () => ({
+  chatGpt: true,
+  anthropic: false,
+  vertexAi: false,
+  vertexAiClaude: false,
+  temperature: 0.7,
+  cheap: false,
+  geminiBlockNone: false,
+  requireExplanations: false,
+}));
+
 describe('printTokenUsageAndCost', () => {
   let consoleLogSpy;
 
