@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { functionDefs } from './function-calling.js';
+import { functionDefs } from '../prompt/function-calling.js';
 
 /**
  * Common function to print token usage and estimated cost

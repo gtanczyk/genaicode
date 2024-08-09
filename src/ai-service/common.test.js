@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import { functionDefs } from './function-calling.js';
+import { functionDefs } from '../prompt/function-calling.js';
 
 // Mock cli-params.js
 vi.mock('../cli/cli-params.js', () => ({

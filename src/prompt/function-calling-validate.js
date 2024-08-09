@@ -1,5 +1,5 @@
 import { Validator } from 'jsonschema';
-import { functionDefs } from '../ai-service/function-calling.js';
+import { functionDefs } from './function-calling.js';
 
 export function validateFunctionCall(call) {
   const validator = new Validator();

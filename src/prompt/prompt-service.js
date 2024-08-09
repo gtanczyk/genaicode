@@ -5,7 +5,7 @@ import mime from 'mime-types';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { functionDefs } from '../ai-service/function-calling.js';
+import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
 import { validateFunctionCall } from './function-calling-validate.js';
