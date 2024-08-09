@@ -497,4 +497,105 @@ describe('promptService', () => {
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(result).toEqual(mockUnexpectedResponse);
   });
+
+  describe('validateAndRecoverSingleResult', () => {
+    it('should successfully recover from an invalid function call', async () => {
+      cliParams.vertexAi = true;
+      const mockInvalidCall = [
+        {
+          name: 'codegenSummary',
+          args: {
+            files: [{ path: 'test.js', updateToolName: 'patchFile' }],
+            contextPaths: [],
+            explanation: 'Mock summary',
+          },
+        },
+      ];
+      const mockValidCall = [
+        {
+          name: 'codegenSummary',
+          args: {
+            fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile' }],
+            contextPaths: [],
+            explanation: 'Mock summary',
+          },
+        },
+      ];
+
+      vertexAi.generateContent
+        .mockResolvedValueOnce(mockInvalidCall)
+        .mockResolvedValueOnce(mockValidCall)
+        .mockResolvedValueOnce([
+          {
+            name: 'updateFile',
+            args: {
+              filePath: 'test.js',
+              newContent: 'console.log("Unexpected response");',
+            },
+          },
+        ]);
+
+      const result = await promptService(vertexAi.generateContent);
+
+      expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
+      expect(result).toEqual([
+        {
+          args: {
+            filePath: 'test.js',
+            newContent: 'console.log("Unexpected response");',
+          },
+          name: 'updateFile',
+        },
+      ]);
+    });
+
+    it('should handle unsuccessful recovery', async () => {
+      cliParams.vertexAi = true;
+      const mockInvalidCall = [
+        {
+          name: 'updateFile',
+          args: { filePath: 'test.js', invalidArg: 'This should not be here' },
+        },
+      ];
+
+      vertexAi.generateContent
+        .mockResolvedValueOnce([
+          {
+            name: 'codegenSummary',
+            args: {
+              fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile' }],
+              contextPaths: [],
+              explanation: 'Mock summary',
+            },
+          },
+        ])
+        .mockResolvedValueOnce(mockInvalidCall)
+        .mockResolvedValueOnce(mockInvalidCall); // Second call also returns invalid result
+
+      await expect(promptService(vertexAi.generateContent)).rejects.toThrow('Recovery failed');
+
+      expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
+    });
+
+    it('should not attempt recovery for multiple valid function calls', async () => {
+      cliParams.vertexAi = true;
+      const mockValidCalls = [
+        {
+          name: 'updateFile',
+          args: { filePath: 'test1.js', newContent: 'console.log("File 1");' },
+        },
+        {
+          name: 'updateFile',
+          args: { filePath: 'test2.js', newContent: 'console.log("File 2");' },
+        },
+      ];
+
+      vertexAi.generateContent.mockResolvedValueOnce(mockValidCalls);
+
+      const result = await promptService(vertexAi.generateContent);
+
+      expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(mockValidCalls);
+    });
+  });
 });
