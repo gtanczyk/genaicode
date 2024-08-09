@@ -124,7 +124,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'patchFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile' }],
           contextPaths: [],
           explanation: 'Mock summary',
         },
@@ -213,7 +213,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [
+          fileUpdates: [
             {
               path: 'test.js',
               updateToolName: 'updateFile',
@@ -296,7 +296,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: ['context1.js', 'context2.js'],
           explanation: 'Mock summary with context',
         },
@@ -341,7 +341,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: ['context1.js', 'context2.js'],
           explanation: 'Mock summary without context optimization',
         },
@@ -386,7 +386,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation',
         },
@@ -436,7 +436,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },

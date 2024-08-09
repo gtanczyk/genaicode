@@ -8,6 +8,7 @@ import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from '../ai-service/function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
+import { validateFunctionCall } from './function-calling-validate.js';
 
 /** A function that communicates with model using */
 export async function promptService(generateContentFn, generateImageFn, codegenPrompt = getCodeGenPrompt()) {
@@ -43,16 +44,20 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
 
   prompt.slice(-1)[0].text = messages.prompt;
 
-  let baseResult = await generateContentFn(prompt, functionDefs, 'codegenSummary', temperature, cheap);
+  let baseRequest = [prompt, functionDefs, 'codegenSummary', temperature, cheap];
+  let baseResult = await generateContentFn(...baseRequest);
 
-  const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
+  let codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
   if (codegenSummaryRequest) {
     // Second stage: for each file request the actual code updates
     console.log('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
 
+    baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, messages, generateContentFn);
+    codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
+
     // Sometimes the result happens to be a string
-    assert(Array.isArray(codegenSummaryRequest.args.files), 'files is not an array');
+    assert(Array.isArray(codegenSummaryRequest.args.fileUpdates), 'fileUpdates is not an array');
     assert(Array.isArray(codegenSummaryRequest.args.contextPaths), 'contextPaths is not an array');
 
     if (codegenSummaryRequest.args.contextPaths.length > 0 && !disableContextOptimization) {
@@ -60,7 +65,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
       getSourceCodeRequest.args = {
         filePaths: [
-          ...codegenSummaryRequest.args.files.map((file) => file.path),
+          ...codegenSummaryRequest.args.fileUpdates.map((file) => file.path),
           ...codegenSummaryRequest.args.contextPaths,
         ],
       };
@@ -77,7 +82,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
 
     const result = [];
 
-    for (const file of codegenSummaryRequest.args.files) {
+    for (const file of codegenSummaryRequest.args.fileUpdates) {
       console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
@@ -93,7 +98,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
         prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.path) });
       }
 
-      if (vision) {
+      if (vision && file.contextImageAssets) {
         prompt.slice(-1)[0].images = file.contextImageAssets.map((path) => ({
           path,
           base64url: fs.readFileSync(path, 'base64'),
@@ -101,13 +106,14 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
         }));
       }
 
-      let partialResult = await generateContentFn(
+      let partialRequest = [
         prompt,
         functionDefs,
         file.updateToolName,
         file.temperature ?? temperature,
         file.cheap === true,
-      );
+      ];
+      let partialResult = await generateContentFn(...partialRequest);
 
       let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
       assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
@@ -141,6 +147,13 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
             },
           });
         }
+      } else {
+        partialResult = await validateAndRecoverSingleResult(
+          partialRequest,
+          partialResult,
+          messages,
+          generateContentFn,
+        );
       }
 
       // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
@@ -162,12 +175,14 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
           console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
           // Rerun content generation without patchFile function
-          partialResult = await generateContentFn(
-            prompt,
-            functionDefs,
-            'updateFile',
-            file.temperature,
-            file.cheap === true,
+          partialRequest = [prompt, functionDefs, 'updateFile', file.temperature ?? temperature, file.cheap === true];
+          partialResult = await generateContentFn(...partialRequest);
+
+          partialResult = await validateAndRecoverSingleResult(
+            partialRequest,
+            partialResult,
+            messages,
+            generateContentFn,
           );
 
           let getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
@@ -198,6 +213,56 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
   }
 }
 
+async function validateAndRecoverSingleResult(
+  [prompt, functionDefs, requiredFunctionName, temperature, cheap],
+  result,
+  messages,
+  generateContentFn,
+) {
+  if (result.length !== 1) {
+    return result;
+  }
+
+  const call = result[0];
+  const validatorError = validateFunctionCall(call);
+  if (validatorError) {
+    console.log('Invalid function call', call, validatorError);
+
+    prompt.push(
+      { type: 'assistant', functionCalls: [call] },
+      {
+        type: 'user',
+        text: messages.invalidFunctionCall,
+        functionResponses: [
+          {
+            name: call.name,
+            call_id: call.id,
+            content: JSON.stringify({ args: call.args, error: validatorError }),
+            isError: true,
+          },
+        ],
+      },
+    );
+
+    console.log('Trying to recover...');
+    if (cheap) {
+      console.log('Disabling --cheap for recovery.');
+    }
+    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false);
+    console.log('Recover result:', result);
+
+    if (result.length === 1) {
+      const recoveryError = validateFunctionCall(result[0]);
+      assert(!recoveryError, 'Recovery failed');
+      console.log('Recovery was sucessful');
+    } else {
+      console.log('Unexpected number of function calls', result);
+    }
+  }
+
+  return result;
+}
+
 /**
  * Function to prepare messages for AI services
  */
@@ -216,5 +281,7 @@ function prepareMessages(prompt) {
     partialPromptTemplate(path) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;
     },
+    invalidFunctionCall:
+      'Function call was invalid, please analyze the error and respond with corrected function call.',
   };
 }

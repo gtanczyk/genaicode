@@ -209,7 +209,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -237,7 +237,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -293,7 +293,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
           contextPaths: [],
           explanation: 'Mock summary with cheap image generation',
         },

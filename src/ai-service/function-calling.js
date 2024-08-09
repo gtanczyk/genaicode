@@ -1,4 +1,4 @@
-import { requireExplanations, temperature, cheap } from '../cli/cli-params.js';
+import { requireExplanations, temperature, cheap, vision } from '../cli/cli-params.js';
 
 /**
  * Function definitions for function calling feature
@@ -43,11 +43,24 @@ export const functionDefs = [
   {
     name: 'codegenSummary',
     description:
-      'This function is called with a summary of proposed updates. It contains a list of file paths that will be subject to code generation request, and also a list of file paths that make sense to use as a context for code generation requests.',
+      'This function is called with a summary of proposed updates.' +
+      'Summary is a data structure(object) which contains:\n' +
+      '- `fileUpdates`: list of proposed file updates that will be subject to subsequent code generation request\n' +
+      '- `contextPaths`: list of file paths that make sense to use as a context for code generation requests.' +
+      '- `explanation`: general explanation of planned code generation updates\n' +
+      'It is crticially important to adhere to the schema of parameters',
     parameters: {
       type: 'object',
       properties: {
-        files: {
+        contextPaths: {
+          type: 'array',
+          description:
+            'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+          items: {
+            type: 'string',
+          },
+        },
+        fileUpdates: {
           type: 'array',
           description: 'An array of proposed file updates, each update is an object with several properties.',
           items: {
@@ -59,9 +72,9 @@ export const functionDefs = [
               updateToolName: {
                 type: 'string',
                 enum: [
+                  'createFile',
                   'updateFile',
                   'patchFile',
-                  'createFile',
                   'deleteFile',
                   'createDirectory',
                   'moveFile',
@@ -93,19 +106,12 @@ export const functionDefs = [
               contextImageAssets: {
                 type: 'array',
                 description:
-                  'A list of of absolute image asset paths that should be included to the context of LLm request',
+                  'A list of of absolute image asset paths that should be included to the context of LLM request.' +
+                  'This parameter must be used if there is a need to analyze an image.',
                 items: { type: 'string' },
               },
             },
-            required: ['path', 'updateToolName', 'temperature', 'prompt', 'contextImageAssets', 'cheap'],
-          },
-        },
-        contextPaths: {
-          type: 'array',
-          description:
-            'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
-          items: {
-            type: 'string',
+            required: ['path', 'updateToolName', ...(vision ? ['contextImageAssets'] : [])],
           },
         },
         explanation: {
@@ -113,7 +119,7 @@ export const functionDefs = [
           description: 'Explanation of planned changes or explanation of reasoning for no code changes',
         },
       },
-      required: ['files', 'contextPaths', 'explanation'],
+      required: ['fileUpdates', 'contextPaths'],
     },
   },
   {
@@ -184,11 +190,11 @@ Index: filename.js
       properties: {
         filePath: {
           type: 'string',
-          description: 'The file path to create.',
+          description: 'Path of the file that will be created, it must not be empty.',
         },
         newContent: {
           type: 'string',
-          description: 'The content for the new file.',
+          description: 'Content of the file that will be created, it must no be empty.',
         },
         explanation: {
           type: 'string',

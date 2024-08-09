@@ -28,6 +28,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
               type: 'tool_result',
               tool_use_id: response.call_id ?? response.name,
               content: response.content,
+              is_error: response.isError === true,
             })),
             ...(item.images ?? []).map((image) => ({
               type: 'image',
