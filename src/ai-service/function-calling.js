@@ -49,10 +49,11 @@ export const functionDefs = [
       properties: {
         files: {
           type: 'array',
-          description: 'An array of proposed file updates.',
+          description: 'An array of proposed file updates, each update is an object with several properties.',
           items: {
             type: 'object',
-            description: 'Proposed update of a file, the path, and the method of update',
+            description:
+              'Proposed update of a file. The update is an object which contains properties like file path, update tool name, and few other important properties.',
             properties: {
               path: { type: 'string', description: 'An absolute path of the project file that will be updated' },
               updateToolName: {
