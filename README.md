@@ -1,3 +1,13 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="media/logo.png">
+    <img alt="GenAIcode Logo." src="media/logo.png" width="100%" height="auto">
+  </picture>
+</p>
+
+<div align="center">
+
 # Programming on steroids
 
   <a href="https://www.npmjs.com/package/genaicode">
