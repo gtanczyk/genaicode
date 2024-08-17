@@ -27,6 +27,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
   const getSourceCodeResponse = {
     type: 'user',
     functionResponses: [{ name: 'getSourceCode', content: messages.sourceCode }],
+    cache: true,
   };
   prompt.push(getSourceCodeResponse);
 
@@ -110,6 +111,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
     prompt.push({
       type: 'user',
       functionResponses: baseResult.map((call) => ({ name: call.name, call_id: call.id })),
+      cache: true,
     });
 
     const result = [];

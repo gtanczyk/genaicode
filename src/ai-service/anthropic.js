@@ -7,7 +7,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const anthropic = new Anthropic({
     defaultHeaders: {
-      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
+      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15,prompt-caching-2024-07-31',
     },
   });
 
@@ -35,6 +35,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
             {
               type: 'text',
               text: item.text,
+              ...(item.cache ? { cache_control: { type: 'ephemeral' } } : {}),
             },
           ],
         };
@@ -61,7 +62,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
   let response;
   while (retryCount < 3) {
     try {
-      response = await anthropic.messages.create({
+      response = await anthropic.beta.promptCaching.messages.create({
         model: model,
         system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
         messages,
@@ -83,7 +84,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
         retryCount++;
       } else {
         console.error('An error occurred:', error);
-        break;
+        throw error; // Re-throw the error if it's not a rate limit error
       }
     }
   }
@@ -95,6 +96,8 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
 
   // Print token usage for Anthropic
   const usage = {
+    cacheCreateTokens: response.usage.cache_creation_input_tokens,
+    cacheReadTokens: response.usage.cache_read_input_tokens,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     totalTokens: response.usage.input_tokens + response.usage.output_tokens,

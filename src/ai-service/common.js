@@ -12,8 +12,17 @@ export function printTokenUsageAndCost(usage, inputCostPerToken, outputCostPerTo
   console.log('  - Input tokens: ', usage.inputTokens);
   console.log('  - Output tokens: ', usage.outputTokens);
   console.log('  - Total tokens: ', usage.totalTokens);
+  if (usage.cacheCreateTokens) {
+    console.log('  - Cache create tokens: ', usage.cacheCreateTokens);
+  }
+  if (usage.cacheReadTokens) {
+    console.log('  - Cache read tokens: ', usage.cacheReadTokens);
+  }
 
-  const inputCost = usage.inputTokens * inputCostPerToken;
+  const inputCost =
+    usage.inputTokens * inputCostPerToken +
+    (usage.cacheCreateTokens ?? 0) * inputCostPerToken * 1.25 +
+    (usage.cacheReadTokens ?? 0) * inputCostPerToken * 0.2;
   const outputCost = usage.outputTokens * outputCostPerToken;
   const totalCost = inputCost + outputCost;
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
