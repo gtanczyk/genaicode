@@ -26,6 +26,7 @@ const allowedParameters = [
   '--vision',
   '--imagen=',
   '--cheap',
+  '--ask-question',
   '--help',
   '--content-mask=',
 ];

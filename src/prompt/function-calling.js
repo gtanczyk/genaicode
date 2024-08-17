@@ -443,6 +443,20 @@ Index: filename.js
       required: ['inputFilePath', 'parts'],
     },
   },
+  {
+    name: 'askQuestion',
+    description: 'Ask a question to the user to gather more information or clarification.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: {
+          type: 'string',
+          description: 'The question to ask the user.',
+        },
+      },
+      required: ['question'],
+    },
+  },
 ].map((fd) => {
   if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {
     fd.parameters.required.push('explanation');

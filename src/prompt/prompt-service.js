@@ -2,12 +2,13 @@ import assert from 'node:assert';
 import fs from 'fs';
 import * as diff from 'diff';
 import mime from 'mime-types';
+import readline from 'readline';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
+import { disableContextOptimization, temperature, vision, cheap, askQuestion } from '../cli/cli-params.js';
 import { validateFunctionCall } from './function-calling-validate.js';
 
 /** A function that communicates with model using */
@@ -32,17 +33,31 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
   if (vision) {
     prompt.slice(-1)[0].text = messages.suggestImageAssets;
     prompt.push(
-      ...[
-        { type: 'assistant', text: messages.requestImageAssets, functionCalls: [{ name: 'getImageAssets' }] },
-        {
-          type: 'user',
-          functionResponses: [{ name: 'getImageAssets', content: messages.imageAssets }],
-        },
-      ],
+      { type: 'assistant', text: messages.requestImageAssets },
+      { type: 'user', functionResponses: [{ name: 'getImageAssets', content: messages.imageAssets }] },
     );
   }
 
   prompt.slice(-1)[0].text = messages.prompt;
+
+  // New step: Allow the assistant to ask a question if --ask-question is enabled
+  if (askQuestion) {
+    console.log('Allowing the assistant to ask a question...');
+    let questionAsked = false;
+    while (!questionAsked) {
+      const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap);
+      const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
+      if (askQuestionCall) {
+        questionAsked = true;
+        console.log('Assistant asks:', askQuestionCall.args.question);
+        const userAnswer = await getUserInput('Your answer: ');
+        prompt.push({ type: 'assistant', functionCalls: [askQuestionCall] }, { type: 'user', text: userAnswer });
+      } else {
+        console.log('Assistant did not ask a question. Proceeding with code generation.');
+        break;
+      }
+    }
+  }
 
   let baseRequest = [prompt, functionDefs, 'codegenSummary', temperature, cheap];
   let baseResult = await generateContentFn(...baseRequest);
@@ -284,4 +299,18 @@ function prepareMessages(prompt) {
     invalidFunctionCall:
       'Function call was invalid, please analyze the error and respond with corrected function call.',
   };
+}
+
+async function getUserInput(prompt) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 }
