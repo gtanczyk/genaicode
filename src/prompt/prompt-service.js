@@ -48,10 +48,23 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
       const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap);
       const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
       if (askQuestionCall) {
-        questionAsked = true;
-        console.log('Assistant asks:', askQuestionCall.args.question);
-        const userAnswer = await getUserInput('Your answer: ');
-        prompt.push({ type: 'assistant', functionCalls: [askQuestionCall] }, { type: 'user', text: userAnswer });
+        console.log('Assistant asks:', askQuestionCall.args);
+        const userAnswer = askQuestionCall.args.shouldPrompt
+          ? await getUserInput('Your answer: ')
+          : 'Lets proceed with code generation.';
+        prompt.push(
+          { type: 'assistant', functionCalls: [askQuestionCall] },
+          {
+            type: 'user',
+            text: userAnswer,
+            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id }],
+          },
+        );
+        console.log('The question was answered');
+        if (!askQuestionCall.args.shouldPrompt) {
+          console.log('Proceeding with code generation.');
+          break;
+        }
       } else {
         console.log('Assistant did not ask a question. Proceeding with code generation.');
         break;

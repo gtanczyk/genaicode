@@ -445,16 +445,28 @@ Index: filename.js
   },
   {
     name: 'askQuestion',
-    description: 'Ask a question to the user to gather more information or clarification.',
+    description:
+      'If there is a need ask a question to the user to gather more information or clarification. Alternatively this function can be called also if there is no need to prompt the user with any question.',
     parameters: {
       type: 'object',
       properties: {
-        question: {
+        content: {
           type: 'string',
-          description: 'The question to ask the user.',
+          description:
+            'The message you want to display to the user, it can be either a question or a confirmation/ackoweledgment in case there is no intention to prompt the user.',
+        },
+        shouldPrompt: {
+          type: 'boolean',
+          description: 'Set to true if the intention is to get response from the user.',
+        },
+        promptNecessity: {
+          type: 'number',
+          minimum: 0,
+          maximum: 100,
+          description: 'How strong is the need to prompt the user? Higher value indicates a stronger need.',
         },
       },
-      required: ['question'],
+      required: ['content', 'shouldPrompt', 'promptNecessity'],
     },
   },
 ].map((fd) => {

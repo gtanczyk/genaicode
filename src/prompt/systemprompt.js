@@ -22,8 +22,10 @@ export function getSystemPrompt() {
   `;
 
   if (askQuestion) {
-    systemPrompt += `\nYou have the ability to ask the user a question at the beginning of the conversation if you need more information or clarification. Use this feature wisely to gather any crucial information that would help you better understand the task or provide more accurate code generation. To ask a question, use the 'askQuestion' function.
-  `;
+    systemPrompt +=
+      '\nYou have the ability to ask the user a question at the beginning of the conversation if you need more information or clarification. ' +
+      'Use this feature wisely to gather any crucial information that would help you better understand the task or provide more accurate code generation. ' +
+      "To ask a question, use the 'askQuestion' function.";
   }
 
   if (verbosePrompt) {
