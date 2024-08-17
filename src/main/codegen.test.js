@@ -37,6 +37,7 @@ vi.mock('../cli/cli-params.js', () => ({
   cheap: false,
   taskFile: undefined,
   disableInitialLint: undefined,
+  askQuestion: undefined,
 }));
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],

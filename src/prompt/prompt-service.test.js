@@ -31,6 +31,7 @@ vi.mock('../cli/cli-params.js', () => ({
   imagen: false,
   temperature: 0.7,
   cheap: false,
+  askQuestion: false,
 }));
 vi.mock('fs');
 vi.mock('diff');

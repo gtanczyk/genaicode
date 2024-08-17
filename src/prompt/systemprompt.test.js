@@ -14,6 +14,7 @@ vi.mock('../cli/cli-params.js', () => ({
   allowDirectoryCreate: false,
   allowFileMove: false,
   verbosePrompt: false,
+  askQuestion: false,
 }));
 
 vi.mock('../files/find-files.js', () => ({
