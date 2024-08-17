@@ -57,19 +57,41 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
   const model = cheap ? 'claude-3-haiku-20240307' : 'claude-3-5-sonnet-20240620';
   console.log(`Using Anthropic model: ${model}`);
 
-  const response = await anthropic.messages.create({
-    model: model,
-    system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
-    messages,
-    tools: functionDefs.map((fd) => ({
-      name: fd.name,
-      description: fd.description,
-      input_schema: fd.parameters,
-    })),
-    tool_choice: requiredFunctionName ? { type: 'tool', name: requiredFunctionName } : { type: 'any' },
-    max_tokens: cheap ? 4096 : 8192,
-    temperature: temperature,
-  });
+  let retryCount = 0;
+  let response;
+  while (retryCount < 3) {
+    try {
+      response = await anthropic.messages.create({
+        model: model,
+        system: prompt.find((item) => item.type === 'systemPrompt').systemPrompt,
+        messages,
+        tools: functionDefs.map((fd) => ({
+          name: fd.name,
+          description: fd.description,
+          input_schema: fd.parameters,
+        })),
+        tool_choice: requiredFunctionName ? { type: 'tool', name: requiredFunctionName } : { type: 'any' },
+        max_tokens: cheap ? 4096 : 8192,
+        temperature: temperature,
+      });
+      break; // Exit loop if successful
+    } catch (error) {
+      if (error.headers?.['retry-after']) {
+        const retryAfter = parseInt(error.headers['retry-after'], 10);
+        console.log(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`);
+        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+        retryCount++;
+      } else {
+        console.error('An error occurred:', error);
+        break;
+      }
+    }
+  }
+
+  if (retryCount === 3) {
+    console.error('Failed to complete request after 3 attempts due to rate limiting.');
+    throw new Error('Rate limit exceeded. Operation aborted.');
+  }
 
   // Print token usage for Anthropic
   const usage = {
