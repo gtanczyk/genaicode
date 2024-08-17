@@ -61,6 +61,10 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
           },
         );
         console.log('The question was answered');
+        if (askQuestionCall.args.stopCodegen) {
+          console.log('Assistant requested to stop code generation. Exiting...');
+          return [];
+        }
         if (!askQuestionCall.args.shouldPrompt) {
           console.log('Proceeding with code generation.');
           break;
