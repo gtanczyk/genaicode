@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'fs';
 import * as diff from 'diff';
 import mime from 'mime-types';
-import readline from 'readline';
+import { createInterface } from 'readline';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
@@ -321,7 +321,7 @@ function prepareMessages(prompt) {
 }
 
 async function getUserInput(prompt) {
-  const rl = readline.createInterface({
+  const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
