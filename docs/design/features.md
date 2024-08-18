@@ -185,4 +185,24 @@ The GenAIcode tool offers several advanced features to enhance its code generati
   - It's important to choose an appropriate mask to ensure all necessary context is included.
 - **Integration**: Can be used in combination with other features like dependency tree analysis for more precise code generation.
 
+## Interactive Clarification
+
+- **Activation**: `--ask-question` flag
+- **Description**: Allows the AI assistant to ask questions for clarification during the code generation process.
+- **Benefits**:
+  - Improves the accuracy and relevance of generated code by gathering additional information.
+  - Enables a more interactive and context-aware code generation experience.
+- **How it works**:
+  1. The AI assistant can prompt the user with questions when it needs more information or clarification.
+  2. The user can provide answers, which are then incorporated into the code generation process.
+  3. This feature can be used at the beginning of the conversation or during the code generation process.
+- **Use Cases**:
+  - Clarifying project requirements or specific implementation details.
+  - Resolving ambiguities in the initial prompt or task description.
+  - Gathering user preferences for code style or architectural decisions.
+- **Considerations**:
+  - May increase the overall time for code generation due to the interactive nature.
+  - Requires user attention and input during the process.
+- **Integration**: Works well with other features like `--explicit-prompt` or `--task-file` to refine and enhance the initial instructions.
+
 These features collectively make GenAIcode a versatile and powerful tool for AI-assisted code generation, capable of adapting to various project requirements and development workflows. By leveraging these features, developers can fine-tune the code generation process to their specific needs, ensuring high-quality, context-aware, and project-compliant code outputs.

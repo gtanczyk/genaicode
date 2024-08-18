@@ -1,5 +1,3 @@
-/*eslint-disable no-import-assign*/
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
