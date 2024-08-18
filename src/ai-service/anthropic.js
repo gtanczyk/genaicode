@@ -8,7 +8,7 @@ import { disableCache } from '../cli/cli-params.js';
 export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const anthropic = new Anthropic({
     defaultHeaders: {
-      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15' + (disableCache ? ',prompt-caching-2024-07-31' : ''),
+      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15' + (!disableCache ? ',prompt-caching-2024-07-31' : ''),
     },
   });
 
@@ -36,7 +36,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
             {
               type: 'text',
               text: item.text,
-              ...(item.cache && disableCache ? { cache_control: { type: 'ephemeral' } } : {}),
+              ...(item.cache && !disableCache ? { cache_control: { type: 'ephemeral' } } : {}),
             },
           ],
         };
