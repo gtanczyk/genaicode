@@ -29,6 +29,7 @@ const allowedParameters = [
   '--ask-question',
   '--help',
   '--content-mask=',
+  '--disable-cache',
 ];
 
 /**

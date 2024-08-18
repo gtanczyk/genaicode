@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { disableCache } from '../cli/cli-params.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -7,7 +8,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 export async function generateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap = false) {
   const anthropic = new Anthropic({
     defaultHeaders: {
-      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15,prompt-caching-2024-07-31',
+      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15' + (disableCache ? ',prompt-caching-2024-07-31' : ''),
     },
   });
 
@@ -35,7 +36,7 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
             {
               type: 'text',
               text: item.text,
-              ...(item.cache ? { cache_control: { type: 'ephemeral' } } : {}),
+              ...(item.cache && disableCache ? { cache_control: { type: 'ephemeral' } } : {}),
             },
           ],
         };
@@ -78,7 +79,12 @@ export async function generateContent(prompt, functionDefs, requiredFunctionName
       break; // Exit loop if successful
     } catch (error) {
       if (error.headers?.['retry-after']) {
-        const retryAfter = parseInt(error.headers['retry-after'], 10);
+        let retryAfter;
+        if (error.headers['retry-after'] === '0') {
+          retryAfter = (new Date(error.headers['anthropic-ratelimit-tokens-reset']).getTime() - Date.now()) / 1000;
+        } else {
+          retryAfter = Math.max(parseInt(error.headers['retry-after'], 10), 10);
+        }
         console.log(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`);
         await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
         retryCount++;

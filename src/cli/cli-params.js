@@ -17,6 +17,7 @@ export let vertexAi = params.includes('--vertex-ai');
 export let vertexAiClaude = params.includes('--vertex-ai-claude');
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
+export const disableCache = params.includes('--disable-cache');
 export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
 export const disableContextOptimization = params.includes('--disable-context-optimization');
 export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];

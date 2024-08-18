@@ -100,6 +100,14 @@ const cliOptions = [
     description:
       'Apply a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.',
   },
+  {
+    name: '--disable-cache',
+    description: 'Disable caching for the application.',
+  },
+  {
+    name: '--ask-question',
+    description: 'Allows the AI assistant to ask questions for clarification during the code generation process.',
+  },
 ];
 
 /**
