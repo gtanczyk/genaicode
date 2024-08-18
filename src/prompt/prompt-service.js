@@ -34,7 +34,7 @@ export async function promptService(generateContentFn, generateImageFn, codegenP
   if (vision) {
     prompt.slice(-1)[0].text = messages.suggestImageAssets;
     prompt.push(
-      { type: 'assistant', text: messages.requestImageAssets },
+      { type: 'assistant', text: messages.requestImageAssets, functionCalls: [{ name: 'getImageAssets' }] },
       { type: 'user', functionResponses: [{ name: 'getImageAssets', content: messages.imageAssets }] },
     );
   }
