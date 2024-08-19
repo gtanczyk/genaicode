@@ -1,5 +1,11 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --loader ts-node/esm
 
-import { runCodegen } from '../src/main/codegen.js';
+import path from 'path';
+import tsNode from 'ts-node';
 
-await runCodegen();
+const project = path.resolve('./tsconfig.json');
+tsNode.register({ project });
+
+const codegen = await import('../src/main/codegen.ts');
+
+await codegen.runCodegen();
