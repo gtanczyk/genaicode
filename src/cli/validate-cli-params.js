@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import globRegex from 'glob-regex';
 import { rcConfig } from '../main/config.js';
 
 // List of allowed CLI parameters
@@ -30,6 +31,7 @@ const allowedParameters = [
   '--help',
   '--content-mask=',
   '--disable-cache',
+  '--ignore-pattern=',
 ];
 
 /**
@@ -95,6 +97,22 @@ export function validateCliParams() {
       throw new Error(
         `Invalid --content-mask value. The path "${contentMaskValue}" does not exist or is not a directory within the project.`,
       );
+    }
+  }
+
+  // Validate ignore pattern parameter
+  const ignorePatternParams = providedParameters.filter((param) => param.startsWith('--ignore-pattern='));
+  if (ignorePatternParams.length > 0) {
+    for (const ignorePatternParam of ignorePatternParams) {
+      const ignorePatternValue = ignorePatternParam.split('=')[1];
+      if (!ignorePatternValue) {
+        throw new Error('Invalid --ignore-pattern value. The pattern cannot be empty.');
+      }
+      try {
+        globRegex(ignorePatternValue);
+      } catch (e) {
+        throw new Error(`Invalid --ignore-pattern value. The pattern "${ignorePatternValue}" is not valid.`, e);
+      }
     }
   }
 }

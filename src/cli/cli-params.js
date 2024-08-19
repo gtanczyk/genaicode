@@ -43,6 +43,11 @@ export const temperature = parseFloat(
 // New content mask parameter
 export const contentMask = params.find((param) => param.startsWith('--content-mask='))?.split('=')[1] || null;
 
+// New ignore pattern parameter
+export const ignorePatterns = params
+  .filter((param) => param.startsWith('--ignore-pattern='))
+  .map((param) => param.split('=')[1]);
+
 if (taskFile) {
   if (explicitPrompt) {
     throw new Error('The --task-file option is exclusive with the --explicit-prompt option');
@@ -98,6 +103,10 @@ if (cheap) {
 
 if (contentMask) {
   console.log(`Content mask: ${contentMask}`);
+}
+
+if (ignorePatterns) {
+  console.log(`Ignore pattern: ${ignorePatterns}`);
 }
 
 if (askQuestion) {

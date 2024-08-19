@@ -2,11 +2,12 @@ import fs from 'fs';
 import mime from 'mime-types';
 import sizeOf from 'image-size';
 import path from 'path';
+import globRegex from 'glob-regex';
 
 import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { rcConfig } from '../main/config.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
-import { taskFile, contentMask } from '../cli/cli-params.js';
+import { taskFile, contentMask, ignorePatterns } from '../cli/cli-params.js';
 
 /**
  * Read contents of source files and create a map with file path as key and file content as value
@@ -23,8 +24,12 @@ function readSourceFiles(filterPaths) {
           continue;
         }
       }
-      const content = fs.readFileSync(file, 'utf-8');
-      sourceCode[file] = { content };
+      if (ignorePatterns.some((pattern) => globRegex(pattern).test(file))) {
+        sourceCode[file] = { content: null };
+      } else {
+        const content = fs.readFileSync(file, 'utf-8');
+        sourceCode[file] = { content };
+      }
     }
   }
   return sourceCode;

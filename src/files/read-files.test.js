@@ -19,6 +19,7 @@ vi.mock('../prompt/limits.js');
 vi.mock('../cli/cli-params.js', () => ({
   taskFile: null,
   contentMask: null,
+  ignorePatterns: [],
 }));
 vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/home/project' },

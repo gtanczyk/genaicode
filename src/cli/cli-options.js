@@ -101,6 +101,10 @@ const cliOptions = [
       'Apply a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.',
   },
   {
+    name: '--ignore-pattern=<pattern>',
+    description: 'Specify a pattern of files to ignore during the initial source code fetching.',
+  },
+  {
     name: '--disable-cache',
     description: 'Disable caching for the application.',
   },
