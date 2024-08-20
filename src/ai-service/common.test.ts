@@ -16,7 +16,10 @@ vi.mock('../cli/cli-params.ts', () => ({
 }));
 
 describe('printTokenUsageAndCost', () => {
-  let consoleLogSpy: MockInstance<{ (...data: any[]): void; (message?: any, ...optionalParams: any[]): void }>;
+  let consoleLogSpy: MockInstance<{
+    (...data: unknown[]): void;
+    (message?: unknown, ...optionalParams: unknown[]): void;
+  }>;
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
