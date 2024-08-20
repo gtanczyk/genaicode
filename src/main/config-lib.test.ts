@@ -6,7 +6,7 @@ import { findRcFile, parseRcFile } from './config-lib.js';
 
 vi.mock('fs');
 vi.mock('path');
-vi.mock('../files/file-utils.ts');
+vi.mock('../files/file-utils.js');
 
 const CODEGENRC_FILENAME = '.genaicoderc';
 

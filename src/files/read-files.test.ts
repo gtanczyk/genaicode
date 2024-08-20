@@ -11,17 +11,17 @@ import { rcConfig } from '../main/config.js';
 vi.mock('fs');
 vi.mock('mime-types');
 vi.mock('image-size');
-vi.mock('./find-files.ts', () => ({
+vi.mock('./find-files.js', () => ({
   getImageAssetFiles: vi.fn(),
   getSourceFiles: vi.fn(),
 }));
-vi.mock('../prompt/limits.ts');
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../prompt/limits.js');
+vi.mock('../cli/cli-params.js', () => ({
   taskFile: null,
   contentMask: null,
   ignorePatterns: [],
 }));
-vi.mock('../main/config.ts', () => ({
+vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/home/project' },
 }));
 

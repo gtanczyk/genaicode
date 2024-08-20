@@ -11,10 +11,10 @@ import { getImageAssets } from '../files/read-files.js';
 import '../files/find-files.js';
 import * as dalleService from '../ai-service/dall-e.js';
 
-vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/anthropic.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,
@@ -34,21 +34,21 @@ vi.mock('../cli/cli-params.ts', () => ({
 vi.mock('fs');
 vi.mock('diff');
 vi.mock('mime-types');
-vi.mock('../ai-service/dall-e.ts', () => ({ generateImage: vi.fn() }));
+vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 
 // Mock find-files module
-vi.mock('../files/find-files.ts', () => ({
+vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
 }));
 
 // Mock read-files module
-vi.mock('../files/read-files.ts', () => ({
+vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
   getImageAssets: vi.fn(() => ({})),
 }));
 
-vi.mock('../main/config.ts', () => ({
+vi.mock('../main/config.js', () => ({
   rootDir: '/mocked/root/dir',
   rcConfig: {
     rootDir: '.',

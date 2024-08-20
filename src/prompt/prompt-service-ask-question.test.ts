@@ -7,11 +7,11 @@ import '../cli/cli-params.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 
-vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('readline', () => ({
   createInterface: vi.fn(),
 }));
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,
@@ -30,18 +30,18 @@ vi.mock('../cli/cli-params.ts', () => ({
 }));
 
 // Mock find-files module
-vi.mock('../files/find-files.ts', () => ({
+vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
 }));
 
 // Mock read-files module
-vi.mock('../files/read-files.ts', () => ({
+vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
   getImageAssets: vi.fn(() => ({})),
 }));
 
-vi.mock('../main/config.ts', () => ({
+vi.mock('../main/config.js', () => ({
   rootDir: '/mocked/root/dir',
   rcConfig: {
     rootDir: '.',

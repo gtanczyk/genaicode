@@ -5,14 +5,14 @@ import * as cliParams from '../cli/cli-params.js';
 import * as limits from './limits.js';
 import '../files/read-files.js';
 
-vi.mock('../files/find-files.ts', () => ({
+vi.mock('../files/find-files.js', () => ({
   rcConfig: {},
   getSourceFiles: vi.fn(),
 }));
-vi.mock('../files/read-files.ts', () => ({
+vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
 }));
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,
@@ -25,7 +25,7 @@ vi.mock('../cli/cli-params.ts', () => ({
   imagen: false,
   vision: false,
 }));
-vi.mock('./limits.ts');
+vi.mock('./limits.js');
 
 describe('getCodeGenPrompt', () => {
   beforeEach(() => {

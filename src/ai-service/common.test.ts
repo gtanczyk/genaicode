@@ -3,7 +3,7 @@ import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 import { functionDefs } from '../prompt/function-calling.js';
 
 // Mock cli-params.js
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../cli/cli-params.js', () => ({
   chatGpt: true,
   anthropic: false,
   vertexAi: false,

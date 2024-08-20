@@ -4,7 +4,7 @@ import * as cliParams from '../cli/cli-params.js';
 import '../files/find-files.js';
 import '../main/config.js';
 
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,
@@ -17,11 +17,11 @@ vi.mock('../cli/cli-params.ts', () => ({
   askQuestion: false,
 }));
 
-vi.mock('../files/find-files.ts', () => ({
+vi.mock('../files/find-files.js', () => ({
   getSourceFiles: vi.fn(),
 }));
 
-vi.mock('../main/config.ts', () => ({
+vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/mocked/root/dir' },
 }));
 

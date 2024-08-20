@@ -12,12 +12,12 @@ import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import * as dallE from '../ai-service/dall-e.js';
 import './config.js';
 
-vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/anthropic.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/vertex-ai-claude.ts', () => ({ generateContent: vi.fn() }));
-vi.mock('../files/update-files.ts');
-vi.mock('../cli/cli-params.ts', () => ({
+vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../files/update-files.js');
+vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,
@@ -37,16 +37,16 @@ vi.mock('../cli/cli-params.ts', () => ({
   disableInitialLint: undefined,
   askQuestion: undefined,
 }));
-vi.mock('../files/find-files.ts', () => ({
+vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
 }));
-vi.mock('../cli/cli-options.ts', () => ({
+vi.mock('../cli/cli-options.js', () => ({
   printHelpMessage: vi.fn(),
 }));
-vi.mock('../ai-service/vertex-ai-imagen.ts', () => ({ generateImage: vi.fn() }));
-vi.mock('../ai-service/dall-e.ts', () => ({ generateImage: vi.fn() }));
-vi.mock('./config.ts', () => ({
+vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
+vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
+vi.mock('./config.js', () => ({
   rootDir: '/mocked/root/dir',
   rcConfig: {
     rootDir: '.',
