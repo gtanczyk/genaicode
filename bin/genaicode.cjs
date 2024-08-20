@@ -10,7 +10,6 @@ const forceDist = process.argv.indexOf('--force-dist') >= 0;
 
 if (devMode && !forceDist) {
   const project = require.resolve('../tsconfig.json');
-  console.log(__dirname, project);
   require('ts-node').register({ project });
 
   import('../src/main/codegen.ts').then(({ runCodegen }) => runCodegen());
