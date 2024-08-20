@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { promptService } from './prompt-service.ts';
-import * as vertexAi from '../ai-service/vertex-ai.ts';
-import { FunctionCall } from '../ai-service/common.ts';
+import { promptService } from './prompt-service.js';
+import * as vertexAi from '../ai-service/vertex-ai.js';
+import { FunctionCall } from '../ai-service/common.js';
 import * as readline from 'readline';
-import '../cli/cli-params.ts';
-import '../files/read-files.ts';
-import '../files/find-files.ts';
+import '../cli/cli-params.js';
+import '../files/read-files.js';
+import '../files/find-files.js';
 
 vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
 vi.mock('readline', () => ({

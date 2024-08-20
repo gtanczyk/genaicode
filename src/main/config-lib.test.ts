@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { isAncestorDirectory } from '../files/file-utils.ts';
-import { findRcFile, parseRcFile } from './config-lib.ts';
+import { isAncestorDirectory } from '../files/file-utils.js';
+import { findRcFile, parseRcFile } from './config-lib.js';
 
 vi.mock('fs');
 vi.mock('path');

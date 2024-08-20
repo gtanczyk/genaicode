@@ -14,14 +14,15 @@
     "resolveJsonModule": true,
     "declaration": true,
     "sourceMap": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
     "types": ["vitest/globals"]
   },
   "ts-node": {
     "esm": true,
+    "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "**/*.spec.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
 }

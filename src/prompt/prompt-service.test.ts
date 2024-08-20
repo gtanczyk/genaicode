@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { promptService } from './prompt-service.ts';
-import * as vertexAi from '../ai-service/vertex-ai.ts';
-import * as chatGpt from '../ai-service/chat-gpt.ts';
-import * as anthropic from '../ai-service/anthropic.ts';
-import * as cliParams from '../cli/cli-params.ts';
+import { promptService } from './prompt-service.js';
+import * as vertexAi from '../ai-service/vertex-ai.js';
+import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as anthropic from '../ai-service/anthropic.js';
+import * as cliParams from '../cli/cli-params.js';
 import fs from 'fs';
 import * as diff from 'diff';
 import mime from 'mime-types';
-import { getImageAssets } from '../files/read-files.ts';
-import '../files/find-files.ts';
-import * as dalleService from '../ai-service/dall-e.ts';
+import { getImageAssets } from '../files/read-files.js';
+import '../files/find-files.js';
+import * as dalleService from '../ai-service/dall-e.js';
 
 vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.ts', () => ({ generateContent: vi.fn() }));

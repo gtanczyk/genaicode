@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getCodeGenPrompt, getLintFixPrompt } from './prompt-codegen.ts';
-import * as findFiles from '../files/find-files.ts';
-import * as cliParams from '../cli/cli-params.ts';
-import * as limits from './limits.ts';
-import '../files/read-files.ts';
+import { getCodeGenPrompt, getLintFixPrompt } from './prompt-codegen.js';
+import * as findFiles from '../files/find-files.js';
+import * as cliParams from '../cli/cli-params.js';
+import * as limits from './limits.js';
+import '../files/read-files.js';
 
 vi.mock('../files/find-files.ts', () => ({
   rcConfig: {},

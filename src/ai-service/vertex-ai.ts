@@ -7,8 +7,8 @@ import {
   HarmBlockThreshold,
   FunctionDeclaration,
 } from '@google-cloud/vertexai';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.ts';
-import { geminiBlockNone } from '../cli/cli-params.ts';
+import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
+import { geminiBlockNone } from '../cli/cli-params.js';
 
 /**
  * This function generates content using the Gemini Pro model.

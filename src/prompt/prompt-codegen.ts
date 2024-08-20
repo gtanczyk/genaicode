@@ -1,6 +1,6 @@
 import assert from 'node:assert';
-import { getSourceCode } from '../files/read-files.ts';
-import { CODEGEN_TRIGGER } from './prompt-consts.ts';
+import { getSourceCode } from '../files/read-files.js';
+import { CODEGEN_TRIGGER } from './prompt-consts.js';
 import {
   considerAllFiles,
   allowFileCreate,
@@ -12,9 +12,9 @@ import {
   verbosePrompt,
   vision,
   imagen,
-} from '../cli/cli-params.ts';
-import { getDependencyList } from '../files/find-files.ts';
-import { verifyCodegenPromptLimit } from './limits.ts';
+} from '../cli/cli-params.js';
+import { getDependencyList } from '../files/find-files.js';
+import { verifyCodegenPromptLimit } from './limits.js';
 
 interface SourceCodeEntry {
   content?: string;

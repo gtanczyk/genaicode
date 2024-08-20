@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { validateCliParams, getCliParamValue, hasCliParam } from './validate-cli-params.ts';
+import { validateCliParams, getCliParamValue, hasCliParam } from './validate-cli-params.js';
 
 describe('validateCliParams', () => {
   const originalArgv = process.argv;

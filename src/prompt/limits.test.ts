@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifySystemPromptLimit, verifyCodegenPromptLimit, verifySourceCodeLimit } from './limits.ts';
+import { verifySystemPromptLimit, verifyCodegenPromptLimit, verifySourceCodeLimit } from './limits.js';
 
 describe('Prompt Limits', () => {
   describe('verifySystemPromptLimit', () => {

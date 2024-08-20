@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.ts';
-import { disableCache } from '../cli/cli-params.ts';
+import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
+import { disableCache } from '../cli/cli-params.js';
 import {
   PromptCachingBetaImageBlockParam,
   PromptCachingBetaMessageParam,

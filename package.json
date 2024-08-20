@@ -19,7 +19,7 @@
   "license": "Apache-2.0",
   "files": [
     "bin",
-    "src",
+    "dist",
     "media",
     "README.md",
     "LICENSE"
@@ -30,7 +30,9 @@
     "coverage": "vitest run --coverage",
     "prepare": "husky install",
     "postinstall": "node ./bin/vertex-monkey-patch.cjs",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.17.0",

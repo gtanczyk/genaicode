@@ -1,8 +1,8 @@
 import OpenAI, { toFile } from 'openai';
 
-import { setTempBuffer } from '../files/temp-buffer.ts';
-import { resizeImageBuffer } from '../images/resize-image.ts';
-import { ensureAlpha } from '../images/ensure-alpha.ts';
+import { setTempBuffer } from '../files/temp-buffer.js';
+import { resizeImageBuffer } from '../images/resize-image.js';
+import { ensureAlpha } from '../images/ensure-alpha.js';
 
 interface ImageSize {
   width: number;

@@ -4,10 +4,10 @@ import sizeOf from 'image-size';
 import path from 'path';
 import globRegex from 'glob-regex';
 
-import { getSourceFiles, getImageAssetFiles } from './find-files.ts';
-import { rcConfig } from '../main/config.ts';
+import { getSourceFiles, getImageAssetFiles } from './find-files.js';
+import { rcConfig } from '../main/config.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
-import { taskFile, contentMask, ignorePatterns } from '../cli/cli-params.ts';
+import { taskFile, contentMask, ignorePatterns } from '../cli/cli-params.js';
 
 type SourceCodeMap = Record<string, { content: string | null } | undefined>;
 

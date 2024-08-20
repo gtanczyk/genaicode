@@ -1,6 +1,6 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.ts';
+import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
 
 /**

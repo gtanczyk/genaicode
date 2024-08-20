@@ -1,6 +1,6 @@
 import { Validator, ValidatorResult, Schema, ValidationError } from 'jsonschema';
-import { FunctionDef, FunctionCall } from '../ai-service/common.ts';
-import { functionDefs } from './function-calling.ts';
+import { FunctionDef, FunctionCall } from '../ai-service/common.js';
+import { functionDefs } from './function-calling.js';
 
 export function validateFunctionCall(call: FunctionCall): Omit<ValidatorResult, 'addError'> | undefined {
   const validator = new Validator();

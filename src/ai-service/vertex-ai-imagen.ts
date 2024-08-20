@@ -1,8 +1,8 @@
 import fs from 'fs';
 import mime from 'mime-types';
 import { PredictionServiceClient, helpers, protos } from '@google-cloud/aiplatform';
-import { setTempBuffer } from '../files/temp-buffer.ts';
-import { resizeImageBuffer } from '../images/resize-image.ts';
+import { setTempBuffer } from '../files/temp-buffer.js';
+import { resizeImageBuffer } from '../images/resize-image.js';
 
 interface ImageSize {
   width: number;

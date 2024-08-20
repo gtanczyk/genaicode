@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getSystemPrompt } from './systemprompt.ts';
-import * as cliParams from '../cli/cli-params.ts';
-import '../files/find-files.ts';
-import '../main/config.ts';
+import { getSystemPrompt } from './systemprompt.js';
+import * as cliParams from '../cli/cli-params.js';
+import '../files/find-files.js';
+import '../main/config.js';
 
 vi.mock('../cli/cli-params.ts', () => ({
   requireExplanations: false,

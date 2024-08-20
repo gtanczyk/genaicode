@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { serviceAutoDetect } from './service-autodetect.js';
-import { rcConfig } from '../main/config.ts';
+import { rcConfig } from '../main/config.js';
 
 const params = process.argv.slice(2);
 

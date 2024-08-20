@@ -2,12 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import assert from 'node:assert';
 
-import { isAncestorDirectory } from '../files/file-utils.ts';
+import { isAncestorDirectory } from '../files/file-utils.js';
 
 // This file contains project codegen configuration
 const CODEGENRC_FILENAME = '.genaicoderc';
 
-interface RcConfig {
+export interface RcConfig {
   rootDir: string;
   lintCommand?: string;
   extensions?: string[];

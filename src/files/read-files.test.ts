@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import mime from 'mime-types';
 import sizeOf from 'image-size';
-import { getSourceCode, getImageAssets } from './read-files.ts';
-import { getSourceFiles, getImageAssetFiles } from './find-files.ts';
-import { verifySourceCodeLimit } from '../prompt/limits.ts';
-import * as cliParams from '../cli/cli-params.ts';
-import { rcConfig } from '../main/config.ts';
+import { getSourceCode, getImageAssets } from './read-files.js';
+import { getSourceFiles, getImageAssetFiles } from './find-files.js';
+import { verifySourceCodeLimit } from '../prompt/limits.js';
+import * as cliParams from '../cli/cli-params.js';
+import { rcConfig } from '../main/config.js';
 
 vi.mock('fs');
 vi.mock('mime-types');

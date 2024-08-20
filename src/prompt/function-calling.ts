@@ -1,21 +1,21 @@
-import { requireExplanations } from '../cli/cli-params.ts';
-import { FunctionDef } from '../ai-service/common.ts';
-import { getSourceCode } from './function-defs/get-source-code.ts';
-import { getImageAssets } from './function-defs/get-image-assets.ts';
-import { codegenSummary } from './function-defs/codegen-summary.ts';
-import { updateFile } from './function-defs/update-file.ts';
-import { patchFile } from './function-defs/patch-file.ts';
-import { createFile } from './function-defs/create-file.ts';
-import { deleteFile } from './function-defs/delete-file.ts';
-import { explanation } from './function-defs/explanation.ts';
-import { createDirectory } from './function-defs/create-directory.ts';
-import { moveFile } from './function-defs/move-file.ts';
-import { generateImage } from './function-defs/generate-image.ts';
-import { downloadFile } from './function-defs/download-file.ts';
-import { imglyRemoveBackground } from './function-defs/imgly-remove-background.ts';
-import { resizeImage } from './function-defs/resize-image.ts';
-import { splitImage } from './function-defs/split-image.ts';
-import { askQuestion } from './function-defs/ask-question.ts';
+import { requireExplanations } from '../cli/cli-params.js';
+import { FunctionDef } from '../ai-service/common.js';
+import { getSourceCode } from './function-defs/get-source-code.js';
+import { getImageAssets } from './function-defs/get-image-assets.js';
+import { codegenSummary } from './function-defs/codegen-summary.js';
+import { updateFile } from './function-defs/update-file.js';
+import { patchFile } from './function-defs/patch-file.js';
+import { createFile } from './function-defs/create-file.js';
+import { deleteFile } from './function-defs/delete-file.js';
+import { explanation } from './function-defs/explanation.js';
+import { createDirectory } from './function-defs/create-directory.js';
+import { moveFile } from './function-defs/move-file.js';
+import { generateImage } from './function-defs/generate-image.js';
+import { downloadFile } from './function-defs/download-file.js';
+import { imglyRemoveBackground } from './function-defs/imgly-remove-background.js';
+import { resizeImage } from './function-defs/resize-image.js';
+import { splitImage } from './function-defs/split-image.js';
+import { askQuestion } from './function-defs/ask-question.js';
 
 /**
  * Function definitions for function calling feature

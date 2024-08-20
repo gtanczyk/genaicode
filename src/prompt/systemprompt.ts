@@ -1,7 +1,7 @@
-import { CODEGEN_TRIGGER } from './prompt-consts.ts';
-import { verbosePrompt, askQuestion } from '../cli/cli-params.ts';
-import { verifySystemPromptLimit } from './limits.ts';
-import { rcConfig } from '../main/config.ts';
+import { CODEGEN_TRIGGER } from './prompt-consts.js';
+import { verbosePrompt, askQuestion } from '../cli/cli-params.js';
+import { verifySystemPromptLimit } from './limits.js';
+import { rcConfig } from '../main/config.js';
 
 /** Generates a system prompt */
 export function getSystemPrompt(): string {

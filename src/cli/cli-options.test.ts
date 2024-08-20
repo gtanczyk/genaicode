@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { printHelpMessage, cliOptions } from './cli-options.ts';
+import { printHelpMessage, cliOptions } from './cli-options.js';
 
 describe('CLI Options', () => {
   describe('printHelpMessage', () => {

@@ -3,9 +3,9 @@ import path from 'path';
 import assert from 'node:assert';
 import * as diff from 'diff';
 
-import { getSourceFiles } from './find-files.ts';
-import { isAncestorDirectory } from './file-utils.ts';
-import { rcConfig } from '../main/config.ts';
+import { getSourceFiles } from './find-files.js';
+import { isAncestorDirectory } from './file-utils.js';
+import { rcConfig } from '../main/config.js';
 import {
   allowDirectoryCreate,
   allowFileCreate,
@@ -14,12 +14,12 @@ import {
   anthropic,
   chatGpt,
   vertexAiClaude,
-} from '../cli/cli-params.ts';
-import { getTempBuffer } from './temp-buffer.ts';
-import { imglyRemoveBackground } from '../images/imgly-remove-background.ts';
-import { splitImage } from '../images/split-image.ts';
-import { resizeImageFile } from '../images/resize-image.ts';
-import { FunctionCall } from '../ai-service/common.ts';
+} from '../cli/cli-params.js';
+import { getTempBuffer } from './temp-buffer.js';
+import { imglyRemoveBackground } from '../images/imgly-remove-background.js';
+import { splitImage } from '../images/split-image.js';
+import { resizeImageFile } from '../images/resize-image.js';
+import { FunctionCall } from '../ai-service/common.js';
 
 /**
  * @param functionCalls Result of the code generation, a map of file paths to new content

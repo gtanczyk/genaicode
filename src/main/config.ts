@@ -1,4 +1,4 @@
-import { findRcFile, parseRcFile } from './config-lib.ts';
+import { findRcFile, parseRcFile, RcConfig } from './config-lib.js';
 
 // Default extensions if not specified in .genaicoderc
 const DEFAULT_EXTENSIONS: string[] = [
@@ -24,7 +24,7 @@ const DEFAULT_IGNORE_PATHS: string[] = ['node_modules', 'build', 'dist', 'packag
 
 // Read and parse the configuration
 const rcFilePath: string = findRcFile();
-export const rcConfig = parseRcFile(rcFilePath);
+export const rcConfig: RcConfig = parseRcFile(rcFilePath);
 
 // Use extensions from .genaicoderc if available, otherwise use default
 export const sourceExtensions: string[] = rcConfig.extensions || DEFAULT_EXTENSIONS;

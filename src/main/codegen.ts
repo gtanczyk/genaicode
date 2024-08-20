@@ -10,21 +10,21 @@ import {
   disableInitialLint,
   helpRequested,
   imagen,
-} from '../cli/cli-params.ts';
-import { validateCliParams } from '../cli/validate-cli-params.ts';
-import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.ts';
-import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.ts';
-import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.ts';
-import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.ts';
-import { generateImage as generateImageDallE } from '../ai-service/dall-e.ts';
-import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.ts';
+} from '../cli/cli-params.js';
+import { validateCliParams } from '../cli/validate-cli-params.js';
+import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
+import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
+import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
+import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
+import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
+import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
 import { promptService } from '../prompt/prompt-service.js';
-import { updateFiles } from '../files/update-files.ts';
-import { rcConfig } from '../main/config.ts';
+import { updateFiles } from '../files/update-files.js';
+import { rcConfig } from '../main/config.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
-import { printHelpMessage } from '../cli/cli-options.ts';
-import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.ts';
+import { printHelpMessage } from '../cli/cli-options.js';
+import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 
 const execPromise = util.promisify(exec);
 

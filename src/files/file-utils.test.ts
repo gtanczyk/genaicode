@@ -1,5 +1,5 @@
 import { vi, describe, beforeEach, it, expect } from 'vitest';
-import { isAncestorDirectory } from './file-utils.ts';
+import { isAncestorDirectory } from './file-utils.js';
 
 // Test for isAncestorDirectory
 describe('isAncestorDirectory', () => {

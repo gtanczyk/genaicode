@@ -1,4 +1,4 @@
-import { temperature, cheap, vision } from '../../cli/cli-params.ts';
+import { temperature, cheap, vision } from '../../cli/cli-params.js';
 
 /**
  * Function definition for codegenSummary

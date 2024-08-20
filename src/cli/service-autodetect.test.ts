@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { serviceAutoDetect } from './service-autodetect.ts';
+import { serviceAutoDetect } from './service-autodetect.js';
 
 describe('serviceAutoDetect', () => {
   afterEach(() => {

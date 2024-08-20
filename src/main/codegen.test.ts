@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { runCodegen } from './codegen.ts';
-import * as vertexAi from '../ai-service/vertex-ai.ts';
-import * as chatGpt from '../ai-service/chat-gpt.ts';
-import * as anthropic from '../ai-service/anthropic.ts';
-import * as vertexAiClaude from '../ai-service/vertex-ai-claude.ts';
-import * as updateFiles from '../files/update-files.ts';
-import '../files/find-files.ts';
-import * as cliParams from '../cli/cli-params.ts';
-import * as cliOptions from '../cli/cli-options.ts';
-import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.ts';
-import * as dallE from '../ai-service/dall-e.ts';
-import './config.ts';
+import { runCodegen } from './codegen.js';
+import * as vertexAi from '../ai-service/vertex-ai.js';
+import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as anthropic from '../ai-service/anthropic.js';
+import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
+import * as updateFiles from '../files/update-files.js';
+import '../files/find-files.js';
+import * as cliParams from '../cli/cli-params.js';
+import * as cliOptions from '../cli/cli-options.js';
+import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
+import * as dallE from '../ai-service/dall-e.js';
+import './config.js';
 
 vi.mock('../ai-service/vertex-ai.ts', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.ts', () => ({ generateContent: vi.fn() }));

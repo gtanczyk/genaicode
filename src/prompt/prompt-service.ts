@@ -4,13 +4,13 @@ import * as diff from 'diff';
 import mime from 'mime-types';
 import { createInterface } from 'readline';
 
-import { getSystemPrompt } from './systemprompt.ts';
-import { getCodeGenPrompt } from './prompt-codegen.ts';
-import { functionDefs } from './function-calling.ts';
-import { getSourceCode, getImageAssets } from '../files/read-files.ts';
-import { disableContextOptimization, temperature, vision, cheap, askQuestion } from '../cli/cli-params.ts';
-import { validateFunctionCall } from './function-calling-validate.ts';
-import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.ts';
+import { getSystemPrompt } from './systemprompt.js';
+import { getCodeGenPrompt } from './prompt-codegen.js';
+import { functionDefs } from './function-calling.js';
+import { getSourceCode, getImageAssets } from '../files/read-files.js';
+import { disableContextOptimization, temperature, vision, cheap, askQuestion } from '../cli/cli-params.js';
+import { validateFunctionCall } from './function-calling-validate.js';
+import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
 
 interface GenerateContentFunction {
   (

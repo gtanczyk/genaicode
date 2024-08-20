@@ -1,5 +1,5 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.ts';
+import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { Message } from '@anthropic-ai/sdk/resources/messages.mjs';
 
 /**

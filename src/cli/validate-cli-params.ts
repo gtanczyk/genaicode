@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import globRegex from 'glob-regex';
-import { rcConfig } from '../main/config.ts';
+import { rcConfig } from '../main/config.js';
 
 // List of allowed CLI parameters
 const allowedParameters: string[] = [
@@ -32,6 +32,7 @@ const allowedParameters: string[] = [
   '--content-mask=',
   '--disable-cache',
   '--ignore-pattern=',
+  '--force-dist',
 ];
 
 /**
