@@ -42,7 +42,7 @@ describe('CLI Options', () => {
     it('should include the --imagen option', () => {
       const imagenOption = cliOptions.find((option) => option.name === '--imagen=<service>');
       expect(imagenOption).toBeDefined();
-      expect(imagenOption.description).toBe(
+      expect(imagenOption!.description).toBe(
         'Enable image generation functionality and specify the service to use (either "vertex-ai" or "dall-e").',
       );
     });

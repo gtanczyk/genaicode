@@ -28,7 +28,7 @@ vi.mock('../main/config.ts', () => ({
 describe('read-files', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(cliParams).contentMask = undefined;
+    vi.mocked(cliParams).contentMask = null;
   });
 
   afterEach(() => {
@@ -38,8 +38,8 @@ describe('read-files', () => {
   describe('getSourceCode', () => {
     it('should return source code for all files', () => {
       const mockFiles = ['/home/project/file1.js', '/home/project/file2.js'];
-      getSourceFiles.mockReturnValue(mockFiles);
-      fs.readFileSync.mockImplementation((file) => `Content of ${file}`);
+      vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
       const result = getSourceCode();
@@ -53,8 +53,8 @@ describe('read-files', () => {
 
     it('should apply content mask when specified', () => {
       const mockFiles = ['/home/project/file1.js', '/home/project/subfolder/file2.js'];
-      getSourceFiles.mockReturnValue(mockFiles);
-      fs.readFileSync.mockImplementation((file) => `Content of ${file}`);
+      vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
       vi.mocked(cliParams).contentMask = 'subfolder';
 
@@ -70,8 +70,8 @@ describe('read-files', () => {
 
     it('should include task file when specified', () => {
       const mockFiles = ['/home/project/file1.js'];
-      getSourceFiles.mockReturnValue(mockFiles);
-      fs.readFileSync.mockImplementation((file) => `Content of ${file}`);
+      vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
       vi.mocked(cliParams).taskFile = '/home/project/task.md';
 
@@ -87,9 +87,9 @@ describe('read-files', () => {
   describe('getImageAssets', () => {
     it('should return image assets information', () => {
       const mockImageFiles = ['/home/project/image1.png', '/home/project/image2.jpg'];
-      getImageAssetFiles.mockReturnValue(mockImageFiles);
-      mime.lookup.mockImplementation((file) => (file.endsWith('.png') ? 'image/png' : 'image/jpeg'));
-      sizeOf.mockImplementation(() => ({ width: 100, height: 200 }));
+      vi.mocked(getImageAssetFiles).mockReturnValue(mockImageFiles);
+      vi.mocked(mime).lookup.mockImplementation((file) => (file.endsWith('.png') ? 'image/png' : 'image/jpeg'));
+      vi.mocked(sizeOf).default.mockImplementation(() => ({ width: 100, height: 200 }));
 
       const result = getImageAssets();
 

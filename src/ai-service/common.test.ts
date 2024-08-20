@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.ts';
 import { functionDefs } from '../prompt/function-calling.ts';
 
@@ -16,7 +16,7 @@ vi.mock('../cli/cli-params.ts', () => ({
 }));
 
 describe('printTokenUsageAndCost', () => {
-  let consoleLogSpy;
+  let consoleLogSpy: MockInstance<{ (...data: any[]): void; (message?: any, ...optionalParams: any[]): void }>;
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

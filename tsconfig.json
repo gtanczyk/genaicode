@@ -15,7 +15,8 @@
     "declaration": true,
     "sourceMap": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": ["vitest/globals"]
   },
   "ts-node": {
     "esm": true,

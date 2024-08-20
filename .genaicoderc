@@ -14,5 +14,5 @@
     "coverage",
     "package-lock.json"
   ],
-  "lintCommand": "npm run lint"
+  "lintCommand": "npm run type-check && npm run lint"
 }

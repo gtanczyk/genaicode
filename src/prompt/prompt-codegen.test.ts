@@ -34,12 +34,12 @@ describe('getCodeGenPrompt', () => {
 
   it('should generate prompt for all files when considerAllFiles is true', () => {
     vi.spyOn(findFiles, 'getSourceFiles').mockReturnValue(['file1.js', 'file2.js']);
-    cliParams.considerAllFiles = true;
-    cliParams.explicitPrompt = null;
-    cliParams.allowFileCreate = false;
-    cliParams.allowFileDelete = false;
-    cliParams.allowDirectoryCreate = false;
-    cliParams.allowFileMove = false;
+    vi.mocked(cliParams).considerAllFiles = true;
+    vi.mocked(cliParams).explicitPrompt = undefined;
+    vi.mocked(cliParams).allowFileCreate = false;
+    vi.mocked(cliParams).allowFileDelete = false;
+    vi.mocked(cliParams).allowDirectoryCreate = false;
+    vi.mocked(cliParams).allowFileMove = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
 
     const prompt = getCodeGenPrompt();
@@ -56,7 +56,7 @@ describe('getCodeGenPrompt', () => {
 
 describe('getLintFixPrompt', () => {
   beforeEach(() => {
-    cliParams.verbosePrompt = false;
+    vi.mocked(cliParams).verbosePrompt = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
   });
 
@@ -97,7 +97,7 @@ describe('getLintFixPrompt', () => {
   });
 
   it('should log the prompt when verbosePrompt is true', () => {
-    cliParams.verbosePrompt = true;
+    vi.mocked(cliParams).verbosePrompt = true;
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const command = 'eslint --fix';

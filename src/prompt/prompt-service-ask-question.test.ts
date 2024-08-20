@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.ts';
 import * as vertexAi from '../ai-service/vertex-ai.ts';
+import { FunctionCall } from '../ai-service/common.ts';
 import * as readline from 'readline';
 import '../cli/cli-params.ts';
 import '../files/read-files.ts';
@@ -49,7 +50,7 @@ vi.mock('../main/config.ts', () => ({
 }));
 
 describe('promptService with askQuestion', () => {
-  let mockReadline;
+  let mockReadline: { question: (_: unknown, callback: (msg: string) => void) => void; close: () => void };
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -59,6 +60,7 @@ describe('promptService with askQuestion', () => {
       question: vi.fn(),
       close: vi.fn(),
     };
+    // @ts-expect-error (avoid complex mock)
     vi.spyOn(readline, 'createInterface').mockReturnValue(mockReadline);
   });
 
@@ -100,16 +102,16 @@ describe('promptService with askQuestion', () => {
       },
     ];
 
-    vertexAi.generateContent
+    vi.mocked(vertexAi.generateContent)
       .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockAskQuestionCall2)
       .mockResolvedValueOnce(mockCodegenSummary);
 
-    mockReadline.question.mockImplementationOnce((_, callback) => {
+    vi.mocked(mockReadline.question).mockImplementationOnce((_: unknown, callback: (msg: string) => void) => {
       callback('Yes');
     });
 
-    await promptService(vertexAi.generateContent);
+    await promptService(vertexAi.generateContent, undefined);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(mockReadline.question).toHaveBeenCalledWith('Your answer: ', expect.any(Function));
@@ -130,9 +132,9 @@ describe('promptService with askQuestion', () => {
       },
     ];
 
-    vertexAi.generateContent.mockResolvedValueOnce(mockAskQuestionCall);
+    vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockAskQuestionCall);
 
-    const result = await promptService(vertexAi.generateContent);
+    const result = await promptService(vertexAi.generateContent, undefined);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(result).toEqual([]);
@@ -140,7 +142,7 @@ describe('promptService with askQuestion', () => {
   });
 
   it('should proceed with code generation when askQuestion returns shouldPrompt: false', async () => {
-    const mockAskQuestionCall = [];
+    const mockAskQuestionCall: FunctionCall[] = [];
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -152,9 +154,11 @@ describe('promptService with askQuestion', () => {
       },
     ];
 
-    vertexAi.generateContent.mockResolvedValueOnce(mockAskQuestionCall).mockResolvedValueOnce(mockCodegenSummary);
+    vi.mocked(vertexAi.generateContent)
+      .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockCodegenSummary);
 
-    await promptService(vertexAi.generateContent);
+    await promptService(vertexAi.generateContent, undefined);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(mockReadline.question).not.toHaveBeenCalled();
