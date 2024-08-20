@@ -50,7 +50,9 @@ export function getCodeGenPrompt(): string {
         ? codeGenFiles.length > 0
           ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join('\n')}`
           : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file.`
-        : `Generate updates only for the following files:\n${codeGenFiles.join('\n')}`
+        : codeGenFiles.length > 0
+          ? `Generate updates only for the following files:\n${codeGenFiles.join('\n')}`
+          : ''
     }
 
 ${

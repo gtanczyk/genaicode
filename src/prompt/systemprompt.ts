@@ -18,7 +18,16 @@ export function getSystemPrompt(): string {
 
   The root directory of my application is \`${rcConfig.rootDir}\` and you should limit the changes only to this path.
 
-  When suggesting changes always use absolute file paths.
+  Additional suggestions, or corners cases to think about:
+  - When suggesting changes always use absolute file paths.
+  - Always aim to return working code
+  - Do not leave out commented out fragments like "// ... (keep other existing functions)"
+  - For large files prefer to use \`patchFile\` function
+  - Suggest user to split large files if it makes sense for current task
+  - At the start of conversation the user will express what you are allowed to do (for example: create files, move files, generate images etc.). At the start of conversation you should ensure you have necessary allowances for the current task.
+  - Consider failing the task with explanation if instructions are not clear enough, or something feels completely wrong.
+  - Do not produce unnecessary code, ensure the code you generate will be used once all changes are done.
+
   `;
 
   if (askQuestion) {
