@@ -69,7 +69,7 @@ export async function generateContent(
 
   const response: Message = await client.messages.create({
     model: model,
-    max_tokens: 4096,
+    max_tokens: cheap ? 4096 : 8192,
     temperature: temperature,
     system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     messages: messages,
