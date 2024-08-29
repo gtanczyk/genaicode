@@ -7,6 +7,7 @@ describe('serviceAutoDetect', () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_CLOUD_PROJECT;
+    delete process.env.API_KEY;
   });
 
   it('should return "anthropic" when ANTHROPIC_API_KEY is set', () => {

@@ -29,6 +29,7 @@ vi.mock('../cli/cli-params.js', () => ({
   verbosePrompt: false,
   vertexAiClaude: false,
   helpRequested: false,
+  aiStudio: false,
   vision: false,
   imagen: false,
   temperature: 0.7,
