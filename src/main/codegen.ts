@@ -10,12 +10,14 @@ import {
   disableInitialLint,
   helpRequested,
   imagen,
+  aiStudio,
 } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
+import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
 import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
@@ -66,9 +68,11 @@ export async function runCodegen(): Promise<void> {
         ? generateContentAnthropic
         : chatGpt
           ? generateContentGPT
-          : (() => {
-              throw new Error('Please specify which AI service should be used');
-            })();
+          : aiStudio
+            ? generateContentAiStudio
+            : (() => {
+                throw new Error('Please specify which AI service should be used');
+              })();
 
   const generateImage: GenerateImageFunction | undefined =
     imagen === 'vertex-ai' ? generateImageVertexAi : imagen === 'dall-e' ? generateImageDallE : undefined;

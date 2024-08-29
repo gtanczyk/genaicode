@@ -12,6 +12,7 @@ const allowedParameters: string[] = [
   '--allow-directory-create',
   '--allow-file-move',
   '--chat-gpt',
+  '--ai-studio',
   '--vertex-ai',
   '--vertex-ai-claude',
   '--anthropic',

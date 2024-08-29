@@ -6,6 +6,8 @@ export function serviceAutoDetect(): string | null {
     return 'chat-gpt';
   } else if (process.env.GOOGLE_CLOUD_PROJECT) {
     return 'vertex-ai';
+  } else if (process.env.API_KEY) {
+    return 'ai-studio';
   }
   return null;
 }
