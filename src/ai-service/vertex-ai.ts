@@ -6,6 +6,7 @@ import {
   HarmCategory,
   HarmBlockThreshold,
   FunctionDeclaration,
+  FunctionCallingMode,
 } from '@google-cloud/vertexai';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { geminiBlockNone } from '../cli/cli-params.js';
@@ -63,27 +64,15 @@ export async function generateContent(
 
   const req: GenerateContentRequest = {
     contents: messages,
-    tools: [
-      {
-        functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
-      },
-    ],
-    // @ts-expect-error (known issue)
-    toolConfig: {
-      functionCallingConfig: {
-        mode: cheap ? undefined : 'ANY',
-        ...(!cheap && requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
-      },
-    },
   };
 
   const model = await getGenModel(
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     temperature,
+    functionDefs,
+    requiredFunctionName,
     cheap,
   );
-
-  assert(await verifyVertexMonkeyPatch(), 'Vertex AI Tool Config was not monkey patched');
 
   const result = await model.generateContent(req);
 
@@ -126,7 +115,13 @@ export async function generateContent(
 
 // A function to get the generative model
 // Modified to accept temperature parameter and cheap flag
-export function getGenModel(systemPrompt: string, temperature: number, cheap = false) {
+export function getGenModel(
+  systemPrompt: string,
+  temperature: number,
+  functionDefs: FunctionDef[],
+  requiredFunctionName: string | null,
+  cheap = false,
+) {
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
   const model = cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001';
@@ -167,11 +162,16 @@ export function getGenModel(systemPrompt: string, temperature: number, cheap = f
         },
       ],
     },
+    tools: [
+      {
+        functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
+      },
+    ],
+    toolConfig: {
+      functionCallingConfig: {
+        mode: cheap ? undefined : FunctionCallingMode.ANY,
+        ...(!cheap && requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+      },
+    },
   });
-}
-
-export async function verifyVertexMonkeyPatch(): Promise<boolean> {
-  return (await import('@google-cloud/vertexai/build/src/functions/generate_content.js')).generateContent
-    .toString()
-    .includes('// MONKEY PATCH TOOL_CONFIG');
 }

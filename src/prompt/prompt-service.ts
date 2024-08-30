@@ -123,7 +123,7 @@ export async function promptService(
     assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
     assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
 
-    if (codegenSummaryRequest?.args.contextPaths.length > 0 && !disableContextOptimization) {
+    if (!disableContextOptimization) {
       console.log('Optimize with context paths.');
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
       getSourceCodeRequest.args = {
@@ -301,14 +301,22 @@ async function validateAndRecoverSingleResult(
   messages: ReturnType<typeof prepareMessages>,
   generateContentFn: GenerateContentFunction,
 ): Promise<FunctionCall[]> {
-  if (result.length !== 1) {
+  if (result.length > 1) {
+    // quite unexpected
     return result;
   }
 
-  const call = result[0];
-  const validatorError = validateFunctionCall(call);
+  let call: FunctionCall | undefined = result[0];
+  const validatorError = validateFunctionCall(call, requiredFunctionName);
   if (validatorError) {
     console.log('Invalid function call', call, validatorError);
+    if (!call) {
+      call = { name: requiredFunctionName };
+      if (requiredFunctionName === 'patchFile') {
+        console.log('Switching patchFile to updateFile');
+        requiredFunctionName = 'updateFile';
+      }
+    }
 
     prompt.push(
       { type: 'assistant', functionCalls: [call] },
@@ -334,9 +342,11 @@ async function validateAndRecoverSingleResult(
     console.log('Recover result:', result);
 
     if (result.length === 1) {
-      const recoveryError = validateFunctionCall(result[0]);
+      const recoveryError = validateFunctionCall(result[0], requiredFunctionName);
       assert(!recoveryError, 'Recovery failed');
       console.log('Recovery was successful');
+    } else if (result.length === 0) {
+      throw new Error('Did not receive any function calls unexpectedly.');
     } else {
       console.log('Unexpected number of function calls', result);
     }
@@ -358,7 +368,7 @@ function prepareMessages(prompt: string) {
       prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
     sourceCode: JSON.stringify(getSourceCode()),
-    contextSourceCode: (paths: string[]) => JSON.stringify(getSourceCode(paths)),
+    contextSourceCode: (paths: string[]) => JSON.stringify(getSourceCode(paths, true)),
     imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path: string) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;

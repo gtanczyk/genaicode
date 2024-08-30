@@ -9,10 +9,12 @@
     "examples/image-operations",
     "docs/tasks",
     "node_modules",
+    "dist",
     ".github",
     ".husky",
     "coverage",
-    "package-lock.json"
+    "package-lock.json",
+    ".vscode"
   ],
   "lintCommand": "npm run type-check && npm run lint"
 }

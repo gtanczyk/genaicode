@@ -23,19 +23,19 @@ type ImageAssetsMap = Record<
 /**
  * Read contents of source files and create a map with file path as key and file content as value
  */
-function readSourceFiles(filterPaths?: string[]): SourceCodeMap {
+function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMap {
   const sourceCode: SourceCodeMap = {};
   for (const file of getSourceFiles()) {
     if (!filterPaths || filterPaths.includes(file)) {
       // Apply content mask filter if it's set
-      if (!filterPaths && contentMask) {
+      if (!filterPaths && contentMask && !forceAll) {
         const relativePath = path.relative(rcConfig.rootDir, file);
         if (!relativePath.startsWith(contentMask)) {
           sourceCode[file] = { content: null }; // Include the file path but set content to null
           continue;
         }
       }
-      if (ignorePatterns.some((pattern) => globRegex.default(pattern).test(file))) {
+      if (!forceAll && ignorePatterns.some((pattern) => globRegex.default(pattern).test(file))) {
         sourceCode[file] = { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
@@ -47,8 +47,8 @@ function readSourceFiles(filterPaths?: string[]): SourceCodeMap {
 }
 
 /** Print source code of all source files */
-export function getSourceCode(filterPaths?: string[]): SourceCodeMap {
-  const sourceCode = readSourceFiles(filterPaths);
+export function getSourceCode(filterPaths?: string[], forceAll = false): SourceCodeMap {
+  const sourceCode = readSourceFiles(filterPaths, forceAll);
 
   if (taskFile && !sourceCode[taskFile]) {
     sourceCode[taskFile] = {

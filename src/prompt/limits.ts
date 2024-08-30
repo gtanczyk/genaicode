@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 
-const SYSTEM_PROMPT_LIMIT = 300;
+const SYSTEM_PROMPT_LIMIT = 400;
 const CODEGEN_PROMPT_LIMIT = 500;
-const SOURCE_CODE_LIMIT = 20000;
+const SOURCE_CODE_LIMIT = 40000;
 
 function verifyPromptLimit(promptType: string, prompt: string, limit: number): void {
   const tokenCount = prompt.split(/\s+/).length;

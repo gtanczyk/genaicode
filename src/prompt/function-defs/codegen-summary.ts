@@ -29,9 +29,13 @@ export const codegenSummary = {
         items: {
           type: 'object',
           description:
-            'Proposed update of a file. The update is an object which contains properties like file path, update tool name, and few other important properties.',
+            'Proposed update of a file. The update is an object which contains properties like absolute file path, update tool name, and few other important properties.',
           properties: {
-            path: { type: 'string', description: 'An absolute path of the project file that will be updated' },
+            path: {
+              type: 'string',
+              description:
+                'An absolute path of the project file that will be updated. This must be an absolute file path.',
+            },
             updateToolName: {
               type: 'string',
               enum: [
