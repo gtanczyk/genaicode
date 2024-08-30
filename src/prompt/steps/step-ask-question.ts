@@ -1,4 +1,4 @@
-import { createInterface } from 'readline';
+import { input } from '@inquirer/prompts';
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { askQuestion } from '../../cli/cli-params.js';
 import { StepResult } from './steps-types.js';
@@ -46,7 +46,7 @@ export async function executeStepAskQuestion(
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
           ? 'Providing requested files content'
-          : await getUserInput('Your answer: ')
+          : await input({ message: 'Your answer' })
         : "Let's proceed with code generation.";
       prompt.push(
         { type: 'assistant', functionCalls: [askQuestionCall] },
@@ -75,18 +75,4 @@ export async function executeStepAskQuestion(
   }
 
   return StepResult.CONTINUE;
-}
-
-async function getUserInput(prompt: string): Promise<string> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
 }

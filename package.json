@@ -53,6 +53,7 @@
     "@google-cloud/vertexai": "^1.6.0",
     "@google/generative-ai": "^0.17.1",
     "@imgly/background-removal-node": "^1.4.5",
+    "@inquirer/prompts": "^5.3.8",
     "@types/diff": "^5.2.1",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^18.0.0",

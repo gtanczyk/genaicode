@@ -2,14 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import { FunctionCall } from '../ai-service/common.js';
-import * as readline from 'readline';
+import * as prompts from '@inquirer/prompts';
+import { CancelablePromise } from '@inquirer/type';
 import '../cli/cli-params.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('readline', () => ({
-  createInterface: vi.fn(),
+vi.mock('@inquirer/prompts', () => ({
+  input: vi.fn(),
 }));
 vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
@@ -51,18 +52,9 @@ vi.mock('../main/config.js', () => ({
 }));
 
 describe('promptService with askQuestion', () => {
-  let mockReadline: { question: (_: unknown, callback: (msg: string) => void) => void; close: () => void };
-
   beforeEach(() => {
     vi.resetAllMocks();
     console.log = vi.fn();
-
-    mockReadline = {
-      question: vi.fn(),
-      close: vi.fn(),
-    };
-    // @ts-expect-error (avoid complex mock)
-    vi.spyOn(readline, 'createInterface').mockReturnValue(mockReadline);
   });
 
   afterEach(() => {
@@ -108,14 +100,14 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockAskQuestionCall2)
       .mockResolvedValueOnce(mockCodegenSummary);
 
-    vi.mocked(mockReadline.question).mockImplementationOnce((_: unknown, callback: (msg: string) => void) => {
-      callback('Yes');
-    });
+    vi.mocked(prompts.input).mockImplementationOnce(
+      () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
+    );
 
     await promptService(vertexAi.generateContent, undefined);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(mockReadline.question).toHaveBeenCalledWith('Your answer: ', expect.any(Function));
+    expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
     expect(console.log).toHaveBeenCalledWith('Assistant asks:', expect.any(Object));
     expect(console.log).toHaveBeenCalledWith('The question was answered');
   });
@@ -162,7 +154,7 @@ describe('promptService with askQuestion', () => {
     await promptService(vertexAi.generateContent, undefined);
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(mockReadline.question).not.toHaveBeenCalled();
+    expect(prompts.input).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith('Assistant did not ask a question. Proceeding with code generation.');
   });
 });
