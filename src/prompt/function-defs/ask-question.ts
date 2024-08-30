@@ -31,7 +31,7 @@ export const askQuestion = {
       requestFileContent: {
         type: 'object',
         description:
-          'Request file contents to be provided by the user, use this property when a content of a file is missing(null in getSourceCode response), but we know that it exists.',
+          'This object property is used to request file contents to be provided by the user, use this property when a content of a file is missing(null in getSourceCode response), but we know that it exists.',
         properties: {
           contextPaths: {
             type: 'array',

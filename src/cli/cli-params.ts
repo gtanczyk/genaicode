@@ -28,7 +28,7 @@ export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
 export const imagen = params.find((param) => param.startsWith('--imagen'))?.split('=')[1];
 export const cheap = params.includes('--cheap');
-export const askQuestion = params.includes('--ask-question');
+export const askQuestion = !params.includes('--disable-ask-question'); // Default enabled
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -115,4 +115,6 @@ if (ignorePatterns.length > 0) {
 
 if (askQuestion) {
   console.log('Assistant can ask questions to the user');
+} else {
+  console.log('Assistant will not ask questions to the user');
 }

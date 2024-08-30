@@ -81,7 +81,7 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--cheap`: Uses a cheaper, faster model for code generation, which may provide lower quality results but is more cost-effective for simpler tasks.
 - `--content-mask=<path>`: Applies a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.
 - `--ignore-pattern="glob/regex"`: Specify a pattern of files to ignore during the initial source code fetching. This saves initial token usage.
-- `--ask-question`: Allows the AI assistant to ask questions for clarification during the code generation process.
+- `--disable-ask-question`: Disable the default behavior of AI assistant to ask questions for clarification during the code generation process.
 - `--disable-cache`: Disables caching for the application, which can be useful if caching is causing issues or if you want to ensure fresh data is used for each operation.
 - `--help`: Displays the help message with all available options.
 

@@ -20,7 +20,7 @@ export async function executeStepAskQuestion(
   },
 ): Promise<StepResult> {
   if (!askQuestion) {
-    console.log('Ask question is not enabled.');
+    console.log('Ask question is disabled by the --disable-ask-question flag.');
     return StepResult.CONTINUE;
   }
 

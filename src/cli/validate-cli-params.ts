@@ -28,7 +28,7 @@ const allowedParameters: string[] = [
   '--vision',
   '--imagen=',
   '--cheap',
-  '--ask-question',
+  '--disable-ask-question',
   '--help',
   '--content-mask=',
   '--disable-cache',

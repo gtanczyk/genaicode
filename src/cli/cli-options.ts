@@ -114,8 +114,9 @@ const cliOptions: CliOption[] = [
     description: 'Disable caching for the application.',
   },
   {
-    name: '--ask-question',
-    description: 'Allows the AI assistant to ask questions for clarification during the code generation process.',
+    name: '--disable-ask-question',
+    description:
+      'Disable the question-asking feature. By default, the assistant can ask questions for clarification during the code generation process.',
   },
 ];
 

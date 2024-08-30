@@ -187,8 +187,8 @@ The GenAIcode tool offers several advanced features to enhance its code generati
 
 ## Interactive Clarification
 
-- **Activation**: `--ask-question` flag
-- **Description**: Allows the AI assistant to ask questions for clarification during the code generation process.
+- **Activation**: `--disable-ask-question` flag
+- **Description**: By default AI assistant can ask questions for clarification during the code generation process, this option can be used to disable this behavior.
 - **Benefits**:
   - Improves the accuracy and relevance of generated code by gathering additional information.
   - Enables a more interactive and context-aware code generation experience.
