@@ -21,20 +21,13 @@ export const generateImage = {
         description:
           'Path to a image file that will be used as a context for image generation. It is useful if there is a need to edit an image with genAI.',
       },
-      size: {
-        type: 'object',
-        properties: {
-          width: {
-            type: 'number',
-            description: 'width of the image',
-          },
-          height: {
-            type: 'number',
-            description: 'height of the image',
-          },
-        },
-        required: ['width', 'height'],
-        description: 'The size of the image to generate.',
+      width: {
+        type: 'number',
+        description: 'width of the image',
+      },
+      height: {
+        type: 'number',
+        description: 'height of the image',
       },
       cheap: {
         type: 'boolean',
@@ -46,6 +39,6 @@ export const generateImage = {
         description: 'The explanation of the reasoning behind generating this image',
       },
     },
-    required: ['prompt', 'filePath', 'size', 'cheap'],
+    required: ['prompt', 'filePath', 'width', 'height'],
   },
 } as const;

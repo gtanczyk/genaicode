@@ -210,14 +210,17 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
       },
     ];
     const mockFunctionCalls = [
-      { name: 'generateImage', args: { prompt: 'A beautiful landscape', filePath: 'landscape.png', size: '512x512' } },
+      {
+        name: 'generateImage',
+        args: { prompt: 'A beautiful landscape', filePath: 'landscape.png', width: 512, height: 512 },
+      },
     ];
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockFunctionCalls);
@@ -226,7 +229,15 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAi.generateContent).toHaveBeenCalled();
-    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith('A beautiful landscape', undefined, '512x512', false);
+    expect(vertexAiImagen.generateImage).toHaveBeenCalledWith(
+      'A beautiful landscape',
+      undefined,
+      {
+        height: 512,
+        width: 512,
+      },
+      false,
+    );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -238,14 +249,14 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'city.png', updateToolName: 'generateImage' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
       },
     ];
     const mockFunctionCalls = [
-      { name: 'generateImage', args: { prompt: 'A futuristic city', filePath: 'city.png', size: '1024x1024' } },
+      { name: 'generateImage', args: { prompt: 'A futuristic city', filePath: 'city.png', width: 1024, height: 1024 } },
     ];
     vi.mocked(chatGpt).generateContent.mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(chatGpt).generateContent.mockResolvedValueOnce(mockFunctionCalls);
@@ -254,7 +265,12 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
-    expect(dallE.generateImage).toHaveBeenCalledWith('A futuristic city', undefined, '1024x1024', false);
+    expect(dallE.generateImage).toHaveBeenCalledWith(
+      'A futuristic city',
+      undefined,
+      { width: 1024, height: 1024 },
+      false,
+    );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
   });
 
@@ -294,7 +310,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage' }],
           contextPaths: [],
           explanation: 'Mock summary with cheap image generation',
         },
@@ -306,7 +322,8 @@ describe('runCodegen', () => {
         args: {
           prompt: 'A simple landscape',
           filePath: 'landscape.png',
-          size: { width: 256, height: 256 },
+          width: 256,
+          height: 256,
           cheap: true,
         },
       },

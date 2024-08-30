@@ -385,7 +385,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: '/path/to/generated/image.png', updateToolName: 'generateImage' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation',
         },
@@ -397,7 +397,8 @@ describe('promptService', () => {
         args: {
           prompt: 'A test image',
           filePath: '/path/to/generated/image.png',
-          size: { width: 256, height: 256 },
+          width: 256,
+          height: 256,
         },
       },
     ];
@@ -435,7 +436,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
+          fileUpdates: [{ path: '/path/to/generated/image.png', updateToolName: 'generateImage' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -447,7 +448,8 @@ describe('promptService', () => {
         args: {
           prompt: 'A test image',
           filePath: '/path/to/generated/image.png',
-          size: { width: 256, height: 256 },
+          width: 256,
+          height: 256,
         },
       },
     ];

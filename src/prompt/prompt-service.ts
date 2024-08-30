@@ -1,15 +1,12 @@
 import assert from 'node:assert';
 import fs from 'fs';
-import * as diff from 'diff';
 import mime from 'mime-types';
-import { createInterface } from 'readline';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision, cheap, askQuestion } from '../cli/cli-params.js';
-import { validateFunctionCall } from './function-calling-validate.js';
+import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
 import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
 
 interface GenerateContentFunction {
@@ -30,6 +27,12 @@ interface GenerateImageFunction {
     cheap: boolean,
   ): Promise<string>;
 }
+
+import { executeStepAskQuestion } from './steps/step-ask-question.js';
+import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
+import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
+import { executeStepGenerateImage } from './steps/step-generate-image.js';
+import { StepResult } from './steps/steps-types.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -65,57 +68,12 @@ export async function promptService(
 
   prompt.slice(-1)[0].text = messages.prompt;
 
-  // New step: Allow the assistant to ask a question if --ask-question is enabled
-  if (askQuestion) {
-    console.log('Allowing the assistant to ask a question...');
-    const questionAsked = false;
-    while (!questionAsked) {
-      const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap);
-      const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
-      if (askQuestionCall) {
-        console.log('Assistant asks:', askQuestionCall.args);
-        const fileContentRequested =
-          // @ts-expect-error
-          askQuestionCall?.args?.requestFileContent?.contextPaths &&
-          // @ts-expect-error
-          askQuestionCall?.args?.requestFileContent?.execute;
-        const userAnswer = askQuestionCall.args?.shouldPrompt
-          ? fileContentRequested
-            ? 'Providing requsted files content'
-            : await getUserInput('Your answer: ')
-          : 'Lets proceed with code generation.';
-        prompt.push(
-          { type: 'assistant', functionCalls: [askQuestionCall] },
-          {
-            type: 'user',
-            text: userAnswer,
-            functionResponses: [
-              {
-                name: 'askQuestion',
-                call_id: askQuestionCall.id,
-
-                content: fileContentRequested
-                  ? // @ts-expect-error
-                    messages.contextSourceCode(askQuestionCall?.args?.requestFileContent?.contextPaths)
-                  : undefined,
-              },
-            ],
-          },
-        );
-        console.log('The question was answered');
-        if (askQuestionCall.args?.stopCodegen) {
-          console.log('Assistant requested to stop code generation. Exiting...');
-          return [];
-        }
-        if (!askQuestionCall.args?.shouldPrompt) {
-          console.log('Proceeding with code generation.');
-          break;
-        }
-      } else {
-        console.log('Assistant did not ask a question. Proceeding with code generation.');
-        break;
-      }
-    }
+  // Execute the ask question step
+  if (
+    (await executeStepAskQuestion(generateContentFn, prompt, functionDefs, temperature, cheap, messages)) ===
+    StepResult.BREAK
+  ) {
+    return [];
   }
 
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
@@ -187,7 +145,7 @@ export async function promptService(
         }));
       }
 
-      let partialRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
+      const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
         prompt,
         functionDefs,
         file.updateToolName,
@@ -196,94 +154,27 @@ export async function promptService(
       ];
       let partialResult = await generateContentFn(...partialRequest);
 
-      const getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
-      assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
+      // Validate if function call is compliant with the schema
+      partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, messages, generateContentFn);
 
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
       if (generateImageCall) {
-        assert(!!generateImageFn, 'Image generation requested, but a image generation service was not provided');
-
-        console.log('Processing image generation request:', generateImageCall.args);
-        try {
-          const {
-            prompt: imagePrompt,
-            filePath,
-            contextImagePath,
-            size,
-            cheap,
-          } = generateImageCall.args as {
-            prompt: string;
-            filePath: string;
-            contextImagePath?: string;
-            size: { width: number; height: number };
-            cheap: boolean;
-          };
-          const generatedImageUrl = await generateImageFn(imagePrompt, contextImagePath, size, cheap === true);
-
-          // Add a createFile call to the result to ensure the generated image is tracked
-          partialResult.push({
-            name: 'downloadFile',
-            args: {
-              filePath: filePath,
-              downloadUrl: generatedImageUrl,
-              explanation: `Downloading generated image`,
-            },
-          });
-        } catch (error) {
-          console.error('Error generating image:', error);
-          // Add an explanation about the failed image generation
-          partialResult.push({
-            name: 'explanation',
-            args: {
-              text: `Failed to generate image: ${(error as Error).message}`,
-            },
-          });
-        }
-      } else {
-        partialResult = await validateAndRecoverSingleResult(
-          partialRequest,
-          partialResult,
-          messages,
-          generateContentFn,
-        );
+        partialResult.push(await executeStepGenerateImage(generateImageFn!, generateImageCall));
       }
 
       // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
       const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
       if (patchFileCall) {
-        const { filePath, patch } = patchFileCall.args as { filePath: string; patch: string };
-        console.log('Verification of patch for file:', filePath);
-
-        let updatedContent: string | boolean = false;
-        const currentContent = fs.readFileSync(filePath, 'utf-8');
-
-        try {
-          updatedContent = diff.applyPatch(currentContent, patch);
-        } catch (e) {
-          console.log('Error when applying patch', e);
-        }
-
-        if (!updatedContent) {
-          console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
-
-          // Rerun content generation without patchFile function
-          partialRequest = [prompt, functionDefs, 'updateFile', file.temperature ?? temperature, file.cheap === true];
-          partialResult = await generateContentFn(...partialRequest);
-
-          partialResult = await validateAndRecoverSingleResult(
-            partialRequest,
-            partialResult,
-            messages,
-            generateContentFn,
-          );
-
-          const getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
-          assert(!getSourceCodeCall, 'Unexpected getSourceCode: ' + JSON.stringify(getSourceCodeCall));
-          assert(!partialResult.find((call) => call.name === 'patchFile'), 'Unexpected patchFile in retry response');
-        } else {
-          console.log('Patch verified successfully');
-        }
+        partialResult = await executeStepVerifyPatch(
+          patchFileCall.args as { filePath: string; patch: string },
+          generateContentFn,
+          prompt,
+          functionDefs,
+          file.temperature ?? temperature,
+          file.cheap === true,
+          messages,
+        );
       }
 
       // add the code gen result to the context, as the subsequent code gen may depend on the result
@@ -306,71 +197,7 @@ export async function promptService(
   }
 }
 
-async function validateAndRecoverSingleResult(
-  [prompt, functionDefs, requiredFunctionName, temperature, cheap]: [
-    PromptItem[],
-    FunctionDef[],
-    string,
-    number,
-    boolean,
-  ],
-  result: FunctionCall[],
-  messages: ReturnType<typeof prepareMessages>,
-  generateContentFn: GenerateContentFunction,
-): Promise<FunctionCall[]> {
-  if (result.length > 1) {
-    // quite unexpected
-    return result;
-  }
-
-  let call: FunctionCall | undefined = result[0];
-  const validatorError = validateFunctionCall(call, requiredFunctionName);
-  if (validatorError) {
-    console.log('Invalid function call', call, validatorError);
-    if (!call) {
-      call = { name: requiredFunctionName };
-      if (requiredFunctionName === 'patchFile') {
-        console.log('Switching patchFile to updateFile');
-        requiredFunctionName = 'updateFile';
-      }
-    }
-
-    prompt.push(
-      { type: 'assistant', functionCalls: [call] },
-      {
-        type: 'user',
-        text: messages.invalidFunctionCall,
-        functionResponses: [
-          {
-            name: call.name,
-            call_id: call.id,
-            content: JSON.stringify({ args: call.args, error: validatorError }),
-            isError: true,
-          },
-        ],
-      },
-    );
-
-    console.log('Trying to recover...');
-    if (cheap) {
-      console.log('Disabling --cheap for recovery.');
-    }
-    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false);
-    console.log('Recover result:', result);
-
-    if (result?.length === 1) {
-      const recoveryError = validateFunctionCall(result[0], requiredFunctionName);
-      assert(!recoveryError, 'Recovery failed');
-      console.log('Recovery was successful');
-    } else if (result?.length === 0) {
-      throw new Error('Did not receive any function calls unexpectedly.');
-    } else {
-      console.log('Unexpected number of function calls', result);
-    }
-  }
-
-  return result;
-}
+export type PromptMessages = ReturnType<typeof prepareMessages>;
 
 /**
  * Function to prepare messages for AI services
@@ -393,18 +220,4 @@ function prepareMessages(prompt: string) {
     invalidFunctionCall:
       'Function call was invalid, please analyze the error and respond with corrected function call.',
   };
-}
-
-async function getUserInput(prompt: string): Promise<string> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
 }
