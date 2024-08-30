@@ -7,11 +7,21 @@ import { isAncestorDirectory } from '../files/file-utils.js';
 // This file contains project codegen configuration
 const CODEGENRC_FILENAME = '.genaicoderc';
 
+export interface TextPrompt {
+  content: string;
+}
+
+export interface ImportantContext {
+  textPrompts?: TextPrompt[];
+  files?: string[];
+}
+
 export interface RcConfig {
   rootDir: string;
   lintCommand?: string;
   extensions?: string[];
   ignorePaths?: string[];
+  importantContext?: ImportantContext;
 }
 
 // Find .genaicoderc file

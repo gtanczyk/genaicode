@@ -5,7 +5,7 @@ import path from 'path';
 import globRegex from 'glob-regex';
 
 import { getSourceFiles, getImageAssetFiles } from './find-files.js';
-import { rcConfig } from '../main/config.js';
+import { rcConfig, importantContext } from '../main/config.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { taskFile, contentMask, ignorePatterns } from '../cli/cli-params.js';
 
@@ -25,8 +25,16 @@ type ImageAssetsMap = Record<
  */
 function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMap {
   const sourceCode: SourceCodeMap = {};
+  const importantFiles = new Set(importantContext.files || []);
+
   for (const file of getSourceFiles()) {
-    if (!filterPaths || filterPaths.includes(file)) {
+    if (!filterPaths || filterPaths.includes(file) || importantFiles.has(file)) {
+      // Always include important files
+      if (importantFiles.has(file)) {
+        sourceCode[file] = { content: fs.readFileSync(file, 'utf-8') };
+        continue;
+      }
+
       // Apply content mask filter if it's set
       if (!filterPaths && contentMask && !forceAll) {
         const relativePath = path.relative(rcConfig.rootDir, file);

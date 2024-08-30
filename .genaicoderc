@@ -16,5 +16,10 @@
     "package-lock.json",
     ".vscode"
   ],
-  "lintCommand": "npm run type-check && npm run lint"
+  "lintCommand": "npm run type-check && npm run lint",
+  "importantContext": {
+    "files": [
+      "README.md"
+    ]
+  }
 }

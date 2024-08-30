@@ -15,6 +15,7 @@ import {
 } from '../cli/cli-params.js';
 import { getDependencyList } from '../files/find-files.js';
 import { verifyCodegenPromptLimit } from './limits.js';
+import { importantContext } from '../main/config.js';
 
 interface SourceCodeEntry {
   content?: string;
@@ -43,8 +44,11 @@ export function getCodeGenPrompt(): string {
     codeGenFiles = Array.from(dependencyTreeFiles);
   }
 
+  const importantTextPrompts = importantContext.textPrompts?.map((prompt) => prompt.content).join('\n\n') || '';
+
   const codeGenPrompt =
     (explicitPrompt ? explicitPrompt + '\n\n' : '') +
+    (importantTextPrompts ? `${importantTextPrompts}\n\n` : '') +
     `${
       considerAllFiles
         ? codeGenFiles.length > 0

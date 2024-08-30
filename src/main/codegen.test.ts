@@ -54,6 +54,7 @@ vi.mock('./config.js', () => ({
     rootDir: '.',
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
+  importantContext: {},
 }));
 
 describe('runCodegen', () => {

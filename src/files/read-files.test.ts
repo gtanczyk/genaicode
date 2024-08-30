@@ -23,6 +23,7 @@ vi.mock('../cli/cli-params.js', () => ({
 }));
 vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/home/project' },
+  importantContext: {},
 }));
 
 describe('read-files', () => {

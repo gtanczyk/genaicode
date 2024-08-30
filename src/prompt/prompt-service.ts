@@ -8,6 +8,7 @@ import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
 import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
+import { importantContext } from '../main/config.js';
 
 interface GenerateContentFunction {
   (
@@ -105,6 +106,7 @@ export async function promptService(
         filePaths: [
           ...codegenSummaryRequest.args.fileUpdates.map((file: { path: string }) => file.path),
           ...codegenSummaryRequest.args.contextPaths,
+          ...(importantContext.files ?? []),
         ],
       };
       getSourceCodeResponse.functionResponses!.find((item) => item.name === 'getSourceCode')!.content =

@@ -47,6 +47,7 @@ vi.mock('../main/config.js', () => ({
     rootDir: '.',
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
+  importantContext: {},
 }));
 
 describe('promptService with askQuestion', () => {

@@ -1,4 +1,5 @@
-import { findRcFile, parseRcFile, RcConfig } from './config-lib.js';
+import { findRcFile, parseRcFile, RcConfig, ImportantContext } from './config-lib.js';
+import path from 'path';
 
 // Default extensions if not specified in .genaicoderc
 const DEFAULT_EXTENSIONS: string[] = [
@@ -35,5 +36,18 @@ export const IMAGE_ASSET_EXTENSIONS: string[] = ['.png', '.jpg', '.jpeg', '.gif'
 // Export ignore paths
 export const ignorePaths: string[] = rcConfig.ignorePaths ?? DEFAULT_IGNORE_PATHS;
 
+// Process and export important context
+export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext);
+
+function processImportantContext(context: ImportantContext | undefined): ImportantContext {
+  if (!context) return { textPrompts: [], files: [] };
+
+  return {
+    textPrompts: context.textPrompts || [],
+    files: (context.files || []).map((file) => path.resolve(rcConfig.rootDir, file)),
+  };
+}
+
 console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rcConfig.rootDir);
+console.log('Important context:', importantContext);
