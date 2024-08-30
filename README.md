@@ -66,6 +66,7 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--allow-file-move`: Allows the tool to move files within the project structure.
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
 - `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
+- `--ai-studio`: Uses Google AI Studio for code generation, an alternative to Vertex AI with potentially different capabilities or limitations.
 - `--explicit-prompt=<prompt>`: Provides an explicit prompt for code generation.
 - `--task-file=<file>`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limits the scope of code generation to files marked with `@CODEGEN` and their dependencies.

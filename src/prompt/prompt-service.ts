@@ -74,15 +74,32 @@ export async function promptService(
       const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
       if (askQuestionCall) {
         console.log('Assistant asks:', askQuestionCall.args);
+        const fileContentRequested =
+          // @ts-expect-error
+          askQuestionCall?.args?.requestFileContent?.contextPaths &&
+          // @ts-expect-error
+          askQuestionCall?.args?.requestFileContent?.execute;
         const userAnswer = askQuestionCall.args?.shouldPrompt
-          ? await getUserInput('Your answer: ')
+          ? fileContentRequested
+            ? 'Providing requsted files content'
+            : await getUserInput('Your answer: ')
           : 'Lets proceed with code generation.';
         prompt.push(
           { type: 'assistant', functionCalls: [askQuestionCall] },
           {
             type: 'user',
             text: userAnswer,
-            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id }],
+            functionResponses: [
+              {
+                name: 'askQuestion',
+                call_id: askQuestionCall.id,
+
+                content: fileContentRequested
+                  ? // @ts-expect-error
+                    messages.contextSourceCode(askQuestionCall?.args?.requestFileContent?.contextPaths)
+                  : undefined,
+              },
+            ],
           },
         );
         console.log('The question was answered');
