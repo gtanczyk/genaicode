@@ -504,7 +504,7 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            files: [{ path: 'test.js', updateToolName: 'patchFile' }],
+            files: [{ path: 'test.js', updateToolName: 'updateFile' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -514,7 +514,7 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile' }],
+            fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },

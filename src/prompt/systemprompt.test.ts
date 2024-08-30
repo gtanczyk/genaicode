@@ -45,7 +45,7 @@ describe('getSystemPrompt', () => {
     expect(systemPrompt).toContain(
       'The root directory of my application is `/mocked/root/dir` and you should limit the changes only to this path.',
     );
-    expect(systemPrompt).toContain('When suggesting changes always use absolute file paths.');
+    expect(systemPrompt).toContain('When suggesting changes always use absolute file paths');
   });
 
   it('verifies system prompt limit', () => {

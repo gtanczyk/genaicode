@@ -341,11 +341,11 @@ async function validateAndRecoverSingleResult(
     result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false);
     console.log('Recover result:', result);
 
-    if (result.length === 1) {
+    if (result?.length === 1) {
       const recoveryError = validateFunctionCall(result[0], requiredFunctionName);
       assert(!recoveryError, 'Recovery failed');
       console.log('Recovery was successful');
-    } else if (result.length === 0) {
+    } else if (result?.length === 0) {
       throw new Error('Did not receive any function calls unexpectedly.');
     } else {
       console.log('Unexpected number of function calls', result);
