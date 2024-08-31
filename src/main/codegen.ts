@@ -21,7 +21,7 @@ import { printHelpMessage } from '../cli/cli-options.js';
 import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
-import { runInteractiveMode } from './codegen-interactive.js';
+import { runInteractiveMode } from './interactive/codegen-interactive.js';
 
 /** Executes codegen */
 export async function runCodegen(): Promise<void> {
