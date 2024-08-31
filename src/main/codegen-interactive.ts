@@ -10,14 +10,12 @@ import {
   selectAiService,
 } from './codegen-interactive-utils.js';
 import { rcConfig } from './config.js';
-import { CodegenOptions } from '../prompt/prompt-codegen.js';
+import { CodegenOptions } from './codegen-types.js';
 import { printHelpMessage } from '../cli/cli-options.js';
 
 // Main function for interactive mode
-export const runInteractiveMode = async () => {
+export const runInteractiveMode = async (options: CodegenOptions) => {
   displayWelcome();
-
-  let options: CodegenOptions = {};
 
   const runNext = true;
   while (runNext) {

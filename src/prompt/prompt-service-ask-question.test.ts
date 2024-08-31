@@ -105,7 +105,7 @@ describe('promptService with askQuestion', () => {
       () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
     );
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
@@ -128,7 +128,11 @@ describe('promptService with askQuestion', () => {
 
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockAskQuestionCall);
 
-    const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(result).toEqual([]);
@@ -152,7 +156,7 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockCodegenSummary);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(prompts.input).not.toHaveBeenCalled();

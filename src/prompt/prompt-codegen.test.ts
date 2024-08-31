@@ -42,7 +42,7 @@ describe('getCodeGenPrompt', () => {
     vi.mocked(cliParams).allowFileMove = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
 
-    const prompt = getCodeGenPrompt({ considerAllFiles: true }).prompt;
+    const prompt = getCodeGenPrompt({ considerAllFiles: true, aiService: 'vertex-ai' }).prompt;
 
     expect(prompt).toContain('You are allowed to modify all files in the application');
     expect(prompt).toContain('Do not create new files.');

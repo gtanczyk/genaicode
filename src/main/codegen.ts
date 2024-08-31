@@ -1,21 +1,8 @@
 import { exec } from 'child_process';
 import util from 'util';
+import assert from 'node:assert';
 
-import {
-  dryRun,
-  chatGpt,
-  anthropic,
-  vertexAi,
-  vertexAiClaude,
-  disableInitialLint,
-  helpRequested,
-  imagen,
-  aiStudio,
-  interactive,
-  cliExplicitPrompt,
-  cliTaskFile,
-  cliConsiderAllFiles,
-} from '../cli/cli-params.js';
+import * as cliParams from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
@@ -28,14 +15,13 @@ import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-
 import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
 import { rcConfig } from '../main/config.js';
+import { AiServiceType, CodegenOptions } from './codegen-types.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
 import { printHelpMessage } from '../cli/cli-options.js';
 import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { runInteractiveMode } from './codegen-interactive.js';
-
-const execPromise = util.promisify(exec);
 
 /** Executes codegen */
 export async function runCodegen(): Promise<void> {
@@ -45,30 +31,35 @@ export async function runCodegen(): Promise<void> {
   validateCliParams();
 
   // Handle --help option
-  if (helpRequested) {
+  if (cliParams.helpRequested) {
     printHelpMessage();
     return;
   }
 
+  const options: CodegenOptions = {
+    explicitPrompt: cliParams.cliExplicitPrompt,
+    taskFile: cliParams.cliTaskFile,
+    considerAllFiles: cliParams.cliConsiderAllFiles,
+
+    allowFileCreate: cliParams.allowFileCreate,
+    allowFileDelete: cliParams.allowFileDelete,
+    allowDirectoryCreate: cliParams.allowDirectoryCreate,
+    allowFileMove: cliParams.allowFileMove,
+    vision: cliParams.vision,
+    aiService: cliParamToAiService(),
+  };
+
   // Handle interactive mode
-  if (interactive) {
-    await runInteractiveMode();
+  if (cliParams.interactive) {
+    await runInteractiveMode(options);
   } else {
     console.log('Executing codegen in non-interactive mode');
-    await runCodegenIteration({
-      explicitPrompt: cliExplicitPrompt,
-      taskFile: cliTaskFile,
-      considerAllFiles: cliConsiderAllFiles,
-    });
+    await runCodegenIteration(options);
   }
 }
 
-export async function runCodegenIteration(options: {
-  taskFile?: string;
-  explicitPrompt?: string;
-  considerAllFiles?: boolean;
-}) {
-  if (rcConfig.lintCommand && !disableInitialLint) {
+export async function runCodegenIteration(options: CodegenOptions) {
+  if (rcConfig.lintCommand && !cliParams.disableInitialLint) {
     try {
       console.log(`Executing lint command: ${rcConfig.lintCommand}`);
       await execPromise(rcConfig.lintCommand);
@@ -81,36 +72,31 @@ export async function runCodegenIteration(options: {
       console.log('Lint errors:', stdout, stderr);
       process.exit(1);
     }
-  } else if (rcConfig.lintCommand && disableInitialLint) {
+  } else if (rcConfig.lintCommand && cliParams.disableInitialLint) {
     console.log('Initial lint was skipped.');
   }
 
-  const generateContent: GenerateContentFunction = vertexAiClaude
-    ? generateContentVertexAiClaude
-    : vertexAi
-      ? generateContentVertexAi
-      : anthropic
-        ? generateContentAnthropic
-        : chatGpt
-          ? generateContentGPT
-          : aiStudio
-            ? generateContentAiStudio
-            : (() => {
-                throw new Error('Please specify which AI service should be used');
-              })();
+  const generateContent: GenerateContentFunction = GENERATE_CONTENT_FNS[options.aiService];
 
   const generateImage: GenerateImageFunction | undefined =
-    imagen === 'vertex-ai' ? generateImageVertexAi : imagen === 'dall-e' ? generateImageDallE : undefined;
+    cliParams.imagen === 'vertex-ai'
+      ? generateImageVertexAi
+      : cliParams.imagen === 'dall-e'
+        ? generateImageDallE
+        : undefined;
 
   console.log('Generating response');
   const functionCalls = await promptService(generateContent, generateImage, getCodeGenPrompt(options));
   console.log('Received function calls:', functionCalls);
 
-  if (dryRun) {
+  if (cliParams.dryRun) {
     console.log('Dry run mode, not updating files');
   } else {
     console.log('Update files');
-    await updateFiles(functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'));
+    await updateFiles(
+      functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+      options,
+    );
     console.log('Initial updates applied');
 
     // Check if lintCommand is specified in .genaicoderc
@@ -129,7 +115,7 @@ export async function runCodegenIteration(options: {
         console.log('Generating response for lint fixes');
         const lintFixFunctionCalls = (await promptService(generateContent, generateImage, {
           prompt: lintErrorPrompt,
-          options: { considerAllFiles: true },
+          options: { considerAllFiles: true, aiService: options.aiService },
         })) as FunctionCall[];
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
@@ -137,6 +123,7 @@ export async function runCodegenIteration(options: {
         console.log('Applying lint fixes');
         updateFiles(
           lintFixFunctionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+          options,
         );
 
         // Run lint command again to verify fixes
@@ -154,4 +141,32 @@ export async function runCodegenIteration(options: {
 
     console.log('Done!');
   }
+}
+
+// helper functions and consts
+
+const execPromise = util.promisify(exec);
+
+const GENERATE_CONTENT_FNS = {
+  'vertex-ai-claude': generateContentVertexAiClaude,
+  'vertex-ai': generateContentVertexAi,
+  'ai-studio': generateContentAiStudio,
+  anthropic: generateContentAnthropic,
+  'chat-gpt': generateContentGPT,
+} as const;
+
+function cliParamToAiService(): AiServiceType {
+  const result = cliParams.cliVertexAi
+    ? 'vertex-ai'
+    : cliParams.cliAiStudio
+      ? 'ai-studio'
+      : cliParams.cliVertexAiClaude
+        ? 'vertex-ai-claude'
+        : cliParams.cliChatGpt
+          ? 'chat-gpt'
+          : cliParams.cliAnthropic
+            ? 'anthropic'
+            : undefined;
+  assert(result, 'Please specify which AI service should be used');
+  return result;
 }

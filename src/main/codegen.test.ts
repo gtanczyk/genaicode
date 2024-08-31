@@ -28,9 +28,9 @@ vi.mock('../cli/cli-params.js', () => ({
   allowDirectoryCreate: false,
   allowFileMove: false,
   verbosePrompt: false,
-  vertexAiClaude: false,
+  cliVertexAiClaude: false,
   helpRequested: false,
-  aiStudio: false,
+  cliAiStudio: false,
   vision: false,
   imagen: false,
   temperature: 0.7,
@@ -61,10 +61,10 @@ vi.mock('./config.js', () => ({
 describe('runCodegen', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(cliParams).anthropic = false;
-    vi.mocked(cliParams).chatGpt = false;
-    vi.mocked(cliParams).vertexAi = false;
-    vi.mocked(cliParams).vertexAiClaude = false;
+    vi.mocked(cliParams).cliAnthropic = false;
+    vi.mocked(cliParams).cliChatGpt = false;
+    vi.mocked(cliParams).cliVertexAi = false;
+    vi.mocked(cliParams).cliVertexAiClaude = false;
     vi.mocked(cliParams).dryRun = false;
     vi.mocked(cliParams).helpRequested = false;
     vi.mocked(cliParams).vision = false;
@@ -72,7 +72,7 @@ describe('runCodegen', () => {
   });
 
   it('should run codegen with Vertex AI by default', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
 
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Hello");' } },
@@ -82,11 +82,11 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAi.generateContent).toHaveBeenCalled();
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should run codegen with ChatGPT when chatGpt flag is true', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
 
     const mockFunctionCalls = [{ name: 'createFile', args: { filePath: 'new.js', newContent: 'const x = 5;' } }];
     vi.mocked(chatGpt).generateContent.mockResolvedValueOnce(mockFunctionCalls);
@@ -94,11 +94,11 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should run codegen with Anthropic when anthropic flag is true', async () => {
-    vi.mocked(cliParams).anthropic = true;
+    vi.mocked(cliParams).cliAnthropic = true;
 
     const mockFunctionCalls = [{ name: 'deleteFile', args: { filePath: 'obsolete.js' } }];
     vi.mocked(anthropic).generateContent.mockResolvedValueOnce(mockFunctionCalls);
@@ -106,11 +106,11 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(anthropic.generateContent).toHaveBeenCalled();
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should not update files in dry run mode', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).dryRun = true;
 
     const mockFunctionCalls = [
@@ -125,7 +125,7 @@ describe('runCodegen', () => {
   });
 
   it('should run codegen with Vertex AI Claude when vertexAiClaude flag is true', async () => {
-    vi.mocked(cliParams).vertexAiClaude = true;
+    vi.mocked(cliParams).cliVertexAiClaude = true;
 
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Hello from Claude");' } },
@@ -135,11 +135,11 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(vertexAiClaude.generateContent).toHaveBeenCalled();
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should pass the temperature parameter to the AI service', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).temperature = 0.5;
 
     const mockFunctionCalls = [
@@ -156,7 +156,7 @@ describe('runCodegen', () => {
       0.5,
       false,
     );
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should print help message and not run codegen when --help option is provided', async () => {
@@ -173,7 +173,7 @@ describe('runCodegen', () => {
   });
 
   it('should run codegen with vision when vision flag is true', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
     vi.mocked(cliParams).vision = true;
 
     const mockFunctionCalls = [
@@ -184,7 +184,7 @@ describe('runCodegen', () => {
     await runCodegen();
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
     // Check if the generateContent function was called with the correct parameters
     expect(vi.mocked(chatGpt).generateContent.mock.calls[0][0]).toEqual(
       expect.arrayContaining([
@@ -206,7 +206,7 @@ describe('runCodegen', () => {
 
   it('should use Vertex AI Imagen when imagen flag is set to vertex-ai', async () => {
     vi.mocked(cliParams).imagen = 'vertex-ai';
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
 
     const mockCodegenSummary = [
       {
@@ -240,12 +240,12 @@ describe('runCodegen', () => {
       },
       false,
     );
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should use DALL-E when imagen flag is set to dall-e', async () => {
     vi.mocked(cliParams).imagen = 'dall-e';
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
 
     const mockCodegenSummary = [
       {
@@ -273,7 +273,7 @@ describe('runCodegen', () => {
       { width: 1024, height: 1024 },
       false,
     );
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should throw an error when imagen flag is set but no AI service is specified', async () => {
@@ -283,7 +283,7 @@ describe('runCodegen', () => {
   });
 
   it('should pass the cheap parameter to the AI service when --cheap flag is true', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).cheap = true;
 
     const mockFunctionCalls = [
@@ -300,12 +300,12 @@ describe('runCodegen', () => {
       expect.anything(),
       true,
     );
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 
   it('should pass the cheap parameter to the image generation service when --cheap flag is true', async () => {
     vi.mocked(cliParams).imagen = 'vertex-ai';
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).cheap = true;
 
     const mockCodegenSummary = [
@@ -349,6 +349,6 @@ describe('runCodegen', () => {
       { width: 256, height: 256 },
       true,
     );
-    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls);
+    expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
 });

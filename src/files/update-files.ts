@@ -6,25 +6,18 @@ import * as diff from 'diff';
 import { getSourceFiles } from './find-files.js';
 import { isAncestorDirectory } from './file-utils.js';
 import { rcConfig } from '../main/config.js';
-import {
-  allowDirectoryCreate,
-  allowFileCreate,
-  allowFileDelete,
-  allowFileMove,
-  anthropic,
-  chatGpt,
-  vertexAiClaude,
-} from '../cli/cli-params.js';
+import { allowDirectoryCreate, allowFileCreate, allowFileDelete, allowFileMove } from '../cli/cli-params.js';
 import { getTempBuffer } from './temp-buffer.js';
 import { imglyRemoveBackground } from '../images/imgly-remove-background.js';
 import { splitImage } from '../images/split-image.js';
 import { resizeImageFile } from '../images/resize-image.js';
 import { FunctionCall } from '../ai-service/common.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 /**
  * @param functionCalls Result of the code generation, a map of file paths to new content
  */
-export async function updateFiles(functionCalls: FunctionCall[]) {
+export async function updateFiles(functionCalls: FunctionCall[], options: CodegenOptions) {
   for (const { name, args } of functionCalls) {
     let { filePath, newContent, source, destination, inputFilePath, outputFilePath } = args as {
       filePath?: string;
@@ -117,10 +110,10 @@ export async function updateFiles(functionCalls: FunctionCall[]) {
       }
       fs.writeFileSync(
         filePath,
-        chatGpt || anthropic || vertexAiClaude
-          ? newContent
-          : // Fixing a problem caused by vertex function calling. Possibly not a good fix
-            newContent.replace(/\\n/g, '\n').replace(/\\'/g, "'"),
+        options.aiService === 'vertex-ai' || options.aiService === 'ai-studio'
+          ? // Fixing a problem caused by vertex function calling. Possibly not a good fix
+            newContent.replace(/\\n/g, '\n').replace(/\\'/g, "'")
+          : newContent,
         'utf-8',
       );
     } else if (name === 'moveFile') {

@@ -3,7 +3,7 @@ import { select, checkbox, Separator } from '@inquirer/prompts';
 import { getSourceFiles } from '../files/find-files.js';
 import { CODEGEN_TRIGGER } from '../prompt/prompt-consts.js';
 import { createRequire } from 'module';
-import { AiServiceType, CodegenOptions } from '../prompt/prompt-codegen.js';
+import { AiServiceType, CodegenOptions } from './codegen-types.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');

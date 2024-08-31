@@ -61,9 +61,9 @@ vi.mock('../main/config.js', () => ({
 describe('promptService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(cliParams).anthropic = false;
-    vi.mocked(cliParams).chatGpt = false;
-    vi.mocked(cliParams).vertexAi = false;
+    vi.mocked(cliParams).cliAnthropic = false;
+    vi.mocked(cliParams).cliChatGpt = false;
+    vi.mocked(cliParams).cliVertexAi = false;
     vi.mocked(cliParams).dryRun = false;
     vi.mocked(cliParams).vision = false;
     vi.mocked(cliParams).imagen = undefined;
@@ -71,56 +71,68 @@ describe('promptService', () => {
   });
 
   it('should process the codegen summary and return the result with Vertex AI', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Hello");' } },
     ];
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(result).toEqual(mockFunctionCalls);
     expect(vertexAi.generateContent).toHaveBeenCalled();
   });
 
   it('should process the codegen summary and return the result with ChatGPT', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
     const mockFunctionCalls = [{ name: 'createFile', args: { filePath: 'new.js', newContent: 'const x = 5;' } }];
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    const result = await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
 
     expect(result).toEqual(mockFunctionCalls);
     expect(chatGpt.generateContent).toHaveBeenCalled();
   });
 
   it('should process the codegen summary and return the result with Anthropic', async () => {
-    vi.mocked(cliParams).anthropic = true;
+    vi.mocked(cliParams).cliAnthropic = true;
     const mockFunctionCalls = [{ name: 'deleteFile', args: { filePath: 'obsolete.js' } }];
     vi.mocked(anthropic.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    const result = await promptService(anthropic.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      anthropic.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'anthropic' }),
+    );
 
     expect(result).toEqual(mockFunctionCalls);
     expect(anthropic.generateContent).toHaveBeenCalled();
   });
 
   it('should not update files in dry run mode', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).dryRun = true;
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Dry run");' } },
     ];
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(result).toEqual(mockFunctionCalls);
     expect(vertexAi.generateContent).toHaveBeenCalled();
   });
 
   it('should handle invalid patchFile call and retry without patchFile function', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -163,7 +175,11 @@ describe('promptService', () => {
     // Mock diff.applyPatch to fail for the invalid patch
     vi.mocked(diff.applyPatch).mockReturnValue(false);
 
-    const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(fs.readFileSync).toHaveBeenCalledWith('test.js', 'utf-8');
@@ -172,7 +188,7 @@ describe('promptService', () => {
   });
 
   it('should include image assets when vision flag is true', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
     vi.mocked(cliParams).vision = true;
     const mockImageAssets = {
       '/path/to/image1.png': { width: 100, height: 100, mimeType: 'image/png' },
@@ -185,7 +201,7 @@ describe('promptService', () => {
     vi.mocked(getImageAssets).mockReturnValue(mockImageAssets);
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
     const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
@@ -208,7 +224,7 @@ describe('promptService', () => {
   });
 
   it('should include image data in the prompt when processing files with vision', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
     vi.mocked(cliParams).vision = true;
     const mockCodegenSummary = [
       {
@@ -242,7 +258,7 @@ describe('promptService', () => {
     vi.mocked(fs.readFileSync).mockImplementation((path) => `mock-base64-data-for-${path}`);
     vi.mocked(mime.lookup).mockImplementation((path) => (path.endsWith('.png') ? 'image/png' : 'image/jpeg'));
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
 
     expect(chatGpt.generateContent).toHaveBeenCalledTimes(2);
     const secondCall = vi.mocked(chatGpt.generateContent).mock.calls[1];
@@ -269,7 +285,7 @@ describe('promptService', () => {
   });
 
   it('should not include image assets when vision flag is false', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).cliChatGpt = true;
     vi.mocked(cliParams).vision = false;
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("No vision test");' } },
@@ -277,7 +293,7 @@ describe('promptService', () => {
 
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
     const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
@@ -292,7 +308,7 @@ describe('promptService', () => {
   });
 
   it('should handle context optimization', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -316,7 +332,7 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
@@ -336,7 +352,7 @@ describe('promptService', () => {
   });
 
   it('should handle disableContextOptimization flag', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).disableContextOptimization = true;
     const mockCodegenSummary = [
       {
@@ -361,7 +377,7 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
@@ -381,7 +397,7 @@ describe('promptService', () => {
   });
 
   it('should handle image generation requests', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).imagen = 'dall-e';
     const mockCodegenSummary = [
       {
@@ -419,7 +435,11 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockGenerateImageCall);
     vi.mocked(dalleService.generateImage).mockResolvedValue('https://example.com/generated-image.png');
 
-    const result = await promptService(vertexAi.generateContent, dalleService.generateImage, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      dalleService.generateImage,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(dalleService.generateImage).toHaveBeenCalledWith(
@@ -432,7 +452,7 @@ describe('promptService', () => {
   });
 
   it('should handle image generation failure', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     vi.mocked(cliParams).imagen = 'dall-e';
     const mockCodegenSummary = [
       {
@@ -460,7 +480,11 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockGenerateImageCall);
     vi.mocked(dalleService.generateImage).mockRejectedValue(new Error('Image generation failed'));
 
-    const result = await promptService(vertexAi.generateContent, dalleService.generateImage, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      dalleService.generateImage,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(dalleService.generateImage).toHaveBeenCalledWith(
@@ -482,7 +506,7 @@ describe('promptService', () => {
   });
 
   it('should handle unexpected response without codegen summary', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).cliVertexAi = true;
     const mockUnexpectedResponse = [
       {
         name: 'updateFile',
@@ -495,7 +519,11 @@ describe('promptService', () => {
 
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUnexpectedResponse);
 
-    const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+    const result = await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(result).toEqual(mockUnexpectedResponse);
@@ -503,7 +531,7 @@ describe('promptService', () => {
 
   describe('validateAndRecoverSingleResult', () => {
     it('should successfully recover from an invalid function call', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).cliVertexAi = true;
       const mockInvalidCall = [
         {
           name: 'codegenSummary',
@@ -538,7 +566,11 @@ describe('promptService', () => {
           },
         ]);
 
-      const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+      const result = await promptService(
+        vertexAi.generateContent,
+        undefined,
+        getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
       expect(result).toEqual([
@@ -553,7 +585,7 @@ describe('promptService', () => {
     });
 
     it('should handle unsuccessful recovery', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).cliVertexAi = true;
       const mockInvalidCall = [
         {
           name: 'updateFile',
@@ -575,15 +607,15 @@ describe('promptService', () => {
         .mockResolvedValueOnce(mockInvalidCall)
         .mockResolvedValueOnce(mockInvalidCall); // Second call also returns invalid result
 
-      await expect(promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}))).rejects.toThrow(
-        'Recovery failed',
-      );
+      await expect(
+        promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' })),
+      ).rejects.toThrow('Recovery failed');
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     });
 
     it('should not attempt recovery for multiple valid function calls', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).cliVertexAi = true;
       const mockValidCalls = [
         {
           name: 'updateFile',
@@ -597,7 +629,11 @@ describe('promptService', () => {
 
       vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockValidCalls);
 
-      const result = await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({}));
+      const result = await promptService(
+        vertexAi.generateContent,
+        undefined,
+        getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
       expect(result).toEqual(mockValidCalls);
