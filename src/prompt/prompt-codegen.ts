@@ -65,8 +65,7 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   const importantTextPrompts = importantContext.textPrompts?.map((prompt) => prompt.content).join('\n\n') || '';
 
   const codeGenPrompt =
-    (explicitPrompt ? explicitPrompt + '\n\n' : '') +
-    (importantTextPrompts ? `${importantTextPrompts}\n\n` : '') +
+    (explicitPrompt ? 'This is your task: ' + explicitPrompt + '\n\n' : '') +
     `${
       considerAllFiles
         ? codeGenFiles.length > 0
@@ -76,7 +75,8 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
           ? `Generate updates only for the following files:\n${codeGenFiles.join('\n')}`
           : ''
     }
-
+My additional requirements for task execution are:
+${importantTextPrompts ? `${importantTextPrompts}\n` : ''}
 ${
   considerAllFiles
     ? 'You are allowed to modify all files in the application regardless if they contain codegen fragments or not.'

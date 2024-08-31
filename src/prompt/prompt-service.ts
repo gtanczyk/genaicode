@@ -204,18 +204,18 @@ export type PromptMessages = ReturnType<typeof prepareMessages>;
 /**
  * Function to prepare messages for AI services
  */
-function prepareMessages(prompt: CodegenPrompt) {
+function prepareMessages(codegen: CodegenPrompt) {
   return {
     suggestSourceCode: 'I should provide you with application source code.',
     requestSourceCode: 'Please provide application source code.',
     suggestImageAssets: 'I should also provide you with a summary of application image assets',
     requestImageAssets: 'Please provide summary of application image assets.',
     prompt:
-      prompt +
+      codegen.prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
-    sourceCode: JSON.stringify(getSourceCode({ taskFile: prompt.options.taskFile })),
+    sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile })),
     contextSourceCode: (paths: string[]) =>
-      JSON.stringify(getSourceCode({ filterPaths: paths, taskFile: prompt.options.taskFile, forceAll: true })),
+      JSON.stringify(getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true })),
     imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path: string) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;

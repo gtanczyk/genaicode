@@ -14,7 +14,7 @@ export const getUserAction = async () => {
   const action = await select({
     message: 'What would you like to do?',
     choices: [
-      { name: 'Process @CODEGEN comments', value: 'process_comments' },
+      { name: `Process ${CODEGEN_TRIGGER} comments`, value: 'process_comments' },
       { name: 'Enter a text prompt', value: 'text_prompt' },
       { name: 'Select a task file', value: 'task_file' },
       { name: 'Exit', value: 'exit' },
@@ -42,7 +42,7 @@ export const getUserOptions = async () => {
   };
 };
 
-// Function to check for @CODEGEN comments in source files
+// Function to check for CODEGEN comments in source files
 export const checkForCodegenComments = (): boolean => {
   const sourceFiles = getSourceFiles();
   for (const file of sourceFiles) {
