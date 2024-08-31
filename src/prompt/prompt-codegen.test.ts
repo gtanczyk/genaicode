@@ -14,7 +14,7 @@ vi.mock('../files/read-files.js', () => ({
 }));
 vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
-  cliConsiderAllFiles: false,
+  considerAllFiles: false,
   dependencyTree: false,
   cliExplicitPrompt: false,
   allowFileCreate: false,
@@ -34,8 +34,8 @@ describe('getCodeGenPrompt', () => {
 
   it('should generate prompt for all files when considerAllFiles is true', () => {
     vi.spyOn(findFiles, 'getSourceFiles').mockReturnValue(['file1.js', 'file2.js']);
-    vi.mocked(cliParams).cliConsiderAllFiles = true;
-    vi.mocked(cliParams).cliExplicitPrompt = undefined;
+    vi.mocked(cliParams).considerAllFiles = true;
+    vi.mocked(cliParams).explicitPrompt = undefined;
     vi.mocked(cliParams).allowFileCreate = false;
     vi.mocked(cliParams).allowFileDelete = false;
     vi.mocked(cliParams).allowDirectoryCreate = false;

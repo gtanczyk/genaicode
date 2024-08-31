@@ -37,16 +37,18 @@ export async function runCodegen(): Promise<void> {
   }
 
   const options: CodegenOptions = {
-    explicitPrompt: cliParams.cliExplicitPrompt,
-    taskFile: cliParams.cliTaskFile,
-    considerAllFiles: cliParams.cliConsiderAllFiles,
+    explicitPrompt: cliParams.explicitPrompt,
+    taskFile: cliParams.taskFile,
+    considerAllFiles: cliParams.considerAllFiles,
 
     allowFileCreate: cliParams.allowFileCreate,
     allowFileDelete: cliParams.allowFileDelete,
     allowDirectoryCreate: cliParams.allowDirectoryCreate,
     allowFileMove: cliParams.allowFileMove,
-    vision: cliParams.vision,
+
     aiService: cliParamToAiService(),
+    vision: cliParams.vision,
+    imagen: cliParams.imagen,
   };
 
   // Handle interactive mode
@@ -156,15 +158,15 @@ const GENERATE_CONTENT_FNS = {
 } as const;
 
 function cliParamToAiService(): AiServiceType {
-  const result = cliParams.cliVertexAi
+  const result = cliParams.vertexAi
     ? 'vertex-ai'
-    : cliParams.cliAiStudio
+    : cliParams.aiStudio
       ? 'ai-studio'
-      : cliParams.cliVertexAiClaude
+      : cliParams.vertexAiClaude
         ? 'vertex-ai-claude'
-        : cliParams.cliChatGpt
+        : cliParams.chatGpt
           ? 'chat-gpt'
-          : cliParams.cliAnthropic
+          : cliParams.anthropic
             ? 'anthropic'
             : undefined;
   assert(result, 'Please specify which AI service should be used');

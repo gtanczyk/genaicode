@@ -1,4 +1,4 @@
-import { temperature, cheap, vision } from '../../cli/cli-params.js';
+import { temperature, cheap } from '../../cli/cli-params.js';
 
 /**
  * Function definition for codegenSummary
@@ -78,7 +78,7 @@ export const codegenSummary = {
               items: { type: 'string' },
             },
           },
-          required: ['path', 'updateToolName', ...(vision ? ['contextImageAssets'] : [])],
+          required: ['path', 'updateToolName'],
         },
       },
       explanation: {

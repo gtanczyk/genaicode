@@ -5,7 +5,7 @@ import mime from 'mime-types';
 import { getSystemPrompt } from './systemprompt.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
+import { disableContextOptimization, temperature, cheap } from '../cli/cli-params.js';
 import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
 
@@ -41,6 +41,7 @@ export async function promptService(
   generateImageFn: GenerateImageFunction | undefined,
   codegenPrompt: CodegenPrompt,
 ): Promise<FunctionCall[]> {
+  const { vision } = codegenPrompt.options;
   const messages = prepareMessages(codegenPrompt);
 
   // First stage: generate code generation summary, which should not take a lot of output tokens

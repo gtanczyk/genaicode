@@ -1,16 +1,7 @@
 import assert from 'node:assert';
 import { getSourceCode } from '../files/read-files.js';
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
-import {
-  allowFileCreate,
-  allowFileDelete,
-  allowDirectoryCreate,
-  allowFileMove,
-  dependencyTree,
-  verbosePrompt,
-  vision,
-  imagen,
-} from '../cli/cli-params.js';
+import { dependencyTree, verbosePrompt } from '../cli/cli-params.js';
 import { getDependencyList } from '../files/find-files.js';
 import { verifyCodegenPromptLimit } from './limits.js';
 import { importantContext } from '../main/config.js';
@@ -28,7 +19,16 @@ export interface CodegenPrompt {
 /** Get codegen prompt */
 export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   let { explicitPrompt } = options;
-  const { taskFile, considerAllFiles } = options;
+  const {
+    taskFile,
+    considerAllFiles,
+    allowFileCreate,
+    allowFileDelete,
+    allowDirectoryCreate,
+    allowFileMove,
+    vision,
+    imagen,
+  } = options;
 
   assert(!explicitPrompt || !taskFile, 'Both taskFile and explicitPrompt are not allowed');
 
