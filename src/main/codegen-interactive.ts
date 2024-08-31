@@ -5,20 +5,19 @@ import { CODEGEN_TRIGGER } from '../prompt/prompt-consts.js';
 import {
   displayWelcome,
   getUserAction,
-  /*getUserOptions,*/ checkForCodegenComments,
+  getUserOptions,
+  checkForCodegenComments,
+  selectAiService,
 } from './codegen-interactive-utils.js';
 import { rcConfig } from './config.js';
 import { CodegenOptions } from '../prompt/prompt-codegen.js';
+import { printHelpMessage } from '../cli/cli-options.js';
 
 // Main function for interactive mode
 export const runInteractiveMode = async () => {
   displayWelcome();
 
-  // Check for CODEGEN comment
-  const hasCodegenComments = checkForCodegenComments();
-  if (!hasCodegenComments) {
-    console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
-  }
+  let options: CodegenOptions = {};
 
   const runNext = true;
   while (runNext) {
@@ -28,8 +27,6 @@ export const runInteractiveMode = async () => {
       console.log('Exiting Genaicode Interactive Mode. Goodbye!');
       break;
     }
-
-    const options: CodegenOptions = {}; //await getUserOptions();
 
     switch (action) {
       case 'process_comments':
@@ -41,6 +38,16 @@ export const runInteractiveMode = async () => {
       case 'task_file':
         await runTaskFile(options);
         break;
+      case 'select_ai_service':
+        options.aiService = await selectAiService(options.aiService);
+        console.log(`Selected AI service: ${options.aiService}`);
+        break;
+      case 'configure':
+        options = await getUserOptions(options);
+        break;
+      case 'help':
+        printHelpMessage();
+        break;
     }
 
     console.log('Task completed. Returning to main menu...\n');
@@ -48,6 +55,11 @@ export const runInteractiveMode = async () => {
 };
 
 async function runProcessComments(options: CodegenOptions) {
+  const hasCodegenComments = checkForCodegenComments();
+  if (!hasCodegenComments) {
+    console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
+  }
+
   console.log(`Processing ${CODEGEN_TRIGGER} comments...`);
   await runCodegenIteration({ ...options, considerAllFiles: false });
 }
