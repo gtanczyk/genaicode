@@ -29,7 +29,7 @@ vi.mock('../main/config.js', () => ({
 describe('read-files', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(cliParams).contentMask = null;
+    vi.mocked(cliParams).contentMask = undefined;
   });
 
   afterEach(() => {
