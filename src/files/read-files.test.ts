@@ -43,7 +43,7 @@ describe('read-files', () => {
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
-      const result = getSourceCode();
+      const result = getSourceCode({ taskFile: undefined });
 
       expect(result).toEqual({
         '/home/project/file1.js': { content: 'Content of /home/project/file1.js' },
@@ -59,7 +59,7 @@ describe('read-files', () => {
       rcConfig.rootDir = '/home/project';
       vi.mocked(cliParams).contentMask = 'subfolder';
 
-      const result = getSourceCode();
+      const result = getSourceCode({ taskFile: undefined });
 
       expect(result).toEqual({
         '/home/project/file1.js': { content: null },
@@ -74,9 +74,8 @@ describe('read-files', () => {
       vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
-      vi.mocked(cliParams).taskFile = '/home/project/task.md';
 
-      const result = getSourceCode();
+      const result = getSourceCode({ taskFile: '/home/project/task.md' });
 
       expect(result).toEqual({
         '/home/project/file1.js': { content: 'Content of /home/project/file1.js' },

@@ -2,12 +2,10 @@ import assert from 'node:assert';
 import { getSourceCode } from '../files/read-files.js';
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
 import {
-  considerAllFiles,
   allowFileCreate,
   allowFileDelete,
   allowDirectoryCreate,
   allowFileMove,
-  explicitPrompt,
   dependencyTree,
   verbosePrompt,
   vision,
@@ -21,13 +19,33 @@ interface SourceCodeEntry {
   content?: string;
 }
 
+export interface CodegenOptions {
+  explicitPrompt?: string;
+  taskFile?: string;
+  considerAllFiles?: boolean;
+}
+
+export interface CodegenPrompt {
+  prompt: string;
+  options: CodegenOptions;
+}
+
 /** Get codegen prompt */
-export function getCodeGenPrompt(): string {
+export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
+  let { explicitPrompt } = options;
+  const { taskFile, considerAllFiles } = options;
+
+  assert(!explicitPrompt || !taskFile, 'Both taskFile and explicitPrompt are not allowed');
+
+  if (taskFile) {
+    explicitPrompt = `I want you to perform a coding task. The task is described in the ${taskFile} file. Use those instructions.`;
+  }
+
   let codeGenFiles: string[];
   if (considerAllFiles) {
-    codeGenFiles = Object.keys(getSourceCode());
+    codeGenFiles = Object.keys(getSourceCode({ taskFile }));
   } else {
-    codeGenFiles = Object.entries(getSourceCode() as Record<string, SourceCodeEntry>)
+    codeGenFiles = Object.entries(getSourceCode({ taskFile }) as Record<string, SourceCodeEntry>)
       .filter(([, { content }]) => content?.match(new RegExp(`([^'^\`]+)${CODEGEN_TRIGGER}`)))
       .map(([path]) => path);
   }
@@ -83,7 +101,7 @@ ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to gener
 
   verifyCodegenPromptLimit(codeGenPrompt);
 
-  return codeGenPrompt;
+  return { prompt: codeGenPrompt, options };
 }
 
 /** Get lint fix prompt */

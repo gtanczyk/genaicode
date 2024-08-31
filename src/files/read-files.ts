@@ -7,7 +7,7 @@ import globRegex from 'glob-regex';
 import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { rcConfig, importantContext } from '../main/config.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
-import { taskFile, contentMask, ignorePatterns } from '../cli/cli-params.js';
+import { contentMask, ignorePatterns } from '../cli/cli-params.js';
 
 type SourceCodeMap = Record<string, { content: string | null } | undefined>;
 
@@ -55,7 +55,15 @@ function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMa
 }
 
 /** Print source code of all source files */
-export function getSourceCode(filterPaths?: string[], forceAll = false): SourceCodeMap {
+export function getSourceCode({
+  filterPaths,
+  taskFile,
+  forceAll,
+}: {
+  filterPaths?: string[];
+  taskFile: string | undefined;
+  forceAll?: boolean;
+}): SourceCodeMap {
   const sourceCode = readSourceFiles(filterPaths, forceAll);
 
   if (taskFile && !sourceCode[taskFile]) {

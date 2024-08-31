@@ -18,10 +18,11 @@ vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../files/update-files.js');
 vi.mock('../cli/cli-params.js', () => ({
+  interactive: false,
   requireExplanations: false,
-  considerAllFiles: false,
+  cliConsiderAllFiles: false,
   dependencyTree: false,
-  explicitPrompt: false,
+  cliExplicitPrompt: false,
   allowFileCreate: false,
   allowFileDelete: false,
   allowDirectoryCreate: false,
@@ -34,7 +35,7 @@ vi.mock('../cli/cli-params.js', () => ({
   imagen: false,
   temperature: 0.7,
   cheap: false,
-  taskFile: undefined,
+  cliTaskFile: undefined,
   disableInitialLint: undefined,
   askQuestion: undefined,
   disableContextOptimization: undefined,

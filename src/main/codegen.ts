@@ -11,6 +11,10 @@ import {
   helpRequested,
   imagen,
   aiStudio,
+  interactive,
+  cliExplicitPrompt,
+  cliTaskFile,
+  cliConsiderAllFiles,
 } from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
@@ -27,6 +31,9 @@ import { rcConfig } from '../main/config.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
 import { printHelpMessage } from '../cli/cli-options.js';
 import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
+
+import { runInteractiveMode } from './codegen-interactive.js';
 
 const execPromise = util.promisify(exec);
 
@@ -43,6 +50,24 @@ export async function runCodegen(): Promise<void> {
     return;
   }
 
+  // Handle interactive mode
+  if (interactive) {
+    await runInteractiveMode();
+  } else {
+    console.log('Executing codegen in non-interactive mode');
+    await runCodegenIteration({
+      explicitPrompt: cliExplicitPrompt,
+      taskFile: cliTaskFile,
+      considerAllFiles: cliConsiderAllFiles,
+    });
+  }
+}
+
+export async function runCodegenIteration(options: {
+  taskFile?: string;
+  explicitPrompt?: string;
+  considerAllFiles?: boolean;
+}) {
   if (rcConfig.lintCommand && !disableInitialLint) {
     try {
       console.log(`Executing lint command: ${rcConfig.lintCommand}`);
@@ -78,7 +103,7 @@ export async function runCodegen(): Promise<void> {
     imagen === 'vertex-ai' ? generateImageVertexAi : imagen === 'dall-e' ? generateImageDallE : undefined;
 
   console.log('Generating response');
-  const functionCalls = (await promptService(generateContent, generateImage)) as FunctionCall[];
+  const functionCalls = await promptService(generateContent, generateImage, getCodeGenPrompt(options));
   console.log('Received function calls:', functionCalls);
 
   if (dryRun) {
@@ -102,11 +127,10 @@ export async function runCodegen(): Promise<void> {
         const lintErrorPrompt = getLintFixPrompt(rcConfig.lintCommand, firstLintError.stdout, firstLintError.stderr);
 
         console.log('Generating response for lint fixes');
-        const lintFixFunctionCalls = (await promptService(
-          generateContent,
-          generateImage,
-          lintErrorPrompt,
-        )) as FunctionCall[];
+        const lintFixFunctionCalls = (await promptService(generateContent, generateImage, {
+          prompt: lintErrorPrompt,
+          options: { considerAllFiles: true },
+        })) as FunctionCall[];
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
 

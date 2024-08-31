@@ -6,7 +6,7 @@ import { rcConfig } from '../main/config.js';
 const params = process.argv.slice(2);
 
 export const dryRun = params.includes('--dry-run');
-export const considerAllFiles = params.includes('--consider-all-files');
+export const cliConsiderAllFiles = params.includes('--consider-all-files');
 export const allowFileCreate = params.includes('--allow-file-create');
 export const allowFileDelete = params.includes('--allow-file-delete');
 export const allowDirectoryCreate = params.includes('--allow-directory-create');
@@ -19,9 +19,9 @@ export const vertexAiClaude = params.includes('--vertex-ai-claude');
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export const disableCache = params.includes('--disable-cache');
-export let explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
+export const cliExplicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
 export const disableContextOptimization = params.includes('--disable-context-optimization');
-export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
+export let cliTaskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const requireExplanations = params.includes('--require-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
@@ -29,6 +29,7 @@ export const vision = params.includes('--vision');
 export const imagen = params.find((param) => param.startsWith('--imagen'))?.split('=')[1];
 export const cheap = params.includes('--cheap');
 export const askQuestion = !params.includes('--disable-ask-question'); // Default enabled
+export const interactive = params.includes('--interactive'); // New parameter for interactive mode
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -49,20 +50,19 @@ export const ignorePatterns = params
   .filter((param) => param.startsWith('--ignore-pattern='))
   .map((param) => param.split('=')[1]);
 
-if (taskFile) {
-  if (explicitPrompt) {
+if (cliTaskFile) {
+  if (cliExplicitPrompt) {
     throw new Error('The --task-file option is exclusive with the --explicit-prompt option');
   }
-  if (!fs.existsSync(taskFile)) {
-    throw new Error(`The task file ${taskFile} does not exist`);
+  if (!fs.existsSync(cliTaskFile)) {
+    throw new Error(`The task file ${cliTaskFile} does not exist`);
   }
-  if (!path.isAbsolute(taskFile)) {
-    taskFile = path.join(process.cwd(), taskFile);
+  if (!path.isAbsolute(cliTaskFile)) {
+    cliTaskFile = path.join(process.cwd(), cliTaskFile);
   }
-  explicitPrompt = `I want you to perform a coding task. The task is described in the ${taskFile} file. Use those instructions.`;
 }
 
-if (considerAllFiles && dependencyTree) {
+if (cliConsiderAllFiles && dependencyTree) {
   throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
@@ -70,7 +70,7 @@ if ([chatGpt, anthropic, vertexAi, vertexAiClaude, aiStudio].filter(Boolean).len
   throw new Error('--chat-gpt, --anthropic, --ai-studio, --vertex-ai, and --vertex-ai-claude are mutually exclusive.');
 }
 
-if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !helpRequested) {
+if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !helpRequested && !interactive) {
   const detected = serviceAutoDetect();
   if (detected === 'anthropic') {
     console.log('Autodetected --anthropic');
@@ -85,7 +85,7 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !help
     console.log('Autodetected --ai-studio');
     aiStudio = true;
   } else {
-    throw new Error('Missing --chat-gpt, --anthropic, --ai-studiom --vertex-ai, or --vertex-ai-claude');
+    throw new Error('Missing --chat-gpt, --anthropic, --ai-studio, --vertex-ai, or --vertex-ai-claude');
   }
 }
 
@@ -117,4 +117,8 @@ if (askQuestion) {
   console.log('Assistant can ask questions to the user');
 } else {
   console.log('Assistant will not ask questions to the user');
+}
+
+if (interactive) {
+  console.log('Interactive mode enabled');
 }

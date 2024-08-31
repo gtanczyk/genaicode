@@ -14,9 +14,9 @@ vi.mock('../files/read-files.js', () => ({
 }));
 vi.mock('../cli/cli-params.js', () => ({
   requireExplanations: false,
-  considerAllFiles: false,
+  cliConsiderAllFiles: false,
   dependencyTree: false,
-  explicitPrompt: false,
+  cliExplicitPrompt: false,
   allowFileCreate: false,
   allowFileDelete: false,
   allowDirectoryCreate: false,
@@ -34,15 +34,15 @@ describe('getCodeGenPrompt', () => {
 
   it('should generate prompt for all files when considerAllFiles is true', () => {
     vi.spyOn(findFiles, 'getSourceFiles').mockReturnValue(['file1.js', 'file2.js']);
-    vi.mocked(cliParams).considerAllFiles = true;
-    vi.mocked(cliParams).explicitPrompt = undefined;
+    vi.mocked(cliParams).cliConsiderAllFiles = true;
+    vi.mocked(cliParams).cliExplicitPrompt = undefined;
     vi.mocked(cliParams).allowFileCreate = false;
     vi.mocked(cliParams).allowFileDelete = false;
     vi.mocked(cliParams).allowDirectoryCreate = false;
     vi.mocked(cliParams).allowFileMove = false;
     vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
 
-    const prompt = getCodeGenPrompt();
+    const prompt = getCodeGenPrompt({ considerAllFiles: true }).prompt;
 
     expect(prompt).toContain('You are allowed to modify all files in the application');
     expect(prompt).toContain('Do not create new files.');

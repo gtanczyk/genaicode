@@ -6,6 +6,7 @@ import { rcConfig } from '../main/config.js';
 // List of allowed CLI parameters
 const allowedParameters: string[] = [
   '--dry-run',
+  '--interactive',
   '--consider-all-files',
   '--allow-file-create',
   '--allow-file-delete',

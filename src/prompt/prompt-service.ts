@@ -3,7 +3,6 @@ import fs from 'fs';
 import mime from 'mime-types';
 
 import { getSystemPrompt } from './systemprompt.js';
-import { getCodeGenPrompt } from './prompt-codegen.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { disableContextOptimization, temperature, vision, cheap } from '../cli/cli-params.js';
@@ -34,12 +33,13 @@ import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js
 import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
 import { executeStepGenerateImage } from './steps/step-generate-image.js';
 import { StepResult } from './steps/steps-types.js';
+import { CodegenPrompt } from './prompt-codegen.js';
 
 /** A function that communicates with model using */
 export async function promptService(
   generateContentFn: GenerateContentFunction,
   generateImageFn: GenerateImageFunction | undefined,
-  codegenPrompt: string = getCodeGenPrompt(),
+  codegenPrompt: CodegenPrompt,
 ): Promise<FunctionCall[]> {
   const messages = prepareMessages(codegenPrompt);
 
@@ -204,7 +204,7 @@ export type PromptMessages = ReturnType<typeof prepareMessages>;
 /**
  * Function to prepare messages for AI services
  */
-function prepareMessages(prompt: string) {
+function prepareMessages(prompt: CodegenPrompt) {
   return {
     suggestSourceCode: 'I should provide you with application source code.',
     requestSourceCode: 'Please provide application source code.',
@@ -213,8 +213,9 @@ function prepareMessages(prompt: string) {
     prompt:
       prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
-    sourceCode: JSON.stringify(getSourceCode()),
-    contextSourceCode: (paths: string[]) => JSON.stringify(getSourceCode(paths, true)),
+    sourceCode: JSON.stringify(getSourceCode({ taskFile: prompt.options.taskFile })),
+    contextSourceCode: (paths: string[]) =>
+      JSON.stringify(getSourceCode({ filterPaths: paths, taskFile: prompt.options.taskFile, forceAll: true })),
     imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path: string) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;

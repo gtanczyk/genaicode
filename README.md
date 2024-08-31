@@ -58,6 +58,7 @@ npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and wri
 
 GenAIcode supports various command-line options to customize its behavior:
 
+- `--interactive`: Run the tool in interactive mode
 - `--dry-run`: Runs the tool without making any changes to the files.
 - `--consider-all-files`: Considers all files for code generation, even if they don't contain `@CODEGEN` comments.
 - `--allow-file-create`: Allows the tool to create new files.
