@@ -49,6 +49,19 @@ export async function runCodegen(): Promise<void> {
     aiService: cliParamToAiService(),
     vision: cliParams.vision,
     imagen: cliParams.imagen,
+
+    disableContextOptimization: cliParams.disableContextOptimization,
+    temperature: cliParams.temperature,
+    cheap: cliParams.cheap,
+    dryRun: cliParams.dryRun,
+    verbose: cliParams.verbosePrompt,
+    requireExplanations: cliParams.requireExplanations,
+    geminiBlockNone: cliParams.geminiBlockNone,
+    disableInitialLint: cliParams.disableInitialLint,
+    contentMask: cliParams.contentMask,
+    ignorePatterns: cliParams.ignorePatterns,
+    askQuestion: cliParams.askQuestion,
+    disableCache: cliParams.disableCache,
   };
 
   // Handle interactive mode
@@ -61,7 +74,7 @@ export async function runCodegen(): Promise<void> {
 }
 
 export async function runCodegenIteration(options: CodegenOptions) {
-  if (rcConfig.lintCommand && !cliParams.disableInitialLint) {
+  if (rcConfig.lintCommand && !options.disableInitialLint) {
     try {
       console.log(`Executing lint command: ${rcConfig.lintCommand}`);
       await execPromise(rcConfig.lintCommand);
@@ -74,16 +87,16 @@ export async function runCodegenIteration(options: CodegenOptions) {
       console.log('Lint errors:', stdout, stderr);
       process.exit(1);
     }
-  } else if (rcConfig.lintCommand && cliParams.disableInitialLint) {
+  } else if (rcConfig.lintCommand && options.disableInitialLint) {
     console.log('Initial lint was skipped.');
   }
 
   const generateContent: GenerateContentFunction = GENERATE_CONTENT_FNS[options.aiService];
 
   const generateImage: GenerateImageFunction | undefined =
-    cliParams.imagen === 'vertex-ai'
+    options.imagen === 'vertex-ai'
       ? generateImageVertexAi
-      : cliParams.imagen === 'dall-e'
+      : options.imagen === 'dall-e'
         ? generateImageDallE
         : undefined;
 
@@ -91,7 +104,7 @@ export async function runCodegenIteration(options: CodegenOptions) {
   const functionCalls = await promptService(generateContent, generateImage, getCodeGenPrompt(options));
   console.log('Received function calls:', functionCalls);
 
-  if (cliParams.dryRun) {
+  if (options.dryRun) {
     console.log('Dry run mode, not updating files');
   } else {
     console.log('Update files');
@@ -117,7 +130,7 @@ export async function runCodegenIteration(options: CodegenOptions) {
         console.log('Generating response for lint fixes');
         const lintFixFunctionCalls = (await promptService(generateContent, generateImage, {
           prompt: lintErrorPrompt,
-          options: { considerAllFiles: true, aiService: options.aiService },
+          options: { ...options, considerAllFiles: true },
         })) as FunctionCall[];
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);

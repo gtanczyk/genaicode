@@ -13,4 +13,18 @@ export interface CodegenOptions {
   vision?: boolean;
   imagen?: ImagenType;
   aiService: AiServiceType;
+
+  // Added cli parameters that affect code generation
+  disableContextOptimization?: boolean;
+  temperature?: number;
+  cheap?: boolean;
+  dryRun?: boolean;
+  verbose?: boolean;
+  requireExplanations?: boolean;
+  geminiBlockNone?: boolean;
+  disableInitialLint?: boolean;
+  contentMask?: string;
+  ignorePatterns?: string[];
+  askQuestion?: boolean;
+  disableCache?: boolean;
 }

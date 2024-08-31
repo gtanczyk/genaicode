@@ -1,6 +1,5 @@
 import { input } from '@inquirer/prompts';
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
-import { askQuestion } from '../../cli/cli-params.js';
 import { StepResult } from './steps-types.js';
 
 export async function executeStepAskQuestion(
@@ -19,11 +18,6 @@ export async function executeStepAskQuestion(
     contextSourceCode: (paths: string[]) => string;
   },
 ): Promise<StepResult> {
-  if (!askQuestion) {
-    console.log('Ask question is disabled by the --disable-ask-question flag.');
-    return StepResult.CONTINUE;
-  }
-
   console.log('Allowing the assistant to ask a question...');
   const questionAsked = false;
   while (!questionAsked) {

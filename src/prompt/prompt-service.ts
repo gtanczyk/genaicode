@@ -5,7 +5,6 @@ import mime from 'mime-types';
 import { getSystemPrompt } from './systemprompt.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { disableContextOptimization, temperature, cheap } from '../cli/cli-params.js';
 import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
 
@@ -72,18 +71,27 @@ export async function promptService(
 
   // Execute the ask question step
   if (
-    (await executeStepAskQuestion(generateContentFn, prompt, functionDefs, temperature, cheap, messages)) ===
-    StepResult.BREAK
+    codegenPrompt.options.askQuestion !== false &&
+    (await executeStepAskQuestion(
+      generateContentFn,
+      prompt,
+      functionDefs,
+      codegenPrompt.options.temperature ?? 0.7,
+      codegenPrompt.options.cheap ?? false,
+      messages,
+    )) === StepResult.BREAK
   ) {
     return [];
+  } else if (codegenPrompt.options.askQuestion === false) {
+    console.log('Ask question is not enabled.');
   }
 
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
     prompt,
     functionDefs,
     'codegenSummary',
-    temperature,
-    cheap,
+    codegenPrompt.options.temperature ?? 0.7,
+    codegenPrompt.options.cheap ?? false,
   ];
   let baseResult = await generateContentFn(...baseRequest);
 
@@ -100,7 +108,7 @@ export async function promptService(
     assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
     assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
 
-    if (!disableContextOptimization) {
+    if (!codegenPrompt.options.disableContextOptimization) {
       console.log('Optimize with context paths.');
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
       getSourceCodeRequest.args = {
@@ -152,7 +160,7 @@ export async function promptService(
         prompt,
         functionDefs,
         file.updateToolName,
-        file.temperature ?? temperature,
+        file.temperature ?? codegenPrompt.options.temperature,
         file.cheap === true,
       ];
       let partialResult = await generateContentFn(...partialRequest);
@@ -174,7 +182,7 @@ export async function promptService(
           generateContentFn,
           prompt,
           functionDefs,
-          file.temperature ?? temperature,
+          file.temperature ?? codegenPrompt.options.temperature,
           file.cheap === true,
           messages,
         );

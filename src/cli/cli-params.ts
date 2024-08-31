@@ -48,7 +48,7 @@ export const temperature = parseFloat(
 ); // Default temperature value: 0.7
 
 // New content mask parameter
-export const contentMask = params.find((param) => param.startsWith('--content-mask='))?.split('=')[1] || null;
+export const contentMask = params.find((param) => param.startsWith('--content-mask='))?.split('=')[1] || undefined;
 
 // New ignore pattern parameter
 export const ignorePatterns = params

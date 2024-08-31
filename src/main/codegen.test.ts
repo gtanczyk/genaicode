@@ -37,8 +37,12 @@ vi.mock('../cli/cli-params.js', () => ({
   cheap: false,
   taskFile: undefined,
   disableInitialLint: undefined,
-  askQuestion: undefined,
+  askQuestion: false,
   disableContextOptimization: undefined,
+  geminiBlockNone: undefined,
+  contentMask: undefined,
+  ignorePatterns: [],
+  disableCache: undefined,
 }));
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],

@@ -80,7 +80,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -92,7 +92,11 @@ describe('promptService', () => {
     const mockFunctionCalls = [{ name: 'createFile', args: { filePath: 'new.js', newContent: 'const x = 5;' } }];
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    const result = await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
+    const result = await promptService(
+      chatGpt.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt' }),
+    );
 
     expect(result).toEqual(mockFunctionCalls);
     expect(chatGpt.generateContent).toHaveBeenCalled();
@@ -106,7 +110,7 @@ describe('promptService', () => {
     const result = await promptService(
       anthropic.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'anthropic' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'anthropic' }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -124,7 +128,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -178,7 +182,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -201,7 +205,11 @@ describe('promptService', () => {
     vi.mocked(getImageAssets).mockReturnValue(mockImageAssets);
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt', vision: true }));
+    await promptService(
+      chatGpt.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt', vision: true }),
+    );
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
     const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
@@ -258,7 +266,11 @@ describe('promptService', () => {
     vi.mocked(fs.readFileSync).mockImplementation((path) => `mock-base64-data-for-${path}`);
     vi.mocked(mime.lookup).mockImplementation((path) => (path.endsWith('.png') ? 'image/png' : 'image/jpeg'));
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt', vision: true }));
+    await promptService(
+      chatGpt.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt', vision: true }),
+    );
 
     expect(chatGpt.generateContent).toHaveBeenCalledTimes(2);
     const secondCall = vi.mocked(chatGpt.generateContent).mock.calls[1];
@@ -293,7 +305,11 @@ describe('promptService', () => {
 
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
-    await promptService(chatGpt.generateContent, undefined, getCodeGenPrompt({ aiService: 'chat-gpt' }));
+    await promptService(
+      chatGpt.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt' }),
+    );
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
     const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
@@ -332,7 +348,11 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
+    await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
@@ -377,7 +397,11 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
+    await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
@@ -438,7 +462,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       dalleService.generateImage,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -483,7 +507,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       dalleService.generateImage,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -522,7 +546,7 @@ describe('promptService', () => {
     const result = await promptService(
       vertexAi.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
@@ -569,7 +593,7 @@ describe('promptService', () => {
       const result = await promptService(
         vertexAi.generateContent,
         undefined,
-        getCodeGenPrompt({ aiService: 'vertex-ai' }),
+        getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
       );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -608,7 +632,11 @@ describe('promptService', () => {
         .mockResolvedValueOnce(mockInvalidCall); // Second call also returns invalid result
 
       await expect(
-        promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' })),
+        promptService(
+          vertexAi.generateContent,
+          undefined,
+          getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
+        ),
       ).rejects.toThrow('Recovery failed');
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -632,7 +660,7 @@ describe('promptService', () => {
       const result = await promptService(
         vertexAi.generateContent,
         undefined,
-        getCodeGenPrompt({ aiService: 'vertex-ai' }),
+        getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
       );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
