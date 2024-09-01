@@ -1,8 +1,11 @@
 import { input } from '@inquirer/prompts';
 
-export async function runTextPrompt(): Promise<string> {
+export async function runTextPrompt(): Promise<string | null> {
   try {
-    const prompt = await input({ message: 'Enter your text prompt:' });
+    const prompt = await input({
+      message: 'Enter your text prompt:',
+    });
+
     console.log(`Received prompt: ${prompt}`);
     return prompt;
   } catch (error) {

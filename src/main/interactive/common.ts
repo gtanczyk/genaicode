@@ -58,3 +58,15 @@ export const handleCodegenError = async (error: Error): Promise<UserAction> => {
     choices,
   });
 };
+
+export const confirmAction = async (message: string): Promise<boolean> => {
+  const choices = [
+    { name: 'Yes', value: true },
+    { name: 'No, return to main menu', value: false },
+  ];
+
+  return await select<boolean>({
+    message,
+    choices,
+  });
+};
