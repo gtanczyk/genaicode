@@ -3,6 +3,7 @@ import * as diff from 'diff';
 import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../../ai-service/common.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { PromptMessages } from '../prompt-service.js';
+import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepVerifyPatch(
   { filePath, patch }: { filePath: string; patch: string },
@@ -12,6 +13,7 @@ export async function executeStepVerifyPatch(
   temperature: number,
   cheap: boolean,
   messages: PromptMessages,
+  options: CodegenOptions,
 ): Promise<FunctionCall[]> {
   console.log('Verification of patch for file:', filePath);
 
@@ -28,12 +30,13 @@ export async function executeStepVerifyPatch(
     console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
     // Rerun content generation without patchFile function
-    const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
+    const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
       prompt,
       functionDefs,
       'updateFile',
       temperature,
       cheap,
+      options,
     ];
     let partialResult = await generateContentFn(...partialRequest);
 

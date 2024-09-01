@@ -125,7 +125,12 @@ export async function runCodegenIteration(options: CodegenOptions) {
 
         // Prepare the lint error output for the second pass
         const firstLintError = error as { stdout: string; stderr: string };
-        const lintErrorPrompt = getLintFixPrompt(rcConfig.lintCommand, firstLintError.stdout, firstLintError.stderr);
+        const lintErrorPrompt = getLintFixPrompt(
+          rcConfig.lintCommand,
+          options,
+          firstLintError.stdout,
+          firstLintError.stderr,
+        );
 
         console.log('Generating response for lint fixes');
         const lintFixFunctionCalls = (await promptService(generateContent, generateImage, {
@@ -162,7 +167,7 @@ export async function runCodegenIteration(options: CodegenOptions) {
 
 const execPromise = util.promisify(exec);
 
-const GENERATE_CONTENT_FNS = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai-claude': generateContentVertexAiClaude,
   'vertex-ai': generateContentVertexAi,
   'ai-studio': generateContentAiStudio,

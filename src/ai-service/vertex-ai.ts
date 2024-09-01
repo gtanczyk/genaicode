@@ -9,7 +9,7 @@ import {
   FunctionCallingMode,
 } from '@google-cloud/vertexai';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { geminiBlockNone } from '../cli/cli-params.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 /**
  * This function generates content using the Gemini Pro model.
@@ -20,6 +20,7 @@ export async function generateContent(
   requiredFunctionName: string | null,
   temperature: number,
   cheap = false,
+  options: CodegenOptions,
 ): Promise<FunctionCall[]> {
   const messages: Content[] = prompt
     .filter((item) => item.type === 'user' || item.type === 'assistant')
@@ -70,6 +71,7 @@ export async function generateContent(
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     temperature,
     functionDefs,
+    options.geminiBlockNone,
     requiredFunctionName,
     cheap,
   );
@@ -119,6 +121,7 @@ export function getGenModel(
   systemPrompt: string,
   temperature: number,
   functionDefs: FunctionDef[],
+  geminiBlockNone: boolean | undefined,
   requiredFunctionName: string | null,
   cheap = false,
 ) {

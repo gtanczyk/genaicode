@@ -6,7 +6,6 @@ import * as diff from 'diff';
 import { getSourceFiles } from './find-files.js';
 import { isAncestorDirectory } from './file-utils.js';
 import { rcConfig } from '../main/config.js';
-import { allowDirectoryCreate, allowFileCreate, allowFileDelete, allowFileMove } from '../cli/cli-params.js';
 import { getTempBuffer } from './temp-buffer.js';
 import { imglyRemoveBackground } from '../images/imgly-remove-background.js';
 import { splitImage } from '../images/split-image.js';
@@ -18,6 +17,8 @@ import { CodegenOptions } from '../main/codegen-types.js';
  * @param functionCalls Result of the code generation, a map of file paths to new content
  */
 export async function updateFiles(functionCalls: FunctionCall[], options: CodegenOptions) {
+  const { allowDirectoryCreate, allowFileCreate, allowFileDelete, allowFileMove } = options;
+
   for (const { name, args } of functionCalls) {
     let { filePath, newContent, source, destination, inputFilePath, outputFilePath } = args as {
       filePath?: string;

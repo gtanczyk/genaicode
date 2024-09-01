@@ -1,7 +1,6 @@
 import assert from 'node:assert';
 import { getSourceCode } from '../files/read-files.js';
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
-import { dependencyTree, verbosePrompt } from '../cli/cli-params.js';
 import { getDependencyList } from '../files/find-files.js';
 import { verifyCodegenPromptLimit } from './limits.js';
 import { importantContext } from '../main/config.js';
@@ -28,6 +27,8 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
     allowFileMove,
     vision,
     imagen,
+    dependencyTree,
+    verbose,
   } = options;
 
   assert(!explicitPrompt || !taskFile, 'Both taskFile and explicitPrompt are not allowed');
@@ -38,9 +39,9 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
 
   let codeGenFiles: string[];
   if (considerAllFiles) {
-    codeGenFiles = Object.keys(getSourceCode({ taskFile }));
+    codeGenFiles = Object.keys(getSourceCode({ taskFile }, options));
   } else {
-    codeGenFiles = Object.entries(getSourceCode({ taskFile }) as Record<string, SourceCodeEntry>)
+    codeGenFiles = Object.entries(getSourceCode({ taskFile }, options) as Record<string, SourceCodeEntry>)
       .filter(([, { content }]) => content?.match(new RegExp(`([^'^\`]+)${CODEGEN_TRIGGER}`)))
       .map(([path]) => path);
   }
@@ -89,7 +90,7 @@ ${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image as
 ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
 `;
 
-  if (verbosePrompt) {
+  if (verbose) {
     console.log('Code gen prompt:');
     console.log(codeGenPrompt);
   }
@@ -100,7 +101,7 @@ ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to gener
 }
 
 /** Get lint fix prompt */
-export function getLintFixPrompt(command: string, stdout: string, stderr: string): string {
+export function getLintFixPrompt(command: string, { verbose }: CodegenOptions, stdout: string, stderr: string): string {
   const lintFixPrompt = `The following lint errors were encountered after the initial code generation:
 
 Lint command: ${command}
@@ -118,7 +119,7 @@ ${stderr}
         
 Please suggest changes to fix these lint errors.`;
 
-  if (verbosePrompt) {
+  if (verbose) {
     console.log('Lint fix prompt:');
     console.log(lintFixPrompt);
   }

@@ -70,7 +70,7 @@ describe('getLintFixPrompt', () => {
     const stdout = 'Fixed 2 errors';
     const stderr = '';
 
-    const prompt = getLintFixPrompt(command, stdout, stderr);
+    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
 
     expect(prompt).toContain('The following lint errors were encountered after the initial code generation:');
     expect(prompt).toContain(`Lint command: ${command}`);
@@ -85,7 +85,7 @@ describe('getLintFixPrompt', () => {
     const stdout = '';
     const stderr = 'Error: Unable to resolve path';
 
-    const prompt = getLintFixPrompt(command, stdout, stderr);
+    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
 
     expect(prompt).toContain('Lint command stderr:');
     expect(prompt).toContain(stderr);
@@ -96,20 +96,19 @@ describe('getLintFixPrompt', () => {
     const stdout = 'Fixed 1 error';
     const stderr = '';
 
-    getLintFixPrompt(command, stdout, stderr);
+    getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
 
     expect(limits.verifyCodegenPromptLimit).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('should log the prompt when verbosePrompt is true', () => {
-    vi.mocked(cliParams).verbosePrompt = true;
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const command = 'eslint --fix';
     const stdout = 'Fixed 1 error';
     const stderr = '';
 
-    getLintFixPrompt(command, stdout, stderr);
+    getLintFixPrompt(command, { aiService: 'vertex-ai', verbose: true }, stdout, stderr);
 
     expect(consoleSpy).toHaveBeenCalledWith('Lint fix prompt:');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('The following lint errors were encountered'));

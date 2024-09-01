@@ -159,6 +159,7 @@ describe('runCodegen', () => {
       expect.anything(),
       0.5,
       false,
+      expect.anything(),
     );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
@@ -303,6 +304,7 @@ describe('runCodegen', () => {
       expect.anything(),
       expect.anything(),
       true,
+      expect.anything(),
     );
     expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockFunctionCalls, expect.anything());
   });
@@ -346,6 +348,7 @@ describe('runCodegen', () => {
       expect.anything(),
       expect.anything(),
       true,
+      expect.anything(),
     );
     expect(vertexAiImagen.generateImage).toHaveBeenCalledWith(
       'A simple landscape',

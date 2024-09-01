@@ -1,7 +1,6 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { disableCache } from '../cli/cli-params.js';
 import {
   PromptCachingBetaImageBlockParam,
   PromptCachingBetaMessageParam,
@@ -9,6 +8,7 @@ import {
   PromptCachingBetaToolResultBlockParam,
   PromptCachingBetaToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages.mjs';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -19,10 +19,12 @@ export async function generateContent(
   requiredFunctionName: string | null,
   temperature: number,
   cheap = false,
+  options: CodegenOptions,
 ): Promise<FunctionCall[]> {
   const anthropic = new Anthropic({
     defaultHeaders: {
-      'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15' + (!disableCache ? ',prompt-caching-2024-07-31' : ''),
+      'anthropic-beta':
+        'max-tokens-3-5-sonnet-2024-07-15' + (!options.disableCache ? ',prompt-caching-2024-07-31' : ''),
     },
   });
 
@@ -62,7 +64,7 @@ export async function generateContent(
         content.push({
           type: 'text' as const,
           text: item.text!,
-          ...(item.cache && !disableCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+          ...(item.cache && !options.disableCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
         });
         const message: PromptCachingBetaMessageParam = {
           role: 'user',

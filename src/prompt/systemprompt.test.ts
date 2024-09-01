@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getSystemPrompt } from './systemprompt.js';
-import * as cliParams from '../cli/cli-params.js';
+import '../cli/cli-params.js';
 import '../files/find-files.js';
 import '../main/config.js';
 
@@ -31,7 +31,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('generates correct system prompt', () => {
-    const systemPrompt = getSystemPrompt();
+    const systemPrompt = getSystemPrompt({ aiService: 'vertex-ai' });
 
     expect(systemPrompt).toContain(
       'You are a code generation assistant. I want you to help me generate code for my ideas in my application source code.',
@@ -49,10 +49,9 @@ describe('getSystemPrompt', () => {
   });
 
   it('verifies system prompt limit', () => {
-    vi.spyOn(cliParams, 'verbosePrompt', 'get').mockReturnValue(true);
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    getSystemPrompt();
+    getSystemPrompt({ aiService: 'vertex-ai', verbose: true });
 
     expect(consoleSpy).toHaveBeenCalledWith('System prompt:');
     expect(consoleSpy).toHaveBeenCalledWith(

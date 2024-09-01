@@ -6,8 +6,8 @@ import globRegex from 'glob-regex';
 
 import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { rcConfig, importantContext } from '../main/config.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
-import { contentMask, ignorePatterns } from '../cli/cli-params.js';
 
 type SourceCodeMap = Record<string, { content: string | null } | undefined>;
 
@@ -23,7 +23,11 @@ type ImageAssetsMap = Record<
 /**
  * Read contents of source files and create a map with file path as key and file content as value
  */
-function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMap {
+function readSourceFiles(
+  { contentMask, ignorePatterns }: CodegenOptions,
+  filterPaths?: string[],
+  forceAll = false,
+): SourceCodeMap {
   const sourceCode: SourceCodeMap = {};
   const importantFiles = new Set(importantContext.files || []);
 
@@ -43,7 +47,7 @@ function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMa
           continue;
         }
       }
-      if (!forceAll && ignorePatterns.some((pattern) => globRegex.default(pattern).test(file))) {
+      if (!forceAll && ignorePatterns?.some((pattern) => globRegex.default(pattern).test(file))) {
         sourceCode[file] = { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
@@ -55,16 +59,19 @@ function readSourceFiles(filterPaths?: string[], forceAll = false): SourceCodeMa
 }
 
 /** Print source code of all source files */
-export function getSourceCode({
-  filterPaths,
-  taskFile,
-  forceAll,
-}: {
-  filterPaths?: string[];
-  taskFile: string | undefined;
-  forceAll?: boolean;
-}): SourceCodeMap {
-  const sourceCode = readSourceFiles(filterPaths, forceAll);
+export function getSourceCode(
+  {
+    filterPaths,
+    taskFile,
+    forceAll,
+  }: {
+    filterPaths?: string[];
+    taskFile: string | undefined;
+    forceAll?: boolean;
+  },
+  options: CodegenOptions,
+): SourceCodeMap {
+  const sourceCode = readSourceFiles(options, filterPaths, forceAll);
 
   if (taskFile && !sourceCode[taskFile]) {
     sourceCode[taskFile] = {

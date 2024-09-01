@@ -5,18 +5,9 @@ import mime from 'mime-types';
 import { getSystemPrompt } from './systemprompt.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { PromptItem, FunctionDef, FunctionCall } from '../ai-service/common.js';
+import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
-
-interface GenerateContentFunction {
-  (
-    prompt: PromptItem[],
-    functionDefs: FunctionDef[],
-    requiredFunctionName: string,
-    temperature: number,
-    cheap: boolean,
-  ): Promise<FunctionCall[]>;
-}
+import { CodegenOptions } from '../main/codegen-types.js';
 
 interface GenerateImageFunction {
   (
@@ -47,7 +38,7 @@ export async function promptService(
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
 
   const prompt: PromptItem[] = [
-    { type: 'systemPrompt', systemPrompt: getSystemPrompt() },
+    { type: 'systemPrompt', systemPrompt: getSystemPrompt(codegenPrompt.options) },
     { type: 'user', text: messages.suggestSourceCode },
     { type: 'assistant', text: messages.requestSourceCode, functionCalls: [getSourceCodeRequest] },
   ];
@@ -79,6 +70,7 @@ export async function promptService(
       codegenPrompt.options.temperature ?? 0.7,
       codegenPrompt.options.cheap ?? false,
       messages,
+      codegenPrompt.options,
     )) === StepResult.BREAK
   ) {
     return [];
@@ -86,12 +78,13 @@ export async function promptService(
     console.log('Ask question is not enabled.');
   }
 
-  const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
+  const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
     prompt,
     functionDefs,
     'codegenSummary',
     codegenPrompt.options.temperature ?? 0.7,
     codegenPrompt.options.cheap ?? false,
+    codegenPrompt.options,
   ];
   let baseResult = await generateContentFn(...baseRequest);
 
@@ -156,12 +149,13 @@ export async function promptService(
         }));
       }
 
-      const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean] = [
+      const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
         prompt,
         functionDefs,
         file.updateToolName,
         file.temperature ?? codegenPrompt.options.temperature,
         file.cheap === true,
+        codegenPrompt.options,
       ];
       let partialResult = await generateContentFn(...partialRequest);
 
@@ -185,6 +179,7 @@ export async function promptService(
           file.temperature ?? codegenPrompt.options.temperature,
           file.cheap === true,
           messages,
+          codegenPrompt.options,
         );
       }
 
@@ -222,9 +217,11 @@ function prepareMessages(codegen: CodegenPrompt) {
     prompt:
       codegen.prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
-    sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile })),
+    sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
     contextSourceCode: (paths: string[]) =>
-      JSON.stringify(getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true })),
+      JSON.stringify(
+        getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true }, codegen.options),
+      ),
     imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path: string) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;

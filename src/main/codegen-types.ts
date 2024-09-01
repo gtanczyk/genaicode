@@ -14,7 +14,6 @@ export interface CodegenOptions {
   imagen?: ImagenType;
   aiService: AiServiceType;
 
-  // Added cli parameters that affect code generation
   disableContextOptimization?: boolean;
   temperature?: number;
   cheap?: boolean;
@@ -27,4 +26,5 @@ export interface CodegenOptions {
   ignorePatterns?: string[];
   askQuestion?: boolean;
   disableCache?: boolean;
+  dependencyTree?: boolean;
 }

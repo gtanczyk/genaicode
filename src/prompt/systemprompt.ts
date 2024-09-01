@@ -1,10 +1,10 @@
 import { CODEGEN_TRIGGER } from './prompt-consts.js';
-import { verbosePrompt, askQuestion } from '../cli/cli-params.js';
 import { verifySystemPromptLimit } from './limits.js';
 import { rcConfig } from '../main/config.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 /** Generates a system prompt */
-export function getSystemPrompt(): string {
+export function getSystemPrompt({ verbose, askQuestion }: CodegenOptions): string {
   console.log('Generate system prompt');
 
   let systemPrompt = `
@@ -38,7 +38,7 @@ export function getSystemPrompt(): string {
       "To ask a question, use the 'askQuestion' function.";
   }
 
-  if (verbosePrompt) {
+  if (verbose) {
     console.log('System prompt:');
     console.log(systemPrompt);
   }

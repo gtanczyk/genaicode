@@ -1,14 +1,16 @@
 import assert from 'node:assert';
 import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../../ai-service/common.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
+import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function validateAndRecoverSingleResult(
-  [prompt, functionDefs, requiredFunctionName, temperature, cheap]: [
+  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: [
     PromptItem[],
     FunctionDef[],
     string,
     number,
     boolean,
+    CodegenOptions,
   ],
   result: FunctionCall[],
   messages: {
@@ -54,7 +56,7 @@ export async function validateAndRecoverSingleResult(
     if (cheap) {
       console.log('Disabling --cheap for recovery.');
     }
-    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false);
+    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
     console.log('Recover result:', result);
 
     if (result?.length === 1) {

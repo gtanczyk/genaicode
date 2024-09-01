@@ -1,5 +1,3 @@
-import { temperature, cheap } from '../../cli/cli-params.js';
-
 /**
  * Function definition for codegenSummary
  */
@@ -56,14 +54,12 @@ export const codegenSummary = {
             temperature: {
               type: 'number',
               description:
-                'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for a more creative solution, the value should be lower, but stil within [0.0, 2.0] range. The default value is: ' +
-                temperature,
+                'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for a more creative solution, the value should be lower, but stil within [0.0, 2.0] range.',
             },
             cheap: {
               type: 'boolean',
               description:
-                'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt. The default value is: ' +
-                !!cheap,
+                'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
             },
             prompt: {
               type: 'string',

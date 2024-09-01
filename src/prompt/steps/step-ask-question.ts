@@ -1,6 +1,7 @@
 import { input } from '@inquirer/prompts';
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
+import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: (
@@ -9,6 +10,7 @@ export async function executeStepAskQuestion(
     requiredFunctionName: string,
     temperature: number,
     cheap: boolean,
+    options: CodegenOptions,
   ) => Promise<FunctionCall[]>,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
@@ -17,11 +19,12 @@ export async function executeStepAskQuestion(
   messages: {
     contextSourceCode: (paths: string[]) => string;
   },
+  options: CodegenOptions,
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
   const questionAsked = false;
   while (!questionAsked) {
-    const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap);
+    const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
     const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
     if (askQuestionCall) {
       console.log('Assistant asks:', askQuestionCall.args);

@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { functionDefs } from '../prompt/function-calling.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 interface TokenUsage {
   inputTokens: number | undefined | null;
@@ -49,6 +50,7 @@ export type GenerateContentFunction = (
   requiredFunctionName: string,
   temperature: number,
   cheap: boolean,
+  options: CodegenOptions,
 ) => Promise<FunctionCall[]>;
 
 export type GenerateImageFunction = (
