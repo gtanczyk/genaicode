@@ -105,7 +105,11 @@ describe('promptService with askQuestion', () => {
       () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
     );
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
+    await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
@@ -131,7 +135,7 @@ describe('promptService with askQuestion', () => {
     const result = await promptService(
       vertexAi.generateContent,
       undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai' }),
+      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
@@ -156,7 +160,11 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockCodegenSummary);
 
-    await promptService(vertexAi.generateContent, undefined, getCodeGenPrompt({ aiService: 'vertex-ai' }));
+    await promptService(
+      vertexAi.generateContent,
+      undefined,
+      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
+    );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(prompts.input).not.toHaveBeenCalled();

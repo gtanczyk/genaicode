@@ -1,3 +1,4 @@
+import { setMaxListeners } from 'events';
 import { CodegenOptions } from '../codegen-types.js';
 import { runCodegenIteration } from '../codegen.js';
 import { handleUserInterrupt } from './user-interrupt.js';
@@ -8,6 +9,7 @@ export let abortController: AbortController | null = null;
 export const runCodegenWorker = async (options: CodegenOptions): Promise<void> => {
   console.log('Starting operation...');
   abortController = new AbortController();
+  setMaxListeners(Infinity, abortController.signal);
   const removeInterruptHandler = createInterruptHandler(abortController);
 
   try {

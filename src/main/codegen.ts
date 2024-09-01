@@ -62,6 +62,7 @@ export async function runCodegen(): Promise<void> {
     ignorePatterns: cliParams.ignorePatterns,
     askQuestion: cliParams.askQuestion,
     disableCache: cliParams.disableCache,
+    interactive: cliParams.interactive,
   };
 
   // Handle interactive mode
