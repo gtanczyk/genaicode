@@ -73,11 +73,7 @@ export async function executeStepAskQuestion(
             : await input({ message: 'Your answer' })
         : "Let's proceed with code generation.";
 
-      if (
-        permissionsRequested &&
-        askQuestionCall.args?.requestPermissions &&
-        userAnswer === 'Permission request denied.'
-      ) {
+      if (permissionsRequested && askQuestionCall.args?.requestPermissions && userAnswer === 'Permissions granted.') {
         if (askQuestionCall.args?.requestPermissions.enableImagen) {
           options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
         }

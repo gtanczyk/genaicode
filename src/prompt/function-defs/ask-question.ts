@@ -33,6 +33,9 @@ export const askQuestion = {
         description:
           'This object property is used to request file contents to be provided by the user, use this property when a content of a file is missing(null in getSourceCode response), but we know that it exists.' +
           'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+        items: {
+          type: 'string',
+        },
       },
       requestPermissions: {
         type: 'object',

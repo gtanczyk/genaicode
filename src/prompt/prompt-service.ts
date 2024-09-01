@@ -31,13 +31,15 @@ export async function promptService(
   generateImageFns: Record<ImagenType, GenerateImageFunction>,
   codegenPrompt: CodegenPrompt,
 ): Promise<FunctionCall[]> {
-  const { vision } = codegenPrompt.options;
   const messages = prepareMessages(codegenPrompt);
 
   const generateContentFn: GenerateContentFunction = (...args) =>
     generateContentFns[codegenPrompt.options.aiService](...args);
 
-  const generateImageFn: GenerateImageFunction = (...args) => generateImageFns[codegenPrompt.options.imagen!](...args);
+  const generateImageFn: GenerateImageFunction = (...args) => {
+    assert(codegenPrompt.options.imagen, 'imagen value must be provided');
+    return generateImageFns[codegenPrompt.options.imagen](...args);
+  };
 
   // First stage: generate code generation summary, which should not take a lot of output tokens
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
@@ -55,7 +57,7 @@ export async function promptService(
   };
   prompt.push(getSourceCodeResponse);
 
-  if (vision) {
+  if (codegenPrompt.options.vision) {
     prompt.slice(-1)[0].text = messages.suggestImageAssets;
     prompt.push(
       { type: 'assistant', text: messages.requestImageAssets, functionCalls: [{ name: 'getImageAssets' }] },
@@ -136,7 +138,7 @@ export async function promptService(
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
       console.log('- Cheap', file.cheap);
-      if (vision) {
+      if (codegenPrompt.options.vision) {
         console.log('- Context image assets', file.contextImageAssets);
       }
 
@@ -147,7 +149,7 @@ export async function promptService(
         prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.path) });
       }
 
-      if (vision && file.contextImageAssets) {
+      if (codegenPrompt.options.vision && file.contextImageAssets) {
         prompt.slice(-1)[0].images = file.contextImageAssets.map((path: string) => ({
           path,
           base64url: fs.readFileSync(path, 'base64'),
@@ -171,7 +173,7 @@ export async function promptService(
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
       if (generateImageCall) {
-        partialResult.push(await executeStepGenerateImage(generateImageFn!, generateImageCall));
+        partialResult.push(await executeStepGenerateImage(generateImageFn, generateImageCall));
       }
 
       // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully

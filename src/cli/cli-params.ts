@@ -118,7 +118,7 @@ if (ignorePatterns.length > 0) {
   console.log(`Ignore pattern: ${ignorePatterns.join(', ')}`);
 }
 
-if (askQuestion) {
+if (askQuestion && interactive) {
   console.log('Assistant can ask questions to the user');
 } else {
   console.log('Assistant will not ask questions to the user');
