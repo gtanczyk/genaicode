@@ -30,6 +30,15 @@ export async function executeStepAskQuestion(
           stopCodegen: boolean;
           shouldPrompt: boolean;
           requestFilesContent?: string[];
+          requestPermissions: Record<
+            | 'allowDirectoryCreate'
+            | 'allowFileCreate'
+            | 'allowFileDelete'
+            | 'allowFileMove'
+            | 'enableVision'
+            | 'enableImagen',
+            boolean
+          >;
         }>
       | undefined;
     if (askQuestionCall) {
@@ -44,11 +53,36 @@ export async function executeStepAskQuestion(
       }
 
       const fileContentRequested = askQuestionCall.args?.requestFilesContent?.length! > 0;
+      const permissionsRequested = Object.entries(askQuestionCall.args?.requestPermissions ?? {}).length > 0;
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
           ? 'Providing requested files content.'
-          : await input({ message: 'Your answer' })
+          : permissionsRequested
+            ? 'Permissions granted.'
+            : await input({ message: 'Your answer' })
         : "Let's proceed with code generation.";
+
+      if (permissionsRequested) {
+        if (askQuestionCall.args?.requestPermissions.enableImagen) {
+          options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
+        }
+        if (askQuestionCall.args?.requestPermissions.enableVision) {
+          options.vision = true;
+        }
+        if (askQuestionCall.args?.requestPermissions.allowDirectoryCreate) {
+          options.allowDirectoryCreate = true;
+        }
+        if (askQuestionCall.args?.requestPermissions.allowFileCreate) {
+          options.allowFileCreate = true;
+        }
+        if (askQuestionCall.args?.requestPermissions.allowFileDelete) {
+          options.allowFileDelete = true;
+        }
+        if (askQuestionCall.args?.requestPermissions.allowFileMove) {
+          options.allowFileMove = true;
+        }
+      }
+
       prompt.push(
         { type: 'assistant', functionCalls: [askQuestionCall] },
         {

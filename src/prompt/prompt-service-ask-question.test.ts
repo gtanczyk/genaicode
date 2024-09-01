@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import { FunctionCall } from '../ai-service/common.js';
+import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 import * as prompts from '@inquirer/prompts';
 import { CancelablePromise } from '@inquirer/type';
 import '../cli/cli-params.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
+import { AiServiceType, ImagenType } from '../main/codegen-types.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({
@@ -51,6 +52,12 @@ vi.mock('../main/config.js', () => ({
   },
   importantContext: {},
 }));
+
+const GENERATE_CONTENT_FNS = { 'vertex-ai': vertexAi.generateContent } as Record<
+  AiServiceType,
+  GenerateContentFunction
+>;
+const GENERATE_IMAGE_FNS = {} as Record<ImagenType, GenerateImageFunction>;
 
 describe('promptService with askQuestion', () => {
   beforeEach(() => {
@@ -106,9 +113,9 @@ describe('promptService with askQuestion', () => {
     );
 
     await promptService(
-      vertexAi.generateContent,
-      undefined,
-      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
+      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true, askQuestion: true }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -133,8 +140,8 @@ describe('promptService with askQuestion', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockAskQuestionCall);
 
     const result = await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
     );
 
@@ -161,8 +168,8 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockCodegenSummary);
 
     await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
     );
 

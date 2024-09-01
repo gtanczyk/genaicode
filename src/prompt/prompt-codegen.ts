@@ -29,6 +29,8 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
     imagen,
     dependencyTree,
     verbose,
+    askQuestion,
+    interactive,
   } = options;
 
   assert(!explicitPrompt || !taskFile, 'Both taskFile and explicitPrompt are not allowed');
@@ -59,6 +61,7 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   }
 
   const importantTextPrompts = importantContext.textPrompts?.map((prompt) => prompt.content).join('\n\n') || '';
+  const requestPermissionText = askQuestion && interactive ? ' (request permission via `askQuestion`)' : '';
 
   const codeGenPrompt =
     (explicitPrompt ? 'This is your task: ' + explicitPrompt + '\n\n' : '') +
@@ -78,16 +81,16 @@ ${
     ? 'You are allowed to modify all files in the application regardless if they contain codegen fragments or not.'
     : 'Do not modify files which do not contain the fragments.'
 }
-${allowFileCreate ? 'You are allowed to create new files.' : 'Do not create new files.'}
+${allowFileCreate ? 'You are allowed to create new files.' : 'Do not create new files. (request permission via `askQuestion`)'}
 ${
   allowFileDelete
     ? 'You are allowed to delete files, in such case add empty string as content.'
-    : 'Do not delete files.'
+    : 'Do not delete files. (request permission via `askQuestion`)'
 }
-${allowDirectoryCreate ? 'You are allowed to create new directories.' : 'Do not create new directories.'}
-${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
-${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets.'}
-${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
+${allowDirectoryCreate ? 'You are allowed to create new directories.' : `Do not create new directories.${requestPermissionText}`}
+${allowFileMove ? 'You are allowed to move files.' : 'Do not move files. (request permission via `askQuestion`)'}
+${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets. (request permission via `askQuestion`)'}
+${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images. (request permission via `askQuestion`)'}
 `;
 
   if (verbose) {

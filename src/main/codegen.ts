@@ -15,7 +15,7 @@ import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-
 import { promptService } from '../prompt/prompt-service.js';
 import { updateFiles } from '../files/update-files.js';
 import { rcConfig } from '../main/config.js';
-import { AiServiceType, CodegenOptions } from './codegen-types.js';
+import { AiServiceType, CodegenOptions, ImagenType } from './codegen-types.js';
 import { getLintFixPrompt } from '../prompt/prompt-codegen.js';
 import { printHelpMessage } from '../cli/cli-options.js';
 import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
@@ -96,17 +96,8 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     throw new Error('Codegen iteration aborted');
   }
 
-  const generateContent: GenerateContentFunction = GENERATE_CONTENT_FNS[options.aiService];
-
-  const generateImage: GenerateImageFunction | undefined =
-    options.imagen === 'vertex-ai'
-      ? generateImageVertexAi
-      : options.imagen === 'dall-e'
-        ? generateImageDallE
-        : undefined;
-
   console.log('Generating response');
-  const functionCalls = await promptService(generateContent, generateImage, getCodeGenPrompt(options));
+  const functionCalls = await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(options));
 
   console.log('Received function calls:', functionCalls);
 
@@ -143,7 +134,7 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
         );
 
         console.log('Generating response for lint fixes');
-        const lintFixFunctionCalls = (await promptService(generateContent, generateImage, {
+        const lintFixFunctionCalls = (await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, {
           prompt: lintErrorPrompt,
           options: { ...options, considerAllFiles: true },
         })) as FunctionCall[];
@@ -187,6 +178,11 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'ai-studio': generateContentAiStudio,
   anthropic: generateContentAnthropic,
   'chat-gpt': generateContentGPT,
+} as const;
+
+const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
+  'dall-e': generateImageDallE,
+  'vertex-ai': generateImageVertexAi,
 } as const;
 
 function cliParamToAiService(): AiServiceType {

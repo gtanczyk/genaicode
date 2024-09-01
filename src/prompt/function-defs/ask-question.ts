@@ -1,3 +1,5 @@
+import { allowDirectoryCreate, allowFileCreate, allowFileDelete, allowFileMove } from '../../cli/cli-params.js';
+
 /**
  * Function definition for askQuestion
  */
@@ -34,7 +36,46 @@ export const askQuestion = {
           'This object property is used to request file contents to be provided by the user, use this property when a content of a file is missing(null in getSourceCode response), but we know that it exists.' +
           'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
       },
+      requestPermissions: {
+        type: 'object',
+        description:
+          "Use this property to request enablement of permissions for code generation process if you detect that you don't have this permission listed in the requirements.",
+        properties: {
+          allowDirectoryCreate: {
+            description: 'Set to `true` to request permission for creating directories.',
+            type: 'boolean',
+          },
+          allowFileCreate: {
+            description: 'Set to `true` to request permission for creating files.',
+            type: 'boolean',
+          },
+          allowFileDelete: {
+            description: 'Set to `true` to request permission for deleting files.',
+            type: 'boolean',
+          },
+          allowFileMove: {
+            description: 'Set to `true` to request permission for moving files.',
+            type: 'boolean',
+          },
+          enableVision: {
+            description:
+              'Set to `true` to request permission for vision capabilities, using images as a context for further code generation operations.',
+            type: 'boolean',
+          },
+          enableImagen: {
+            description: 'Set to `true` to request permission for generation of images.',
+            type: 'boolean',
+          },
+        },
+      },
     },
-    required: ['content', 'shouldPrompt', 'promptNecessity', 'stopCodegen'],
+    required: [
+      'content',
+      'shouldPrompt',
+      'promptNecessity',
+      'stopCodegen',
+      'requestFilesContent',
+      'requestPermissions',
+    ],
   },
 } as const;

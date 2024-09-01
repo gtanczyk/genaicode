@@ -7,7 +7,7 @@ import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
-import { CodegenOptions } from '../main/codegen-types.js';
+import { AiServiceType, CodegenOptions, ImagenType } from '../main/codegen-types.js';
 
 interface GenerateImageFunction {
   (
@@ -27,12 +27,17 @@ import { CodegenPrompt } from './prompt-codegen.js';
 
 /** A function that communicates with model using */
 export async function promptService(
-  generateContentFn: GenerateContentFunction,
-  generateImageFn: GenerateImageFunction | undefined,
+  generateContentFns: Record<AiServiceType, GenerateContentFunction>,
+  generateImageFns: Record<ImagenType, GenerateImageFunction>,
   codegenPrompt: CodegenPrompt,
 ): Promise<FunctionCall[]> {
   const { vision } = codegenPrompt.options;
   const messages = prepareMessages(codegenPrompt);
+
+  const generateContentFn: GenerateContentFunction = (...args) =>
+    generateContentFns[codegenPrompt.options.aiService](...args);
+
+  const generateImageFn: GenerateImageFunction = (...args) => generateImageFns[codegenPrompt.options.imagen!](...args);
 
   // First stage: generate code generation summary, which should not take a lot of output tokens
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };

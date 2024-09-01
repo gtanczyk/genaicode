@@ -9,8 +9,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for a prompt exceeding the limit', () => {
-      const invalidPrompt = 'A '.repeat(401);
-      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 402 > 400');
+      const invalidPrompt = 'A '.repeat(451);
+      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 452 > 450');
     });
   });
 

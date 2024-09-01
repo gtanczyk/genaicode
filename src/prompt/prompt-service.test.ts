@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { promptService } from './prompt-service.js';
+import * as aiStudio from '../ai-service/ai-studio.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
+import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as chatGpt from '../ai-service/chat-gpt.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as cliParams from '../cli/cli-params.js';
@@ -10,8 +12,12 @@ import mime from 'mime-types';
 import { getImageAssets } from '../files/read-files.js';
 import '../files/find-files.js';
 import * as dalleService from '../ai-service/dall-e.js';
+import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
+import { AiServiceType, ImagenType } from '../main/codegen-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 
+vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
@@ -36,6 +42,7 @@ vi.mock('fs');
 vi.mock('diff');
 vi.mock('mime-types');
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
+vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
 
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
@@ -58,6 +65,19 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
+  'vertex-ai-claude': vertexAiClaude.generateContent,
+  'vertex-ai': vertexAi.generateContent,
+  'ai-studio': aiStudio.generateContent,
+  anthropic: anthropic.generateContent,
+  'chat-gpt': chatGpt.generateContent,
+} as const;
+
+const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
+  'dall-e': dalleService.generateImage,
+  'vertex-ai': vertexAiImagen.generateImage,
+} as const;
+
 describe('promptService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -78,8 +98,8 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     const result = await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -93,8 +113,8 @@ describe('promptService', () => {
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     const result = await promptService(
-      chatGpt.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt' }),
     );
 
@@ -108,8 +128,8 @@ describe('promptService', () => {
     vi.mocked(anthropic.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     const result = await promptService(
-      anthropic.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'anthropic' }),
     );
 
@@ -126,8 +146,8 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     const result = await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -180,8 +200,8 @@ describe('promptService', () => {
     vi.mocked(diff.applyPatch).mockReturnValue(false);
 
     const result = await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -206,8 +226,8 @@ describe('promptService', () => {
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     await promptService(
-      chatGpt.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt', vision: true }),
     );
 
@@ -267,8 +287,8 @@ describe('promptService', () => {
     vi.mocked(mime.lookup).mockImplementation((path) => (path.endsWith('.png') ? 'image/png' : 'image/jpeg'));
 
     await promptService(
-      chatGpt.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt', vision: true }),
     );
 
@@ -306,8 +326,8 @@ describe('promptService', () => {
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
     await promptService(
-      chatGpt.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'chat-gpt' }),
     );
 
@@ -349,8 +369,8 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
     await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -398,8 +418,8 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUpdateCall);
 
     await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -460,9 +480,9 @@ describe('promptService', () => {
     vi.mocked(dalleService.generateImage).mockResolvedValue('https://example.com/generated-image.png');
 
     const result = await promptService(
-      vertexAi.generateContent,
-      dalleService.generateImage,
-      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai', imagen: 'dall-e' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -505,9 +525,9 @@ describe('promptService', () => {
     vi.mocked(dalleService.generateImage).mockRejectedValue(new Error('Image generation failed'));
 
     const result = await promptService(
-      vertexAi.generateContent,
-      dalleService.generateImage,
-      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
+      getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai', imagen: 'dall-e' }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -544,8 +564,8 @@ describe('promptService', () => {
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockUnexpectedResponse);
 
     const result = await promptService(
-      vertexAi.generateContent,
-      undefined,
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
       getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
     );
 
@@ -591,8 +611,8 @@ describe('promptService', () => {
         ]);
 
       const result = await promptService(
-        vertexAi.generateContent,
-        undefined,
+        GENERATE_CONTENT_FNS,
+        GENERATE_IMAGE_FNS,
         getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
       );
 
@@ -633,8 +653,8 @@ describe('promptService', () => {
 
       await expect(
         promptService(
-          vertexAi.generateContent,
-          undefined,
+          GENERATE_CONTENT_FNS,
+          GENERATE_IMAGE_FNS,
           getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
         ),
       ).rejects.toThrow('Recovery failed');
@@ -658,8 +678,8 @@ describe('promptService', () => {
       vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockValidCalls);
 
       const result = await promptService(
-        vertexAi.generateContent,
-        undefined,
+        GENERATE_CONTENT_FNS,
+        GENERATE_IMAGE_FNS,
         getCodeGenPrompt({ askQuestion: false, aiService: 'vertex-ai' }),
       );
 
