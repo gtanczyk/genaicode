@@ -1,4 +1,4 @@
-import { input } from '@inquirer/prompts';
+import { input, confirm } from '@inquirer/prompts';
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
@@ -30,7 +30,7 @@ export async function executeStepAskQuestion(
           stopCodegen: boolean;
           shouldPrompt: boolean;
           requestFilesContent?: string[];
-          requestPermissions: Record<
+          requestPermissions?: Record<
             | 'allowDirectoryCreate'
             | 'allowFileCreate'
             | 'allowFileDelete'
@@ -53,16 +53,31 @@ export async function executeStepAskQuestion(
       }
 
       const fileContentRequested = (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
-      const permissionsRequested = Object.entries(askQuestionCall.args?.requestPermissions ?? {}).length > 0;
+      const permissionsRequested =
+        Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
-          ? 'Providing requested files content.'
+          ? (await confirm({
+              message: 'The assistant is requesting file contents. Do you want to provide them?',
+              default: true,
+            }))
+            ? 'Providing requested files content.'
+            : 'Request for file contents denied.'
           : permissionsRequested
-            ? 'Permissions granted.'
+            ? (await confirm({
+                message: 'The assistant is requesting additional permissions. Do you want to grant them?',
+                default: false,
+              }))
+              ? 'Permissions granted.'
+              : 'Permission request denied.'
             : await input({ message: 'Your answer' })
         : "Let's proceed with code generation.";
 
-      if (permissionsRequested) {
+      if (
+        permissionsRequested &&
+        askQuestionCall.args?.requestPermissions &&
+        userAnswer === 'Permission request denied.'
+      ) {
         if (askQuestionCall.args?.requestPermissions.enableImagen) {
           options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
         }
@@ -92,14 +107,15 @@ export async function executeStepAskQuestion(
             {
               name: 'askQuestion',
               call_id: askQuestionCall.id,
-              content: fileContentRequested
-                ? messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!)
-                : undefined,
+              content:
+                fileContentRequested && userAnswer === 'Providing requested files content.'
+                  ? messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!)
+                  : undefined,
             },
           ],
         },
       );
-      console.log('The question was answered');
+      console.log('The question was answered', userAnswer);
     } else {
       console.log('Assistant did not ask a question. Proceeding with code generation.');
       break;

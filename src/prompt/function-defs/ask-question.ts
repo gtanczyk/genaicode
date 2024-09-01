@@ -67,13 +67,6 @@ export const askQuestion = {
         },
       },
     },
-    required: [
-      'content',
-      'shouldPrompt',
-      'promptNecessity',
-      'stopCodegen',
-      'requestFilesContent',
-      'requestPermissions',
-    ],
+    required: ['content', 'shouldPrompt', 'promptNecessity', 'stopCodegen'],
   },
 } as const;

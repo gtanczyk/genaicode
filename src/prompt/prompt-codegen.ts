@@ -41,9 +41,11 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
 
   let codeGenFiles: string[];
   if (considerAllFiles) {
-    codeGenFiles = Object.keys(getSourceCode({ taskFile }, options));
+    codeGenFiles = Object.keys(getSourceCode({ taskFile, forceAll: true }, options));
   } else {
-    codeGenFiles = Object.entries(getSourceCode({ taskFile }, options) as Record<string, SourceCodeEntry>)
+    codeGenFiles = Object.entries(
+      getSourceCode({ taskFile, forceAll: true }, options) as Record<string, SourceCodeEntry>,
+    )
       .filter(([, { content }]) => content?.match(new RegExp(`([^'^\`]+)${CODEGEN_TRIGGER}`)))
       .map(([path]) => path);
   }
@@ -71,7 +73,7 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
           ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join('\n')}`
           : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file.`
         : codeGenFiles.length > 0
-          ? `Generate updates only for the following files:\n${codeGenFiles.join('\n')}`
+          ? `Generate updates only for the following files:\n${codeGenFiles.join('\n')}\n`
           : ''
     }
 My additional requirements for task execution are:
