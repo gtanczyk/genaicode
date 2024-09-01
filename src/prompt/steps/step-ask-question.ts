@@ -25,7 +25,13 @@ export async function executeStepAskQuestion(
   const questionAsked = false;
   while (!questionAsked) {
     const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
-    const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion');
+    const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion') as
+      | FunctionCall<{
+          stopCodegen: boolean;
+          shouldPrompt: boolean;
+          requestFilesContent?: string[];
+        }>
+      | undefined;
     if (askQuestionCall) {
       console.log('Assistant asks:', askQuestionCall.args);
 
@@ -37,12 +43,10 @@ export async function executeStepAskQuestion(
         break;
       }
 
-      const fileContentRequested =
-        // @ts-expect-error FunctionCall is not parametrized
-        askQuestionCall.args?.requestFileContent?.contextPaths && askQuestionCall.args?.requestFileContent?.execute;
+      const fileContentRequested = askQuestionCall.args?.requestFilesContent?.length! > 0;
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
-          ? 'Providing requested files content'
+          ? 'Providing requested files content.'
           : await input({ message: 'Your answer' })
         : "Let's proceed with code generation.";
       prompt.push(
@@ -55,10 +59,7 @@ export async function executeStepAskQuestion(
               name: 'askQuestion',
               call_id: askQuestionCall.id,
               content: fileContentRequested
-                ? messages.contextSourceCode(
-                    // @ts-expect-error FunctionCall is not parametrized
-                    askQuestionCall.args?.requestFileContent?.contextPaths,
-                  )
+                ? messages.contextSourceCode(askQuestionCall.args?.requestFilesContent!)
                 : undefined,
             },
           ],

@@ -20,10 +20,10 @@ export interface FunctionDef {
   };
 }
 
-export interface FunctionCall {
+export interface FunctionCall<T = Record<string, unknown>> {
   id?: string;
   name: string;
-  args?: Record<string, unknown>;
+  args?: T;
 }
 
 export interface PromptItem {
