@@ -1,6 +1,8 @@
 import fs from 'fs';
 import { getSourceFiles } from '../../files/find-files.js';
 import { CODEGEN_TRIGGER } from '../../prompt/prompt-consts.js';
+import { CodegenOptions } from '../codegen-types.js';
+import { runCodegenWorker } from './codegen-worker.js';
 
 // Function to check for CODEGEN comments in source files
 const checkForCodegenComments = (): boolean => {
@@ -21,29 +23,16 @@ const checkForCodegenComments = (): boolean => {
   }
 };
 
-const logCodegenCommentsWarning = (): void => {
-  console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
-};
-
-const logProcessingStart = (): void => {
-  console.log(`Processing ${CODEGEN_TRIGGER} comments...`);
-};
-
-export async function runProcessComments(): Promise<void> {
+export async function runProcessComments(options: CodegenOptions): Promise<void> {
   try {
     const hasCodegenComments = checkForCodegenComments();
-
     if (!hasCodegenComments) {
-      logCodegenCommentsWarning();
+      console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
     }
 
-    logProcessingStart();
+    console.log(`Processing ${CODEGEN_TRIGGER} comments...`);
 
-    // Here, you would typically call the function to process the comments
-    // For example: await processCodegenComments();
-
-    // Since the actual processing is handled elsewhere, we'll just resolve the promise
-    return Promise.resolve();
+    await runCodegenWorker(options);
   } catch (error) {
     console.error('Error in runProcessComments:', error);
     return Promise.reject(error);

@@ -5,7 +5,6 @@ import { selectAiService } from './select-ai-service.js';
 import { getUserOptions } from './configure.js';
 import { printHelpMessage } from '../../cli/cli-options.js';
 import { CodegenOptions } from '../codegen-types.js';
-import { runCodegenWorker } from './codegen-worker.js';
 import { runProcessComments } from './process-comments.js';
 import { handleError } from './error-handling.js';
 
@@ -13,7 +12,8 @@ import { handleError } from './error-handling.js';
 export const runInteractiveMode = async (options: CodegenOptions): Promise<void> => {
   displayWelcome();
 
-  while (true) {
+  const nextRun = true;
+  while (nextRun) {
     try {
       const action = await getUserAction();
 
@@ -34,20 +34,13 @@ export const runInteractiveMode = async (options: CodegenOptions): Promise<void>
 const handleUserAction = async (action: UserAction, options: CodegenOptions): Promise<void> => {
   switch (action) {
     case 'process_comments':
-      await runProcessComments();
-      await runCodegenWorker(options);
+      await runProcessComments(options);
       break;
     case 'text_prompt':
-      const prompt = await runTextPrompt();
-      if (prompt) {
-        await runCodegenWorker({ ...options, explicitPrompt: prompt, considerAllFiles: true });
-      }
+      await runTextPrompt(options);
       break;
     case 'task_file':
-      const taskFile = await runTaskFile();
-      if (taskFile) {
-        await runCodegenWorker({ ...options, taskFile, considerAllFiles: true });
-      }
+      runTaskFile(options);
       break;
     case 'select_ai_service':
       options.aiService = await selectAiService(options.aiService);

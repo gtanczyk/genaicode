@@ -1,5 +1,3 @@
-import { allowDirectoryCreate, allowFileCreate, allowFileDelete, allowFileMove } from '../../cli/cli-params.js';
-
 /**
  * Function definition for askQuestion
  */

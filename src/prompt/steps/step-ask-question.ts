@@ -52,7 +52,7 @@ export async function executeStepAskQuestion(
         break;
       }
 
-      const fileContentRequested = askQuestionCall.args?.requestFilesContent?.length! > 0;
+      const fileContentRequested = (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
       const permissionsRequested = Object.entries(askQuestionCall.args?.requestPermissions ?? {}).length > 0;
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
@@ -93,7 +93,7 @@ export async function executeStepAskQuestion(
               name: 'askQuestion',
               call_id: askQuestionCall.id,
               content: fileContentRequested
-                ? messages.contextSourceCode(askQuestionCall.args?.requestFilesContent!)
+                ? messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!)
                 : undefined,
             },
           ],
