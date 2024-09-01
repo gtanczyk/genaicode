@@ -73,7 +73,7 @@ export async function runCodegen(): Promise<void> {
   }
 }
 
-export async function runCodegenIteration(options: CodegenOptions) {
+export async function runCodegenIteration(options: CodegenOptions, abortSignal?: AbortSignal) {
   if (rcConfig.lintCommand && !options.disableInitialLint) {
     try {
       console.log(`Executing lint command: ${rcConfig.lintCommand}`);
@@ -91,6 +91,10 @@ export async function runCodegenIteration(options: CodegenOptions) {
     console.log('Initial lint was skipped.');
   }
 
+  if (abortSignal?.aborted) {
+    throw new Error('Codegen iteration aborted');
+  }
+
   const generateContent: GenerateContentFunction = GENERATE_CONTENT_FNS[options.aiService];
 
   const generateImage: GenerateImageFunction | undefined =
@@ -102,6 +106,7 @@ export async function runCodegenIteration(options: CodegenOptions) {
 
   console.log('Generating response');
   const functionCalls = await promptService(generateContent, generateImage, getCodeGenPrompt(options));
+
   console.log('Received function calls:', functionCalls);
 
   if (options.dryRun) {
@@ -113,6 +118,10 @@ export async function runCodegenIteration(options: CodegenOptions) {
       options,
     );
     console.log('Initial updates applied');
+
+    if (abortSignal?.aborted) {
+      throw new Error('Codegen iteration aborted after initial updates');
+    }
 
     // Check if lintCommand is specified in .genaicoderc
     if (rcConfig.lintCommand) {
@@ -145,6 +154,10 @@ export async function runCodegenIteration(options: CodegenOptions) {
           lintFixFunctionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
           options,
         );
+
+        if (abortSignal?.aborted) {
+          throw new Error('Codegen iteration aborted after lint fixes');
+        }
 
         // Run lint command again to verify fixes
         try {

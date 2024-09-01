@@ -1,27 +1,51 @@
 import fs from 'fs';
 import { getSourceFiles } from '../../files/find-files.js';
 import { CODEGEN_TRIGGER } from '../../prompt/prompt-consts.js';
-import { runCodegenIteration } from '../codegen.js';
-import { CodegenOptions } from '../codegen-types.js';
 
 // Function to check for CODEGEN comments in source files
-export const checkForCodegenComments = (): boolean => {
-  const sourceFiles = getSourceFiles();
-  for (const file of sourceFiles) {
-    const content = fs.readFileSync(file, 'utf-8');
-    if (content.includes(CODEGEN_TRIGGER)) {
-      return true;
-    }
+const checkForCodegenComments = (): boolean => {
+  try {
+    const sourceFiles = getSourceFiles();
+    return sourceFiles.some((file) => {
+      try {
+        const content = fs.readFileSync(file, 'utf-8');
+        return content.includes(CODEGEN_TRIGGER);
+      } catch (error) {
+        console.error(`Error reading file ${file}:`, error);
+        return false;
+      }
+    });
+  } catch (error) {
+    console.error('Error getting source files:', error);
+    return false;
   }
-  return false;
 };
 
-export async function runProcessComments(options: CodegenOptions) {
-  const hasCodegenComments = checkForCodegenComments();
-  if (!hasCodegenComments) {
-    console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
-  }
+const logCodegenCommentsWarning = (): void => {
+  console.warn(`Warning: No ${CODEGEN_TRIGGER} comments found in the source code.`);
+};
 
+const logProcessingStart = (): void => {
   console.log(`Processing ${CODEGEN_TRIGGER} comments...`);
-  await runCodegenIteration({ ...options, considerAllFiles: false });
+};
+
+export async function runProcessComments(): Promise<void> {
+  try {
+    const hasCodegenComments = checkForCodegenComments();
+
+    if (!hasCodegenComments) {
+      logCodegenCommentsWarning();
+    }
+
+    logProcessingStart();
+
+    // Here, you would typically call the function to process the comments
+    // For example: await processCodegenComments();
+
+    // Since the actual processing is handled elsewhere, we'll just resolve the promise
+    return Promise.resolve();
+  } catch (error) {
+    console.error('Error in runProcessComments:', error);
+    return Promise.reject(error);
+  }
 }

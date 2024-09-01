@@ -9,6 +9,7 @@ import {
   PromptCachingBetaToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages.mjs';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -96,21 +97,26 @@ export async function generateContent(
   let response;
   while (retryCount < 3) {
     try {
-      response = await anthropic.beta.promptCaching.messages.create({
-        model: model,
-        system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
-        messages: messages,
-        tools: functionDefs.map((fd) => ({
-          name: fd.name,
-          description: fd.description,
-          input_schema: fd.parameters,
-        })),
-        tool_choice: requiredFunctionName
-          ? { type: 'tool' as const, name: requiredFunctionName }
-          : { type: 'any' as const },
-        max_tokens: cheap ? 4096 : 8192,
-        temperature: temperature,
-      });
+      response = await anthropic.beta.promptCaching.messages.create(
+        {
+          model: model,
+          system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
+          messages: messages,
+          tools: functionDefs.map((fd) => ({
+            name: fd.name,
+            description: fd.description,
+            input_schema: fd.parameters,
+          })),
+          tool_choice: requiredFunctionName
+            ? { type: 'tool' as const, name: requiredFunctionName }
+            : { type: 'any' as const },
+          max_tokens: cheap ? 4096 : 8192,
+          temperature: temperature,
+        },
+        {
+          signal: abortController?.signal,
+        },
+      );
       break; // Exit loop if successful
     } catch (error) {
       if (error instanceof Anthropic.APIError && error.headers?.['retry-after']) {

@@ -23,6 +23,6 @@
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts"],
   "exclude": ["node_modules"]
 }

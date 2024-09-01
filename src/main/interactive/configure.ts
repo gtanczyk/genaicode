@@ -1,11 +1,19 @@
 import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import { CodegenOptions, ImagenType } from '../codegen-types.js';
 
-// Function to get user options
 export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOptions> => {
   const updatedOptions = { ...options };
 
-  // General options
+  await configureGeneralOptions(updatedOptions);
+  await configureFileOperationOptions(updatedOptions);
+  await configureAIModelOptions(updatedOptions);
+  await configureVisionAndImageOptions(updatedOptions);
+  await configureContentMaskAndIgnorePatterns(updatedOptions);
+
+  return updatedOptions;
+};
+
+const configureGeneralOptions = async (options: CodegenOptions): Promise<void> => {
   const generalOptions = await checkbox({
     message: 'Select general options:',
     choices: [
@@ -19,15 +27,16 @@ export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOp
     ],
   });
 
-  updatedOptions.considerAllFiles = generalOptions.includes('considerAllFiles');
-  updatedOptions.dryRun = generalOptions.includes('dryRun');
-  updatedOptions.verbose = generalOptions.includes('verbose');
-  updatedOptions.requireExplanations = generalOptions.includes('requireExplanations');
-  updatedOptions.disableInitialLint = generalOptions.includes('disableInitialLint');
-  updatedOptions.askQuestion = generalOptions.includes('askQuestion');
-  updatedOptions.disableCache = generalOptions.includes('disableCache');
+  options.considerAllFiles = generalOptions.includes('considerAllFiles');
+  options.dryRun = generalOptions.includes('dryRun');
+  options.verbose = generalOptions.includes('verbose');
+  options.requireExplanations = generalOptions.includes('requireExplanations');
+  options.disableInitialLint = generalOptions.includes('disableInitialLint');
+  options.askQuestion = generalOptions.includes('askQuestion');
+  options.disableCache = generalOptions.includes('disableCache');
+};
 
-  // File operation options
+const configureFileOperationOptions = async (options: CodegenOptions): Promise<void> => {
   const fileOptions = await checkbox({
     message: 'Select file operation options:',
     choices: [
@@ -38,18 +47,19 @@ export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOp
     ],
   });
 
-  updatedOptions.allowFileCreate = fileOptions.includes('allowFileCreate');
-  updatedOptions.allowFileDelete = fileOptions.includes('allowFileDelete');
-  updatedOptions.allowDirectoryCreate = fileOptions.includes('allowDirectoryCreate');
-  updatedOptions.allowFileMove = fileOptions.includes('allowFileMove');
+  options.allowFileCreate = fileOptions.includes('allowFileCreate');
+  options.allowFileDelete = fileOptions.includes('allowFileDelete');
+  options.allowDirectoryCreate = fileOptions.includes('allowDirectoryCreate');
+  options.allowFileMove = fileOptions.includes('allowFileMove');
+};
 
-  // AI model options
-  updatedOptions.disableContextOptimization = await confirm({
+const configureAIModelOptions = async (options: CodegenOptions): Promise<void> => {
+  options.disableContextOptimization = await confirm({
     message: 'Disable context optimization?',
     default: options.disableContextOptimization || false,
   });
 
-  updatedOptions.temperature = parseFloat(
+  options.temperature = parseFloat(
     await input({
       message: 'Enter temperature (0.0 - 2.0):',
       default: options.temperature?.toString() || '0.7',
@@ -60,24 +70,25 @@ export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOp
     }),
   );
 
-  updatedOptions.cheap = await confirm({
+  options.cheap = await confirm({
     message: 'Use cheaper, faster model?',
     default: options.cheap || false,
   });
 
-  updatedOptions.geminiBlockNone = await confirm({
+  options.geminiBlockNone = await confirm({
     message: 'Disable safety settings for Gemini Pro model?',
     default: options.geminiBlockNone || false,
   });
+};
 
-  // Vision and image generation options
-  updatedOptions.vision = await confirm({
+const configureVisionAndImageOptions = async (options: CodegenOptions): Promise<void> => {
+  options.vision = await confirm({
     message: 'Enable vision capabilities?',
     default: options.vision || false,
   });
 
   if (await confirm({ message: 'Enable image generation?', default: !!options.imagen })) {
-    updatedOptions.imagen = await select<ImagenType>({
+    options.imagen = await select<ImagenType>({
       message: 'Select image generation service:',
       choices: [
         { name: 'Vertex AI', value: 'vertex-ai' },
@@ -86,11 +97,12 @@ export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOp
       default: options.imagen || 'vertex-ai',
     });
   } else {
-    updatedOptions.imagen = undefined;
+    options.imagen = undefined;
   }
+};
 
-  // Content mask and ignore patterns
-  updatedOptions.contentMask = await input({
+const configureContentMaskAndIgnorePatterns = async (options: CodegenOptions): Promise<void> => {
+  options.contentMask = await input({
     message: 'Enter content mask (prefix of path relative to rootDir):',
     default: options.contentMask || '',
   });
@@ -99,7 +111,5 @@ export const getUserOptions = async (options: CodegenOptions): Promise<CodegenOp
     message: 'Enter ignore patterns (comma-separated):',
     default: options.ignorePatterns?.join(',') || '',
   });
-  updatedOptions.ignorePatterns = ignorePatterns ? ignorePatterns.split(',').map((p) => p.trim()) : undefined;
-
-  return updatedOptions;
+  options.ignorePatterns = ignorePatterns ? ignorePatterns.split(',').map((p) => p.trim()) : undefined;
 };
