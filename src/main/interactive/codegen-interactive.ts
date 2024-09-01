@@ -6,6 +6,7 @@ import { getUserOptions } from './configure.js';
 import { printHelpMessage } from '../../cli/cli-options.js';
 import { CodegenOptions } from '../codegen-types.js';
 import { runCodegenWorker } from './codegen-worker.js';
+import { runProcessComments } from './process-comments.js';
 
 // Main function for interactive mode
 export const runInteractiveMode = async (options: CodegenOptions): Promise<void> => {
@@ -30,19 +31,17 @@ export const runInteractiveMode = async (options: CodegenOptions): Promise<void>
 };
 
 const handleUserAction = async (action: UserAction, options: CodegenOptions): Promise<void> => {
-  let prompt: string;
-  let taskFile: string;
-
   switch (action) {
     case 'process_comments':
+      await runProcessComments();
       await runCodegenWorker(options);
       break;
     case 'text_prompt':
-      prompt = await runTextPrompt();
+      const prompt = await runTextPrompt();
       await runCodegenWorker({ ...options, explicitPrompt: prompt });
       break;
     case 'task_file':
-      taskFile = await runTaskFile();
+      const taskFile = await runTaskFile();
       await runCodegenWorker({ ...options, taskFile });
       break;
     case 'select_ai_service':

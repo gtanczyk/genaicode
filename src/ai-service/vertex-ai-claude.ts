@@ -1,6 +1,7 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { Message } from '@anthropic-ai/sdk/resources/messages.mjs';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -67,21 +68,24 @@ export async function generateContent(
   const model = cheap ? 'claude-3-haiku@20240307' : 'claude-3-5-sonnet@20240620';
   console.log(`Using Vertex AI Claude model: ${model}`);
 
-  const response: Message = await client.messages.create({
-    model: model,
-    max_tokens: cheap ? 4096 : 8192,
-    temperature: temperature,
-    system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
-    messages: messages,
-    tools: functionDefs.map((fd) => ({
-      name: fd.name,
-      description: fd.description,
-      input_schema: fd.parameters,
-    })),
-    tool_choice: requiredFunctionName
-      ? { type: 'tool' as const, name: requiredFunctionName }
-      : { type: 'any' as const },
-  });
+  const response: Message = await client.messages.create(
+    {
+      model: model,
+      max_tokens: cheap ? 4096 : 8192,
+      temperature: temperature,
+      system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
+      messages: messages,
+      tools: functionDefs.map((fd) => ({
+        name: fd.name,
+        description: fd.description,
+        input_schema: fd.parameters,
+      })),
+      tool_choice: requiredFunctionName
+        ? { type: 'tool' as const, name: requiredFunctionName }
+        : { type: 'any' as const },
+    },
+    { signal: abortController?.signal },
+  );
 
   // Print token usage for Anthropic Vertex AI
   const usage = {

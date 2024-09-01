@@ -3,6 +3,7 @@ import OpenAI, { toFile } from 'openai';
 import { setTempBuffer } from '../files/temp-buffer.js';
 import { resizeImageBuffer } from '../images/resize-image.js';
 import { ensureAlpha } from '../images/ensure-alpha.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 interface ImageSize {
   width: number;
@@ -38,11 +39,14 @@ export async function generateImage(
     };
 
     const response = contextImagePath
-      ? await openai.images.edit({
-          ...options,
-          image: await toFile(await ensureAlpha(contextImagePath)),
-        } as OpenAI.Images.ImageEditParams)
-      : await openai.images.generate(options);
+      ? await openai.images.edit(
+          {
+            ...options,
+            image: await toFile(await ensureAlpha(contextImagePath)),
+          } as OpenAI.Images.ImageEditParams,
+          { signal: abortController?.signal },
+        )
+      : await openai.images.generate(options, { signal: abortController?.signal });
 
     let imageUrl = response.data[0].url!;
 

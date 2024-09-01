@@ -2,6 +2,7 @@ import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
  * This function generates content using the OpenAI chat model.
@@ -80,15 +81,18 @@ export async function generateContent(
   let response: OpenAI.Chat.Completions.ChatCompletion | undefined = undefined;
   while (retryCount < 3) {
     try {
-      response = await openai.chat.completions.create({
-        model: model,
-        messages,
-        tools: functionDefs.map((funDef) => ({ type: 'function' as const, function: funDef })),
-        tool_choice: requiredFunctionName
-          ? { type: 'function' as const, function: { name: requiredFunctionName } }
-          : 'required',
-        temperature: temperature,
-      });
+      response = await openai.chat.completions.create(
+        {
+          model: model,
+          messages,
+          tools: functionDefs.map((funDef) => ({ type: 'function' as const, function: funDef })),
+          tool_choice: requiredFunctionName
+            ? { type: 'function' as const, function: { name: requiredFunctionName } }
+            : 'required',
+          temperature: temperature,
+        },
+        { signal: abortController?.signal },
+      );
       break; // Exit loop if successful
     } catch (error) {
       if (error instanceof APIError && error.headers?.['x-ratelimit-limit-tokens']) {

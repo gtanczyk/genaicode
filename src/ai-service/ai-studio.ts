@@ -10,6 +10,7 @@ import {
 import assert from 'node:assert';
 import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -85,7 +86,7 @@ export async function generateContent(
     options.geminiBlockNone,
   );
 
-  const result = await model.generateContent(req);
+  const result = await model.generateContent(req, { signal: abortController?.signal });
 
   // Print token usage
   const usageMetadata = result.response.usageMetadata!;

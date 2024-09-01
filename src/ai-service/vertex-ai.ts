@@ -10,6 +10,7 @@ import {
 } from '@google-cloud/vertexai';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
  * This function generates content using the Gemini Pro model.
@@ -22,6 +23,9 @@ export async function generateContent(
   cheap = false,
   options: CodegenOptions,
 ): Promise<FunctionCall[]> {
+  // Limitation: https://github.com/googleapis/nodejs-vertexai/issues/143
+  abortController?.signal.throwIfAborted();
+
   const messages: Content[] = prompt
     .filter((item) => item.type === 'user' || item.type === 'assistant')
     .map((item) => {

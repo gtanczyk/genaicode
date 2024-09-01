@@ -27,14 +27,3 @@ export const selectAiService = async (defaultAiService: AiServiceType | undefine
     throw error;
   }
 };
-
-// Helper function to validate AI service type
-export const isValidAiServiceType = (service: string): service is AiServiceType => {
-  return AI_SERVICE_CHOICES.some((choice) => choice.value === service);
-};
-
-// Helper function to get AI service name
-export const getAiServiceName = (service: AiServiceType): string => {
-  const choice = AI_SERVICE_CHOICES.find((choice) => choice.value === service);
-  return choice ? choice.name : 'Unknown Service';
-};

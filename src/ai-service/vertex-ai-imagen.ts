@@ -3,6 +3,7 @@ import mime from 'mime-types';
 import { PredictionServiceClient, helpers, protos } from '@google-cloud/aiplatform';
 import { setTempBuffer } from '../files/temp-buffer.js';
 import { resizeImageBuffer } from '../images/resize-image.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 interface ImageSize {
   width: number;
@@ -23,6 +24,9 @@ export async function generateImage(
   size: ImageSize,
   cheap = false,
 ): Promise<string> {
+  // Limitation in @google-cloud/aiplatform
+  abortController?.signal.throwIfAborted();
+
   // Initialize the PredictionServiceClient
   const client = new PredictionServiceClient({
     apiEndpoint: `${process.env.GOOGLE_CLOUD_REGION}-aiplatform.googleapis.com`,

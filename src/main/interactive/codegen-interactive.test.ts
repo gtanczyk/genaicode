@@ -11,6 +11,7 @@ import '../../files/read-files.js';
 import '../../files/find-files.js';
 import '../config.js';
 import { runInteractiveMode } from './codegen-interactive.js';
+import * as codegenWorker from './codegen-worker.js';
 
 // Mock all imported modules
 vi.mock('../../cli/cli-params.js', () => ({
@@ -26,6 +27,7 @@ vi.mock('./process-comments');
 vi.mock('./select-ai-service');
 vi.mock('./configure');
 vi.mock('../../cli/cli-options');
+vi.mock('./codegen-worker.js');
 
 describe('runInteractiveMode', () => {
   const mockOptions = { aiService: 'vertex-ai' } as const;
@@ -42,20 +44,22 @@ describe('runInteractiveMode', () => {
 
   it('should handle text prompt action', async () => {
     vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('text_prompt').mockResolvedValueOnce('exit');
+    vi.spyOn(textPrompt, 'runTextPrompt').mockResolvedValueOnce('my prompt');
     await runInteractiveMode(mockOptions);
-    expect(textPrompt.runTextPrompt).toHaveBeenCalledWith(mockOptions);
+    expect(codegenWorker.runCodegenWorker).toBeCalled();
   });
 
   it('should handle task file action', async () => {
     vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('task_file').mockResolvedValueOnce('exit');
+    vi.spyOn(taskFile, 'runTaskFile').mockResolvedValueOnce('file.md');
     await runInteractiveMode(mockOptions);
-    expect(taskFile.runTaskFile).toHaveBeenCalledWith(mockOptions);
+    expect(codegenWorker.runCodegenWorker).toBeCalled();
   });
 
   it('should handle process comments action', async () => {
     vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('process_comments').mockResolvedValueOnce('exit');
     await runInteractiveMode(mockOptions);
-    expect(processComments.runProcessComments).toHaveBeenCalledWith(mockOptions);
+    expect(codegenWorker.runCodegenWorker).toBeCalled();
   });
 
   it('should handle select AI service action', async () => {
