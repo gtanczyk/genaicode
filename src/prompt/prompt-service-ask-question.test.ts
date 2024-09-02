@@ -121,7 +121,7 @@ describe('promptService with askQuestion', () => {
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
     expect(console.log).toHaveBeenCalledWith('Assistant asks:', expect.any(Object));
-    expect(console.log).toHaveBeenCalledWith('The question was answered');
+    expect(console.log).toHaveBeenCalledWith('Proceeding with code generation.');
   });
 
   it('should stop code generation when askQuestion returns stopCodegen: true', async () => {

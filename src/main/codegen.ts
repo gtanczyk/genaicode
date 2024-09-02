@@ -78,7 +78,7 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
   if (rcConfig.lintCommand && !options.disableInitialLint) {
     try {
       console.log(`Executing lint command: ${rcConfig.lintCommand}`);
-      await execPromise(rcConfig.lintCommand);
+      await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
       console.log('Lint command executed successfully');
     } catch (error) {
       const { stderr, stdout } = error as { stdout: string; stderr: string };
@@ -119,7 +119,7 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     if (rcConfig.lintCommand) {
       try {
         console.log(`Executing lint command: ${rcConfig.lintCommand}`);
-        await execPromise(rcConfig.lintCommand);
+        await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
         console.log('Lint command executed successfully');
       } catch (error) {
         console.log('Lint command failed. Attempting to fix issues...');
