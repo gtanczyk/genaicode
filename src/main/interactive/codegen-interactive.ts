@@ -24,7 +24,10 @@ export const runInteractiveMode = async (options: CodegenOptions): Promise<void>
 
       await handleUserAction(action, options);
 
-      console.log('Task completed. Returning to main menu...\n');
+      // Only prompt for next action if not in task file selection
+      if (action !== 'task_file') {
+        console.log('Task completed. Returning to main menu...\n');
+      }
     } catch (error) {
       await handleError(error);
     }
@@ -40,7 +43,8 @@ const handleUserAction = async (action: UserAction, options: CodegenOptions): Pr
       await runTextPrompt(options);
       break;
     case 'task_file':
-      runTaskFile(options);
+      await runTaskFile(options);
+      // Don't prompt for next action here, let runTaskFile handle it
       break;
     case 'select_ai_service':
       options.aiService = await selectAiService(options.aiService);
