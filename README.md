@@ -103,6 +103,7 @@ The `.genaicoderc` file allows you to configure various aspects of GenAIcode's b
 - `extensions`: An array of file extensions to be considered by the tool (optional, defaults to a predefined list).
 - `ignorePaths`: An array of paths to be ignored by the tool (optional).
 - `lintCommand`: Specifies a lint command to be run before and after code generation (optional).
+- `modelOverrides`: Allows overriding the default AI models used for each service (optional).
 
 ## Usage
 

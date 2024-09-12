@@ -1,4 +1,4 @@
-import { findRcFile, parseRcFile, RcConfig, ImportantContext } from './config-lib.js';
+import { findRcFile, parseRcFile, RcConfig, ImportantContext, ModelOverrides } from './config-lib.js';
 import path from 'path';
 
 // Default extensions if not specified in .genaicoderc
@@ -39,6 +39,9 @@ export const ignorePaths: string[] = rcConfig.ignorePaths ?? DEFAULT_IGNORE_PATH
 // Process and export important context
 export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext);
 
+// Export model overrides
+export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
+
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {
   if (!context) return { textPrompts: [], files: [] };
 
@@ -51,3 +54,4 @@ function processImportantContext(context: ImportantContext | undefined): Importa
 console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rcConfig.rootDir);
 console.log('Important context:', importantContext);
+console.log('Model overrides:', modelOverrides);

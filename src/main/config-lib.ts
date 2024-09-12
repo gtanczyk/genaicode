@@ -16,12 +16,32 @@ export interface ImportantContext {
   files?: string[];
 }
 
+export interface ModelOverrides {
+  chatGpt?: {
+    cheap?: string;
+    default?: string;
+  };
+  anthropic?: {
+    cheap?: string;
+    default?: string;
+  };
+  vertexAi?: {
+    cheap?: string;
+    default?: string;
+  };
+  aiStudio?: {
+    cheap?: string;
+    default?: string;
+  };
+}
+
 export interface RcConfig {
   rootDir: string;
   lintCommand?: string;
   extensions?: string[];
   ignorePaths?: string[];
   importantContext?: ImportantContext;
+  modelOverrides?: ModelOverrides;
 }
 
 // Find .genaicoderc file

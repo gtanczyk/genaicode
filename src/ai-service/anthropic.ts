@@ -10,6 +10,7 @@ import {
 } from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages.mjs';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
+import { modelOverrides } from '../main/config.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -90,7 +91,10 @@ export async function generateContent(
       }
     });
 
-  const model = cheap ? 'claude-3-haiku-20240307' : 'claude-3-5-sonnet-20240620';
+  const defaultModel = cheap ? 'claude-3-haiku-20240307' : 'claude-3-5-sonnet-20240620';
+  const model = cheap
+    ? (modelOverrides.anthropic?.cheap ?? defaultModel)
+    : (modelOverrides.anthropic?.default ?? defaultModel);
   console.log(`Using Anthropic model: ${model}`);
 
   let retryCount = 0;

@@ -16,7 +16,8 @@ The basic structure of the `.genaicoderc` file is as follows:
   "extensions": [...],
   "ignorePaths": [...],
   "lintCommand": "...",
-  "customPrompts": {...}
+  "customPrompts": {...},
+  "modelOverrides": {...}
 }
 ```
 
@@ -59,6 +60,7 @@ The basic structure of the `.genaicoderc` file is as follows:
      ```
 
 5. **customPrompts**
+
    - **Type**: Object
    - **Default**: {}
    - **Description**: Allows defining custom prompts for specific file types or operations.
@@ -67,6 +69,32 @@ The basic structure of the `.genaicoderc` file is as follows:
      "customPrompts": {
        "reactComponent": "Create a React functional component with TypeScript",
        "apiEndpoint": "Generate an Express.js API endpoint with error handling"
+     }
+     ```
+
+6. **modelOverrides**
+   - **Type**: Object
+   - **Default**: {}
+   - **Description**: Allows overriding the default AI models used for each service.
+   - **Example**:
+     ```json
+     "modelOverrides": {
+       "chatGpt": {
+         "cheap": "gpt-4o-mini",
+         "default": "o1-preview"
+       },
+       "anthropic": {
+         "cheap": "claude-3-haiku-20240307",
+         "default": "claude-3-5-sonnet-20240620"
+       },
+       "vertexAi": {
+         "cheap": "gemini-1.5-flash-001",
+         "default": "gemini-1.5-pro-001"
+       },
+       "aiStudio": {
+         "cheap": "gemini-1.5-flash-001",
+         "default": "gemini-1.5-pro-001"
+       }
      }
      ```
 
@@ -81,6 +109,24 @@ The basic structure of the `.genaicoderc` file is as follows:
   "customPrompts": {
     "reactComponent": "Create a React functional component with TypeScript and styled-components",
     "unittest": "Generate a Jest unit test for the following component"
+  },
+  "modelOverrides": {
+    "chatGpt": {
+      "cheap": "gpt-4o-mini",
+      "default": "o1-preview"
+    },
+    "anthropic": {
+      "cheap": "claude-3-haiku-20240307",
+      "default": "claude-3-5-sonnet-20240620"
+    },
+    "vertexAi": {
+      "cheap": "gemini-1.5-flash-001",
+      "default": "gemini-1.5-pro-001"
+    },
+    "aiStudio": {
+      "cheap": "gemini-1.5-flash-001",
+      "default": "gemini-1.5-pro-001"
+    }
   }
 }
 ```

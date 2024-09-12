@@ -11,6 +11,7 @@ import assert from 'node:assert';
 import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
+import { modelOverrides } from '../main/config.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -125,9 +126,22 @@ export async function generateContent(
   return processFunctionCalls(functionCalls);
 }
 
-function getModel(model: string, temperature: number, systemPrompt: string, geminiBlockNone: boolean | undefined) {
+function getModel(
+  defaultModel: string,
+  temperature: number,
+  systemPrompt: string,
+  geminiBlockNone: boolean | undefined,
+) {
   assert(process.env.API_KEY, 'API_KEY environment variable is not set');
   const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+
+  const cheap = defaultModel === 'gemini-1.5-flash-001';
+  const model = cheap
+    ? (modelOverrides.aiStudio?.cheap ?? defaultModel)
+    : (modelOverrides.aiStudio?.default ?? defaultModel);
+
+  console.log(`Using AI Studio model: ${model}`);
+
   return genAI.getGenerativeModel({
     model,
     generationConfig: {

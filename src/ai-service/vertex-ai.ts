@@ -11,6 +11,7 @@ import {
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
+import { modelOverrides } from '../main/config.js';
 
 /**
  * This function generates content using the Gemini Pro model.
@@ -131,7 +132,10 @@ export function getGenModel(
 ) {
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
-  const model = cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001';
+  const defaultModel = cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001';
+  const model = cheap
+    ? (modelOverrides.vertexAi?.cheap ?? defaultModel)
+    : (modelOverrides.vertexAi?.default ?? defaultModel);
 
   console.log(`Using Vertex AI model: ${model}`);
 

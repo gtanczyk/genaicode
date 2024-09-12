@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
 import { abortController } from '../main/interactive/codegen-worker.js';
+import { modelOverrides } from '../main/config.js';
 
 /**
  * This function generates content using the OpenAI chat model.
@@ -74,7 +75,10 @@ export async function generateContent(
     })
     .flat();
 
-  const model = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-08-06';
+  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-08-06';
+  const model = cheap
+    ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
+    : (modelOverrides.chatGpt?.default ?? defaultModel);
   console.log(`Using OpenAI model: ${model}`);
 
   let retryCount = 0;
