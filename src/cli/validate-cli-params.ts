@@ -7,6 +7,7 @@ import { rcConfig } from '../main/config.js';
 const allowedParameters: string[] = [
   '--dry-run',
   '--interactive',
+  '--ui',
   '--consider-all-files',
   '--allow-file-create',
   '--allow-file-delete',

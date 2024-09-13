@@ -34,7 +34,8 @@ export const imagen = params.find((param) => param.startsWith('--imagen'))?.spli
   | undefined;
 export const cheap = params.includes('--cheap');
 export const askQuestion = !params.includes('--disable-ask-question'); // Default enabled
-export const interactive = params.includes('--interactive'); // New parameter for interactive mode
+export const interactive = params.includes('--interactive');
+export const ui = params.includes('--ui');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
@@ -116,6 +117,10 @@ if (contentMask) {
 
 if (ignorePatterns.length > 0) {
   console.log(`Ignore pattern: ${ignorePatterns.join(', ')}`);
+}
+
+if (interactive && ui) {
+  throw new Error('--ui and --interactive are exclusive.');
 }
 
 if (askQuestion && interactive) {

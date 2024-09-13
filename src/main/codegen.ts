@@ -22,6 +22,7 @@ import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '..
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { runInteractiveMode } from './interactive/codegen-interactive.js';
+import { runCodegenUI } from './ui/codegen-ui.js';
 
 /** Executes codegen */
 export async function runCodegen(): Promise<void> {
@@ -65,8 +66,10 @@ export async function runCodegen(): Promise<void> {
     interactive: cliParams.interactive,
   };
 
-  // Handle interactive mode
-  if (cliParams.interactive) {
+  if (cliParams.ui) {
+    await runCodegenUI();
+  } else if (cliParams.interactive) {
+    // Handle interactive mode
     await runInteractiveMode(options);
   } else {
     console.log('Executing codegen in non-interactive mode');
