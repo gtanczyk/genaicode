@@ -19,6 +19,7 @@ vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }
 vi.mock('../files/update-files.js');
 vi.mock('../cli/cli-params.js', () => ({
   interactive: false,
+  ui: false,
   requireExplanations: false,
   considerAllFiles: false,
   dependencyTree: false,

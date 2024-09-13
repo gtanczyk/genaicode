@@ -19,7 +19,10 @@
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {
     "files": [
-      "README.md"
+      "README.md",
+      "src/prompt/prompt-service.ts",
+      "src/main/codegen.ts",
+      "src/main/codegen-types.ts"
     ]
   },
   "modelOverrides": {

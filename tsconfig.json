@@ -16,13 +16,19 @@
     "sourceMap": true,
     "noEmit": false,
     "allowImportingTsExtensions": false,
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals"],
+    "jsx": "react"
   },
   "ts-node": {
     "esm": true,
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/main/interactive/worker-script.ts",
+    "src/main/ui/frontend/index.js",
+    "src/main/ui/frontend/index.html"
+  ],
   "exclude": ["node_modules"]
 }
