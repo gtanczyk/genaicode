@@ -5,7 +5,9 @@ import CodegenExecutor from './components/codegen-executor.js';
 import PromptHistory from './components/prompt-history.js';
 import QuestionHandler from './components/question-handler.js';
 import CodegenOutput from './components/codegen-output.js';
-import ThemeToggle from './components/ThemeToggle';
+import ThemeToggle from './components/theme-toggle.js';
+import RcConfigDisplay from './components/rcconfig-display';
+import CodegenOptionsPanel from './components/codegen-options.js';
 import { lightTheme, darkTheme } from './theme/theme';
 import {
   executeCodegen,
@@ -19,7 +21,13 @@ import {
   pauseExecution,
   resumeExecution,
   interruptExecution,
+  getTotalCost,
+  getDefaultCodegenOptions,
+  PromptHistoryItem,
+  getRcConfig,
 } from './api/api-client.js';
+import { RcConfig } from '../../../config-lib.js';
+import { CodegenOptions } from '../../../codegen-types';
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -63,14 +71,17 @@ const RightPanel = styled.div`
 const GenAIcodeApp = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
-  const [promptHistory, setPromptHistory] = useState<string[]>([]);
+  const [promptHistory, setPromptHistory] = useState<PromptHistoryItem[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string } | null>(null);
   const [codegenOutput, setCodegenOutput] = useState('');
   const [askQuestionConversation, setAskQuestionConversation] = useState<Array<{ question: string; answer: string }>>(
     [],
   );
   const [functionCalls, setFunctionCalls] = useState<Array<{ name: string; args: Record<string, unknown> }>>([]);
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState('dark');
+  const [totalCost, setTotalCost] = useState(0);
+  const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
+  const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -81,6 +92,9 @@ const GenAIcodeApp = () => {
     checkExecutionStatus();
     checkCurrentQuestion();
     fetchCodegenData();
+    fetchTotalCost();
+    fetchDefaultCodegenOptions();
+    fetchRcConfig();
   }, []);
 
   const fetchPromptHistory = async () => {
@@ -123,15 +137,43 @@ const GenAIcodeApp = () => {
     }
   };
 
+  const fetchTotalCost = async () => {
+    try {
+      const cost = await getTotalCost();
+      setTotalCost(cost);
+    } catch (error) {
+      console.error('Failed to fetch total cost:', error);
+    }
+  };
+
+  const fetchDefaultCodegenOptions = async () => {
+    try {
+      const defaultOptions = await getDefaultCodegenOptions();
+      setCodegenOptions(defaultOptions);
+    } catch (error) {
+      console.error('Failed to fetch default codegen options:', error);
+    }
+  };
+
+  const fetchRcConfig = async () => {
+    try {
+      const config = await getRcConfig();
+      setRcConfig(config);
+    } catch (error) {
+      console.error('Failed to fetch rcConfig:', error);
+    }
+  };
+
   const handlePromptSubmit = async (prompt: string) => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
     try {
-      await executeCodegen(prompt);
+      await executeCodegen(prompt, codegenOptions);
       await fetchPromptHistory();
       await checkExecutionStatus();
       await checkCurrentQuestion();
       await fetchCodegenData();
+      await fetchTotalCost();
     } catch (error) {
       console.error('Failed to execute codegen:', error);
       setIsExecuting(false);
@@ -176,6 +218,7 @@ const GenAIcodeApp = () => {
         await checkExecutionStatus();
         await checkCurrentQuestion();
         await fetchCodegenData();
+        await fetchTotalCost();
       } catch (error) {
         console.error('Failed to submit answer:', error);
       }
@@ -186,12 +229,18 @@ const GenAIcodeApp = () => {
     handlePromptSubmit(prompt);
   };
 
+  const handleOptionsChange = (newOptions: CodegenOptions) => {
+    setCodegenOptions(newOptions);
+  };
+
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
       <GlobalStyle />
       <AppContainer>
         <AppHeader>GenAIcode</AppHeader>
         <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+        <CodegenOptionsPanel onOptionsChange={handleOptionsChange} />
+        <RcConfigDisplay rcConfig={rcConfig} />
         <AppLayout>
           <LeftPanel>
             <CodegenExecutor
@@ -200,9 +249,10 @@ const GenAIcodeApp = () => {
               onResume={handleResume}
               onInterrupt={handleInterrupt}
               isExecuting={isExecuting}
+              codegenOptions={codegenOptions}
             />
             {currentQuestion && <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} />}
-            <PromptHistory onReRun={handleReRun} promptHistory={promptHistory} />
+            <PromptHistory onReRun={handleReRun} promptHistory={promptHistory} totalCost={totalCost} />
           </LeftPanel>
           <RightPanel>
             <CodegenOutput
@@ -218,7 +268,5 @@ const GenAIcodeApp = () => {
 };
 
 export function App() {
-  return (
-    <GenAIcodeApp />
-  );
+  return <GenAIcodeApp />;
 }

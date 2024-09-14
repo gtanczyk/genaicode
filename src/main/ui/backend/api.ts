@@ -1,18 +1,52 @@
 import express from 'express';
 import { mockBackend } from './mock-backend.js';
+import { CodegenOptions } from '../../codegen-types.js';
+import { rcConfig as globalRcConfig } from '../../config.js';
 
 const router = express.Router();
+
+// Validation function for CodegenOptions
+const validateCodegenOptions = (options: CodegenOptions): string[] => {
+  const errors: string[] = [];
+
+  if (
+    typeof options.aiService !== 'string' ||
+    !['vertex-ai', 'ai-studio', 'vertex-ai-claude', 'chat-gpt', 'anthropic'].includes(options.aiService)
+  ) {
+    errors.push('Invalid aiService');
+  }
+
+  if (
+    options.temperature !== undefined &&
+    (typeof options.temperature !== 'number' || options.temperature < 0 || options.temperature > 2)
+  ) {
+    errors.push('Temperature must be a number between 0 and 2');
+  }
+
+  if (options.imagen !== undefined && !['vertex-ai', 'dall-e'].includes(options.imagen)) {
+    errors.push('Invalid imagen value');
+  }
+
+  // Add more validations as needed for other fields
+
+  return errors;
+};
 
 // Execute codegen
 router.post('/execute-codegen', async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, options } = req.body;
 
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Invalid prompt' });
     }
 
-    const result = await mockBackend.executeCodegen(prompt);
+    const validationErrors = validateCodegenOptions(options);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ errors: validationErrors });
+    }
+
+    const result = await mockBackend.executeCodegen(prompt, options);
     res.json({ result });
   } catch (error) {
     console.error('Error executing codegen:', error);
@@ -103,8 +137,6 @@ router.post('/answer-question', async (req, res) => {
   }
 });
 
-// New API endpoints for codegen output, ask-question conversation, and function calls
-
 // Get codegen output
 router.get('/codegen-output', async (req, res) => {
   try {
@@ -135,6 +167,57 @@ router.get('/function-calls', async (req, res) => {
   } catch (error) {
     console.error('Error getting function calls:', error);
     res.status(500).json({ error: 'An error occurred while getting function calls' });
+  }
+});
+
+// Get total cost of prompts in the current session
+router.get('/total-cost', async (req, res) => {
+  try {
+    const totalCost = await mockBackend.getTotalCost();
+    res.json({ totalCost });
+  } catch (error) {
+    console.error('Error getting total cost:', error);
+    res.status(500).json({ error: 'An error occurred while getting total cost' });
+  }
+});
+
+// New endpoint: Get default CodegenOptions
+router.get('/default-codegen-options', async (req, res) => {
+  try {
+    const defaultOptions = await mockBackend.getDefaultCodegenOptions();
+    res.json({ options: defaultOptions });
+  } catch (error) {
+    console.error('Error getting default codegen options:', error);
+    res.status(500).json({ error: 'An error occurred while getting default codegen options' });
+  }
+});
+
+// New endpoint: Update CodegenOptions
+router.post('/update-codegen-options', async (req, res) => {
+  try {
+    const { options } = req.body;
+
+    const validationErrors = validateCodegenOptions(options);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ errors: validationErrors });
+    }
+
+    await mockBackend.updateCodegenOptions(options);
+    res.json({ message: 'Codegen options updated successfully' });
+  } catch (error) {
+    console.error('Error updating codegen options:', error);
+    res.status(500).json({ error: 'An error occurred while updating codegen options' });
+  }
+});
+
+// New endpoint: Get rcConfig settings
+router.get('/rcconfig', async (req, res) => {
+  try {
+    const rcConfigSettings = globalRcConfig;
+    res.json({ rcConfig: rcConfigSettings });
+  } catch (error) {
+    console.error('Error getting rcConfig settings:', error);
+    res.status(500).json({ error: 'An error occurred while getting rcConfig settings' });
   }
 });
 
