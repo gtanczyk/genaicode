@@ -67,7 +67,7 @@ export async function runCodegen(): Promise<void> {
   };
 
   if (cliParams.ui) {
-    await runCodegenUI();
+    await runCodegenUI(options);
   } else if (cliParams.interactive) {
     // Handle interactive mode
     await runInteractiveMode(options);
