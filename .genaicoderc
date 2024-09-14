@@ -24,22 +24,5 @@
       "src/main/codegen.ts",
       "src/main/codegen-types.ts"
     ]
-  },
-  "modelOverrides": {
-    "anthropic": {
-      "cheap": "claude-3-haiku-20240307",
-      "default": "claude-3-5-sonnet-20240620"
-    },
-    "vertexAi": {
-      "cheap": "gemini-1.5-flash-001",
-      "default": "gemini-1.5-pro-001"
-    },
-    "aiStudio": {
-      "cheap": "gemini-1.5-flash-001",
-      "default": "gemini-1.5-pro-001"
-    },
-    "chatGpt": {
-      "cheap": "gpt-4o-mini"
-    }
   }
 }
