@@ -10,13 +10,13 @@ const forceDist = process.argv.indexOf('--force-dist') >= 0;
 
 if (devMode && !forceDist) {
   pleaseUpgradeNode({
-    name: "genaicode-dev.js",
+    name: 'genaicode-dev.js',
     engines: {
-      node: ">=20",
-    }, 
+      node: '>=20',
+    },
   });
 
-  import('./genaicode-dev.js');
+  import('./genaicode-dev.js').catch((e) => console.error(e));
 } else {
   import('../dist/main/codegen.js').then(({ runCodegen }) => runCodegen());
 }
