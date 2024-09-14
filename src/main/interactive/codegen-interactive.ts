@@ -7,9 +7,12 @@ import { printHelpMessage } from '../../cli/cli-options.js';
 import { CodegenOptions } from '../codegen-types.js';
 import { runProcessComments } from './process-comments.js';
 import { handleError } from './error-handling.js';
+import { registerUserActionHandlers } from './user-action-handlers.js';
 
 // Main function for interactive mode
 export const runInteractiveMode = async (options: CodegenOptions): Promise<void> => {
+  registerUserActionHandlers();
+
   displayWelcome();
 
   const nextRun = true;

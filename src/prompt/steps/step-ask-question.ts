@@ -1,7 +1,7 @@
-import { input, confirm } from '@inquirer/prompts';
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
+import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: (
@@ -57,20 +57,20 @@ export async function executeStepAskQuestion(
         Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
       const userAnswer = askQuestionCall.args?.shouldPrompt
         ? fileContentRequested
-          ? (await confirm({
-              message: 'The assistant is requesting file contents. Do you want to provide them?',
-              default: true,
-            }))
+          ? (await askUserForConfirmation(
+              'The assistant is requesting file contents. Do you want to provide them?',
+              true,
+            ))
             ? 'Providing requested files content.'
             : 'Request for file contents denied.'
           : permissionsRequested
-            ? (await confirm({
-                message: 'The assistant is requesting additional permissions. Do you want to grant them?',
-                default: false,
-              }))
+            ? (await askUserForConfirmation(
+                'The assistant is requesting additional permissions. Do you want to grant them?',
+                false,
+              ))
               ? 'Permissions granted.'
               : 'Permission request denied.'
-            : await input({ message: 'Your answer' })
+            : await askUserForInput('Your answer')
         : "Let's proceed with code generation.";
 
       if (permissionsRequested && askQuestionCall.args?.requestPermissions && userAnswer === 'Permissions granted.') {
