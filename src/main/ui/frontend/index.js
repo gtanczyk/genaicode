@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './app/genaicode-app.js';
+import { App } from './app/genaicode-app';
 
 const container = document.getElementById('root');
 const root = createRoot(container);
