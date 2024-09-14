@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { CodegenOptions } from '../../../../codegen-types.js';
+import { RcConfig } from '../../../../config-lib.js';
 
 const API_BASE_URL = '/api'; // Assuming the API is served from the same domain
 
@@ -9,8 +11,13 @@ const api = axios.create({
   },
 });
 
-export const executeCodegen = async (prompt: string): Promise<void> => {
-  await api.post('/execute-codegen', { prompt });
+export interface PromptHistoryItem {
+  prompt: string;
+  cost: number;
+}
+
+export const executeCodegen = async (prompt: string, options: CodegenOptions): Promise<void> => {
+  await api.post('/execute-codegen', { prompt, options });
 };
 
 export const getExecutionStatus = async (): Promise<string> => {
@@ -30,7 +37,7 @@ export const interruptExecution = async (): Promise<void> => {
   await api.post('/interrupt-execution');
 };
 
-export const getPromptHistory = async (): Promise<string[]> => {
+export const getPromptHistory = async (): Promise<PromptHistoryItem[]> => {
   const response = await api.get('/prompt-history');
   return response.data.history;
 };
@@ -43,8 +50,6 @@ export const getCurrentQuestion = async (): Promise<{ id: string; text: string }
 export const answerQuestion = async (questionId: string, answer: string): Promise<void> => {
   await api.post('/answer-question', { questionId, answer });
 };
-
-// New API functions to fetch codegen output, ask-question conversation, and function calls
 
 export const getCodegenOutput = async (): Promise<string> => {
   const response = await api.get('/codegen-output');
@@ -59,6 +64,28 @@ export const getAskQuestionConversation = async (): Promise<Array<{ question: st
 export const getFunctionCalls = async (): Promise<Array<{ name: string; args: Record<string, unknown> }>> => {
   const response = await api.get('/function-calls');
   return response.data.functionCalls;
+};
+
+export const getTotalCost = async (): Promise<number> => {
+  const response = await api.get('/total-cost');
+  return response.data.totalCost;
+};
+
+// New method to get default CodegenOptions from the backend
+export const getDefaultCodegenOptions = async (): Promise<CodegenOptions> => {
+  const response = await api.get('/default-codegen-options');
+  return response.data.options;
+};
+
+// New method to update CodegenOptions on the backend
+export const updateCodegenOptions = async (options: CodegenOptions): Promise<void> => {
+  await api.post('/update-codegen-options', { options });
+};
+
+// New method to fetch rcConfig settings from the backend
+export const getRcConfig = async (): Promise<RcConfig> => {
+  const response = await api.get('/rcconfig');
+  return response.data.rcConfig;
 };
 
 // Error handling middleware

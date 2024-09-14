@@ -4,6 +4,9 @@ const SIMULATED_DELAY = 1000;
 // Simulated codegen execution time
 const EXECUTION_TIME = 5000;
 
+import { rcConfig as actualRcConfig } from '../../config.js';
+import { CodegenOptions } from '../../codegen-types.js';
+
 interface CodegenResult {
   success: boolean;
   output: string;
@@ -19,19 +22,33 @@ interface FunctionCall {
   args: Record<string, unknown>;
 }
 
+interface PromptHistoryItem {
+  prompt: string;
+  cost: number;
+}
+
 class MockBackend {
   private executionStatus: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
   private currentPrompt: string | null = null;
-  private promptHistory: string[] = [];
+  private promptHistory: PromptHistoryItem[] = [];
   private currentQuestion: Question | null = null;
   private codegenOutput: string = '';
   private askQuestionConversation: Array<{ question: string; answer: string }> = [];
   private functionCalls: FunctionCall[] = [];
+  private codegenOptions: CodegenOptions;
+  private rcConfig: typeof actualRcConfig;
 
-  async executeCodegen(prompt: string): Promise<CodegenResult> {
+  constructor() {
+    this.codegenOptions = this.getDefaultCodegenOptions();
+    this.rcConfig = { ...actualRcConfig };
+  }
+
+  async executeCodegen(prompt: string, options: CodegenOptions): Promise<CodegenResult> {
     this.currentPrompt = prompt;
     this.executionStatus = 'running';
-    this.promptHistory.push(prompt);
+    this.codegenOptions = { ...this.codegenOptions, ...options };
+    const cost = this.calculatePromptCost(prompt);
+    this.promptHistory.push({ prompt, cost });
 
     await this.simulateDelay(SIMULATED_DELAY);
 
@@ -48,10 +65,10 @@ class MockBackend {
     await this.simulateDelay(EXECUTION_TIME);
 
     this.executionStatus = 'completed';
-    this.codegenOutput = `Executed codegen for prompt: "${prompt}"`;
+    this.codegenOutput = `Executed codegen for prompt: "${prompt}" with options: ${JSON.stringify(this.codegenOptions)}`;
     this.functionCalls.push({
       name: 'executeCodegen',
-      args: { prompt },
+      args: { prompt, options: this.codegenOptions },
     });
 
     return {
@@ -81,7 +98,7 @@ class MockBackend {
     return this.executionStatus;
   }
 
-  async getPromptHistory(): Promise<string[]> {
+  async getPromptHistory(): Promise<PromptHistoryItem[]> {
     await this.simulateDelay(SIMULATED_DELAY);
     return this.promptHistory;
   }
@@ -103,8 +120,6 @@ class MockBackend {
     }
   }
 
-  // New methods for storing and retrieving codegen output, ask-question conversation, and function calls
-
   async getCodegenOutput(): Promise<string> {
     await this.simulateDelay(SIMULATED_DELAY);
     return this.codegenOutput;
@@ -118,6 +133,51 @@ class MockBackend {
   async getFunctionCalls(): Promise<FunctionCall[]> {
     await this.simulateDelay(SIMULATED_DELAY);
     return this.functionCalls;
+  }
+
+  async getTotalCost(): Promise<number> {
+    await this.simulateDelay(SIMULATED_DELAY);
+    return this.promptHistory.reduce((total, item) => total + item.cost, 0);
+  }
+
+  getDefaultCodegenOptions(): CodegenOptions {
+    return {
+      aiService: 'vertex-ai',
+      explicitPrompt: undefined,
+      taskFile: undefined,
+      considerAllFiles: false,
+      allowFileCreate: false,
+      allowFileDelete: false,
+      allowDirectoryCreate: false,
+      allowFileMove: false,
+      vision: false,
+      imagen: undefined,
+      disableContextOptimization: false,
+      temperature: 0.7,
+      cheap: false,
+      dryRun: false,
+      verbose: false,
+      requireExplanations: false,
+      geminiBlockNone: false,
+      disableInitialLint: false,
+      contentMask: undefined,
+      ignorePatterns: undefined,
+      askQuestion: true,
+      interactive: true,
+      disableCache: false,
+      dependencyTree: false,
+    };
+  }
+
+  async updateCodegenOptions(options: Partial<CodegenOptions>): Promise<void> {
+    await this.simulateDelay(SIMULATED_DELAY);
+    this.codegenOptions = { ...this.codegenOptions, ...options };
+    console.log('Updated CodegenOptions:', this.codegenOptions);
+  }
+
+  async getRcConfig(): Promise<typeof actualRcConfig> {
+    await this.simulateDelay(SIMULATED_DELAY);
+    return this.rcConfig;
   }
 
   private simulateDelay(ms: number): Promise<void> {
@@ -135,6 +195,13 @@ class MockBackend {
       };
       checkQuestion();
     });
+  }
+
+  private calculatePromptCost(prompt: string): number {
+    // Simple mock implementation: cost is based on prompt length
+    const baseCost = 0.01; // $0.01 per token
+    const estimatedTokens = Math.ceil(prompt.length / 4); // Rough estimate: 1 token ≈ 4 characters
+    return parseFloat((baseCost * estimatedTokens).toFixed(4));
   }
 }
 

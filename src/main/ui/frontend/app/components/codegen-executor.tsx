@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import { CodegenOptions } from '../../../../codegen-types';
 
 interface CodegenExecutorProps {
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string, options: CodegenOptions) => void;
   onPause: () => void;
   onResume: () => void;
   onInterrupt: () => void;
   isExecuting: boolean;
+  codegenOptions: CodegenOptions;
 }
 
 const ExecutorContainer = styled.div`
@@ -101,12 +103,25 @@ const ErrorMessage = styled.p`
   margin-top: 10px;
 `;
 
+const OptionsDisplay = styled.pre`
+  background-color: ${({ theme }) => theme.colors.inputBg};
+  color: ${({ theme }) => theme.colors.inputText};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+`;
+
 const CodegenExecutor: React.FC<CodegenExecutorProps> = ({
   onSubmit,
   onPause,
   onResume,
   onInterrupt,
   isExecuting,
+  codegenOptions,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +130,7 @@ const CodegenExecutor: React.FC<CodegenExecutorProps> = ({
     e.preventDefault();
     if (prompt.trim()) {
       try {
-        await onSubmit(prompt);
+        await onSubmit(prompt, codegenOptions);
         setPrompt('');
         setError(null);
       } catch (err) {
@@ -128,6 +143,9 @@ const CodegenExecutor: React.FC<CodegenExecutorProps> = ({
   return (
     <ExecutorContainer>
       <ExecutorTitle>Codegen Executor</ExecutorTitle>
+      <OptionsDisplay>
+        {JSON.stringify(codegenOptions, null, 2)}
+      </OptionsDisplay>
       <ExecutorForm onSubmit={handleSubmit}>
         <ExecutorTextarea
           value={prompt}
