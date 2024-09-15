@@ -3,16 +3,14 @@ import { createServer } from 'vite';
 import express from 'express';
 
 import { createRouter } from './api.js';
-import { CodegenOptions } from '../../codegen-types.js';
 import { Service } from './service.js';
 
-export async function startServer(options: CodegenOptions) {
+export async function startServer(service: Service) {
   const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
   const app = express();
   app.use(express.json());
 
-  const service = new Service(options);
   const apiRouter = createRouter(service);
 
   // API routes

@@ -1,7 +1,7 @@
 import { rcConfig } from '../../config.js';
 import { CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
-import { runCodegenWorker } from '../../interactive/codegen-worker.js';
+import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 
 interface CodegenResult {
   success: boolean;
@@ -29,7 +29,7 @@ export class Service {
   private promptHistory: PromptHistoryItem[] = [];
   private currentQuestion: Question | null = null;
   private codegenOutput: string = '';
-  private askQuestionConversation: Array<{ question: string; answer: string }> = [];
+  private askQuestionConversation: Array<{ id: string; question: string; answer: string }> = [];
   private functionCalls: FunctionCall[] = [];
   private codegenOptions: CodegenOptions;
 
@@ -68,6 +68,7 @@ export class Service {
   }
 
   async interruptExecution(): Promise<void> {
+    abortController?.abort();
     this.executionStatus = 'idle';
     this.currentPrompt = null;
   }
@@ -84,9 +85,24 @@ export class Service {
     return this.currentQuestion;
   }
 
+  async askQuestion(question: string): Promise<string> {
+    console.log('Ask question:', question);
+    const questionId = Date.now().toString();
+    this.currentQuestion = {
+      id: questionId,
+      text: question,
+    };
+
+    await this.waitForQuestionAnswer();
+
+    console.log('Question answer wait finished.');
+    return this.askQuestionConversation.find((question) => question.id === questionId)?.answer ?? '';
+  }
+
   async answerQuestion(questionId: string, answer: string): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
       this.askQuestionConversation.push({
+        id: this.currentQuestion.id,
         question: this.currentQuestion.text,
         answer: answer,
       });
@@ -111,33 +127,8 @@ export class Service {
     return this.promptHistory.reduce((total, item) => total + item.cost, 0);
   }
 
-  getDefaultCodegenOptions(): CodegenOptions {
-    return {
-      aiService: 'vertex-ai',
-      explicitPrompt: undefined,
-      taskFile: undefined,
-      considerAllFiles: false,
-      allowFileCreate: false,
-      allowFileDelete: false,
-      allowDirectoryCreate: false,
-      allowFileMove: false,
-      vision: false,
-      imagen: undefined,
-      disableContextOptimization: false,
-      temperature: 0.7,
-      cheap: false,
-      dryRun: false,
-      verbose: false,
-      requireExplanations: false,
-      geminiBlockNone: false,
-      disableInitialLint: false,
-      contentMask: undefined,
-      ignorePatterns: undefined,
-      askQuestion: true,
-      interactive: true,
-      disableCache: false,
-      dependencyTree: false,
-    };
+  getCodegenOptions() {
+    return this.codegenOptions;
   }
 
   async updateCodegenOptions(options: Partial<CodegenOptions>): Promise<void> {
@@ -152,10 +143,10 @@ export class Service {
   private waitForQuestionAnswer(): Promise<void> {
     return new Promise((resolve) => {
       const checkQuestion = () => {
-        if (this.currentQuestion === null) {
+        if (this.currentQuestion === null || abortController?.signal.aborted) {
           resolve();
         } else {
-          setTimeout(checkQuestion, 1000);
+          setTimeout(checkQuestion, 100);
         }
       };
       checkQuestion();

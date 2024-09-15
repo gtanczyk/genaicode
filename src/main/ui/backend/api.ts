@@ -158,7 +158,7 @@ export function createRouter(service: Service) {
   // New endpoint: Get default CodegenOptions
   router.get('/default-codegen-options', async (req, res) => {
     try {
-      const defaultOptions = await service.getDefaultCodegenOptions();
+      const defaultOptions = service.getCodegenOptions();
       res.json({ options: defaultOptions });
     } catch (error) {
       console.error('Error getting default codegen options:', error);
