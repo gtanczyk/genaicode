@@ -1,13 +1,13 @@
-type InputHandler = (message: string) => Promise<string>;
+type InputHandler = (prompt: string, message: string) => Promise<string>;
 
-type ConfirmHandler = (message: string, defaultValue: boolean) => Promise<boolean>;
+type ConfirmHandler = (prompt: string, defaultValue: boolean) => Promise<boolean>;
 
-export async function askUserForInput(message: string): Promise<string> {
-  return await inputHandler(message);
+export async function askUserForInput(prompt: string, message: string): Promise<string> {
+  return await inputHandler(prompt, message);
 }
 
-export async function askUserForConfirmation(message: string, defaultValue: boolean): Promise<boolean> {
-  return await confirmHandler(message, defaultValue);
+export async function askUserForConfirmation(prompt: string, defaultValue: boolean): Promise<boolean> {
+  return await confirmHandler(prompt, defaultValue);
 }
 
 let inputHandler: InputHandler;

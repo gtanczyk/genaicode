@@ -27,6 +27,7 @@ export async function executeStepAskQuestion(
     const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
     const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion') as
       | FunctionCall<{
+          content: string;
           stopCodegen: boolean;
           shouldPrompt: boolean;
           requestFilesContent?: string[];
@@ -70,7 +71,7 @@ export async function executeStepAskQuestion(
               ))
               ? 'Permissions granted.'
               : 'Permission request denied.'
-            : await askUserForInput('Your answer')
+            : await askUserForInput('Your answer', askQuestionCall.args?.content)
         : "Let's proceed with code generation.";
 
       if (permissionsRequested && askQuestionCall.args?.requestPermissions && userAnswer === 'Permissions granted.') {

@@ -26,6 +26,7 @@ export interface CodegenOptions {
   ignorePatterns?: string[];
   askQuestion?: boolean;
   interactive?: boolean;
+  ui?: boolean;
   disableCache?: boolean;
   dependencyTree?: boolean;
 }

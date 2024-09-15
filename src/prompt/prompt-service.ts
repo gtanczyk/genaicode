@@ -70,7 +70,7 @@ export async function promptService(
   // Execute the ask question step
   if (
     codegenPrompt.options.askQuestion !== false &&
-    codegenPrompt.options.interactive &&
+    (codegenPrompt.options.interactive || codegenPrompt.options.ui) &&
     (await executeStepAskQuestion(
       generateContentFn,
       prompt,

@@ -7,8 +7,8 @@ export function registerUserActionHandlers() {
   registerConfirmHandler(askUserForConfirmation);
 }
 
-async function askUserForInput(message: string): Promise<string> {
-  return await input({ message });
+async function askUserForInput(prompt: string): Promise<string> {
+  return await input({ message: prompt });
 }
 
 async function askUserForConfirmation(message: string, defaultValue: boolean): Promise<boolean> {

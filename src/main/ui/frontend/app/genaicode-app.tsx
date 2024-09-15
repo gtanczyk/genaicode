@@ -168,7 +168,35 @@ const GenAIcodeApp = () => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
     try {
-      await executeCodegen(prompt, codegenOptions);
+      const codegenPromise = executeCodegen(prompt, codegenOptions);
+      
+      // Start checking for questions
+      const checkQuestionsInterval = 1000; // Check every 1 second
+      const checkQuestions = async () => {
+        while (true) {
+          const question = await getCurrentQuestion();
+          if (question) {
+            setCurrentQuestion(question);
+            // Wait for the question to be answered
+            while (true) {
+              await new Promise(resolve => setTimeout(resolve, checkQuestionsInterval));
+              const updatedQuestion = await getCurrentQuestion();
+              if (!updatedQuestion || updatedQuestion.id !== question.id) {
+                break; // Question has been answered or changed
+              }
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, checkQuestionsInterval));
+          const status = await getExecutionStatus();
+          if (status !== 'running') {
+            break; // Execution has finished
+          }
+        }
+      };
+
+      // Run codegen and question checking concurrently
+      await Promise.all([codegenPromise, checkQuestions()]);
+
       await fetchPromptHistory();
       await checkExecutionStatus();
       await checkCurrentQuestion();
@@ -176,6 +204,7 @@ const GenAIcodeApp = () => {
       await fetchTotalCost();
     } catch (error) {
       console.error('Failed to execute codegen:', error);
+    } finally {
       setIsExecuting(false);
     }
   };
