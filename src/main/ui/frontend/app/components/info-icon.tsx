@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { RcConfig } from '../../../../config-lib.js';
+import { RcConfig } from '../../../../config-lib';
 
-interface RcConfigDisplayProps {
+type InfoIconProps = {
   rcConfig: RcConfig | null;
-}
+};
 
-export const RcConfigDisplay: React.FC<RcConfigDisplayProps> = ({ rcConfig }) => {
+export const InfoIcon: React.FC<InfoIconProps> = ({ rcConfig }) => {
   const [isOpen, setIsOpen] = useState(false);
-
-  if (!rcConfig) {
-    return null;
-  }
 
   const toggleTooltip = () => {
     setIsOpen(!isOpen);
   };
 
+  if (!rcConfig) {
+    return null;
+  }
+
   return (
-    <InfoIconWrapper>
-      <IconButton onClick={toggleTooltip} aria-label="Show RcConfig Settings">
-        ℹ️
-      </IconButton>
+    <IconWrapper onClick={toggleTooltip}>
+      <Icon>ℹ️</Icon>
       {isOpen && (
         <Tooltip>
           <TooltipTitle>RcConfig Settings</TooltipTitle>
@@ -63,58 +61,39 @@ export const RcConfigDisplay: React.FC<RcConfigDisplayProps> = ({ rcConfig }) =>
           )}
         </Tooltip>
       )}
-    </InfoIconWrapper>
+    </IconWrapper>
   );
 };
 
-const InfoIconWrapper = styled.div`
+const IconWrapper = styled.div`
   position: relative;
   display: inline-block;
+  cursor: pointer;
 `;
 
-const IconButton = styled.button`
-  background-color: transparent;
-  color: ${({ theme }) => theme.colors.primary};
-  border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.3s;
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.buttonHoverBg};
-  }
-
-  &:focus {
-    outline: none;
-    box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.primary};
-  }
+const Icon = styled.span`
+  font-size: 24px;
+  color: ${(props) => props.theme.colors.primary};
 `;
 
 const Tooltip = styled.div`
   position: absolute;
   top: 100%;
   right: 0;
-  width: 300px;
-  background-color: ${({ theme }) => theme.colors.background};
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  background-color: ${(props) => props.theme.colors.background};
+  border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 4px;
   padding: 16px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  max-width: 300px;
   z-index: 1000;
-  max-height: 80vh;
-  overflow-y: auto;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 `;
 
 const TooltipTitle = styled.h3`
   margin-top: 0;
   margin-bottom: 8px;
-  color: ${({ theme }) => theme.colors.primary};
+  color: ${(props) => props.theme.colors.primary};
 `;
 
 const ConfigItem = styled.div`
@@ -127,5 +106,5 @@ const ConfigLabel = styled.span`
 `;
 
 const ConfigValue = styled.span`
-  color: ${({ theme }) => theme.colors.text};
+  color: ${(props) => props.theme.colors.text};
 `;

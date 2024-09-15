@@ -18,6 +18,11 @@
   ],
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {
+    "textPrompts": [
+      {
+        "content": "GenAIcode is an AI-powered code generation and management tool designed to streamline software development. It leverages various AI services (Vertex AI, AI Studio, ChatGPT, Anthropic) to generate, modify, and analyze code. The project features a modular architecture with components for AI services, CLI operations, file handling, and image processing. It supports interactive and UI modes, allowing developers to execute code generation tasks, manage prompts, and visualize outputs. GenAIcode offers customizable options for code generation, including file operations, context optimization, and temperature settings. The tool aims to enhance developer productivity by automating repetitive coding tasks and providing AI-assisted code improvements."
+      }
+    ],
     "files": [
       "src/prompt/prompt-service.ts",
       "src/main/codegen.ts",

@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
+import { ChatMessage, CodegenExecution } from '../common/types.js';
 
-const API_BASE_URL = '/api'; // Assuming the API is served from the same domain
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -10,11 +11,6 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
-export interface PromptHistoryItem {
-  prompt: string;
-  cost: number;
-}
 
 export const executeCodegen = async (prompt: string, options: CodegenOptions): Promise<void> => {
   await api.post('/execute-codegen', { prompt, options });
@@ -35,11 +31,6 @@ export const resumeExecution = async (): Promise<void> => {
 
 export const interruptExecution = async (): Promise<void> => {
   await api.post('/interrupt-execution');
-};
-
-export const getPromptHistory = async (): Promise<PromptHistoryItem[]> => {
-  const response = await api.get('/prompt-history');
-  return response.data.history;
 };
 
 export const getCurrentQuestion = async (): Promise<{ id: string; text: string } | null> => {
@@ -71,21 +62,28 @@ export const getTotalCost = async (): Promise<number> => {
   return response.data.totalCost;
 };
 
-// New method to get default CodegenOptions from the backend
 export const getDefaultCodegenOptions = async (): Promise<CodegenOptions> => {
   const response = await api.get('/default-codegen-options');
   return response.data.options;
 };
 
-// New method to update CodegenOptions on the backend
 export const updateCodegenOptions = async (options: CodegenOptions): Promise<void> => {
   await api.post('/update-codegen-options', { options });
 };
 
-// New method to fetch rcConfig settings from the backend
 export const getRcConfig = async (): Promise<RcConfig> => {
   const response = await api.get('/rcconfig');
   return response.data.rcConfig;
+};
+
+export const getChatHistory = async (): Promise<ChatMessage[]> => {
+  const response = await api.get('/chat-history');
+  return response.data.chatHistory;
+};
+
+export const getCodegenExecutions = async (): Promise<CodegenExecution[]> => {
+  const response = await api.get('/codegen-executions');
+  return response.data.codegenExecutions;
 };
 
 // Error handling middleware
@@ -94,16 +92,12 @@ api.interceptors.response.use(
   (error) => {
     console.error('API request failed:', error);
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
       console.error('Error data:', error.response.data);
       console.error('Error status:', error.response.status);
       console.error('Error headers:', error.response.headers);
     } else if (error.request) {
-      // The request was made but no response was received
       console.error('No response received:', error.request);
     } else {
-      // Something happened in setting up the request that triggered an Error
       console.error('Error message:', error.message);
     }
     return Promise.reject(error);

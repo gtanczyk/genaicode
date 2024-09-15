@@ -6,6 +6,48 @@ interface QuestionHandlerProps {
   question: { id: string; text: string } | null;
 }
 
+export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, question }) => {
+  const [answer, setAnswer] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (answer.trim() && question) {
+      try {
+        await onSubmit(answer);
+        setAnswer('');
+        setError(null);
+      } catch (err) {
+        console.error('Error submitting answer:', err);
+        setError('Failed to submit the answer. Please try again.');
+      }
+    }
+  };
+
+  if (!question) {
+    return null; // Don't render anything if there's no question
+  }
+
+  return (
+    <HandlerContainer>
+      <HandlerTitle>Question Handler</HandlerTitle>
+      <QuestionContainer>
+        <QuestionText>Question: {question.text}</QuestionText>
+      </QuestionContainer>
+      <AnswerForm onSubmit={handleSubmit}>
+        <AnswerTextarea
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="Enter your answer here"
+          rows={4}
+        />
+        <SubmitButton type="submit">Submit Answer</SubmitButton>
+      </AnswerForm>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+    </HandlerContainer>
+  );
+};
+
 const HandlerContainer = styled.div`
   background-color: ${({ theme }) => theme.colors.background};
   border: 1px solid ${({ theme }) => theme.colors.border};
@@ -71,49 +113,3 @@ const ErrorMessage = styled.p`
   font-weight: bold;
   margin-top: 10px;
 `;
-
-const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, question }) => {
-  const [answer, setAnswer] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (answer.trim() && question) {
-      try {
-        await onSubmit(answer);
-        setAnswer('');
-        setError(null);
-      } catch (err) {
-        console.error('Error submitting answer:', err);
-        setError('Failed to submit the answer. Please try again.');
-      }
-    }
-  };
-
-  if (!question) {
-    return null; // Don't render anything if there's no question
-  }
-
-  return (
-    <HandlerContainer>
-      <HandlerTitle>Question Handler</HandlerTitle>
-      <QuestionContainer>
-        <QuestionText>
-          Question: {question.text}
-        </QuestionText>
-      </QuestionContainer>
-      <AnswerForm onSubmit={handleSubmit}>
-        <AnswerTextarea
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          placeholder="Enter your answer here"
-          rows={4}
-        />
-        <SubmitButton type="submit">Submit Answer</SubmitButton>
-      </AnswerForm>
-      {error && <ErrorMessage>{error}</ErrorMessage>}
-    </HandlerContainer>
-  );
-};
-
-export default QuestionHandler;
