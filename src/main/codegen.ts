@@ -64,6 +64,7 @@ export async function runCodegen(): Promise<void> {
     askQuestion: cliParams.askQuestion,
     disableCache: cliParams.disableCache,
     interactive: cliParams.interactive,
+    ui: cliParams.ui,
   };
 
   if (cliParams.ui) {

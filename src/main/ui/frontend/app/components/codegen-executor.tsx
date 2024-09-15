@@ -143,9 +143,7 @@ const CodegenExecutor: React.FC<CodegenExecutorProps> = ({
   return (
     <ExecutorContainer>
       <ExecutorTitle>Codegen Executor</ExecutorTitle>
-      <OptionsDisplay>
-        {JSON.stringify(codegenOptions, null, 2)}
-      </OptionsDisplay>
+      <OptionsDisplay>{JSON.stringify(codegenOptions, null, 2)}</OptionsDisplay>
       <ExecutorForm onSubmit={handleSubmit}>
         <ExecutorTextarea
           value={prompt}
@@ -157,13 +155,13 @@ const CodegenExecutor: React.FC<CodegenExecutorProps> = ({
           <PrimaryButton type="submit" disabled={isExecuting}>
             Execute
           </PrimaryButton>
-          <Button onClick={onPause} disabled={!isExecuting}>
+          <Button onClick={onPause} disabled={!isExecuting} type="button">
             Pause
           </Button>
-          <Button onClick={onResume} disabled={!isExecuting}>
+          <Button onClick={onResume} disabled={!isExecuting} type="button">
             Resume
           </Button>
-          <WarningButton onClick={onInterrupt} disabled={!isExecuting}>
+          <WarningButton onClick={onInterrupt} disabled={!isExecuting} type="button">
             Interrupt
           </WarningButton>
         </ButtonGroup>
