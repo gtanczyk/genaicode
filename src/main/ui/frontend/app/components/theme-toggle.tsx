@@ -6,15 +6,27 @@ interface ThemeToggleProps {
   toggleTheme: () => void;
 }
 
+export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, toggleTheme }) => {
+  return (
+    <ToggleButton onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
+      {theme === 'light' ? '🌙' : '☀️'}
+    </ToggleButton>
+  );
+};
+
 const ToggleButton = styled.button`
-  background-color: ${({ theme }) => theme.colors.buttonBg};
-  color: ${({ theme }) => theme.colors.buttonText};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  padding: 8px 12px;
-  border-radius: 4px;
+  background-color: transparent;
+  color: ${({ theme }) => theme.colors.text};
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s;
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.buttonHoverBg};
@@ -25,13 +37,3 @@ const ToggleButton = styled.button`
     box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.primary};
   }
 `;
-
-const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, toggleTheme }) => {
-  return (
-    <ToggleButton onClick={toggleTheme}>
-      {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
-    </ToggleButton>
-  );
-};
-
-export default ThemeToggle;

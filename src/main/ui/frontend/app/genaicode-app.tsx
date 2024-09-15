@@ -1,33 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { ThemeProvider } from 'styled-components';
-import styled, { createGlobalStyle } from 'styled-components';
-import CodegenExecutor from './components/codegen-executor.js';
-import PromptHistory from './components/prompt-history.js';
-import QuestionHandler from './components/question-handler.js';
-import CodegenOutput from './components/codegen-output.js';
-import ThemeToggle from './components/theme-toggle.js';
-import RcConfigDisplay from './components/rcconfig-display';
-import CodegenOptionsPanel from './components/codegen-options.js';
+import { createGlobalStyle } from 'styled-components';
+import { AppLayout } from './components/app-layout';
+import { AppState } from './components/app-state';
+import { AppHandlers } from './components/app-handlers';
+import { ChatInterface } from './components/chat-interface';
+import { InputArea } from './components/input-area';
+import { ThemeToggle } from './components/theme-toggle';
+import { InfoIcon } from './components/info-icon';
+import { CodegenOptionsPanel } from './components/codegen-options';
 import { lightTheme, darkTheme } from './theme/theme';
-import {
-  executeCodegen,
-  getExecutionStatus,
-  getPromptHistory,
-  getCurrentQuestion,
-  answerQuestion,
-  getCodegenOutput,
-  getAskQuestionConversation,
-  getFunctionCalls,
-  pauseExecution,
-  resumeExecution,
-  interruptExecution,
-  getTotalCost,
-  getDefaultCodegenOptions,
-  PromptHistoryItem,
-  getRcConfig,
-} from './api/api-client.js';
-import { RcConfig } from '../../../config-lib.js';
-import { CodegenOptions } from '../../../codegen-types';
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -40,258 +22,68 @@ const GlobalStyle = createGlobalStyle`
   }
 `;
 
-const AppContainer = styled.div`
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-`;
-
-const AppHeader = styled.h1`
-  color: ${({ theme }) => theme.colors.primary};
-  text-align: center;
-`;
-
-const AppLayout = styled.div`
-  display: flex;
-  gap: 20px;
-
-  @media (max-width: 768px) {
-    flex-direction: column;
-  }
-`;
-
-const LeftPanel = styled.div`
-  flex: 1;
-`;
-
-const RightPanel = styled.div`
-  flex: 1;
-`;
-
 const GenAIcodeApp = () => {
-  const [currentPrompt, setCurrentPrompt] = useState('');
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [promptHistory, setPromptHistory] = useState<PromptHistoryItem[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string } | null>(null);
-  const [codegenOutput, setCodegenOutput] = useState('');
-  const [askQuestionConversation, setAskQuestionConversation] = useState<Array<{ question: string; answer: string }>>(
-    [],
-  );
-  const [functionCalls, setFunctionCalls] = useState<Array<{ name: string; args: Record<string, unknown> }>>([]);
-  const [theme, setTheme] = useState('dark');
-  const [totalCost, setTotalCost] = useState(0);
-  const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
-  const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
+  const {
+    currentPrompt,
+    setCurrentPrompt,
+    isExecuting,
+    setIsExecuting,
+    chatMessages,
+    setChatMessages,
+    codegenExecutions,
+    setCodegenExecutions,
+    currentQuestion,
+    setCurrentQuestion,
+    theme,
+    totalCost,
+    codegenOptions,
+    setCodegenOptions,
+    rcConfig,
+    toggleTheme,
+    checkExecutionStatus,
+    checkCurrentQuestion,
+    fetchCodegenData,
+    fetchTotalCost,
+  } = AppState();
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
-
-  useEffect(() => {
-    fetchPromptHistory();
-    checkExecutionStatus();
-    checkCurrentQuestion();
-    fetchCodegenData();
-    fetchTotalCost();
-    fetchDefaultCodegenOptions();
-    fetchRcConfig();
-  }, []);
-
-  const fetchPromptHistory = async () => {
-    try {
-      const history = await getPromptHistory();
-      setPromptHistory(history);
-    } catch (error) {
-      console.error('Failed to fetch prompt history:', error);
-    }
-  };
-
-  const checkExecutionStatus = async () => {
-    try {
-      const status = await getExecutionStatus();
-      setIsExecuting(status === 'running');
-    } catch (error) {
-      console.error('Failed to check execution status:', error);
-    }
-  };
-
-  const checkCurrentQuestion = async () => {
-    try {
-      const question = await getCurrentQuestion();
-      setCurrentQuestion(question);
-    } catch (error) {
-      console.error('Failed to fetch current question:', error);
-    }
-  };
-
-  const fetchCodegenData = async () => {
-    try {
-      const output = await getCodegenOutput();
-      const conversation = await getAskQuestionConversation();
-      const calls = await getFunctionCalls();
-      setCodegenOutput(output);
-      setAskQuestionConversation(conversation);
-      setFunctionCalls(calls);
-    } catch (error) {
-      console.error('Failed to fetch codegen data:', error);
-    }
-  };
-
-  const fetchTotalCost = async () => {
-    try {
-      const cost = await getTotalCost();
-      setTotalCost(cost);
-    } catch (error) {
-      console.error('Failed to fetch total cost:', error);
-    }
-  };
-
-  const fetchDefaultCodegenOptions = async () => {
-    try {
-      const defaultOptions = await getDefaultCodegenOptions();
-      setCodegenOptions(defaultOptions);
-    } catch (error) {
-      console.error('Failed to fetch default codegen options:', error);
-    }
-  };
-
-  const fetchRcConfig = async () => {
-    try {
-      const config = await getRcConfig();
-      setRcConfig(config);
-    } catch (error) {
-      console.error('Failed to fetch rcConfig:', error);
-    }
-  };
-
-  const handlePromptSubmit = async (prompt: string) => {
-    setCurrentPrompt(prompt);
-    setIsExecuting(true);
-    try {
-      const codegenPromise = executeCodegen(prompt, codegenOptions);
-      
-      // Start checking for questions
-      const checkQuestionsInterval = 1000; // Check every 1 second
-      const checkQuestions = async () => {
-        while (true) {
-          const question = await getCurrentQuestion();
-          if (question) {
-            setCurrentQuestion(question);
-            // Wait for the question to be answered
-            while (true) {
-              await new Promise(resolve => setTimeout(resolve, checkQuestionsInterval));
-              const updatedQuestion = await getCurrentQuestion();
-              if (!updatedQuestion || updatedQuestion.id !== question.id) {
-                break; // Question has been answered or changed
-              }
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, checkQuestionsInterval));
-          const status = await getExecutionStatus();
-          if (status !== 'running') {
-            break; // Execution has finished
-          }
-        }
-      };
-
-      // Run codegen and question checking concurrently
-      await Promise.all([codegenPromise, checkQuestions()]);
-
-      await fetchPromptHistory();
-      await checkExecutionStatus();
-      await checkCurrentQuestion();
-      await fetchCodegenData();
-      await fetchTotalCost();
-    } catch (error) {
-      console.error('Failed to execute codegen:', error);
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
-  const handlePause = async () => {
-    try {
-      await pauseExecution();
-      setIsExecuting(false);
-      console.log('Execution paused');
-    } catch (error) {
-      console.error('Failed to pause execution:', error);
-    }
-  };
-
-  const handleResume = async () => {
-    try {
-      await resumeExecution();
-      setIsExecuting(true);
-      console.log('Execution resumed');
-    } catch (error) {
-      console.error('Failed to resume execution:', error);
-    }
-  };
-
-  const handleInterrupt = async () => {
-    try {
-      await interruptExecution();
-      setIsExecuting(false);
-      console.log('Execution interrupted');
-    } catch (error) {
-      console.error('Failed to interrupt execution:', error);
-    }
-  };
-
-  const handleQuestionSubmit = async (answer: string) => {
-    if (currentQuestion) {
-      try {
-        await answerQuestion(currentQuestion.id, answer);
-        setCurrentQuestion(null);
-        await checkExecutionStatus();
-        await checkCurrentQuestion();
-        await fetchCodegenData();
-        await fetchTotalCost();
-      } catch (error) {
-        console.error('Failed to submit answer:', error);
-      }
-    }
-  };
-
-  const handleReRun = (prompt: string) => {
-    handlePromptSubmit(prompt);
-  };
-
-  const handleOptionsChange = (newOptions: CodegenOptions) => {
-    setCodegenOptions(newOptions);
-  };
+  const { handleExecute, handleQuestionSubmit, handlePause, handleResume, handleInterrupt, handleOptionsChange } =
+    AppHandlers({
+      currentPrompt,
+      setCurrentPrompt,
+      isExecuting,
+      setIsExecuting,
+      chatMessages,
+      setChatMessages,
+      codegenExecutions,
+      setCodegenExecutions,
+      setCurrentQuestion,
+      codegenOptions,
+      setCodegenOptions,
+      fetchCodegenData,
+      fetchTotalCost,
+    });
 
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
       <GlobalStyle />
-      <AppContainer>
-        <AppHeader>GenAIcode</AppHeader>
-        <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
-        <CodegenOptionsPanel onOptionsChange={handleOptionsChange} />
-        <RcConfigDisplay rcConfig={rcConfig} />
-        <AppLayout>
-          <LeftPanel>
-            <CodegenExecutor
-              onSubmit={handlePromptSubmit}
-              onPause={handlePause}
-              onResume={handleResume}
-              onInterrupt={handleInterrupt}
-              isExecuting={isExecuting}
-              codegenOptions={codegenOptions}
-            />
-            {currentQuestion && <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} />}
-            <PromptHistory onReRun={handleReRun} promptHistory={promptHistory} totalCost={totalCost} />
-          </LeftPanel>
-          <RightPanel>
-            <CodegenOutput
-              output={codegenOutput}
-              askQuestionConversation={askQuestionConversation}
-              functionCalls={functionCalls}
-            />
-          </RightPanel>
-        </AppLayout>
-      </AppContainer>
+      <AppLayout
+        themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
+        codegenOptions={<CodegenOptionsPanel onOptionsChange={handleOptionsChange} />}
+        infoIcon={<InfoIcon rcConfig={rcConfig} />}
+        chatInterface={<ChatInterface messages={chatMessages} codegenExecutions={codegenExecutions} />}
+        inputArea={
+          <InputArea
+            onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}
+            onCancel={isExecuting ? handleInterrupt : undefined}
+            isExecuting={isExecuting && !currentQuestion}
+            placeholder={
+              currentQuestion
+                ? "Enter your response to the assistant's question..."
+                : 'Enter your codegen prompt here...'
+            }
+          />
+        }
+      />
     </ThemeProvider>
   );
 };
