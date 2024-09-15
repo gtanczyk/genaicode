@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   getExecutionStatus,
   getCurrentQuestion,
-  getCodegenOutput,
-  getAskQuestionConversation,
-  getFunctionCalls,
   getTotalCost,
   getDefaultCodegenOptions,
   getRcConfig,
+  getContent,
 } from '../api/api-client.js';
-import { ChatMessage, ChatMessageType, CodegenExecution } from '../common/types.js';
+import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
@@ -17,7 +15,6 @@ export const AppState = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [codegenExecutions, setCodegenExecutions] = useState<CodegenExecution[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string } | null>(null);
   const [theme, setTheme] = useState('dark');
   const [totalCost, setTotalCost] = useState(0);
@@ -28,11 +25,7 @@ export const AppState = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     try {
       await Promise.all([
         checkExecutionStatus(),
@@ -45,7 +38,11 @@ export const AppState = () => {
     } catch (error) {
       console.error('Failed to fetch initial data:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   const checkExecutionStatus = async () => {
     try {
@@ -67,41 +64,9 @@ export const AppState = () => {
 
   const fetchCodegenData = async () => {
     try {
-      const [output, conversation, calls] = await Promise.all([
-        getCodegenOutput(),
-        getAskQuestionConversation(),
-        getFunctionCalls(),
-      ]);
+      const content = await getContent();
 
-      const newMessages: ChatMessage[] = [
-        ...conversation.map((item, index) => ({
-          id: `conv_${index}`,
-          type: index % 2 === 0 ? ChatMessageType.ASSISTANT : ChatMessageType.USER,
-          content: item.question || item.answer,
-          timestamp: new Date(),
-        })),
-        ...calls.map((call, index) => ({
-          id: `call_${index}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Function called: ${call.name} with args: ${JSON.stringify(call.args)}`,
-          timestamp: new Date(),
-        })),
-      ];
-
-      setChatMessages((prevMessages) => [...prevMessages, ...newMessages]);
-
-      if (output) {
-        setCodegenExecutions((prevExecutions) => [
-          ...prevExecutions,
-          {
-            id: `exec_${prevExecutions.length}`,
-            prompt: currentPrompt,
-            output,
-            timestamp: new Date(),
-            cost: 0, // You might want to update this with the actual cost if available
-          },
-        ]);
-      }
+      setChatMessages(content.filter((content) => !!content.message).map((content) => content.message!));
     } catch (error) {
       console.error('Failed to fetch codegen data:', error);
     }
@@ -134,64 +99,74 @@ export const AppState = () => {
     }
   };
 
-  const handlePromptSubmit = async (prompt: string) => {
-    setCurrentPrompt(prompt);
-    setChatMessages((prevMessages) => [
-      ...prevMessages,
-      { id: `user_${Date.now()}`, type: ChatMessageType.USER, content: prompt, timestamp: new Date() },
-    ]);
-    setIsExecuting(true);
-    // Here you would typically call your API to execute the codegen
-    // After execution, you would update the state with the results
-    // For now, we'll just add a placeholder assistant message
-    setTimeout(() => {
-      setChatMessages((prevMessages) => [
-        ...prevMessages,
-        {
+  const addChatMessage = useCallback((message: ChatMessage) => {
+    setChatMessages((prevMessages) => [...prevMessages, message]);
+  }, []);
+
+  const handlePromptSubmit = useCallback(
+    async (prompt: string) => {
+      setCurrentPrompt(prompt);
+      addChatMessage({
+        id: `user_${Date.now()}`,
+        type: ChatMessageType.USER,
+        content: prompt,
+        timestamp: new Date(),
+      });
+      setIsExecuting(true);
+      // Here you would typically call your API to execute the codegen
+      // After execution, you would update the state with the results
+      // For now, we'll just add a placeholder assistant message
+      setTimeout(() => {
+        addChatMessage({
           id: `assistant_${Date.now()}`,
           type: ChatMessageType.ASSISTANT,
           content: 'Codegen execution completed.',
           timestamp: new Date(),
-        },
-      ]);
-      setIsExecuting(false);
-    }, 2000);
-  };
+        });
+        setIsExecuting(false);
+      }, 2000);
+    },
+    [addChatMessage],
+  );
 
-  const handleQuestionSubmit = async (answer: string) => {
-    if (currentQuestion) {
-      setChatMessages((prevMessages) => [
-        ...prevMessages,
-        { id: `user_answer_${Date.now()}`, type: ChatMessageType.USER, content: answer, timestamp: new Date() },
-      ]);
-      setCurrentQuestion(null);
-      // Here you would typically send the answer to your API
-      // and then update the state based on the response
-    }
-  };
+  const handleQuestionSubmit = useCallback(
+    async (answer: string) => {
+      if (currentQuestion) {
+        addChatMessage({
+          id: `user_answer_${Date.now()}`,
+          type: ChatMessageType.USER,
+          content: answer,
+          timestamp: new Date(),
+        });
+        setCurrentQuestion(null);
+        // Here you would typically send the answer to your API
+        // and then update the state based on the response
+      }
+    },
+    [currentQuestion, addChatMessage],
+  );
 
   return {
     currentPrompt,
     setCurrentPrompt,
-    setChatMessages,
     isExecuting,
     setIsExecuting,
     chatMessages,
-    codegenExecutions,
+    setChatMessages,
     currentQuestion,
-    setCodegenExecutions,
-    setCurrentQuestion,
     theme,
     totalCost,
     codegenOptions,
-    setCodegenOptions,
     rcConfig,
     toggleTheme,
-    handlePromptSubmit,
-    handleQuestionSubmit,
     checkExecutionStatus,
     checkCurrentQuestion,
     fetchCodegenData,
     fetchTotalCost,
+    handlePromptSubmit,
+    handleQuestionSubmit,
+    addChatMessage,
+    setCodegenOptions,
+    setCurrentQuestion,
   };
 };

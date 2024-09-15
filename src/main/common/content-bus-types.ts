@@ -11,10 +11,7 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-export interface CodegenExecution {
-  id: string;
-  prompt: string;
-  output: string;
-  timestamp: Date;
-  cost: number;
-}
+export type ContentProps = {
+  cost?: number;
+  message?: ChatMessage;
+};

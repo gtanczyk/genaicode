@@ -33,7 +33,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExec
   };
 
   const handleKeyUp = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.ctrlKey) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSubmit();
     }

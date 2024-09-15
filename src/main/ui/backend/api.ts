@@ -28,6 +28,16 @@ export function createRouter(service: Service) {
     }
   });
 
+  router.get('/content', async (req, res) => {
+    try {
+      const content = service.getContent();
+      res.json({ content });
+    } catch (error) {
+      console.error('Error getting execution status:', error);
+      res.status(500).json({ error: 'An error occurred while getting execution status' });
+    }
+  });
+
   // Get execution status
   router.get('/execution-status', async (req, res) => {
     try {
@@ -72,17 +82,6 @@ export function createRouter(service: Service) {
     }
   });
 
-  // Get prompt history
-  router.get('/prompt-history', async (req, res) => {
-    try {
-      const history = await service.getPromptHistory();
-      res.json({ history });
-    } catch (error) {
-      console.error('Error getting prompt history:', error);
-      res.status(500).json({ error: 'An error occurred while getting prompt history' });
-    }
-  });
-
   // Get current question
   router.get('/current-question', async (req, res) => {
     try {
@@ -111,39 +110,6 @@ export function createRouter(service: Service) {
     }
   });
 
-  // Get codegen output
-  router.get('/codegen-output', async (req, res) => {
-    try {
-      const output = await service.getCodegenOutput();
-      res.json({ output });
-    } catch (error) {
-      console.error('Error getting codegen output:', error);
-      res.status(500).json({ error: 'An error occurred while getting codegen output' });
-    }
-  });
-
-  // Get ask-question conversation
-  router.get('/ask-question-conversation', async (req, res) => {
-    try {
-      const conversation = await service.getAskQuestionConversation();
-      res.json({ conversation });
-    } catch (error) {
-      console.error('Error getting ask-question conversation:', error);
-      res.status(500).json({ error: 'An error occurred while getting ask-question conversation' });
-    }
-  });
-
-  // Get function calls
-  router.get('/function-calls', async (req, res) => {
-    try {
-      const functionCalls = await service.getFunctionCalls();
-      res.json({ functionCalls });
-    } catch (error) {
-      console.error('Error getting function calls:', error);
-      res.status(500).json({ error: 'An error occurred while getting function calls' });
-    }
-  });
-
   // Get total cost of prompts in the current session
   router.get('/total-cost', async (req, res) => {
     try {
@@ -163,24 +129,6 @@ export function createRouter(service: Service) {
     } catch (error) {
       console.error('Error getting default codegen options:', error);
       res.status(500).json({ error: 'An error occurred while getting default codegen options' });
-    }
-  });
-
-  // New endpoint: Update CodegenOptions
-  router.post('/update-codegen-options', async (req, res) => {
-    try {
-      const { options } = req.body;
-
-      const validationErrors = validateCodegenOptions(options);
-      if (validationErrors.length > 0) {
-        return res.status(400).json({ errors: validationErrors });
-      }
-
-      await service.updateCodegenOptions(options);
-      res.json({ message: 'Codegen options updated successfully' });
-    } catch (error) {
-      console.error('Error updating codegen options:', error);
-      res.status(500).json({ error: 'An error occurred while updating codegen options' });
     }
   });
 

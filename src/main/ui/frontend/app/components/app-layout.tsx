@@ -3,26 +3,18 @@ import styled from 'styled-components';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
-  codegenOptions: ReactNode;
   infoIcon: ReactNode;
   chatInterface: ReactNode;
   inputArea: ReactNode;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({
-  themeToggle,
-  codegenOptions,
-  infoIcon,
-  chatInterface,
-  inputArea,
-}) => {
+export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea }) => {
   return (
     <AppContainer>
       <AppHeader>
         <AppTitle>GenAIcode</AppTitle>
         <IconContainer>
           {themeToggle}
-          {codegenOptions}
           {infoIcon}
         </IconContainer>
       </AppHeader>
@@ -59,7 +51,6 @@ const IconContainer = styled.div`
 
 const ChatContainer = styled.div`
   flex-grow: 1;
-  overflow-y: auto;
   margin-bottom: 20px;
 `;
 
