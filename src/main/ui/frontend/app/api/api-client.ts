@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
-import { ChatMessage, CodegenExecution } from '../common/types.js';
+import { ContentProps } from '../../../../common/content-bus-types.js';
 
 const API_BASE_URL = '/api';
 
@@ -11,6 +11,11 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+export const getContent = async (): Promise<ContentProps[]> => {
+  const response = await api.get('/content');
+  return response.data.content;
+};
 
 export const executeCodegen = async (prompt: string, options: CodegenOptions): Promise<void> => {
   await api.post('/execute-codegen', { prompt, options });
@@ -42,21 +47,6 @@ export const answerQuestion = async (questionId: string, answer: string): Promis
   await api.post('/answer-question', { questionId, answer });
 };
 
-export const getCodegenOutput = async (): Promise<string> => {
-  const response = await api.get('/codegen-output');
-  return response.data.output;
-};
-
-export const getAskQuestionConversation = async (): Promise<Array<{ question: string; answer: string }>> => {
-  const response = await api.get('/ask-question-conversation');
-  return response.data.conversation;
-};
-
-export const getFunctionCalls = async (): Promise<Array<{ name: string; args: Record<string, unknown> }>> => {
-  const response = await api.get('/function-calls');
-  return response.data.functionCalls;
-};
-
 export const getTotalCost = async (): Promise<number> => {
   const response = await api.get('/total-cost');
   return response.data.totalCost;
@@ -67,23 +57,9 @@ export const getDefaultCodegenOptions = async (): Promise<CodegenOptions> => {
   return response.data.options;
 };
 
-export const updateCodegenOptions = async (options: CodegenOptions): Promise<void> => {
-  await api.post('/update-codegen-options', { options });
-};
-
 export const getRcConfig = async (): Promise<RcConfig> => {
   const response = await api.get('/rcconfig');
   return response.data.rcConfig;
-};
-
-export const getChatHistory = async (): Promise<ChatMessage[]> => {
-  const response = await api.get('/chat-history');
-  return response.data.chatHistory;
-};
-
-export const getCodegenExecutions = async (): Promise<CodegenExecution[]> => {
-  const response = await api.get('/codegen-executions');
-  return response.data.codegenExecutions;
 };
 
 // Error handling middleware
@@ -103,5 +79,3 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
-
-export default api;

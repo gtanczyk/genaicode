@@ -23,6 +23,7 @@ import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { runInteractiveMode } from './interactive/codegen-interactive.js';
 import { runCodegenUI } from './ui/codegen-ui.js';
+import { putSystemMessage, putUserMessage } from './common/content-bus.js';
 
 /** Executes codegen */
 export async function runCodegen(): Promise<void> {
@@ -79,18 +80,20 @@ export async function runCodegen(): Promise<void> {
 }
 
 export async function runCodegenIteration(options: CodegenOptions, abortSignal?: AbortSignal) {
+  putUserMessage(options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.');
+
   if (rcConfig.lintCommand && !options.disableInitialLint) {
     try {
-      console.log(`Executing lint command: ${rcConfig.lintCommand}`);
+      putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
       await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
-      console.log('Lint command executed successfully');
+      putSystemMessage('Lint command executed successfully');
     } catch (error) {
       const { stderr, stdout } = error as { stdout: string; stderr: string };
-      console.log(
+      putSystemMessage(
         'Lint command failed. Aborting codegen, please fix lint issues before running codegen, or use --disable-initial-lint',
       );
       console.log('Lint errors:', stdout, stderr);
-      process.exit(1);
+      return;
     }
   } else if (rcConfig.lintCommand && options.disableInitialLint) {
     console.log('Initial lint was skipped.');
@@ -100,20 +103,19 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     throw new Error('Codegen iteration aborted');
   }
 
-  console.log('Generating response');
+  putSystemMessage('Generating response');
   const functionCalls = await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(options));
-
   console.log('Received function calls:', functionCalls);
 
   if (options.dryRun) {
-    console.log('Dry run mode, not updating files');
+    putSystemMessage('Dry run mode, not updating files');
   } else {
-    console.log('Update files');
+    putSystemMessage('Update files');
     await updateFiles(
       functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
       options,
     );
-    console.log('Initial updates applied');
+    putSystemMessage('Initial updates applied');
 
     if (abortSignal?.aborted) {
       throw new Error('Codegen iteration aborted after initial updates');
@@ -122,11 +124,11 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     // Check if lintCommand is specified in .genaicoderc
     if (rcConfig.lintCommand) {
       try {
-        console.log(`Executing lint command: ${rcConfig.lintCommand}`);
+        putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
         await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
-        console.log('Lint command executed successfully');
+        putSystemMessage('Lint command executed successfully');
       } catch (error) {
-        console.log('Lint command failed. Attempting to fix issues...');
+        putSystemMessage('Lint command failed. Attempting to fix issues...');
 
         // Prepare the lint error output for the second pass
         const firstLintError = error as { stdout: string; stderr: string };
@@ -137,7 +139,7 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
           firstLintError.stderr,
         );
 
-        console.log('Generating response for lint fixes');
+        putSystemMessage('Generating response for lint fixes');
         const lintFixFunctionCalls = (await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, {
           prompt: lintErrorPrompt,
           options: { ...options, considerAllFiles: true },
@@ -145,7 +147,7 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
 
-        console.log('Applying lint fixes');
+        putSystemMessage('Applying lint fixes');
         updateFiles(
           lintFixFunctionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
           options,
@@ -157,12 +159,12 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
 
         // Run lint command again to verify fixes
         try {
-          console.log(`Re-running lint command: ${rcConfig.lintCommand}`);
+          putSystemMessage(`Re-running lint command: ${rcConfig.lintCommand}`);
           await execPromise(rcConfig.lintCommand);
-          console.log('Lint command executed successfully after fixes');
+          putSystemMessage('Lint command executed successfully after fixes');
         } catch (secondLintError) {
           const error = secondLintError as { stdout: string; stderr: string };
-          console.log('Lint command still failing after fixes. Manual intervention may be required.');
+          putSystemMessage('Lint command still failing after fixes. Manual intervention may be required.');
           console.log('Lint errors:', error.stdout, error.stderr);
         }
       }

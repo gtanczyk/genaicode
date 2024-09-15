@@ -2,10 +2,10 @@ import { rcConfig } from '../../config.js';
 import { CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
+import { ContentProps } from '../../common/content-bus-types.js';
 
 interface CodegenResult {
   success: boolean;
-  output: string;
 }
 
 interface Question {
@@ -13,49 +13,31 @@ interface Question {
   text: string;
 }
 
-interface FunctionCall {
-  name: string;
-  args: Record<string, unknown>;
-}
-
-interface PromptHistoryItem {
-  prompt: string;
-  cost: number;
-}
-
 export class Service {
   private executionStatus: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
-  private currentPrompt: string | null = null;
-  private promptHistory: PromptHistoryItem[] = [];
   private currentQuestion: Question | null = null;
-  private codegenOutput: string = '';
   private askQuestionConversation: Array<{ id: string; question: string; answer: string }> = [];
-  private functionCalls: FunctionCall[] = [];
   private codegenOptions: CodegenOptions;
+  private content: ContentProps[] = [];
 
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
   }
 
   async executeCodegen(prompt: string, options: CodegenOptions): Promise<CodegenResult> {
-    this.currentPrompt = prompt;
     this.executionStatus = 'running';
     this.codegenOptions = { ...this.codegenOptions, ...options };
-    const cost = this.calculatePromptCost(prompt);
-    this.promptHistory.push({ prompt, cost });
 
-    await runCodegenWorker({ ...options, explicitPrompt: prompt, considerAllFiles: true });
-
-    this.executionStatus = 'completed';
-    this.codegenOutput = `Executed codegen for prompt: "${prompt}" with options: ${JSON.stringify(this.codegenOptions)}`;
-    this.functionCalls.push({
-      name: 'executeCodegen',
-      args: { prompt, options: this.codegenOptions },
-    });
+    try {
+      await runCodegenWorker({ ...options, explicitPrompt: prompt, considerAllFiles: true });
+      this.executionStatus = 'completed';
+    } catch (error) {
+      console.error('Error executing codegen:', error);
+      this.executionStatus = 'idle';
+    }
 
     return {
       success: true,
-      output: this.codegenOutput,
     };
   }
 
@@ -70,15 +52,10 @@ export class Service {
   async interruptExecution(): Promise<void> {
     abortController?.abort();
     this.executionStatus = 'idle';
-    this.currentPrompt = null;
   }
 
   async getExecutionStatus(): Promise<string> {
     return this.executionStatus;
-  }
-
-  async getPromptHistory(): Promise<PromptHistoryItem[]> {
-    return this.promptHistory;
   }
 
   async getCurrentQuestion(): Promise<Question | null> {
@@ -111,29 +88,20 @@ export class Service {
     }
   }
 
-  async getCodegenOutput(): Promise<string> {
-    return this.codegenOutput;
+  handleContent(content: ContentProps): void {
+    this.content.push(content);
   }
 
-  async getAskQuestionConversation(): Promise<Array<{ question: string; answer: string }>> {
-    return this.askQuestionConversation;
-  }
-
-  async getFunctionCalls(): Promise<FunctionCall[]> {
-    return this.functionCalls;
+  getContent(): ContentProps[] {
+    return this.content;
   }
 
   async getTotalCost(): Promise<number> {
-    return this.promptHistory.reduce((total, item) => total + item.cost, 0);
+    return this.content.reduce((total, item) => total + (item.cost ?? 0), 0);
   }
 
   getCodegenOptions() {
     return this.codegenOptions;
-  }
-
-  async updateCodegenOptions(options: Partial<CodegenOptions>): Promise<void> {
-    this.codegenOptions = { ...this.codegenOptions, ...options };
-    console.log('Updated CodegenOptions:', this.codegenOptions);
   }
 
   async getRcConfig(): Promise<RcConfig> {
@@ -151,12 +119,5 @@ export class Service {
       };
       checkQuestion();
     });
-  }
-
-  private calculatePromptCost(prompt: string): number {
-    // Simple mock implementation: cost is based on prompt length
-    const baseCost = 0.01; // $0.01 per token
-    const estimatedTokens = Math.ceil(prompt.length / 4); // Rough estimate: 1 token ≈ 4 characters
-    return parseFloat((baseCost * estimatedTokens).toFixed(4));
   }
 }

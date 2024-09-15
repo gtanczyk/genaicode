@@ -8,7 +8,6 @@ import { ChatInterface } from './components/chat-interface';
 import { InputArea } from './components/input-area';
 import { ThemeToggle } from './components/theme-toggle';
 import { InfoIcon } from './components/info-icon';
-import { CodegenOptionsPanel } from './components/codegen-options';
 import { lightTheme, darkTheme } from './theme/theme';
 
 const GlobalStyle = createGlobalStyle`
@@ -30,8 +29,6 @@ const GenAIcodeApp = () => {
     setIsExecuting,
     chatMessages,
     setChatMessages,
-    codegenExecutions,
-    setCodegenExecutions,
     currentQuestion,
     setCurrentQuestion,
     theme,
@@ -54,8 +51,6 @@ const GenAIcodeApp = () => {
       setIsExecuting,
       chatMessages,
       setChatMessages,
-      codegenExecutions,
-      setCodegenExecutions,
       setCurrentQuestion,
       codegenOptions,
       setCodegenOptions,
@@ -68,9 +63,8 @@ const GenAIcodeApp = () => {
       <GlobalStyle />
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
-        codegenOptions={<CodegenOptionsPanel onOptionsChange={handleOptionsChange} />}
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
-        chatInterface={<ChatInterface messages={chatMessages} codegenExecutions={codegenExecutions} />}
+        chatInterface={<ChatInterface messages={chatMessages} />}
         inputArea={
           <InputArea
             onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}

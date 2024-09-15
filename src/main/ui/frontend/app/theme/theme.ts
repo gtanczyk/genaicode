@@ -4,7 +4,9 @@ const lightTheme: DefaultTheme = {
   name: 'light',
   colors: {
     background: '#ffffff',
+    backgroundSecondary: '#f6f8fa',
     text: '#333333',
+    textSecondary: '#6a737d',
     primary: '#0366d6',
     secondary: '#6a737d',
     border: '#e1e4e8',
@@ -23,7 +25,9 @@ const darkTheme: DefaultTheme = {
   name: 'dark',
   colors: {
     background: '#1e1e1e',
+    backgroundSecondary: '#2d333b',
     text: '#d4d4d4',
+    textSecondary: '#8b949e',
     primary: '#58a6ff',
     secondary: '#8b949e',
     border: '#30363d',
@@ -46,7 +50,9 @@ declare module 'styled-components' {
     name: string;
     colors: {
       background: string;
+      backgroundSecondary: string;
       text: string;
+      textSecondary: string;
       primary: string;
       secondary: string;
       border: string;

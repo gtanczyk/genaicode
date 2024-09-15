@@ -2,6 +2,7 @@ import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.j
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: (
@@ -44,12 +45,15 @@ export async function executeStepAskQuestion(
       | undefined;
     if (askQuestionCall) {
       console.log('Assistant asks:', askQuestionCall.args);
+      if (askQuestionCall.args?.content) {
+        putAssistantMessage(askQuestionCall.args?.content);
+      }
 
       if (askQuestionCall.args?.stopCodegen) {
-        console.log('Assistant requested to stop code generation. Exiting...');
+        putSystemMessage('Assistant requested to stop code generation. Exiting...');
         return StepResult.BREAK;
       } else if (!askQuestionCall.args?.shouldPrompt) {
-        console.log('Proceeding with code generation.');
+        putSystemMessage('Proceeding with code generation.');
         break;
       }
 
@@ -73,6 +77,8 @@ export async function executeStepAskQuestion(
               : 'Permission request denied.'
             : await askUserForInput('Your answer', askQuestionCall.args?.content)
         : "Let's proceed with code generation.";
+
+      putUserMessage(userAnswer);
 
       if (permissionsRequested && askQuestionCall.args?.requestPermissions && userAnswer === 'Permissions granted.') {
         if (askQuestionCall.args?.requestPermissions.enableImagen) {

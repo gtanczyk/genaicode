@@ -9,7 +9,7 @@ import {
   resumeExecution,
   interruptExecution,
 } from '../api/api-client';
-import { ChatMessage, ChatMessageType, CodegenExecution } from '../common/types.js';
+import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 
 interface AppHandlersProps {
   currentPrompt: string;
@@ -18,8 +18,6 @@ interface AppHandlersProps {
   setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>;
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  codegenExecutions: CodegenExecution[];
-  setCodegenExecutions: React.Dispatch<React.SetStateAction<CodegenExecution[]>>;
   setCurrentQuestion: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>;
   codegenOptions: CodegenOptions;
   setCodegenOptions: React.Dispatch<React.SetStateAction<CodegenOptions>>;
@@ -34,8 +32,6 @@ export const AppHandlers = ({
   setIsExecuting,
   chatMessages,
   setChatMessages,
-  codegenExecutions,
-  setCodegenExecutions,
   setCurrentQuestion,
   codegenOptions,
   setCodegenOptions,
@@ -126,8 +122,6 @@ export const AppHandlers = ({
         ]);
         await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
-        await fetchCodegenData();
-        await fetchTotalCost();
       } catch (error) {
         console.error('Failed to submit answer:', error);
         setChatMessages((prev) => [
