@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { CodegenOptions } from '../../../../codegen-types';
 import {
   executeCodegen,
@@ -39,10 +39,12 @@ export const AppHandlers = ({
   fetchTotalCost,
 }: AppHandlersProps) => {
   const [executionAbortController, setExecutionAbortController] = useState<AbortController | null>(null);
+  const [isCodegenOngoing, setIsCodegenOngoing] = useState(false);
 
   const handleExecute = async (prompt: string) => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
+    setIsCodegenOngoing(true);
     const abortController = new AbortController();
     setExecutionAbortController(abortController);
 
@@ -108,6 +110,7 @@ export const AppHandlers = ({
       ]);
     } finally {
       setIsExecuting(false);
+      setIsCodegenOngoing(false);
       setExecutionAbortController(null);
     }
   };
@@ -122,6 +125,19 @@ export const AppHandlers = ({
         ]);
         await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
+        
+        // Add indicator for ongoing code execution
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `system_${Date.now()}`,
+            type: ChatMessageType.SYSTEM,
+            content: 'Continuing code execution...',
+            timestamp: new Date(),
+          },
+        ]);
+        
+        setIsCodegenOngoing(true);
       } catch (error) {
         console.error('Failed to submit answer:', error);
         setChatMessages((prev) => [
@@ -195,6 +211,7 @@ export const AppHandlers = ({
     try {
       await interruptExecution();
       setIsExecuting(false);
+      setIsCodegenOngoing(false);
       executionAbortController?.abort();
       setChatMessages((prev) => [
         ...prev,
@@ -239,5 +256,6 @@ export const AppHandlers = ({
     handleResume,
     handleInterrupt,
     handleOptionsChange,
+    isCodegenOngoing,
   };
 };

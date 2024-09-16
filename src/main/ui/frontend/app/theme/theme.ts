@@ -8,6 +8,7 @@ const lightTheme: DefaultTheme = {
     text: '#333333',
     textSecondary: '#6a737d',
     primary: '#0366d6',
+    primaryHover: '#0255b3',
     secondary: '#6a737d',
     border: '#e1e4e8',
     buttonBg: '#fafbfc',
@@ -18,6 +19,13 @@ const lightTheme: DefaultTheme = {
     inputText: '#24292e',
     codeBackground: '#f6f8fa',
     codeText: '#24292e',
+    systemMessageBackground: '#f0f4f8',
+    systemMessageText: '#57606a',
+    systemMessageBorder: '#d0d7de',
+    systemMessageTimestamp: '#8b949e',
+    disabled: '#d1d5da',
+    userMessageBackground: '#e1f0ff',
+    userMessageText: '#0366d6',
   },
 };
 
@@ -29,6 +37,7 @@ const darkTheme: DefaultTheme = {
     text: '#d4d4d4',
     textSecondary: '#8b949e',
     primary: '#58a6ff',
+    primaryHover: '#79b8ff',
     secondary: '#8b949e',
     border: '#30363d',
     buttonBg: '#21262d',
@@ -39,6 +48,13 @@ const darkTheme: DefaultTheme = {
     inputText: '#c9d1d9',
     codeBackground: '#161b22',
     codeText: '#c9d1d9',
+    systemMessageBackground: '#1c2128',
+    systemMessageText: '#8b949e',
+    systemMessageBorder: '#30363d',
+    systemMessageTimestamp: '#6e7681',
+    disabled: '#41464b',
+    userMessageBackground: '#1f4a7d',
+    userMessageText: '#58a6ff',
   },
 };
 
@@ -54,6 +70,7 @@ declare module 'styled-components' {
       text: string;
       textSecondary: string;
       primary: string;
+      primaryHover: string;
       secondary: string;
       border: string;
       buttonBg: string;
@@ -64,6 +81,13 @@ declare module 'styled-components' {
       inputText: string;
       codeBackground: string;
       codeText: string;
+      systemMessageBackground: string;
+      systemMessageText: string;
+      systemMessageBorder: string;
+      systemMessageTimestamp: string;
+      disabled: string;
+      userMessageBackground: string;
+      userMessageText: string;
     };
   }
 }

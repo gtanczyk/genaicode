@@ -7,56 +7,75 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
-  const uniqueMessages = useMemo(() => {
-    const seenIds = new Set();
-    return messages
-      .filter((message) => {
-        if (seenIds.has(message.id)) {
-          return false;
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  messages,
+}) => {
+  const mergedMessages = useMemo(() => {
+    const result: ChatMessage[] = [];
+    let currentSystemBlock: ChatMessage | null = null;
+
+    messages.forEach((message) => {
+      if (message.type === 'system') {
+        if (currentSystemBlock) {
+          currentSystemBlock.content += '\n' + message.content;
+          currentSystemBlock.timestamp = message.timestamp;
+        } else {
+          currentSystemBlock = { ...message };
+          result.push(currentSystemBlock);
         }
-        seenIds.add(message.id);
-        return true;
-      })
-      .reverse();
+      } else {
+        currentSystemBlock = null;
+        result.push(message);
+      }
+    });
+
+    return result.reverse();
   }, [messages]);
 
   return (
     <ChatContainer>
-      {uniqueMessages.map((message) => {
-        switch (message.type) {
-          case 'user':
-          case 'assistant':
-            return (
-              <MessageContainer key={message.id} data-type={message.type}>
-                <MessageBubble>
-                  <MessageHeader>{message.type === 'user' ? 'You' : 'Assistant'}</MessageHeader>
-                  <MessageContent>{message.content}</MessageContent>
-                  <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
-                </MessageBubble>
-              </MessageContainer>
-            );
-          case 'system':
-            return (
-              <SystemMessage key={message.id}>
-                <MessageContent>{message.content}</MessageContent>
-                <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
-              </SystemMessage>
-            );
-        }
-      })}
+      <MessagesContainer>
+        {mergedMessages.map((message, index) => {
+          switch (message.type) {
+            case 'user':
+            case 'assistant':
+              return (
+                <MessageContainer key={message.id} data-type={message.type}>
+                  <MessageBubble>
+                    <MessageHeader>{message.type === 'user' ? 'You' : 'Assistant'}</MessageHeader>
+                    <MessageContent>{message.content}</MessageContent>
+                    <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
+                  </MessageBubble>
+                </MessageContainer>
+              );
+            case 'system':
+              return (
+                <SystemMessageContainer key={message.id}>
+                  <SystemMessageContent>{message.content}</SystemMessageContent>
+                  <SystemMessageTimestamp>{message.timestamp.toLocaleString()}</SystemMessageTimestamp>
+                </SystemMessageContainer>
+              );
+          }
+        })}
+      </MessagesContainer>
     </ChatContainer>
   );
 };
 
 const ChatContainer = styled.div`
   display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: ${(props) => props.theme.colors.background};
+`;
+
+const MessagesContainer = styled.div`
+  display: flex;
   flex-direction: column-reverse;
   gap: 16px;
   padding: 16px;
   overflow-y: auto;
-  max-height: calc(100vh - 200px); // Adjust based on your layout
-  background-color: ${(props) => props.theme.colors.background};
+  flex-grow: 1;
 `;
 
 const MessageContainer = styled.div`
@@ -88,8 +107,11 @@ const MessageHeader = styled.div`
   margin-bottom: 4px;
 `;
 
-const MessageContent = styled.div`
+const MessageContent = styled.pre`
+  white-space: pre-wrap;
   word-wrap: break-word;
+  font-family: inherit;
+  margin: 0;
 `;
 
 const MessageTimestamp = styled.div`
@@ -99,12 +121,28 @@ const MessageTimestamp = styled.div`
   margin-top: 4px;
 `;
 
-const SystemMessage = styled.div`
-  background-color: ${(props) => props.theme.colors.backgroundSecondary};
-  color: ${(props) => props.theme.colors.textSecondary};
-  border: 1px solid ${(props) => props.theme.colors.border};
+const SystemMessageContainer = styled.div`
+  background-color: ${(props) => props.theme.colors.systemMessageBackground};
+  color: ${(props) => props.theme.colors.systemMessageText};
+  border: 1px solid ${(props) => props.theme.colors.systemMessageBorder};
   border-radius: 8px;
   padding: 8px 12px;
   margin: 8px 0;
   font-style: italic;
+  font-size: 0.9em;
+  opacity: 0.8;
+`;
+
+const SystemMessageContent = styled.pre`
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  margin: 0;
+`;
+
+const SystemMessageTimestamp = styled.div`
+  font-size: 0.8em;
+  color: ${(props) => props.theme.colors.systemMessageTimestamp};
+  text-align: right;
+  margin-top: 4px;
 `;

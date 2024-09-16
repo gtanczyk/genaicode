@@ -64,17 +64,24 @@ const GenAIcodeApp = () => {
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
-        chatInterface={<ChatInterface messages={chatMessages} />}
+        chatInterface={
+          <ChatInterface 
+            messages={chatMessages} 
+          />
+        }
         inputArea={
           <InputArea
             onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}
             onCancel={isExecuting ? handleInterrupt : undefined}
-            isExecuting={isExecuting && !currentQuestion}
+            isExecuting={isExecuting}
             placeholder={
               currentQuestion
                 ? "Enter your response to the assistant's question..."
                 : 'Enter your codegen prompt here...'
             }
+            onInterrupt={handleInterrupt}
+            onPause={handlePause}
+            onResume={handleResume}
           />
         }
       />

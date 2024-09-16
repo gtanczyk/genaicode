@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   getExecutionStatus,
   getCurrentQuestion,
@@ -11,9 +11,12 @@ import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-typ
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
+export type ExecutionStatus = 'idle' | 'running' | 'paused';
+
 export const AppState = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
+  const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string } | null>(null);
   const [theme, setTheme] = useState('dark');
@@ -48,6 +51,7 @@ export const AppState = () => {
     try {
       const status = await getExecutionStatus();
       setIsExecuting(status === 'running');
+      setExecutionStatus(status as ExecutionStatus);
     } catch (error) {
       console.error('Failed to check execution status:', error);
     }
@@ -103,6 +107,28 @@ export const AppState = () => {
     setChatMessages((prevMessages) => [...prevMessages, message]);
   }, []);
 
+  const mergedChatMessages = useMemo(() => {
+    const result: ChatMessage[] = [];
+    let currentSystemBlock: ChatMessage | null = null;
+
+    chatMessages.forEach((message) => {
+      if (message.type === ChatMessageType.SYSTEM) {
+        if (currentSystemBlock) {
+          currentSystemBlock.content += '\n' + message.content;
+          currentSystemBlock.timestamp = message.timestamp;
+        } else {
+          currentSystemBlock = { ...message, id: `system_${Date.now()}_${Math.random()}` };
+          result.push(currentSystemBlock);
+        }
+      } else {
+        currentSystemBlock = null;
+        result.push(message);
+      }
+    });
+
+    return result;
+  }, [chatMessages]);
+
   const handlePromptSubmit = useCallback(
     async (prompt: string) => {
       setCurrentPrompt(prompt);
@@ -113,6 +139,7 @@ export const AppState = () => {
         timestamp: new Date(),
       });
       setIsExecuting(true);
+      setExecutionStatus('running');
       // Here you would typically call your API to execute the codegen
       // After execution, you would update the state with the results
       // For now, we'll just add a placeholder assistant message
@@ -124,6 +151,7 @@ export const AppState = () => {
           timestamp: new Date(),
         });
         setIsExecuting(false);
+        setExecutionStatus('idle');
       }, 2000);
     },
     [addChatMessage],
@@ -151,7 +179,9 @@ export const AppState = () => {
     setCurrentPrompt,
     isExecuting,
     setIsExecuting,
-    chatMessages,
+    executionStatus,
+    setExecutionStatus,
+    chatMessages: mergedChatMessages,
     setChatMessages,
     currentQuestion,
     theme,

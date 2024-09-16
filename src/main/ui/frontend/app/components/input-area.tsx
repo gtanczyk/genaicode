@@ -6,9 +6,20 @@ interface InputAreaProps {
   onCancel?: () => void;
   isExecuting: boolean;
   placeholder?: string;
+  onInterrupt: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExecuting, placeholder }) => {
+export const InputArea: React.FC<InputAreaProps> = ({
+  onSubmit,
+  onCancel,
+  isExecuting,
+  placeholder,
+  onInterrupt,
+  onPause,
+  onResume
+}) => {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -16,7 +27,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExec
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
-  }, []);
+  }, [isExecuting]);
 
   const handleSubmit = () => {
     if (input.trim()) {
@@ -32,8 +43,8 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExec
     setInput('');
   };
 
-  const handleKeyUp = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSubmit();
     }
@@ -45,7 +56,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExec
         ref={textareaRef}
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        onKeyUp={handleKeyUp}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder || 'Enter your prompt or response here...'}
         disabled={isExecuting}
       />
@@ -57,6 +68,19 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, onCancel, isExec
           <CancelButton onClick={handleCancel} disabled={isExecuting}>
             Cancel
           </CancelButton>
+        )}
+        {isExecuting && (
+          <>
+            <ControlButton onClick={onInterrupt}>
+              Interrupt
+            </ControlButton>
+            <ControlButton onClick={onPause}>
+              Pause
+            </ControlButton>
+            <ControlButton onClick={onResume}>
+              Resume
+            </ControlButton>
+          </>
         )}
       </ButtonContainer>
     </InputContainer>
@@ -88,16 +112,20 @@ const StyledTextarea = styled.textarea`
     outline: none;
     border-color: ${(props) => props.theme.colors.primary};
   }
+
+  &:disabled {
+    background-color: ${(props) => props.theme.colors.disabled};
+    cursor: not-allowed;
+  }
 `;
 
 const ButtonContainer = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
 `;
 
-const SubmitButton = styled.button`
-  background-color: ${(props) => props.theme.colors.primary};
-  color: white;
+const Button = styled.button`
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -105,22 +133,37 @@ const SubmitButton = styled.button`
   cursor: pointer;
   transition: background-color 0.3s;
 
-  &:hover {
-    background-color: ${(props) => props.theme.colors.primary}dd;
-  }
-
   &:disabled {
-    background-color: ${(props) => props.theme.colors.secondary};
+    background-color: ${(props) => props.theme.colors.disabled};
     cursor: not-allowed;
   }
 `;
 
-const CancelButton = styled(SubmitButton)`
+const SubmitButton = styled(Button)`
+  background-color: ${(props) => props.theme.colors.primary};
+  color: ${(props) => props.theme.colors.buttonText};
+
+  &:hover:not(:disabled) {
+    background-color: ${(props) => props.theme.colors.primaryHover};
+  }
+`;
+
+const CancelButton = styled(Button)`
   background-color: ${(props) => props.theme.colors.buttonBg};
   color: ${(props) => props.theme.colors.buttonText};
   border: 1px solid ${(props) => props.theme.colors.border};
 
-  &:hover {
+  &:hover:not(:disabled) {
+    background-color: ${(props) => props.theme.colors.buttonHoverBg};
+  }
+`;
+
+const ControlButton = styled(Button)`
+  background-color: ${(props) => props.theme.colors.buttonBg};
+  color: ${(props) => props.theme.colors.buttonText};
+  border: 1px solid ${(props) => props.theme.colors.border};
+
+  &:hover:not(:disabled) {
     background-color: ${(props) => props.theme.colors.buttonHoverBg};
   }
 `;
