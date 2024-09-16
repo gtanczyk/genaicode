@@ -18,30 +18,33 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, cha
           {infoIcon}
         </IconContainer>
       </AppHeader>
-      <ChatContainer>{chatInterface}</ChatContainer>
-      <InputContainer>{inputArea}</InputContainer>
+      <MainContent>
+        <ChatContainer>{chatInterface}</ChatContainer>
+        <InputContainer>{inputArea}</InputContainer>
+      </MainContent>
     </AppContainer>
   );
 };
 
 const AppContainer = styled.div`
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
 `;
 
-const AppHeader = styled.div`
+const AppHeader = styled.header`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  padding: 20px 0;
 `;
 
 const AppTitle = styled.h1`
   color: ${({ theme }) => theme.colors.primary};
+  margin: 0;
 `;
 
 const IconContainer = styled.div`
@@ -49,11 +52,19 @@ const IconContainer = styled.div`
   gap: 10px;
 `;
 
+const MainContent = styled.main`
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0; // This is important for nested flex containers
+`;
+
 const ChatContainer = styled.div`
   flex-grow: 1;
+  overflow-y: auto;
   margin-bottom: 20px;
 `;
 
 const InputContainer = styled.div`
-  margin-top: auto;
+  flex-shrink: 0;
 `;
