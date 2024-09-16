@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { functionDefs } from '../prompt/function-calling.js';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { collectCost } from '../main/common/cost-collector.js';
 
 interface TokenUsage {
   inputTokens: number | undefined | null;
@@ -85,6 +86,8 @@ export function printTokenUsageAndCost(usage: TokenUsage, inputCostPerToken: num
   const outputCost = (usage.outputTokens ?? 0) * outputCostPerToken;
   const totalCost = inputCost + outputCost;
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
+
+  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
 }
 
 /**

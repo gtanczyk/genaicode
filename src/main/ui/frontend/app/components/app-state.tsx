@@ -174,6 +174,16 @@ export const AppState = () => {
     [currentQuestion, addChatMessage],
   );
 
+  const updateCodegenOptions = useCallback((newOptions: CodegenOptions) => {
+    setCodegenOptions(newOptions);
+    addChatMessage({
+      id: `system_${Date.now()}`,
+      type: ChatMessageType.SYSTEM,
+      content: 'Codegen options updated',
+      timestamp: new Date(),
+    });
+  }, [addChatMessage]);
+
   return {
     currentPrompt,
     setCurrentPrompt,
@@ -198,5 +208,6 @@ export const AppState = () => {
     addChatMessage,
     setCodegenOptions,
     setCurrentQuestion,
+    updateCodegenOptions,
   };
 };

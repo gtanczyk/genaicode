@@ -41,6 +41,7 @@ const GenAIcodeApp = () => {
     checkCurrentQuestion,
     fetchCodegenData,
     fetchTotalCost,
+    updateCodegenOptions,
   } = AppState();
 
   const { handleExecute, handleQuestionSubmit, handlePause, handleResume, handleInterrupt, handleOptionsChange } =
@@ -53,7 +54,7 @@ const GenAIcodeApp = () => {
       setChatMessages,
       setCurrentQuestion,
       codegenOptions,
-      setCodegenOptions,
+      setCodegenOptions: updateCodegenOptions,
       fetchCodegenData,
       fetchTotalCost,
     });
@@ -64,26 +65,21 @@ const GenAIcodeApp = () => {
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
-        chatInterface={
-          <ChatInterface 
-            messages={chatMessages} 
-          />
-        }
+        chatInterface={<ChatInterface messages={chatMessages} />}
         inputArea={
           <InputArea
             onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}
             onCancel={isExecuting ? handleInterrupt : undefined}
             isExecuting={isExecuting}
-            placeholder={
-              currentQuestion
-                ? "Enter your response to the assistant's question..."
-                : 'Enter your codegen prompt here...'
-            }
+            currentQuestion={currentQuestion?.text}
             onInterrupt={handleInterrupt}
             onPause={handlePause}
             onResume={handleResume}
+            codegenOptions={codegenOptions}
+            onOptionsChange={handleOptionsChange}
           />
         }
+        totalCost={totalCost}
       />
     </ThemeProvider>
   );
