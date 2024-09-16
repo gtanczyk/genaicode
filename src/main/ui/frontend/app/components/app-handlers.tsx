@@ -20,7 +20,7 @@ interface AppHandlersProps {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setCurrentQuestion: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>;
   codegenOptions: CodegenOptions;
-  setCodegenOptions: React.Dispatch<React.SetStateAction<CodegenOptions>>;
+  setCodegenOptions: (options: CodegenOptions) => void;
   fetchCodegenData: () => Promise<void>;
   fetchTotalCost: () => Promise<void>;
 }
@@ -125,7 +125,7 @@ export const AppHandlers = ({
         ]);
         await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
-        
+
         // Add indicator for ongoing code execution
         setChatMessages((prev) => [
           ...prev,
@@ -136,7 +136,7 @@ export const AppHandlers = ({
             timestamp: new Date(),
           },
         ]);
-        
+
         setIsCodegenOngoing(true);
       } catch (error) {
         console.error('Failed to submit answer:', error);
@@ -236,18 +236,21 @@ export const AppHandlers = ({
     }
   };
 
-  const handleOptionsChange = (newOptions: CodegenOptions) => {
-    setCodegenOptions(newOptions);
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: `system_${Date.now()}`,
-        type: ChatMessageType.SYSTEM,
-        content: 'Codegen options updated',
-        timestamp: new Date(),
-      },
-    ]);
-  };
+  const handleOptionsChange = useCallback(
+    (newOptions: CodegenOptions) => {
+      setCodegenOptions(newOptions);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Codegen options updated',
+          timestamp: new Date(),
+        },
+      ]);
+    },
+    [setCodegenOptions, setChatMessages],
+  );
 
   return {
     handleExecute,

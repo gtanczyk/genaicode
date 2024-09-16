@@ -1,26 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styled from 'styled-components';
+import { CodegenOptions } from '../../../../codegen-types';
+import { CodegenOptionsForm } from './codegen-options';
 
 interface InputAreaProps {
   onSubmit: (input: string) => void;
   onCancel?: () => void;
   isExecuting: boolean;
-  placeholder?: string;
+  currentQuestion: string | undefined;
   onInterrupt: () => void;
   onPause: () => void;
   onResume: () => void;
+  codegenOptions: CodegenOptions;
+  onOptionsChange: (newOptions: CodegenOptions) => void;
 }
 
 export const InputArea: React.FC<InputAreaProps> = ({
   onSubmit,
   onCancel,
   isExecuting,
-  placeholder,
+  currentQuestion,
   onInterrupt,
   onPause,
-  onResume
+  onResume,
+  codegenOptions,
+  onOptionsChange,
 }) => {
   const [input, setInput] = useState('');
+  const [showOptions, setShowOptions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -50,6 +57,10 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
   };
 
+  const toggleOptions = () => {
+    setShowOptions(!showOptions);
+  };
+
   return (
     <InputContainer>
       <StyledTextarea
@@ -57,11 +68,13 @@ export const InputArea: React.FC<InputAreaProps> = ({
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder || 'Enter your prompt or response here...'}
-        disabled={isExecuting}
+        placeholder={
+          currentQuestion ? "Enter your response to the assistant's question..." : 'Enter your codegen prompt here...'
+        }
+        disabled={isExecuting && !currentQuestion}
       />
       <ButtonContainer>
-        <SubmitButton onClick={handleSubmit} disabled={isExecuting || !input.trim()}>
+        <SubmitButton onClick={handleSubmit} disabled={(isExecuting && !currentQuestion) || !input.trim()}>
           Submit
         </SubmitButton>
         {onCancel && (
@@ -71,18 +84,22 @@ export const InputArea: React.FC<InputAreaProps> = ({
         )}
         {isExecuting && (
           <>
-            <ControlButton onClick={onInterrupt}>
-              Interrupt
-            </ControlButton>
-            <ControlButton onClick={onPause}>
-              Pause
-            </ControlButton>
-            <ControlButton onClick={onResume}>
-              Resume
-            </ControlButton>
+            <ControlButton onClick={onInterrupt}>Interrupt</ControlButton>
+            <ControlButton onClick={onPause}>Pause</ControlButton>
+            <ControlButton onClick={onResume}>Resume</ControlButton>
           </>
         )}
+        <OptionsToggle onClick={toggleOptions}>
+          {showOptions ? 'Hide Options' : 'Show Options'}
+        </OptionsToggle>
       </ButtonContainer>
+      {showOptions && (
+        <CodegenOptionsForm
+          options={codegenOptions}
+          onOptionsChange={onOptionsChange}
+          disabled={isExecuting}
+        />
+      )}
     </InputContainer>
   );
 };
@@ -123,6 +140,7 @@ const ButtonContainer = styled.div`
   display: flex;
   justify-content: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const Button = styled.button`
@@ -162,6 +180,17 @@ const ControlButton = styled(Button)`
   background-color: ${(props) => props.theme.colors.buttonBg};
   color: ${(props) => props.theme.colors.buttonText};
   border: 1px solid ${(props) => props.theme.colors.border};
+
+  &:hover:not(:disabled) {
+    background-color: ${(props) => props.theme.colors.buttonHoverBg};
+  }
+`;
+
+const OptionsToggle = styled(Button)`
+  background-color: ${(props) => props.theme.colors.buttonBg};
+  color: ${(props) => props.theme.colors.buttonText};
+  border: 1px solid ${(props) => props.theme.colors.border};
+  margin-left: auto;
 
   &:hover:not(:disabled) {
     background-color: ${(props) => props.theme.colors.buttonHoverBg};

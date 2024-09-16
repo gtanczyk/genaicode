@@ -1,22 +1,27 @@
 import React, { ReactNode } from 'react';
 import styled from 'styled-components';
+import { CostDisplay } from './cost-display';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
   infoIcon: ReactNode;
   chatInterface: ReactNode;
   inputArea: ReactNode;
+  totalCost: number;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea }) => {
+export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea, totalCost }) => {
   return (
     <AppContainer>
       <AppHeader>
         <AppTitle>GenAIcode</AppTitle>
-        <IconContainer>
-          {themeToggle}
-          {infoIcon}
-        </IconContainer>
+        <HeaderRightSection>
+          <CostDisplay totalCost={totalCost} />
+          <IconContainer>
+            {themeToggle}
+            {infoIcon}
+          </IconContainer>
+        </HeaderRightSection>
       </AppHeader>
       <MainContent>
         <ChatContainer>{chatInterface}</ChatContainer>
@@ -45,6 +50,11 @@ const AppHeader = styled.header`
 const AppTitle = styled.h1`
   color: ${({ theme }) => theme.colors.primary};
   margin: 0;
+`;
+
+const HeaderRightSection = styled.div`
+  display: flex;
+  align-items: center;
 `;
 
 const IconContainer = styled.div`

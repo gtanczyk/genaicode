@@ -3,6 +3,7 @@ import { CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 import { ContentProps } from '../../common/content-bus-types.js';
+import { getCollectedCosts } from '../../common/cost-collector.js';
 
 interface CodegenResult {
   success: boolean;
@@ -29,7 +30,7 @@ export class Service {
     this.codegenOptions = { ...this.codegenOptions, ...options };
 
     try {
-      await runCodegenWorker({ ...options, explicitPrompt: prompt, considerAllFiles: true });
+      await runCodegenWorker({ ...this.codegenOptions, explicitPrompt: prompt, considerAllFiles: true });
       this.executionStatus = 'completed';
     } catch (error) {
       console.error('Error executing codegen:', error);
@@ -97,10 +98,10 @@ export class Service {
   }
 
   async getTotalCost(): Promise<number> {
-    return this.content.reduce((total, item) => total + (item.cost ?? 0), 0);
+    return getCollectedCosts().reduce((total, item) => total + (item.cost ?? 0), 0);
   }
 
-  getCodegenOptions() {
+  getCodegenOptions(): CodegenOptions {
     return this.codegenOptions;
   }
 

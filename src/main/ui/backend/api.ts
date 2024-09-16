@@ -2,6 +2,7 @@ import express from 'express';
 import { rcConfig as globalRcConfig } from '../../config.js';
 import { validateCodegenOptions } from './api-utils.js';
 import { Service } from './service.js';
+import { CodegenOptions } from '../../codegen-types.js';
 
 export function createRouter(service: Service) {
   const router = express.Router();
@@ -20,7 +21,7 @@ export function createRouter(service: Service) {
         return res.status(400).json({ errors: validationErrors });
       }
 
-      const result = await service.executeCodegen(prompt, options);
+      const result = await service.executeCodegen(prompt, options as CodegenOptions);
       res.json({ result });
     } catch (error) {
       console.error('Error executing codegen:', error);

@@ -12,6 +12,5 @@ export interface ChatMessage {
 }
 
 export type ContentProps = {
-  cost?: number;
   message?: ChatMessage;
 };
