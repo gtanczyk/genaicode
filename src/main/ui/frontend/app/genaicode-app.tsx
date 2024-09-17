@@ -1,5 +1,5 @@
 import 'react';
-import { ThemeProvider, createGlobalStyle } from 'styled-components';
+import { ThemeProvider } from 'styled-components';
 import { lightTheme, darkTheme } from './theme/theme.js';
 import { AppLayout } from './components/app-layout.js';
 import { AppState } from './components/app-state.js';
@@ -10,34 +10,8 @@ import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
 import { ProgressIndicator } from './components/progress-indicator.js';
 import { QuestionHandler } from './components/question-handler.js';
-
-const GlobalStyle = createGlobalStyle`
-  body {
-    background-color: ${({ theme }) => theme.colors.background};
-    color: ${({ theme }) => theme.colors.text};
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;    
-    background-color: ${({ theme }) => theme.colors.pageBackground};    
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    transition: all 0.3s ease;
-    opacity: 0.1;
-    background-image: url(${(props) => props.theme.backgroundImage});
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    z-index: -1;
-  }
-`;
+import { useEffect } from 'react';
+import { GlobalStyle } from './theme/global-style.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -58,6 +32,8 @@ const GenAIcodeApp = () => {
     fetchTotalCost,
     updateCodegenOptions,
     setLastFinishedExecutionId,
+    startPolling,
+    stopPolling,
   } = AppState();
 
   const {
@@ -82,6 +58,16 @@ const GenAIcodeApp = () => {
     fetchTotalCost,
     setLastFinishedExecutionId,
   });
+
+  useEffect(() => {
+    // Start polling when the app loads
+    startPolling();
+
+    // Stop polling when the component unmounts
+    return () => {
+      stopPolling();
+    };
+  }, [startPolling, stopPolling]);
 
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>

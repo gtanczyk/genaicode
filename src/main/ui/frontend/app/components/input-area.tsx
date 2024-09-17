@@ -114,6 +114,7 @@ const StyledTextarea = styled.textarea`
   background-color: ${(props) => props.theme.colors.inputBg};
   color: ${(props) => props.theme.colors.inputText};
   margin-bottom: 8px;
+  box-sizing: border-box;
 
   &:focus {
     outline: none;

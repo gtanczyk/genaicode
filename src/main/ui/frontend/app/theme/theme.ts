@@ -37,7 +37,7 @@ const lightTheme: DefaultTheme = {
 const darkTheme: DefaultTheme = {
   name: 'dark',
   colors: {
-    background: '#1e1e1eaa',
+    background: '#00000055',
     pageBackground: '#1e1e1e',
     backgroundSecondary: '#2d333b',
     text: '#d4d4d4',
