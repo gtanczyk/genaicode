@@ -38,7 +38,7 @@ export const interruptExecution = async (): Promise<void> => {
   await api.post('/interrupt-execution');
 };
 
-export const getCurrentQuestion = async (): Promise<{ id: string; text: string } | null> => {
+export const getCurrentQuestion = async (): Promise<{ id: string; text: string; isConfirmation: boolean } | null> => {
   const response = await api.get('/current-question');
   return response.data.question;
 };

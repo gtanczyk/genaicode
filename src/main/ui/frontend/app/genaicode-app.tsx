@@ -1,4 +1,4 @@
-import React from 'react';
+import 'react';
 import { ThemeProvider, createGlobalStyle } from 'styled-components';
 import { lightTheme, darkTheme } from './theme/theme.js';
 import { AppLayout } from './components/app-layout.js';
@@ -9,6 +9,7 @@ import { InputArea } from './components/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
 import { ProgressIndicator } from './components/progress-indicator.js';
+import { QuestionHandler } from './components/question-handler.js';
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -16,8 +17,25 @@ const GlobalStyle = createGlobalStyle`
     color: ${({ theme }) => theme.colors.text};
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 0;    
+    background-color: ${({ theme }) => theme.colors.pageBackground};    
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     transition: all 0.3s ease;
+    opacity: 0.1;
+    background-image: url(${(props) => props.theme.backgroundImage});
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    z-index: -1;
   }
 `;
 
@@ -34,11 +52,8 @@ const GenAIcodeApp = () => {
     theme,
     totalCost,
     codegenOptions,
-    setCodegenOptions,
     rcConfig,
     toggleTheme,
-    checkExecutionStatus,
-    checkCurrentQuestion,
     fetchCodegenData,
     fetchTotalCost,
     updateCodegenOptions,
@@ -81,17 +96,20 @@ const GenAIcodeApp = () => {
           </>
         }
         inputArea={
-          <InputArea
-            onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}
-            onCancel={isExecuting ? handleInterrupt : undefined}
-            isExecuting={isExecuting}
-            currentQuestion={currentQuestion?.text}
-            onInterrupt={handleInterrupt}
-            onPause={handlePause}
-            onResume={handleResume}
-            codegenOptions={codegenOptions}
-            onOptionsChange={handleOptionsChange}
-          />
+          currentQuestion ? (
+            <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} />
+          ) : (
+            <InputArea
+              onSubmit={handleExecute}
+              onCancel={isExecuting ? handleInterrupt : undefined}
+              isExecuting={isExecuting}
+              onInterrupt={handleInterrupt}
+              onPause={handlePause}
+              onResume={handleResume}
+              codegenOptions={codegenOptions}
+              onOptionsChange={handleOptionsChange}
+            />
+          )
         }
         totalCost={totalCost}
       />

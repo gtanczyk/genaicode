@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { CodegenOptions, AiServiceType } from '../../../../codegen-types.js';
+import { CodegenOptions } from '../../../../codegen-types.js';
 
 interface CodegenOptionsFormProps {
   options: CodegenOptions;

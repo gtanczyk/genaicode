@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getExecutionStatus,
   getCurrentQuestion,
@@ -18,7 +18,9 @@ export const AppState = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string } | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string; isConfirmation: boolean } | null>(
+    null,
+  );
   const [theme, setTheme] = useState('dark');
   const [totalCost, setTotalCost] = useState(0);
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);

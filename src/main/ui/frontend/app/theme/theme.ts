@@ -1,9 +1,13 @@
 import { DefaultTheme } from 'styled-components';
 
+import backgroundLight from '../../../../../../media/logo.png';
+import backgroundDark from '../../../../../../media/logo-dark.png';
+
 const lightTheme: DefaultTheme = {
   name: 'light',
   colors: {
-    background: '#ffffff',
+    background: '#ffffffaa',
+    pageBackground: '#ffffff',
     backgroundSecondary: '#f6f8fa',
     text: '#333333',
     textSecondary: '#6a737d',
@@ -27,12 +31,14 @@ const lightTheme: DefaultTheme = {
     userMessageBackground: '#e1f0ff',
     userMessageText: '#0366d6',
   },
+  backgroundImage: backgroundLight,
 };
 
 const darkTheme: DefaultTheme = {
   name: 'dark',
   colors: {
-    background: '#1e1e1e',
+    background: '#1e1e1eaa',
+    pageBackground: '#1e1e1e',
     backgroundSecondary: '#2d333b',
     text: '#d4d4d4',
     textSecondary: '#8b949e',
@@ -56,6 +62,7 @@ const darkTheme: DefaultTheme = {
     userMessageBackground: '#1f4a7d',
     userMessageText: '#58a6ff',
   },
+  backgroundImage: backgroundDark,
 };
 
 export { lightTheme, darkTheme };
