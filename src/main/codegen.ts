@@ -79,7 +79,11 @@ export async function runCodegen(): Promise<void> {
   }
 }
 
-export async function runCodegenIteration(options: CodegenOptions, abortSignal?: AbortSignal) {
+export async function runCodegenIteration(
+  options: CodegenOptions,
+  abortSignal?: AbortSignal,
+  waitIfPaused: () => Promise<void> = () => Promise.resolve(),
+) {
   putUserMessage(options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.');
 
   if (rcConfig.lintCommand && !options.disableInitialLint) {
@@ -103,9 +107,18 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     throw new Error('Codegen iteration aborted');
   }
 
+  await waitIfPaused();
+
   putSystemMessage('Generating response');
-  const functionCalls = await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(options));
+  const functionCalls = await promptService(
+    GENERATE_CONTENT_FNS,
+    GENERATE_IMAGE_FNS,
+    getCodeGenPrompt(options),
+    waitIfPaused,
+  );
   console.log('Received function calls:', functionCalls);
+
+  await waitIfPaused();
 
   if (options.dryRun) {
     putSystemMessage('Dry run mode, not updating files');
@@ -120,6 +133,8 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
     if (abortSignal?.aborted) {
       throw new Error('Codegen iteration aborted after initial updates');
     }
+
+    await waitIfPaused();
 
     // Check if lintCommand is specified in .genaicoderc
     if (rcConfig.lintCommand) {
@@ -140,12 +155,19 @@ export async function runCodegenIteration(options: CodegenOptions, abortSignal?:
         );
 
         putSystemMessage('Generating response for lint fixes');
-        const lintFixFunctionCalls = (await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, {
-          prompt: lintErrorPrompt,
-          options: { ...options, considerAllFiles: true },
-        })) as FunctionCall[];
+        const lintFixFunctionCalls = (await promptService(
+          GENERATE_CONTENT_FNS,
+          GENERATE_IMAGE_FNS,
+          {
+            prompt: lintErrorPrompt,
+            options: { ...options, considerAllFiles: true },
+          },
+          waitIfPaused,
+        )) as FunctionCall[];
 
         console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
+
+        await waitIfPaused();
 
         putSystemMessage('Applying lint fixes');
         updateFiles(

@@ -6,12 +6,14 @@ import {
   getDefaultCodegenOptions,
   getRcConfig,
   getContent,
+  pauseExecution,
+  resumeExecution,
 } from '../api/api-client.js';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
-export type ExecutionStatus = 'idle' | 'executing';
+export type ExecutionStatus = 'idle' | 'executing' | 'paused';
 
 const POLLING_INTERVAL = 5000; // 5 seconds
 
@@ -58,9 +60,8 @@ export const AppState = () => {
   const checkExecutionStatus = async () => {
     try {
       const status = await getExecutionStatus();
-      const isExecuting = status === 'executing';
-      setIsExecuting(isExecuting);
-      setExecutionStatus(isExecuting ? 'executing' : 'idle');
+      setIsExecuting(status !== 'idle');
+      setExecutionStatus(status);
     } catch (error) {
       console.error('Failed to check execution status:', error);
     }
@@ -216,6 +217,36 @@ export const AppState = () => {
     }
   }, [isPolling]);
 
+  const handlePauseExecution = useCallback(async () => {
+    try {
+      await pauseExecution();
+      setExecutionStatus('paused');
+      addChatMessage({
+        id: `system_${Date.now()}`,
+        type: ChatMessageType.SYSTEM,
+        content: 'Execution paused',
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error('Failed to pause execution:', error);
+    }
+  }, [addChatMessage]);
+
+  const handleResumeExecution = useCallback(async () => {
+    try {
+      await resumeExecution();
+      setExecutionStatus('executing');
+      addChatMessage({
+        id: `system_${Date.now()}`,
+        type: ChatMessageType.SYSTEM,
+        content: 'Execution resumed',
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error('Failed to resume execution:', error);
+    }
+  }, [addChatMessage]);
+
   return {
     currentPrompt,
     setCurrentPrompt,
@@ -248,5 +279,7 @@ export const AppState = () => {
     startPolling,
     stopPolling,
     isPolling,
+    handlePauseExecution,
+    handleResumeExecution,
   };
 };

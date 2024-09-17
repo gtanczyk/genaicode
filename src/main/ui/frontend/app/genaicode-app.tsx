@@ -19,6 +19,7 @@ const GenAIcodeApp = () => {
     setCurrentPrompt,
     isExecuting,
     setIsExecuting,
+    executionStatus,
     setExecutionStatus,
     chatMessages,
     setChatMessages,
@@ -35,6 +36,8 @@ const GenAIcodeApp = () => {
     setLastFinishedExecutionId,
     startPolling,
     stopPolling,
+    handlePauseExecution,
+    handleResumeExecution,
   } = AppState();
 
   const { handleExecute, handleQuestionSubmit, handleInterrupt, handleOptionsChange } = AppHandlers({
@@ -63,6 +66,14 @@ const GenAIcodeApp = () => {
     };
   }, [startPolling, stopPolling]);
 
+  const handlePauseResume = () => {
+    if (executionStatus === 'paused') {
+      handleResumeExecution();
+    } else {
+      handlePauseExecution();
+    }
+  };
+
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
       <GlobalStyle />
@@ -77,7 +88,13 @@ const GenAIcodeApp = () => {
         }
         inputArea={
           isExecuting ? (
-            <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} onInterrupt={handleInterrupt} />
+            <QuestionHandler 
+              onSubmit={handleQuestionSubmit} 
+              question={currentQuestion} 
+              onInterrupt={handleInterrupt}
+              onPauseResume={handlePauseResume}
+              executionStatus={executionStatus}
+            />
           ) : (
             <InputArea
               onSubmit={handleExecute}

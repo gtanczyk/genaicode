@@ -4,10 +4,18 @@ import styled from 'styled-components';
 interface QuestionHandlerProps {
   onSubmit: (answer: string) => void;
   onInterrupt: () => void;
+  onPauseResume: () => void;
   question: { id: string; text: string; isConfirmation: boolean } | null;
+  executionStatus: 'idle' | 'executing' | 'paused';
 }
 
-export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, onInterrupt, question }) => {
+export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
+  onSubmit,
+  onInterrupt,
+  onPauseResume,
+  question,
+  executionStatus,
+}) => {
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +43,8 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, onIn
     }
   };
 
+  const isPaused = executionStatus === 'paused';
+
   return (
     <HandlerContainer>
       {question ? (
@@ -61,7 +71,12 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, onIn
           </AnswerForm>
         )
       ) : (
-        <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
+        <ConfirmationButtons>
+          <PauseResumeButton onClick={onPauseResume} isPaused={isPaused}>
+            {isPaused ? 'Resume' : 'Pause'}
+          </PauseResumeButton>
+          <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
+        </ConfirmationButtons>
       )}
       {error && <ErrorMessage>{error}</ErrorMessage>}
     </HandlerContainer>
@@ -142,6 +157,14 @@ const InterruptButton = styled(Button)`
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.error}dd;
+  }
+`;
+
+const PauseResumeButton = styled(Button)<{ isPaused: boolean }>`
+  background-color: ${({ theme, isPaused }) => (isPaused ? theme.colors.warning : theme.colors.info)};
+
+  &:hover {
+    background-color: ${({ theme, isPaused }) => (isPaused ? theme.colors.warning : theme.colors.info)}dd;
   }
 `;
 

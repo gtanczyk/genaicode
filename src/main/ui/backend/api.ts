@@ -61,6 +61,28 @@ export function createRouter(service: Service) {
     }
   });
 
+  // Pause execution
+  router.post('/pause-execution', async (req, res) => {
+    try {
+      await service.pauseExecution();
+      res.json({ message: 'Execution paused successfully' });
+    } catch (error) {
+      console.error('Error pausing execution:', error);
+      res.status(500).json({ error: 'An error occurred while pausing execution' });
+    }
+  });
+
+  // Resume execution
+  router.post('/resume-execution', async (req, res) => {
+    try {
+      await service.resumeExecution();
+      res.json({ message: 'Execution resumed successfully' });
+    } catch (error) {
+      console.error('Error resuming execution:', error);
+      res.status(500).json({ error: 'An error occurred while resuming execution' });
+    }
+  });
+
   // Get current question
   router.get('/current-question', async (req, res) => {
     try {

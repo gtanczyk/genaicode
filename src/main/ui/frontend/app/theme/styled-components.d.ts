@@ -14,6 +14,8 @@ declare module 'styled-components' {
       primaryHover: string;
       secondary: string;
       error: string;
+      warning: string;
+      info: string;
       border: string;
       buttonBg: string;
       buttonText: string;

@@ -6,6 +6,8 @@ import {
   getCurrentQuestion,
   answerQuestion,
   interruptExecution,
+  pauseExecution,
+  resumeExecution,
 } from '../api/api-client.js';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 
@@ -14,7 +16,7 @@ interface AppHandlersProps {
   setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>;
   isExecuting: boolean;
   setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>;
-  setExecutionStatus: React.Dispatch<React.SetStateAction<'executing' | 'idle'>>;
+  setExecutionStatus: React.Dispatch<React.SetStateAction<'executing' | 'idle' | 'paused'>>;
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setCurrentQuestion: React.Dispatch<
@@ -78,6 +80,7 @@ export const AppHandlers = ({
     try {
       await interruptExecution();
       setIsExecuting(false);
+      setExecutionStatus('idle');
       setCurrentQuestion(null);
       setChatMessages((prev) => [
         ...prev,
@@ -118,10 +121,66 @@ export const AppHandlers = ({
     [setCodegenOptions, setChatMessages],
   );
 
+  const handlePauseExecution = useCallback(async () => {
+    try {
+      await pauseExecution();
+      setExecutionStatus('paused');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Execution paused',
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (error) {
+      console.error('Failed to pause execution:', error);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: `Error pausing execution: ${error}`,
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [setExecutionStatus, setChatMessages]);
+
+  const handleResumeExecution = useCallback(async () => {
+    try {
+      await resumeExecution();
+      setExecutionStatus('executing');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Execution resumed',
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (error) {
+      console.error('Failed to resume execution:', error);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: `Error resuming execution: ${error}`,
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [setExecutionStatus, setChatMessages]);
+
   return {
     handleExecute,
     handleQuestionSubmit,
     handleInterrupt,
     handleOptionsChange,
+    handlePauseExecution,
+    handleResumeExecution,
   };
 };
