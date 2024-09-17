@@ -9,8 +9,10 @@ export interface ChatMessage {
   type: ChatMessageType;
   content: string;
   timestamp: Date;
+  data?: unknown;
 }
 
 export type ContentProps = {
   message?: ChatMessage;
+  data?: unknown;
 };

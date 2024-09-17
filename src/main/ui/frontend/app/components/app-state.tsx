@@ -23,6 +23,7 @@ export const AppState = () => {
   const [totalCost, setTotalCost] = useState(0);
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
   const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
+  const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -70,7 +71,14 @@ export const AppState = () => {
     try {
       const content = await getContent();
 
-      setChatMessages(content.filter((content) => !!content.message).map((content) => content.message!));
+      setChatMessages(
+        content
+          .filter((content) => !!content.message)
+          .map((content) => ({
+            ...content.message!,
+            data: content.data,
+          })),
+      );
     } catch (error) {
       console.error('Failed to fetch codegen data:', error);
     }
@@ -106,28 +114,6 @@ export const AppState = () => {
   const addChatMessage = useCallback((message: ChatMessage) => {
     setChatMessages((prevMessages) => [...prevMessages, message]);
   }, []);
-
-  const mergedChatMessages = useMemo(() => {
-    const result: ChatMessage[] = [];
-    let currentSystemBlock: ChatMessage | null = null;
-
-    chatMessages.forEach((message) => {
-      if (message.type === ChatMessageType.SYSTEM) {
-        if (currentSystemBlock) {
-          currentSystemBlock.content += '\n' + message.content;
-          currentSystemBlock.timestamp = message.timestamp;
-        } else {
-          currentSystemBlock = { ...message, id: `system_${Date.now()}_${Math.random()}` };
-          result.push(currentSystemBlock);
-        }
-      } else {
-        currentSystemBlock = null;
-        result.push(message);
-      }
-    });
-
-    return result;
-  }, [chatMessages]);
 
   const handlePromptSubmit = useCallback(
     async (prompt: string) => {
@@ -174,15 +160,30 @@ export const AppState = () => {
     [currentQuestion, addChatMessage],
   );
 
-  const updateCodegenOptions = useCallback((newOptions: CodegenOptions) => {
-    setCodegenOptions(newOptions);
-    addChatMessage({
-      id: `system_${Date.now()}`,
-      type: ChatMessageType.SYSTEM,
-      content: 'Codegen options updated',
-      timestamp: new Date(),
+  const updateCodegenOptions = useCallback(
+    (newOptions: CodegenOptions) => {
+      setCodegenOptions(newOptions);
+      addChatMessage({
+        id: `system_${Date.now()}`,
+        type: ChatMessageType.SYSTEM,
+        content: 'Codegen options updated',
+        timestamp: new Date(),
+      });
+    },
+    [addChatMessage],
+  );
+
+  const toggleDataVisibility = useCallback((id: string) => {
+    setVisibleDataIds((prevIds) => {
+      const newIds = new Set(prevIds);
+      if (newIds.has(id)) {
+        newIds.delete(id);
+      } else {
+        newIds.add(id);
+      }
+      return newIds;
     });
-  }, [addChatMessage]);
+  }, []);
 
   return {
     currentPrompt,
@@ -191,13 +192,14 @@ export const AppState = () => {
     setIsExecuting,
     executionStatus,
     setExecutionStatus,
-    chatMessages: mergedChatMessages,
+    chatMessages,
     setChatMessages,
     currentQuestion,
     theme,
     totalCost,
     codegenOptions,
     rcConfig,
+    visibleDataIds,
     toggleTheme,
     checkExecutionStatus,
     checkCurrentQuestion,
@@ -209,5 +211,6 @@ export const AppState = () => {
     setCodegenOptions,
     setCurrentQuestion,
     updateCodegenOptions,
+    toggleDataVisibility,
   };
 };

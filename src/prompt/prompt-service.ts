@@ -24,6 +24,7 @@ import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
 import { executeStepGenerateImage } from './steps/step-generate-image.js';
 import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
+import { putSystemMessage } from '../main/common/content-bus.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -100,7 +101,7 @@ export async function promptService(
 
   if (codegenSummaryRequest) {
     // Second stage: for each file request the actual code updates
-    console.log('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
+    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
 
     baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, messages, generateContentFn);
     codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
@@ -134,7 +135,7 @@ export async function promptService(
     const result: FunctionCall[] = [];
 
     for (const file of codegenSummaryRequest!.args.fileUpdates) {
-      console.log('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName);
+      putSystemMessage('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName, file);
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
       console.log('- Cheap', file.cheap);
@@ -166,6 +167,8 @@ export async function promptService(
         codegenPrompt.options,
       ];
       let partialResult = await generateContentFn(...partialRequest);
+
+      putSystemMessage('Received partial update', partialResult);
 
       // Validate if function call is compliant with the schema
       partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, messages, generateContentFn);
@@ -206,7 +209,7 @@ export async function promptService(
     return result;
   } else {
     // This is unexpected, if happens probably means no code updates.
-    console.log('Did not receive codegen summary, returning result.');
+    putSystemMessage('Did not receive codegen summary, returning result.');
     return baseResult;
   }
 }

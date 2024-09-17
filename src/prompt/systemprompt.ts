@@ -4,7 +4,7 @@ import { rcConfig } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 
 /** Generates a system prompt */
-export function getSystemPrompt({ verbose, askQuestion, interactive }: CodegenOptions): string {
+export function getSystemPrompt({ verbose, askQuestion, interactive, ui }: CodegenOptions): string {
   console.log('Generate system prompt');
 
   let systemPrompt = `
@@ -31,7 +31,7 @@ export function getSystemPrompt({ verbose, askQuestion, interactive }: CodegenOp
 
   `;
 
-  if (askQuestion && interactive) {
+  if (askQuestion && (interactive || ui)) {
     systemPrompt +=
       '\nYou have the ability to ask the user a question at the beginning of the conversation if you need more information or clarification. ' +
       'Use this feature wisely to gather any crucial information that would help you better understand the task or provide more accurate code generation.\n' +
@@ -39,7 +39,8 @@ export function getSystemPrompt({ verbose, askQuestion, interactive }: CodegenOp
       `- inform the user about your thoughts regarding the task
       - ask questions, and give suggestions to the user regarding the task
       - request access to content of files if they are not provided in the conversation so far, but are important for the task
-      - request enablement of permissions for operations that were restricted on the start of conversation, but are important for completion of the task`;
+      - request enablement of permissions for operations that were restricted on the start of conversation, but are important for completion of the task
+      The user can ask you to stop asking questions and either proceed with the implementation, or stop the process. In such case please respect their ask, and follow their order.`;
   }
 
   if (verbose) {

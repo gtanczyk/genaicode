@@ -31,6 +31,7 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
     verbose,
     askQuestion,
     interactive,
+    ui,
   } = options;
 
   assert(!explicitPrompt || !taskFile, 'Both taskFile and explicitPrompt are not allowed');
@@ -63,7 +64,7 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   }
 
   const importantTextPrompts = importantContext.textPrompts?.map((prompt) => prompt.content).join('\n\n') || '';
-  const requestPermissionText = askQuestion && interactive ? ' (request permission via `askQuestion`)' : '';
+  const requestPermissionText = askQuestion && (interactive || ui) ? ' (request permission via `askQuestion`)' : '';
 
   const codeGenPrompt =
     (explicitPrompt ? 'This is your task: ' + explicitPrompt + '\n\n' : '') +
