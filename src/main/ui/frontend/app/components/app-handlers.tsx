@@ -23,6 +23,7 @@ interface AppHandlersProps {
   setCodegenOptions: (options: CodegenOptions) => void;
   fetchCodegenData: () => Promise<void>;
   fetchTotalCost: () => Promise<void>;
+  setLastFinishedExecutionId: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 export const AppHandlers = ({
@@ -37,6 +38,7 @@ export const AppHandlers = ({
   setCodegenOptions,
   fetchCodegenData,
   fetchTotalCost,
+  setLastFinishedExecutionId,
 }: AppHandlersProps) => {
   const [executionAbortController, setExecutionAbortController] = useState<AbortController | null>(null);
   const [isCodegenOngoing, setIsCodegenOngoing] = useState(false);
@@ -97,6 +99,19 @@ export const AppHandlers = ({
       // Final data fetch after execution
       await fetchCodegenData();
       await fetchTotalCost();
+
+      // Mark the execution as finished
+      const finishedExecutionId = `execution_${Date.now()}`;
+      setLastFinishedExecutionId(finishedExecutionId);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: finishedExecutionId,
+          type: ChatMessageType.SYSTEM,
+          content: 'Codegen execution completed.',
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error) {
       console.error('Failed to execute codegen:', error);
       setChatMessages((prev) => [

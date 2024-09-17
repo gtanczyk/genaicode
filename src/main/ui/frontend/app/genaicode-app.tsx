@@ -8,6 +8,7 @@ import { ChatInterface } from './components/chat-interface';
 import { InputArea } from './components/input-area';
 import { ThemeToggle } from './components/theme-toggle';
 import { InfoIcon } from './components/info-icon';
+import { ProgressIndicator } from './components/progress-indicator';
 import { lightTheme, darkTheme } from './theme/theme';
 
 const GlobalStyle = createGlobalStyle`
@@ -42,22 +43,31 @@ const GenAIcodeApp = () => {
     fetchCodegenData,
     fetchTotalCost,
     updateCodegenOptions,
+    setLastFinishedExecutionId,
   } = AppState();
 
-  const { handleExecute, handleQuestionSubmit, handlePause, handleResume, handleInterrupt, handleOptionsChange } =
-    AppHandlers({
-      currentPrompt,
-      setCurrentPrompt,
-      isExecuting,
-      setIsExecuting,
-      chatMessages,
-      setChatMessages,
-      setCurrentQuestion,
-      codegenOptions,
-      setCodegenOptions: updateCodegenOptions,
-      fetchCodegenData,
-      fetchTotalCost,
-    });
+  const {
+    handleExecute,
+    handleQuestionSubmit,
+    handlePause,
+    handleResume,
+    handleInterrupt,
+    handleOptionsChange,
+    isCodegenOngoing,
+  } = AppHandlers({
+    currentPrompt,
+    setCurrentPrompt,
+    isExecuting,
+    setIsExecuting,
+    chatMessages,
+    setChatMessages,
+    setCurrentQuestion,
+    codegenOptions,
+    setCodegenOptions: updateCodegenOptions,
+    fetchCodegenData,
+    fetchTotalCost,
+    setLastFinishedExecutionId,
+  });
 
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
@@ -65,7 +75,12 @@ const GenAIcodeApp = () => {
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
-        chatInterface={<ChatInterface messages={chatMessages} />}
+        chatInterface={
+          <>
+            <ChatInterface messages={chatMessages} />
+            <ProgressIndicator isVisible={isCodegenOngoing && !currentQuestion} />
+          </>
+        }
         inputArea={
           <InputArea
             onSubmit={currentQuestion ? handleQuestionSubmit : handleExecute}
