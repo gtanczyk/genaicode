@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChatMessage } from '../../../../common/content-bus-types.js';
 import { MessageContainer } from './chat/message-container.js';
 import { SystemMessageContainer, SystemMessageBlock } from './chat/system-message-container.js';
 import { ChatContainer, MessagesContainer } from './chat/styles/chat-interface-styles.js';
+import { useMergedMessages } from '../hooks/merged-messages.js';
+import { UnreadMessagesNotification } from './unread-messages-notification.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -12,42 +14,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
 
-  const mergedMessages = useMemo(() => {
-    const result: (ChatMessage | SystemMessageBlock)[] = [];
-    let currentSystemBlock: SystemMessageBlock | null = null;
-    let executionId = 0;
-
-    messages.forEach((message, index) => {
-      if (message.type === 'system') {
-        if (currentSystemBlock) {
-          currentSystemBlock.parts.push(message);
-        } else {
-          executionId++;
-          currentSystemBlock = {
-            ...message,
-            type: ChatMessageType.SYSTEM,
-            parts: [message],
-            id: `execution_${executionId}`,
-            isExecutionEnd: index === messages.length - 1 || messages[index + 1].type !== 'system',
-          };
-          result.push(currentSystemBlock);
-        }
-      } else {
-        if (currentSystemBlock) {
-          currentSystemBlock.isExecutionEnd = true;
-        }
-        currentSystemBlock = null;
-        result.push(message);
-      }
-    });
-
-    return result;
-  }, [messages]);
+  const mergedMessages = useMergedMessages(messages);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10; // 10px threshold
+      setIsScrolledToBottom(isAtBottom);
+      if (isAtBottom) {
+        setHasUnreadMessages(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isScrolledToBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setHasUnreadMessages(true);
+    }
+  }, [messages, isScrolledToBottom]);
 
   const toggleDataVisibility = (id: string) => {
     setVisibleDataIds((prevIds) => {
@@ -73,9 +69,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
     });
   };
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setHasUnreadMessages(false);
+  };
+
   return (
     <ChatContainer>
-      <MessagesContainer>
+      <MessagesContainer ref={containerRef}>
         {mergedMessages.map((message) => {
           switch (message.type) {
             case 'user':
@@ -103,6 +104,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
         })}
         <div ref={messagesEndRef} />
       </MessagesContainer>
+      {hasUnreadMessages && <UnreadMessagesNotification onClick={scrollToBottom} />}
     </ChatContainer>
   );
 };
