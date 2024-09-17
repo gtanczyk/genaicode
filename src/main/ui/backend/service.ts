@@ -12,12 +12,14 @@ interface CodegenResult {
 interface Question {
   id: string;
   text: string;
+  isConfirmation: boolean;
 }
 
 export class Service {
   private executionStatus: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
   private currentQuestion: Question | null = null;
-  private askQuestionConversation: Array<{ id: string; question: string; answer: string }> = [];
+  private askQuestionConversation: Array<{ id: string; question: string; answer: string; isConfirmation: boolean }> =
+    [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
 
@@ -63,18 +65,20 @@ export class Service {
     return this.currentQuestion;
   }
 
-  async askQuestion(question: string): Promise<string> {
-    console.log('Ask question:', question);
+  async askQuestion(question: string, isConfirmation: boolean = false): Promise<string> {
+    console.log('Ask question:', question, 'Is confirmation:', isConfirmation);
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
       text: question,
+      isConfirmation,
     };
 
     await this.waitForQuestionAnswer();
 
     console.log('Question answer wait finished.');
-    return this.askQuestionConversation.find((question) => question.id === questionId)?.answer ?? '';
+    const answer = this.askQuestionConversation.find((q) => q.id === questionId)?.answer ?? '';
+    return isConfirmation ? (answer.toLowerCase() === 'yes' ? 'yes' : 'no') : answer;
   }
 
   async answerQuestion(questionId: string, answer: string): Promise<void> {
@@ -83,6 +87,7 @@ export class Service {
         id: this.currentQuestion.id,
         question: this.currentQuestion.text,
         answer: answer,
+        isConfirmation: this.currentQuestion.isConfirmation,
       });
       this.currentQuestion = null;
       console.log(`Answered question: ${answer}`);

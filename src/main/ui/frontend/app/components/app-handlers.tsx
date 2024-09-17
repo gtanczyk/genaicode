@@ -18,7 +18,9 @@ interface AppHandlersProps {
   setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>;
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setCurrentQuestion: React.Dispatch<React.SetStateAction<{ id: string; text: string } | null>>;
+  setCurrentQuestion: React.Dispatch<
+    React.SetStateAction<{ id: string; text: string; isConfirmation: boolean } | null>
+  >;
   codegenOptions: CodegenOptions;
   setCodegenOptions: (options: CodegenOptions) => void;
   fetchCodegenData: () => Promise<void>;
@@ -27,11 +29,8 @@ interface AppHandlersProps {
 }
 
 export const AppHandlers = ({
-  currentPrompt,
   setCurrentPrompt,
-  isExecuting,
   setIsExecuting,
-  chatMessages,
   setChatMessages,
   setCurrentQuestion,
   codegenOptions,

@@ -25,7 +25,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "lint": "eslint . --ext js,ts --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "prepare": "husky install",

@@ -7,7 +7,6 @@ interface InputAreaProps {
   onSubmit: (input: string) => void;
   onCancel?: () => void;
   isExecuting: boolean;
-  currentQuestion: string | undefined;
   onInterrupt: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -19,7 +18,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onSubmit,
   onCancel,
   isExecuting,
-  currentQuestion,
   onInterrupt,
   onPause,
   onResume,
@@ -68,13 +66,11 @@ export const InputArea: React.FC<InputAreaProps> = ({
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={
-          currentQuestion ? "Enter your response to the assistant's question..." : 'Enter your codegen prompt here...'
-        }
-        disabled={isExecuting && !currentQuestion}
+        placeholder={'Enter your codegen prompt here...'}
+        disabled={isExecuting}
       />
       <ButtonContainer>
-        <SubmitButton onClick={handleSubmit} disabled={(isExecuting && !currentQuestion) || !input.trim()}>
+        <SubmitButton onClick={handleSubmit} disabled={isExecuting || !input.trim()}>
           Submit
         </SubmitButton>
         {onCancel && (
