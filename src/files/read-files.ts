@@ -47,7 +47,7 @@ function readSourceFiles(
           continue;
         }
       }
-      if (!forceAll && ignorePatterns?.some((pattern) => globRegex.default(pattern).test(file))) {
+      if (!forceAll && ignorePatterns?.some((pattern) => globRegex(pattern).test(file))) {
         sourceCode[file] = { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
@@ -87,7 +87,7 @@ export function getSourceCode(
 export function getImageAssets(): ImageAssetsMap {
   const imageAssets: ImageAssetsMap = {};
   for (const file of getImageAssetFiles()) {
-    const dimensions = sizeOf.default(file);
+    const dimensions = sizeOf(file);
     imageAssets[file] = {
       mimeType: mime.lookup(file),
       width: dimensions.width!,

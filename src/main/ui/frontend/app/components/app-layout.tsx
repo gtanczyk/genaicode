@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import styled from 'styled-components';
-import { CostDisplay } from './cost-display';
+import { CostDisplay } from './cost-display.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;

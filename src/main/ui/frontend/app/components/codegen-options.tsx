@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { CodegenOptions, AiServiceType } from '../../../../codegen-types';
+import { CodegenOptions, AiServiceType } from '../../../../codegen-types.js';
 
 interface CodegenOptionsFormProps {
   options: CodegenOptions;
@@ -19,13 +19,7 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
     <FormContainer>
       <FormGroup>
         <Label htmlFor="aiService">AI Service:</Label>
-        <Select
-          id="aiService"
-          name="aiService"
-          value={options.aiService}
-          onChange={handleChange}
-          disabled={disabled}
-        >
+        <Select id="aiService" name="aiService" value={options.aiService} onChange={handleChange} disabled={disabled}>
           <option value="vertex-ai">Vertex AI</option>
           <option value="ai-studio">AI Studio</option>
           <option value="chat-gpt">ChatGPT</option>

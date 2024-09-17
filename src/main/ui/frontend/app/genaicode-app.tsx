@@ -1,15 +1,14 @@
 import React from 'react';
-import { ThemeProvider } from 'styled-components';
-import { createGlobalStyle } from 'styled-components';
-import { AppLayout } from './components/app-layout';
-import { AppState } from './components/app-state';
-import { AppHandlers } from './components/app-handlers';
-import { ChatInterface } from './components/chat-interface';
-import { InputArea } from './components/input-area';
-import { ThemeToggle } from './components/theme-toggle';
-import { InfoIcon } from './components/info-icon';
-import { ProgressIndicator } from './components/progress-indicator';
-import { lightTheme, darkTheme } from './theme/theme';
+import { ThemeProvider, createGlobalStyle } from 'styled-components';
+import { lightTheme, darkTheme } from './theme/theme.js';
+import { AppLayout } from './components/app-layout.js';
+import { AppState } from './components/app-state.js';
+import { AppHandlers } from './components/app-handlers.js';
+import { ChatInterface } from './components/chat-interface.js';
+import { InputArea } from './components/input-area.js';
+import { ThemeToggle } from './components/theme-toggle.js';
+import { InfoIcon } from './components/info-icon.js';
+import { ProgressIndicator } from './components/progress-indicator.js';
 
 const GlobalStyle = createGlobalStyle`
   body {

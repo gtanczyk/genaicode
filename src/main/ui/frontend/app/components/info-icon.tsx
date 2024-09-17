@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { RcConfig } from '../../../../config-lib';
+import { RcConfig } from '../../../../config-lib.js';
 
 type InfoIconProps = {
   rcConfig: RcConfig | null;

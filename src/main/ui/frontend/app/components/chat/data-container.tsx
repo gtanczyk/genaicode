@@ -1,5 +1,5 @@
 import React from 'react';
-import { DataContainer as StyledDataContainer } from './styles/data-container-styles';
+import { DataContainer as StyledDataContainer } from './styles/data-container-styles.js';
 
 interface DataContainerProps {
   data: unknown;

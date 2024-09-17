@@ -88,7 +88,7 @@ describe('read-files', () => {
       const mockImageFiles = ['/home/project/image1.png', '/home/project/image2.jpg'];
       vi.mocked(getImageAssetFiles).mockReturnValue(mockImageFiles);
       vi.mocked(mime).lookup.mockImplementation((file) => (file.endsWith('.png') ? 'image/png' : 'image/jpeg'));
-      vi.mocked(sizeOf).default.mockImplementation(() => ({ width: 100, height: 200 }));
+      vi.mocked(sizeOf).mockImplementation(() => ({ width: 100, height: 200 }));
 
       const result = getImageAssets();
 

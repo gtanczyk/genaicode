@@ -2,13 +2,14 @@
   "compilerOptions": {
     "allowJs": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "module": "es2020",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "dom"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -17,7 +18,7 @@
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "types": ["vitest/globals"],
-    "jsx": "react"
+    "jsx": "react-jsx"
   },
   "ts-node": {
     "esm": true,
@@ -26,6 +27,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "src/main/interactive/worker-script.ts",
     "src/main/ui/frontend/index.js",
     "src/main/ui/frontend/index.html"
