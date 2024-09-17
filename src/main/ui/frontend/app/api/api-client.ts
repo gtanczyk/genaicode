@@ -21,17 +21,9 @@ export const executeCodegen = async (prompt: string, options: CodegenOptions): P
   await api.post('/execute-codegen', { prompt, options });
 };
 
-export const getExecutionStatus = async (): Promise<string> => {
+export const getExecutionStatus = async (): Promise<'idle' | 'executing'> => {
   const response = await api.get('/execution-status');
   return response.data.status;
-};
-
-export const pauseExecution = async (): Promise<void> => {
-  await api.post('/pause-execution');
-};
-
-export const resumeExecution = async (): Promise<void> => {
-  await api.post('/resume-execution');
 };
 
 export const interruptExecution = async (): Promise<void> => {

@@ -11,7 +11,7 @@ import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-typ
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
-export type ExecutionStatus = 'idle' | 'running' | 'paused';
+export type ExecutionStatus = 'idle' | 'executing';
 
 const POLLING_INTERVAL = 5000; // 5 seconds
 
@@ -58,8 +58,9 @@ export const AppState = () => {
   const checkExecutionStatus = async () => {
     try {
       const status = await getExecutionStatus();
-      setIsExecuting(status === 'running');
-      setExecutionStatus(status as ExecutionStatus);
+      const isExecuting = status === 'executing';
+      setIsExecuting(isExecuting);
+      setExecutionStatus(isExecuting ? 'executing' : 'idle');
     } catch (error) {
       console.error('Failed to check execution status:', error);
     }
@@ -132,7 +133,7 @@ export const AppState = () => {
         timestamp: new Date(),
       });
       setIsExecuting(true);
-      setExecutionStatus('running');
+      setExecutionStatus('executing');
       // Here you would typically call your API to execute the codegen
       // After execution, you would update the state with the results
       // For now, we'll just add a placeholder assistant message

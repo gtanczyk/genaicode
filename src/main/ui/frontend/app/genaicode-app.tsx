@@ -19,6 +19,7 @@ const GenAIcodeApp = () => {
     setCurrentPrompt,
     isExecuting,
     setIsExecuting,
+    setExecutionStatus,
     chatMessages,
     setChatMessages,
     currentQuestion,
@@ -36,19 +37,12 @@ const GenAIcodeApp = () => {
     stopPolling,
   } = AppState();
 
-  const {
-    handleExecute,
-    handleQuestionSubmit,
-    handlePause,
-    handleResume,
-    handleInterrupt,
-    handleOptionsChange,
-    isCodegenOngoing,
-  } = AppHandlers({
+  const { handleExecute, handleQuestionSubmit, handleInterrupt, handleOptionsChange } = AppHandlers({
     currentPrompt,
     setCurrentPrompt,
     isExecuting,
     setIsExecuting,
+    setExecutionStatus,
     chatMessages,
     setChatMessages,
     setCurrentQuestion,
@@ -78,20 +72,17 @@ const GenAIcodeApp = () => {
         chatInterface={
           <>
             <ChatInterface messages={chatMessages} />
-            <ProgressIndicator isVisible={isCodegenOngoing && !currentQuestion} />
+            <ProgressIndicator isVisible={isExecuting && !currentQuestion} />
           </>
         }
         inputArea={
-          currentQuestion ? (
-            <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} />
+          isExecuting ? (
+            <QuestionHandler onSubmit={handleQuestionSubmit} question={currentQuestion} onInterrupt={handleInterrupt} />
           ) : (
             <InputArea
               onSubmit={handleExecute}
-              onCancel={isExecuting ? handleInterrupt : undefined}
               isExecuting={isExecuting}
               onInterrupt={handleInterrupt}
-              onPause={handlePause}
-              onResume={handleResume}
               codegenOptions={codegenOptions}
               onOptionsChange={handleOptionsChange}
             />

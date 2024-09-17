@@ -1,12 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
   getExecutionStatus,
   getCurrentQuestion,
   answerQuestion,
-  pauseExecution,
-  resumeExecution,
   interruptExecution,
 } from '../api/api-client.js';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
@@ -16,6 +14,7 @@ interface AppHandlersProps {
   setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>;
   isExecuting: boolean;
   setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>;
+  setExecutionStatus: React.Dispatch<React.SetStateAction<'executing' | 'idle'>>;
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setCurrentQuestion: React.Dispatch<
@@ -31,21 +30,22 @@ interface AppHandlersProps {
 export const AppHandlers = ({
   setCurrentPrompt,
   setIsExecuting,
+  setExecutionStatus,
   setChatMessages,
   setCurrentQuestion,
   codegenOptions,
   setCodegenOptions,
 }: AppHandlersProps) => {
-  const [isCodegenOngoing, setIsCodegenOngoing] = useState(false);
-
   const handleExecute = async (prompt: string) => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
-    setIsCodegenOngoing(true);
 
     try {
-      if ((await getExecutionStatus()) === 'running') {
-        console.warn('Execution is already running');
+      setIsExecuting(true);
+      setExecutionStatus('executing');
+
+      if ((await getExecutionStatus()) === 'executing') {
+        console.warn('Execution is already executing');
         return;
       }
 
@@ -54,7 +54,7 @@ export const AppHandlers = ({
       console.error('Failed to execute codegen:', error);
     } finally {
       setIsExecuting(false);
-      setIsCodegenOngoing(false);
+      setExecutionStatus('idle');
     }
   };
 
@@ -68,46 +68,9 @@ export const AppHandlers = ({
         ]);
         await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
-        setIsCodegenOngoing(true);
       } catch (error) {
         console.error('Failed to submit answer:', error);
       }
-    }
-  };
-
-  const handlePause = async () => {
-    try {
-      await pauseExecution();
-      setIsExecuting(false);
-    } catch (error) {
-      console.error('Failed to pause execution:', error);
-    }
-  };
-
-  const handleResume = async () => {
-    try {
-      await resumeExecution();
-      setIsExecuting(true);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution resumed',
-          timestamp: new Date(),
-        },
-      ]);
-    } catch (error) {
-      console.error('Failed to resume execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   };
 
@@ -115,9 +78,27 @@ export const AppHandlers = ({
     try {
       await interruptExecution();
       setIsExecuting(false);
-      setIsCodegenOngoing(false);
+      setCurrentQuestion(null);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Execution interrupted',
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error) {
       console.error('Failed to interrupt execution:', error);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: `Error interrupting execution: ${error}`,
+          timestamp: new Date(),
+        },
+      ]);
     }
   };
 
@@ -140,10 +121,7 @@ export const AppHandlers = ({
   return {
     handleExecute,
     handleQuestionSubmit,
-    handlePause,
-    handleResume,
     handleInterrupt,
     handleOptionsChange,
-    isCodegenOngoing,
   };
 };

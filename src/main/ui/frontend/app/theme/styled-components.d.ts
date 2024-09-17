@@ -13,6 +13,7 @@ declare module 'styled-components' {
       primary: string;
       primaryHover: string;
       secondary: string;
+      error: string;
       border: string;
       buttonBg: string;
       buttonText: string;
