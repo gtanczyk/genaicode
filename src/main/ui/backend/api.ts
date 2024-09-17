@@ -34,8 +34,8 @@ export function createRouter(service: Service) {
       const content = service.getContent();
       res.json({ content });
     } catch (error) {
-      console.error('Error getting execution status:', error);
-      res.status(500).json({ error: 'An error occurred while getting execution status' });
+      console.error('Error getting content:', error);
+      res.status(500).json({ error: 'An error occurred while getting content' });
     }
   });
 
@@ -47,28 +47,6 @@ export function createRouter(service: Service) {
     } catch (error) {
       console.error('Error getting execution status:', error);
       res.status(500).json({ error: 'An error occurred while getting execution status' });
-    }
-  });
-
-  // Pause execution
-  router.post('/pause-execution', async (req, res) => {
-    try {
-      await service.pauseExecution();
-      res.json({ message: 'Execution paused successfully' });
-    } catch (error) {
-      console.error('Error pausing execution:', error);
-      res.status(500).json({ error: 'An error occurred while pausing execution' });
-    }
-  });
-
-  // Resume execution
-  router.post('/resume-execution', async (req, res) => {
-    try {
-      await service.resumeExecution();
-      res.json({ message: 'Execution resumed successfully' });
-    } catch (error) {
-      console.error('Error resuming execution:', error);
-      res.status(500).json({ error: 'An error occurred while resuming execution' });
     }
   });
 
@@ -122,7 +100,7 @@ export function createRouter(service: Service) {
     }
   });
 
-  // New endpoint: Get default CodegenOptions
+  // Get default CodegenOptions
   router.get('/default-codegen-options', async (req, res) => {
     try {
       const defaultOptions = service.getCodegenOptions();
@@ -133,7 +111,7 @@ export function createRouter(service: Service) {
     }
   });
 
-  // New endpoint: Get rcConfig settings
+  // Get rcConfig settings
   router.get('/rcconfig', async (req, res) => {
     try {
       const rcConfigSettings = globalRcConfig;

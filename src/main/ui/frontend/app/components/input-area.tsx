@@ -5,47 +5,32 @@ import { CodegenOptionsForm } from './codegen-options.js';
 
 interface InputAreaProps {
   onSubmit: (input: string) => void;
-  onCancel?: () => void;
   isExecuting: boolean;
   onInterrupt: () => void;
-  onPause: () => void;
-  onResume: () => void;
   codegenOptions: CodegenOptions;
   onOptionsChange: (newOptions: CodegenOptions) => void;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({
-  onSubmit,
-  onCancel,
-  isExecuting,
-  onInterrupt,
-  onPause,
-  onResume,
-  codegenOptions,
-  onOptionsChange,
-}) => {
+export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, codegenOptions, onOptionsChange }) => {
   const [input, setInput] = useState('');
   const [showOptions, setShowOptions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (textareaRef.current) {
+    if (textareaRef.current && !isExecuting) {
       textareaRef.current.focus();
     }
   }, [isExecuting]);
+
+  if (isExecuting) {
+    return null;
+  }
 
   const handleSubmit = () => {
     if (input.trim()) {
       onSubmit(input.trim());
       setInput('');
     }
-  };
-
-  const handleCancel = () => {
-    if (onCancel) {
-      onCancel();
-    }
-    setInput('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -67,28 +52,15 @@ export const InputArea: React.FC<InputAreaProps> = ({
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={'Enter your codegen prompt here...'}
-        disabled={isExecuting}
       />
       <ButtonContainer>
-        <SubmitButton onClick={handleSubmit} disabled={isExecuting || !input.trim()}>
+        <SubmitButton onClick={handleSubmit} disabled={!input.trim()}>
           Submit
         </SubmitButton>
-        {onCancel && (
-          <CancelButton onClick={handleCancel} disabled={isExecuting}>
-            Cancel
-          </CancelButton>
-        )}
-        {isExecuting && (
-          <>
-            <ControlButton onClick={onInterrupt}>Interrupt</ControlButton>
-            <ControlButton onClick={onPause}>Pause</ControlButton>
-            <ControlButton onClick={onResume}>Resume</ControlButton>
-          </>
-        )}
         <OptionsToggle onClick={toggleOptions}>{showOptions ? 'Hide Options' : 'Show Options'}</OptionsToggle>
       </ButtonContainer>
       {showOptions && (
-        <CodegenOptionsForm options={codegenOptions} onOptionsChange={onOptionsChange} disabled={isExecuting} />
+        <CodegenOptionsForm options={codegenOptions} onOptionsChange={onOptionsChange} disabled={false} />
       )}
     </InputContainer>
   );
@@ -119,11 +91,6 @@ const StyledTextarea = styled.textarea`
   &:focus {
     outline: none;
     border-color: ${(props) => props.theme.colors.primary};
-  }
-
-  &:disabled {
-    background-color: ${(props) => props.theme.colors.disabled};
-    cursor: not-allowed;
   }
 `;
 
@@ -158,16 +125,6 @@ const SubmitButton = styled(Button)`
 `;
 
 const CancelButton = styled(Button)`
-  background-color: ${(props) => props.theme.colors.buttonBg};
-  color: ${(props) => props.theme.colors.buttonText};
-  border: 1px solid ${(props) => props.theme.colors.border};
-
-  &:hover:not(:disabled) {
-    background-color: ${(props) => props.theme.colors.buttonHoverBg};
-  }
-`;
-
-const ControlButton = styled(Button)`
   background-color: ${(props) => props.theme.colors.buttonBg};
   color: ${(props) => props.theme.colors.buttonText};
   border: 1px solid ${(props) => props.theme.colors.border};

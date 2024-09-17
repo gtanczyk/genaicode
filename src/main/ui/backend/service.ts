@@ -2,7 +2,7 @@ import { rcConfig } from '../../config.js';
 import { CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
-import { ContentProps } from '../../common/content-bus-types.js';
+import { ChatMessageType, ContentProps } from '../../common/content-bus-types.js';
 import { getCollectedCosts } from '../../common/cost-collector.js';
 
 interface CodegenResult {
@@ -16,7 +16,7 @@ interface Question {
 }
 
 export class Service {
-  private executionStatus: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
+  private executionStatus: 'idle' | 'executing' = 'idle';
   private currentQuestion: Question | null = null;
   private askQuestionConversation: Array<{ id: string; question: string; answer: string; isConfirmation: boolean }> =
     [];
@@ -28,12 +28,12 @@ export class Service {
   }
 
   async executeCodegen(prompt: string, options: CodegenOptions): Promise<CodegenResult> {
-    this.executionStatus = 'running';
+    this.executionStatus = 'executing';
     this.codegenOptions = { ...this.codegenOptions, ...options };
 
     try {
       await runCodegenWorker({ ...this.codegenOptions, explicitPrompt: prompt, considerAllFiles: true });
-      this.executionStatus = 'completed';
+      this.executionStatus = 'idle';
     } catch (error) {
       console.error('Error executing codegen:', error);
       this.executionStatus = 'idle';
@@ -44,17 +44,18 @@ export class Service {
     };
   }
 
-  async pauseExecution(): Promise<void> {
-    this.executionStatus = 'paused';
-  }
-
-  async resumeExecution(): Promise<void> {
-    this.executionStatus = 'running';
-  }
-
   async interruptExecution(): Promise<void> {
     abortController?.abort();
     this.executionStatus = 'idle';
+    this.currentQuestion = null;
+    this.content.push({
+      message: {
+        id: `system_${Date.now()}`,
+        type: ChatMessageType.SYSTEM,
+        content: 'Execution interrupted',
+        timestamp: new Date(),
+      },
+    });
   }
 
   async getExecutionStatus(): Promise<string> {

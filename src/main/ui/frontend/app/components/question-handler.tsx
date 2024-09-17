@@ -3,10 +3,11 @@ import styled from 'styled-components';
 
 interface QuestionHandlerProps {
   onSubmit: (answer: string) => void;
+  onInterrupt: () => void;
   question: { id: string; text: string; isConfirmation: boolean } | null;
 }
 
-export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, question }) => {
+export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, onInterrupt, question }) => {
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -34,29 +35,33 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, ques
     }
   };
 
-  if (!question) {
-    return null; // Don't render anything if there's no question
-  }
-
   return (
     <HandlerContainer>
-      {question.isConfirmation ? (
-        <ConfirmationButtons>
-          <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
-          <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-            No
-          </ConfirmButton>
-        </ConfirmationButtons>
+      {question ? (
+        question.isConfirmation ? (
+          <ConfirmationButtons>
+            <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
+            <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+              No
+            </ConfirmButton>
+            <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
+          </ConfirmationButtons>
+        ) : (
+          <AnswerForm onSubmit={handleSubmit}>
+            <AnswerTextarea
+              value={answer}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnswer(e.target.value)}
+              placeholder="Enter your answer here"
+              rows={4}
+            />
+            <ConfirmationButtons>
+              <SubmitButton type="submit">Submit Answer</SubmitButton>
+              <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
+            </ConfirmationButtons>
+          </AnswerForm>
+        )
       ) : (
-        <AnswerForm onSubmit={handleSubmit}>
-          <AnswerTextarea
-            value={answer}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnswer(e.target.value)}
-            placeholder="Enter your answer here"
-            rows={4}
-          />
-          <SubmitButton type="submit">Submit Answer</SubmitButton>
-        </AnswerForm>
+        <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
       )}
       {error && <ErrorMessage>{error}</ErrorMessage>}
     </HandlerContainer>
@@ -69,6 +74,7 @@ const HandlerContainer = styled.div`
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
+  position: relative;
 `;
 
 const AnswerForm = styled.form`
@@ -93,8 +99,7 @@ const AnswerTextarea = styled.textarea`
   }
 `;
 
-const SubmitButton = styled.button`
-  background-color: ${({ theme }) => theme.colors.primary};
+const Button = styled.button`
   color: #ffffff;
   border: none;
   border-radius: 4px;
@@ -102,6 +107,10 @@ const SubmitButton = styled.button`
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+`;
+
+const SubmitButton = styled(Button)`
+  background-color: ${({ theme }) => theme.colors.primary};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.primary}dd;
@@ -114,16 +123,7 @@ const ConfirmationButtons = styled.div`
   margin-top: 15px;
 `;
 
-const ConfirmButton = styled.button`
-  color: #ffffff;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 15px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  width: 48%;
-
+const ConfirmButton = styled(Button)`
   background-color: ${({ theme }) => theme.colors.primary};
   &:hover {
     background-color: ${({ theme }) => theme.colors.primary}dd;
@@ -137,8 +137,16 @@ const ConfirmButton = styled.button`
   }
 `;
 
+const InterruptButton = styled(Button)`
+  background-color: ${({ theme }) => theme.colors.error};
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.error}dd;
+  }
+`;
+
 const ErrorMessage = styled.p`
-  color: #d32f2f;
+  color: ${({ theme }) => theme.colors.error};
   font-weight: bold;
   margin-top: 10px;
 `;
