@@ -31,6 +31,7 @@ export async function promptService(
   generateContentFns: Record<AiServiceType, GenerateContentFunction>,
   generateImageFns: Record<ImagenType, GenerateImageFunction>,
   codegenPrompt: CodegenPrompt,
+  waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<FunctionCall[]> {
   const messages = prepareMessages(codegenPrompt);
 
@@ -142,6 +143,9 @@ export async function promptService(
       if (codegenPrompt.options.vision) {
         console.log('- Context image assets', file.contextImageAssets);
       }
+
+      // Check if execution is paused before proceeding
+      await waitIfPaused();
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {

@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import styled from 'styled-components';
+import '@fontsource/press-start-2p';
 import { CostDisplay } from './cost-display.js';
 
 interface AppLayoutProps {
@@ -48,6 +49,8 @@ const AppHeader = styled.header`
 `;
 
 const AppTitle = styled.h1`
+  text-transform: uppercase;
+  font-family: 'Press Start 2P', system-ui;
   color: ${({ theme }) => theme.colors.primary};
   margin: 0;
 `;

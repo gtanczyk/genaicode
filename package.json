@@ -52,6 +52,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.26.1",
     "@anthropic-ai/vertex-sdk": "^0.4.1",
+    "@fontsource/press-start-2p": "^5.1.0",
     "@google-cloud/aiplatform": "^3.25.0",
     "@google-cloud/vertexai": "^1.6.0",
     "@google/generative-ai": "^0.17.1",

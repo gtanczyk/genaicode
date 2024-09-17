@@ -124,16 +124,6 @@ const SubmitButton = styled(Button)`
   }
 `;
 
-const CancelButton = styled(Button)`
-  background-color: ${(props) => props.theme.colors.buttonBg};
-  color: ${(props) => props.theme.colors.buttonText};
-  border: 1px solid ${(props) => props.theme.colors.border};
-
-  &:hover:not(:disabled) {
-    background-color: ${(props) => props.theme.colors.buttonHoverBg};
-  }
-`;
-
 const OptionsToggle = styled(Button)`
   background-color: ${(props) => props.theme.colors.buttonBg};
   color: ${(props) => props.theme.colors.buttonText};

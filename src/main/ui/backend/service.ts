@@ -2,8 +2,9 @@ import { rcConfig } from '../../config.js';
 import { CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
-import { ChatMessageType, ContentProps } from '../../common/content-bus-types.js';
+import { ContentProps } from '../../common/content-bus-types.js';
 import { getCollectedCosts } from '../../common/cost-collector.js';
+import { putSystemMessage } from '../../common/content-bus.js';
 
 interface CodegenResult {
   success: boolean;
@@ -16,12 +17,13 @@ interface Question {
 }
 
 export class Service {
-  private executionStatus: 'idle' | 'executing' = 'idle';
+  private executionStatus: 'idle' | 'executing' | 'paused' = 'idle';
   private currentQuestion: Question | null = null;
   private askQuestionConversation: Array<{ id: string; question: string; answer: string; isConfirmation: boolean }> =
     [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
+  private pausePromiseResolve: (() => void) | null = null;
 
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
@@ -32,7 +34,9 @@ export class Service {
     this.codegenOptions = { ...this.codegenOptions, ...options };
 
     try {
-      await runCodegenWorker({ ...this.codegenOptions, explicitPrompt: prompt, considerAllFiles: true });
+      await runCodegenWorker({ ...this.codegenOptions, explicitPrompt: prompt, considerAllFiles: true }, () =>
+        this.waitIfPaused(),
+      );
       this.executionStatus = 'idle';
     } catch (error) {
       console.error('Error executing codegen:', error);
@@ -48,14 +52,25 @@ export class Service {
     abortController?.abort();
     this.executionStatus = 'idle';
     this.currentQuestion = null;
-    this.content.push({
-      message: {
-        id: `system_${Date.now()}`,
-        type: ChatMessageType.SYSTEM,
-        content: 'Execution interrupted',
-        timestamp: new Date(),
-      },
-    });
+    putSystemMessage('Execution interrupted');
+  }
+
+  async pauseExecution(): Promise<void> {
+    if (this.executionStatus === 'executing') {
+      this.executionStatus = 'paused';
+      putSystemMessage('Execution paused');
+    }
+  }
+
+  async resumeExecution(): Promise<void> {
+    if (this.executionStatus === 'paused') {
+      this.executionStatus = 'executing';
+      putSystemMessage('Execution resumed');
+      if (this.pausePromiseResolve) {
+        this.pausePromiseResolve();
+        this.pausePromiseResolve = null;
+      }
+    }
   }
 
   async getExecutionStatus(): Promise<string> {
@@ -126,5 +141,13 @@ export class Service {
       };
       checkQuestion();
     });
+  }
+
+  async waitIfPaused(): Promise<void> {
+    if (this.executionStatus === 'paused') {
+      return new Promise((resolve) => {
+        this.pausePromiseResolve = resolve;
+      });
+    }
   }
 }
