@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styled from 'styled-components';
-import { CodegenOptions } from '../../../../codegen-types';
-import { CodegenOptionsForm } from './codegen-options';
+import { CodegenOptions } from '../../../../codegen-types.js';
+import { CodegenOptionsForm } from './codegen-options.js';
 
 interface InputAreaProps {
   onSubmit: (input: string) => void;
@@ -89,16 +89,10 @@ export const InputArea: React.FC<InputAreaProps> = ({
             <ControlButton onClick={onResume}>Resume</ControlButton>
           </>
         )}
-        <OptionsToggle onClick={toggleOptions}>
-          {showOptions ? 'Hide Options' : 'Show Options'}
-        </OptionsToggle>
+        <OptionsToggle onClick={toggleOptions}>{showOptions ? 'Hide Options' : 'Show Options'}</OptionsToggle>
       </ButtonContainer>
       {showOptions && (
-        <CodegenOptionsForm
-          options={codegenOptions}
-          onOptionsChange={onOptionsChange}
-          disabled={isExecuting}
-        />
+        <CodegenOptionsForm options={codegenOptions} onOptionsChange={onOptionsChange} disabled={isExecuting} />
       )}
     </InputContainer>
   );

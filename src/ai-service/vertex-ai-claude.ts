@@ -1,6 +1,6 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { Message } from '@anthropic-ai/sdk/resources/messages.mjs';
+import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/interactive/codegen-worker.js';
 
 /**
@@ -25,7 +25,7 @@ export async function generateContent(
     region,
   });
 
-  const messages = prompt
+  const messages: MessageParam[] = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
       if (item.type === 'user') {
@@ -46,7 +46,7 @@ export async function generateContent(
                 data: image.base64url,
               },
             })),
-            { type: 'text' as const, text: item.text },
+            { type: 'text' as const, text: item.text ?? '' },
           ],
         };
       } else if (item.type === 'assistant') {
@@ -63,7 +63,8 @@ export async function generateContent(
           ],
         };
       }
-    });
+    })
+    .filter((message) => !!message);
 
   const model = cheap ? 'claude-3-haiku@20240307' : 'claude-3-5-sonnet@20240620';
   console.log(`Using Vertex AI Claude model: ${model}`);

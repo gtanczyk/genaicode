@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { CodegenOptions } from '../../../../codegen-types';
+import { CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
   getExecutionStatus,
@@ -8,7 +8,7 @@ import {
   pauseExecution,
   resumeExecution,
   interruptExecution,
-} from '../api/api-client';
+} from '../api/api-client.js';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 
 interface AppHandlersProps {
@@ -119,7 +119,7 @@ export const AppHandlers = ({
         {
           id: `system_${Date.now()}`,
           type: ChatMessageType.SYSTEM,
-          content: `Error: ${error.message}`,
+          content: `Error: ${error}`,
           timestamp: new Date(),
         },
       ]);
@@ -160,7 +160,7 @@ export const AppHandlers = ({
           {
             id: `system_${Date.now()}`,
             type: ChatMessageType.SYSTEM,
-            content: `Error: ${error.message}`,
+            content: `Error: ${error}`,
             timestamp: new Date(),
           },
         ]);
@@ -188,7 +188,7 @@ export const AppHandlers = ({
         {
           id: `system_${Date.now()}`,
           type: ChatMessageType.SYSTEM,
-          content: `Error: ${error.message}`,
+          content: `Error: ${error}`,
           timestamp: new Date(),
         },
       ]);
@@ -215,7 +215,7 @@ export const AppHandlers = ({
         {
           id: `system_${Date.now()}`,
           type: ChatMessageType.SYSTEM,
-          content: `Error: ${error.message}`,
+          content: `Error: ${error}`,
           timestamp: new Date(),
         },
       ]);
@@ -244,7 +244,7 @@ export const AppHandlers = ({
         {
           id: `system_${Date.now()}`,
           type: ChatMessageType.SYSTEM,
-          content: `Error: ${error.message}`,
+          content: `Error: ${error}`,
           timestamp: new Date(),
         },
       ]);

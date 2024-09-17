@@ -113,7 +113,7 @@ export function validateCliParams(): void {
         throw new Error('Invalid --ignore-pattern value. The pattern cannot be empty.');
       }
       try {
-        globRegex.default(ignorePatternValue);
+        globRegex(ignorePatternValue);
       } catch (e) {
         console.error(e);
         throw new Error(`Invalid --ignore-pattern value. The pattern "${ignorePatternValue}" is not valid.`);

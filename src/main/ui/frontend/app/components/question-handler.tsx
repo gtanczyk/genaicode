@@ -37,7 +37,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, ques
       <AnswerForm onSubmit={handleSubmit}>
         <AnswerTextarea
           value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnswer(e.target.value)}
           placeholder="Enter your answer here"
           rows={4}
         />

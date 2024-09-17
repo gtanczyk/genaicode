@@ -1,7 +1,7 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
+import { ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { modelOverrides } from '../main/config.js';
 

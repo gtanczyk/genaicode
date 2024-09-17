@@ -7,7 +7,7 @@ import {
   PromptCachingBetaTextBlockParam,
   PromptCachingBetaToolResultBlockParam,
   PromptCachingBetaToolUseBlockParam,
-} from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages.mjs';
+} from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { modelOverrides } from '../main/config.js';
