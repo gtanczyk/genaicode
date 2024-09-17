@@ -46,7 +46,7 @@ export async function executeStepAskQuestion(
     if (askQuestionCall) {
       console.log('Assistant asks:', askQuestionCall.args);
       if (askQuestionCall.args?.content) {
-        putAssistantMessage(askQuestionCall.args?.content);
+        putAssistantMessage(askQuestionCall.args?.content, askQuestionCall.args);
       }
 
       if (askQuestionCall.args?.stopCodegen) {

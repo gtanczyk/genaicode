@@ -8,19 +8,20 @@ export function putUserMessage(message: string) {
   putMessage(message, ChatMessageType.USER);
 }
 
-export function putSystemMessage(message: string) {
-  putMessage(message, ChatMessageType.SYSTEM);
+export function putSystemMessage(message: string, data?: unknown) {
+  putMessage(message, ChatMessageType.SYSTEM, data);
 }
 
-export function putAssistantMessage(message: string) {
-  putMessage(message, ChatMessageType.ASSISTANT);
+export function putAssistantMessage(message: string, data?: unknown) {
+  putMessage(message, ChatMessageType.ASSISTANT, data);
 }
 
-export function putMessage(message: string, type: ChatMessageType) {
-  console.log(message);
+export function putMessage(message: string, type: ChatMessageType, data?: unknown) {
+  console.log(message, data);
 
   contentHandler({
     message: { id: (Date.now() + Math.random()).toString(), content: message, type: type, timestamp: new Date() },
+    data,
   });
 }
 
