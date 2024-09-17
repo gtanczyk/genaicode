@@ -24,6 +24,7 @@ export const AppState = () => {
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
   const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
+  const [lastFinishedExecutionId, setLastFinishedExecutionId] = useState<string | null>(null);
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -130,14 +131,16 @@ export const AppState = () => {
       // After execution, you would update the state with the results
       // For now, we'll just add a placeholder assistant message
       setTimeout(() => {
+        const executionId = `execution_${Date.now()}`;
         addChatMessage({
-          id: `assistant_${Date.now()}`,
+          id: executionId,
           type: ChatMessageType.ASSISTANT,
           content: 'Codegen execution completed.',
           timestamp: new Date(),
         });
         setIsExecuting(false);
         setExecutionStatus('idle');
+        setLastFinishedExecutionId(executionId);
       }, 2000);
     },
     [addChatMessage],
@@ -200,6 +203,7 @@ export const AppState = () => {
     codegenOptions,
     rcConfig,
     visibleDataIds,
+    lastFinishedExecutionId,
     toggleTheme,
     checkExecutionStatus,
     checkCurrentQuestion,
@@ -212,5 +216,6 @@ export const AppState = () => {
     setCurrentQuestion,
     updateCodegenOptions,
     toggleDataVisibility,
+    setLastFinishedExecutionId,
   };
 };

@@ -40,7 +40,7 @@ export function getSystemPrompt({ verbose, askQuestion, interactive, ui }: Codeg
       - ask questions, and give suggestions to the user regarding the task
       - request access to content of files if they are not provided in the conversation so far, but are important for the task
       - request enablement of permissions for operations that were restricted on the start of conversation, but are important for completion of the task
-      The user can ask you to stop asking questions and either proceed with the implementation, or stop the process. In such case please respect their ask, and follow their order.`;
+      The user can ask you to stop asking questions (or express their will to proceed with the task), proceed with the implementation, or stop the process. In such case please respect their ask, and follow their will.`;
   }
 
   if (verbose) {
