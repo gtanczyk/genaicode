@@ -40,11 +40,12 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({ onSubmit, ques
 
   return (
     <HandlerContainer>
-      <HandlerTitle>{question.isConfirmation ? 'Confirmation' : 'Question Handler'}</HandlerTitle>
       {question.isConfirmation ? (
         <ConfirmationButtons>
           <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
-          <ConfirmButton onClick={() => handleConfirmation(false)}>No</ConfirmButton>
+          <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+            No
+          </ConfirmButton>
         </ConfirmationButtons>
       ) : (
         <AnswerForm onSubmit={handleSubmit}>
@@ -68,11 +69,6 @@ const HandlerContainer = styled.div`
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
-`;
-
-const HandlerTitle = styled.h2`
-  color: ${({ theme }) => theme.colors.primary};
-  margin-bottom: 15px;
 `;
 
 const AnswerForm = styled.form`
@@ -119,7 +115,6 @@ const ConfirmationButtons = styled.div`
 `;
 
 const ConfirmButton = styled.button`
-  background-color: ${({ theme }) => theme.colors.primary};
   color: #ffffff;
   border: none;
   border-radius: 4px;
@@ -129,8 +124,16 @@ const ConfirmButton = styled.button`
   transition: background-color 0.3s ease;
   width: 48%;
 
+  background-color: ${({ theme }) => theme.colors.primary};
   &:hover {
     background-color: ${({ theme }) => theme.colors.primary}dd;
+  }
+
+  &[data-secondary='true'] {
+    background-color: ${({ theme }) => theme.colors.secondary};
+    &:hover {
+      background-color: ${({ theme }) => theme.colors.secondary}dd;
+    }
   }
 `;
 

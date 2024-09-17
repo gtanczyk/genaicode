@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getExecutionStatus,
   getCurrentQuestion,
@@ -12,6 +12,8 @@ import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
 export type ExecutionStatus = 'idle' | 'running' | 'paused';
+
+const POLLING_INTERVAL = 5000; // 5 seconds
 
 export const AppState = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
@@ -27,6 +29,8 @@ export const AppState = () => {
   const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
   const [lastFinishedExecutionId, setLastFinishedExecutionId] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -190,6 +194,27 @@ export const AppState = () => {
     });
   }, []);
 
+  const startPolling = useCallback(() => {
+    if (!isPolling) {
+      setIsPolling(true);
+      const poll = async () => {
+        await Promise.all([checkExecutionStatus(), checkCurrentQuestion(), fetchCodegenData(), fetchTotalCost()]);
+        pollingTimeoutRef.current = setTimeout(poll, POLLING_INTERVAL);
+      };
+      poll();
+    }
+  }, [isPolling]);
+
+  const stopPolling = useCallback(() => {
+    if (isPolling) {
+      setIsPolling(false);
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+    }
+  }, [isPolling]);
+
   return {
     currentPrompt,
     setCurrentPrompt,
@@ -219,5 +244,8 @@ export const AppState = () => {
     updateCodegenOptions,
     toggleDataVisibility,
     setLastFinishedExecutionId,
+    startPolling,
+    stopPolling,
+    isPolling,
   };
 };

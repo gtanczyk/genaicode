@@ -35,97 +35,26 @@ export const AppHandlers = ({
   setCurrentQuestion,
   codegenOptions,
   setCodegenOptions,
-  fetchCodegenData,
-  fetchTotalCost,
-  setLastFinishedExecutionId,
 }: AppHandlersProps) => {
-  const [executionAbortController, setExecutionAbortController] = useState<AbortController | null>(null);
   const [isCodegenOngoing, setIsCodegenOngoing] = useState(false);
 
   const handleExecute = async (prompt: string) => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
     setIsCodegenOngoing(true);
-    const abortController = new AbortController();
-    setExecutionAbortController(abortController);
 
     try {
-      setChatMessages((prevMessages) => [
-        ...prevMessages,
-        { id: `user_${Date.now()}`, type: ChatMessageType.USER, content: prompt, timestamp: new Date() },
-      ]);
+      if ((await getExecutionStatus()) === 'running') {
+        console.warn('Execution is already running');
+        return;
+      }
 
-      const codegenPromise = executeCodegen(prompt, codegenOptions);
-
-      // Start checking for questions and updates
-      const checkInterval = 1000; // Check every 1 second
-      const checkUpdates = async () => {
-        while (!abortController.signal.aborted) {
-          const question = await getCurrentQuestion();
-          if (question) {
-            setCurrentQuestion(question);
-            setChatMessages((prev) => [
-              ...prev,
-              {
-                id: `assistant_${Date.now()}`,
-                type: ChatMessageType.ASSISTANT,
-                content: question.text,
-                timestamp: new Date(),
-              },
-            ]);
-            // Wait for the question to be answered
-            while (!abortController.signal.aborted) {
-              await new Promise((resolve) => setTimeout(resolve, checkInterval));
-              const updatedQuestion = await getCurrentQuestion();
-              if (!updatedQuestion || updatedQuestion.id !== question.id) {
-                break; // Question has been answered or changed
-              }
-            }
-          }
-          await fetchCodegenData();
-          await fetchTotalCost();
-          await new Promise((resolve) => setTimeout(resolve, checkInterval));
-          const status = await getExecutionStatus();
-          if (status !== 'running') {
-            break; // Execution has finished
-          }
-        }
-      };
-
-      // Run codegen and updates checking concurrently
-      await Promise.all([codegenPromise, checkUpdates()]);
-
-      // Final data fetch after execution
-      await fetchCodegenData();
-      await fetchTotalCost();
-
-      // Mark the execution as finished
-      const finishedExecutionId = `execution_${Date.now()}`;
-      setLastFinishedExecutionId(finishedExecutionId);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: finishedExecutionId,
-          type: ChatMessageType.SYSTEM,
-          content: 'Codegen execution completed.',
-          timestamp: new Date(),
-        },
-      ]);
+      executeCodegen(prompt, codegenOptions);
     } catch (error) {
       console.error('Failed to execute codegen:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     } finally {
       setIsExecuting(false);
       setIsCodegenOngoing(false);
-      setExecutionAbortController(null);
     }
   };
 
@@ -139,30 +68,9 @@ export const AppHandlers = ({
         ]);
         await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
-
-        // Add indicator for ongoing code execution
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: `system_${Date.now()}`,
-            type: ChatMessageType.SYSTEM,
-            content: 'Continuing code execution...',
-            timestamp: new Date(),
-          },
-        ]);
-
         setIsCodegenOngoing(true);
       } catch (error) {
         console.error('Failed to submit answer:', error);
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: `system_${Date.now()}`,
-            type: ChatMessageType.SYSTEM,
-            content: `Error: ${error}`,
-            timestamp: new Date(),
-          },
-        ]);
       }
     }
   };
@@ -171,26 +79,8 @@ export const AppHandlers = ({
     try {
       await pauseExecution();
       setIsExecuting(false);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution paused',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to pause execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   };
 
@@ -226,27 +116,8 @@ export const AppHandlers = ({
       await interruptExecution();
       setIsExecuting(false);
       setIsCodegenOngoing(false);
-      executionAbortController?.abort();
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution interrupted',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to interrupt execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   };
 
