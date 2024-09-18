@@ -233,9 +233,13 @@ function prepareMessages(codegen: CodegenPrompt) {
       codegen.prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
     sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
-    contextSourceCode: (paths: string[]) =>
+    contextSourceCode: (paths: string[], pathsOnly: boolean = false) =>
       JSON.stringify(
-        getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true }, codegen.options),
+        Object.fromEntries(
+          Object.entries(
+            getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true }, codegen.options),
+          ).filter(([path]) => !pathsOnly || paths.includes(path)),
+        ),
       ),
     imageAssets: JSON.stringify(getImageAssets()),
     partialPromptTemplate(path: string) {

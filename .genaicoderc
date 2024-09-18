@@ -7,7 +7,6 @@
     "examples/arcanoid_game",
     "examples/vision_example",
     "examples/image-operations",
-    "docs/tasks",
     "node_modules",
     "dist",
     ".github",

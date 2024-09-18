@@ -18,7 +18,7 @@ export async function executeStepAskQuestion(
   temperature: number,
   cheap: boolean,
   messages: {
-    contextSourceCode: (paths: string[]) => string;
+    contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
   },
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -101,23 +101,38 @@ export async function executeStepAskQuestion(
         }
       }
 
-      prompt.push(
-        { type: 'assistant', functionCalls: [askQuestionCall] },
-        {
-          type: 'user',
-          text: userAnswer,
-          functionResponses: [
-            {
-              name: 'askQuestion',
-              call_id: askQuestionCall.id,
-              content:
-                fileContentRequested && userAnswer === 'Providing requested files content.'
-                  ? messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!)
-                  : undefined,
-            },
-          ],
-        },
-      );
+      const assistantItem = { type: 'assistant', functionCalls: [askQuestionCall] as FunctionCall[] };
+      const userItem = {
+        type: 'user',
+        text: userAnswer,
+        functionResponses: [
+          {
+            name: 'askQuestion',
+            call_id: askQuestionCall.id,
+            content: undefined as string | undefined,
+          },
+        ],
+      };
+
+      prompt.push(assistantItem, userItem);
+
+      const fileContentProvided = fileContentRequested && userAnswer === 'Providing requested files content.';
+      if (fileContentProvided) {
+        assistantItem.functionCalls.push({
+          name: 'getSourceCode',
+          args: { filePaths: askQuestionCall.args!.requestFilesContent! },
+          id: askQuestionCall.id + '_src',
+        });
+
+        userItem.functionResponses.push({
+          name: 'getSourceCode',
+          content: messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!, true),
+          call_id: askQuestionCall.id + '_src',
+        });
+
+        console.log('File content provided.');
+      }
+
       console.log('The question was answered', userAnswer);
     } else {
       console.log('Assistant did not ask a question. Proceeding with code generation.');
