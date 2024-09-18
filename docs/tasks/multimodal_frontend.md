@@ -1,132 +1,87 @@
-# Multimodal Functionality Implementation Plan
+# Multimodal Frontend Implementation Plan (MVP)
 
-## 1. Overview
+This document outlines the plan for implementing multimodal functionality in the GenAIcode web UI, allowing users to include images along with their text prompts for enhanced code generation. This plan focuses on the essential features for a Minimum Viable Product (MVP).
 
-This document outlines the implementation plan for adding multimodal functionality to the GenAIcode project. The goal is to enable users to upload images during the initial execution of codegen, which can then be used in the context of AI-assisted code generation. This feature will support three methods of image upload: standard file picker, drag and drop, and paste.
+## Overview
 
-## 2. Frontend Implementation
+The multimodal frontend will enable users to upload images as part of their prompts, enhancing the context provided to the AI for code generation. This feature will be integrated into the existing web UI, focusing on a seamless user experience while minimizing code changes.
 
-### 2.1 File Picker
+## User Journey
 
-- Update `/Users/gtanczyk/src/codegen/src/main/ui/frontend/app/components/input-area.tsx`:
-  - Add a file input element for image selection
-  - Implement onChange handler to process selected files
+1. User opens the GenAIcode web UI.
+2. User types their prompt in the input area.
+3. User can upload one or multiple images related to their prompt directly in the input area.
+4. User submits the prompt along with the attached images.
+5. The multimodal prompt (text + images) is processed by the backend.
+6. The AI generates code based on both the text and image inputs.
+7. The response, including any generated code, is displayed in the chat interface along with the uploaded images.
 
-### 2.2 Drag and Drop
+## Implementation Details
 
-- Modify `/Users/gtanczyk/src/codegen/src/main/ui/frontend/app/components/input-area.tsx`:
-  - Add drag and drop event listeners (dragover, dragleave, drop)
-  - Implement drop handler to process dragged files
+### 1. Input Area (src/main/ui/frontend/app/components/input-area.tsx)
 
-### 2.3 Paste Functionality
+- Add a file input for image uploads, integrated with the existing text input.
+- Implement basic client-side validation for file types and sizes.
+- Provide visual feedback for successful uploads and errors.
 
-- Update `/Users/gtanczyk/src/codegen/src/main/ui/frontend/app/components/input-area.tsx`:
-  - Add onPaste event listener to the component
-  - Implement paste handler to process pasted image data
+### 2. Chat Interface (src/main/ui/frontend/app/components/chat-interface.tsx)
 
-### 2.4 Image Preview and Management
+- Update the message display to show uploaded images alongside the text prompt.
+- Implement a simple image viewer for uploaded images.
 
-- Create a new component `/Users/gtanczyk/src/codegen/src/main/ui/frontend/app/components/image-preview.tsx`:
-  - Display thumbnails of uploaded images
-  - Provide option to remove individual images
+### 3. API Client (src/main/ui/frontend/app/api/api-client.ts)
 
-### 2.5 Client-side Validation
+- Create a new function to handle sending multimodal prompts (text + images) to the backend.
+- Implement basic error handling for image upload failures.
 
-- Implement in `/Users/gtanczyk/src/codegen/src/main/ui/frontend/app/components/input-area.tsx`:
-  - Check file type (allow only image files)
-  - Validate file size (max 5MB per image)
-  - Limit the number of images (e.g., max 10 images)
+### 4. Backend API (src/main/ui/backend/api.ts)
 
-## 3. Backend Changes
+- Update the API to accept multimodal prompts, including both text and image files.
+- Implement basic validation and error handling for incoming requests.
 
-### 3.1 Update CodegenOptions
+### 5. Backend Service (src/main/ui/backend/service.ts)
 
-- Modify `/Users/gtanczyk/src/codegen/src/main/codegen-types.ts`:
-  - Add a new property to the CodegenOptions interface:
-    ```typescript
-    uploadedImages?: {
-      id: string;
-      data: Buffer;
-      mimeType: string;
-    }[];
-    ```
+- Modify the Service class to process multimodal prompts.
+- Implement logic to pass both text and image data to the prompt service.
 
-### 3.2 Image Handling
+### 6. Prompt Service (src/prompt/prompt-service.ts)
 
-- Update `/Users/gtanczyk/src/codegen/src/main/ui/backend/service.ts`:
-  - Implement function to generate unique IDs for uploaded images
-  - Add method to store uploaded images in memory
-  - Implement server-side validation for file size and type
+- Update the promptService function to handle multimodal inputs.
+- Modify the logic to include image data in the prompts sent to the AI service.
+- Adapt the existing file reading logic to handle in-memory uploaded files instead of files stored in the file system.
 
-### 3.3 Update getImageAssets
+### 7. AI Service Integration
 
-- Modify `/Users/gtanczyk/src/codegen/src/files/read-files.ts`:
-  - Update getImageAssets function to include in-memory uploaded images
-  - Generate temporary URLs for in-memory images
+- Modify the AI service integration files (in the ai-service/ directory) to accept and process image data along with text prompts.
+- Focus on adapting the following services based on their current implementation:
+  - Vertex AI (vertex-ai.ts)
+  - AI Studio (ai-studio.ts)
+  - ChatGPT (chat-gpt.ts)
+  - Anthropic (anthropic.ts)
+  - Vertex AI Claude (vertex-ai-claude.ts)
+- Ensure that the image data is properly formatted and included in the requests to the AI services.
 
-### 3.4 Modify contextImageAssets
+### 8. Types and Interfaces (src/main/codegen-types.ts)
 
-- Update `/Users/gtanczyk/src/codegen/src/prompt/prompt-service.ts`:
-  - Adjust contextImageAssets handling to work with new image references
+- Update the CodegenOptions interface to include properties for handling multimodal inputs.
+- Create new types or interfaces as needed to represent multimodal prompts.
 
-## 4. API Modifications
+## File Upload Restrictions
 
-### 4.1 Update Execute Codegen Endpoint
+- Implement the following restrictions for uploaded images:
+  - Maximum file size: 5MB per image
+  - Allowed file formats: .jpg, .jpeg, .png, .gif
+  - Maximum number of images per prompt: 5
 
-- Modify `/Users/gtanczyk/src/codegen/src/main/ui/backend/api.ts`:
-  - Update the `/execute-codegen` endpoint to accept multipart form data
-  - Process uploaded images and add them to CodegenOptions
+## Security Considerations
 
-## 5. Implementation Stages
+- Implement basic server-side validation of file types and sizes to prevent malicious uploads.
+- Ensure that uploaded images are processed in-memory and not stored permanently on the server.
 
-### Stage 1: Frontend Basic Implementation
+## Performance Considerations
 
-1. Implement file picker functionality
-2. Add drag and drop support
-3. Implement paste functionality
-4. Create image preview component
+- While performance is not a primary concern for the MVP, ensure that the application remains responsive when handling image uploads and processing.
 
-### Stage 2: Frontend Enhancements
+## Conclusion
 
-1. Implement client-side validation
-2. Improve UI/UX for image upload and preview
-
-### Stage 3: Backend Changes
-
-1. Update CodegenOptions interface
-2. Implement server-side image handling and validation
-3. Modify getImageAssets to include uploaded images
-
-### Stage 4: API and Integration
-
-1. Update execute-codegen API endpoint
-2. Integrate frontend with new API
-3. Modify contextImageAssets handling
-
-### Stage 5: Testing and Refinement
-
-1. Implement unit tests for new functionality
-2. Perform integration testing
-3. Refine based on test results and feedback
-
-## 6. Potential Risks and Considerations
-
-1. **Performance Impact**: Handling large images or multiple uploads simultaneously may affect application performance. Consider implementing a queue system for processing uploads.
-
-2. **Memory Management**: Storing images in memory could lead to high memory usage. Implement proper cleanup mechanisms and consider setting an upper limit on total memory usage for uploaded images.
-
-3. **Security Concerns**: Ensure proper sanitization and validation of uploaded files to prevent security vulnerabilities like XSS attacks or malicious file uploads.
-
-4. **Browser Compatibility**: Some advanced features like paste functionality might not work consistently across all browsers. Implement fallback mechanisms and thorough cross-browser testing.
-
-5. **Scalability**: As the number of users and uploads increases, the current in-memory storage might not be sufficient. Consider implementing a more scalable solution in the future, such as temporary file storage or integration with a cloud storage service.
-
-6. **User Experience**: Ensure clear feedback to users about upload progress, success, and any errors. Implement proper error handling and user-friendly error messages.
-
-7. **API Changes**: The modification of the execute-codegen endpoint to handle multipart form data might affect existing integrations. Ensure backward compatibility or provide clear migration guidelines.
-
-8. **Testing Complexity**: Multimodal functionality adds complexity to testing scenarios. Develop a comprehensive test suite covering various upload methods and edge cases.
-
-9. **Future Extensibility**: Consider designing the implementation in a way that allows for easy addition of new upload methods or integration with different storage solutions in the future.
-
-This implementation plan provides a structured approach to adding multimodal functionality to the GenAIcode project. By following these stages and addressing the potential risks, we can ensure a robust and user-friendly implementation of image upload and processing capabilities.
+This implementation plan provides a focused roadmap for adding essential multimodal functionality to the GenAIcode web UI as an MVP. By following this plan and leveraging the existing infrastructure, we will create a working end-to-end solution that allows users to include both text and images in their prompts for AI-assisted code generation. The plan minimizes code changes while adapting the necessary components to handle in-memory file processing and integration with multiple AI services.

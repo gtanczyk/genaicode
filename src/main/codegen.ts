@@ -24,6 +24,7 @@ import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 import { runInteractiveMode } from './interactive/codegen-interactive.js';
 import { runCodegenUI } from './ui/codegen-ui.js';
 import { putSystemMessage, putUserMessage } from './common/content-bus.js';
+import { refreshFiles } from '../files/find-files.js';
 
 /** Executes codegen */
 export async function runCodegen(): Promise<void> {
@@ -84,6 +85,8 @@ export async function runCodegenIteration(
   abortSignal?: AbortSignal,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ) {
+  refreshFiles();
+
   putUserMessage(options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.');
 
   if (rcConfig.lintCommand && !options.disableInitialLint) {

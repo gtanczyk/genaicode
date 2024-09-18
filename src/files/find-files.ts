@@ -75,16 +75,22 @@ export function getDependencyList(entryFile: string): DependencyList {
   return Array.from(result);
 }
 
-const sourceFiles = findFiles(rcConfig.rootDir, true, sourceExtensions);
+let sourceFiles: string[] = [];
+let imageAssetFiles: string[] = [];
+
+refreshFiles();
 
 /** Get source files of the application */
 export function getSourceFiles(): string[] {
   return [...sourceFiles];
 }
 
-const imageAssetFiles = findFiles(rcConfig.rootDir, true, IMAGE_ASSET_EXTENSIONS);
-
 /** Get source files of the application */
 export function getImageAssetFiles(): string[] {
   return [...imageAssetFiles];
+}
+
+export function refreshFiles() {
+  sourceFiles = findFiles(rcConfig.rootDir, true, sourceExtensions);
+  imageAssetFiles = findFiles(rcConfig.rootDir, true, IMAGE_ASSET_EXTENSIONS);
 }
