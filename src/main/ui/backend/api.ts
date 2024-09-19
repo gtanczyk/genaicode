@@ -6,7 +6,7 @@ import { Service } from './service.js';
 import { CodegenOptions } from '../../codegen-types.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_IMAGES = 5;
 
 const storage = multer.memoryStorage();
@@ -16,7 +16,7 @@ const upload = multer({
     if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed.'));
+      cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'));
     }
   },
   limits: {
@@ -28,30 +28,8 @@ const upload = multer({
 export function createRouter(service: Service) {
   const router = express.Router();
 
-  // Execute codegen
-  router.post('/execute-codegen', async (req, res) => {
-    try {
-      const { prompt, options } = req.body;
-
-      if (!prompt || typeof prompt !== 'string') {
-        return res.status(400).json({ error: 'Invalid prompt' });
-      }
-
-      const validationErrors = validateCodegenOptions(options);
-      if (validationErrors.length > 0) {
-        return res.status(400).json({ errors: validationErrors });
-      }
-
-      const result = await service.executeCodegen(prompt, options as CodegenOptions);
-      res.json({ result });
-    } catch (error) {
-      console.error('Error executing codegen:', error);
-      res.status(500).json({ error: 'An error occurred while executing codegen' });
-    }
-  });
-
-  // Execute multimodal codegen
-  router.post('/execute-multimodal-codegen', upload.array('images', MAX_IMAGES), async (req, res) => {
+  // Execute codegen (handles both regular and multimodal)
+  router.post('/execute-codegen', upload.array('images', MAX_IMAGES), async (req, res) => {
     try {
       const prompt = req.body.prompt;
       const options = JSON.parse(req.body.options);
@@ -66,20 +44,16 @@ export function createRouter(service: Service) {
         return res.status(400).json({ errors: validationErrors });
       }
 
-      if (!files || files.length === 0) {
-        return res.status(400).json({ error: 'No images uploaded' });
-      }
-
-      const images = files.map((file) => ({
+      const images = files?.map((file) => ({
         buffer: file.buffer,
         mimetype: file.mimetype as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
         originalname: file.originalname,
       }));
 
-      const result = await service.executeMultimodalCodegen(prompt, images, options as CodegenOptions);
+      const result = await service.executeCodegen(prompt, options as CodegenOptions, images);
       res.json({ result });
     } catch (error) {
-      console.error('Error executing multimodal codegen:', error);
+      console.error('Error executing codegen:', error);
       if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({ error: 'File size exceeds the 5MB limit' });
@@ -88,7 +62,7 @@ export function createRouter(service: Service) {
           return res.status(400).json({ error: `Maximum of ${MAX_IMAGES} images allowed` });
         }
       }
-      res.status(500).json({ error: 'An error occurred while executing multimodal codegen' });
+      res.status(500).json({ error: 'An error occurred while executing codegen' });
     }
   });
 

@@ -15,7 +15,7 @@ import { CodegenOptions } from '../../../../codegen-types.js';
 
 export type ExecutionStatus = 'idle' | 'executing' | 'paused';
 
-const POLLING_INTERVAL = 5000; // 5 seconds
+const POLLING_INTERVAL = 500; // 0.5 seconds
 
 export const AppState = () => {
   const [currentPrompt, setCurrentPrompt] = useState('');
