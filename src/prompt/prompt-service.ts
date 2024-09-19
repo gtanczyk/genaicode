@@ -69,6 +69,14 @@ export async function promptService(
 
   prompt.slice(-1)[0].text = messages.prompt;
 
+  // Add uploaded images to the prompt if available
+  if (codegenPrompt.options.images && codegenPrompt.options.images.length > 0) {
+    prompt.slice(-1)[0].images = codegenPrompt.options.images.map((img) => ({
+      base64url: img.base64url,
+      mediaType: img.mediaType,
+    }));
+  }
+
   // Execute the ask question step
   if (
     codegenPrompt.options.askQuestion !== false &&

@@ -16,6 +16,12 @@ interface Question {
   isConfirmation: boolean;
 }
 
+interface ImageData {
+  buffer: Buffer;
+  mimetype: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  originalname: string;
+}
+
 export class Service {
   private executionStatus: 'idle' | 'executing' | 'paused' = 'idle';
   private currentQuestion: Question | null = null;
@@ -40,6 +46,37 @@ export class Service {
       this.executionStatus = 'idle';
     } catch (error) {
       console.error('Error executing codegen:', error);
+      this.executionStatus = 'idle';
+    }
+
+    return {
+      success: true,
+    };
+  }
+
+  async executeMultimodalCodegen(prompt: string, images: ImageData[], options: CodegenOptions): Promise<CodegenResult> {
+    this.executionStatus = 'executing';
+    this.codegenOptions = { ...this.codegenOptions, ...options };
+
+    try {
+      const imageDataForPrompt = images.map((image) => ({
+        base64url: image.buffer.toString('base64'),
+        mediaType: image.mimetype,
+        originalName: image.originalname,
+      }));
+
+      await runCodegenWorker(
+        {
+          ...this.codegenOptions,
+          explicitPrompt: prompt,
+          considerAllFiles: true,
+          images: imageDataForPrompt,
+        },
+        () => this.waitIfPaused(),
+      );
+      this.executionStatus = 'idle';
+    } catch (error) {
+      console.error('Error executing multimodal codegen:', error);
       this.executionStatus = 'idle';
     }
 

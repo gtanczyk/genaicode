@@ -5,7 +5,7 @@ import { AppLayout } from './components/app-layout.js';
 import { AppState } from './components/app-state.js';
 import { AppHandlers } from './components/app-handlers.js';
 import { ChatInterface } from './components/chat-interface.js';
-import { InputArea } from './components/input-area.js';
+import { InputArea } from './components/input-area/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
 import { ProgressIndicator } from './components/progress-indicator.js';
@@ -88,9 +88,9 @@ const GenAIcodeApp = () => {
         }
         inputArea={
           isExecuting ? (
-            <QuestionHandler 
-              onSubmit={handleQuestionSubmit} 
-              question={currentQuestion} 
+            <QuestionHandler
+              onSubmit={handleQuestionSubmit}
+              question={currentQuestion}
               onInterrupt={handleInterrupt}
               onPauseResume={handlePauseResume}
               executionStatus={executionStatus}

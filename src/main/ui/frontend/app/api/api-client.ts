@@ -21,6 +21,40 @@ export const executeCodegen = async (prompt: string, options: CodegenOptions): P
   await api.post('/execute-codegen', { prompt, options });
 };
 
+export const executeMultimodalCodegen = async (
+  prompt: string,
+  images: File[],
+  options: CodegenOptions,
+): Promise<void> => {
+  const formData = new FormData();
+  formData.append('prompt', prompt);
+  formData.append('options', JSON.stringify(options));
+
+  images.forEach((image) => {
+    formData.append('images', image);
+  });
+
+  try {
+    await api.post('/execute-multimodal-codegen', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        throw new Error(`Server error: ${error.response.data.message || 'Unknown error'}`);
+      } else if (error.request) {
+        throw new Error('No response received from server');
+      } else {
+        throw new Error(`Error setting up request: ${error.message}`);
+      }
+    } else {
+      throw new Error('An unexpected error occurred');
+    }
+  }
+};
+
 export const getExecutionStatus = async (): Promise<'idle' | 'executing' | 'paused'> => {
   const response = await api.get('/execution-status');
   return response.data.status;

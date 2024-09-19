@@ -13,7 +13,9 @@ declare module 'styled-components' {
       primary: string;
       primaryHover: string;
       secondary: string;
+      secondaryHover: string;
       error: string;
+      errorHover: string;
       warning: string;
       info: string;
       border: string;
@@ -32,6 +34,7 @@ declare module 'styled-components' {
       disabled: string;
       userMessageBackground: string;
       userMessageText: string;
+      userMessageTimestamp: string;
     };
   }
 }
