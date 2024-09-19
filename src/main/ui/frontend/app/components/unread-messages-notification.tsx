@@ -33,13 +33,14 @@ const NotificationContainer = styled.div`
   background-color: ${props => props.theme.colors.primary};
   color: ${props => props.theme.colors.text};
   border-radius: 20px;
-  position: fixed;
+  position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   cursor: pointer;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
+  z-index: 10;
 
   &:hover {
     background-color: ${props => props.theme.colors.primaryHover};

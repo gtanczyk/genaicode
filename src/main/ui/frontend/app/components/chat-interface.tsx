@@ -107,7 +107,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
         })}
         <div ref={messagesEndRef} />
       </MessagesContainer>
-      {hasUnreadMessages && <UnreadMessagesNotification onClick={scrollToBottom} />}
+      {hasUnreadMessages && (
+        <UnreadMessagesNotification onClick={scrollToBottom} />
+      )}
     </ChatContainer>
   );
 };
