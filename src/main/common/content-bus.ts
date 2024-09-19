@@ -2,7 +2,7 @@ import { ChatMessageType, ContentProps } from './content-bus-types.js';
 
 type ContentHandler = (content: ContentProps) => void;
 
-let contentHandler: ContentHandler;
+let contentHandler: ContentHandler | undefined;
 
 export function putUserMessage(message: string) {
   putMessage(message, ChatMessageType.USER);
@@ -19,14 +19,14 @@ export function putAssistantMessage(message: string, data?: unknown) {
 export function putMessage(message: string, type: ChatMessageType, data?: unknown) {
   console.log(message, data);
 
-  contentHandler({
+  contentHandler?.({
     message: { id: (Date.now() + Math.random()).toString(), content: message, type: type, timestamp: new Date() },
     data,
   });
 }
 
 export function putContent(content: ContentProps) {
-  contentHandler(content);
+  contentHandler?.(content);
 }
 
 export function registerContentHandler(handler: ContentHandler) {
