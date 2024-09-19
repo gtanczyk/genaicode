@@ -42,6 +42,11 @@ const SubmitButton = styled(Button)`
   }
 `;
 
+const ConfigurationButton = styled(Button)`
+  margin-left: auto;
+  margin-right: 0;
+`;
+
 const ButtonContainerWrapper = styled.div`
   display: flex;
   justify-content: flex-start;
@@ -59,8 +64,8 @@ export const ButtonContainer: React.FC<ButtonContainerProps> = ({
       <SubmitButton onClick={onSubmit} disabled={disabled}>
         Submit
       </SubmitButton>
-      <Button onClick={onToggleOptions}>Toggle Options</Button>
       <Button onClick={onUploadClick}>Upload Images</Button>
+      <ConfigurationButton onClick={onToggleOptions}>Configuration</ConfigurationButton>
     </ButtonContainerWrapper>
   );
 };
