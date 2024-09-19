@@ -9,6 +9,7 @@ import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { AiServiceType, ImagenType } from '../main/codegen-types.js';
+import { registerUserActionHandlers } from '../main/interactive/user-action-handlers.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({
@@ -63,6 +64,7 @@ describe('promptService with askQuestion', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     console.log = vi.fn();
+    registerUserActionHandlers();
   });
 
   afterEach(() => {
@@ -121,7 +123,7 @@ describe('promptService with askQuestion', () => {
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
     expect(console.log).toHaveBeenCalledWith('Assistant asks:', expect.any(Object));
-    expect(console.log).toHaveBeenCalledWith('Proceeding with code generation.');
+    expect(console.log).toHaveBeenCalledWith('Proceeding with code generation.', undefined);
   });
 
   it('should stop code generation when askQuestion returns stopCodegen: true', async () => {
@@ -147,7 +149,7 @@ describe('promptService with askQuestion', () => {
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(result).toEqual([]);
-    expect(console.log).toHaveBeenCalledWith('Assistant requested to stop code generation. Exiting...');
+    expect(console.log).toHaveBeenCalledWith('Assistant requested to stop code generation. Exiting...', undefined);
   });
 
   it('should proceed with code generation when askQuestion returns shouldPrompt: false', async () => {

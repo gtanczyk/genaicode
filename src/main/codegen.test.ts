@@ -11,6 +11,7 @@ import * as cliOptions from '../cli/cli-options.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import * as dallE from '../ai-service/dall-e.js';
 import './config.js';
+import { refreshFiles } from '../files/find-files.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
@@ -48,6 +49,7 @@ vi.mock('../cli/cli-params.js', () => ({
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
+  refreshFiles: () => null,
 }));
 vi.mock('../cli/cli-options.js', () => ({
   printHelpMessage: vi.fn(),
