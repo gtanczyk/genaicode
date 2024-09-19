@@ -52,6 +52,7 @@ export class Service {
           explicitPrompt: prompt,
           considerAllFiles: true,
           images: imageDataForPrompt,
+          vision: this.codegenOptions.vision || !!imageDataForPrompt?.length,
         },
         () => this.waitIfPaused(),
       );
