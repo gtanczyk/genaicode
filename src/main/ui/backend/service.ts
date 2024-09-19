@@ -35,31 +35,12 @@ export class Service {
     this.codegenOptions = codegenOptions;
   }
 
-  async executeCodegen(prompt: string, options: CodegenOptions): Promise<CodegenResult> {
+  async executeCodegen(prompt: string, options: CodegenOptions, images?: ImageData[]): Promise<CodegenResult> {
     this.executionStatus = 'executing';
     this.codegenOptions = { ...this.codegenOptions, ...options };
 
     try {
-      await runCodegenWorker({ ...this.codegenOptions, explicitPrompt: prompt, considerAllFiles: true }, () =>
-        this.waitIfPaused(),
-      );
-      this.executionStatus = 'idle';
-    } catch (error) {
-      console.error('Error executing codegen:', error);
-      this.executionStatus = 'idle';
-    }
-
-    return {
-      success: true,
-    };
-  }
-
-  async executeMultimodalCodegen(prompt: string, images: ImageData[], options: CodegenOptions): Promise<CodegenResult> {
-    this.executionStatus = 'executing';
-    this.codegenOptions = { ...this.codegenOptions, ...options };
-
-    try {
-      const imageDataForPrompt = images.map((image) => ({
+      const imageDataForPrompt = images?.map((image) => ({
         base64url: image.buffer.toString('base64'),
         mediaType: image.mimetype,
         originalName: image.originalname,
@@ -76,7 +57,7 @@ export class Service {
       );
       this.executionStatus = 'idle';
     } catch (error) {
-      console.error('Error executing multimodal codegen:', error);
+      console.error('Error executing codegen:', error);
       this.executionStatus = 'idle';
     }
 

@@ -2,7 +2,6 @@ import { useCallback } from 'react';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
-  executeMultimodalCodegen,
   getExecutionStatus,
   getCurrentQuestion,
   answerQuestion,
@@ -52,11 +51,7 @@ export const AppHandlers = ({
         return;
       }
 
-      if (images.length > 0) {
-        executeMultimodalCodegen(prompt, images, codegenOptions);
-      } else {
-        executeCodegen(prompt, codegenOptions);
-      }
+      executeCodegen(prompt, codegenOptions, images.length > 0 ? images : undefined);
     } catch (error) {
       console.error('Failed to execute codegen:', error);
     } finally {

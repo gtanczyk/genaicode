@@ -17,25 +17,19 @@ export const getContent = async (): Promise<ContentProps[]> => {
   return response.data.content;
 };
 
-export const executeCodegen = async (prompt: string, options: CodegenOptions): Promise<void> => {
-  await api.post('/execute-codegen', { prompt, options });
-};
-
-export const executeMultimodalCodegen = async (
-  prompt: string,
-  images: File[],
-  options: CodegenOptions,
-): Promise<void> => {
+export const executeCodegen = async (prompt: string, options: CodegenOptions, images?: File[]): Promise<void> => {
   const formData = new FormData();
   formData.append('prompt', prompt);
   formData.append('options', JSON.stringify(options));
 
-  images.forEach((image) => {
-    formData.append('images', image);
-  });
+  if (images && images.length > 0) {
+    images.forEach((image) => {
+      formData.append('images', image);
+    });
+  }
 
   try {
-    await api.post('/execute-multimodal-codegen', formData, {
+    await api.post('/execute-codegen', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
