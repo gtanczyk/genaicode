@@ -14,9 +14,11 @@ const lightTheme: DefaultTheme = {
     primary: '#0366d6',
     primaryHover: '#0255b3',
     error: '#cc0000',
+    errorHover: '#ddaaaa',
     warning: '#cccc00',
     info: '#00cccc',
     secondary: '#6a737d',
+    secondaryHover: '#9aa3ad',
     border: '#e1e4e8',
     buttonBg: '#fafbfc',
     buttonText: '#24292e',
@@ -31,8 +33,9 @@ const lightTheme: DefaultTheme = {
     systemMessageBorder: '#d0d7de',
     systemMessageTimestamp: '#8b949e',
     disabled: '#d1d5da',
-    userMessageBackground: '#e1f0ff',
-    userMessageText: '#0366d6',
+    userMessageBackground: '#e6f3ff', // Lighter blue for better contrast
+    userMessageText: '#0366d6', // Kept the same blue for text
+    userMessageTimestamp: '#4d7eaa', // Darker blue for better readability
   },
   backgroundImage: backgroundLight,
 };
@@ -49,6 +52,8 @@ const darkTheme: DefaultTheme = {
     primaryHover: '#79b8ff',
     secondary: '#8b949e',
     error: '#cc0000',
+    errorHover: '#ddaaaa',
+    secondaryHover: '#9aa3ad',
     warning: '#cccc00',
     info: '#00cccc',
     border: '#30363d',
@@ -65,8 +70,9 @@ const darkTheme: DefaultTheme = {
     systemMessageBorder: '#30363d',
     systemMessageTimestamp: '#6e7681',
     disabled: '#41464b',
-    userMessageBackground: '#1f4a7d',
-    userMessageText: '#58a6ff',
+    userMessageBackground: '#1c4a7d', // Darker blue for better contrast in dark mode
+    userMessageText: '#e6f3ff', // Light blue text for better readability
+    userMessageTimestamp: '#a8c7f0', // Light blue for timestamp, ensuring readability
   },
   backgroundImage: backgroundDark,
 };

@@ -19,8 +19,8 @@ export const MessageBubble = styled.div`
   background-color: ${(props) => props.theme.colors.backgroundSecondary};
 
   ${MessageContainer}[data-type='user'] & {
-    background-color: ${(props) => props.theme.colors.primary};
-    color: ${(props) => props.theme.colors.buttonText};
+    background-color: ${(props) => props.theme.colors.userMessageBackground};
+    color: ${(props) => props.theme.colors.userMessageText};
   }
 `;
 
@@ -46,6 +46,10 @@ export const MessageFooter = styled.div`
 export const MessageTimestamp = styled.div`
   font-size: 0.8em;
   color: ${(props) => props.theme.colors.textSecondary};
+
+  ${MessageContainer}[data-type='user'] & {
+    color: ${(props) => props.theme.colors.userMessageTimestamp};
+  }
 `;
 
 export const ShowDataLink = styled.span`

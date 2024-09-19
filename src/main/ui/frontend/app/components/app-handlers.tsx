@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
+  executeMultimodalCodegen,
   getExecutionStatus,
   getCurrentQuestion,
   answerQuestion,
@@ -38,7 +39,7 @@ export const AppHandlers = ({
   codegenOptions,
   setCodegenOptions,
 }: AppHandlersProps) => {
-  const handleExecute = async (prompt: string) => {
+  const handleExecute = async (prompt: string, images: File[]) => {
     setCurrentPrompt(prompt);
     setIsExecuting(true);
 
@@ -51,7 +52,11 @@ export const AppHandlers = ({
         return;
       }
 
-      executeCodegen(prompt, codegenOptions);
+      if (images.length > 0) {
+        executeMultimodalCodegen(prompt, images, codegenOptions);
+      } else {
+        executeCodegen(prompt, codegenOptions);
+      }
     } catch (error) {
       console.error('Failed to execute codegen:', error);
     } finally {

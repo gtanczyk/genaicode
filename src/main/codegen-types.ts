@@ -2,6 +2,12 @@ export type AiServiceType = 'vertex-ai' | 'ai-studio' | 'vertex-ai-claude' | 'ch
 
 export type ImagenType = 'vertex-ai' | 'dall-e';
 
+export interface UploadedImage {
+  base64url: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  originalName: string;
+}
+
 export interface CodegenOptions {
   explicitPrompt?: string;
   taskFile?: string;
@@ -29,4 +35,12 @@ export interface CodegenOptions {
   ui?: boolean;
   disableCache?: boolean;
   dependencyTree?: boolean;
+
+  // New property for handling multimodal inputs
+  images?: UploadedImage[];
+}
+
+export interface MultimodalPrompt {
+  text: string;
+  images: UploadedImage[];
 }

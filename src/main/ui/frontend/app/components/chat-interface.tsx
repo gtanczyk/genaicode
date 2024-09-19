@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../../../../common/content-bus-types.js';
+import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 import { MessageContainer } from './chat/message-container.js';
 import { SystemMessageContainer, SystemMessageBlock } from './chat/system-message-container.js';
 import { ChatContainer, MessagesContainer } from './chat/styles/chat-interface-styles.js';
@@ -14,14 +14,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
 
   const mergedMessages = useMergedMessages(messages);
 
   useEffect(() => {
-    const container = containerRef.current;
+    const container = messagesContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
@@ -39,7 +39,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
 
   useEffect(() => {
     if (isScrolledToBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      scrollToBottom();
     } else {
       setHasUnreadMessages(true);
     }
@@ -70,17 +70,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesContainerRef.current?.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior: 'smooth'
+    });
     setHasUnreadMessages(false);
   };
 
   return (
     <ChatContainer>
-      <MessagesContainer ref={containerRef}>
+      <MessagesContainer ref={messagesContainerRef}>
         {mergedMessages.map((message) => {
           switch (message.type) {
-            case 'user':
-            case 'assistant':
+            case ChatMessageType.USER:
+            case ChatMessageType.ASSISTANT:
               return (
                 <MessageContainer
                   key={message.id}
@@ -89,7 +92,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
                   toggleDataVisibility={toggleDataVisibility}
                 />
               );
-            case 'system':
+            case ChatMessageType.SYSTEM:
               return (
                 <SystemMessageContainer
                   key={message.id}

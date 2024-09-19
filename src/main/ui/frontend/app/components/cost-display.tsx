@@ -16,10 +16,13 @@ export const CostDisplay: React.FC<CostDisplayProps> = ({ totalCost }) => {
 const CostContainer = styled.div`
   display: flex;
   align-items: center;
-  margin-right: 10px;
+  background-color: ${({ theme }) => theme.colors.background};
+  border-radius: 4px;
+  padding: 4px 8px;
 `;
 
 const CostText = styled.span`
   font-size: 0.9em;
   color: ${({ theme }) => theme.colors.textSecondary};
+  white-space: nowrap;
 `;

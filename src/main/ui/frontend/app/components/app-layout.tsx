@@ -58,11 +58,13 @@ const AppTitle = styled.h1`
 const HeaderRightSection = styled.div`
   display: flex;
   align-items: center;
+  gap: 16px; // Add gap between CostDisplay and IconContainer
 `;
 
 const IconContainer = styled.div`
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px; // Reduce gap between icons for better alignment
 `;
 
 const MainContent = styled.main`
@@ -74,7 +76,7 @@ const MainContent = styled.main`
 
 const ChatContainer = styled.div`
   flex-grow: 1;
-  overflow-y: auto;
+  overflow: hidden; // Changed from overflow-y: auto to hidden
   margin-bottom: 20px;
 `;
 
