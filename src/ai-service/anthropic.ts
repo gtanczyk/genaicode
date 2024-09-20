@@ -130,12 +130,13 @@ export async function generateContent(
         } else {
           retryAfter = Math.max(parseInt(error.headers['retry-after'], 10), 10);
         }
+        retryAfter = Math.min(retryAfter, 30);
         console.log(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`);
         await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
         retryCount++;
       } else {
         console.error('An error occurred:', error);
-        throw error; // Re-throw the error if it's not a rate limit error
+        throw new Error('Rate limit exceeded. Operation aborted.');
       }
     }
   }

@@ -36,6 +36,9 @@ export interface CodegenOptions {
   disableCache?: boolean;
   dependencyTree?: boolean;
 
+  // New property for disabling AI service fallback
+  disableAiServiceFallback?: boolean;
+
   // New property for handling multimodal inputs
   images?: UploadedImage[];
 }

@@ -56,6 +56,9 @@ export const ignorePatterns = params
   .filter((param) => param.startsWith('--ignore-pattern='))
   .map((param) => param.split('=')[1]);
 
+// New parameter to disable AI service fallback
+export const disableAiServiceFallback = params.includes('--disable-ai-service-fallback');
+
 if (taskFile) {
   if (explicitPrompt) {
     throw new Error('The --task-file option is exclusive with the --explicit-prompt option');
@@ -131,4 +134,10 @@ if (askQuestion && interactive) {
 
 if (interactive) {
   console.log('Interactive mode enabled');
+}
+
+if (disableAiServiceFallback) {
+  console.log('AI service fallback is disabled');
+} else {
+  console.log('AI service fallback is enabled (default)');
 }

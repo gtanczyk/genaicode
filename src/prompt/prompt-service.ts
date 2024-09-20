@@ -25,6 +25,7 @@ import { executeStepGenerateImage } from './steps/step-generate-image.js';
 import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
+import { handleAiServiceFallback } from './ai-service-fallback.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -35,8 +36,14 @@ export async function promptService(
 ): Promise<FunctionCall[]> {
   const messages = prepareMessages(codegenPrompt);
 
-  const generateContentFn: GenerateContentFunction = (...args) =>
-    generateContentFns[codegenPrompt.options.aiService](...args);
+  const generateContentFn: GenerateContentFunction = async (...args) => {
+    return await handleAiServiceFallback(
+      generateContentFns,
+      codegenPrompt.options.aiService,
+      codegenPrompt.options,
+      ...args,
+    );
+  };
 
   const generateImageFn: GenerateImageFunction = (...args) => {
     assert(codegenPrompt.options.imagen, 'imagen value must be provided');

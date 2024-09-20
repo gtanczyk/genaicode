@@ -82,8 +82,10 @@ export async function generateContent(
   console.log(`Using OpenAI model: ${model}`);
 
   let retryCount = 0;
+  const maxRetries = 3;
   let response: OpenAI.Chat.Completions.ChatCompletion | undefined = undefined;
-  while (retryCount < 3) {
+
+  while (retryCount < maxRetries) {
     try {
       response = await openai.chat.completions.create(
         {
@@ -99,23 +101,22 @@ export async function generateContent(
       );
       break; // Exit loop if successful
     } catch (error) {
-      if (error instanceof APIError && error.headers?.['x-ratelimit-limit-tokens']) {
-        const rateLimitTokens = parseInt(error.headers['x-ratelimit-limit-tokens'], 10);
-        const retryAfter = error.headers['retry-after'] ? parseInt(error.headers['retry-after'], 10) : 1;
-        console.log(
-          `Rate limited. Token limit: ${rateLimitTokens}. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`,
-        );
+      if (error instanceof APIError && error.status === 429) {
+        // Rate limit error
+        let retryAfter = error.headers?.['retry-after'] ? parseInt(error.headers['retry-after'], 10) : 60;
+        retryAfter = Math.min(retryAfter, 30);
+        console.log(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of ${maxRetries}.`);
         await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
         retryCount++;
       } else {
         console.error('An error occurred:', error);
-        throw error; // Re-throw the error if it's not a rate limit error
+        throw new Error('API request failed. Operation aborted.');
       }
     }
   }
 
-  if (retryCount === 3) {
-    console.error('Failed to complete request after 3 attempts due to rate limiting.');
+  if (retryCount === maxRetries) {
+    console.error(`Failed to complete request after ${maxRetries} attempts due to rate limiting.`);
     throw new Error('Rate limit exceeded. Operation aborted.');
   }
 

@@ -44,6 +44,7 @@ vi.mock('../cli/cli-params.js', () => ({
   contentMask: undefined,
   ignorePatterns: [],
   disableCache: undefined,
+  disableAiServiceFallback: undefined,
 }));
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
