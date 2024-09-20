@@ -40,10 +40,8 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
     explicitPrompt = `I want you to perform a coding task. The task is described in the ${taskFile} file. Use those instructions.`;
   }
 
-  let codeGenFiles: string[];
-  if (considerAllFiles) {
-    codeGenFiles = Object.keys(getSourceCode({ taskFile, forceAll: true }, options));
-  } else {
+  let codeGenFiles: string[] = [];
+  if (!considerAllFiles) {
     codeGenFiles = Object.entries(
       getSourceCode({ taskFile, forceAll: true }, options) as Record<string, SourceCodeEntry>,
     )
@@ -66,18 +64,14 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   const importantTextPrompts = importantContext.textPrompts?.map((prompt) => prompt.content).join('\n\n') || '';
   const requestPermissionText = askQuestion && (interactive || ui) ? ' (request permission via `askQuestion`)' : '';
 
-  const codeGenPrompt =
-    (explicitPrompt ? 'This is your task: ' + explicitPrompt + '\n\n' : '') +
-    `${
-      considerAllFiles
-        ? codeGenFiles.length > 0
-          ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join('\n')}`
-          : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file.`
-        : codeGenFiles.length > 0
-          ? `Generate updates only for the following files:\n${codeGenFiles.join('\n')}\n`
-          : ''
-    }
-My additional requirements for task execution are:
+  const taskPrompt = explicitPrompt
+    ? 'This is your task: ' + explicitPrompt + '\n\n'
+    : codeGenFiles.length > 0
+      ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join('\n')}\nYour task is to generate updates for those files accordingly to ${CODEGEN_TRIGGER} comments/context.`
+      : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file${askQuestion ? ', but you shoud consult me by asking question first.' : ''}.`;
+  const codeGenPrompt = `${taskPrompt}
+  
+My requirements for task execution are:
 ${importantTextPrompts ? `${importantTextPrompts}\n` : ''}
 ${
   considerAllFiles

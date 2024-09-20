@@ -1,4 +1,4 @@
-// import { CODEGEN_TRIGGER } from './prompt-consts.js';
+import { CODEGEN_TRIGGER } from './prompt-consts.js';
 import { verifySystemPromptLimit } from './limits.js';
 import { rcConfig } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
@@ -11,6 +11,7 @@ export function getSystemPrompt({ verbose, askQuestion, interactive, ui }: Codeg
   You are a code generation assistant. I want you to help me generate code for my ideas in my application source code.
 
   You can generate new code, or modify the existing one. You will receive instructions on what is the goal of requested code modification.
+  Instructions will be passed to you either directly via message, with a file, or using the ${CODEGEN_TRIGGER} comment in the code.
 
   You should parse my application source code and then suggest changes using appropriate tools.
 

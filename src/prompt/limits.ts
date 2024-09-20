@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 
-const SYSTEM_PROMPT_LIMIT = 500;
+const SYSTEM_PROMPT_LIMIT = 550;
 const CODEGEN_PROMPT_LIMIT = 500;
 const SOURCE_CODE_LIMIT = 40000;
 
