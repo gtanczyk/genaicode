@@ -126,7 +126,7 @@ if (interactive && ui) {
   throw new Error('--ui and --interactive are exclusive.');
 }
 
-if (askQuestion && interactive) {
+if (askQuestion && (interactive || ui)) {
   console.log('Assistant can ask questions to the user');
 } else {
   console.log('Assistant will not ask questions to the user');
