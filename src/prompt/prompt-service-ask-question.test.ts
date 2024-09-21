@@ -117,7 +117,12 @@ describe('promptService with askQuestion', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true, askQuestion: true }),
+      getCodeGenPrompt({
+        aiService: 'vertex-ai',
+        disableContextOptimization: true,
+        interactive: true,
+        askQuestion: true,
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -144,7 +149,7 @@ describe('promptService with askQuestion', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
+      getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
@@ -172,7 +177,7 @@ describe('promptService with askQuestion', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ aiService: 'vertex-ai', interactive: true }),
+      getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);

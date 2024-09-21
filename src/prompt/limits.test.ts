@@ -9,8 +9,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for a prompt exceeding the limit', () => {
-      const invalidPrompt = 'A '.repeat(551);
-      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 552 > 550');
+      const invalidPrompt = 'A '.repeat(2000);
+      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 1300 > 650');
     });
   });
 
@@ -21,8 +21,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for a prompt exceeding the limit', () => {
-      const invalidPrompt = 'B '.repeat(501);
-      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 502 > 500');
+      const invalidPrompt = 'B '.repeat(10000);
+      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 6500 > 800');
     });
   });
 
@@ -33,8 +33,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for source code exceeding the limit', () => {
-      const invalidSourceCode = 'C '.repeat(40001);
-      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow('Token limit exceeded: 40002 > 40000');
+      const invalidSourceCode = 'C '.repeat(400001);
+      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow('Token limit exceeded: 260001 > 100000');
     });
   });
 });

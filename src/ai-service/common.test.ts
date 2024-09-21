@@ -40,7 +40,7 @@ describe('printTokenUsageAndCost', () => {
 
     printTokenUsageAndCost({ usage, inputCostPerToken, outputCostPerToken, cheap: false });
 
-    expect(consoleLogSpy).toHaveBeenCalledTimes(5);
+    expect(consoleLogSpy).toHaveBeenCalledTimes(6);
     expect(consoleLogSpy).toHaveBeenCalledWith('Token Usage:');
     expect(consoleLogSpy).toHaveBeenCalledWith('  - Input tokens: ', 100);
     expect(consoleLogSpy).toHaveBeenCalledWith('  - Output tokens: ', 50);
