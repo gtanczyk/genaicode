@@ -24,9 +24,6 @@ interface AppHandlersProps {
   >;
   codegenOptions: CodegenOptions;
   setCodegenOptions: (options: CodegenOptions) => void;
-  fetchCodegenData: () => Promise<void>;
-  fetchTotalCost: () => Promise<void>;
-  setLastFinishedExecutionId: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 export const AppHandlers = ({

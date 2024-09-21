@@ -29,7 +29,6 @@ export const AppState = () => {
   const [totalCost, setTotalCost] = useState(0);
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
   const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
-  const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
   const [lastFinishedExecutionId, setLastFinishedExecutionId] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -38,152 +37,67 @@ export const AppState = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
-  const fetchInitialData = useCallback(async () => {
-    try {
-      await Promise.all([
-        checkExecutionStatus(),
-        checkCurrentQuestion(),
-        fetchCodegenData(),
-        fetchTotalCost(),
-        fetchDefaultCodegenOptions(),
-        fetchRcConfig(),
-      ]);
-    } catch (error) {
-      console.error('Failed to fetch initial data:', error);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
-
-  const checkExecutionStatus = async () => {
-    try {
-      const status = await getExecutionStatus();
-      setIsExecuting(status !== 'idle');
-      setExecutionStatus(status);
-    } catch (error) {
-      console.error('Failed to check execution status:', error);
-    }
-  };
-
-  const checkCurrentQuestion = async () => {
-    try {
-      const question = await getCurrentQuestion();
-      setCurrentQuestion(question);
-    } catch (error) {
-      console.error('Failed to fetch current question:', error);
-    }
-  };
-
-  const fetchCodegenData = async () => {
-    try {
-      const content = await getContent();
-
-      setChatMessages(
-        content
-          .filter((content) => !!content.message)
-          .map((content) => ({
-            ...content.message!,
-            data: content.data,
-          })),
-      );
-    } catch (error) {
-      console.error('Failed to fetch codegen data:', error);
-    }
-  };
-
-  const fetchTotalCost = async () => {
-    try {
-      const cost = await getTotalCost();
-      setTotalCost(cost);
-    } catch (error) {
-      console.error('Failed to fetch total cost:', error);
-    }
-  };
-
-  const fetchDefaultCodegenOptions = async () => {
-    try {
-      const defaultOptions = await getDefaultCodegenOptions();
-      setCodegenOptions(defaultOptions);
-    } catch (error) {
-      console.error('Failed to fetch default codegen options:', error);
-    }
-  };
-
-  const fetchRcConfig = async () => {
-    try {
-      const config = await getRcConfig();
-      setRcConfig(config);
-    } catch (error) {
-      console.error('Failed to fetch rcConfig:', error);
-    }
-  };
-
-  const addChatMessage = useCallback((message: ChatMessage) => {
-    setChatMessages((prevMessages) => [...prevMessages, message]);
-  }, []);
-
-  const handlePromptSubmit = useCallback(
-    async (prompt: string) => {
-      setCurrentPrompt(prompt);
-      addChatMessage({
-        id: `user_${Date.now()}`,
-        type: ChatMessageType.USER,
-        content: prompt,
-        timestamp: new Date(),
-      });
-      setIsExecuting(true);
-      setExecutionStatus('executing');
-      // Here you would typically call your API to execute the codegen
-      // After execution, you would update the state with the results
-      // For now, we'll just add a placeholder assistant message
-      setTimeout(() => {
-        const executionId = `execution_${Date.now()}`;
-        addChatMessage({
-          id: executionId,
-          type: ChatMessageType.ASSISTANT,
-          content: 'Codegen execution completed.',
-          timestamp: new Date(),
-        });
-        setIsExecuting(false);
-        setExecutionStatus('idle');
-        setLastFinishedExecutionId(executionId);
-      }, 2000);
-    },
-    [addChatMessage],
-  );
-
-  const updateCodegenOptions = useCallback(
-    (newOptions: CodegenOptions) => {
-      setCodegenOptions(newOptions);
-      addChatMessage({
-        id: `system_${Date.now()}`,
-        type: ChatMessageType.SYSTEM,
-        content: 'Codegen options updated',
-        timestamp: new Date(),
-      });
-    },
-    [addChatMessage],
-  );
-
-  const toggleDataVisibility = useCallback((id: string) => {
-    setVisibleDataIds((prevIds) => {
-      const newIds = new Set(prevIds);
-      if (newIds.has(id)) {
-        newIds.delete(id);
-      } else {
-        newIds.add(id);
+    const fetchInitialData = async () => {
+      try {
+        const [status, question, content, cost, defaultOptions, config] = await Promise.all([
+          getExecutionStatus(),
+          getCurrentQuestion(),
+          getContent(),
+          getTotalCost(),
+          getDefaultCodegenOptions(),
+          getRcConfig(),
+        ]);
+        
+        setIsExecuting(status !== 'idle');
+        setExecutionStatus(status);
+        setCurrentQuestion(question);
+        setChatMessages(
+          content
+            .filter((content) => !!content.message)
+            .map((content) => ({
+              ...content.message!,
+              data: content.data,
+            })),
+        );
+        setTotalCost(cost);
+        setCodegenOptions(defaultOptions);
+        setRcConfig(config);
+      } catch (error) {
+        console.error('Failed to fetch initial data:', error);
       }
-      return newIds;
-    });
+    };
+
+    fetchInitialData();
   }, []);
 
   const startPolling = useCallback(() => {
     if (!isPolling) {
       setIsPolling(true);
       const poll = async () => {
-        await Promise.all([checkExecutionStatus(), checkCurrentQuestion(), fetchCodegenData(), fetchTotalCost()]);
+        try {
+          const [status, question, content, cost] = await Promise.all([
+            getExecutionStatus(),
+            getCurrentQuestion(),
+            getContent(),
+            getTotalCost(),
+          ]);
+          
+          setIsExecuting(status !== 'idle');
+          setExecutionStatus(status);
+          setCurrentQuestion(question);
+          setChatMessages(
+            content
+              .filter((content) => !!content.message)
+              .map((content) => ({
+                ...content.message!,
+                data: content.data,
+              })),
+          );
+          setTotalCost(cost);
+        } catch (error) {
+          console.error('Failed to poll data:', error);
+        }
         pollingTimeoutRef.current = setTimeout(poll, POLLING_INTERVAL);
       };
       poll();
@@ -204,31 +118,37 @@ export const AppState = () => {
     try {
       await pauseExecution();
       setExecutionStatus('paused');
-      addChatMessage({
-        id: `system_${Date.now()}`,
-        type: ChatMessageType.SYSTEM,
-        content: 'Execution paused',
-        timestamp: new Date(),
-      });
+      setChatMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Execution paused',
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error) {
       console.error('Failed to pause execution:', error);
     }
-  }, [addChatMessage]);
+  }, []);
 
   const handleResumeExecution = useCallback(async () => {
     try {
       await resumeExecution();
       setExecutionStatus('executing');
-      addChatMessage({
-        id: `system_${Date.now()}`,
-        type: ChatMessageType.SYSTEM,
-        content: 'Execution resumed',
-        timestamp: new Date(),
-      });
+      setChatMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          id: `system_${Date.now()}`,
+          type: ChatMessageType.SYSTEM,
+          content: 'Execution resumed',
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error) {
       console.error('Failed to resume execution:', error);
     }
-  }, [addChatMessage]);
+  }, []);
 
   return {
     currentPrompt,
@@ -244,23 +164,13 @@ export const AppState = () => {
     totalCost,
     codegenOptions,
     rcConfig,
-    visibleDataIds,
     lastFinishedExecutionId,
     toggleTheme,
-    checkExecutionStatus,
-    checkCurrentQuestion,
-    fetchCodegenData,
-    fetchTotalCost,
-    handlePromptSubmit,
-    addChatMessage,
     setCodegenOptions,
     setCurrentQuestion,
-    updateCodegenOptions,
-    toggleDataVisibility,
     setLastFinishedExecutionId,
     startPolling,
     stopPolling,
-    isPolling,
     handlePauseExecution,
     handleResumeExecution,
   };

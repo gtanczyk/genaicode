@@ -12,7 +12,7 @@ const MAX_IMAGES = 5;
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_, file, cb) => {
     if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -66,7 +66,7 @@ export function createRouter(service: Service) {
     }
   });
 
-  router.get('/content', async (req, res) => {
+  router.get('/content', async (_, res) => {
     try {
       const content = service.getContent();
       res.json({ content });
@@ -77,7 +77,7 @@ export function createRouter(service: Service) {
   });
 
   // Get execution status
-  router.get('/execution-status', async (req, res) => {
+  router.get('/execution-status', async (_, res) => {
     try {
       const status = await service.getExecutionStatus();
       res.json({ status });
@@ -88,7 +88,7 @@ export function createRouter(service: Service) {
   });
 
   // Interrupt execution
-  router.post('/interrupt-execution', async (req, res) => {
+  router.post('/interrupt-execution', async (_, res) => {
     try {
       await service.interruptExecution();
       res.json({ message: 'Execution interrupted successfully' });
@@ -99,7 +99,7 @@ export function createRouter(service: Service) {
   });
 
   // Pause execution
-  router.post('/pause-execution', async (req, res) => {
+  router.post('/pause-execution', async (_, res) => {
     try {
       await service.pauseExecution();
       res.json({ message: 'Execution paused successfully' });
@@ -110,7 +110,7 @@ export function createRouter(service: Service) {
   });
 
   // Resume execution
-  router.post('/resume-execution', async (req, res) => {
+  router.post('/resume-execution', async (_, res) => {
     try {
       await service.resumeExecution();
       res.json({ message: 'Execution resumed successfully' });
@@ -121,7 +121,7 @@ export function createRouter(service: Service) {
   });
 
   // Get current question
-  router.get('/current-question', async (req, res) => {
+  router.get('/current-question', async (_, res) => {
     try {
       const question = await service.getCurrentQuestion();
       res.json({ question });
@@ -149,7 +149,7 @@ export function createRouter(service: Service) {
   });
 
   // Get total cost of prompts in the current session
-  router.get('/total-cost', async (req, res) => {
+  router.get('/total-cost', async (_, res) => {
     try {
       const totalCost = await service.getTotalCost();
       res.json({ totalCost });
@@ -160,7 +160,7 @@ export function createRouter(service: Service) {
   });
 
   // Get default CodegenOptions
-  router.get('/default-codegen-options', async (req, res) => {
+  router.get('/default-codegen-options', async (_, res) => {
     try {
       const defaultOptions = service.getCodegenOptions();
       res.json({ options: defaultOptions });
@@ -171,7 +171,7 @@ export function createRouter(service: Service) {
   });
 
   // Get rcConfig settings
-  router.get('/rcconfig', async (req, res) => {
+  router.get('/rcconfig', async (_, res) => {
     try {
       const rcConfigSettings = globalRcConfig;
       res.json({ rcConfig: rcConfigSettings });

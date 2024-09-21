@@ -30,7 +30,7 @@ const createReadlineInterface = () => {
 };
 
 const setupKeyPressHandler = (rl: readline.Interface, abortController: AbortController) => {
-  const handleKeyPress = (str: string, key: { ctrl: boolean; name: string }) => {
+  const handleKeyPress = (_: string, key: { ctrl: boolean; name: string }) => {
     if (key.ctrl && key.name === 'c') {
       console.log('\nInterruption requested. Aborting operation...');
       abortController.abort();

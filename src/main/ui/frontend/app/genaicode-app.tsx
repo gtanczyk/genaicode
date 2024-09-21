@@ -27,14 +27,11 @@ const GenAIcodeApp = () => {
     codegenOptions,
     rcConfig,
     toggleTheme,
-    fetchCodegenData,
-    fetchTotalCost,
-    updateCodegenOptions,
-    setLastFinishedExecutionId,
     startPolling,
     stopPolling,
     handlePauseExecution,
     handleResumeExecution,
+    setCodegenOptions,
   } = AppState();
 
   const { handleExecute, handleQuestionSubmit, handleInterrupt, handleOptionsChange } = AppHandlers({
@@ -47,10 +44,7 @@ const GenAIcodeApp = () => {
     setChatMessages,
     setCurrentQuestion,
     codegenOptions,
-    setCodegenOptions: updateCodegenOptions,
-    fetchCodegenData,
-    fetchTotalCost,
-    setLastFinishedExecutionId,
+    setCodegenOptions,
   });
 
   useEffect(() => {

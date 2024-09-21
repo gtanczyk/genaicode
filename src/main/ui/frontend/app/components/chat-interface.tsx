@@ -133,7 +133,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </MessagesContainer>
       {hasUnreadMessages && <UnreadMessagesNotification onClick={scrollToBottom} />}
       <ProgressIndicator
-        isVisible={executionStatus === 'executing' && !currentQuestion}
+        isVisible={executionStatus !== 'idle' && !currentQuestion}
         onInterrupt={onInterrupt}
         onPauseResume={onPauseResume}
         executionStatus={executionStatus}

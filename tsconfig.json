@@ -18,7 +18,9 @@
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "types": ["vitest/globals"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "ts-node": {
     "esm": true,

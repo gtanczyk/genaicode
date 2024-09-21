@@ -8,26 +8,24 @@ interface ProgressIndicatorProps {
   executionStatus: 'idle' | 'executing' | 'paused';
 }
 
-export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ 
-  isVisible, 
-  onInterrupt, 
-  onPauseResume, 
-  executionStatus 
+export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
+  isVisible,
+  onInterrupt,
+  onPauseResume,
+  executionStatus,
 }) => {
   if (!isVisible) return null;
 
   return (
     <ProgressContainer>
-      <ProgressDots>
+      <ProgressDots data-execution-status={executionStatus}>
         <ProgressDot />
         <ProgressDot />
         <ProgressDot />
       </ProgressDots>
       <ButtonContainer>
         <ActionButton onClick={onInterrupt}>Interrupt</ActionButton>
-        <ActionButton onClick={onPauseResume}>
-          {executionStatus === 'paused' ? 'Resume' : 'Pause'}
-        </ActionButton>
+        <ActionButton onClick={onPauseResume}>{executionStatus === 'paused' ? 'Resume' : 'Pause'}</ActionButton>
       </ButtonContainer>
     </ProgressContainer>
   );
@@ -48,8 +46,8 @@ const ProgressContainer = styled.div`
   justify-content: center;
   align-items: center;
   padding: 10px;
-  background-color: ${props => props.theme.colors.background};
-  border-top: 1px solid ${props => props.theme.colors.border};
+  background-color: ${(props) => props.theme.colors.background};
+  border-top: 1px solid ${(props) => props.theme.colors.border};
 `;
 
 const ProgressDots = styled.div`
@@ -62,10 +60,13 @@ const ProgressDots = styled.div`
 const ProgressDot = styled.div`
   width: 10px;
   height: 10px;
-  background-color: ${props => props.theme.colors.primary};
+  background-color: ${(props) => props.theme.colors.primary};
   border-radius: 50%;
   margin: 0 5px;
-  animation: ${pulse} 1.4s infinite ease-in-out both;
+
+  [data-execution-status='executing'] & {
+    animation: ${pulse} 1.4s infinite ease-in-out both;
+  }
 
   &:nth-child(1) {
     animation-delay: -0.32s;
@@ -78,14 +79,14 @@ const ProgressDot = styled.div`
 
 const ButtonContainer = styled.div`
   display: flex;
-  justify-content: center;
-  gap: 10px;
+  width: 25%;
+  justify-content: space-between;
 `;
 
 const ActionButton = styled.button`
   padding: 5px 10px;
-  background-color: ${props => props.theme.colors.primary};
-  color: ${props => props.theme.colors.text};
+  background-color: ${(props) => props.theme.colors.primary};
+  color: ${(props) => props.theme.colors.text};
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -93,6 +94,6 @@ const ActionButton = styled.button`
   transition: background-color 0.3s;
 
   &:hover {
-    background-color: ${props => props.theme.colors.primaryHover};
+    background-color: ${(props) => props.theme.colors.primaryHover};
   }
 `;
