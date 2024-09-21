@@ -3,13 +3,13 @@ import { putSystemMessage } from '../main/common/content-bus';
 import { askUserForConfirmation } from '../main/common/user-actions';
 import { GenerateContentFunction } from '../ai-service/common';
 
-const AI_SERVICE_FALLBACK_ORDER: AiServiceType[] = [
-  process.env.ANTHROPIC_API_KEY ? 'anthropic' : undefined,
-  process.env.OPENAI_API_KEY ? 'chat-gpt' : undefined,
-  process.env.GOOGLE_CLOUD_PROJECT ? 'vertex-ai-claude' : undefined,
-  process.env.GOOGLE_CLOUD_PROJECT ? 'vertex-ai' : undefined,
-  process.env.API_KEY ? 'ai-studio' : undefined,
-].filter((service) => service) as AiServiceType[];
+const AI_SERVICES_MAP = [
+  [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],
+  [() => process.env.OPENAI_API_KEY, 'chat-gpt'],
+  [() => process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_CLOUD_REGION, 'vertex-ai-claude'],
+  [() => process.env.GOOGLE_CLOUD_PROJECT, 'vertex-ai'],
+  [() => process.env.API_KEY, 'ai-studio'],
+] as const;
 
 export async function handleAiServiceFallback(
   generateContentFns: Record<AiServiceType, GenerateContentFunction>,
@@ -18,7 +18,7 @@ export async function handleAiServiceFallback(
   ...args: Parameters<GenerateContentFunction>
 ): Promise<ReturnType<GenerateContentFunction>> {
   let retryCount = 0;
-  const maxRetries = AI_SERVICE_FALLBACK_ORDER.length;
+  const maxRetries = AI_SERVICES_MAP.length;
   let permanentService = currentService;
 
   while (retryCount < maxRetries) {
@@ -81,9 +81,10 @@ export async function handleAiServiceFallback(
 }
 
 function getNextAiService(currentService: AiServiceType): AiServiceType | undefined {
-  const currentIndex = AI_SERVICE_FALLBACK_ORDER.indexOf(currentService);
-  if (currentIndex === -1 || currentIndex === AI_SERVICE_FALLBACK_ORDER.length - 1) {
+  const options = AI_SERVICES_MAP.filter(([check]) => check()).map(([, service]) => service);
+  const currentIndex = options.indexOf(currentService);
+  if (currentIndex === -1 || currentIndex === options.length - 1) {
     return undefined;
   }
-  return AI_SERVICE_FALLBACK_ORDER[currentIndex + 1];
+  return options[currentIndex + 1];
 }
