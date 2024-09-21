@@ -18,15 +18,13 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
 
   return (
     <ProgressContainer>
+      <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
       <ProgressDots data-execution-status={executionStatus}>
         <ProgressDot />
         <ProgressDot />
         <ProgressDot />
       </ProgressDots>
-      <ButtonContainer>
-        <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
-        <ActionButton onClick={onPauseResume}>{executionStatus === 'paused' ? 'Resume' : 'Pause'}</ActionButton>
-      </ButtonContainer>
+      <ActionButton onClick={onPauseResume}>{executionStatus === 'paused' ? 'Resume' : 'Pause'}</ActionButton>
     </ProgressContainer>
   );
 };
@@ -42,9 +40,10 @@ const pulse = keyframes`
 
 const ProgressContainer = styled.div`
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  flex-direction: row;
   align-items: center;
+  justify-content: center;
+  gap: 50px;
   padding: 10px;
   background-color: ${(props) => props.theme.colors.background};
   border-top: 1px solid ${(props) => props.theme.colors.border};
@@ -52,6 +51,7 @@ const ProgressContainer = styled.div`
 
 const ProgressDots = styled.div`
   display: flex;
+  align-items: center;
   justify-content: center;
   align-items: center;
   margin-bottom: 10px;
@@ -75,12 +75,6 @@ const ProgressDot = styled.div`
   &:nth-child(2) {
     animation-delay: -0.16s;
   }
-`;
-
-const ButtonContainer = styled.div`
-  display: flex;
-  width: 25%;
-  justify-content: space-between;
 `;
 
 const ActionButton = styled.button`

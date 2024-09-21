@@ -5,6 +5,7 @@ import { runCodegenWorker, abortController } from '../../interactive/codegen-wor
 import { ContentProps } from '../../common/content-bus-types.js';
 import { getCollectedCosts } from '../../common/cost-collector.js';
 import { putSystemMessage } from '../../common/content-bus.js';
+import crypto from 'crypto';
 
 interface CodegenResult {
   success: boolean;
@@ -31,9 +32,28 @@ export class Service {
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
+  private securityToken: string;
 
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
+    this.securityToken = this.generateToken();
+  }
+
+  private generateToken(): string {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  public getToken(): string {
+    return this.securityToken;
+  }
+
+  public validateToken(token: string): boolean {
+    return token === this.securityToken;
+  }
+
+  public refreshToken(): string {
+    this.securityToken = this.generateToken();
+    return this.securityToken;
   }
 
   async executeCodegen(prompt: string, options: CodegenOptions, images?: ImageData[]): Promise<CodegenResult> {

@@ -28,6 +28,18 @@ const upload = multer({
 export function createRouter(service: Service) {
   const router = express.Router();
 
+  // Apply token validation middleware to all routes
+  router.use((req, res, next) => {
+    const token = req.headers['authorization']?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    if (!service.validateToken(token)) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    next();
+  });
+
   // Execute codegen (handles both regular and multimodal)
   router.post('/execute-codegen', upload.array('images', MAX_IMAGES), async (req, res) => {
     try {

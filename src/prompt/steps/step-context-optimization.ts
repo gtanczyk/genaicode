@@ -96,6 +96,8 @@ export async function executeStepContextOptimization(
   ];
 
   try {
+    putSystemMessage('Context optimization is starting');
+
     const result = await generateContentFn(optimizationPrompt, functionDefs, 'optimizeContext', 0.2, true, options);
 
     const fileRelevance = parseOptimizationResult(result);

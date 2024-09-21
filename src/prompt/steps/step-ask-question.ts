@@ -3,6 +3,7 @@ import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
+import { abortController } from '../../main/interactive/codegen-worker.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: (
@@ -134,6 +135,10 @@ export async function executeStepAskQuestion(
       }
 
       console.log('The question was answered', userAnswer);
+
+      if (abortController?.signal.aborted) {
+        return StepResult.BREAK;
+      }
     } else {
       console.log('Assistant did not ask a question. Proceeding with code generation.');
       break;

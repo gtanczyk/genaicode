@@ -12,6 +12,20 @@ const api = axios.create({
   },
 });
 
+// Add a request interceptor to include the security token in all requests
+api.interceptors.request.use(
+  (config) => {
+    const securityToken = document.querySelector('body[data-security-token]')?.getAttribute('data-security-token');
+    if (securityToken) {
+      config.headers['Authorization'] = `Bearer ${securityToken}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
+);
+
 export const getContent = async (): Promise<ContentProps[]> => {
   const response = await api.get('/content');
   return response.data.content;

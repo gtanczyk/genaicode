@@ -29,6 +29,11 @@ export const codegenSummary = {
               description:
                 'An absolute path of the project file that will be updated. This must be an absolute file path.',
             },
+            prompt: {
+              type: 'string',
+              description:
+                'A detailed prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file.',
+            },
             updateToolName: {
               type: 'string',
               enum: [
@@ -45,11 +50,6 @@ export const codegenSummary = {
                 'imglyRemoveBackground',
               ],
               description: 'The name of the tool that will be used to perform the update.',
-            },
-            prompt: {
-              type: 'string',
-              description:
-                'A detailed prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file.',
             },
             temperature: {
               type: 'number',

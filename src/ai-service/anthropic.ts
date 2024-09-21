@@ -11,6 +11,7 @@ import {
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { modelOverrides } from '../main/config.js';
+import { putSystemMessage } from '../main/common/content-bus.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -133,7 +134,7 @@ export async function generateContent(
           retryAfter = Math.max(parseInt(error.headers['retry-after'], 10), 10);
         }
         retryAfter = Math.min(retryAfter, 30);
-        console.log(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`);
+        putSystemMessage(`Rate limited. Retrying after ${retryAfter} seconds. Attempt ${retryCount + 1} of 3.`);
         await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
         retryCount++;
       } else {
