@@ -27,39 +27,54 @@ export async function handleAiServiceFallback(
       options.aiService = permanentService;
       return result;
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Rate limit exceeded')) {
-        putSystemMessage(`Rate limit exceeded for ${permanentService}`);
+      if (error instanceof Error) {
+        // Check if the error is due to an interruption
+        if (error.name === 'AbortError' || error.message.includes('interrupted')) {
+          putSystemMessage(`Operation interrupted for ${permanentService}`);
+          throw error; // Re-throw the interruption error
+        }
 
-        if (options.disableAiServiceFallback) {
-          if (options.interactive || options.ui) {
-            const nextService = getNextAiService(permanentService);
-            if (nextService) {
-              const shouldSwitch = await askUserForConfirmation(
-                `Rate limit exceeded for ${permanentService}. Would you like to switch to ${nextService}?`,
-                true,
-              );
-              if (shouldSwitch) {
-                putSystemMessage(`Switching to ${nextService} due to rate limiting.`);
-                permanentService = nextService;
-                retryCount++;
-                continue;
+        if (error.message.includes('Rate limit exceeded')) {
+          putSystemMessage(`Rate limit exceeded for ${permanentService}`);
+
+          if (options.disableAiServiceFallback) {
+            if (options.interactive || options.ui) {
+              const nextService = getNextAiService(permanentService);
+              if (nextService) {
+                const shouldSwitch = await askUserForConfirmation(
+                  `Rate limit exceeded for ${permanentService}. Would you like to switch to ${nextService}?`,
+                  true,
+                );
+                if (shouldSwitch) {
+                  putSystemMessage(`Switching to ${nextService} due to rate limiting.`);
+                  permanentService = nextService;
+                  retryCount++;
+                  continue;
+                }
               }
+            } else {
+              throw new Error(`Rate limit exceeded for ${permanentService}. AI service fallback is disabled.`);
             }
           } else {
-            throw new Error(`Rate limit exceeded for ${permanentService}. AI service fallback is disabled.`);
+            const nextService = getNextAiService(permanentService);
+            if (nextService) {
+              putSystemMessage(
+                `Rate limit exceeded for ${permanentService}. Automatically switching to ${nextService}.`,
+              );
+              permanentService = nextService;
+              retryCount++;
+            } else {
+              throw new Error(`Rate limit exceeded for ${permanentService}. AI service fallback was not possible.`);
+            }
           }
         } else {
-          const nextService = getNextAiService(permanentService);
-          if (nextService) {
-            putSystemMessage(`Rate limit exceeded for ${permanentService}. Automatically switching to ${nextService}.`);
-            permanentService = nextService;
-            retryCount++;
-          } else {
-            throw new Error(`Rate limit exceeded for ${permanentService}. AI service fallback was not possible.`);
-          }
+          // For other types of errors, re-throw
+          throw error;
         }
+      } else {
+        // If it's not an Error instance, re-throw
+        throw error;
       }
-      throw error;
     }
   }
   throw new Error('All AI services have been exhausted due to rate limiting.');

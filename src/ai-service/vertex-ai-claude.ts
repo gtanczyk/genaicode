@@ -94,7 +94,7 @@ export async function generateContent(
     outputTokens: response.usage.output_tokens,
     totalTokens: response.usage.input_tokens + response.usage.output_tokens,
   };
-  printTokenUsageAndCost(usage, 3 / 1000 / 1000, 15 / 1000 / 1000);
+  printTokenUsageAndCost({ usage, inputCostPerToken: 3 / 1000 / 1000, outputCostPerToken: 15 / 1000 / 1000, cheap });
 
   const responseMessages = response.content.filter((item) => item.type !== 'tool_use');
   if (responseMessages.length > 0) {

@@ -42,7 +42,7 @@ export async function generateContent(
         > = [];
         if (item.functionResponses) {
           content.push(
-            ...item.functionResponses.map((response) => ({
+            ...(item.functionResponses ?? []).map((response) => ({
               tool_use_id: response.call_id ?? response.name,
               content: response.content,
               type: 'tool_result' as const,
@@ -52,7 +52,7 @@ export async function generateContent(
         }
         if (item.images) {
           content.push(
-            ...item.images.map((image) => ({
+            ...(item.images ?? []).map((image) => ({
               type: 'image' as const,
               source: {
                 type: 'base64' as const,
@@ -79,7 +79,7 @@ export async function generateContent(
           role: 'assistant' as const,
           content: [
             ...(item.text ? [{ type: 'text' as const, text: item.text }] : []),
-            ...item.functionCalls!.map((call) => ({
+            ...(item.functionCalls ?? []).map((call) => ({
               id: call.id ?? call.name,
               name: call.name,
               input: call.args ?? {},
@@ -113,7 +113,9 @@ export async function generateContent(
           })),
           tool_choice: requiredFunctionName
             ? { type: 'tool' as const, name: requiredFunctionName }
-            : { type: 'any' as const },
+            : functionDefs.length > 0
+              ? { type: 'any' as const }
+              : undefined,
           max_tokens: cheap ? 4096 : 8192,
           temperature: temperature,
         },
@@ -136,7 +138,7 @@ export async function generateContent(
         retryCount++;
       } else {
         console.error('An error occurred:', error);
-        throw new Error('Rate limit exceeded. Operation aborted.');
+        throw new Error('API request failed. Operation aborted.');
       }
     }
   }
@@ -154,7 +156,12 @@ export async function generateContent(
     outputTokens: response!.usage.output_tokens,
     totalTokens: response!.usage.input_tokens + response!.usage.output_tokens,
   };
-  printTokenUsageAndCost(usage, 3 / 1000 / 1000, 15 / 1000 / 1000);
+  printTokenUsageAndCost({
+    usage,
+    inputCostPerToken: 3 / 1000 / 1000,
+    outputCostPerToken: 15 / 1000 / 1000,
+    cheap,
+  });
 
   const responseMessages = response!.content.filter((item) => item.type !== 'tool_use');
   if (responseMessages.length > 0) {

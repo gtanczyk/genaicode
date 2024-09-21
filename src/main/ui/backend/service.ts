@@ -8,6 +8,7 @@ import { putSystemMessage } from '../../common/content-bus.js';
 
 interface CodegenResult {
   success: boolean;
+  message?: string;
 }
 
 interface Question {
@@ -23,7 +24,7 @@ interface ImageData {
 }
 
 export class Service {
-  private executionStatus: 'idle' | 'executing' | 'paused' = 'idle';
+  private executionStatus: 'idle' | 'executing' | 'paused' | 'interrupted' = 'idle';
   private currentQuestion: Question | null = null;
   private askQuestionConversation: Array<{ id: string; question: string; answer: string; isConfirmation: boolean }> =
     [];
@@ -57,21 +58,32 @@ export class Service {
         () => this.waitIfPaused(),
       );
       this.executionStatus = 'idle';
+      return { success: true };
     } catch (error) {
       console.error('Error executing codegen:', error);
       this.executionStatus = 'idle';
+      if (error instanceof Error) {
+        if (error.name === 'AbortError' || error.message.includes('interrupted')) {
+          return { success: false, message: 'Codegen execution was interrupted' };
+        } else if (error.message.includes('Rate limit exceeded')) {
+          return {
+            success: false,
+            message: 'Rate limit exceeded. Consider switching to a different AI service or waiting before retrying.',
+          };
+        }
+        return { success: false, message: `An error occurred: ${error.message}` };
+      }
+      return { success: false, message: 'An unknown error occurred' };
     }
-
-    return {
-      success: true,
-    };
   }
 
   async interruptExecution(): Promise<void> {
-    abortController?.abort();
-    this.executionStatus = 'idle';
-    this.currentQuestion = null;
-    putSystemMessage('Execution interrupted');
+    if (this.executionStatus === 'executing' || this.executionStatus === 'paused') {
+      abortController?.abort();
+      this.executionStatus = 'interrupted';
+      this.currentQuestion = null;
+      putSystemMessage('Execution interrupted');
+    }
   }
 
   async pauseExecution(): Promise<void> {
@@ -138,7 +150,8 @@ export class Service {
   }
 
   async getTotalCost(): Promise<number> {
-    return getCollectedCosts().reduce((total, item) => total + (item.cost ?? 0), 0);
+    const costs = getCollectedCosts();
+    return costs.reduce((total, item) => total + item.cost, 0);
   }
 
   getCodegenOptions(): CodegenOptions {
@@ -152,7 +165,7 @@ export class Service {
   private waitForQuestionAnswer(): Promise<void> {
     return new Promise((resolve) => {
       const checkQuestion = () => {
-        if (this.currentQuestion === null || abortController?.signal.aborted) {
+        if (this.currentQuestion === null || this.executionStatus === 'interrupted') {
           resolve();
         } else {
           setTimeout(checkQuestion, 100);

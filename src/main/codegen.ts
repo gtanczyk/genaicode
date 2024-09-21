@@ -114,89 +114,106 @@ export async function runCodegenIteration(
   await waitIfPaused();
 
   putSystemMessage('Generating response');
-  const functionCalls = await promptService(
-    GENERATE_CONTENT_FNS,
-    GENERATE_IMAGE_FNS,
-    getCodeGenPrompt(options),
-    waitIfPaused,
-  );
-  console.log('Received function calls:', functionCalls);
-
-  await waitIfPaused();
-
-  if (options.dryRun) {
-    putSystemMessage('Dry run mode, not updating files');
-  } else {
-    putSystemMessage('Update files');
-    await updateFiles(
-      functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
-      options,
+  try {
+    const functionCalls = await promptService(
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
+      getCodeGenPrompt(options),
+      waitIfPaused,
     );
-    putSystemMessage('Initial updates applied');
-
-    if (abortSignal?.aborted) {
-      throw new Error('Codegen iteration aborted after initial updates');
-    }
+    console.log('Received function calls:', functionCalls);
 
     await waitIfPaused();
 
-    // Check if lintCommand is specified in .genaicoderc
-    if (rcConfig.lintCommand) {
-      try {
-        putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
-        await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
-        putSystemMessage('Lint command executed successfully');
-      } catch (error) {
-        putSystemMessage('Lint command failed. Attempting to fix issues...');
+    if (options.dryRun) {
+      putSystemMessage('Dry run mode, not updating files');
+    } else {
+      putSystemMessage('Update files');
+      await updateFiles(
+        functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+        options,
+      );
+      putSystemMessage('Initial updates applied');
 
-        // Prepare the lint error output for the second pass
-        const firstLintError = error as { stdout: string; stderr: string };
-        const lintErrorPrompt = getLintFixPrompt(
-          rcConfig.lintCommand,
-          options,
-          firstLintError.stdout,
-          firstLintError.stderr,
-        );
+      if (abortSignal?.aborted) {
+        throw new Error('Codegen iteration aborted after initial updates');
+      }
 
-        putSystemMessage('Generating response for lint fixes');
-        const lintFixFunctionCalls = (await promptService(
-          GENERATE_CONTENT_FNS,
-          GENERATE_IMAGE_FNS,
-          {
-            prompt: lintErrorPrompt,
-            options: { ...options, considerAllFiles: true },
-          },
-          waitIfPaused,
-        )) as FunctionCall[];
+      await waitIfPaused();
 
-        console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
-
-        await waitIfPaused();
-
-        putSystemMessage('Applying lint fixes');
-        updateFiles(
-          lintFixFunctionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
-          options,
-        );
-
-        if (abortSignal?.aborted) {
-          throw new Error('Codegen iteration aborted after lint fixes');
-        }
-
-        // Run lint command again to verify fixes
+      // Check if lintCommand is specified in .genaicoderc
+      if (rcConfig.lintCommand) {
         try {
-          putSystemMessage(`Re-running lint command: ${rcConfig.lintCommand}`);
-          await execPromise(rcConfig.lintCommand);
-          putSystemMessage('Lint command executed successfully after fixes');
-        } catch (secondLintError) {
-          const error = secondLintError as { stdout: string; stderr: string };
-          putSystemMessage('Lint command still failing after fixes. Manual intervention may be required.');
-          console.log('Lint errors:', error.stdout, error.stderr);
+          putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
+          await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
+          putSystemMessage('Lint command executed successfully');
+        } catch (error) {
+          putSystemMessage('Lint command failed. Attempting to fix issues...');
+
+          // Prepare the lint error output for the second pass
+          const firstLintError = error as { stdout: string; stderr: string };
+          const lintErrorPrompt = getLintFixPrompt(
+            rcConfig.lintCommand,
+            options,
+            firstLintError.stdout,
+            firstLintError.stderr,
+          );
+
+          putSystemMessage('Generating response for lint fixes');
+          const lintFixFunctionCalls = (await promptService(
+            GENERATE_CONTENT_FNS,
+            GENERATE_IMAGE_FNS,
+            {
+              prompt: lintErrorPrompt,
+              options: { ...options, considerAllFiles: true },
+            },
+            waitIfPaused,
+          )) as FunctionCall[];
+
+          console.log('Received function calls for lint fixes:', lintFixFunctionCalls);
+
+          await waitIfPaused();
+
+          putSystemMessage('Applying lint fixes');
+          updateFiles(
+            lintFixFunctionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+            options,
+          );
+
+          if (abortSignal?.aborted) {
+            throw new Error('Codegen iteration aborted after lint fixes');
+          }
+
+          // Run lint command again to verify fixes
+          try {
+            putSystemMessage(`Re-running lint command: ${rcConfig.lintCommand}`);
+            await execPromise(rcConfig.lintCommand);
+            putSystemMessage('Lint command executed successfully after fixes');
+          } catch (secondLintError) {
+            const error = secondLintError as { stdout: string; stderr: string };
+            putSystemMessage('Lint command still failing after fixes. Manual intervention may be required.');
+            console.log('Lint errors:', error.stdout, error.stderr);
+          }
         }
       }
-    }
 
-    console.log('Done!');
+      console.log('Done!');
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError' || error.message.includes('interrupted')) {
+        putSystemMessage('Codegen iteration was interrupted');
+      } else if (error.message.includes('Rate limit exceeded')) {
+        putSystemMessage(
+          'Rate limit exceeded. Consider switching to a different AI service or waiting before retrying.',
+        );
+      } else {
+        putSystemMessage(`An error occurred during codegen: ${error.message}`);
+      }
+    } else {
+      putSystemMessage('An unknown error occurred during codegen');
+    }
+    console.error('Error details:', error);
   }
 }
 

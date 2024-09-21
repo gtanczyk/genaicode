@@ -128,7 +128,12 @@ export async function generateContent(
     outputTokens: response.usage!.completion_tokens,
     totalTokens: response.usage!.total_tokens,
   };
-  printTokenUsageAndCost(usage, 0.000005, 0.000015);
+  printTokenUsageAndCost({
+    usage,
+    inputCostPerToken: 0.000005,
+    outputCostPerToken: 0.000015,
+    cheap,
+  });
 
   const responseMessage = response.choices[0].message;
 

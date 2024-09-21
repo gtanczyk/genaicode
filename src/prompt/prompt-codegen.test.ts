@@ -40,7 +40,7 @@ describe('getCodeGenPrompt', () => {
     vi.mocked(cliParams).allowFileDelete = false;
     vi.mocked(cliParams).allowDirectoryCreate = false;
     vi.mocked(cliParams).allowFileMove = false;
-    vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
+    vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => 0); // Return 0 instead of void
 
     const prompt = getCodeGenPrompt({
       considerAllFiles: true,
@@ -62,7 +62,7 @@ describe('getCodeGenPrompt', () => {
 describe('getLintFixPrompt', () => {
   beforeEach(() => {
     vi.mocked(cliParams).verbosePrompt = false;
-    vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => {});
+    vi.spyOn(limits, 'verifyCodegenPromptLimit').mockImplementation(() => 0); // Return 0 instead of void
   });
 
   it('should generate a lint fix prompt with provided command, stdout, and stderr', () => {

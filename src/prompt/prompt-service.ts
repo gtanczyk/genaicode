@@ -5,23 +5,20 @@ import mime from 'mime-types';
 import { getSystemPrompt } from './systemprompt.js';
 import { functionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../ai-service/common.js';
+import {
+  PromptItem,
+  FunctionDef,
+  FunctionCall,
+  GenerateContentFunction,
+  GenerateImageFunction,
+} from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
 import { AiServiceType, CodegenOptions, ImagenType } from '../main/codegen-types.js';
-
-interface GenerateImageFunction {
-  (
-    prompt: string,
-    contextImagePath: string | undefined,
-    size: { width: number; height: number },
-    cheap: boolean,
-  ): Promise<string>;
-}
-
 import { executeStepAskQuestion } from './steps/step-ask-question.js';
 import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
 import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
 import { executeStepGenerateImage } from './steps/step-generate-image.js';
+import { executeStepContextOptimization } from './steps/step-context-optimization.js';
 import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
@@ -82,6 +79,21 @@ export async function promptService(
       base64url: img.base64url,
       mediaType: img.mediaType,
     }));
+  }
+
+  // Execute the context optimization step
+  if (!codegenPrompt.options.disableContextOptimization) {
+    const sourceCode = JSON.parse(messages.sourceCode);
+    const optimizationResult = await executeStepContextOptimization(
+      generateContentFn,
+      prompt,
+      sourceCode,
+      codegenPrompt.options,
+    );
+
+    if (optimizationResult === StepResult.BREAK) {
+      return [];
+    }
   }
 
   // Execute the ask question step

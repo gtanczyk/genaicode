@@ -96,7 +96,7 @@ export async function generateContent(
     outputTokens: usageMetadata.candidatesTokenCount,
     totalTokens: usageMetadata.totalTokenCount,
   };
-  printTokenUsageAndCost(usage, 0.000125 / 1000, 0.000375 / 1000);
+  printTokenUsageAndCost({ usage, inputCostPerToken: 0.000125 / 1000, outputCostPerToken: 0.000375 / 1000, cheap });
 
   if (result.response.promptFeedback) {
     console.log('Prompt feedback:');

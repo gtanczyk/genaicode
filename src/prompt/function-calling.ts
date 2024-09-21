@@ -16,6 +16,7 @@ import { imglyRemoveBackground } from './function-defs/imgly-remove-background.j
 import { resizeImage } from './function-defs/resize-image.js';
 import { splitImage } from './function-defs/split-image.js';
 import { askQuestion } from './function-defs/ask-question.js';
+import { optimizeContext } from './function-defs/optimize-context.js';
 
 /**
  * Function definitions for function calling feature
@@ -37,6 +38,7 @@ export const functionDefs: FunctionDef[] = [
   resizeImage,
   splitImage,
   askQuestion,
+  optimizeContext,
   // @ts-expect-error (fix this once fun defs are converted to ts)
 ].map((fd: FunctionDef) => {
   if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {

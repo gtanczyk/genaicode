@@ -48,7 +48,7 @@ export interface PromptItem {
 export type GenerateContentFunction = (
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
-  requiredFunctionName: string,
+  requiredFunctionName: string | null,
   temperature: number,
   cheap: boolean,
   options: CodegenOptions,
@@ -61,13 +61,19 @@ export type GenerateImageFunction = (
   cheap: boolean,
 ) => Promise<string>;
 
+interface CostInfo {
+  usage: TokenUsage;
+  inputCostPerToken: number;
+  outputCostPerToken: number;
+  cheap: boolean;
+}
+
 /**
  * Common function to print token usage and estimated cost
- * @param {TokenUsage} usage Token usage object
- * @param {number} inputCostPerToken Cost per input token
- * @param {number} outputCostPerToken Cost per output token
+ * @param {CostInfo} costInfo Cost information object
  */
-export function printTokenUsageAndCost(usage: TokenUsage, inputCostPerToken: number, outputCostPerToken: number): void {
+export function printTokenUsageAndCost(costInfo: CostInfo): void {
+  const { usage, inputCostPerToken, outputCostPerToken, cheap } = costInfo;
   console.log('Token Usage:');
   console.log('  - Input tokens: ', usage.inputTokens);
   console.log('  - Output tokens: ', usage.outputTokens);
@@ -86,8 +92,9 @@ export function printTokenUsageAndCost(usage: TokenUsage, inputCostPerToken: num
   const outputCost = (usage.outputTokens ?? 0) * outputCostPerToken;
   const totalCost = inputCost + outputCost;
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
+  console.log('  - Cheap model: ', cheap);
 
-  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
+  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, cheap);
 }
 
 /**

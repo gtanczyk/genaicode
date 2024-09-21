@@ -9,7 +9,7 @@ import { rcConfig, importantContext } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 
-type SourceCodeMap = Record<string, { content: string | null } | undefined>;
+export type SourceCodeMap = Record<string, { content: string | null } | undefined>;
 
 type ImageAssetsMap = Record<
   string,
@@ -66,7 +66,7 @@ export function getSourceCode(
     forceAll,
   }: {
     filterPaths?: string[];
-    taskFile: string | undefined;
+    taskFile?: string | undefined;
     forceAll?: boolean;
   },
   options: CodegenOptions,

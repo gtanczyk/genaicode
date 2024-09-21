@@ -38,7 +38,7 @@ describe('printTokenUsageAndCost', () => {
     const inputCostPerToken = 0.0001;
     const outputCostPerToken = 0.0002;
 
-    printTokenUsageAndCost(usage, inputCostPerToken, outputCostPerToken);
+    printTokenUsageAndCost({ usage, inputCostPerToken, outputCostPerToken, cheap: false });
 
     expect(consoleLogSpy).toHaveBeenCalledTimes(5);
     expect(consoleLogSpy).toHaveBeenCalledWith('Token Usage:');
@@ -57,7 +57,7 @@ describe('printTokenUsageAndCost', () => {
     const inputCostPerToken = 0.0001;
     const outputCostPerToken = 0.0002;
 
-    printTokenUsageAndCost(usage, inputCostPerToken, outputCostPerToken);
+    printTokenUsageAndCost({ usage, inputCostPerToken, outputCostPerToken, cheap: false });
 
     expect(consoleLogSpy).toHaveBeenCalledWith('  - Estimated cost: ', '0.000000', ' USD');
   });
