@@ -4,35 +4,36 @@
 export const askQuestion = {
   name: 'askQuestion',
   description:
-    'If there is a need ask a question to the user to gather more information or clarification. Alternatively this function can be called also if there is no need to prompt the user with any question.',
+    'Use this function to ask a question or seek clarification from the user if needed. If you have all the necessary information and are ready to proceed, do not call this function.',
   parameters: {
     type: 'object',
     properties: {
       content: {
         type: 'string',
         description:
-          'The message you want to display to the user, it can be either a question or a confirmation/ackoweledgment in case there is no intention to prompt the user.',
+          'The message you want to display to the user. It can be a question if you need more information, or a confirmation/acknowledgment if you are proceeding without needing a response.',
       },
       shouldPrompt: {
         type: 'boolean',
-        description: 'Set to true if the intention is to get response from the user.',
+        description:
+          'Set to true **only if** you require a response from the user before proceeding. Set to false if you do not require a response and are ready to proceed with the task.',
       },
       promptNecessity: {
         type: 'number',
         minimum: 0,
         maximum: 100,
-        description: 'How strong is the need to prompt the user? Higher value indicates a stronger need.',
+        description:
+          'Indicates how strongly you need a response from the user. A higher value means a stronger need for user input.',
       },
       stopCodegen: {
         type: 'boolean',
         description:
-          'If set to true, it will break the code generation process without error, so you should use this parameter if you want to stop the code generation process.',
+          'Set to true if you want to stop the code generation process without error. Use this when you cannot proceed due to insufficient information or other issues.',
       },
       requestFilesContent: {
         type: 'array',
         description:
-          'This object property is used to request file contents to be provided by the user, use this property when a content of a file is missing(null in getSourceCode response), but we know that it exists.' +
-          'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+          'An array of absolute file paths for which you need the content. Use this when specific files are missing and you need them to proceed with the task.',
         items: {
           type: 'string',
         },
@@ -40,31 +41,31 @@ export const askQuestion = {
       requestPermissions: {
         type: 'object',
         description:
-          "Use this property to request enablement of permissions for code generation process if you detect that you don't have this permission listed in the requirements.",
+          'Use this to request additional permissions needed for code generation if they are not already granted.',
         properties: {
           allowDirectoryCreate: {
-            description: 'Set to `true` to request permission for creating directories.',
+            description: 'Set to true to request permission for creating directories.',
             type: 'boolean',
           },
           allowFileCreate: {
-            description: 'Set to `true` to request permission for creating files.',
+            description: 'Set to true to request permission for creating files.',
             type: 'boolean',
           },
           allowFileDelete: {
-            description: 'Set to `true` to request permission for deleting files.',
+            description: 'Set to true to request permission for deleting files.',
             type: 'boolean',
           },
           allowFileMove: {
-            description: 'Set to `true` to request permission for moving files.',
+            description: 'Set to true to request permission for moving files.',
             type: 'boolean',
           },
           enableVision: {
             description:
-              'Set to `true` to request permission for vision capabilities, using images as a context for further code generation operations.',
+              'Set to true to request permission for vision capabilities, using images as context for code generation.',
             type: 'boolean',
           },
           enableImagen: {
-            description: 'Set to `true` to request permission for generation of images.',
+            description: 'Set to true to request permission for generating images.',
             type: 'boolean',
           },
         },

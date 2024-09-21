@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { estimateTokenCount } from './token-estimator.js';
 
-const SYSTEM_PROMPT_LIMIT = 650;
+const SYSTEM_PROMPT_LIMIT = 1000;
 const CODEGEN_PROMPT_LIMIT = 800;
 const SOURCE_CODE_LIMIT = 100000;
 

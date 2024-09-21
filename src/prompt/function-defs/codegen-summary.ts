@@ -4,32 +4,26 @@
 export const codegenSummary = {
   name: 'codegenSummary',
   description:
-    'This function is called with a summary of proposed updates.' +
-    'Summary is a data structure(object) which contains:\n' +
-    '- `fileUpdates`: list of proposed file updates that will be subject to subsequent code generation request\n' +
-    '- `contextPaths`: list of file paths that make sense to use as a context for code generation requests.' +
-    '- `explanation`: general explanation of planned code generation updates\n' +
-    'It is crticially important to adhere to the schema of parameters',
+    'This function is called with a summary of proposed updates. The summary is an object containing:\n' +
+    '- `explanation`: A general explanation of the planned code generation updates or reasoning for no code changes.\n' +
+    '- `fileUpdates`: A list of proposed file updates that will be subject to subsequent code generation requests.\n' +
+    '- `contextPaths`: A list of file paths that make sense to use as context for code generation requests.\n' +
+    'It is critically important to adhere to the schema of parameters.',
   parameters: {
     type: 'object',
     properties: {
       explanation: {
         type: 'string',
-        description: 'Explanation of planned changes or explanation of reasoning for no code changes',
+        description: 'A brief description of the planned changes or an explanation if no changes are proposed.',
       },
       fileUpdates: {
         type: 'array',
-        description: 'An array of proposed file updates, each update is an object with several properties.',
+        description: 'An array of proposed file updates. Each update is an object with several properties.',
         items: {
           type: 'object',
           description:
-            'Proposed update of a file. The update is an object which contains properties like absolute file path, update tool name, and few other important properties.',
+            'An object representing a proposed update to a file, containing properties like the absolute file path, the update tool name, and other important properties.',
           properties: {
-            prompt: {
-              type: 'string',
-              description:
-                'Prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
-            },
             path: {
               type: 'string',
               description:
@@ -50,38 +44,44 @@ export const codegenSummary = {
                 'resizeImage',
                 'imglyRemoveBackground',
               ],
-              description: 'A name of the tool that will be used to perform the update.',
+              description: 'The name of the tool that will be used to perform the update.',
+            },
+            prompt: {
+              type: 'string',
+              description:
+                'A detailed prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file.',
             },
             temperature: {
               type: 'number',
               description:
-                'Temperature parameter that will be used for LLM request. The value is adjusted to the characteristic of the update. If there is a need for a more creative solution, the value should be lower, but stil within [0.0, 2.0] range.',
+                'Temperature parameter for the LLM request. Should be within the range [0.0, 2.0]. Lower values make the output more deterministic.',
+              minimum: 0.0,
+              maximum: 2.0,
             },
             cheap: {
               type: 'boolean',
               description:
-                'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
+                'If true, the prompt will be executed with a cheaper, faster model that provides lower quality results. Use only when lower quality results are acceptable.',
             },
             contextImageAssets: {
               type: 'array',
               description:
-                'A list of of absolute image asset paths that should be included to the context of LLM request.' +
-                'This parameter must be used if there is a need to analyze an image.',
+                'A list of absolute image asset paths that should be included in the context of the LLM request. Use this parameter when there is a need to analyze an image.',
               items: { type: 'string' },
             },
           },
-          required: ['path', 'updateToolName'],
+          required: ['path', 'prompt', 'updateToolName'],
         },
       },
       contextPaths: {
         type: 'array',
         description:
-          'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+          'An array of absolute file paths that should be used to provide context for the following updates. These could be dependencies or files that depend on the files to be updated.',
         items: {
           type: 'string',
         },
       },
     },
-    required: ['fileUpdates', 'contextPaths'],
+    required: ['explanation', 'fileUpdates', 'contextPaths'],
   },
 } as const;

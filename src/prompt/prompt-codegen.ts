@@ -67,11 +67,31 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
   const taskPrompt = explicitPrompt
     ? 'This is your task: ' + explicitPrompt + '\n\n'
     : codeGenFiles.length > 0
-      ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join('\n')}\nYour task is to generate updates for those files accordingly to ${CODEGEN_TRIGGER} comments/context.`
-      : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file${askQuestion ? ', but you shoud consult me by asking question first.' : ''}.`;
+      ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join(
+          '\n',
+        )}\nYour task is to generate updates for those files according to the ${CODEGEN_TRIGGER} comments/context.`
+      : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file${
+          askQuestion ? ', but you should consult me by asking a question first.' : ''
+        }.`;
+
   const codeGenPrompt = `${taskPrompt}
-  
-My requirements for task execution are:
+
+Before proceeding with code generation, please summarize the proposed updates by calling the \`codegenSummary\` function with the appropriate arguments.
+
+Ensure that you include:
+
+- **\`explanation\`**: A brief description of the planned changes or reasoning for no changes.
+
+- **\`fileUpdates\`**: A list of proposed file updates, each with required properties:
+  - **\`path\`**: Absolute file path to be updated.
+  - **\`updateToolName\`**: The tool to be used for the update (e.g., \`createFile\`, \`updateFile\`).
+  - **\`prompt\`**: A detailed prompt summarizing the planned changes for this file.
+  - **Other Properties**: Include any other necessary properties as per the \`codegenSummary\` function definition.
+
+- **\`contextPaths\`**: A list of file paths that should be used as context for the code generation requests.
+
+## My Requirements for Task Execution:
+
 ${importantTextPrompts ? `${importantTextPrompts}\n` : ''}
 ${
   considerAllFiles
@@ -81,13 +101,21 @@ ${
 ${allowFileCreate ? 'You are allowed to create new files.' : 'Do not create new files. (request permission via `askQuestion`)'}
 ${
   allowFileDelete
-    ? 'You are allowed to delete files, in such case add empty string as content.'
+    ? 'You are allowed to delete files; in such cases, add an empty string as content.'
     : 'Do not delete files. (request permission via `askQuestion`)'
 }
-${allowDirectoryCreate ? 'You are allowed to create new directories.' : `Do not create new directories.${requestPermissionText}`}
+${
+  allowDirectoryCreate
+    ? 'You are allowed to create new directories.'
+    : `Do not create new directories.${requestPermissionText}`
+}
 ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files. (request permission via `askQuestion`)'}
 ${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets. (request permission via `askQuestion`)'}
-${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images. (request permission via `askQuestion`)'}
+${
+  imagen
+    ? 'You are allowed to generate images.'
+    : 'You are not allowed to generate images. (request permission via `askQuestion`)'
+}
 `;
 
   if (verbose) {
@@ -116,7 +144,7 @@ Lint command stderr:
 \`\`\`
 ${stderr}
 \`\`\`
-        
+
 Please suggest changes to fix these lint errors.`;
 
   if (verbose) {

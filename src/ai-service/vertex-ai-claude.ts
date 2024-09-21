@@ -54,7 +54,7 @@ export async function generateContent(
           role: 'assistant' as const,
           content: [
             ...(item.text ? [{ type: 'text' as const, text: item.text }] : []),
-            ...item.functionCalls!.map((call) => ({
+            ...(item.functionCalls ?? []).map((call) => ({
               type: 'tool_use' as const,
               id: call.id ?? call.name,
               name: call.name,

@@ -5,8 +5,8 @@ import { GenerateContentFunction } from '../ai-service/common';
 
 const AI_SERVICES_MAP = [
   [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],
-  [() => process.env.OPENAI_API_KEY, 'chat-gpt'],
   [() => process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_CLOUD_REGION, 'vertex-ai-claude'],
+  [() => process.env.OPENAI_API_KEY, 'chat-gpt'],
   [() => process.env.GOOGLE_CLOUD_PROJECT, 'vertex-ai'],
   [() => process.env.API_KEY, 'ai-studio'],
 ] as const;

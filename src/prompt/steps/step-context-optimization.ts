@@ -45,6 +45,31 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 - **Do not include** any information not present in the file content.
 - **Avoid assumptions or hallucinations**; stick strictly to the provided data.
 - Ensure the **function call is properly formatted** and **valid**.
+- **Provide the response in valid JSON format**.
+- **Do not include any extra text** outside of the function call.
+- **Ensure the JSON is properly formatted** and **does not contain strings representing JSON** (i.e., do not stringify the JSON).
+
+**Example Function Call**:
+
+\`\`\`json
+{
+  "function": "optimizeContext",
+  "arguments": {
+    "optimizedContext": [
+      {
+        "path": "src/utils/helpers.js",
+        "summary": "Provides utility functions for data manipulation.",
+        "relevance": 0.7
+      },
+      {
+        "path": "src/components/LoginForm.jsx",
+        "summary": "Defines the login form component for user authentication.",
+        "relevance": 0.9
+      }
+    ]
+  }
+}
+\`\`\`
 
 **Files to Analyze**:\n`;
 

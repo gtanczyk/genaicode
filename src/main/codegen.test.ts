@@ -220,7 +220,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage' }],
+          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -259,7 +259,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'city.png', updateToolName: 'generateImage' }],
+          fileUpdates: [{ path: 'city.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -321,7 +321,7 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage' }],
+          fileUpdates: [{ path: 'landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
           contextPaths: [],
           explanation: 'Mock summary with cheap image generation',
         },

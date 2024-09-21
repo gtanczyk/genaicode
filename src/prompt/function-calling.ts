@@ -42,7 +42,7 @@ export const functionDefs: FunctionDef[] = [
   // @ts-expect-error (fix this once fun defs are converted to ts)
 ].map((fd: FunctionDef) => {
   if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {
-    fd.parameters.required.push('explanation');
+    fd.parameters.required.unshift('explanation');
   } else if (!requireExplanations) {
     delete fd.parameters.properties.explanation;
   }
