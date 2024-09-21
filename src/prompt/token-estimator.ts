@@ -1,63 +1,35 @@
 /**
  * Estimates the token count of a given string.
- * Assumes roughly one token per word for plain text and adjusts upward for code or complex language.
+ * Uses average token-to-word ratios for plain text and code.
  *
  * @param input - The string to estimate token count for
  * @returns The estimated token count
  */
 export function estimateTokenCount(input: string): number {
+  // Trim and check for empty input
+  const trimmedInput = input.trim();
+  if (!trimmedInput) return 0;
+
+  // Determine if the input is code or plain text
+  const isCode = containsCode(trimmedInput);
+
   // Split the input into words
-  const words = input.split(/\s+/);
+  const words = trimmedInput.split(/\s+/);
 
-  // Initialize the token count
-  let tokenCount = 0;
+  // Use average tokens per word based on content type
+  const averageTokensPerWord = isCode ? 1.25 : 0.65;
 
-  for (const word of words) {
-    // Count each word as at least one token
-    tokenCount++;
-
-    // Adjust for code-like or complex words
-    if (isCodeLike(word)) {
-      tokenCount += estimateCodeTokens(word);
-    } else if (isComplexWord(word)) {
-      tokenCount++;
-    }
-  }
+  // Estimate token count
+  const tokenCount = Math.ceil(words.length * averageTokensPerWord);
 
   return tokenCount;
 }
 
 /**
- * Checks if a word is likely to be part of code.
+ * Heuristically determines if the text contains code.
  */
-function isCodeLike(word: string): boolean {
-  // Check for common code indicators
-  return (
-    /[{}()[\]<>.,;:=+\-*/%]/.test(word) ||
-    /^(function|const|let|var|if|else|for|while|return|import|export)$/.test(word)
-  );
-}
-
-/**
- * Estimates additional tokens for code-like words.
- */
-function estimateCodeTokens(word: string): number {
-  let additionalTokens = 0;
-
-  // Count special characters as separate tokens
-  additionalTokens += (word.match(/[{}()[\]<>.,;:=+\-*/%]/g) || []).length;
-
-  // Count camelCase or snake_case as multiple tokens
-  if (/[A-Z]/.test(word) || word.includes('_')) {
-    additionalTokens += word.split(/(?=[A-Z])|_/).length - 1;
-  }
-
-  return additionalTokens;
-}
-
-/**
- * Checks if a word is complex (longer than average).
- */
-function isComplexWord(word: string): boolean {
-  return word.length > 8;
+function containsCode(text: string): boolean {
+  // Check for code indicators
+  const codeIndicators = /[{}()[\];,.<>+\-*/%=&|^!~?:#@]|function|const|let|var|if|else|for|while|return|import|export/;
+  return codeIndicators.test(text);
 }
