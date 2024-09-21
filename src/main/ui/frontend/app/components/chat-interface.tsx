@@ -6,6 +6,7 @@ import { ChatContainer, MessagesContainer } from './chat/styles/chat-interface-s
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { UnreadMessagesNotification } from './unread-messages-notification.js';
 import { QuestionHandler } from './question-handler.js';
+import { ProgressIndicator } from './progress-indicator.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -85,7 +86,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const scrollToBottom = () => {
     messagesContainerRef.current?.scrollTo({
       top: messagesContainerRef.current.scrollHeight,
-      behavior: 'smooth'
+      behavior: 'smooth',
     });
     setHasUnreadMessages(false);
   };
@@ -130,9 +131,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         })}
         <div ref={messagesEndRef} />
       </MessagesContainer>
-      {hasUnreadMessages && (
-        <UnreadMessagesNotification onClick={scrollToBottom} />
-      )}
+      {hasUnreadMessages && <UnreadMessagesNotification onClick={scrollToBottom} />}
+      <ProgressIndicator
+        isVisible={executionStatus === 'executing' && !currentQuestion}
+        onInterrupt={onInterrupt}
+        onPauseResume={onPauseResume}
+        executionStatus={executionStatus}
+      />
     </ChatContainer>
   );
 };

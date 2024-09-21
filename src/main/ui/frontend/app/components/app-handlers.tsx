@@ -9,7 +9,7 @@ import {
   pauseExecution,
   resumeExecution,
 } from '../api/api-client.js';
-import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
+import { ChatMessage } from '../../../../common/content-bus-types.js';
 
 interface AppHandlersProps {
   currentPrompt: string;
@@ -64,12 +64,8 @@ export const AppHandlers = ({
     const currentQuestion = await getCurrentQuestion();
     if (currentQuestion) {
       try {
-        setChatMessages((prev) => [
-          ...prev,
-          { id: `user_${Date.now()}`, type: ChatMessageType.USER, content: answer, timestamp: new Date() },
-        ]);
-        await answerQuestion(currentQuestion.id, answer);
         setCurrentQuestion(null);
+        await answerQuestion(currentQuestion.id, answer);
       } catch (error) {
         console.error('Failed to submit answer:', error);
       }
@@ -78,45 +74,16 @@ export const AppHandlers = ({
 
   const handleInterrupt = async () => {
     try {
-      await interruptExecution();
-      setIsExecuting(false);
-      setExecutionStatus('idle');
       setCurrentQuestion(null);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution interrupted',
-          timestamp: new Date(),
-        },
-      ]);
+      await interruptExecution();
     } catch (error) {
       console.error('Failed to interrupt execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error interrupting execution: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   };
 
   const handleOptionsChange = useCallback(
     (newOptions: CodegenOptions) => {
       setCodegenOptions(newOptions);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Codegen options updated',
-          timestamp: new Date(),
-        },
-      ]);
     },
     [setCodegenOptions, setChatMessages],
   );
@@ -124,54 +91,16 @@ export const AppHandlers = ({
   const handlePauseExecution = useCallback(async () => {
     try {
       await pauseExecution();
-      setExecutionStatus('paused');
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution paused',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to pause execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error pausing execution: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   }, [setExecutionStatus, setChatMessages]);
 
   const handleResumeExecution = useCallback(async () => {
     try {
       await resumeExecution();
-      setExecutionStatus('executing');
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution resumed',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to resume execution:', error);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: `Error resuming execution: ${error}`,
-          timestamp: new Date(),
-        },
-      ]);
     }
   }, [setExecutionStatus, setChatMessages]);
 

@@ -1,4 +1,4 @@
-import 'react';
+import { useEffect } from 'react';
 import { ThemeProvider } from 'styled-components';
 import { lightTheme, darkTheme } from './theme/theme.js';
 import { AppLayout } from './components/app-layout.js';
@@ -8,8 +8,6 @@ import { ChatInterface } from './components/chat-interface.js';
 import { InputArea } from './components/input-area/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
-import { ProgressIndicator } from './components/progress-indicator.js';
-import { useEffect } from 'react';
 import { GlobalStyle } from './theme/global-style.js';
 
 const GenAIcodeApp = () => {
@@ -77,17 +75,14 @@ const GenAIcodeApp = () => {
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
         chatInterface={
-          <>
-            <ChatInterface
-              messages={chatMessages}
-              currentQuestion={currentQuestion}
-              onQuestionSubmit={handleQuestionSubmit}
-              onInterrupt={handleInterrupt}
-              onPauseResume={handlePauseResume}
-              executionStatus={executionStatus}
-            />
-            <ProgressIndicator isVisible={isExecuting && !currentQuestion} />
-          </>
+          <ChatInterface
+            messages={chatMessages}
+            currentQuestion={currentQuestion}
+            onQuestionSubmit={handleQuestionSubmit}
+            onInterrupt={handleInterrupt}
+            onPauseResume={handlePauseResume}
+            executionStatus={executionStatus}
+          />
         }
         inputArea={
           !isExecuting && (

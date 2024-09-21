@@ -3,16 +3,32 @@ import styled, { keyframes } from 'styled-components';
 
 interface ProgressIndicatorProps {
   isVisible: boolean;
+  onInterrupt: () => void;
+  onPauseResume: () => void;
+  executionStatus: 'idle' | 'executing' | 'paused';
 }
 
-export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ isVisible }) => {
+export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ 
+  isVisible, 
+  onInterrupt, 
+  onPauseResume, 
+  executionStatus 
+}) => {
   if (!isVisible) return null;
 
   return (
     <ProgressContainer>
-      <ProgressDot />
-      <ProgressDot />
-      <ProgressDot />
+      <ProgressDots>
+        <ProgressDot />
+        <ProgressDot />
+        <ProgressDot />
+      </ProgressDots>
+      <ButtonContainer>
+        <ActionButton onClick={onInterrupt}>Interrupt</ActionButton>
+        <ActionButton onClick={onPauseResume}>
+          {executionStatus === 'paused' ? 'Resume' : 'Pause'}
+        </ActionButton>
+      </ButtonContainer>
     </ProgressContainer>
   );
 };
@@ -28,9 +44,19 @@ const pulse = keyframes`
 
 const ProgressContainer = styled.div`
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   padding: 10px;
+  background-color: ${props => props.theme.colors.background};
+  border-top: 1px solid ${props => props.theme.colors.border};
+`;
+
+const ProgressDots = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
 `;
 
 const ProgressDot = styled.div`
@@ -47,5 +73,26 @@ const ProgressDot = styled.div`
 
   &:nth-child(2) {
     animation-delay: -0.16s;
+  }
+`;
+
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+`;
+
+const ActionButton = styled.button`
+  padding: 5px 10px;
+  background-color: ${props => props.theme.colors.primary};
+  color: ${props => props.theme.colors.text};
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+
+  &:hover {
+    background-color: ${props => props.theme.colors.primaryHover};
   }
 `;

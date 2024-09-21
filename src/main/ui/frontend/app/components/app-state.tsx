@@ -154,23 +154,6 @@ export const AppState = () => {
     [addChatMessage],
   );
 
-  const handleQuestionSubmit = useCallback(
-    async (answer: string) => {
-      if (currentQuestion) {
-        addChatMessage({
-          id: `user_answer_${Date.now()}`,
-          type: ChatMessageType.USER,
-          content: answer,
-          timestamp: new Date(),
-        });
-        setCurrentQuestion(null);
-        // Here you would typically send the answer to your API
-        // and then update the state based on the response
-      }
-    },
-    [currentQuestion, addChatMessage],
-  );
-
   const updateCodegenOptions = useCallback(
     (newOptions: CodegenOptions) => {
       setCodegenOptions(newOptions);
@@ -269,7 +252,6 @@ export const AppState = () => {
     fetchCodegenData,
     fetchTotalCost,
     handlePromptSubmit,
-    handleQuestionSubmit,
     addChatMessage,
     setCodegenOptions,
     setCurrentQuestion,
