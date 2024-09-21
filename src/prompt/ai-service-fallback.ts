@@ -1,7 +1,7 @@
-import { AiServiceType, CodegenOptions } from '../main/codegen-types';
-import { putSystemMessage } from '../main/common/content-bus';
-import { askUserForConfirmation } from '../main/common/user-actions';
-import { GenerateContentFunction } from '../ai-service/common';
+import { AiServiceType, CodegenOptions } from '../main/codegen-types.js';
+import { putSystemMessage } from '../main/common/content-bus.js';
+import { askUserForConfirmation } from '../main/common/user-actions.js';
+import { GenerateContentFunction } from '../ai-service/common.js';
 
 const AI_SERVICES_MAP = [
   [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],

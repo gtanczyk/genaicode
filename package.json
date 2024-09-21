@@ -30,7 +30,8 @@
     "coverage": "vitest run --coverage",
     "prepare": "husky install",
     "type-check": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc && npm run build-frontend",
+    "build-frontend": "vite build src/main/ui/frontend",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
@@ -41,6 +42,7 @@
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.17.0",
+    "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^2.0.5",
     "eslint": "^8.54.0",
     "eslint-config-prettier": "^9.0.0",
@@ -50,6 +52,8 @@
     "prettier": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0",
+    "vite": "^5.4.7",
+    "vite-plugin-checker": "^0.8.0",
     "vitest": "^2.0.4"
   },
   "dependencies": {
@@ -81,8 +85,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.33.4",
-    "styled-components": "^6.1.13",
-    "vite": "^5.4.5"
+    "styled-components": "^6.1.13"
   },
   "lint-staged": {
     "*.{js,ts,css,md}": "prettier --write"

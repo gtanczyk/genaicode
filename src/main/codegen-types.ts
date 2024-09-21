@@ -41,6 +41,9 @@ export interface CodegenOptions {
 
   // New property for handling multimodal inputs
   images?: UploadedImage[];
+
+  // GenAIcode is in dev mode
+  isDev?: boolean;
 }
 
 export interface MultimodalPrompt {

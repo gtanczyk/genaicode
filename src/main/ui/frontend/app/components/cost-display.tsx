@@ -8,7 +8,7 @@ interface CostDisplayProps {
 export const CostDisplay: React.FC<CostDisplayProps> = ({ totalCost }) => {
   return (
     <CostContainer>
-      <CostText>Total Cost: ${totalCost.toFixed(2)}</CostText>
+      x<CostText>Total Cost: ${totalCost.toFixed(2)}</CostText>
     </CostContainer>
   );
 };

@@ -5,8 +5,8 @@
     "module": "es2020",
     "moduleResolution": "node",
     "lib": ["ES2022", "dom"],
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "outDir": "../../../dist/main/ui/frontend",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -27,6 +27,6 @@
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts"],
-  "exclude": ["node_modules", "src/main/ui/frontend/**/*"]
+  "include": ["index.js", "index.html"],
+  "exclude": ["node_modules"]
 }

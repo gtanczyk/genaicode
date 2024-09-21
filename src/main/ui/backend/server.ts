@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url';
-import { createServer } from 'vite';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import fs from 'fs';
+import path from 'path';
 
 import { createRouter } from './api.js';
 import { Service } from './service.js';
@@ -51,27 +52,39 @@ export async function startServer(service: Service) {
   // API routes
   app.use('/api', apiRouter);
 
-  const vite = await createServer({
-    build: {
-      target: false,
-      rollupOptions: {
-        input: __dirname + '../frontend/index.html',
+  if (service.getCodegenOptions().isDev) {
+    console.log('GenAIcode Dev Mode!');
+    const { createServer } = await import('vite');
+    const vite = await createServer({
+      build: {
+        target: false,
+        rollupOptions: {
+          input: __dirname + '../frontend/index.html',
+        },
       },
-    },
-    configFile: false,
-    root: __dirname + '../frontend',
-    server: {
-      middlewareMode: true,
-    },
-    plugins: [
-      {
-        name: 'security-token',
-        transformIndexHtml: (html) => html.replace('__SECURITY_TOKEN__', service.getToken()),
+      configFile: false,
+      root: __dirname + '../frontend',
+      server: {
+        middlewareMode: true,
       },
-    ],
-  });
+      plugins: [
+        {
+          name: 'security-token',
+          transformIndexHtml: (html) => html.replace('__SECURITY_TOKEN__', service.getToken()),
+        },
+      ],
+    });
 
-  app.use(vite.middlewares);
+    app.use(vite.middlewares);
+  } else {
+    // Serve index.html with injected token
+    app.get('/', (_, res) => {
+      const indexPath = path.join(__dirname, '../frontend/index.html');
+      const html = fs.readFileSync(indexPath, 'utf-8').replace('__SECURITY_TOKEN__', service.getToken());
+      res.send(html);
+    });
+    app.use('/assets', express.static(__dirname + '../frontend/assets'));
+  }
 
   const server = app.listen(1337, () => {
     console.log('Server is running on http://localhost:1337');

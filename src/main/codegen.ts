@@ -27,7 +27,7 @@ import { putSystemMessage, putUserMessage } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 
 /** Executes codegen */
-export async function runCodegen(): Promise<void> {
+export async function runCodegen(isDev = false): Promise<void> {
   // Print to console the received parameters
   console.log(`Received parameters: ${process.argv.slice(2).join(' ')}`);
 
@@ -68,6 +68,8 @@ export async function runCodegen(): Promise<void> {
     interactive: cliParams.interactive,
     ui: cliParams.ui,
     disableAiServiceFallback: cliParams.disableAiServiceFallback,
+
+    isDev,
   };
 
   if (cliParams.ui) {
