@@ -1,10 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
-import express, { Response, NextFunction } from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import fs from 'fs';
-import path from 'path';
 
 import { createRouter } from './api.js';
 import { Service } from './service.js';
@@ -30,7 +28,7 @@ export async function startServer(service: Service) {
           scriptSrc: ["'self'", "'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", 'data:', 'blob:'],
-          connectSrc: ["'self'"],
+          connectSrc: ["'self'", 'ws:'],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
@@ -47,18 +45,6 @@ export async function startServer(service: Service) {
   );
 
   app.use(express.json());
-
-  // Serve index.html with injected token
-  app.get('/', (_, res: Response, next: NextFunction) => {
-    const indexPath = path.join(__dirname, '../frontend/index.html');
-    fs.readFile(indexPath, 'utf-8', (err, html) => {
-      if (err) {
-        return next(err);
-      }
-      const injectedHtml = html.replace('__SECURITY_TOKEN__', service.getToken());
-      res.send(injectedHtml);
-    });
-  });
 
   const apiRouter = createRouter(service);
 
@@ -77,6 +63,12 @@ export async function startServer(service: Service) {
     server: {
       middlewareMode: true,
     },
+    plugins: [
+      {
+        name: 'security-token',
+        transformIndexHtml: (html) => html.replace('__SECURITY_TOKEN__', service.getToken()),
+      },
+    ],
   });
 
   app.use(vite.middlewares);
