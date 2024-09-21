@@ -49,13 +49,13 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     <HandlerContainer>
       {question ? (
         question.isConfirmation ? (
-          <ConfirmationButtons>
+          <ButtonGroup>
             <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
             <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
               No
             </ConfirmButton>
-            <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
-          </ConfirmationButtons>
+            <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+          </ButtonGroup>
         ) : (
           <AnswerForm onSubmit={handleSubmit}>
             <AnswerTextarea
@@ -64,19 +64,19 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               placeholder="Enter your answer here"
               rows={4}
             />
-            <ConfirmationButtons>
+            <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
-              <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
-            </ConfirmationButtons>
+              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+            </ButtonGroup>
           </AnswerForm>
         )
       ) : (
-        <ConfirmationButtons>
+        <ButtonGroup>
           <PauseResumeButton onClick={onPauseResume} isPaused={isPaused}>
             {isPaused ? 'Resume' : 'Pause'}
           </PauseResumeButton>
-          <InterruptButton onClick={onInterrupt}>INTERRUPT</InterruptButton>
-        </ConfirmationButtons>
+          <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+        </ButtonGroup>
       )}
       {error && <ErrorMessage>{error}</ErrorMessage>}
     </HandlerContainer>
@@ -87,9 +87,10 @@ const HandlerContainer = styled.div`
   background-color: ${({ theme }) => theme.colors.background};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  position: relative;
+  padding: 15px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  max-width: 70%;
 `;
 
 const AnswerForm = styled.form`
@@ -105,7 +106,7 @@ const AnswerTextarea = styled.textarea`
   padding: 10px;
   font-size: 14px;
   resize: vertical;
-  min-height: 100px;
+  min-height: 80px;
   margin-bottom: 10px;
 
   &:focus {
@@ -114,11 +115,17 @@ const AnswerTextarea = styled.textarea`
   }
 `;
 
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+`;
+
 const Button = styled.button`
   color: #ffffff;
   border: none;
   border-radius: 4px;
-  padding: 10px 15px;
+  padding: 8px 12px;
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -130,12 +137,6 @@ const SubmitButton = styled(Button)`
   &:hover {
     background-color: ${({ theme }) => theme.colors.primary}dd;
   }
-`;
-
-const ConfirmationButtons = styled.div`
-  display: flex;
-  justify-content: space-between;
-  margin-top: 15px;
 `;
 
 const ConfirmButton = styled(Button)`
@@ -154,6 +155,7 @@ const ConfirmButton = styled(Button)`
 
 const InterruptButton = styled(Button)`
   background-color: ${({ theme }) => theme.colors.error};
+  margin-left: auto;
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.error}dd;
@@ -172,4 +174,5 @@ const ErrorMessage = styled.p`
   color: ${({ theme }) => theme.colors.error};
   font-weight: bold;
   margin-top: 10px;
+  margin-bottom: 0;
 `;

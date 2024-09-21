@@ -9,7 +9,6 @@ import { InputArea } from './components/input-area/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
 import { ProgressIndicator } from './components/progress-indicator.js';
-import { QuestionHandler } from './components/question-handler.js';
 import { useEffect } from 'react';
 import { GlobalStyle } from './theme/global-style.js';
 
@@ -57,10 +56,7 @@ const GenAIcodeApp = () => {
   });
 
   useEffect(() => {
-    // Start polling when the app loads
     startPolling();
-
-    // Stop polling when the component unmounts
     return () => {
       stopPolling();
     };
@@ -82,20 +78,19 @@ const GenAIcodeApp = () => {
         infoIcon={<InfoIcon rcConfig={rcConfig} />}
         chatInterface={
           <>
-            <ChatInterface messages={chatMessages} />
-            <ProgressIndicator isVisible={isExecuting && !currentQuestion} />
-          </>
-        }
-        inputArea={
-          isExecuting ? (
-            <QuestionHandler
-              onSubmit={handleQuestionSubmit}
-              question={currentQuestion}
+            <ChatInterface
+              messages={chatMessages}
+              currentQuestion={currentQuestion}
+              onQuestionSubmit={handleQuestionSubmit}
               onInterrupt={handleInterrupt}
               onPauseResume={handlePauseResume}
               executionStatus={executionStatus}
             />
-          ) : (
+            <ProgressIndicator isVisible={isExecuting && !currentQuestion} />
+          </>
+        }
+        inputArea={
+          !isExecuting && (
             <InputArea
               onSubmit={handleExecute}
               isExecuting={isExecuting}

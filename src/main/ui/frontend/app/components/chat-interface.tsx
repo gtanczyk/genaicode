@@ -5,12 +5,25 @@ import { SystemMessageContainer, SystemMessageBlock } from './chat/system-messag
 import { ChatContainer, MessagesContainer } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { UnreadMessagesNotification } from './unread-messages-notification.js';
+import { QuestionHandler } from './question-handler.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
+  currentQuestion: { id: string; text: string; isConfirmation: boolean } | null;
+  onQuestionSubmit: (answer: string) => void;
+  onInterrupt: () => void;
+  onPauseResume: () => void;
+  executionStatus: 'idle' | 'executing' | 'paused';
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  messages,
+  currentQuestion,
+  onQuestionSubmit,
+  onInterrupt,
+  onPauseResume,
+  executionStatus,
+}) => {
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,17 +93,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages }) => {
   return (
     <ChatContainer>
       <MessagesContainer ref={messagesContainerRef}>
-        {mergedMessages.map((message) => {
+        {mergedMessages.map((message, index) => {
           switch (message.type) {
             case ChatMessageType.USER:
             case ChatMessageType.ASSISTANT:
               return (
-                <MessageContainer
-                  key={message.id}
-                  message={message}
-                  visibleDataIds={visibleDataIds}
-                  toggleDataVisibility={toggleDataVisibility}
-                />
+                <React.Fragment key={message.id}>
+                  <MessageContainer
+                    message={message}
+                    visibleDataIds={visibleDataIds}
+                    toggleDataVisibility={toggleDataVisibility}
+                  />
+                  {currentQuestion && index === mergedMessages.length - 1 && (
+                    <QuestionHandler
+                      onSubmit={onQuestionSubmit}
+                      onInterrupt={onInterrupt}
+                      onPauseResume={onPauseResume}
+                      question={currentQuestion}
+                      executionStatus={executionStatus}
+                    />
+                  )}
+                </React.Fragment>
               );
             case ChatMessageType.SYSTEM:
               return (
