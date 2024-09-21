@@ -8,6 +8,10 @@ export const optimizeContext = {
   parameters: {
     type: 'object',
     properties: {
+      userPrompt: {
+        type: 'string',
+        description: "The user's original prompt.",
+      },
       optimizedContext: {
         type: 'array',
         description:
@@ -36,6 +40,6 @@ export const optimizeContext = {
         },
       },
     },
-    required: ['optimizedContext'],
+    required: ['userPrompt', 'optimizedContext'],
   },
 } as const;

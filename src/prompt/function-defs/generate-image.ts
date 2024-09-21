@@ -7,6 +7,10 @@ export const generateImage = {
   parameters: {
     type: 'object',
     properties: {
+      explanation: {
+        type: 'string',
+        description: 'The explanation of the reasoning behind generating this image',
+      },
       prompt: {
         type: 'string',
         description:
@@ -33,10 +37,6 @@ export const generateImage = {
         type: 'boolean',
         description:
           'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
-      },
-      explanation: {
-        type: 'string',
-        description: 'The explanation of the reasoning behind generating this image',
       },
     },
     required: ['prompt', 'filePath', 'width', 'height'],

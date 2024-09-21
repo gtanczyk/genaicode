@@ -13,13 +13,9 @@ export const codegenSummary = {
   parameters: {
     type: 'object',
     properties: {
-      contextPaths: {
-        type: 'array',
-        description:
-          'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
-        items: {
-          type: 'string',
-        },
+      explanation: {
+        type: 'string',
+        description: 'Explanation of planned changes or explanation of reasoning for no code changes',
       },
       fileUpdates: {
         type: 'array',
@@ -29,6 +25,11 @@ export const codegenSummary = {
           description:
             'Proposed update of a file. The update is an object which contains properties like absolute file path, update tool name, and few other important properties.',
           properties: {
+            prompt: {
+              type: 'string',
+              description:
+                'Prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
+            },
             path: {
               type: 'string',
               description:
@@ -61,11 +62,6 @@ export const codegenSummary = {
               description:
                 'true value means that the prompt will be executed with cheaper model, which work faster, but provides lower quality results, so please use it only in situation when lower quality results are acceptable for the prompt.',
             },
-            prompt: {
-              type: 'string',
-              description:
-                'Prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file, so it should be detailed enough for the model to generate necessary changes.',
-            },
             contextImageAssets: {
               type: 'array',
               description:
@@ -77,9 +73,13 @@ export const codegenSummary = {
           required: ['path', 'updateToolName'],
         },
       },
-      explanation: {
-        type: 'string',
-        description: 'Explanation of planned changes or explanation of reasoning for no code changes',
+      contextPaths: {
+        type: 'array',
+        description:
+          'An array of absolute paths of files that should be used to provide context for the following updates. Context files could be for example the dependencies, or files that depend on one of the files that we want to update in the next step.',
+        items: {
+          type: 'string',
+        },
       },
     },
     required: ['fileUpdates', 'contextPaths'],

@@ -20,22 +20,28 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
    - **Use only the content provided**; do not infer or assume additional information.
 
 2. **Relevance Rating**:
-   - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**.
-     - **0** means **not relevant at all**.
-     - **1** means **highly relevant**.
-   - Base the relevance rating solely on the information in the user's prompt and the file's content.
+   - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
+     - **0.0 – 0.2 (Not Relevant)**: The file has no apparent connection to the user's prompt.
+     - **0.3 – 0.5 (Somewhat Relevant)**: The file has minor or indirect relevance to the prompt.
+     - **0.6 – 0.8 (Moderately Relevant)**: The file is related and could contribute to addressing the prompt.
+     - **0.9 – 1.0 (Highly Relevant)**: The file is directly related and is important for addressing the prompt.
+   - **Evaluation Criteria**:
+     - **Keyword Matching**: Does the file contain keywords or topics mentioned in the user's prompt?
+     - **Functional Alignment**: Does the file implement features or functionalities requested by the user?
+     - **Dependency**: Is the file a dependency of other relevant modules?
 
 3. **Function Call Response**:
    - Respond by **calling the \`optimizeContext\` function**.
    - The function should have the following parameters:
      - \`"userPrompt"\`: The user's original prompt.
-     - \`"files"\`: An array of objects, each containing:
+     - \`"optimizedContext"\`: An array of objects, each containing:
        - \`"path"\`: The file path.
        - \`"summary"\`: The one-sentence summary of the file.
        - \`"relevance"\`: The relevance rating as a number between 0 and 1.
 
 **Important Guidelines**:
 
+- **Do not assign a relevance score of 1 to all files**; evaluate each file individually based on the criteria above.
 - **Do not include** any information not present in the file content.
 - **Avoid assumptions or hallucinations**; stick strictly to the provided data.
 - Ensure the **function call is properly formatted** and **valid**.
@@ -118,12 +124,12 @@ export async function executeStepContextOptimization(
 
 function parseOptimizationResult(result: FunctionCall[]): FileRelevance[] | null {
   const explanationCall = result.find((call) => call.name === 'optimizeContext');
-  if (!explanationCall || !explanationCall.args || !explanationCall.args.files) {
+  if (!explanationCall || !explanationCall.args || !explanationCall.args.optimizedContext) {
     return null;
   }
 
   try {
-    return explanationCall.args.files as FileRelevance[];
+    return explanationCall.args.optimizedContext as FileRelevance[];
   } catch (error) {
     console.error('Failed to parse optimization result:', error);
     return null;
@@ -141,13 +147,13 @@ function optimizeSourceCode(
     const relevanceInfo = fileRelevance.find((file) => file.path === path);
     if (relevanceInfo && relevanceInfo.relevance > 0.6) {
       optimizedSourceCode[path] = {
-        content: content ?? fullSourceCode[path]?.content ?? null,
         summary: relevanceInfo.summary,
+        content: content ?? fullSourceCode[path]?.content ?? null,
       };
     } else {
       optimizedSourceCode[path] = {
-        content: null,
         summary: relevanceInfo ? relevanceInfo.summary : undefined,
+        content: null,
       };
     }
   }

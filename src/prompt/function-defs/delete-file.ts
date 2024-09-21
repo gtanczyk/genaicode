@@ -7,13 +7,13 @@ export const deleteFile = {
   parameters: {
     type: 'object',
     properties: {
-      filePath: {
-        type: 'string',
-        description: 'The file path to delete.',
-      },
       explanation: {
         type: 'string',
         description: 'The explanation of the reasoning behind deleting this file',
+      },
+      filePath: {
+        type: 'string',
+        description: 'The file path to delete.',
       },
     },
     required: ['filePath'],

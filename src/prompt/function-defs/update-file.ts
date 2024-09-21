@@ -12,13 +12,13 @@ export const updateFile = {
         type: 'string',
         description: 'The file path to update.',
       },
-      newContent: {
-        type: 'string',
-        description: 'The content to update the file with. Must not be empty.',
-      },
       explanation: {
         type: 'string',
         description: 'The explanation of the reasoning behind the suggested code changes for this file',
+      },
+      newContent: {
+        type: 'string',
+        description: 'The content to update the file with. Must not be empty.',
       },
     },
     required: ['filePath', 'newContent'],

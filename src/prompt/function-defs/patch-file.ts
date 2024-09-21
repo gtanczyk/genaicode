@@ -12,6 +12,10 @@ export const patchFile = {
         type: 'string',
         description: 'The file path to patch.',
       },
+      explanation: {
+        type: 'string',
+        description: 'The explanation of the reasoning behind the suggested code changes for this file',
+      },
       patch: {
         type: 'string',
         description: `Modification to the file expressed in patch format. Example patch:
@@ -28,10 +32,6 @@ Index: filename.js
 \\ No newline at end of file
 \`\`\`
           `,
-      },
-      explanation: {
-        type: 'string',
-        description: 'The explanation of the reasoning behind the suggested code changes for this file',
       },
     },
     required: ['filePath', 'patch'],

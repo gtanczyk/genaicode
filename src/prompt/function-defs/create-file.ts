@@ -12,13 +12,13 @@ export const createFile = {
         type: 'string',
         description: 'Path of the file that will be created, it must not be empty.',
       },
-      newContent: {
-        type: 'string',
-        description: 'Content of the file that will be created, it must no be empty.',
-      },
       explanation: {
         type: 'string',
         description: 'The explanation of the reasoning behind creating this file',
+      },
+      newContent: {
+        type: 'string',
+        description: 'Content of the file that will be created, it must no be empty.',
       },
     },
     required: ['filePath', 'newContent'],
