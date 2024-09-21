@@ -24,7 +24,7 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
         <ProgressDot />
       </ProgressDots>
       <ButtonContainer>
-        <ActionButton onClick={onInterrupt}>Interrupt</ActionButton>
+        <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
         <ActionButton onClick={onPauseResume}>{executionStatus === 'paused' ? 'Resume' : 'Pause'}</ActionButton>
       </ButtonContainer>
     </ProgressContainer>
@@ -95,5 +95,13 @@ const ActionButton = styled.button`
 
   &:hover {
     background-color: ${(props) => props.theme.colors.primaryHover};
+  }
+`;
+
+const InterruptButton = styled(ActionButton)`
+  background-color: ${({ theme }) => theme.colors.error};
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.error}dd;
   }
 `;

@@ -38,6 +38,7 @@ export class Service {
 
   async executeCodegen(prompt: string, options: CodegenOptions, images?: ImageData[]): Promise<CodegenResult> {
     this.executionStatus = 'executing';
+    this.currentQuestion = null;
     this.codegenOptions = { ...this.codegenOptions, ...options };
 
     try {

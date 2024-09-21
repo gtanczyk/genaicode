@@ -105,7 +105,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     visibleDataIds={visibleDataIds}
                     toggleDataVisibility={toggleDataVisibility}
                   />
-                  {currentQuestion && index === mergedMessages.length - 1 && (
+                  {executionStatus !== 'idle' && currentQuestion && index === mergedMessages.length - 1 && (
                     <QuestionHandler
                       onSubmit={onQuestionSubmit}
                       onInterrupt={onInterrupt}
