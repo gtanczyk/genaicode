@@ -21,12 +21,12 @@ export const optimizeContext = {
           properties: {
             path: {
               type: 'string',
-              description: "The file path of the analyzed file, matching the 'path' provided in the input.",
+              description: 'The absolute file path of the analyzed file.',
             },
             summary: {
               type: 'string',
               description:
-                "A concise one-sentence summary of the file's content, highlighting its main purpose or functionality.",
+                "A concise one-sentence summary of the file's content, highlighting its main purpose or functionality. Maximum 10 tokens.",
             },
             relevance: {
               type: 'number',

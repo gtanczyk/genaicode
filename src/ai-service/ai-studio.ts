@@ -53,7 +53,7 @@ export async function generateContent(
           role: 'model' as const,
           parts: [
             ...(item.text ? [{ text: item.text }] : []),
-            ...item.functionCalls!.map((call) => ({
+            ...(item.functionCalls ?? []).map((call) => ({
               functionCall: {
                 name: call.name,
                 args: call.args ?? {},
@@ -74,8 +74,8 @@ export async function generateContent(
     ],
     toolConfig: {
       functionCallingConfig: {
-        mode: cheap ? undefined : FunctionCallingMode.ANY,
-        ...(!cheap && requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+        mode: FunctionCallingMode.ANY,
+        ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
       },
     },
   };

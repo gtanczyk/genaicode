@@ -4,7 +4,7 @@
 export const codegenSummary = {
   name: 'codegenSummary',
   description:
-    'This function is called with a summary of proposed updates. The summary is an object containing:\n' +
+    'This function is called with a summary of proposed updates.\n' +
     '- `explanation`: A general explanation of the planned code generation updates or reasoning for no code changes.\n' +
     '- `fileUpdates`: A list of proposed file updates that will be subject to subsequent code generation requests.\n' +
     '- `contextPaths`: A list of file paths that make sense to use as context for code generation requests.\n' +
@@ -18,7 +18,7 @@ export const codegenSummary = {
       },
       fileUpdates: {
         type: 'array',
-        description: 'An array of proposed file updates. Each update is an object with several properties.',
+        description: 'An array of proposed file updates, each update is an object with several properties.',
         items: {
           type: 'object',
           description:

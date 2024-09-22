@@ -70,32 +70,35 @@ export function getCodeGenPrompt(options: CodegenOptions): CodegenPrompt {
       ? `I have marked some files with the ${CODEGEN_TRIGGER} fragments:\n${codeGenFiles.join(
           '\n',
         )}\nYour task is to generate updates for those files according to the ${CODEGEN_TRIGGER} comments/context.`
-      : `No files are marked with ${CODEGEN_TRIGGER} fragment, so you can consider doing changes in any file${
+      : `No files are marked with the ${CODEGEN_TRIGGER} fragment, so you can consider making changes in any file${
           askQuestion ? ', but you should consult me by asking a question first.' : ''
         }.`;
 
   const codeGenPrompt = `${taskPrompt}
 
-Before proceeding with code generation, please summarize the proposed updates by calling the \`codegenSummary\` function with the appropriate arguments.
+Before proceeding with code generation, please:
 
-Ensure that you include:
+1. **Analyze the task and requirements**.
 
-- **\`explanation\`**: A brief description of the planned changes or reasoning for no changes.
+2. **Use the \`askQuestion\` function** to seek clarification if needed.
 
-- **\`fileUpdates\`**: A list of proposed file updates, each with required properties:
-  - **\`path\`**: Absolute file path to be updated.
-  - **\`updateToolName\`**: The tool to be used for the update (e.g., \`createFile\`, \`updateFile\`).
-  - **\`prompt\`**: A detailed prompt summarizing the planned changes for this file.
-  - **Other Properties**: Include any other necessary properties as per the \`codegenSummary\` function definition.
+3. **Summarize the proposed updates** by calling the \`codegenSummary\` function with the appropriate arguments.
 
-- **\`contextPaths\`**: A list of file paths that should be used as context for the code generation requests.
+   - Ensure that you include:
+     - **\`explanation\`**: A brief description of the planned changes or reasoning for no changes.
+     - **\`fileUpdates\`**: A list of proposed file updates, each with required properties:
+       - **\`path\`**: Absolute file path to be updated.
+       - **\`updateToolName\`**: The tool to be used for the update (e.g., \`createFile\`, \`updateFile\`).
+       - **\`prompt\`**: A detailed prompt summarizing the planned changes for this file.
+       - **Other Properties**: Include any other necessary properties as per the \`codegenSummary\` function definition.
+     - **\`contextPaths\`**: A list of file paths that should be used as context for the code generation requests.
 
 ## My Requirements for Task Execution:
 
 ${importantTextPrompts ? `${importantTextPrompts}\n` : ''}
 ${
   considerAllFiles
-    ? 'You are allowed to modify all files in the application regardless if they contain codegen fragments or not.'
+    ? 'You are allowed to modify all files in the application regardless of whether they contain codegen fragments.'
     : 'Do not modify files which do not contain the fragments.'
 }
 ${allowFileCreate ? 'You are allowed to create new files.' : 'Do not create new files. (request permission via `askQuestion`)'}

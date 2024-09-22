@@ -9,7 +9,7 @@ import { rcConfig, importantContext } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 
-export type SourceCodeMap = Record<string, { content: string | null } | undefined>;
+export type SourceCodeMap = Record<string, { content: string | null }>;
 
 type ImageAssetsMap = Record<
   string,

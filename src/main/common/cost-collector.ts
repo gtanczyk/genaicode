@@ -9,10 +9,9 @@ type CostTuple = {
 const tuples: CostTuple[] = [];
 
 export function collectCost(cost: number, inputTokens: number, outputTokens: number, cheap: boolean = false) {
-  const adjustedCost = cheap ? cost / 10 : cost;
   tuples.push({
     timestamp: Date.now(),
-    cost: adjustedCost,
+    cost: cost,
     inputTokens: inputTokens,
     outputTokens: outputTokens,
     cheap: cheap,

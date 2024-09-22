@@ -27,6 +27,6 @@
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["index.js", "index.html"],
+  "include": ["index.js"],
   "exclude": ["node_modules"]
 }

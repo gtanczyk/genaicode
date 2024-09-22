@@ -12,6 +12,21 @@ const api = axios.create({
   },
 });
 
+// Function to extract security token from index.html
+const getSecurityToken = async (): Promise<string | null> => {
+  try {
+    const response = await fetch('/');
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const token = doc.body.getAttribute('data-security-token');
+    return token;
+  } catch (error) {
+    console.error('Error fetching security token:', error);
+    return null;
+  }
+};
+
 // Add a request interceptor to include the security token in all requests
 api.interceptors.request.use(
   (config) => {
@@ -22,6 +37,25 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  },
+);
+
+// Add a response interceptor to handle 401 Unauthorized errors
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const newToken = await getSecurityToken();
+      if (newToken) {
+        // Update Authorization header with new token
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        document.querySelector('body[data-security-token]')?.setAttribute('data-security-token', newToken);
+        return api(originalRequest);
+      }
+    }
     return Promise.reject(error);
   },
 );

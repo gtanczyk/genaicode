@@ -86,9 +86,10 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
   }
 
   const inputCost =
-    (usage.inputTokens ?? 0) * inputCostPerToken +
-    (usage.cacheCreateTokens ?? 0) * inputCostPerToken * 1.25 +
-    (usage.cacheReadTokens ?? 0) * inputCostPerToken * 0.2;
+    ((usage.inputTokens ?? 0) * inputCostPerToken +
+      (usage.cacheCreateTokens ?? 0) * inputCostPerToken * 1.25 +
+      (usage.cacheReadTokens ?? 0) * inputCostPerToken * 0.2) *
+    (cheap ? 0.1 : 1);
   const outputCost = (usage.outputTokens ?? 0) * outputCostPerToken;
   const totalCost = inputCost + outputCost;
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');

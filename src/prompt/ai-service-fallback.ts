@@ -2,6 +2,7 @@ import { AiServiceType, CodegenOptions } from '../main/codegen-types.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { askUserForConfirmation } from '../main/common/user-actions.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
+import { abortController } from '../main/interactive/codegen-worker.js';
 
 const AI_SERVICES_MAP = [
   [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],
@@ -22,6 +23,11 @@ export async function handleAiServiceFallback(
   let permanentService = currentService;
 
   while (retryCount < maxRetries) {
+    if (abortController?.signal.aborted) {
+      putSystemMessage(`Operation interrupted for ${permanentService}`);
+      throw new Error(`Operation interrupted`);
+    }
+
     try {
       const result = await generateContentFns[permanentService](...args);
       options.aiService = permanentService;

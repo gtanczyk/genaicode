@@ -8,15 +8,21 @@ export const askQuestion = {
   parameters: {
     type: 'object',
     properties: {
+      actionType: {
+        type: 'string',
+        enum: [
+          'requestAnswer',
+          'requestPermissions',
+          'requestFileContent',
+          'startCodeGeneration',
+          'cancelCodeGeneration',
+        ],
+        description: 'This value instructs the program on what should happen next.',
+      },
       content: {
         type: 'string',
         description:
           'The message you want to display to the user. It can be a question if you need more information, or a confirmation/acknowledgment if you are proceeding without needing a response.',
-      },
-      shouldPrompt: {
-        type: 'boolean',
-        description:
-          'Set to true **only if** you require a response from the user before proceeding. Set to false if you do not require a response and are ready to proceed with the task.',
       },
       promptNecessity: {
         type: 'number',
@@ -24,11 +30,6 @@ export const askQuestion = {
         maximum: 100,
         description:
           'Indicates how strongly you need a response from the user. A higher value means a stronger need for user input.',
-      },
-      stopCodegen: {
-        type: 'boolean',
-        description:
-          'Set to true if you want to stop the code generation process without error. Use this when you cannot proceed due to insufficient information or other issues.',
       },
       requestFilesContent: {
         type: 'array',
@@ -71,6 +72,6 @@ export const askQuestion = {
         },
       },
     },
-    required: ['content', 'shouldPrompt', 'promptNecessity', 'stopCodegen'],
+    required: ['actionType', 'content', 'promptNecessity'],
   },
 } as const;

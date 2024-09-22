@@ -29,9 +29,13 @@ export async function executeStepAskQuestion(
     const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
     const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion') as
       | FunctionCall<{
+          actionType:
+            | 'requestAnswer'
+            | 'requestPermissions'
+            | 'requestFileContent'
+            | 'startCodeGeneration'
+            | 'cancelCodeGeneration';
           content: string;
-          stopCodegen: boolean;
-          shouldPrompt: boolean;
           requestFilesContent?: string[];
           requestPermissions?: Record<
             | 'allowDirectoryCreate'
@@ -50,34 +54,37 @@ export async function executeStepAskQuestion(
         putAssistantMessage(askQuestionCall.args?.content, askQuestionCall.args);
       }
 
-      if (askQuestionCall.args?.stopCodegen) {
+      const actionType = askQuestionCall.args?.actionType;
+      if (actionType === 'cancelCodeGeneration') {
         putSystemMessage('Assistant requested to stop code generation. Exiting...');
         return StepResult.BREAK;
-      } else if (!askQuestionCall.args?.shouldPrompt) {
+      } else if (actionType === 'startCodeGeneration') {
         putSystemMessage('Proceeding with code generation.');
         break;
       }
 
-      const fileContentRequested = (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
+      const fileContentRequested =
+        actionType === 'requestFileContent' && (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
       const permissionsRequested =
+        actionType === 'requestPermissions' &&
         Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
-      const userAnswer = askQuestionCall.args?.shouldPrompt
-        ? fileContentRequested
+      const userAnswer = fileContentRequested
+        ? (await askUserForConfirmation(
+            'The assistant is requesting file contents. Do you want to provide them?',
+            true,
+          ))
+          ? 'Providing requested files content.'
+          : 'Request for file contents denied.'
+        : permissionsRequested
           ? (await askUserForConfirmation(
-              'The assistant is requesting file contents. Do you want to provide them?',
-              true,
+              'The assistant is requesting additional permissions. Do you want to grant them?',
+              false,
             ))
-            ? 'Providing requested files content.'
-            : 'Request for file contents denied.'
-          : permissionsRequested
-            ? (await askUserForConfirmation(
-                'The assistant is requesting additional permissions. Do you want to grant them?',
-                false,
-              ))
-              ? 'Permissions granted.'
-              : 'Permission request denied.'
-            : await askUserForInput('Your answer', askQuestionCall.args?.content)
-        : "Let's proceed with code generation.";
+            ? 'Permissions granted.'
+            : 'Permission request denied.'
+          : actionType === 'requestAnswer'
+            ? await askUserForInput('Your answer', askQuestionCall.args?.content ?? '')
+            : "Let's proceed with code generation.";
 
       putUserMessage(userAnswer);
 
