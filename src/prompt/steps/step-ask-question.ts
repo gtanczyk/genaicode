@@ -133,7 +133,8 @@ export async function executeStepAskQuestion(
         }
 
         if (illegitimateFiles.length > 0) {
-          userItem.text = `The following files are not legitimate and their content cannot be provided: ${illegitimateFiles.join(', ')}`;
+          putSystemMessage('Illegitmate files ignored', illegitimateFiles);
+          userItem.text = 'Some following files are not legitimate and their content cannot be provided';
         } else {
           userItem.text = 'All requested file contents have been provided automatically.';
         }
@@ -164,7 +165,8 @@ export async function executeStepAskQuestion(
               });
             }
           });
-          userItem.text = `Context reduction applied. Removed content for files: ${filesToRemove.join(', ')}`;
+          putSystemMessage('Context reduction applied', filesToRemove);
+          userItem.text = 'Context reduction applied';
         } else {
           userItem.text = 'No specific files were provided for context reduction. The context remains unchanged.';
         }
