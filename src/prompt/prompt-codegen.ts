@@ -80,9 +80,9 @@ Before proceeding with code generation, please:
 
 1. **Analyze the task and requirements**.
 
-2. **Use the \`askQuestion\` function** to seek clarification if needed.
+2. **Use the \`askQuestion\` function** to seek clarification if needed, and eventually make a decision whether to start code generation, or to interrupt it.
 
-3. **Summarize the proposed updates** by calling the \`codegenSummary\` function with the appropriate arguments.
+3. **Summarize the plan of updates** by calling the \`codegenSummary\` function with the appropriate arguments.
 
    - Ensure that you include:
      - **\`explanation\`**: A brief description of the planned changes or reasoning for no changes.

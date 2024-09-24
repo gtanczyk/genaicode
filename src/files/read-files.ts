@@ -8,8 +8,9 @@ import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { rcConfig, importantContext } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
+import { getSummary } from '../prompt/steps/step-summarization.js';
 
-export type SourceCodeMap = Record<string, { content: string | null }>;
+export type SourceCodeMap = Record<string, { content: string | null } | { summary: string }>;
 
 type ImageAssetsMap = Record<
   string,
@@ -43,12 +44,14 @@ function readSourceFiles(
       if (!filterPaths && contentMask && !forceAll) {
         const relativePath = path.relative(rcConfig.rootDir, file);
         if (!relativePath.startsWith(contentMask)) {
-          sourceCode[file] = { content: null }; // Include the file path but set content to null
+          const summary = getSummary(file);
+          sourceCode[file] = summary ? { summary } : { content: null };
           continue;
         }
       }
       if (!forceAll && ignorePatterns?.some((pattern) => globRegex(pattern).test(file))) {
-        sourceCode[file] = { content: null };
+        const summary = getSummary(file);
+        sourceCode[file] = summary ? { summary } : { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
         sourceCode[file] = { content };

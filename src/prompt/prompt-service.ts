@@ -23,6 +23,7 @@ import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { handleAiServiceFallback } from './ai-service-fallback.js';
+import { summarizeSourceCode } from './steps/step-summarization.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -47,7 +48,16 @@ export async function promptService(
     return generateImageFns[codegenPrompt.options.imagen](...args);
   };
 
-  // First stage: generate code generation summary, which should not take a lot of output tokens
+  // First stage: summarize the source code
+  if (!codegenPrompt.options.disableContextOptimization) {
+    await summarizeSourceCode(
+      generateContentFn,
+      getSourceCode({ forceAll: true }, codegenPrompt.options),
+      codegenPrompt.options,
+    );
+  }
+
+  // Second stage: generate code generation summary, which should not take a lot of output tokens
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
 
   const prompt: PromptItem[] = [

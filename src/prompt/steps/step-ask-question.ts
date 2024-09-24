@@ -109,9 +109,9 @@ export async function executeStepAskQuestion(
         }
       }
 
-      const assistantItem = { type: 'assistant', functionCalls: [askQuestionCall] as FunctionCall[] };
+      const assistantItem = { type: 'assistant' as const, functionCalls: [askQuestionCall] as FunctionCall[] };
       const userItem = {
-        type: 'user',
+        type: 'user' as const,
         text: userAnswer,
         functionResponses: [
           {

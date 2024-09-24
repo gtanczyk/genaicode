@@ -4,7 +4,7 @@
 export const optimizeContext = {
   name: 'optimizeContext',
   description:
-    "Analyzes each file to provide a brief summary and rate its relevance to the user's prompt on a scale of 0 to 1.",
+    'This function narrows the context of code genertion to the list of provided files. Those files are considered as relevant to the user prompt',
   parameters: {
     type: 'object',
     properties: {
@@ -14,29 +14,10 @@ export const optimizeContext = {
       },
       optimizedContext: {
         type: 'array',
-        description:
-          'An array of results, each corresponding to an analyzed file, containing the file path, a brief summary, and a relevance score.',
+        description: 'An array of absolute paths of files, which are considered as relevant to the user prompt.',
         items: {
-          type: 'object',
-          properties: {
-            path: {
-              type: 'string',
-              description: 'The absolute file path of the analyzed file.',
-            },
-            summary: {
-              type: 'string',
-              description:
-                "A concise one-sentence summary of the file's content, highlighting its main purpose or functionality. Maximum 10 tokens.",
-            },
-            relevance: {
-              type: 'number',
-              description:
-                "A numeric score between 0 and 1 indicating the file's relevance to the user's prompt. A score of 0 means not relevant at all, while a score of 1 means highly relevant.",
-              minimum: 0,
-              maximum: 1,
-            },
-          },
-          required: ['path', 'summary', 'relevance'],
+          type: 'string',
+          description: 'Array item is a absolute file path',
         },
       },
     },

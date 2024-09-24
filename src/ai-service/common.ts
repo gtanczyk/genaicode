@@ -28,7 +28,7 @@ export interface FunctionCall<T = Record<string, unknown>> {
 }
 
 export interface PromptItem {
-  type: string;
+  type: 'systemPrompt' | 'user' | 'assistant';
   systemPrompt?: string;
   text?: string;
   functionResponses?: {
