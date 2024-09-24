@@ -95,6 +95,15 @@ Before proceeding with code generation, please:
        - **Other Properties**: Include any other necessary properties as per the \`codegenSummary\` function definition.
      - **\`contextPaths\`**: A list of file paths that should be used as context for the code generation requests.
 
+5. **Consider context reduction during askQuestion conversations**:
+   - Continuously evaluate the relevance of the current context to the ongoing conversation and task.
+   - If you identify file contents or other contextual information that are no longer necessary, use the \`askQuestion\` function with the \`reduceContext\` parameter set to \`true\`.
+   - Clearly specify which information can be safely removed from the context to optimize token usage and improve conversation efficiency.
+   - Prioritize removing large file contents that are no longer relevant to the current task or conversation.
+   - Explain your reasoning when requesting context reduction to help the user understand the benefits of this action.
+
+6. **Check ActionType Selection**: Always verify that the correct \`actionType\` is being used, especially before requesting file content, to ensure the 'requestFilesContent' actionType is applied. This helps maintain vigilance and accuracy in task execution.
+
 ## My Requirements for Task Execution:
 
 ${importantTextPrompts ? `${importantTextPrompts}\n` : ''}
@@ -121,7 +130,10 @@ ${
     ? 'You are allowed to generate images.'
     : 'You are not allowed to generate images. (request permission via `askQuestion`)'
 }
-`;
+
+Remember to optimize token usage by reducing context when appropriate during askQuestion conversations. This will help avoid hitting rate limits and improve overall efficiency.
+
+ Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.`;
 
   if (verbose) {
     console.log('Code gen prompt:');

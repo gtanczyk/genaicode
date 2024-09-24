@@ -1,5 +1,8 @@
 /**
  * Function definition for askQuestion
+ *
+ * Use this function to ask questions, seek clarification, request file permissions, or manage the flow of the conversation.
+ * Each actionType serves a specific purpose, ensuring clarity and proper task execution.
  */
 export const askQuestion = {
   name: 'askQuestion',
@@ -13,13 +16,23 @@ export const askQuestion = {
         enum: [
           'requestAnswer',
           'requestPermissions',
-          'requestFileContent',
+          'requestFilesContent',
+          'removeFilesFromContext',
           'confirmCodeGeneration',
           'startCodeGeneration',
           'cancelCodeGeneration',
         ],
-        description:
-          'This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.',
+        description: `This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.,
+
+           Detailed Explanation of actionTypes:
+           - requestAnswer: Use for general information, clarifications, or when no specific code is needed.
+           - requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
+           - requestFilesContent: Use specifically when needing to access or review the contents of files.
+           - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
+           - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
+           - startCodeGeneration: Use only after receiving confirmation to begin code generation.
+           - cancelCodeGeneration: Use if code generation should be stopped or canceled.
+        `,
       },
       content: {
         type: 'string',
@@ -37,6 +50,14 @@ export const askQuestion = {
         type: 'array',
         description:
           'An array of absolute file paths for which you need the content. Use this when specific files are missing and you need them to proceed with the task.',
+        items: {
+          type: 'string',
+        },
+      },
+      removeFilesFromContext: {
+        type: 'array',
+        description:
+          'An array of absolute file paths that should be removed from the context. Use this to optimize token usage by removing unnecessary file contents.',
         items: {
           type: 'string',
         },

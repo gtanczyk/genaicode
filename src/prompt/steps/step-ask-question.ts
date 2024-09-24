@@ -4,6 +4,9 @@ import { CodegenOptions } from '../../main/codegen-types.js';
 import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
 import { abortController } from '../../main/interactive/codegen-worker.js';
+import path from 'path';
+import { rcConfig } from '../../main/config.js';
+import { getSourceFiles } from '../../files/find-files.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: (
@@ -32,7 +35,8 @@ export async function executeStepAskQuestion(
           actionType:
             | 'requestAnswer'
             | 'requestPermissions'
-            | 'requestFileContent'
+            | 'requestFilesContent'
+            | 'removeFilesFromContext'
             | 'confirmCodeGeneration'
             | 'startCodeGeneration'
             | 'cancelCodeGeneration';
@@ -47,6 +51,7 @@ export async function executeStepAskQuestion(
             | 'enableImagen',
             boolean
           >;
+          removeFilesFromContext?: string[];
         }>
       | undefined;
 
@@ -78,35 +83,104 @@ export async function executeStepAskQuestion(
       }
 
       const fileContentRequested =
-        actionType === 'requestFileContent' && (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
+        actionType === 'requestFilesContent' && (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
       const permissionsRequested =
         actionType === 'requestPermissions' &&
         Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
+      const contextReductionRequested =
+        actionType === 'removeFilesFromContext' && (askQuestionCall.args?.removeFilesFromContext?.length ?? 0) > 0;
 
-      let userAnswer: string;
+      const assistantItem = { type: 'assistant' as const, functionCalls: [askQuestionCall] as FunctionCall[] };
+      const userItem = {
+        type: 'user' as const,
+        text: '',
+        functionResponses: [
+          {
+            name: 'askQuestion',
+            call_id: askQuestionCall.id,
+            content: undefined as string | undefined,
+          },
+        ],
+      };
+
       if (fileContentRequested) {
-        userAnswer = (await askUserForConfirmation(
-          'The assistant is requesting file contents. Do you want to provide them?',
-          true,
-        ))
-          ? 'Providing requested files content.'
-          : 'Request for file contents denied.';
+        const requestedFiles = askQuestionCall.args?.requestFilesContent ?? [];
+        const legitimateFiles: string[] = [];
+        const illegitimateFiles: string[] = [];
+
+        requestedFiles.forEach((filePath) => {
+          const absolutePath = path.resolve(rcConfig.rootDir, filePath);
+          if (isFilePathLegitimate(absolutePath)) {
+            legitimateFiles.push(absolutePath);
+          } else {
+            illegitimateFiles.push(filePath);
+          }
+        });
+
+        if (legitimateFiles.length > 0) {
+          putSystemMessage('Automatically providing content for legitimate files', legitimateFiles);
+          assistantItem.functionCalls.push({
+            name: 'getSourceCode',
+            args: { filePaths: legitimateFiles },
+            id: askQuestionCall.id + '_src',
+          });
+
+          userItem.functionResponses.push({
+            name: 'getSourceCode',
+            content: messages.contextSourceCode(legitimateFiles, true),
+            call_id: askQuestionCall.id + '_src',
+          });
+        }
+
+        if (illegitimateFiles.length > 0) {
+          userItem.text = `The following files are not legitimate and their content cannot be provided: ${illegitimateFiles.join(', ')}`;
+        } else {
+          userItem.text = 'All requested file contents have been provided automatically.';
+        }
       } else if (permissionsRequested) {
-        userAnswer = (await askUserForConfirmation(
+        userItem.text = (await askUserForConfirmation(
           'The assistant is requesting additional permissions. Do you want to grant them?',
           false,
         ))
           ? 'Permissions granted.'
           : 'Permission request denied.';
+      } else if (contextReductionRequested) {
+        const filesToRemove = askQuestionCall.args?.removeFilesFromContext ?? [];
+        if (filesToRemove.length > 0) {
+          // Remove file contents from the prompt
+          prompt.forEach((item) => {
+            if (item.type === 'user' && item.functionResponses) {
+              item.functionResponses = item.functionResponses.filter((response) => {
+                if (response.name === 'getSourceCode' && response.content) {
+                  const contentObj = JSON.parse(response.content);
+                  filesToRemove.forEach((file) => {
+                    if (contentObj[file]) {
+                      delete contentObj[file].content;
+                    }
+                  });
+                  response.content = JSON.stringify(contentObj);
+                }
+                return true;
+              });
+            }
+          });
+          userItem.text = `Context reduction applied. Removed content for files: ${filesToRemove.join(', ')}`;
+        } else {
+          userItem.text = 'No specific files were provided for context reduction. The context remains unchanged.';
+        }
       } else if (actionType === 'requestAnswer') {
-        userAnswer = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+        userItem.text = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
       } else {
-        userAnswer = "I don't want to start the code generation yet, let's talk a bit more.";
+        userItem.text = "I don't want to start the code generation yet, let's talk a bit more.";
       }
 
-      putUserMessage(userAnswer);
+      putUserMessage(userItem.text);
 
-      if (permissionsRequested && askQuestionCall.args?.requestPermissions && userAnswer === 'Permissions granted.') {
+      if (
+        permissionsRequested &&
+        askQuestionCall.args?.requestPermissions &&
+        userItem.text === 'Permissions granted.'
+      ) {
         if (askQuestionCall.args?.requestPermissions.enableImagen) {
           options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
         }
@@ -127,39 +201,9 @@ export async function executeStepAskQuestion(
         }
       }
 
-      const assistantItem = { type: 'assistant' as const, functionCalls: [askQuestionCall] as FunctionCall[] };
-      const userItem = {
-        type: 'user' as const,
-        text: userAnswer,
-        functionResponses: [
-          {
-            name: 'askQuestion',
-            call_id: askQuestionCall.id,
-            content: undefined as string | undefined,
-          },
-        ],
-      };
-
       prompt.push(assistantItem, userItem);
 
-      const fileContentProvided = fileContentRequested && userAnswer === 'Providing requested files content.';
-      if (fileContentProvided) {
-        assistantItem.functionCalls.push({
-          name: 'getSourceCode',
-          args: { filePaths: askQuestionCall.args!.requestFilesContent! },
-          id: askQuestionCall.id + '_src',
-        });
-
-        userItem.functionResponses.push({
-          name: 'getSourceCode',
-          content: messages.contextSourceCode(askQuestionCall.args!.requestFilesContent!, true),
-          call_id: askQuestionCall.id + '_src',
-        });
-
-        console.log('File content provided.');
-      }
-
-      console.log('The question was answered', userAnswer);
+      console.log('The question was answered');
 
       if (abortController?.signal.aborted) {
         return StepResult.BREAK;
@@ -171,4 +215,8 @@ export async function executeStepAskQuestion(
   }
 
   return StepResult.CONTINUE;
+}
+
+function isFilePathLegitimate(filePath: string): boolean {
+  return getSourceFiles().includes(filePath);
 }
