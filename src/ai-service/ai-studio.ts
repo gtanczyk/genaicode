@@ -81,7 +81,7 @@ export async function generateContent(
   };
 
   const model = getModel(
-    cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001',
+    cheap ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002',
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     options.geminiBlockNone,

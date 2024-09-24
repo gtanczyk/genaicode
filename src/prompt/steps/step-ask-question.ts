@@ -33,6 +33,7 @@ export async function executeStepAskQuestion(
             | 'requestAnswer'
             | 'requestPermissions'
             | 'requestFileContent'
+            | 'confirmCodeGeneration'
             | 'startCodeGeneration'
             | 'cancelCodeGeneration';
           content: string;
@@ -48,6 +49,7 @@ export async function executeStepAskQuestion(
           >;
         }>
       | undefined;
+
     if (askQuestionCall) {
       console.log('Assistant asks:', askQuestionCall.args);
       if (askQuestionCall.args?.content) {
@@ -55,9 +57,21 @@ export async function executeStepAskQuestion(
       }
 
       const actionType = askQuestionCall.args?.actionType;
+
       if (actionType === 'cancelCodeGeneration') {
         putSystemMessage('Assistant requested to stop code generation. Exiting...');
         return StepResult.BREAK;
+      } else if (actionType === 'confirmCodeGeneration') {
+        const userConfirmation = await askUserForConfirmation(
+          'The assistant is ready to start code generation. Do you want to proceed?',
+          true,
+        );
+        if (userConfirmation) {
+          putSystemMessage('Proceeding with code generation.');
+          break;
+        } else {
+          putSystemMessage('Code generation cancelled by user. Continuing the conversation.');
+        }
       } else if (actionType === 'startCodeGeneration') {
         putSystemMessage('Proceeding with code generation.');
         break;
@@ -68,23 +82,27 @@ export async function executeStepAskQuestion(
       const permissionsRequested =
         actionType === 'requestPermissions' &&
         Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
-      const userAnswer = fileContentRequested
-        ? (await askUserForConfirmation(
-            'The assistant is requesting file contents. Do you want to provide them?',
-            true,
-          ))
+
+      let userAnswer: string;
+      if (fileContentRequested) {
+        userAnswer = (await askUserForConfirmation(
+          'The assistant is requesting file contents. Do you want to provide them?',
+          true,
+        ))
           ? 'Providing requested files content.'
-          : 'Request for file contents denied.'
-        : permissionsRequested
-          ? (await askUserForConfirmation(
-              'The assistant is requesting additional permissions. Do you want to grant them?',
-              false,
-            ))
-            ? 'Permissions granted.'
-            : 'Permission request denied.'
-          : actionType === 'requestAnswer'
-            ? await askUserForInput('Your answer', askQuestionCall.args?.content ?? '')
-            : "Let's proceed with code generation.";
+          : 'Request for file contents denied.';
+      } else if (permissionsRequested) {
+        userAnswer = (await askUserForConfirmation(
+          'The assistant is requesting additional permissions. Do you want to grant them?',
+          false,
+        ))
+          ? 'Permissions granted.'
+          : 'Permission request denied.';
+      } else if (actionType === 'requestAnswer') {
+        userAnswer = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+      } else {
+        userAnswer = "I don't want to start the code generation yet, let's talk a bit more.";
+      }
 
       putUserMessage(userAnswer);
 

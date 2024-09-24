@@ -137,7 +137,7 @@ export function getGenModel(
 ) {
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
-  const defaultModel = cheap ? 'gemini-1.5-flash-001' : 'gemini-1.5-pro-001';
+  const defaultModel = cheap ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002';
   const model = cheap
     ? (modelOverrides.vertexAi?.cheap ?? defaultModel)
     : (modelOverrides.vertexAi?.default ?? defaultModel);

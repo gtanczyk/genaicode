@@ -4,7 +4,7 @@
 export const askQuestion = {
   name: 'askQuestion',
   description:
-    'Use this function to ask a question or seek clarification from the user if needed. If you have all the necessary information and are ready to proceed, do not call this function.',
+    'Use this function to ask a question, seek clarification, or manage the flow of the conversation. For analysis requests, use actionType "requestAnswer". Only proceed to code generation when explicitly instructed or after confirmation.',
   parameters: {
     type: 'object',
     properties: {
@@ -14,15 +14,17 @@ export const askQuestion = {
           'requestAnswer',
           'requestPermissions',
           'requestFileContent',
+          'confirmCodeGeneration',
           'startCodeGeneration',
           'cancelCodeGeneration',
         ],
-        description: 'This value instructs the program on what should happen next.',
+        description:
+          'This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.',
       },
       content: {
         type: 'string',
         description:
-          'The message you want to display to the user. It can be a question if you need more information, or a confirmation/acknowledgment if you are proceeding without needing a response.',
+          'The message you want to display to the user. It can be a question if you need more information, an analysis result, or a confirmation request before proceeding with code generation.',
       },
       promptNecessity: {
         type: 'number',

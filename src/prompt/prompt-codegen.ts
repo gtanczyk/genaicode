@@ -80,9 +80,11 @@ Before proceeding with code generation, please:
 
 1. **Analyze the task and requirements**.
 
-2. **Use the \`askQuestion\` function** to seek clarification if needed, and eventually make a decision whether to start code generation, or to interrupt it.
+2. **Use the \`askQuestion\` function** to seek clarification if needed. For analysis requests, use the 'requestAnswer' actionType.
 
-3. **Summarize the plan of updates** by calling the \`codegenSummary\` function with the appropriate arguments.
+3. **When you believe code changes are necessary**, use the 'confirmCodeGeneration' actionType to confirm with the user before proceeding.
+
+4. **Only after confirmation**, summarize the plan of updates by calling the \`codegenSummary\` function with the appropriate arguments.
 
    - Ensure that you include:
      - **\`explanation\`**: A brief description of the planned changes or reasoning for no changes.
@@ -148,7 +150,7 @@ Lint command stderr:
 ${stderr}
 \`\`\`
 
-Please suggest changes to fix these lint errors.`;
+Please suggest changes to fix these lint errors. Use the 'requestAnswer' actionType if you need any clarifications before proposing fixes.`;
 
   if (verbose) {
     console.log('Lint fix prompt:');
