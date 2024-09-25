@@ -1,7 +1,7 @@
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { putAssistantMessage, putSystemMessage } from '../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
 import { abortController } from '../../main/interactive/codegen-worker.js';
 import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import {
@@ -63,6 +63,9 @@ export async function executeStepAskQuestion(
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
         const result = await actionHandler({ askQuestionCall, prompt, options, messages });
+
+        // This is important to display the content to the user interface (ui or interactive cli)
+        putUserMessage(result.userItem.text);
 
         if (result.breakLoop) {
           return result.stepResult;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import { StyledTextarea } from './styled-textarea';
 
 interface QuestionHandlerProps {
   onSubmit: (answer: string) => void;
@@ -58,11 +59,11 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
           </ButtonGroup>
         ) : (
           <AnswerForm onSubmit={handleSubmit}>
-            <AnswerTextarea
+            <StyledTextarea
               value={answer}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnswer(e.target.value)}
+              onChange={setAnswer}
               placeholder="Enter your answer here"
-              rows={4}
+              maxHeight="30vh"
             />
             <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
@@ -98,27 +99,11 @@ const AnswerForm = styled.form`
   flex-direction: column;
 `;
 
-const AnswerTextarea = styled.textarea`
-  background-color: ${({ theme }) => theme.colors.inputBg};
-  color: ${({ theme }) => theme.colors.inputText};
-  border: 1px solid ${({ theme }) => theme.colors.inputBorder};
-  border-radius: 4px;
-  padding: 10px;
-  font-size: 14px;
-  resize: vertical;
-  min-height: 80px;
-  margin-bottom: 10px;
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;
-
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: flex-start;
   gap: 10px;
+  margin-top: 10px;
 `;
 
 const Button = styled.button`

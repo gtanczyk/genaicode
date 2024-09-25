@@ -12,17 +12,17 @@ import {
   ActionHandlerProps,
 } from './step-ask-question-types.js';
 
-export async function handleCancelCodeGeneration(): Promise<ActionResult> {
+export async function handleCancelCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Assistant requested to stop code generation. Exiting...');
   return {
     breakLoop: true,
     stepResult: StepResult.BREAK,
-    assistantItem: { type: 'assistant', functionCalls: [] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
     userItem: { type: 'user', text: 'Code generation cancelled.' },
   };
 }
 
-export async function handleConfirmCodeGeneration(): Promise<ActionResult> {
+export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmation(
     'The assistant is ready to start code generation. Do you want to proceed?',
     true,
@@ -32,7 +32,7 @@ export async function handleConfirmCodeGeneration(): Promise<ActionResult> {
     return {
       breakLoop: true,
       stepResult: StepResult.CONTINUE,
-      assistantItem: { type: 'assistant', functionCalls: [] },
+      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
       userItem: { type: 'user', text: 'Confirmed. Proceed with code generation.' },
     };
   } else {
@@ -40,18 +40,18 @@ export async function handleConfirmCodeGeneration(): Promise<ActionResult> {
     return {
       breakLoop: false,
       stepResult: StepResult.CONTINUE,
-      assistantItem: { type: 'assistant', functionCalls: [] },
+      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
       userItem: { type: 'user', text: 'Code generation cancelled. Please continue the conversation.' },
     };
   }
 }
 
-export async function handleStartCodeGeneration(): Promise<ActionResult> {
+export async function handleStartCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Proceeding with code generation.');
   return {
     breakLoop: true,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', functionCalls: [] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
     userItem: { type: 'user', text: 'Proceeding with code generation.' },
   };
 }
@@ -66,7 +66,11 @@ export async function handleRequestFilesContent({
 
   const { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
 
-  const assistantItem: AssistantItem = { type: 'assistant', functionCalls: [askQuestionCall] };
+  const assistantItem: AssistantItem = {
+    type: 'assistant',
+    text: askQuestionCall.args?.content ?? '',
+    functionCalls: [askQuestionCall],
+  };
   const userItem: UserItem = {
     type: 'user',
     text: '',
@@ -107,7 +111,7 @@ export async function handleRequestPermissions({
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', functionCalls: [askQuestionCall] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
     userItem,
   };
 }
@@ -130,7 +134,7 @@ export async function handleRemoveFilesFromContext({
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', functionCalls: [askQuestionCall] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
     userItem: {
       type: 'user',
       text: userText,
@@ -144,7 +148,7 @@ export async function handleRequestAnswer({ askQuestionCall }: ActionHandlerProp
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', functionCalls: [askQuestionCall] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
     userItem: {
       type: 'user',
       text: userText,
@@ -157,7 +161,7 @@ export async function handleDefaultAction({ askQuestionCall }: ActionHandlerProp
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', functionCalls: [askQuestionCall] },
+    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
     userItem: {
       type: 'user',
       text: "I don't want to start the code generation yet, let's talk a bit more.",

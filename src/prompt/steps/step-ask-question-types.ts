@@ -26,6 +26,7 @@ export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
 
 export interface AssistantItem {
   type: 'assistant';
+  text: string;
   functionCalls: FunctionCall[];
 }
 
