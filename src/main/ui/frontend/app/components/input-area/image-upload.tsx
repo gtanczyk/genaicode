@@ -1,20 +1,19 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_IMAGES = 5;
 
-interface ImageUploadProps {
+export interface ImageUploadProps {
   images: File[];
   onImagesChange: (newImages: File[]) => void;
   error: string | null;
   setError: (error: string | null) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
 }
 
-export const ImageUpload: React.FC<ImageUploadProps> = ({ images, onImagesChange, error, setError }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+export const ImageUpload: React.FC<ImageUploadProps> = ({ images, onImagesChange, error, setError, fileInputRef }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter((file) => {

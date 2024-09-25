@@ -6,6 +6,7 @@ interface StyledTextareaProps {
   onChange: (value: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onImagePaste?: (file: File) => void;
   maxViewportHeight?: number;
   placeholder?: string;
 }
@@ -38,6 +39,9 @@ const Textarea = styled.textarea`
 export const StyledTextarea: React.FC<StyledTextareaProps> = ({
   value,
   onChange,
+  onKeyDown,
+  onPaste,
+  onImagePaste,
   maxViewportHeight = 0.5,
   ...props
 }) => {
@@ -57,9 +61,34 @@ export const StyledTextarea: React.FC<StyledTextareaProps> = ({
     onChange(e.target.value);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          e.preventDefault();
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const file = new File([blob], `pasted-image-${Date.now()}.png`, { type: 'image/png' });
+            onImagePaste?.(file);
+          }
+          break;
+        }
+      }
+    }
+    onPaste?.(e);
+  };
+
   return (
     <TextareaWrapper>
-      <Textarea ref={textareaRef} value={value} onChange={handleChange} {...props} />
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={onKeyDown}
+        onPaste={handlePaste}
+        {...props}
+      />
     </TextareaWrapper>
   );
 };

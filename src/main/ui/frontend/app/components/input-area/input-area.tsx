@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import styled from 'styled-components';
 import { CodegenOptions } from '../../../../../codegen-types.js';
 import { StyledTextarea } from '../styled-textarea';
@@ -19,6 +19,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
   const [images, setImages] = useState<File[]>([]);
   const [showOptions, setShowOptions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (isExecuting) {
     return null;
@@ -40,6 +41,15 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
     setShowOptions(!showOptions);
   };
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImagePaste = (file: File) => {
+    const newImages = [...images, file];
+    handleImageUpload(newImages);
+  };
+
   return (
     <InputContainer>
       <TextareaContainer>
@@ -47,13 +57,20 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
           value={input}
           onChange={setInput}
           placeholder="Enter your input here"
+          onImagePaste={handleImagePaste}
         />
       </TextareaContainer>
-      <ImageUpload images={images} onImagesChange={handleImageUpload} error={error} setError={setError} />
+      <ImageUpload 
+        images={images} 
+        onImagesChange={handleImageUpload} 
+        error={error} 
+        setError={setError}
+        fileInputRef={fileInputRef}
+      />
       <ButtonContainer
         onSubmit={handleSubmit}
         onToggleOptions={toggleOptions}
-        onUploadClick={() => {}} // This is a placeholder, consider implementing actual upload functionality
+        onUploadClick={handleUploadClick}
         disabled={!input.trim() && images.length === 0}
       />
       {showOptions && (
