@@ -63,7 +63,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               value={answer}
               onChange={setAnswer}
               placeholder="Enter your answer here"
-              maxHeight="30vh"
+              maxViewportHeight={0.3}
             />
             <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
@@ -92,11 +92,14 @@ const HandlerContainer = styled.div`
   margin-top: 10px;
   margin-bottom: 10px;
   max-width: 70%;
+  width: 100%;
+  box-sizing: border-box;
 `;
 
 const AnswerForm = styled.form`
   display: flex;
   flex-direction: column;
+  min-height: 100px;
 `;
 
 const ButtonGroup = styled.div`

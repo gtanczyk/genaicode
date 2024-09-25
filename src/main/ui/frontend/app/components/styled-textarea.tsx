@@ -6,7 +6,7 @@ interface StyledTextareaProps {
   onChange: (value: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-  maxHeight?: string;
+  maxViewportHeight?: number;
   placeholder?: string;
 }
 
@@ -35,18 +35,23 @@ const Textarea = styled.textarea`
   }
 `;
 
-export const StyledTextarea: React.FC<StyledTextareaProps> = ({ value, onChange, maxHeight = '50vh', ...props }) => {
+export const StyledTextarea: React.FC<StyledTextareaProps> = ({
+  value,
+  onChange,
+  maxViewportHeight = 0.5,
+  ...props
+}) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       const scrollHeight = textareaRef.current.scrollHeight;
-      const maxHeightPx = parseInt(maxHeight);
+      const maxHeightPx = maxViewportHeight * window.innerHeight;
       const newHeight = Math.min(scrollHeight, maxHeightPx);
       textareaRef.current.style.height = `${newHeight}px`;
     }
-  }, [value, maxHeight]);
+  }, [value, maxViewportHeight]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);

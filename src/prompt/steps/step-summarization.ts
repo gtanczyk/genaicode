@@ -23,14 +23,12 @@ export async function summarizeSourceCode(
   sourceCode: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {
-  putSystemMessage('Summarization of the source code is starting');
   const items = Object.entries(sourceCode).map(([path, file]) => ({
     path,
     content: 'content' in file ? file.content : null,
   }));
 
   await summarizeBatch(generateContentFn, items, options);
-  putSystemMessage('Summarization of the source code is finished.');
 }
 
 async function summarizeBatch(
@@ -41,6 +39,13 @@ async function summarizeBatch(
   const uncachedItems = items.filter(
     (item) => !summaryCache[item.path] || summaryCache[item.path].checksum !== md5(item.content ?? ''),
   );
+
+  if (uncachedItems.length === 0) {
+    putSystemMessage('Summarization of the source code was skipped.');
+    return;
+  }
+
+  putSystemMessage('Summarization of the source code is starting.', { files: uncachedItems.map((item) => item.path) });
 
   for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
@@ -72,6 +77,8 @@ async function summarizeBatch(
   }
 
   writeCache('summaries', summaryCache);
+
+  putSystemMessage('Summarization of the source code is finished.');
 }
 
 function parseSummarizationResult(result: FunctionCall[]): SummaryInfo[] {

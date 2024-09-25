@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { CodegenOptions } from '../../../../../codegen-types.js';
-import { TextInput } from './text-input';
+import { StyledTextarea } from '../styled-textarea';
 import { ImageUpload } from './image-upload';
 import { ButtonContainer } from './button-container';
 import { CodegenOptionsForm } from './codegen-options-form';
@@ -42,12 +42,13 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
 
   return (
     <InputContainer>
-      <TextInput
-        value={input}
-        onChange={setInput}
-        onSubmit={handleSubmit}
-        onImagePaste={(file) => setImages([...images, file])}
-      />
+      <TextareaContainer>
+        <StyledTextarea
+          value={input}
+          onChange={setInput}
+          placeholder="Enter your input here"
+        />
+      </TextareaContainer>
       <ImageUpload images={images} onImagesChange={handleImageUpload} error={error} setError={setError} />
       <ButtonContainer
         onSubmit={handleSubmit}
@@ -68,4 +69,11 @@ const InputContainer = styled.div`
   background-color: ${(props) => props.theme.colors.background};
   border-top: 1px solid ${(props) => props.theme.colors.border};
   padding: 16px;
+  width: 100%;
+  box-sizing: border-box;
+`;
+
+const TextareaContainer = styled.div`
+  margin-bottom: 16px;
+  width: 100%;
 `;
