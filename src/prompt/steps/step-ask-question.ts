@@ -1,22 +1,31 @@
 import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
-import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage } from '../../main/common/content-bus.js';
 import { abortController } from '../../main/interactive/codegen-worker.js';
-import path from 'path';
-import { rcConfig } from '../../main/config.js';
-import { getSourceFiles } from '../../files/find-files.js';
+import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
+import {
+  handleCancelCodeGeneration,
+  handleConfirmCodeGeneration,
+  handleStartCodeGeneration,
+  handleRequestFilesContent,
+  handleRequestPermissions,
+  handleRemoveFilesFromContext,
+  handleRequestAnswer,
+  handleDefaultAction,
+} from './step-ask-question-handlers.js';
+
+type GenerateContentFunction = (
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  requiredFunctionName: string,
+  temperature: number,
+  cheap: boolean,
+  options: CodegenOptions,
+) => Promise<FunctionCall[]>;
 
 export async function executeStepAskQuestion(
-  generateContentFn: (
-    prompt: PromptItem[],
-    functionDefs: FunctionDef[],
-    requiredFunctionName: string,
-    temperature: number,
-    cheap: boolean,
-    options: CodegenOptions,
-  ) => Promise<FunctionCall[]>,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
@@ -27,198 +36,78 @@ export async function executeStepAskQuestion(
   options: CodegenOptions,
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
-  const questionAsked = false;
-  while (!questionAsked) {
-    const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
-    const askQuestionCall = askQuestionResult.find((call) => call.name === 'askQuestion') as
-      | FunctionCall<{
-          actionType:
-            | 'requestAnswer'
-            | 'requestPermissions'
-            | 'requestFilesContent'
-            | 'removeFilesFromContext'
-            | 'confirmCodeGeneration'
-            | 'startCodeGeneration'
-            | 'cancelCodeGeneration';
-          content: string;
-          requestFilesContent?: string[];
-          requestPermissions?: Record<
-            | 'allowDirectoryCreate'
-            | 'allowFileCreate'
-            | 'allowFileDelete'
-            | 'allowFileMove'
-            | 'enableVision'
-            | 'enableImagen',
-            boolean
-          >;
-          removeFilesFromContext?: string[];
-        }>
-      | undefined;
 
-    if (askQuestionCall) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const askQuestionCall = await getAskQuestionCall(
+        generateContentFn,
+        prompt,
+        functionDefs,
+        temperature,
+        cheap,
+        options,
+      );
+
+      if (!askQuestionCall) {
+        console.log('Assistant did not ask a question. Proceeding with code generation.');
+        return StepResult.CONTINUE;
+      }
+
       console.log('Assistant asks:', askQuestionCall.args);
       if (askQuestionCall.args?.content) {
-        putAssistantMessage(askQuestionCall.args?.content, askQuestionCall.args);
+        putAssistantMessage(askQuestionCall.args.content, askQuestionCall.args);
       }
 
       const actionType = askQuestionCall.args?.actionType;
+      if (actionType) {
+        const actionHandler = getActionHandler(actionType);
+        const result = await actionHandler({ askQuestionCall, prompt, options, messages });
 
-      if (actionType === 'cancelCodeGeneration') {
-        putSystemMessage('Assistant requested to stop code generation. Exiting...');
-        return StepResult.BREAK;
-      } else if (actionType === 'confirmCodeGeneration') {
-        const userConfirmation = await askUserForConfirmation(
-          'The assistant is ready to start code generation. Do you want to proceed?',
-          true,
-        );
-        if (userConfirmation) {
-          putSystemMessage('Proceeding with code generation.');
-          break;
-        } else {
-          putSystemMessage('Code generation cancelled by user. Continuing the conversation.');
-        }
-      } else if (actionType === 'startCodeGeneration') {
-        putSystemMessage('Proceeding with code generation.');
-        break;
-      }
-
-      const fileContentRequested =
-        actionType === 'requestFilesContent' && (askQuestionCall.args?.requestFilesContent?.length ?? 0) > 0;
-      const permissionsRequested =
-        actionType === 'requestPermissions' &&
-        Object.entries(askQuestionCall.args?.requestPermissions ?? {}).filter(([, enabled]) => enabled).length > 0;
-      const contextReductionRequested =
-        actionType === 'removeFilesFromContext' && (askQuestionCall.args?.removeFilesFromContext?.length ?? 0) > 0;
-
-      const assistantItem = { type: 'assistant' as const, functionCalls: [askQuestionCall] as FunctionCall[] };
-      const userItem = {
-        type: 'user' as const,
-        text: '',
-        functionResponses: [
-          {
-            name: 'askQuestion',
-            call_id: askQuestionCall.id,
-            content: undefined as string | undefined,
-          },
-        ],
-      };
-
-      if (fileContentRequested) {
-        const requestedFiles = askQuestionCall.args?.requestFilesContent ?? [];
-        const legitimateFiles: string[] = [];
-        const illegitimateFiles: string[] = [];
-
-        requestedFiles.forEach((filePath) => {
-          const absolutePath = path.resolve(rcConfig.rootDir, filePath);
-          if (isFilePathLegitimate(absolutePath)) {
-            legitimateFiles.push(absolutePath);
-          } else {
-            illegitimateFiles.push(filePath);
-          }
-        });
-
-        if (legitimateFiles.length > 0) {
-          putSystemMessage('Automatically providing content for legitimate files', legitimateFiles);
-          assistantItem.functionCalls.push({
-            name: 'getSourceCode',
-            args: { filePaths: legitimateFiles },
-            id: askQuestionCall.id + '_src',
-          });
-
-          userItem.functionResponses.push({
-            name: 'getSourceCode',
-            content: messages.contextSourceCode(legitimateFiles, true),
-            call_id: askQuestionCall.id + '_src',
-          });
+        if (result.breakLoop) {
+          return result.stepResult;
         }
 
-        if (illegitimateFiles.length > 0) {
-          putSystemMessage('Illegitmate files ignored', illegitimateFiles);
-          userItem.text = 'Some following files are not legitimate and their content cannot be provided';
-        } else {
-          userItem.text = 'All requested file contents have been provided automatically.';
-        }
-      } else if (permissionsRequested) {
-        userItem.text = (await askUserForConfirmation(
-          'The assistant is requesting additional permissions. Do you want to grant them?',
-          false,
-        ))
-          ? 'Permissions granted.'
-          : 'Permission request denied.';
-      } else if (contextReductionRequested) {
-        const filesToRemove = askQuestionCall.args?.removeFilesFromContext ?? [];
-        if (filesToRemove.length > 0) {
-          // Remove file contents from the prompt
-          prompt.forEach((item) => {
-            if (item.type === 'user' && item.functionResponses) {
-              item.functionResponses = item.functionResponses.filter((response) => {
-                if (response.name === 'getSourceCode' && response.content) {
-                  const contentObj = JSON.parse(response.content);
-                  filesToRemove.forEach((file) => {
-                    if (contentObj[file]) {
-                      delete contentObj[file].content;
-                    }
-                  });
-                  response.content = JSON.stringify(contentObj);
-                }
-                return true;
-              });
-            }
-          });
-          putSystemMessage('Context reduction applied', filesToRemove);
-          userItem.text = 'Context reduction applied';
-        } else {
-          userItem.text = 'No specific files were provided for context reduction. The context remains unchanged.';
-        }
-      } else if (actionType === 'requestAnswer') {
-        userItem.text = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+        prompt.push(result.assistantItem, result.userItem);
+        console.log('The question was answered');
       } else {
-        userItem.text = "I don't want to start the code generation yet, let's talk a bit more.";
+        console.error('Invalid action type received');
+        return StepResult.BREAK;
       }
-
-      putUserMessage(userItem.text);
-
-      if (
-        permissionsRequested &&
-        askQuestionCall.args?.requestPermissions &&
-        userItem.text === 'Permissions granted.'
-      ) {
-        if (askQuestionCall.args?.requestPermissions.enableImagen) {
-          options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
-        }
-        if (askQuestionCall.args?.requestPermissions.enableVision) {
-          options.vision = true;
-        }
-        if (askQuestionCall.args?.requestPermissions.allowDirectoryCreate) {
-          options.allowDirectoryCreate = true;
-        }
-        if (askQuestionCall.args?.requestPermissions.allowFileCreate) {
-          options.allowFileCreate = true;
-        }
-        if (askQuestionCall.args?.requestPermissions.allowFileDelete) {
-          options.allowFileDelete = true;
-        }
-        if (askQuestionCall.args?.requestPermissions.allowFileMove) {
-          options.allowFileMove = true;
-        }
-      }
-
-      prompt.push(assistantItem, userItem);
-
-      console.log('The question was answered');
 
       if (abortController?.signal.aborted) {
         return StepResult.BREAK;
       }
-    } else {
-      console.log('Assistant did not ask a question. Proceeding with code generation.');
-      break;
+    } catch (error) {
+      console.error('Error in executeStepAskQuestion:', error);
+      putSystemMessage(`An error occurred: ${error instanceof Error ? error.message : String(error)}`);
+      return StepResult.BREAK;
     }
   }
-
-  return StepResult.CONTINUE;
 }
 
-function isFilePathLegitimate(filePath: string): boolean {
-  return getSourceFiles().includes(filePath);
+async function getAskQuestionCall(
+  generateContentFn: GenerateContentFunction,
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  temperature: number,
+  cheap: boolean,
+  options: CodegenOptions,
+): Promise<AskQuestionCall | undefined> {
+  const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
+  return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
+}
+
+function getActionHandler(actionType: ActionType): ActionHandler {
+  const handlers: Record<ActionType, ActionHandler> = {
+    cancelCodeGeneration: handleCancelCodeGeneration,
+    confirmCodeGeneration: handleConfirmCodeGeneration,
+    startCodeGeneration: handleStartCodeGeneration,
+    requestFilesContent: handleRequestFilesContent,
+    requestPermissions: handleRequestPermissions,
+    removeFilesFromContext: handleRemoveFilesFromContext,
+    requestAnswer: handleRequestAnswer,
+  };
+
+  return handlers[actionType] || handleDefaultAction;
 }

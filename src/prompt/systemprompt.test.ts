@@ -33,7 +33,7 @@ describe('getSystemPrompt', () => {
   it('generates correct system prompt', () => {
     const systemPrompt = getSystemPrompt({ aiService: 'vertex-ai' });
 
-    expect(systemPrompt).toContain('You are a code generation assistant');
+    expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
     expect(systemPrompt).toContain('You can generate new code or modify existing');
     expect(systemPrompt).toContain(
       'Please limit any changes to the root directory of my application, which is `/mocked/root/dir`',
@@ -47,7 +47,7 @@ describe('getSystemPrompt', () => {
     getSystemPrompt({ aiService: 'vertex-ai', verbose: true });
 
     expect(consoleSpy).toHaveBeenCalledWith('System prompt:');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('You are a code generation assistant'));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('You are GenAIcode, a code generation assistant'));
 
     consoleSpy.mockRestore();
   });

@@ -9,7 +9,7 @@ export function getSystemPrompt({ verbose, askQuestion, interactive, ui }: Codeg
 
   // IMPORTANT: Please avoid increasing length of the system prompt.
   let systemPrompt = `
-You are a code generation assistant tasked with helping me implement my ideas into my application's source code.
+You are GenAIcode, a code generation assistant tasked with helping me implement my ideas into my application's source code.
 
 You can generate new code or modify existing code based on the instructions I provide.
 
