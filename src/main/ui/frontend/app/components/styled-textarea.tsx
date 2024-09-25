@@ -1,10 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 
-interface StyledTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+interface StyledTextareaProps {
   value: string;
   onChange: (value: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   maxHeight?: string;
+  placeholder?: string;
 }
 
 const TextareaWrapper = styled.div`
@@ -32,12 +35,7 @@ const Textarea = styled.textarea`
   }
 `;
 
-export const StyledTextarea: React.FC<StyledTextareaProps> = ({
-  value,
-  onChange,
-  maxHeight = '50vh',
-  ...props
-}) => {
+export const StyledTextarea: React.FC<StyledTextareaProps> = ({ value, onChange, maxHeight = '50vh', ...props }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -56,12 +54,7 @@ export const StyledTextarea: React.FC<StyledTextareaProps> = ({
 
   return (
     <TextareaWrapper>
-      <Textarea
-        ref={textareaRef}
-        value={value}
-        onChange={handleChange}
-        {...props}
-      />
+      <Textarea ref={textareaRef} value={value} onChange={handleChange} {...props} />
     </TextareaWrapper>
   );
 };
