@@ -29,11 +29,11 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
    - Respond by **calling the \`optimizeContext\` function**.
    - The function should have the following parameters:
      - \`"userPrompt"\`: The user's original prompt.
-     - \`"totalTokenCount"\`: The estimated total token count for the context.
      - \`"optimizedContext"\`: An array of objects, each containing:
        - \`"path"\`: The absolute file path.
        - \`"relevance"\`: The calculated relevance score (0 to 1).
-       - \'"tokenCount"\`: The token count for the file.
+       - \`"tokenCount"\`: The token count for the file.
+     - \`"totalTokenCount"\`: The estimated total token count for the context.
 
 **Important Guidelines**:
 - **Only include files that are mentioned in \`getSourceCode\` function responses**. **Do not add any other files**.
@@ -44,6 +44,7 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 - **Provide the response in valid JSON format**.
 - **Do not include any extra text** outside of the function call.
 - **Ensure the JSON is properly formatted** and **does not contain strings representing JSON** (i.e., do not stringify the JSON, do not wrap strings into quotes).
+- **Do not return files which are not relevant to the user prompt. Use relevance rating to judge that**
 
 **Example of valid Function Call**:
 
@@ -69,7 +70,7 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 }
 \`\`\``;
 
-const BATCH_SIZE = 200;
+const BATCH_SIZE = 50;
 
 export async function executeStepContextOptimization(
   generateContentFn: GenerateContentFunction,
@@ -85,6 +86,10 @@ export async function executeStepContextOptimization(
     return StepResult.CONTINUE;
   }
 
+  // Lets remove source code from the context, because we will be providing it below, so lets not duplicate (and save some tokens)
+  const sourceCodeResponseContent = sourceCodeResponse.content;
+  sourceCodeResponse.content = '{}';
+
   try {
     putSystemMessage('Context optimization is starting');
 
@@ -95,7 +100,9 @@ export async function executeStepContextOptimization(
     for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
       const start = batchIndex * BATCH_SIZE;
       const end = Math.min((batchIndex + 1) * BATCH_SIZE, totalFiles);
-      const batchSourceCode = Object.fromEntries(sourceCodeEntries.slice(start, end));
+      const batchSourceCode = Object.fromEntries(
+        sourceCodeEntries.filter(([path], index) => optimizedContext.has(path) || (index >= start && index <= end)),
+      );
 
       const optimizationPrompt: PromptItem[] = [
         ...prompt,
@@ -118,7 +125,6 @@ export async function executeStepContextOptimization(
       const result = await generateContentFn(optimizationPrompt, functionDefs, 'optimizeContext', 0.2, true, options);
 
       const batchOptimized = parseOptimizationResult(result);
-
       if (!batchOptimized) {
         putSystemMessage(
           `Warning: Context optimization failed to produce useful summaries for batch ${batchIndex + 1}. Proceeding with full context.`,
@@ -126,12 +132,16 @@ export async function executeStepContextOptimization(
         return StepResult.CONTINUE;
       }
 
+      optimizedContext.clear();
       batchOptimized.forEach((path) => optimizedContext.add(path));
     }
 
     if (optimizedContext.size === 0) {
+      // Restore the original context
+      sourceCodeResponse.content = sourceCodeResponseContent;
+
       putSystemMessage(
-        'Warning: Context optimization failed to produce useful summaries for all batches. Proceeding with full context.',
+        'Warning: Context optimization failed to produce useful summaries for all batches. Proceeding with current context.',
       );
       return StepResult.CONTINUE;
     }
@@ -155,24 +165,21 @@ export async function executeStepContextOptimization(
     });
     return StepResult.CONTINUE;
   } catch (error) {
-    putSystemMessage('Error: Context optimization failed. Proceeding with full context.');
+    putSystemMessage('Error: Context optimization failed. This is unexpected.');
     console.error('Context optimization error:', error);
-    return StepResult.CONTINUE;
+    return StepResult.BREAK;
   }
 }
 
 function parseOptimizationResult(result: FunctionCall[]): string[] | null {
-  const explanationCall = result.find((call) => call.name === 'optimizeContext');
-  if (!explanationCall || !explanationCall.args || !explanationCall.args.optimizedContext) {
+  const optimizeCall = result.find((call) => call.name === 'optimizeContext');
+  if (!optimizeCall || !optimizeCall.args || !optimizeCall.args.optimizedContext) {
     return null;
   }
 
-  try {
-    return explanationCall.args.optimizedContext as string[];
-  } catch (error) {
-    console.error('Failed to parse optimization result:', error);
-    return null;
-  }
+  return (optimizeCall.args.optimizedContext as { relevance: number; path: string }[])
+    .filter((item) => item.relevance >= 0.7)
+    .map((item) => item.path);
 }
 
 function optimizeSourceCode(

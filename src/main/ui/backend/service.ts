@@ -134,7 +134,6 @@ export class Service {
   }
 
   async askQuestion(question: string, isConfirmation: boolean = false): Promise<string> {
-    console.log('Ask question:', question, 'Is confirmation:', isConfirmation);
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
@@ -158,7 +157,6 @@ export class Service {
         isConfirmation: this.currentQuestion.isConfirmation,
       });
       this.currentQuestion = null;
-      console.log(`Answered question: ${answer}`);
     }
   }
 

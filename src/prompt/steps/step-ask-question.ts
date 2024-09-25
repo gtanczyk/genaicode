@@ -37,8 +37,7 @@ export async function executeStepAskQuestion(
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (!abortController?.signal.aborted) {
     try {
       const askQuestionCall = await getAskQuestionCall(
         generateContentFn,
@@ -50,8 +49,7 @@ export async function executeStepAskQuestion(
       );
 
       if (!askQuestionCall) {
-        console.log('Assistant did not ask a question. Proceeding with code generation.');
-        return StepResult.CONTINUE;
+        break;
       }
 
       console.log('Assistant asks:', askQuestionCall.args);
@@ -75,11 +73,7 @@ export async function executeStepAskQuestion(
         console.log('The question was answered');
       } else {
         console.error('Invalid action type received');
-        return StepResult.BREAK;
-      }
-
-      if (abortController?.signal.aborted) {
-        return StepResult.BREAK;
+        break;
       }
     } catch (error) {
       console.error('Error in executeStepAskQuestion:', error);
@@ -87,6 +81,9 @@ export async function executeStepAskQuestion(
       return StepResult.BREAK;
     }
   }
+
+  putSystemMessage('Assistant did not ask a question. This unexpected, we need to abort.');
+  return StepResult.BREAK;
 }
 
 async function getAskQuestionCall(

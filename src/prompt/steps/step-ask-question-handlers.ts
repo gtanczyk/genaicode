@@ -40,8 +40,12 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
     return {
       breakLoop: false,
       stepResult: StepResult.CONTINUE,
-      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-      userItem: { type: 'user', text: 'Code generation cancelled. Please continue the conversation.' },
+      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+      userItem: {
+        type: 'user',
+        text: 'Code generation cancelled. Please continue the conversation.',
+        functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+      },
     };
   }
 }
