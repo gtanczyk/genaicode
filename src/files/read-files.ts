@@ -10,7 +10,7 @@ import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { getSummary } from '../prompt/steps/step-summarization.js';
 
-export type SourceCodeMap = Record<string, { content: string | null } | { summary: string }>;
+export type SourceCodeMap = Record<string, { content: string | null } | { summary: string; tokenCount: number }>;
 
 type ImageAssetsMap = Record<
   string,
@@ -40,21 +40,22 @@ function readSourceFiles(
         continue;
       }
 
+      const summary = getSummary(file);
+
       // Apply content mask filter if it's set
       if (!filterPaths && contentMask && !forceAll) {
         const relativePath = path.relative(rcConfig.rootDir, file);
         if (!relativePath.startsWith(contentMask)) {
-          const summary = getSummary(file);
-          sourceCode[file] = summary ? { summary } : { content: null };
+          sourceCode[file] = summary ? { ...summary } : { content: null };
           continue;
         }
       }
+
       if (!forceAll && ignorePatterns?.some((pattern) => globRegex(pattern).test(file))) {
-        const summary = getSummary(file);
-        sourceCode[file] = summary ? { summary } : { content: null };
+        sourceCode[file] = summary ? { ...summary } : { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
-        sourceCode[file] = { content };
+        sourceCode[file] = { content, ...summary };
       }
     }
   }

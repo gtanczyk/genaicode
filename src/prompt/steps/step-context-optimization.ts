@@ -9,14 +9,7 @@ import { getSummary } from './step-summarization.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
-1. **Summarization**:
-   - For **each source code file provided**, generate a **one-sentence summary** of its content.
-   - **Do not** infer or include any files not listed.
-   - **Do not** include files from previous batches or any other sources.
-   - **Use only the content provided**; do not infer or assume additional information.
-   - The summary should accurately reflect the main purpose or functionality of the file.
-
-2. **Relevance Rating**:
+1. **Relevance Rating**:
    - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
      - **0.0 – 0.3 (Not Relevant)**: The file has no apparent connection to the user's prompt.
      - **0.3 – 0.7 (Somewhat Relevant)**: The file has minor or indirect relevance to the prompt.
@@ -27,18 +20,25 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
      - **Functional Alignment**: Does the file implement features or functionalities requested by the user?
      - **Dependency**: Is the file a dependency of other relevant modules?
 
+2. **Token-Aware Optimization**:
+   - Consider the estimated token count provided for each file.
+   - Prioritize files with higher relevance scores and lower token counts.
+   - Aim to optimize the context while staying within a reasonable token limit.
+
 3. **Function Call Response**:
    - Respond by **calling the \`optimizeContext\` function**.
    - The function should have the following parameters:
      - \`"userPrompt"\`: The user's original prompt.
-     - \`"optimizedContext"\`: An array of absolute paths of files, which are considered as relevant to the user prompt.
+     - \`"totalTokenCount"\`: The estimated total token count for the context.
+     - \`"optimizedContext"\`: An array of objects, each containing:
+       - \`"path"\`: The absolute file path.
+       - \`"relevance"\`: The calculated relevance score (0 to 1).
+       - \'"tokenCount"\`: The token count for the file.
 
 **Important Guidelines**:
-
 - **Only include files that are mentioned in \`getSourceCode\` function responses**. **Do not add any other files**.
 - **Do not infer or guess additional files**.
-- **Do not assign a relevance score of 1 to all files**; evaluate each file individually based on the criteria above.
-- **Do not include** any information not present in the file content.
+- **Evaluate each file individually** based on the criteria above.
 - **Avoid assumptions or hallucinations**; stick strictly to the provided data.
 - Ensure the **function call is properly formatted** and **valid**.
 - **Provide the response in valid JSON format**.
@@ -52,9 +52,18 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
   "function": "optimizeContext",
   "arguments": {
     "userPrompt": "Please review the helper modules.",
+    "totalTokenCount": 800,
     "optimizedContext": [
-      "/home/src/utils/helpers.js",
-      "/home/src/utils/math.js"
+      {
+        "path": "/home/src/utils/helpers.js",
+        "relevance": 0.9,
+        "tokenCount": 500
+      },
+      {
+        "path": "/home/src/utils/math.js",
+        "relevance": 0.7,
+        "tokenCount": 300
+      }
     ]
   }
 }
@@ -175,21 +184,19 @@ function optimizeSourceCode(
 
   for (const [path] of Object.entries(sourceCode)) {
     const isContext = optimizedContext.includes(path);
+    const summary = getSummary(path);
     if (isContext) {
       optimizedSourceCode[path] = {
         content: ('content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null,
+        ...summary,
       };
     } else {
-      const summary = getSummary(path);
       optimizedSourceCode[path] = summary
-        ? { summary }
+        ? { ...summary }
         : {
             content: null,
           };
     }
-    // if (relevanceInfo?.summary) {
-    //   optimizedSourceCode[path].summary = relevanceInfo.summary;
-    // }
   }
 
   return optimizedSourceCode;

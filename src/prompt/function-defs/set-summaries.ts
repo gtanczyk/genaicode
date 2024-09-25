@@ -21,7 +21,7 @@ export const setSummaries = {
             summary: {
               type: 'string',
               description:
-                "A concise one-sentence summary of the file's content, highlighting its main purpose or functionality. Maximum 10 tokens.",
+                "A summary of the file's content, highlighting its main purpose, functionality, or details which may be useful for context optimization.",
             },
           },
           required: ['path', 'summary'],

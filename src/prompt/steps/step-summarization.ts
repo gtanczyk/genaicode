@@ -5,14 +5,16 @@ import { functionDefs } from '../function-calling.js';
 import { SummaryInfo, SummaryCache } from './steps-types.js';
 import { md5, readCache, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
+import { estimateTokenCount } from '../token-estimator.js';
 
 const BATCH_SIZE = 50;
-const MAX_SUMMARY_TOKENS = 10;
+const MAX_SUMMARY_TOKENS = 15;
+const CACHE_VERSION = 'v2';
 
-const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} words or fewer. 
+const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer. 
 Focus on the main purpose or functionality. 
 Provide your response using the \`setSummaries\` function.
-The length of summary should be max 10 tokens.
+The length of summary should be max ${MAX_SUMMARY_TOKENS} tokens.
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
@@ -37,7 +39,10 @@ async function summarizeBatch(
   options: CodegenOptions,
 ): Promise<void> {
   const uncachedItems = items.filter(
-    (item) => !summaryCache[item.path] || summaryCache[item.path].checksum !== md5(item.content ?? ''),
+    (item) =>
+      summaryCache._version !== CACHE_VERSION ||
+      !summaryCache[item.path] ||
+      summaryCache[item.path].checksum !== md5(item.content ?? ''),
   );
 
   if (uncachedItems.length === 0) {
@@ -69,12 +74,16 @@ async function summarizeBatch(
     const batchSummaries = parseSummarizationResult(result);
 
     batchSummaries.forEach((file) => {
+      const content = items.find((item) => item.path === file.path)?.content ?? '';
       summaryCache[file.path] = {
+        tokenCount: estimateTokenCount(content),
         summary: file.summary,
-        checksum: md5(items.find((item) => item.path === file.path)?.content ?? ''),
+        checksum: md5(content),
       };
     });
   }
+
+  summaryCache._version = CACHE_VERSION;
 
   writeCache('summaries', summaryCache);
 
@@ -89,5 +98,6 @@ function parseSummarizationResult(result: FunctionCall[]): SummaryInfo[] {
 }
 
 export function getSummary(filePath: string) {
-  return summaryCache[filePath]?.summary;
+  const summary = summaryCache[filePath];
+  return summary ? { summary: summary.summary, tokenCount: summary.tokenCount } : undefined;
 }
