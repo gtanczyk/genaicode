@@ -36,14 +36,14 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
       userItem: { type: 'user', text: 'Confirmed. Proceed with code generation.' },
     };
   } else {
-    putSystemMessage('Code generation cancelled by user. Continuing the conversation.');
+    putSystemMessage('Declined. Continuing the conversation.');
     return {
       breakLoop: false,
       stepResult: StepResult.CONTINUE,
       assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
       userItem: {
         type: 'user',
-        text: 'Code generation cancelled. Please continue the conversation.',
+        text: 'Declined. Please continue the conversation.',
         functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
       },
     };

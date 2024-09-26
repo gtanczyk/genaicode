@@ -144,7 +144,7 @@ export async function runCodegenIteration(
       await waitIfPaused();
 
       // Check if lintCommand is specified in .genaicoderc
-      if (rcConfig.lintCommand) {
+      if (rcConfig.lintCommand && functionCalls.length > 0) {
         try {
           putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
           await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });

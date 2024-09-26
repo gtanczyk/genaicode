@@ -9,7 +9,7 @@ import { getSummary } from './step-summarization.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
-1. **Relevance Rating**:
+1. **Relevance and Token Cost Evaluation**:
    - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
      - **0.0 – 0.3 (Not Relevant)**: The file has no apparent connection to the user's prompt.
      - **0.3 – 0.7 (Somewhat Relevant)**: The file has minor or indirect relevance to the prompt.
@@ -19,11 +19,13 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
      - **Keyword Matching**: Does the file contain keywords or topics mentioned in the user's prompt?
      - **Functional Alignment**: Does the file implement features or functionalities requested by the user?
      - **Dependency**: Is the file a dependency of other relevant modules?
+   - Prioritize files with higher relevance scores, but be mindful of the total token count.
+   - Consider the cost of adding more tokens; prioritize files where the relevance justifies the token usage.
 
 2. **Token-Aware Optimization**:
-   - Consider the estimated token count provided for each file.
-   - Prioritize files with higher relevance scores and lower token counts.
-   - Aim to optimize the context while staying within a reasonable token limit.
+   - Aim to optimize the context: less relevant files with higher token count should not be added to the context
+   - Do not add irrelevant files to context
+   - The goal is to have as much as possible of high relevancy files in the context while keeping the total token count reasonably low
 
 3. **Function Call Response**:
    - Respond by **calling the \`optimizeContext\` function**.
@@ -62,15 +64,19 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
       },
       {
         "path": "/home/src/utils/math.js",
-        "relevance": 0.7,
+        "relevance": 0.8,
         "tokenCount": 300
       }
     ]
   }
 }
-\`\`\``;
+\`\`\`
 
-const BATCH_SIZE = 50;
+Now could you please analyze the source code and return me the optimized context?
+`;
+
+const BATCH_SIZE = 100;
+const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
   generateContentFn: GenerateContentFunction,
@@ -127,9 +133,9 @@ export async function executeStepContextOptimization(
       const batchOptimized = parseOptimizationResult(result);
       if (!batchOptimized) {
         putSystemMessage(
-          `Warning: Context optimization failed to produce useful summaries for batch ${batchIndex + 1}. Proceeding with full context.`,
+          `Warning: Context optimization failed to produce useful summaries for batch ${batchIndex + 1}. We need to abort.`,
         );
-        return StepResult.CONTINUE;
+        return StepResult.BREAK;
       }
 
       optimizedContext.clear();
@@ -171,15 +177,31 @@ export async function executeStepContextOptimization(
   }
 }
 
-function parseOptimizationResult(result: FunctionCall[]): string[] | null {
-  const optimizeCall = result.find((call) => call.name === 'optimizeContext');
+function parseOptimizationResult(calls: FunctionCall[]): string[] | null {
+  const optimizeCall = calls.find((call) => call.name === 'optimizeContext');
   if (!optimizeCall || !optimizeCall.args || !optimizeCall.args.optimizedContext) {
     return null;
   }
 
-  return (optimizeCall.args.optimizedContext as { relevance: number; path: string }[])
-    .filter((item) => item.relevance >= 0.7)
-    .map((item) => item.path);
+  let totalTokens = 0;
+  const result: string[] = [];
+
+  for (const item of (
+    optimizeCall.args.optimizedContext as { relevance: number; path: string; tokenCount: number }[]
+  ).sort((a, b) => (a.relevance > b.relevance ? -1 : 1))) {
+    if (item.relevance < 0.5) {
+      break;
+    }
+
+    totalTokens += item.tokenCount;
+    result.push(item.path);
+
+    if (totalTokens > MAX_TOTAL_TOKENS && item.relevance < 0.7) {
+      break;
+    }
+  }
+
+  return result;
 }
 
 function optimizeSourceCode(

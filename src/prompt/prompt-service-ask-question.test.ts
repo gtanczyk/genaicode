@@ -154,7 +154,7 @@ describe('promptService with askQuestion', () => {
     expect(console.log).toHaveBeenCalledWith('Assistant requested to stop code generation. Exiting...', undefined);
   });
 
-  it('should proceed with code generation when askQuestion returns shouldPrompt: false', async () => {
+  it('should not proceed with code generation when no askQuestion requests', async () => {
     const mockAskQuestionCall: FunctionCall[] = [];
     const mockCodegenSummary = [
       {
@@ -177,8 +177,7 @@ describe('promptService with askQuestion', () => {
       getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
     expect(prompts.input).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('Assistant did not ask a question. Proceeding with code generation.');
   });
 });
