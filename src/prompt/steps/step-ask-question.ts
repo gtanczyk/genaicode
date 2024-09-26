@@ -1,4 +1,4 @@
-import { FunctionCall, FunctionDef, PromptItem } from '../../ai-service/common.js';
+import { FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
@@ -13,16 +13,8 @@ import {
   handleRemoveFilesFromContext,
   handleRequestAnswer,
   handleDefaultAction,
+  handleContextOptimization,
 } from './step-ask-question-handlers.js';
-
-type GenerateContentFunction = (
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string,
-  temperature: number,
-  cheap: boolean,
-  options: CodegenOptions,
-) => Promise<FunctionCall[]>;
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -60,16 +52,16 @@ export async function executeStepAskQuestion(
       const actionType = askQuestionCall.args?.actionType;
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
-        const result = await actionHandler({ askQuestionCall, prompt, options, messages });
+        const result = await actionHandler({ askQuestionCall, prompt, options, messages, generateContentFn });
 
         // This is important to display the content to the user interface (ui or interactive cli)
-        putUserMessage(result.userItem.text);
+        putUserMessage(result.items.slice(-1)[0].user.text);
 
         if (result.breakLoop) {
           return result.stepResult;
         }
 
-        prompt.push(result.assistantItem, result.userItem);
+        prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
         console.log('The question was answered');
       } else {
         console.error('Invalid action type received');
@@ -107,6 +99,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,
     requestAnswer: handleRequestAnswer,
+    contextOptimization: handleContextOptimization,
   };
 
   return handlers[actionType] || handleDefaultAction;

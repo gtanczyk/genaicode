@@ -21,6 +21,7 @@ export const askQuestion = {
           'confirmCodeGeneration',
           'startCodeGeneration',
           'cancelCodeGeneration',
+          'contextOptimization',
         ],
         description: `This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.,
 
@@ -32,6 +33,7 @@ export const askQuestion = {
            - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
            - startCodeGeneration: Use only after receiving confirmation to begin code generation.
            - cancelCodeGeneration: Use if code generation should be stopped or canceled.
+           - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
         `,
       },
       content: {
@@ -61,6 +63,11 @@ export const askQuestion = {
         items: {
           type: 'string',
         },
+      },
+      contextOptimization: {
+        type: 'string',
+        description:
+          'A prompt generated to guide the LLM in optimizing context by specifying which parts of the context are most relevant to keep. This helps in efficient management during code generation tasks.',
       },
       requestPermissions: {
         type: 'object',

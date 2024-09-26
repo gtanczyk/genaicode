@@ -95,12 +95,7 @@ Before proceeding with code generation, please:
        - **Other Properties**: Include any other necessary properties as per the \`codegenSummary\` function definition.
      - **\`contextPaths\`**: A list of file paths that should be used as context for the code generation requests.
 
-5. **Consider context reduction during askQuestion conversations**:
-   - Continuously evaluate the relevance of the current context to the ongoing conversation and task.
-   - If you identify file contents or other contextual information that are no longer necessary, use the \`askQuestion\` function with the \`reduceContext\` parameter set to \`true\`.
-   - Clearly specify which information can be safely removed from the context to optimize token usage and improve conversation efficiency.
-   - Prioritize removing large file contents that are no longer relevant to the current task or conversation.
-   - Explain your reasoning when requesting context reduction to help the user understand the benefits of this action.
+5. **Context Optimization**: Utilize the \`contextOptimization\` actionType to manage and optimize the context during code generation tasks. Generate a prompt using the \`contextOptimization\` property to guide the LLM in determining which parts of the context are most relevant to keep, enhancing efficiency and focus.
 
 6. **Check ActionType Selection**: Always verify that the correct \`actionType\` is being used, especially before requesting file content, to ensure the 'requestFilesContent' actionType is applied. This helps maintain vigilance and accuracy in task execution.
 

@@ -11,14 +11,21 @@ import {
   ActionResult,
   ActionHandlerProps,
 } from './step-ask-question-types.js';
+import { executeStepContextOptimization } from './step-context-optimization.js';
+import { getSourceCodeResponse } from './steps-utils.js';
+import { getSourceCode } from '../../files/read-files.js';
 
 export async function handleCancelCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Assistant requested to stop code generation. Exiting...');
   return {
     breakLoop: true,
     stepResult: StepResult.BREAK,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-    userItem: { type: 'user', text: 'Code generation cancelled.' },
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+        user: { type: 'user', text: 'Code generation cancelled.' },
+      },
+    ],
   };
 }
 
@@ -32,20 +39,28 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
     return {
       breakLoop: true,
       stepResult: StepResult.CONTINUE,
-      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-      userItem: { type: 'user', text: 'Confirmed. Proceed with code generation.' },
+      items: [
+        {
+          assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+          user: { type: 'user', text: 'Confirmed. Proceed with code generation.' },
+        },
+      ],
     };
   } else {
     putSystemMessage('Declined. Continuing the conversation.');
     return {
       breakLoop: false,
       stepResult: StepResult.CONTINUE,
-      assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
-      userItem: {
-        type: 'user',
-        text: 'Declined. Please continue the conversation.',
-        functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
-      },
+      items: [
+        {
+          assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+          user: {
+            type: 'user',
+            text: 'Declined. Please continue the conversation.',
+            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+          },
+        },
+      ],
     };
   }
 }
@@ -55,42 +70,47 @@ export async function handleStartCodeGeneration({ askQuestionCall }: ActionHandl
   return {
     breakLoop: true,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-    userItem: { type: 'user', text: 'Proceeding with code generation.' },
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+        user: { type: 'user', text: 'Proceeding with code generation.' },
+      },
+    ],
   };
 }
 
 export async function handleRequestFilesContent({
   askQuestionCall,
-  messages,
+  prompt,
+  options,
 }: ActionHandlerProps): Promise<ActionResult> {
   const requestedFiles = askQuestionCall.args?.requestFilesContent ?? [];
-  // the request may be caused be an appearance of a new file, soe lets refresh
+  // the request may be caused be an appearance of a new file, so lets refresh
   refreshFiles();
 
   const { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
 
-  const assistantItem: AssistantItem = {
+  const assistant: AssistantItem = {
     type: 'assistant',
     text: askQuestionCall.args?.content ?? '',
     functionCalls: [askQuestionCall],
   };
-  const userItem: UserItem = {
+  const user: UserItem = {
     type: 'user',
     text: '',
     functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
   };
 
   if (legitimateFiles.length > 0) {
-    handleLegitimateFiles(legitimateFiles, assistantItem, userItem, askQuestionCall, messages);
+    addFileContentsToPrompt(prompt, legitimateFiles, options);
   }
 
-  userItem.text =
+  user.text =
     illegitimateFiles.length > 0
       ? 'Some files are not legitimate and their content cannot be provided'
       : 'All requested file contents have been provided automatically.';
 
-  return { breakLoop: false, stepResult: StepResult.CONTINUE, assistantItem, userItem };
+  return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
 }
 
 export async function handleRequestPermissions({
@@ -102,7 +122,7 @@ export async function handleRequestPermissions({
     false,
   );
 
-  const userItem: UserItem = {
+  const user: UserItem = {
     type: 'user',
     text: userConfirmation ? 'Permissions granted.' : 'Permission request denied.',
     functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
@@ -115,8 +135,12 @@ export async function handleRequestPermissions({
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
-    userItem,
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        user,
+      },
+    ],
   };
 }
 
@@ -138,12 +162,60 @@ export async function handleRemoveFilesFromContext({
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
-    userItem: {
-      type: 'user',
-      text: userText,
-      functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
-    },
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        user: {
+          type: 'user',
+          text: userText,
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+        },
+      },
+    ],
+  };
+}
+
+export async function handleContextOptimization({
+  askQuestionCall,
+  prompt,
+  options,
+  generateContentFn,
+}: ActionHandlerProps): Promise<ActionResult> {
+  const userConfirmation = await askUserForConfirmation(
+    'The assistant suggests optimizing the context to reduce token usage, cost, and latency. Do you want to proceed?',
+    false,
+  );
+
+  const user: UserItem = {
+    type: 'user',
+    text: userConfirmation ? 'Context optimization applied.' : 'Context optimization not applied.',
+    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+  };
+
+  const assistant: AssistantItem = {
+    type: 'assistant',
+    text: askQuestionCall.args?.content ?? '',
+    functionCalls: [askQuestionCall],
+  };
+
+  if (userConfirmation) {
+    // the request may be caused be an appearance of a new file, so lets refresh
+    refreshFiles();
+
+    // Execute context optimization step
+    putSystemMessage('Executing context optimization step.');
+    await executeStepContextOptimization(generateContentFn, [...prompt, assistant, user], options);
+  }
+
+  return {
+    breakLoop: false,
+    stepResult: StepResult.CONTINUE,
+    items: [
+      {
+        assistant,
+        user,
+      },
+    ],
   };
 }
 
@@ -152,12 +224,16 @@ export async function handleRequestAnswer({ askQuestionCall }: ActionHandlerProp
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
-    userItem: {
-      type: 'user',
-      text: userText,
-      functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
-    },
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        user: {
+          type: 'user',
+          text: userText,
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+        },
+      },
+    ],
   };
 }
 
@@ -165,12 +241,16 @@ export async function handleDefaultAction({ askQuestionCall }: ActionHandlerProp
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
-    assistantItem: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
-    userItem: {
-      type: 'user',
-      text: "I don't want to start the code generation yet, let's talk a bit more.",
-      functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
-    },
+    items: [
+      {
+        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        user: {
+          type: 'user',
+          text: "I don't want to start the code generation yet, let's talk a bit more.",
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+        },
+      },
+    ],
   };
 }
 
@@ -192,25 +272,18 @@ function categorizeLegitimateFiles(requestedFiles: string[]): {
   return { legitimateFiles, illegitimateFiles };
 }
 
-function handleLegitimateFiles(
-  legitimateFiles: string[],
-  assistantItem: AssistantItem,
-  userItem: UserItem,
-  askQuestionCall: AskQuestionCall,
-  messages: { contextSourceCode: (paths: string[], pathsOnly: boolean) => string },
-) {
-  putSystemMessage('Automatically providing content for legitimate files', legitimateFiles);
-  assistantItem.functionCalls.push({
-    name: 'getSourceCode',
-    args: { filePaths: legitimateFiles },
-    id: askQuestionCall.id ? `${askQuestionCall.id}_src` : undefined,
+function addFileContentsToPrompt(prompt: PromptItem[], filesToAdd: string[], options: CodegenOptions) {
+  putSystemMessage('Automatically providing content for legitimate files', filesToAdd);
+  const response = getSourceCodeResponse(prompt);
+  if (!response || !response.content) {
+    throw new Error('Could not find source code response');
+  }
+  const sourceCode = getSourceCode({ filterPaths: filesToAdd, forceAll: true }, options);
+  const contentObj = JSON.parse(response.content);
+  filesToAdd.forEach((file) => {
+    contentObj[file] = sourceCode[file];
   });
-
-  userItem.functionResponses?.push({
-    name: 'getSourceCode',
-    content: messages.contextSourceCode(legitimateFiles, true),
-    call_id: askQuestionCall.id ? `${askQuestionCall.id}_src` : '',
-  });
+  response.content = JSON.stringify(contentObj);
 }
 
 function updatePermissions(askQuestionCall: AskQuestionCall, options: CodegenOptions) {
@@ -235,22 +308,17 @@ function updatePermissions(askQuestionCall: AskQuestionCall, options: CodegenOpt
 }
 
 function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: string[]) {
-  prompt.forEach((item) => {
-    if (item.type === 'user' && item.functionResponses) {
-      item.functionResponses = item.functionResponses.map((response) => {
-        if (response.name === 'getSourceCode' && response.content) {
-          const contentObj = JSON.parse(response.content);
-          filesToRemove.forEach((file) => {
-            if (contentObj[file]) {
-              delete contentObj[file].content;
-            }
-          });
-          response.content = JSON.stringify(contentObj);
-        }
-        return response;
-      });
+  const response = getSourceCodeResponse(prompt);
+  if (!response || !response.content) {
+    throw new Error('Could not find source code response');
+  }
+  const contentObj = JSON.parse(response.content);
+  filesToRemove.forEach((file) => {
+    if (contentObj[file]) {
+      delete contentObj[file].content;
     }
   });
+  response.content = JSON.stringify(contentObj);
 }
 
 function isFilePathLegitimate(filePath: string): boolean {

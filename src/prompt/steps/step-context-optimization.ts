@@ -6,6 +6,7 @@ import { functionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { getSummary } from './step-summarization.js';
+import { getSourceCodeResponse } from './steps-utils.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
@@ -81,16 +82,17 @@ const MAX_TOTAL_TOKENS = 10000;
 export async function executeStepContextOptimization(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
-  sourceCode: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<StepResult> {
-  const sourceCodeEntries = Object.entries(sourceCode);
   const fullSourceCode = getSourceCode({ forceAll: true }, options);
   const sourceCodeResponse = getSourceCodeResponse(prompt);
-  if (!sourceCodeResponse) {
+  if (!sourceCodeResponse || !sourceCodeResponse.content) {
     console.warn('Could not find source code response, something is wrong, but lets continue anyway.');
     return StepResult.CONTINUE;
   }
+
+  const sourceCode = JSON.parse(sourceCodeResponse.content) as SourceCodeMap;
+  const sourceCodeEntries = Object.entries(sourceCode);
 
   // Lets remove source code from the context, because we will be providing it below, so lets not duplicate (and save some tokens)
   const sourceCodeResponseContent = sourceCodeResponse.content;
@@ -229,21 +231,4 @@ function optimizeSourceCode(
   }
 
   return optimizedSourceCode;
-}
-
-function getSourceCodeResponse(prompt: PromptItem[]) {
-  const getSourceCodeResponse = prompt.find(
-    (item) => item.type === 'user' && item.functionResponses?.some((resp) => resp.name === 'getSourceCode'),
-  );
-
-  if (getSourceCodeResponse && getSourceCodeResponse.functionResponses) {
-    const sourceCodeResponseIndex = getSourceCodeResponse.functionResponses.findIndex(
-      (resp) => resp.name === 'getSourceCode',
-    );
-    if (sourceCodeResponseIndex !== -1) {
-      return getSourceCodeResponse.functionResponses[sourceCodeResponseIndex];
-    }
-  }
-
-  return null;
 }

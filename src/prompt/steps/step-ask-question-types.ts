@@ -1,4 +1,4 @@
-import { FunctionCall, PromptItem } from '../../ai-service/common.js';
+import { FunctionCall, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { StepResult } from './steps-types.js';
 
@@ -9,7 +9,8 @@ export type ActionType =
   | 'removeFilesFromContext'
   | 'confirmCodeGeneration'
   | 'startCodeGeneration'
-  | 'cancelCodeGeneration';
+  | 'cancelCodeGeneration'
+  | 'contextOptimization';
 
 export type AskQuestionArgs = {
   actionType: ActionType;
@@ -43,14 +44,17 @@ export interface UserItem {
 export interface ActionResult {
   breakLoop: boolean;
   stepResult: StepResult;
-  assistantItem: AssistantItem;
-  userItem: UserItem;
+  items: Array<{
+    assistant: AssistantItem;
+    user: UserItem;
+  }>;
 }
 
 export type ActionHandlerProps = {
   askQuestionCall: AskQuestionCall;
   prompt: PromptItem[];
   options: CodegenOptions;
+  generateContentFn: GenerateContentFunction;
   messages: {
     contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
   };

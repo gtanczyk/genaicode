@@ -93,13 +93,7 @@ export async function promptService(
 
   // Execute the context optimization step
   if (!codegenPrompt.options.disableContextOptimization) {
-    const sourceCode = JSON.parse(messages.sourceCode);
-    const optimizationResult = await executeStepContextOptimization(
-      generateContentFn,
-      prompt,
-      sourceCode,
-      codegenPrompt.options,
-    );
+    const optimizationResult = await executeStepContextOptimization(generateContentFn, prompt, codegenPrompt.options);
 
     if (optimizationResult === StepResult.BREAK) {
       return [];
