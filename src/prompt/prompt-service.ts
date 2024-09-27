@@ -24,6 +24,7 @@ import { CodegenPrompt } from './prompt-codegen.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
+import { executeStepIdentity } from './steps/step-identity.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -32,8 +33,6 @@ export async function promptService(
   codegenPrompt: CodegenPrompt,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<FunctionCall[]> {
-  const messages = prepareMessages(codegenPrompt);
-
   const generateContentFn: GenerateContentFunction = async (...args) => {
     return await handleAiServiceFallback(
       generateContentFns,
@@ -47,6 +46,26 @@ export async function promptService(
     assert(codegenPrompt.options.imagen, 'imagen value must be provided');
     return generateImageFns[codegenPrompt.options.imagen](...args);
   };
+
+  const { result, prompt } = await executePromptService(
+    generateContentFn,
+    generateImageFn,
+    codegenPrompt,
+    waitIfPaused,
+  );
+
+  await executeStepIdentity(generateContentFn, prompt, codegenPrompt.options);
+
+  return result;
+}
+
+async function executePromptService(
+  generateContentFn: GenerateContentFunction,
+  generateImageFn: GenerateImageFunction,
+  codegenPrompt: CodegenPrompt,
+  waitIfPaused: () => Promise<void> = () => Promise.resolve(),
+): Promise<{ result: FunctionCall[]; prompt: PromptItem[] }> {
+  const messages = prepareMessages(codegenPrompt);
 
   // First stage: summarize the source code
   if (!codegenPrompt.options.disableContextOptimization) {
@@ -96,7 +115,7 @@ export async function promptService(
     const optimizationResult = await executeStepContextOptimization(generateContentFn, prompt, codegenPrompt.options);
 
     if (optimizationResult === StepResult.BREAK) {
-      return [];
+      return { result: [], prompt };
     }
   }
 
@@ -114,7 +133,7 @@ export async function promptService(
       codegenPrompt.options,
     )) === StepResult.BREAK
   ) {
-    return [];
+    return { result: [], prompt };
   } else if (codegenPrompt.options.askQuestion === false) {
     console.log('Ask question is not enabled.');
   }
@@ -234,6 +253,7 @@ export async function promptService(
         { type: 'assistant', functionCalls: partialResult },
         {
           type: 'user',
+          text: 'Update applied.',
           functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
         },
       );
@@ -241,11 +261,11 @@ export async function promptService(
       result.push(...partialResult);
     }
 
-    return result;
+    return { result, prompt };
   } else {
     // This is unexpected, if happens probably means no code updates.
     putSystemMessage('Did not receive codegen summary, returning result.');
-    return baseResult;
+    return { result: baseResult, prompt };
   }
 }
 

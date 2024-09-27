@@ -18,6 +18,7 @@ import { splitImage } from './function-defs/split-image.js';
 import { askQuestion } from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
+import { updateIdentity } from './function-defs/update-identity.js';
 
 /**
  * Function definitions for function calling feature
@@ -41,6 +42,7 @@ export const functionDefs: FunctionDef[] = [
   askQuestion,
   optimizeContext,
   setSummaries,
+  updateIdentity,
   // @ts-expect-error (fix this once fun defs are converted to ts)
 ].map((fd: FunctionDef) => {
   if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {
