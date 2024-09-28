@@ -182,9 +182,11 @@ export class Service {
   }
 
   private waitForQuestionAnswer(): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const checkQuestion = () => {
-        if (this.currentQuestion === null || this.executionStatus === 'interrupted') {
+        if (abortController?.signal.aborted || this.executionStatus === 'interrupted') {
+          reject(new Error('Codegen execution was interrupted'));
+        } else if (this.currentQuestion === null) {
           resolve();
         } else {
           setTimeout(checkQuestion, 100);

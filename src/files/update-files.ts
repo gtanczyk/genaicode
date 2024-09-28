@@ -109,14 +109,7 @@ export async function updateFiles(functionCalls: FunctionCall[], options: Codege
         console.log(`Updating file: ${filePath}`);
         assert(fs.existsSync(filePath), 'File does not exist');
       }
-      fs.writeFileSync(
-        filePath,
-        options.aiService === 'vertex-ai' || options.aiService === 'ai-studio'
-          ? // Fixing a problem caused by vertex function calling. Possibly not a good fix
-            newContent.replace(/\\n/g, '\n').replace(/\\'/g, "'")
-          : newContent,
-        'utf-8',
-      );
+      fs.writeFileSync(filePath, newContent, 'utf-8');
     } else if (name === 'moveFile') {
       console.log(`Moving file from ${source} to ${destination}`);
       assert(source);

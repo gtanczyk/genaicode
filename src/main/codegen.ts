@@ -128,7 +128,9 @@ export async function runCodegenIteration(
 
     await waitIfPaused();
 
-    if (options.dryRun) {
+    if (functionCalls.length === 0) {
+      putSystemMessage('No updates to apply');
+    } else if (options.dryRun) {
       putSystemMessage('Dry run mode, not updating files');
     } else {
       putSystemMessage('Update files');

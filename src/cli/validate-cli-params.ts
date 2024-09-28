@@ -38,6 +38,7 @@ const allowedParameters: string[] = [
   '--force-dist',
   '--disable-ai-service-fallback',
   '--disable-history',
+  '--disable-vertex-unescape',
 ];
 
 /**

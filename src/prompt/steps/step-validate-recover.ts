@@ -13,10 +13,6 @@ export async function validateAndRecoverSingleResult(
     CodegenOptions,
   ],
   result: FunctionCall[],
-  messages: {
-    invalidFunctionCall: string;
-    partialPromptTemplate: (path: string) => string;
-  },
   generateContentFn: GenerateContentFunction,
 ): Promise<FunctionCall[]> {
   if (result.length > 1) {
@@ -40,7 +36,7 @@ export async function validateAndRecoverSingleResult(
       { type: 'assistant', functionCalls: [call] },
       {
         type: 'user',
-        text: messages.invalidFunctionCall,
+        text: 'Function call was invalid, please analyze the error and respond with corrected function call.',
         functionResponses: [
           {
             name: call.name,

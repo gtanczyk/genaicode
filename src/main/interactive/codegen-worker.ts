@@ -33,8 +33,11 @@ export const runCodegenWorker = async (
     }
   } finally {
     removeInterruptHandler();
-    abortController = null;
-    console.log('Cleanup complete.');
+    setTimeout(() => {
+      // let things finish
+      abortController = null;
+      console.log('Cleanup complete.');
+    }, 100);
   }
 };
 

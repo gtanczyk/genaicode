@@ -163,7 +163,7 @@ async function executePromptService(
     // Second stage: for each file request the actual code updates
     putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
 
-    baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, messages, generateContentFn);
+    baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
     codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
     // Sometimes the result happens to be a string
@@ -234,7 +234,7 @@ async function executePromptService(
       putSystemMessage('Received partial update', partialResult);
 
       // Validate if function call is compliant with the schema
-      partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, messages, generateContentFn);
+      partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
 
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
@@ -252,7 +252,6 @@ async function executePromptService(
           functionDefs,
           file.temperature ?? codegenPrompt.options.temperature,
           file.cheap === true,
-          messages,
           codegenPrompt.options,
         );
       }
@@ -305,7 +304,5 @@ function prepareMessages(codegen: CodegenPrompt) {
     partialPromptTemplate(path: string) {
       return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;
     },
-    invalidFunctionCall:
-      'Function call was invalid, please analyze the error and respond with corrected function call.',
   };
 }

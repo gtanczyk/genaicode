@@ -2,7 +2,6 @@ import fs from 'fs';
 import * as diff from 'diff';
 import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../../ai-service/common.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
-import { PromptMessages } from '../prompt-service.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepVerifyPatch(
@@ -12,7 +11,6 @@ export async function executeStepVerifyPatch(
   functionDefs: FunctionDef[],
   temperature: number,
   cheap: boolean,
-  messages: PromptMessages,
   options: CodegenOptions,
 ): Promise<FunctionCall[]> {
   console.log('Verification of patch for file:', filePath);
@@ -40,7 +38,7 @@ export async function executeStepVerifyPatch(
     ];
     let partialResult = await generateContentFn(...partialRequest);
 
-    partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, messages, generateContentFn);
+    partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
 
     const getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
     if (getSourceCodeCall) {

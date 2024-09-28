@@ -169,6 +169,7 @@ describe('promptService with askQuestion', () => {
 
     vi.mocked(vertexAi.generateContent)
       .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockCodegenSummary);
 
     await promptService(
@@ -177,7 +178,7 @@ describe('promptService with askQuestion', () => {
       getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(prompts.input).not.toHaveBeenCalled();
   });
 });

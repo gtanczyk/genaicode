@@ -3,6 +3,7 @@ import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
 import { abortController } from '../../main/interactive/codegen-worker.js';
+import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import {
   handleCancelCodeGeneration,
@@ -86,7 +87,12 @@ async function getAskQuestionCall(
   cheap: boolean,
   options: CodegenOptions,
 ): Promise<AskQuestionCall | undefined> {
-  const askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, cheap, options);
+  let askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, true, options);
+  askQuestionResult = await validateAndRecoverSingleResult(
+    [prompt, functionDefs, 'askQuestion', temperature, cheap, options],
+    askQuestionResult,
+    generateContentFn,
+  );
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }
 
