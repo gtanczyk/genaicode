@@ -1,8 +1,5 @@
-# Summary
+# Codegen Design Document
 
-Design document for the Codegen tool
+Status: Implemented
 
-# Summary
-
-The task is to generate design document for the codegen tool, explain how it works and how it is built.
-The created document should be put into the `./docs/design/codegen` folder.
+This task involved creating a comprehensive design document for the GenAIcode tool. The document explains how the tool works and details its architecture, providing developers with a clear understanding of the codegen functionality and its implementation within the project structure.

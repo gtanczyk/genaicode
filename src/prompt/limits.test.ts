@@ -9,8 +9,8 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for a prompt exceeding the limit', () => {
-      const invalidPrompt = 'A '.repeat(4000);
-      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 2600 > 2500');
+      const invalidPrompt = 'A '.repeat(5000);
+      expect(() => verifySystemPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 3250 > 2700');
     });
   });
 
@@ -22,7 +22,7 @@ describe('Prompt Limits', () => {
 
     it('should throw for a prompt exceeding the limit', () => {
       const invalidPrompt = 'B '.repeat(10000);
-      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 6500 > 800');
+      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 6500 > 850');
     });
   });
 

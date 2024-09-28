@@ -1,17 +1,5 @@
-# Summary
+# Allow Directory Create
 
-Add support for directory creation
+Status: Implemented
 
-# Description
-
-We want to have support for directory creation, so that the user can specify argument `--allow-directory-create`.
-If the argument is specified the codegen will be allowed to create directories.
-
-Implementation plan:
-
-- update `cli-param.js`, and `validate-cli-params.js` with the new argument
-- update `function-calling.js` with `createDirectory` function definition
-- update `systemprompt.js` with `createDirectory` function definition
-- update `prompt-codegen.js` with mention of `createDirectory` function
-- update anthropic/chat-gpt/vertex-ai code to understand `createDirectory`
-- update `update-files.js` to understand `createDirectory`
+This task added support for directory creation in the GenAIcode tool. It introduced a new command-line argument `--allow-directory-create` which, when specified, allows the codegen to create directories as part of its operations.

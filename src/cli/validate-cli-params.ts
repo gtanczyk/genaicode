@@ -36,7 +36,8 @@ const allowedParameters: string[] = [
   '--disable-cache',
   '--ignore-pattern=',
   '--force-dist',
-  '--disable-ai-service-fallback', // New parameter added
+  '--disable-ai-service-fallback',
+  '--disable-history',
 ];
 
 /**

@@ -1,12 +1,5 @@
-We are adding new options to .genaicoderc
+# New Configuration Options
 
-## Important context
+Status: Implemented
 
-This option will allow the user to specify context additions which should be always added to code generation, and should be never excluded by content mask, or ignore patterns.
-
-Types of important context:
-
-- text prompt: appended to codegen prompt
-- file: content of this file should be always returned by getSourceCode
-
-This context helps to guide the model for better results.
+This task added new configuration options to the .genaicoderc file in the GenAIcode tool. It introduced the concept of "important context," allowing users to specify additional context (text prompts or file contents) that should always be included in code generation requests. This feature enhances the tool's ability to generate more relevant and context-aware code by ensuring critical information is never excluded by content masks or ignore patterns.

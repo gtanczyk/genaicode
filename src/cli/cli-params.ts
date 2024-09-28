@@ -48,16 +48,15 @@ export const temperature = parseFloat(
   params.find((param) => param.startsWith('--temperature='))?.split('=')[1] || '0.7',
 ); // Default temperature value: 0.7
 
-// New content mask parameter
 export const contentMask = params.find((param) => param.startsWith('--content-mask='))?.split('=')[1] || undefined;
 
-// New ignore pattern parameter
 export const ignorePatterns = params
   .filter((param) => param.startsWith('--ignore-pattern='))
   .map((param) => param.split('=')[1]);
 
-// New parameter to disable AI service fallback
 export const disableAiServiceFallback = params.includes('--disable-ai-service-fallback');
+
+export const disableHistory = params.includes('--disable-history');
 
 if (taskFile) {
   if (explicitPrompt) {

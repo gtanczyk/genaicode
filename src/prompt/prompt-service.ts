@@ -24,7 +24,7 @@ import { CodegenPrompt } from './prompt-codegen.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
-import { executeStepIdentity } from './steps/step-identity.js';
+import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -54,7 +54,9 @@ export async function promptService(
     waitIfPaused,
   );
 
-  await executeStepIdentity(generateContentFn, prompt, codegenPrompt.options);
+  if (codegenPrompt.options.historyEnabled) {
+    await executeStepHistoryUpdate(generateContentFn, prompt, codegenPrompt.options);
+  }
 
   return result;
 }
@@ -82,12 +84,19 @@ async function executePromptService(
   const prompt: PromptItem[] = [
     { type: 'systemPrompt', systemPrompt: getSystemPrompt(codegenPrompt.options) },
     { type: 'user', text: messages.suggestSourceCode },
-    { type: 'assistant', text: messages.requestSourceCode, functionCalls: [getSourceCodeRequest] },
+    {
+      type: 'assistant',
+      text: messages.requestSourceCode,
+      functionCalls: [getSourceCodeRequest, ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory' }] : [])],
+    },
   ];
 
   const getSourceCodeResponse: PromptItem = {
     type: 'user',
-    functionResponses: [{ name: 'getSourceCode', content: messages.sourceCode }],
+    functionResponses: [
+      { name: 'getSourceCode', content: messages.sourceCode },
+      ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory', content: getCurrentHistory() }] : []),
+    ],
     cache: true,
   };
   prompt.push(getSourceCodeResponse);

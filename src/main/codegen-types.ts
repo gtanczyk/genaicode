@@ -35,14 +35,10 @@ export interface CodegenOptions {
   ui?: boolean;
   disableCache?: boolean;
   dependencyTree?: boolean;
+  historyEnabled?: boolean;
 
-  // New property for disabling AI service fallback
   disableAiServiceFallback?: boolean;
-
-  // New property for handling multimodal inputs
   images?: UploadedImage[];
-
-  // GenAIcode is in dev mode
   isDev?: boolean;
 }
 
