@@ -1,4 +1,4 @@
-import { GenerateContentFunction, PromptItem, FunctionCall } from '../../ai-service/common.js';
+import { GenerateContentFunction, PromptItem, FunctionCall, GenerateContentArgs } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getSourceCode, SourceCodeMap } from '../../files/read-files.js';
@@ -6,6 +6,7 @@ import { functionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { getSummary } from './step-summarization.js';
+import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
@@ -130,7 +131,9 @@ export async function executeStepContextOptimization(
         },
       ];
 
-      const result = await generateContentFn(optimizationPrompt, functionDefs, 'optimizeContext', 0.2, true, options);
+      const request: GenerateContentArgs = [optimizationPrompt, functionDefs, 'optimizeContext', 0.2, true, options];
+      let result = await generateContentFn(...request);
+      result = await validateAndRecoverSingleResult(request, result, generateContentFn);
 
       const batchOptimized = parseOptimizationResult(result);
       if (!batchOptimized) {

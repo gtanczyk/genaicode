@@ -1,21 +1,13 @@
 import assert from 'node:assert';
-import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../../ai-service/common.js';
+import { FunctionCall, GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function validateAndRecoverSingleResult(
-  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: [
-    PromptItem[],
-    FunctionDef[],
-    string,
-    number,
-    boolean,
-    CodegenOptions,
-  ],
+  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: GenerateContentArgs,
   result: FunctionCall[],
   generateContentFn: GenerateContentFunction,
 ): Promise<FunctionCall[]> {
-  if (result.length > 1) {
+  if (result.length > 1 || !requiredFunctionName) {
     // quite unexpected
     return result;
   }

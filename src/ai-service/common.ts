@@ -45,14 +45,16 @@ export interface PromptItem {
   cache?: boolean;
 }
 
-export type GenerateContentFunction = (
+export type GenerateContentArgs = [
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
   cheap: boolean,
   options: CodegenOptions,
-) => Promise<FunctionCall[]>;
+];
+
+export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<FunctionCall[]>;
 
 export type GenerateImageFunction = (
   prompt: string,

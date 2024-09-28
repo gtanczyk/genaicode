@@ -117,17 +117,23 @@ export async function generateContent(
     .map(disableVertexUnescape ? (call) => call : unescapeFunctionCall);
 
   if (functionCalls.length === 0) {
-    const textResponse = result.response.candidates
-      .map((candidate) => candidate.content.parts?.map((part) => part.text))
-      .flat()
-      .filter((text): text is string => !!text)
-      .join('\n');
+    const textResponse =
+      result.response.candidates
+        .map((candidate) => candidate.content.parts?.map((part) => part.text))
+        .flat()
+        .filter((text): text is string => !!text)[0] ??
+      result.response.candidates.map((candidate) =>
+        // @ts-expect-error: FinishReason type does not have this error
+        candidate.finishReason === 'MALFORMED_FUNCTION_CALL' ? candidate.finishMessage : '',
+      )[0];
 
-    const recoveredFunctionCall = await recoverFunctionCall(
-      textResponse,
-      functionCalls,
-      functionDefs.find((def) => def.name === requiredFunctionName)!,
-    );
+    const recoveredFunctionCall =
+      textResponse &&
+      (await recoverFunctionCall(
+        textResponse,
+        functionCalls,
+        functionDefs.find((def) => def.name === requiredFunctionName)!,
+      ));
     if (!recoveredFunctionCall) {
       console.log('No function calls, output text response if it exists:', textResponse);
     } else {
@@ -148,6 +154,7 @@ export function getGenModel(
   requiredFunctionName: string | null,
   cheap = false,
 ) {
+  console.log('Recovering function call');
   // Initialize Vertex with your Cloud project and location
   const vertex_ai = new VertexAI({});
   const defaultModel = cheap ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002';

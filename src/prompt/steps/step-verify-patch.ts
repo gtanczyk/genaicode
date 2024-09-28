@@ -1,6 +1,12 @@
 import fs from 'fs';
 import * as diff from 'diff';
-import { PromptItem, FunctionDef, FunctionCall, GenerateContentFunction } from '../../ai-service/common.js';
+import {
+  PromptItem,
+  FunctionDef,
+  FunctionCall,
+  GenerateContentFunction,
+  GenerateContentArgs,
+} from '../../ai-service/common.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 
@@ -28,14 +34,7 @@ export async function executeStepVerifyPatch(
     console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
     // Rerun content generation without patchFile function
-    const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
-      prompt,
-      functionDefs,
-      'updateFile',
-      temperature,
-      cheap,
-      options,
-    ];
+    const partialRequest: GenerateContentArgs = [prompt, functionDefs, 'updateFile', temperature, cheap, options];
     let partialResult = await generateContentFn(...partialRequest);
 
     partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);

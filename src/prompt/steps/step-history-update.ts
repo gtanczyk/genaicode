@@ -1,9 +1,10 @@
-import { GenerateContentFunction, PromptItem } from '../../ai-service/common';
+import { GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common';
 import { readCache, writeCache } from '../../files/cache-file';
 import { CodegenOptions } from '../../main/codegen-types';
 import { putSystemMessage } from '../../main/common/content-bus';
 import { functionDefs } from '../function-calling';
 import { StepResult } from './steps-types';
+import { validateAndRecoverSingleResult } from './step-validate-recover';
 
 export async function executeStepHistoryUpdate(
   generateContentFn: GenerateContentFunction,
@@ -46,7 +47,9 @@ ${currentHistory}
     },
   ];
 
-  const result = await generateContentFn(optimizationPrompt, functionDefs, 'updateHistory', 1, true, options);
+  const request: GenerateContentArgs = [optimizationPrompt, functionDefs, 'updateHistory', 1, true, options];
+  let result = await generateContentFn(...request);
+  result = await validateAndRecoverSingleResult(request, result, generateContentFn);
   const { newHistoryContent, recentConversationSummary } =
     result.find((call) => call.name === 'updateHistory')?.args ?? {};
   if (newHistoryContent) {

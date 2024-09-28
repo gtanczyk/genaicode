@@ -1,4 +1,4 @@
-import { FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { FunctionDef, GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common.js';
 import { StepResult } from './steps-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
@@ -22,7 +22,6 @@ export async function executeStepAskQuestion(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
-  cheap: boolean,
   messages: {
     contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
   },
@@ -32,14 +31,7 @@ export async function executeStepAskQuestion(
 
   while (!abortController?.signal.aborted) {
     try {
-      const askQuestionCall = await getAskQuestionCall(
-        generateContentFn,
-        prompt,
-        functionDefs,
-        temperature,
-        cheap,
-        options,
-      );
+      const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
 
       if (!askQuestionCall) {
         break;
@@ -84,15 +76,11 @@ async function getAskQuestionCall(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
-  cheap: boolean,
   options: CodegenOptions,
 ): Promise<AskQuestionCall | undefined> {
-  let askQuestionResult = await generateContentFn(prompt, functionDefs, 'askQuestion', temperature, true, options);
-  askQuestionResult = await validateAndRecoverSingleResult(
-    [prompt, functionDefs, 'askQuestion', temperature, cheap, options],
-    askQuestionResult,
-    generateContentFn,
-  );
+  const askQuestionRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, true, options];
+  let askQuestionResult = await generateContentFn(...askQuestionRequest);
+  askQuestionResult = await validateAndRecoverSingleResult(askQuestionRequest, askQuestionResult, generateContentFn);
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }
 

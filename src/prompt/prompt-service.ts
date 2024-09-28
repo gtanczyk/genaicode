@@ -137,7 +137,6 @@ async function executePromptService(
       prompt,
       functionDefs,
       codegenPrompt.options.temperature ?? 0.7,
-      codegenPrompt.options.cheap ?? false,
       messages,
       codegenPrompt.options,
     )) === StepResult.BREAK
