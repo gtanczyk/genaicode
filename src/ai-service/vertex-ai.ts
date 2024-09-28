@@ -122,7 +122,17 @@ export async function generateContent(
       .flat()
       .filter((text): text is string => !!text)
       .join('\n');
-    console.log('No function calls, output text response if it exists:', textResponse);
+
+    const recoveredFunctionCall = await recoverFunctionCall(
+      textResponse,
+      functionCalls,
+      functionDefs.find((def) => def.name === requiredFunctionName)!,
+    );
+    if (!recoveredFunctionCall) {
+      console.log('No function calls, output text response if it exists:', textResponse);
+    } else {
+      console.log('Recovered function call.');
+    }
   }
 
   return processFunctionCalls(functionCalls);
@@ -133,7 +143,7 @@ export async function generateContent(
 export function getGenModel(
   systemPrompt: string,
   temperature: number,
-  functionDefs: FunctionDef[],
+  functionDefs: FunctionDef[] | undefined,
   geminiBlockNone: boolean | undefined,
   requiredFunctionName: string | null,
   cheap = false,
@@ -181,16 +191,64 @@ export function getGenModel(
         },
       ],
     },
-    tools: [
+    ...((functionDefs?.length ?? 0) > 0
+      ? {
+          tools: [
+            {
+              functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
+            },
+          ],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingMode.ANY,
+              ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+            },
+          },
+        }
+      : {}),
+  });
+}
+
+async function recoverFunctionCall(
+  textResponse: string,
+  functionCalls: FunctionCall[],
+  functionDef: FunctionDef,
+): Promise<boolean> {
+  // @ts-expect-error: "object" !== "OBJECT"
+  const schema: ResponseSchema = functionDef.parameters;
+  const result = await getGenModel(
+    'Your role is read the text below and if possible, return it in the desired format.',
+    0.2,
+    undefined,
+    undefined,
+    null,
+    false,
+  ).generateContent({
+    contents: [
       {
-        functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
+        role: 'user' as const,
+        parts: [
+          {
+            text: textResponse,
+          },
+        ],
       },
     ],
-    toolConfig: {
-      functionCallingConfig: {
-        mode: FunctionCallingMode.ANY,
-        ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
-      },
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: schema,
     },
   });
+
+  try {
+    const text = result.response.candidates?.[0].content.parts[0].text;
+    if (!text) {
+      return false;
+    }
+    const parsed = JSON.parse(text);
+    functionCalls.push(unescapeFunctionCall({ name: functionDef.name, args: parsed }));
+    return true;
+  } catch {
+    return false;
+  }
 }

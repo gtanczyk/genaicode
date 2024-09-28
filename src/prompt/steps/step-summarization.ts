@@ -74,8 +74,8 @@ async function summarizeBatch(
     const batchSummaries = parseSummarizationResult(result);
 
     batchSummaries.forEach((file) => {
-      const content = items.find((item) => item.path === file.path)?.content ?? '';
-      summaryCache[file.path] = {
+      const content = items.find((item) => item.path === file.filePath)?.content ?? '';
+      summaryCache[file.filePath] = {
         tokenCount: estimateTokenCount(content),
         summary: file.summary,
         checksum: md5(content),

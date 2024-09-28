@@ -7,7 +7,7 @@ describe('unescapeFunctionCall', () => {
       unescapeFunctionCall({
         name: 'test',
         args: {
-          content: `console.log(\\"hello world\\");\\nconsole.log(\'helloooo\');`,
+          content: `console.log(\\"hello world\\");\\nconsole.log(\\'helloooo\\');`,
         },
       }),
     ).toEqual({

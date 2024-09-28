@@ -24,7 +24,7 @@ export const codegenSummary = {
           description:
             'An object representing a proposed update to a file, containing properties like the absolute file path, the update tool name, and other important properties.',
           properties: {
-            path: {
+            filePath: {
               type: 'string',
               description:
                 'An absolute path of the project file that will be updated. This must be an absolute file path.',
@@ -70,7 +70,7 @@ export const codegenSummary = {
               items: { type: 'string' },
             },
           },
-          required: ['path', 'prompt', 'updateToolName'],
+          required: ['filePath', 'prompt', 'updateToolName'],
         },
       },
       contextPaths: {

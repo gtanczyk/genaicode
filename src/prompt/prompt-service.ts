@@ -175,7 +175,7 @@ async function executePromptService(
       // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
       getSourceCodeRequest.args = {
         filePaths: [
-          ...codegenSummaryRequest.args.fileUpdates.map((file: { path: string }) => file.path),
+          ...codegenSummaryRequest.args.fileUpdates.map((file: { filePath: string }) => file.filePath),
           ...codegenSummaryRequest.args.contextPaths,
           ...(importantContext.files ?? []),
         ],

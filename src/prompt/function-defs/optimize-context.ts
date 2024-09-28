@@ -18,7 +18,7 @@ export const optimizeContext = {
         items: {
           type: 'object',
           properties: {
-            path: {
+            filePath: {
               type: 'string',
               description: 'The absolute file path of a relevant file.',
             },
@@ -34,7 +34,7 @@ export const optimizeContext = {
               minimum: 0,
             },
           },
-          required: ['path', 'relevance', 'tokenCount'],
+          required: ['filePath', 'relevance', 'tokenCount'],
         },
       },
       totalTokenCount: {

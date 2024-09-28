@@ -161,7 +161,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
+          fileUpdates: [{ filePath: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
           contextPaths: [],
           explanation: 'Mock summary',
         },
@@ -260,7 +260,7 @@ describe('promptService', () => {
         args: {
           fileUpdates: [
             {
-              path: 'test.js',
+              filePath: 'test.js',
               updateToolName: 'updateFile',
               contextImageAssets: ['/path/to/image1.png', '/path/to/image2.jpg'],
               prompt: 'Generate file update',
@@ -350,7 +350,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
+          fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
           contextPaths: ['context1.js', 'context2.js'],
           explanation: 'Mock summary with context',
         },
@@ -399,7 +399,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
+          fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
           contextPaths: ['context1.js', 'context2.js'],
           explanation: 'Mock summary without context optimization',
         },
@@ -449,7 +449,7 @@ describe('promptService', () => {
         name: 'codegenSummary',
         args: {
           fileUpdates: [
-            { path: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
+            { filePath: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
           ],
           contextPaths: [],
           explanation: 'Mock summary with image generation',
@@ -511,7 +511,7 @@ describe('promptService', () => {
         name: 'codegenSummary',
         args: {
           fileUpdates: [
-            { path: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
+            { filePath: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
           ],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
@@ -595,7 +595,7 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            files: [{ path: 'test.js', updateToolName: 'updateFile' }],
+            files: [{ filePath: 'test.js', updateToolName: 'updateFile' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -605,7 +605,7 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            fileUpdates: [{ path: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
+            fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -657,7 +657,7 @@ describe('promptService', () => {
           {
             name: 'codegenSummary',
             args: {
-              fileUpdates: [{ path: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
+              fileUpdates: [{ filePath: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
               contextPaths: [],
               explanation: 'Mock summary',
             },

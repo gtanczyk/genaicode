@@ -14,7 +14,7 @@ export const setSummaries = {
         items: {
           type: 'object',
           properties: {
-            path: {
+            filePath: {
               type: 'string',
               description: 'The absolute file path of the analyzed file.',
             },
@@ -24,7 +24,7 @@ export const setSummaries = {
                 "A summary of the file's content, highlighting its main purpose, functionality, or details which may be useful for context optimization.",
             },
           },
-          required: ['path', 'summary'],
+          required: ['filePath', 'summary'],
         },
       },
     },

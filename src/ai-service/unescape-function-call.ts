@@ -31,15 +31,19 @@ function unescapeString(str: string): string {
  * @param obj The object to unescape
  * @returns The unescaped object
  */
-function unescapeObject(obj: unknown): unknown {
+function unescapeObject(obj: unknown, key?: string): unknown {
   if (typeof obj === 'string') {
-    return unescapeString(obj);
+    let unescaped = unescapeString(obj);
+    if (key === 'filePath' && unescaped.match(/^"(.+)"$/)) {
+      unescaped = unescaped.substring(1, unescaped.length - 1);
+    }
+    return unescaped;
   }
   if (Array.isArray(obj)) {
-    return obj.map(unescapeObject);
+    return obj.map((value) => unescapeObject(value, key === 'contextPaths' ? 'filePath' : ''));
   }
   if (typeof obj === 'object' && obj !== null) {
-    return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, unescapeObject(value)]));
+    return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, unescapeObject(value, key)]));
   }
   return obj;
 }

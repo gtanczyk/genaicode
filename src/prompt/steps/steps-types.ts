@@ -4,7 +4,7 @@ export enum StepResult {
 }
 
 export interface SummaryInfo {
-  path: string;
+  filePath: string;
   tokenCount: number;
   summary: string;
 }

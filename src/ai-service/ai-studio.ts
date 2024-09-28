@@ -6,6 +6,7 @@ import {
   GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory,
+  ResponseSchema,
 } from '@google/generative-ai';
 import assert from 'node:assert';
 import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
@@ -123,7 +124,17 @@ export async function generateContent(
       .flat()
       .filter((text): text is string => !!text)
       .join('\n');
-    console.log('No function calls, output text response if it exists:', textResponse);
+
+    const recoveredFunctionCall = await recoverFunctionCall(
+      textResponse,
+      functionCalls,
+      functionDefs.find((def) => def.name === requiredFunctionName)!,
+    );
+    if (!recoveredFunctionCall) {
+      console.log('No function calls, output text response if it exists:', textResponse);
+    } else {
+      console.log('Recovered function call.');
+    }
   }
 
   return processFunctionCalls(functionCalls);
@@ -179,4 +190,47 @@ function getModel(
       ],
     },
   });
+}
+
+async function recoverFunctionCall(
+  textResponse: string,
+  functionCalls: FunctionCall[],
+  functionDef: FunctionDef,
+): Promise<boolean> {
+  // @ts-expect-error: "object" !== "OBJECT"
+  const schema: ResponseSchema = functionDef.parameters;
+  const result = await getModel(
+    'gemini-1.5-pro-002',
+    0.2,
+    'Your role is read the text below and if possible, return it in the desired format.',
+    undefined,
+  ).generateContent(
+    {
+      contents: [
+        {
+          role: 'user' as const,
+          parts: [
+            {
+              text: textResponse,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+      },
+    },
+    {
+      signal: abortController?.signal,
+    },
+  );
+
+  try {
+    const parsed = JSON.parse(result.response.text());
+    functionCalls.push(unescapeFunctionCall({ name: functionDef.name, args: parsed }));
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -189,14 +189,14 @@ function parseOptimizationResult(calls: FunctionCall[]): string[] | null {
   const result: string[] = [];
 
   for (const item of (
-    optimizeCall.args.optimizedContext as { relevance: number; path: string; tokenCount: number }[]
+    optimizeCall.args.optimizedContext as { relevance: number; filePath: string; tokenCount: number }[]
   ).sort((a, b) => (a.relevance > b.relevance ? -1 : 1))) {
     if (item.relevance < 0.5) {
       break;
     }
 
     totalTokens += item.tokenCount;
-    result.push(item.path);
+    result.push(item.filePath);
 
     if (totalTokens > MAX_TOTAL_TOKENS && item.relevance < 0.7) {
       break;
