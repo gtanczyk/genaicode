@@ -25,6 +25,9 @@
     "LICENSE"
   ],
   "scripts": {
+    "cli": "node ./bin/genaicode.cjs",
+    "interactive-cli": "node ./bin/genaicode.cjs --interactive",
+    "ui": "node ./bin/genaicode.cjs --ui",
     "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",
     "coverage": "vitest run --coverage",
