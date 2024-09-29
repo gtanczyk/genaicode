@@ -59,7 +59,7 @@ vi.mock('../files/read-files.js', () => ({
 vi.mock('../main/config.js', () => ({
   rootDir: '/mocked/root/dir',
   rcConfig: {
-    rootDir: '.',
+    rootDir: '/mocked/root/dir',
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
@@ -161,7 +161,7 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
+          fileUpdates: [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
           contextPaths: [],
           explanation: 'Mock summary',
         },
@@ -171,7 +171,7 @@ describe('promptService', () => {
       {
         name: 'patchFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           patch: 'invalid patch',
         },
       },
@@ -180,7 +180,7 @@ describe('promptService', () => {
       {
         name: 'updateFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           newContent: 'console.log("Updated content");',
         },
       },
@@ -206,7 +206,7 @@ describe('promptService', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(fs.readFileSync).toHaveBeenCalledWith('test.js', 'utf-8');
+    expect(fs.readFileSync).toHaveBeenCalledWith('/mocked/root/dir/test.js', 'utf-8');
     expect(diff.applyPatch).toHaveBeenCalledWith('Original content', 'invalid patch');
     expect(result).toEqual(mockValidUpdateCall);
   });
@@ -260,9 +260,9 @@ describe('promptService', () => {
         args: {
           fileUpdates: [
             {
-              filePath: 'test.js',
+              filePath: '/mocked/root/dir/test.js',
               updateToolName: 'updateFile',
-              contextImageAssets: ['/path/to/image1.png', '/path/to/image2.jpg'],
+              contextImageAssets: ['/mocked/root/dir/image1.png', '/mocked/root/dir/image2.jpg'],
               prompt: 'Generate file update',
             },
           ],
@@ -275,7 +275,7 @@ describe('promptService', () => {
       {
         name: 'updateFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           newContent: 'console.log("Updated with vision");',
         },
       },
@@ -302,13 +302,13 @@ describe('promptService', () => {
           text: expect.stringContaining('Generate file update'),
           images: [
             {
-              path: '/path/to/image1.png',
-              base64url: 'mock-base64-data-for-/path/to/image1.png',
+              path: '/mocked/root/dir/image1.png',
+              base64url: 'mock-base64-data-for-/mocked/root/dir/image1.png',
               mediaType: 'image/png',
             },
             {
-              path: '/path/to/image2.jpg',
-              base64url: 'mock-base64-data-for-/path/to/image2.jpg',
+              path: '/mocked/root/dir/image2.jpg',
+              base64url: 'mock-base64-data-for-/mocked/root/dir/image2.jpg',
               mediaType: 'image/jpeg',
             },
           ],
@@ -350,8 +350,10 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
-          contextPaths: ['context1.js', 'context2.js'],
+          fileUpdates: [
+            { filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Generate file' },
+          ],
+          contextPaths: ['/mocked/root/dir/context1.js', '/mocked/root/dir/context2.js'],
           explanation: 'Mock summary with context',
         },
       },
@@ -360,7 +362,7 @@ describe('promptService', () => {
       {
         name: 'updateFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           newContent: 'console.log("Updated with context");',
         },
       },
@@ -399,8 +401,10 @@ describe('promptService', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
-          contextPaths: ['context1.js', 'context2.js'],
+          fileUpdates: [
+            { filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Generate file' },
+          ],
+          contextPaths: ['/mocked/root/dir/context1.js', '/mocked/root/dir/context2.js'],
           explanation: 'Mock summary without context optimization',
         },
       },
@@ -409,7 +413,7 @@ describe('promptService', () => {
       {
         name: 'updateFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           newContent: 'console.log("Updated without context optimization");',
         },
       },
@@ -449,7 +453,7 @@ describe('promptService', () => {
         name: 'codegenSummary',
         args: {
           fileUpdates: [
-            { filePath: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
+            { filePath: '/mocked/root/dir/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
           ],
           contextPaths: [],
           explanation: 'Mock summary with image generation',
@@ -461,7 +465,7 @@ describe('promptService', () => {
         name: 'generateImage',
         args: {
           prompt: 'A test image',
-          filePath: '/path/to/generated/image.png',
+          filePath: '/mocked/root/dir/image.png',
           width: 256,
           height: 256,
         },
@@ -471,7 +475,7 @@ describe('promptService', () => {
       {
         name: 'downloadFile',
         args: {
-          filePath: '/path/to/generated/image.png',
+          filePath: '/mocked/root/dir/image.png',
           explanation: 'Downloading generated image',
           downloadUrl: 'https://example.com/generated-image.png',
         },
@@ -511,7 +515,7 @@ describe('promptService', () => {
         name: 'codegenSummary',
         args: {
           fileUpdates: [
-            { filePath: '/path/to/generated/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
+            { filePath: '/mocked/root/dir/image.png', updateToolName: 'generateImage', prompt: 'Generate file' },
           ],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
@@ -523,7 +527,7 @@ describe('promptService', () => {
         name: 'generateImage',
         args: {
           prompt: 'A test image',
-          filePath: '/path/to/generated/image.png',
+          filePath: '/mocked/root/dir/image.png',
           width: 256,
           height: 256,
         },
@@ -570,7 +574,7 @@ describe('promptService', () => {
       {
         name: 'updateFile',
         args: {
-          filePath: 'test.js',
+          filePath: '/mocked/root/dir/test.js',
           newContent: 'console.log("Unexpected response");',
         },
       },
@@ -595,7 +599,7 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            files: [{ filePath: 'test.js', updateToolName: 'updateFile' }],
+            files: [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -605,7 +609,9 @@ describe('promptService', () => {
         {
           name: 'codegenSummary',
           args: {
-            fileUpdates: [{ filePath: 'test.js', updateToolName: 'updateFile', prompt: 'Generate file' }],
+            fileUpdates: [
+              { filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Generate file' },
+            ],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -619,7 +625,7 @@ describe('promptService', () => {
           {
             name: 'updateFile',
             args: {
-              filePath: 'test.js',
+              filePath: '/mocked/root/dir/test.js',
               newContent: 'console.log("Unexpected response");',
             },
           },
@@ -635,7 +641,7 @@ describe('promptService', () => {
       expect(result).toEqual([
         {
           args: {
-            filePath: 'test.js',
+            filePath: '/mocked/root/dir/test.js',
             newContent: 'console.log("Unexpected response");',
           },
           name: 'updateFile',
@@ -648,7 +654,7 @@ describe('promptService', () => {
       const mockInvalidCall = [
         {
           name: 'updateFile',
-          args: { filePath: 'test.js', invalidArg: 'This should not be here' },
+          args: { filePath: '/mocked/root/dir/test.js', invalidArg: 'This should not be here' },
         },
       ];
 
@@ -657,7 +663,9 @@ describe('promptService', () => {
           {
             name: 'codegenSummary',
             args: {
-              fileUpdates: [{ filePath: 'test.js', updateToolName: 'patchFile', prompt: 'Generate file' }],
+              fileUpdates: [
+                { filePath: '/mocked/root/dir/test.js', updateToolName: 'patchFile', prompt: 'Generate file' },
+              ],
               contextPaths: [],
               explanation: 'Mock summary',
             },

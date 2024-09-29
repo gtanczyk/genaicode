@@ -60,7 +60,7 @@ vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('./config.js', () => ({
   rootDir: '/mocked/root/dir',
   rcConfig: {
-    rootDir: '.',
+    rootDir: '/mocked/root/dir',
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
@@ -221,7 +221,9 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
+          fileUpdates: [
+            { filePath: '/mocked/root/dir/landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' },
+          ],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
@@ -230,7 +232,7 @@ describe('runCodegen', () => {
     const mockFunctionCalls = [
       {
         name: 'generateImage',
-        args: { prompt: 'A beautiful landscape', filePath: 'landscape.png', width: 512, height: 512 },
+        args: { prompt: 'A beautiful landscape', filePath: '/mocked/root/dir/landscape.png', width: 512, height: 512 },
       },
     ];
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockCodegenSummary);
@@ -260,14 +262,19 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'city.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
+          fileUpdates: [
+            { filePath: '/mocked/root/dir/city.png', updateToolName: 'generateImage', prompt: 'Generate image' },
+          ],
           contextPaths: [],
           explanation: 'Mock summary with image generation failure',
         },
       },
     ];
     const mockFunctionCalls = [
-      { name: 'generateImage', args: { prompt: 'A futuristic city', filePath: 'city.png', width: 1024, height: 1024 } },
+      {
+        name: 'generateImage',
+        args: { prompt: 'A futuristic city', filePath: '/mocked/root/dir/city.png', width: 1024, height: 1024 },
+      },
     ];
     vi.mocked(chatGpt).generateContent.mockResolvedValueOnce(mockCodegenSummary);
     vi.mocked(chatGpt).generateContent.mockResolvedValueOnce(mockFunctionCalls);
@@ -322,7 +329,9 @@ describe('runCodegen', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: 'landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' }],
+          fileUpdates: [
+            { filePath: '/mocked/root/dir/landscape.png', updateToolName: 'generateImage', prompt: 'Generate image' },
+          ],
           contextPaths: [],
           explanation: 'Mock summary with cheap image generation',
         },
@@ -333,7 +342,7 @@ describe('runCodegen', () => {
         name: 'generateImage',
         args: {
           prompt: 'A simple landscape',
-          filePath: 'landscape.png',
+          filePath: '/mocked/root/dir/landscape.png',
           width: 256,
           height: 256,
           cheap: true,
