@@ -78,17 +78,23 @@ const ProgressDot = styled.div`
 `;
 
 const ActionButton = styled.button`
-  padding: 5px 10px;
+  padding: 8px 16px;
   background-color: ${(props) => props.theme.colors.primary};
-  color: ${(props) => props.theme.colors.text};
+  color: #ffffff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.3s;
+  font-weight: 600;
+  transition: background-color 0.3s, transform 0.1s;
 
   &:hover {
     background-color: ${(props) => props.theme.colors.primaryHover};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -96,6 +102,6 @@ const InterruptButton = styled(ActionButton)`
   background-color: ${({ theme }) => theme.colors.error};
 
   &:hover {
-    background-color: ${({ theme }) => theme.colors.error}dd;
+    background-color: ${({ theme }) => theme.colors.errorHover};
   }
 `;
