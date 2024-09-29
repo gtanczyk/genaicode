@@ -194,7 +194,7 @@ async function executePromptService(
     const result: FunctionCall[] = [];
 
     for (const file of codegenSummaryRequest!.args.fileUpdates) {
-      putSystemMessage('Collecting partial update for: ' + file.path + ' using tool: ' + file.updateToolName, file);
+      putSystemMessage('Collecting partial update for: ' + file.filePath + ' using tool: ' + file.updateToolName, file);
       console.log('- Prompt:', file.prompt);
       console.log('- Temperature', file.temperature);
       console.log('- Cheap', file.cheap);
@@ -207,9 +207,9 @@ async function executePromptService(
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {
-        prompt.slice(-1)[0].text = file.prompt ?? messages.partialPromptTemplate(file.path);
+        prompt.slice(-1)[0].text = file.prompt ?? messages.partialPromptTemplate(file.filePath);
       } else {
-        prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.path) });
+        prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.filePath) });
       }
 
       if (codegenPrompt.options.vision && file.contextImageAssets) {
