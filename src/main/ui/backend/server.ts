@@ -4,9 +4,11 @@ import cors from 'cors';
 import helmet from 'helmet';
 import fs from 'fs';
 import path from 'path';
+import http from 'http';
 
 import { createRouter } from './api.js';
 import { Service } from './service.js';
+import { uiPort } from '../../../cli/cli-params.js';
 
 export async function startServer(service: Service) {
   const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -52,6 +54,9 @@ export async function startServer(service: Service) {
   // API routes
   app.use('/api', apiRouter);
 
+  const httpServer = http.createServer(app);
+  httpServer.on('error', console.error);
+
   if (service.getCodegenOptions().isDev) {
     console.log('GenAIcode Dev Mode!');
     const { createServer } = await import('vite');
@@ -75,6 +80,8 @@ export async function startServer(service: Service) {
       ],
     });
 
+    httpServer.on('error', () => vite.close());
+
     app.use(vite.middlewares);
   } else {
     // Serve index.html with injected token
@@ -86,9 +93,7 @@ export async function startServer(service: Service) {
     app.use('/assets', express.static(__dirname + '../frontend/assets'));
   }
 
-  const server = app.listen(1337, () => {
-    console.log('Server is running on http://localhost:1337');
+  httpServer.listen(uiPort, () => {
+    console.log(`Server is running on http://localhost:${uiPort}`);
   });
-
-  server.on('error', console.error);
 }

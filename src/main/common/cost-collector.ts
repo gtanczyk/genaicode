@@ -132,10 +132,3 @@ export function getUsageMetrics(): Record<AiServiceType | 'total', UsageMetrics>
 
   return result as Record<AiServiceType | 'total', UsageMetrics>;
 }
-
-// Initialize cleanup process
-setInterval(() => {
-  const data = getUsageDataFromCache();
-  cleanupOldData(data);
-  saveUsageDataToCache(data);
-}, CLEANUP_INTERVAL);

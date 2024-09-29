@@ -118,6 +118,14 @@ const cliOptions: CliOption[] = [
     description:
       'Disable the question-asking feature. By default, the assistant can ask questions for clarification during the code generation process.',
   },
+  {
+    name: '--ui',
+    description: 'Run the tool as a web server, and use it via browser.',
+  },
+  {
+    name: '--ui-port=<port>',
+    description: 'Specify the port for the web server when using --ui (default: 1337).',
+  },
 ];
 
 /**

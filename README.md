@@ -59,6 +59,7 @@ npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and wri
 GenAIcode supports various command-line options to customize its behavior:
 
 - `--ui`: Run the tool as a web server, and use it via browser
+- `--ui-port=<port>`: Specify the port for the web server when using --ui (default: 1337)
 - `--interactive`: Run the tool in interactive mode
 - `--dry-run`: Runs the tool without making any changes to the files.
 - `--consider-all-files`: Considers all files for code generation, even if they don't contain `@CODEGEN` comments.
@@ -119,6 +120,14 @@ For example:
 ```bash
 npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation"
 ```
+
+To run GenAIcode with the web UI on a specific port:
+
+```bash
+npx genaicode --ui --ui-port=8080
+```
+
+This will start the web server on port 8080 instead of the default 1337.
 
 ## Examples
 

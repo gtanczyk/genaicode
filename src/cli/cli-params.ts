@@ -59,6 +59,9 @@ export const disableAiServiceFallback = params.includes('--disable-ai-service-fa
 export const disableVertexUnescape = params.includes('--disable-vertex-unescape');
 export const disableHistory = params.includes('--disable-history');
 
+// New variable to store the ui-port value
+export const uiPort = parseInt(params.find((param) => param.startsWith('--ui-port='))?.split('=')[1] || '1337', 10);
+
 if (taskFile) {
   if (explicitPrompt) {
     throw new Error('The --task-file option is exclusive with the --explicit-prompt option');
@@ -144,4 +147,9 @@ if (disableAiServiceFallback) {
 
 if (disableSelfReflection) {
   console.log('Self-reflection mechanism is disabled');
+}
+
+// Log the UI port
+if (ui) {
+  console.log(`UI mode enabled on port: ${uiPort}`);
 }

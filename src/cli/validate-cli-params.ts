@@ -8,6 +8,7 @@ const allowedParameters: string[] = [
   '--dry-run',
   '--interactive',
   '--ui',
+  '--ui-port=',
   '--consider-all-files',
   '--allow-file-create',
   '--allow-file-delete',
