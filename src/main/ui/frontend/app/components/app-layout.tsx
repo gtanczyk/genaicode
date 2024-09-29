@@ -18,7 +18,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, cha
       <AppHeader>
         <AppTitle>GenAIcode</AppTitle>
         <HeaderRightSection>
-          <UsageDisplay usage={usage} />
+          <UsageDisplayWrapper>
+            <UsageDisplay usage={usage} />
+          </UsageDisplayWrapper>
           <IconContainer>
             {themeToggle}
             {infoIcon}
@@ -60,6 +62,10 @@ const HeaderRightSection = styled.div`
   display: flex;
   align-items: center;
   gap: 16px;
+`;
+
+const UsageDisplayWrapper = styled.div`
+  margin-right: auto;
 `;
 
 const IconContainer = styled.div`
