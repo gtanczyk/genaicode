@@ -181,4 +181,85 @@ describe('promptService with askQuestion', () => {
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(prompts.input).not.toHaveBeenCalled();
   });
+
+  it('should handle self-reflection mechanism', async () => {
+    const mockAskQuestionCall = [
+      {
+        name: 'askQuestion',
+        args: {
+          content: 'Do you want to proceed with code generation?',
+          actionType: 'requestAnswer',
+          promptNecessity: 80,
+        },
+      },
+    ];
+    const mockAskQuestionReflectCall = [
+      {
+        name: 'askQuestionReflect',
+        args: {
+          shouldEscalate: 70,
+          reason: 'The response requires more advanced processing.',
+        },
+      },
+    ];
+    const mockAskQuestionReflectCall2 = [
+      {
+        name: 'askQuestionReflect',
+        args: {
+          shouldEscalate: 30,
+          reason: 'The response is ok.',
+        },
+      },
+    ];
+    const mockAskQuestionCall2 = [
+      {
+        name: 'askQuestion',
+        args: {
+          content: 'Startin code generation',
+          actionType: 'startCodeGeneration',
+          promptNecessity: 80,
+        },
+      },
+    ];
+    const mockCodegenSummary = [
+      {
+        name: 'codegenSummary',
+        args: {
+          fileUpdates: [],
+          contextPaths: [],
+          explanation: 'No updates needed',
+        },
+      },
+    ];
+
+    vi.mocked(vertexAi.generateContent)
+      .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockAskQuestionReflectCall)
+      .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockAskQuestionCall2)
+      .mockResolvedValueOnce(mockAskQuestionReflectCall2)
+      .mockResolvedValueOnce(mockCodegenSummary);
+
+    vi.mocked(prompts.input).mockImplementationOnce(
+      () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
+    );
+
+    await promptService(
+      GENERATE_CONTENT_FNS,
+      GENERATE_IMAGE_FNS,
+      getCodeGenPrompt({
+        aiService: 'vertex-ai',
+        disableContextOptimization: true,
+        interactive: true,
+        askQuestion: true,
+        selfReflectionEnabled: true,
+      }),
+    );
+
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(6);
+    expect(console.log).toHaveBeenCalledWith(
+      'Received codegen summary, will collect partial updates',
+      expect.any(Object),
+    );
+  });
 });
