@@ -1,5 +1,5 @@
-import { FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common';
-import { CodegenOptions } from '../../main/codegen-types';
+import { FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { CodegenOptions } from '../../main/codegen-types.js';
 import { AskQuestionCall, EscalationDecision, SelfReflectionContext } from './step-ask-question-types.js';
 
 export async function performSelfReflection(

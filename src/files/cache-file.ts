@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'path';
 import findCacheDir from 'find-cache-dir';
-import { rcConfig } from '../main/config';
+import { rcConfig } from '../main/config.js';
 
 const cacheDirectory = findCacheDir({ name: 'genaicode' }) || os.tmpdir();
 

@@ -1,10 +1,10 @@
-import { GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common';
-import { readCache, writeCache } from '../../files/cache-file';
-import { CodegenOptions } from '../../main/codegen-types';
-import { putSystemMessage } from '../../main/common/content-bus';
-import { functionDefs } from '../function-calling';
-import { StepResult } from './steps-types';
-import { validateAndRecoverSingleResult } from './step-validate-recover';
+import { GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common.js';
+import { readCache, writeCache } from '../../files/cache-file.js';
+import { CodegenOptions } from '../../main/codegen-types.js';
+import { putSystemMessage } from '../../main/common/content-bus.js';
+import { functionDefs } from '../function-calling.js';
+import { StepResult } from './steps-types.js';
+import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 
 export async function executeStepHistoryUpdate(
   generateContentFn: GenerateContentFunction,
