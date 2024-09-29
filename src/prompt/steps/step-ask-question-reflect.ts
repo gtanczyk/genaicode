@@ -10,6 +10,13 @@ export async function performSelfReflection(
   options: CodegenOptions,
   generateContentFn: GenerateContentFunction,
 ): Promise<EscalationDecision> {
+  if (!options.selfReflectionEnabled) {
+    return {
+      shouldEscalate: false,
+      reason: 'Self-reflection is disabled by user configuration.',
+    };
+  }
+
   const currentTime = Date.now();
 
   const shouldEscalate = await runSelfReflect(askQuestionCall, prompt, functionDefs, options, generateContentFn);

@@ -39,6 +39,7 @@ const allowedParameters: string[] = [
   '--disable-ai-service-fallback',
   '--disable-history',
   '--disable-vertex-unescape',
+  '--disable-self-reflection',
 ];
 
 /**
@@ -122,6 +123,13 @@ export function validateCliParams(): void {
         throw new Error(`Invalid --ignore-pattern value. The pattern "${ignorePatternValue}" is not valid.`);
       }
     }
+  }
+
+  // Validate --disable-self-reflection
+  if (providedParameters.includes('--disable-self-reflection') && providedParameters.includes('--cheap')) {
+    console.warn(
+      'Warning: --disable-self-reflection is redundant when --cheap is used, as cheap mode already skips self-reflection.',
+    );
   }
 }
 

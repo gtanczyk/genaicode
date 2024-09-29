@@ -38,6 +38,7 @@ export interface CodegenOptions {
   historyEnabled?: boolean;
 
   disableAiServiceFallback?: boolean;
+  selfReflectionEnabled?: boolean;
   images?: UploadedImage[];
   isDev?: boolean;
 }
