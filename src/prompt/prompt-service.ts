@@ -129,19 +129,19 @@ async function executePromptService(
   }
 
   // Execute the ask question step
-  if (
-    codegenPrompt.options.askQuestion !== false &&
-    (codegenPrompt.options.interactive || codegenPrompt.options.ui) &&
-    (await executeStepAskQuestion(
+  if (codegenPrompt.options.askQuestion !== false && (codegenPrompt.options.interactive || codegenPrompt.options.ui)) {
+    const askQuestionResult = await executeStepAskQuestion(
       generateContentFn,
       prompt,
       functionDefs,
       codegenPrompt.options.temperature ?? 0.7,
       messages,
       codegenPrompt.options,
-    )) === StepResult.BREAK
-  ) {
-    return { result: [], prompt };
+    );
+
+    if (askQuestionResult === StepResult.BREAK) {
+      return { result: [], prompt };
+    }
   } else if (codegenPrompt.options.askQuestion === false) {
     console.log('Ask question is not enabled.');
   }

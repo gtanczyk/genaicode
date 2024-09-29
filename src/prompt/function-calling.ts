@@ -20,6 +20,7 @@ import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
 import { updateHistory } from './function-defs/update-history.js';
 import { readHistory } from './function-defs/read-history.js';
+import { askQuestionReflect } from './function-defs/ask-question-reflect.js';
 
 /**
  * Function definitions for function calling feature
@@ -45,6 +46,7 @@ export const functionDefs: FunctionDef[] = [
   setSummaries,
   updateHistory,
   readHistory,
+  askQuestionReflect,
   // @ts-expect-error (fix this once fun defs are converted to ts)
 ].map((fd: FunctionDef) => {
   if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {

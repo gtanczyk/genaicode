@@ -4,7 +4,7 @@ import { CodegenOptions } from '../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
 import { abortController } from '../../main/interactive/codegen-worker.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
-import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
+import { AskQuestionCall, ActionType, ActionHandler, SelfReflectionContext } from './step-ask-question-types.js';
 import {
   handleCancelCodeGeneration,
   handleConfirmCodeGeneration,
@@ -16,6 +16,7 @@ import {
   handleDefaultAction,
   handleContextOptimization,
 } from './step-ask-question-handlers.js';
+import { performSelfReflection } from './step-ask-question-reflect.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -29,9 +30,21 @@ export async function executeStepAskQuestion(
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
 
+  const selfReflectionContext: SelfReflectionContext = {
+    escalationCount: 0,
+    lastEscalationTime: 0,
+  };
+
   while (!abortController?.signal.aborted) {
     try {
-      const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
+      const askQuestionCall = await getAskQuestionCall(
+        generateContentFn,
+        prompt,
+        functionDefs,
+        temperature,
+        options,
+        selfReflectionContext,
+      );
 
       if (!askQuestionCall) {
         break;
@@ -77,11 +90,37 @@ async function getAskQuestionCall(
   functionDefs: FunctionDef[],
   temperature: number,
   options: CodegenOptions,
+  selfReflectionContext: SelfReflectionContext,
 ): Promise<AskQuestionCall | undefined> {
   const askQuestionRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, true, options];
   let askQuestionResult = await generateContentFn(...askQuestionRequest);
   askQuestionResult = await validateAndRecoverSingleResult(askQuestionRequest, askQuestionResult, generateContentFn);
-  return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
+
+  const cheapModelResponse = askQuestionResult.find((call) => call.name === 'askQuestion') as
+    | AskQuestionCall
+    | undefined;
+
+  if (cheapModelResponse) {
+    const escalationDecision = await performSelfReflection(
+      cheapModelResponse,
+      selfReflectionContext,
+      prompt,
+      functionDefs,
+      options,
+      generateContentFn,
+    );
+
+    if (escalationDecision.shouldEscalate) {
+      console.log('Self-reflection suggests escalating to non-cheap model.');
+      // Re-run with non-cheap model
+      const nonCheapRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, false, options];
+      let nonCheapResult = await generateContentFn(...nonCheapRequest);
+      nonCheapResult = await validateAndRecoverSingleResult(nonCheapRequest, nonCheapResult, generateContentFn);
+      return nonCheapResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
+    }
+  }
+
+  return cheapModelResponse;
 }
 
 function getActionHandler(actionType: ActionType): ActionHandler {

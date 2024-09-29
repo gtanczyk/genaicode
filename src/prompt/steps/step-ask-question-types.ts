@@ -65,3 +65,24 @@ export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>
 export interface Messages {
   contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
 }
+
+// Self-reflection related types
+export interface EscalationDecision {
+  shouldEscalate: boolean;
+  reason: string;
+}
+
+export interface SelfReflectionContext {
+  escalationCount: number;
+  lastEscalationTime: number;
+}
+
+export type SelfReflectionFunction = (
+  response: AskQuestionCall,
+  context: SelfReflectionContext,
+) => Promise<EscalationDecision>;
+
+export interface SelfReflectionResult {
+  decision: EscalationDecision;
+  updatedContext: SelfReflectionContext;
+}
