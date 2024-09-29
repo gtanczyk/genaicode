@@ -9,6 +9,7 @@ import * as cliParams from '../cli/cli-params.js';
 import fs from 'fs';
 import * as diff from 'diff';
 import mime from 'mime-types';
+import '../files/cache-file.js';
 import { getImageAssets } from '../files/read-files.js';
 import '../files/find-files.js';
 import * as dalleService from '../ai-service/dall-e.js';
@@ -43,7 +44,7 @@ vi.mock('diff');
 vi.mock('mime-types');
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
-
+vi.mock('../files/cache-file.js');
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],

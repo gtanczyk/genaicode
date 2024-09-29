@@ -5,6 +5,7 @@ import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '..
 import * as prompts from '@inquirer/prompts';
 import { CancelablePromise } from '@inquirer/type';
 import '../cli/cli-params.js';
+import '../files/cache-file.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
@@ -32,7 +33,7 @@ vi.mock('../cli/cli-params.js', () => ({
   cheap: false,
   askQuestion: true,
 }));
-
+vi.mock('../files/cache-file.js');
 // Mock find-files module
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],

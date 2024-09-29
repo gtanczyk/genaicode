@@ -2,6 +2,7 @@ import axios from 'axios';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
+import { Usage } from './api-types.js';
 
 const API_BASE_URL = '/api';
 
@@ -123,9 +124,9 @@ export const answerQuestion = async (questionId: string, answer: string): Promis
   await api.post('/answer-question', { questionId, answer });
 };
 
-export const getTotalCost = async (): Promise<number> => {
-  const response = await api.get('/total-cost');
-  return response.data.totalCost;
+export const getUsage = async (): Promise<Usage> => {
+  const response = await api.get('/usage');
+  return response.data;
 };
 
 export const getDefaultCodegenOptions = async (): Promise<CodegenOptions> => {

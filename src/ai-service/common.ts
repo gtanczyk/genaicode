@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { functionDefs } from '../prompt/function-calling.js';
-import { CodegenOptions } from '../main/codegen-types.js';
+import { CodegenOptions, AiServiceType } from '../main/codegen-types.js';
 import { collectCost } from '../main/common/cost-collector.js';
 
 interface TokenUsage {
@@ -64,6 +64,7 @@ export type GenerateImageFunction = (
 ) => Promise<string>;
 
 interface CostInfo {
+  aiService: AiServiceType;
   usage: TokenUsage;
   inputCostPerToken: number;
   outputCostPerToken: number;
@@ -97,7 +98,7 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
   console.log('  - Cheap model: ', cheap);
 
-  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, cheap);
+  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, costInfo.aiService, cheap);
 }
 
 /**

@@ -23,7 +23,7 @@ const GenAIcodeApp = () => {
     currentQuestion,
     setCurrentQuestion,
     theme,
-    totalCost,
+    usage,
     codegenOptions,
     rcConfig,
     toggleTheme,
@@ -62,6 +62,15 @@ const GenAIcodeApp = () => {
     }
   };
 
+  // Loading
+  if (!usage) {
+    return (
+      <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
+        <GlobalStyle />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
       <GlobalStyle />
@@ -89,7 +98,7 @@ const GenAIcodeApp = () => {
             />
           )
         }
-        totalCost={totalCost}
+        usage={usage}
       />
     </ThemeProvider>
   );

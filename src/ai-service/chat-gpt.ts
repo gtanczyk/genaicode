@@ -129,6 +129,7 @@ export async function generateContent(
     totalTokens: response.usage!.total_tokens,
   };
   printTokenUsageAndCost({
+    aiService: 'chat-gpt',
     usage,
     inputCostPerToken: 0.000005,
     outputCostPerToken: 0.000015,

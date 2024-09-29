@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getExecutionStatus,
   getCurrentQuestion,
-  getTotalCost,
+  getUsage,
   getDefaultCodegenOptions,
   getRcConfig,
   getContent,
   pauseExecution,
   resumeExecution,
 } from '../api/api-client.js';
+import { Usage } from '../api/api-types.js';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
@@ -26,7 +27,7 @@ export const AppState = () => {
     null,
   );
   const [theme, setTheme] = useState('dark');
-  const [totalCost, setTotalCost] = useState(0);
+  const [usage, setUsage] = useState<Usage>();
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
   const [rcConfig, setRcConfig] = useState<RcConfig | null>(null);
   const [lastFinishedExecutionId, setLastFinishedExecutionId] = useState<string | null>(null);
@@ -40,15 +41,15 @@ export const AppState = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [status, question, content, cost, defaultOptions, config] = await Promise.all([
+        const [status, question, content, usage, defaultOptions, config] = await Promise.all([
           getExecutionStatus(),
           getCurrentQuestion(),
           getContent(),
-          getTotalCost(),
+          getUsage(),
           getDefaultCodegenOptions(),
           getRcConfig(),
         ]);
-        
+
         setIsExecuting(status !== 'idle');
         setExecutionStatus(status);
         setCurrentQuestion(question);
@@ -60,7 +61,7 @@ export const AppState = () => {
               data: content.data,
             })),
         );
-        setTotalCost(cost);
+        setUsage(usage);
         setCodegenOptions(defaultOptions);
         setRcConfig(config);
       } catch (error) {
@@ -76,13 +77,13 @@ export const AppState = () => {
       setIsPolling(true);
       const poll = async () => {
         try {
-          const [status, question, content, cost] = await Promise.all([
+          const [status, question, content, usage] = await Promise.all([
             getExecutionStatus(),
             getCurrentQuestion(),
             getContent(),
-            getTotalCost(),
+            getUsage(),
           ]);
-          
+
           setIsExecuting(status !== 'idle');
           setExecutionStatus(status);
           setCurrentQuestion(question);
@@ -94,7 +95,7 @@ export const AppState = () => {
                 data: content.data,
               })),
           );
-          setTotalCost(cost);
+          setUsage(usage);
         } catch (error) {
           console.error('Failed to poll data:', error);
         }
@@ -161,7 +162,7 @@ export const AppState = () => {
     setChatMessages,
     currentQuestion,
     theme,
-    totalCost,
+    usage,
     codegenOptions,
     rcConfig,
     lastFinishedExecutionId,

@@ -93,6 +93,7 @@ export async function generateContent(
     totalTokens: usageMetadata.totalTokenCount,
   };
   printTokenUsageAndCost({
+    aiService: 'vertex-ai',
     usage,
     inputCostPerToken: 0.000125 / 1000,
     outputCostPerToken: 0.000375 / 1000,

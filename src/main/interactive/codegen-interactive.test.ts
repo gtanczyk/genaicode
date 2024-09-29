@@ -7,6 +7,7 @@ import * as selectAiService from './select-ai-service.js';
 import * as configure from './configure.js';
 import * as help from '../../cli/cli-options.js';
 import '../../cli/cli-params.js';
+import '../../files/cache-file.js';
 import '../../files/read-files.js';
 import '../../files/find-files.js';
 import '../config.js';
@@ -18,6 +19,7 @@ vi.mock('../../cli/cli-params.js', () => ({
 }));
 vi.mock('../config.js', () => ({ rcConfig: {}, sourceExtensions: [] }));
 vi.mock('./common');
+vi.mock('../../files/cache-file.js');
 vi.mock('../../files/find-files.js', () => ({}));
 vi.mock('../../files/read-files.js', () => ({}));
 vi.mock('./text-prompt');

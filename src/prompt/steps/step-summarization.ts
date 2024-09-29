@@ -19,7 +19,7 @@ The length of summary should be max ${MAX_SUMMARY_TOKENS} tokens.
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
-const summaryCache: SummaryCache = readCache('summaries', {});
+const summaryCache: SummaryCache = readCache('summaries', { _version: CACHE_VERSION } as SummaryCache);
 
 export async function summarizeSourceCode(
   generateContentFn: GenerateContentFunction,

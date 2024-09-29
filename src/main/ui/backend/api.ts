@@ -161,10 +161,10 @@ export function createRouter(service: Service) {
   });
 
   // Get total cost of prompts in the current session
-  router.get('/total-cost', async (_, res) => {
+  router.get('/usage', async (_, res) => {
     try {
-      const totalCost = await service.getTotalCost();
-      res.json({ totalCost });
+      const usageMetrics = await service.getUsageMetrics();
+      res.json({ usageMetrics });
     } catch (error) {
       console.error('Error getting total cost:', error);
       res.status(500).json({ error: 'An error occurred while getting total cost' });

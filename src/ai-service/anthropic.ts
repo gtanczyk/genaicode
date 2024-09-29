@@ -158,6 +158,7 @@ export async function generateContent(
     totalTokens: response!.usage.input_tokens + response!.usage.output_tokens,
   };
   printTokenUsageAndCost({
+    aiService: 'anthropic',
     usage,
     inputCostPerToken: 3 / 1000 / 1000,
     outputCostPerToken: 15 / 1000 / 1000,

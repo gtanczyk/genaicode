@@ -1,9 +1,9 @@
 import { rcConfig } from '../../config.js';
-import { CodegenOptions } from '../../codegen-types.js';
+import { AiServiceType, CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 import { ContentProps } from '../../common/content-bus-types.js';
-import { getCollectedCosts } from '../../common/cost-collector.js';
+import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { putSystemMessage } from '../../common/content-bus.js';
 import crypto from 'crypto';
 
@@ -168,9 +168,8 @@ export class Service {
     return this.content;
   }
 
-  async getTotalCost(): Promise<number> {
-    const costs = getCollectedCosts();
-    return costs.reduce((total, item) => total + item.cost, 0);
+  async getUsageMetrics(): Promise<Record<AiServiceType | 'total', UsageMetrics>> {
+    return await getUsageMetrics();
   }
 
   getCodegenOptions(): CodegenOptions {

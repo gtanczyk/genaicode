@@ -6,6 +6,7 @@ import * as anthropic from '../ai-service/anthropic.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as updateFiles from '../files/update-files.js';
 import '../files/find-files.js';
+import '../files/cache-file.js';
 import * as cliParams from '../cli/cli-params.js';
 import * as cliOptions from '../cli/cli-options.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
@@ -17,6 +18,7 @@ vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../files/update-files.js');
+vi.mock('../files/cache-file.js');
 vi.mock('../cli/cli-params.js', () => ({
   interactive: false,
   ui: false,

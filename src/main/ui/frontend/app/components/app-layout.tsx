@@ -1,23 +1,24 @@
 import React, { ReactNode } from 'react';
 import styled from 'styled-components';
 import '@fontsource/press-start-2p';
-import { CostDisplay } from './cost-display.js';
+import { UsageDisplay } from './usage-display.js';
+import { Usage } from '../api/api-types.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
   infoIcon: ReactNode;
   chatInterface: ReactNode;
   inputArea: ReactNode;
-  totalCost: number;
+  usage: Usage;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea, totalCost }) => {
+export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea, usage }) => {
   return (
     <AppContainer>
       <AppHeader>
         <AppTitle>GenAIcode</AppTitle>
         <HeaderRightSection>
-          <CostDisplay totalCost={totalCost} />
+          <UsageDisplay usage={usage} />
           <IconContainer>
             {themeToggle}
             {infoIcon}
@@ -58,25 +59,25 @@ const AppTitle = styled.h1`
 const HeaderRightSection = styled.div`
   display: flex;
   align-items: center;
-  gap: 16px; // Add gap between CostDisplay and IconContainer
+  gap: 16px;
 `;
 
 const IconContainer = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px; // Reduce gap between icons for better alignment
+  gap: 8px;
 `;
 
 const MainContent = styled.main`
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  min-height: 0; // This is important for nested flex containers
+  min-height: 0;
 `;
 
 const ChatContainer = styled.div`
   flex-grow: 1;
-  overflow: hidden; // Changed from overflow-y: auto to hidden
+  overflow: hidden;
   margin-bottom: 20px;
 `;
 
