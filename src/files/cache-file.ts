@@ -27,7 +27,6 @@ function readCacheFile(): Record<string, unknown> {
   try {
     return JSON.parse(fs.readFileSync(cacheFileName, 'utf-8'));
   } catch {
-    console.warn('Failed to read and parse the cache file', cacheFileName);
     return {};
   }
 }
