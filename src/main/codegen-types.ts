@@ -43,8 +43,3 @@ export interface CodegenOptions {
   images?: UploadedImage[];
   isDev?: boolean;
 }
-
-export interface MultimodalPrompt {
-  text: string;
-  images: UploadedImage[];
-}

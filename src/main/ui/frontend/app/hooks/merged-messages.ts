@@ -6,7 +6,7 @@ export interface SystemMessageBlock extends ChatMessage {
   isExecutionEnd: boolean;
 }
 
-export interface IterationGroup {
+interface IterationGroup {
   iterationId: string;
   timestampStart: Date;
   timestampEnd: Date;

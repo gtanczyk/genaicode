@@ -17,8 +17,3 @@ export type SummaryCache = Record<
     checksum: string;
   }
 > & { _version: string };
-
-export interface SummarizationResult {
-  summaries: SummaryInfo[];
-  tokenCount: number;
-}

@@ -14,7 +14,7 @@ import { ChatMessage } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
-export type ExecutionStatus = 'idle' | 'executing' | 'paused';
+type ExecutionStatus = 'idle' | 'executing' | 'paused';
 
 const POLLING_INTERVAL = 500; // 0.5 seconds
 

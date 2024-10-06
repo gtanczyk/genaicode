@@ -55,53 +55,11 @@ export const ConversationSummary = styled.p`
   margin: 0 0 16px 0;
 `;
 
-// Update MessageContainer styles to fit within IterationContainer
-export const MessageContainer = styled.div`
-  margin-bottom: 16px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
 // Update SystemMessageContainer styles if necessary
 export const SystemMessageContainer = styled.div`
   margin-bottom: 16px;
 
   &:last-child {
     margin-bottom: 0;
-  }
-`;
-
-export const IterationBreakContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin: 16px 0;
-  text-align: center;
-
-  hr {
-    width: 100%;
-    border: none;
-    border-top: 1px solid ${(props) => props.theme.colors.border};
-    margin-bottom: 8px;
-  }
-
-  span {
-    font-size: 14px;
-    font-weight: bold;
-    color: ${(props) => props.theme.colors.text};
-    background-color: ${(props) => props.theme.colors.background};
-    padding: 0 8px;
-    margin-top: -18px; // Adjust this to position the text over the line
-  }
-
-  p {
-    font-size: 14px;
-    color: ${(props) => props.theme.colors.textSecondary};
-    margin-top: 8px;
-    max-width: 80%;
-    white-space: pre-wrap;
-    word-break: break-word;
   }
 `;

@@ -5,7 +5,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_IMAGES = 5;
 
-export interface ImageUploadProps {
+interface ImageUploadProps {
   images: File[];
   onImagesChange: (newImages: File[]) => void;
   error: string | null;

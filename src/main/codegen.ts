@@ -48,6 +48,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     explicitPrompt: cliParams.explicitPrompt,
     taskFile: cliParams.taskFile,
     considerAllFiles: cliParams.considerAllFiles,
+    dependencyTree: cliParams.dependencyTree,
 
     allowFileCreate: cliParams.allowFileCreate,
     allowFileDelete: cliParams.allowFileDelete,

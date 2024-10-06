@@ -147,7 +147,7 @@ export async function generateContent(
 
 // A function to get the generative model
 // Modified to accept temperature parameter and cheap flag
-export function getGenModel(
+function getGenModel(
   systemPrompt: string,
   temperature: number,
   functionDefs: FunctionDef[] | undefined,

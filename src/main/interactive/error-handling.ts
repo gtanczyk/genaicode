@@ -46,10 +46,3 @@ function handleErrorAction(action: UserAction): void {
       console.log('Invalid action. Returning to main menu...');
   }
 }
-
-export class CodegenError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CodegenError';
-  }
-}

@@ -27,7 +27,7 @@ export function putAssistantMessage(message: string, ...args: MessageArgs) {
   putMessage(message, ChatMessageType.ASSISTANT, ...args);
 }
 
-export function putMessage(message: string, type: ChatMessageType, data?: unknown, flags?: ChatMessageFlags[]) {
+function putMessage(message: string, type: ChatMessageType, data?: unknown, flags?: ChatMessageFlags[]) {
   if (!currentIterationId) {
     console.warn('No current iteration ID set');
   }

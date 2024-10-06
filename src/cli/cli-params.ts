@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { serviceAutoDetect } from './service-autodetect.js';
-import { rcConfig } from '../main/config.js';
 
 const params = process.argv.slice(2);
 
@@ -24,7 +23,7 @@ export const disableCache = params.includes('--disable-cache');
 export const explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
 export const disableContextOptimization = params.includes('--disable-context-optimization');
 export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
-export const disableExplanations = params.includes('--disable-explanations'); // Changed from requireExplanations
+export const disableExplanations = params.includes('--disable-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
@@ -41,9 +40,6 @@ export const disableConversationSummary = params.includes('--disable-conversatio
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');
-
-// Export the lintCommand from rcConfig
-export const lintCommand = rcConfig.lintCommand || null;
 
 // Temperature parameter
 export const temperature = parseFloat(
@@ -100,10 +96,6 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !help
   } else {
     throw new Error('Missing --chat-gpt, --anthropic, --ai-studio, --vertex-ai, or --vertex-ai-claude');
   }
-}
-
-if (lintCommand) {
-  console.log(`Lint command detected: ${lintCommand}`);
 }
 
 if (temperature) {

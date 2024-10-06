@@ -284,8 +284,6 @@ async function executePromptService(
   }
 }
 
-export type PromptMessages = ReturnType<typeof prepareMessages>;
-
 /**
  * Function to prepare messages for AI services
  */
