@@ -26,40 +26,83 @@ export const IterationContainer = styled.div`
   gap: 8px;
   border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 8px;
-  padding: 16px;
   margin-bottom: 24px;
 `;
 
-export const IterationHeader = styled.h3`
+export const IterationHeader = styled.div`
   font-size: 16px;
   font-weight: bold;
   color: ${(props) => props.theme.colors.text};
-  margin: 0 0 8px 0;
+  background-color: ${(props) => props.theme.colors.backgroundSecondary};
+  padding: 12px 16px;
+  border-bottom: 1px solid ${(props) => props.theme.colors.border};
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: pointer;
+  position: sticky;
+  top: -22px;
+  z-index: 10;
 
-  span {
+  span.title {
+    display: flex;
+    align-items: start;
+    flex-grow: 1;
+  }
+  span.meta {
     font-size: 12px;
     font-weight: normal;
     color: ${(props) => props.theme.colors.textSecondary};
   }
 `;
 
+export const IterationContent = styled.div<{ isCollapsed: boolean }>`
+  display: ${(props) => (props.isCollapsed ? 'none' : 'flex')};
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+`;
+
 export const ConversationSummary = styled.p`
   font-size: 14px;
   color: ${(props) => props.theme.colors.textSecondary};
-  background-color: ${(props) => props.theme.colors.backgroundSecondary};
+  background-color: ${(props) => props.theme.colors.backgroundTertiary};
   padding: 8px;
   border-radius: 4px;
   margin: 0 0 16px 0;
 `;
 
-// Update SystemMessageContainer styles if necessary
 export const SystemMessageContainer = styled.div`
   margin-bottom: 16px;
 
   &:last-child {
     margin-bottom: 0;
+  }
+`;
+
+export const CollapseIcon = styled.span`
+  &:before {
+    content: '▼';
+    margin-right: 8px;
+  }
+`;
+
+export const ExpandIcon = styled.span`
+  &:before {
+    content: '▶';
+    margin-right: 8px;
+  }
+`;
+
+// You may need to update or remove this style if it's no longer needed
+export const ShowDataLink = styled.span`
+  color: ${(props) => props.theme.colors.primary};
+  cursor: pointer;
+  margin-right: 8px;
+
+  &:hover {
+    text-decoration: underline;
   }
 `;

@@ -8,6 +8,7 @@ export interface SystemMessageBlock extends ChatMessage {
 
 interface IterationGroup {
   iterationId: string;
+  iterationTitle?: string;
   timestampStart: Date;
   timestampEnd: Date;
   conversationSummaries: string[];
@@ -40,6 +41,9 @@ export function useMergedMessages(messages: ChatMessage[]): IterationGroup[] {
 
         if (message.flags?.includes(ChatMessageFlags.CONVERSATION_SUMMARY) && message.data) {
           currentIteration.conversationSummaries.push(message.data as string);
+          if (!currentIteration.iterationTitle) {
+            currentIteration.iterationTitle = message.data as string;
+          }
         }
 
         if (message.type === ChatMessageType.SYSTEM) {

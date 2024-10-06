@@ -8,6 +8,9 @@ import {
   IterationContainer,
   IterationHeader,
   ConversationSummary,
+  CollapseIcon,
+  ExpandIcon,
+  IterationContent,
 } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { UnreadMessagesNotification } from './unread-messages-notification.js';
@@ -31,8 +34,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onPauseResume,
   executionStatus,
 }) => {
-  const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(new Set());
-  const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(new Set());
+  const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(() => new Set());
+  const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(() => new Set());
+  const [collapsedIterations, setCollapsedIterations] = useState<Set<string>>(() => new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -65,6 +69,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [iterations, isScrolledToBottom]);
 
+  useEffect(() => {
+    // Collapse all iterations except the latest one
+    const newCollapsedIterations = new Set(iterations.slice(0, -1).map((iteration) => iteration.iterationId));
+    setCollapsedIterations(newCollapsedIterations);
+  }, []);
+
   const toggleDataVisibility = (id: string) => {
     setVisibleDataIds((prevIds) => {
       const newIds = new Set(prevIds);
@@ -89,6 +99,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
+  const toggleIterationCollapse = (id: string) => {
+    setCollapsedIterations((prevIds) => {
+      const newIds = new Set(prevIds);
+      if (newIds.has(id)) {
+        newIds.delete(id);
+      } else {
+        newIds.add(id);
+      }
+      return newIds;
+    });
+  };
+
   const scrollToBottom = () => {
     messagesContainerRef.current?.scrollTo({
       top: messagesContainerRef.current.scrollHeight,
@@ -102,53 +124,49 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <MessagesContainer ref={messagesContainerRef}>
         {iterations.map((iteration, iterationIndex) => (
           <IterationContainer key={iteration.iterationId}>
-            <IterationHeader>
-              Iteration {iteration.iterationId}
-              <span>
+            <IterationHeader onClick={() => toggleIterationCollapse(iteration.iterationId)}>
+              {collapsedIterations.has(iteration.iterationId) ? <ExpandIcon /> : <CollapseIcon />}
+              <span className="title">{iteration.iterationTitle ?? `Iteration ${iteration.iterationId}`}</span>
+              <span className="meta">
                 {iteration.timestampStart.toLocaleString()} - {iteration.timestampEnd.toLocaleString()}
               </span>
             </IterationHeader>
-            {iteration.conversationSummaries.length > 0 && (
-              <ConversationSummary>
-                {iteration.conversationSummaries.map((summary) => (
-                  <>
-                    {summary}
-                    <br />
-                  </>
-                ))}
-              </ConversationSummary>
-            )}
-            {iteration.messages.map((message, messageIndex) => (
-              <React.Fragment key={message.id}>
-                {message.type === ChatMessageType.SYSTEM ? (
-                  <SystemMessageContainer
-                    message={message as SystemMessageBlock}
-                    collapsedExecutions={collapsedExecutions}
-                    toggleExecutionCollapse={toggleExecutionCollapse}
-                    visibleDataIds={visibleDataIds}
-                    toggleDataVisibility={toggleDataVisibility}
-                  />
-                ) : (
-                  <MessageContainer
-                    message={message}
-                    visibleDataIds={visibleDataIds}
-                    toggleDataVisibility={toggleDataVisibility}
-                  />
-                )}
-                {executionStatus !== 'idle' &&
-                  currentQuestion &&
-                  iterationIndex === iterations.length - 1 &&
-                  messageIndex === iteration.messages.length - 1 && (
-                    <QuestionHandler
-                      onSubmit={onQuestionSubmit}
-                      onInterrupt={onInterrupt}
-                      onPauseResume={onPauseResume}
-                      question={currentQuestion}
-                      executionStatus={executionStatus}
+            <IterationContent isCollapsed={collapsedIterations.has(iteration.iterationId)}>
+              {iteration.conversationSummaries.length > 0 && (
+                <ConversationSummary>{iteration.conversationSummaries.join(' ')}</ConversationSummary>
+              )}
+              {iteration.messages.map((message, messageIndex) => (
+                <React.Fragment key={message.id}>
+                  {message.type === ChatMessageType.SYSTEM ? (
+                    <SystemMessageContainer
+                      message={message as SystemMessageBlock}
+                      collapsedExecutions={collapsedExecutions}
+                      toggleExecutionCollapse={toggleExecutionCollapse}
+                      visibleDataIds={visibleDataIds}
+                      toggleDataVisibility={toggleDataVisibility}
+                    />
+                  ) : (
+                    <MessageContainer
+                      message={message}
+                      visibleDataIds={visibleDataIds}
+                      toggleDataVisibility={toggleDataVisibility}
                     />
                   )}
-              </React.Fragment>
-            ))}
+                  {executionStatus !== 'idle' &&
+                    currentQuestion &&
+                    iterationIndex === iterations.length - 1 &&
+                    messageIndex === iteration.messages.length - 1 && (
+                      <QuestionHandler
+                        onSubmit={onQuestionSubmit}
+                        onInterrupt={onInterrupt}
+                        onPauseResume={onPauseResume}
+                        question={currentQuestion}
+                        executionStatus={executionStatus}
+                      />
+                    )}
+                </React.Fragment>
+              ))}
+            </IterationContent>
           </IterationContainer>
         ))}
         <div ref={messagesEndRef} />
