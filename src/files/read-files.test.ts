@@ -19,7 +19,7 @@ vi.mock('../prompt/limits.js');
 vi.mock('../cli/cli-params.js', () => ({
   taskFile: null,
   contentMask: null,
-  requireExplanations: false,
+  disableExplanations: true,
   ignorePatterns: [],
 }));
 vi.mock('../main/config.js', () => ({

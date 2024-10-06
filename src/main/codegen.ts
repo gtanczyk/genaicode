@@ -58,7 +58,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     cheap: cliParams.cheap,
     dryRun: cliParams.dryRun,
     verbose: cliParams.verbosePrompt,
-    requireExplanations: cliParams.requireExplanations,
+    requireExplanations: !cliParams.disableExplanations,
     geminiBlockNone: cliParams.geminiBlockNone,
     disableInitialLint: cliParams.disableInitialLint,
     contentMask: cliParams.contentMask,

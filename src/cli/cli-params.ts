@@ -24,7 +24,7 @@ export const disableCache = params.includes('--disable-cache');
 export const explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
 export const disableContextOptimization = params.includes('--disable-context-optimization');
 export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
-export const requireExplanations = params.includes('--require-explanations');
+export const disableExplanations = params.includes('--disable-explanations'); // Changed from requireExplanations
 export const geminiBlockNone = params.includes('--gemini-block-none');
 export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');

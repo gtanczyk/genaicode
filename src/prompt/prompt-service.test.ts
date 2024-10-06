@@ -23,7 +23,7 @@ vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../cli/cli-params.js', () => ({
-  requireExplanations: false,
+  disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,
   explicitPrompt: false,

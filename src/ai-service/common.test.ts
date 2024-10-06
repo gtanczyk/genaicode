@@ -11,7 +11,7 @@ vi.mock('../cli/cli-params.js', () => ({
   temperature: 0.7,
   cheap: false,
   geminiBlockNone: false,
-  requireExplanations: false,
+  disableExplanations: true,
   vision: false,
 }));
 

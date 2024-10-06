@@ -15,7 +15,7 @@ import { runInteractiveMode } from './codegen-interactive.js';
 
 // Mock all imported modules
 vi.mock('../../cli/cli-params.js', () => ({
-  requireExplanations: false,
+  disableExplanations: true,
 }));
 vi.mock('../config.js', () => ({ rcConfig: {}, sourceExtensions: [] }));
 vi.mock('./common');

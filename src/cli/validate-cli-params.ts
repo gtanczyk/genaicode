@@ -23,7 +23,7 @@ const allowedParameters: string[] = [
   '--task-file=',
   '--dependency-tree',
   '--verbose-prompt',
-  '--require-explanations',
+  '--disable-explanations',
   '--disable-context-optimization',
   '--gemini-block-none',
   '--disable-initial-lint',

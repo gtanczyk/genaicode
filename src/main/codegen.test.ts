@@ -22,7 +22,7 @@ vi.mock('../files/cache-file.js');
 vi.mock('../cli/cli-params.js', () => ({
   interactive: false,
   ui: false,
-  requireExplanations: false,
+  disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,
   explicitPrompt: false,

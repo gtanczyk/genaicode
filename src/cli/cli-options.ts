@@ -67,8 +67,8 @@ const cliOptions: CliOption[] = [
     description: 'Print the prompt used for code generation.',
   },
   {
-    name: '--require-explanations',
-    description: 'Require explanations for all code generation operations.',
+    name: '--disable-explanations',
+    description: 'Disable requirement of explanations for all code generation operations.',
   },
   {
     name: '--disable-context-optimization',

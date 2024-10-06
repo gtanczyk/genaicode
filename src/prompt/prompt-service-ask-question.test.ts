@@ -17,7 +17,7 @@ vi.mock('@inquirer/prompts', () => ({
   input: vi.fn(),
 }));
 vi.mock('../cli/cli-params.js', () => ({
-  requireExplanations: false,
+  disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,
   explicitPrompt: false,

@@ -13,7 +13,7 @@ vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),
 }));
 vi.mock('../cli/cli-params.js', () => ({
-  requireExplanations: false,
+  disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,
   cliExplicitPrompt: false,

@@ -1,4 +1,4 @@
-import { requireExplanations } from '../cli/cli-params.js';
+import { disableExplanations } from '../cli/cli-params.js';
 import { FunctionDef } from '../ai-service/common.js';
 import { getSourceCode } from './function-defs/get-source-code.js';
 import { getImageAssets } from './function-defs/get-image-assets.js';
@@ -49,9 +49,9 @@ export const functionDefs: FunctionDef[] = [
   askQuestionReflect,
   // @ts-expect-error (fix this once fun defs are converted to ts)
 ].map((fd: FunctionDef) => {
-  if (requireExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {
+  if (!disableExplanations && fd.parameters.properties.explanation && !fd.parameters.required.includes('explanation')) {
     fd.parameters.required.unshift('explanation');
-  } else if (!requireExplanations) {
+  } else if (disableExplanations) {
     delete fd.parameters.properties.explanation;
   }
 

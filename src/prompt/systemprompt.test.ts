@@ -5,7 +5,7 @@ import '../files/find-files.js';
 import '../main/config.js';
 
 vi.mock('../cli/cli-params.js', () => ({
-  requireExplanations: false,
+  disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,
   explicitPrompt: false,

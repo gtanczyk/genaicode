@@ -74,7 +74,7 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--task-file=<file>`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limits the scope of code generation to files marked with `@CODEGEN` and their dependencies.
 - `--verbose-prompt`: Prints the prompt used for code generation.
-- `--require-explanations`: Requires explanations for all code generation operations.
+- `--disable-explanations`: Disables explanations for code generation operations. By default, explanations are enabled, as it improves response quality.
 - `--disable-context-optimization`: Disables the optimization that uses context paths for more efficient code generation.
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
 - `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
