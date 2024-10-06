@@ -27,6 +27,20 @@
 
 The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
 
+## Usage
+
+```bash
+echo '{"rootDir": "."}' > .genaicoderc # in your project folder
+npx genaicode --ui
+open http://localhost:1337/
+```
+
+## Demo
+
+_Demonstration usage of GenAIcode in UI mode, fixing a layout problem in GenAIcode UI itself._
+
+https://github.com/user-attachments/assets/6433d799-96af-4ee2-b8cf-5451e1469b34
+
 ## Quick Start
 
 1. Create a `.genaicoderc` file in your project folder:
@@ -51,7 +65,7 @@ export GOOGLE_CLOUD_REGION="..."
 3. Run GenAIcode:
 
 ```bash
-npx genaicode --dry-run --explicit-prompt="Analyze my project sourcecode and write it to HELLO_GENAICODE.md" --consider-all-files
+npx genaicode --ui
 ```
 
 ## CLI Features
@@ -132,12 +146,6 @@ This will start the web server on port 8080 instead of the default 1337.
 ## Examples
 
 For practical examples of using GenAIcode, visit our [Examples](examples/README.md) page.
-
-## Demo
-
-Here's a quick demo of GenAIcode in action:
-
-![demo](media/demo-for-readme.gif 'demo')
 
 ## More Information
 
