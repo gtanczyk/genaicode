@@ -1,6 +1,13 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
+import {
+  printTokenUsageAndCost,
+  processFunctionCalls,
+  FunctionCall,
+  PromptItem,
+  FunctionDef,
+  TokenUsage,
+} from './common.js';
 import { ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { modelOverrides } from '../main/config.js';
@@ -123,10 +130,11 @@ export async function generateContent(
   assert(response);
 
   // Print token usage for chat gpt
-  const usage = {
-    inputTokens: response.usage!.prompt_tokens,
+  const usage: TokenUsage = {
+    inputTokens: response.usage!.prompt_tokens - (response.usage?.prompt_tokens_details?.cached_tokens ?? 0),
     outputTokens: response.usage!.completion_tokens,
     totalTokens: response.usage!.total_tokens,
+    cacheReadTokens: response.usage?.prompt_tokens_details?.cached_tokens,
   };
   printTokenUsageAndCost({
     aiService: 'chat-gpt',

@@ -54,6 +54,13 @@ async function runSelfReflect(
 - Was your response clear, accurate, and helpful?
 - Are you confident that no further clarification or escalation is needed?
 
+Common problems/pitfals:
+
+- There is a in-depth question to the user, but actionType is set to confirmCodeGeneration, while it should be requestAnswer
+- Question was already answered before, but the assistant is asking the same question again
+- The question content is incomplete, for example the question content ends with a colon.
+- Saying that an analysis will be done, instead of actually doing the analysis.
+
 If your response meets these criteria, continue the conversation as usual. If you believe that escalating to a more advanced model would significantly improve assistance, please indicate that using the \`shouldEscalate\` parameter.`,
         functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
       },
@@ -64,6 +71,7 @@ If your response meets these criteria, continue the conversation as usual. If yo
     true,
     options,
   );
+  // TODO: return reason, and use it to improve next question call
   const shouldEscalate = result.find((call) => call.name === 'askQuestionReflect')?.args?.shouldEscalate as number;
   return shouldEscalate > 50;
 }

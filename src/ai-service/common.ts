@@ -3,7 +3,7 @@ import { functionDefs } from '../prompt/function-calling.js';
 import { CodegenOptions, AiServiceType } from '../main/codegen-types.js';
 import { collectCost } from '../main/common/cost-collector.js';
 
-interface TokenUsage {
+export interface TokenUsage {
   inputTokens: number | undefined | null;
   outputTokens: number | undefined | null;
   totalTokens: number | undefined | null;
