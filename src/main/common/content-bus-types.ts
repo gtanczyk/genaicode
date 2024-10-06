@@ -4,10 +4,15 @@ export enum ChatMessageType {
   SYSTEM = 'system',
 }
 
+export enum ChatMessageFlags {
+  CONVERSATION_SUMMARY = 'conversation-summary',
+}
+
 export interface ChatMessage {
   id: string;
   iterationId: string;
   type: ChatMessageType;
+  flags?: ChatMessageFlags[];
   content: string;
   timestamp: Date;
   data?: unknown;

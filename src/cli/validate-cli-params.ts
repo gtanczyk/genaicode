@@ -41,6 +41,7 @@ const allowedParameters: string[] = [
   '--disable-history',
   '--disable-vertex-unescape',
   '--disable-self-reflection',
+  '--disable-conversation-summary',
 ];
 
 /**

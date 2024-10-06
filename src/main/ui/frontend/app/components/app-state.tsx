@@ -10,7 +10,7 @@ import {
   resumeExecution,
 } from '../api/api-client.js';
 import { Usage } from '../api/api-types.js';
-import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
+import { ChatMessage } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
@@ -119,15 +119,6 @@ export const AppState = () => {
     try {
       await pauseExecution();
       setExecutionStatus('paused');
-      setChatMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution paused',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to pause execution:', error);
     }
@@ -137,15 +128,6 @@ export const AppState = () => {
     try {
       await resumeExecution();
       setExecutionStatus('executing');
-      setChatMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: `system_${Date.now()}`,
-          type: ChatMessageType.SYSTEM,
-          content: 'Execution resumed',
-          timestamp: new Date(),
-        },
-      ]);
     } catch (error) {
       console.error('Failed to resume execution:', error);
     }

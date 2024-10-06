@@ -49,6 +49,7 @@ vi.mock('../cli/cli-params.js', () => ({
   disableAiServiceFallback: undefined,
   disableHistory: true,
   disableSelfReflection: true,
+  disableConversationSummary: true,
 }));
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],

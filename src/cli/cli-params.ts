@@ -37,6 +37,7 @@ export const askQuestion = !params.includes('--disable-ask-question'); // Defaul
 export const interactive = params.includes('--interactive');
 export const ui = params.includes('--ui');
 export const disableSelfReflection = params.includes('--disable-self-reflection');
+export const disableConversationSummary = params.includes('--disable-conversation-summary');
 
 // Add support for --help option
 export const helpRequested = params.includes('--help');

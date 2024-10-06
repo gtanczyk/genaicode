@@ -1,4 +1,4 @@
-import { ChatMessageType, ContentProps } from './content-bus-types.js';
+import { ChatMessageFlags, ChatMessageType, ContentProps } from './content-bus-types.js';
 
 type ContentHandler = (content: ContentProps) => void;
 
@@ -13,19 +13,21 @@ export function unsetCurrentIterationId() {
   currentIterationId = null;
 }
 
-export function putUserMessage(message: string) {
-  putMessage(message, ChatMessageType.USER);
+type MessageArgs = [data?: unknown, flags?: ChatMessageFlags[]];
+
+export function putUserMessage(message: string, ...args: MessageArgs) {
+  putMessage(message, ChatMessageType.USER, ...args);
 }
 
-export function putSystemMessage(message: string, data?: unknown) {
-  putMessage(message, ChatMessageType.SYSTEM, data);
+export function putSystemMessage(message: string, ...args: MessageArgs) {
+  putMessage(message, ChatMessageType.SYSTEM, ...args);
 }
 
-export function putAssistantMessage(message: string, data?: unknown) {
-  putMessage(message, ChatMessageType.ASSISTANT, data);
+export function putAssistantMessage(message: string, ...args: MessageArgs) {
+  putMessage(message, ChatMessageType.ASSISTANT, ...args);
 }
 
-export function putMessage(message: string, type: ChatMessageType, data?: unknown) {
+export function putMessage(message: string, type: ChatMessageType, data?: unknown, flags?: ChatMessageFlags[]) {
   if (!currentIterationId) {
     console.warn('No current iteration ID set');
   }
@@ -38,14 +40,11 @@ export function putMessage(message: string, type: ChatMessageType, data?: unknow
       iterationId: currentIterationId!,
       content: message,
       type: type,
+      flags,
       timestamp: new Date(),
     },
     data,
   });
-}
-
-export function putContent(content: ContentProps) {
-  contentHandler?.(content);
 }
 
 export function registerContentHandler(handler: ContentHandler) {

@@ -25,6 +25,7 @@ import { putSystemMessage } from '../main/common/content-bus.js';
 import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
 import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
+import { executeStepGenerateSummary } from './steps/step-generate-summary.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -119,6 +120,9 @@ async function executePromptService(
     }));
   }
 
+  // Initial summary based on first user input
+  await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);
+
   // Execute the context optimization step
   if (!codegenPrompt.options.disableContextOptimization) {
     const optimizationResult = await executeStepContextOptimization(generateContentFn, prompt, codegenPrompt.options);
@@ -139,11 +143,15 @@ async function executePromptService(
       codegenPrompt.options,
     );
 
+    // Summary based on the ask-question conversation history (may be different from the initial summary)
+    await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);
+
     if (askQuestionResult === StepResult.BREAK) {
       return { result: [], prompt };
     }
   } else if (codegenPrompt.options.askQuestion === false) {
     console.log('Ask question is not enabled.');
+    // Also there is no need to generate conversation summary
   }
 
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [

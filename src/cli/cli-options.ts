@@ -119,6 +119,18 @@ const cliOptions: CliOption[] = [
       'Disable the question-asking feature. By default, the assistant can ask questions for clarification during the code generation process.',
   },
   {
+    name: '--disable-vertex-unescape',
+    description: 'Disable the unescaping of special characters in Vertex AI responses.',
+  },
+  {
+    name: '--disable-self-reflection',
+    description: 'Disable the self-reflection feature of the AI model.',
+  },
+  {
+    name: '--disable-conversation-summary',
+    description: 'Disable the summary generation feature of the AI model.',
+  },
+  {
     name: '--ui',
     description: 'Run the tool as a web server, and use it via browser.',
   },

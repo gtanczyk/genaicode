@@ -75,6 +75,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     disableAiServiceFallback: cliParams.disableAiServiceFallback,
     historyEnabled: !cliParams.disableHistory,
     selfReflectionEnabled: !cliParams.disableSelfReflection,
+    conversationSummaryEnabled: !cliParams.disableConversationSummary,
 
     isDev,
   };
