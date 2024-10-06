@@ -6,6 +6,7 @@ export enum ChatMessageType {
 
 export interface ChatMessage {
   id: string;
+  iterationId: string;
   type: ChatMessageType;
   content: string;
   timestamp: Date;

@@ -23,7 +23,12 @@ import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { runInteractiveMode } from './interactive/codegen-interactive.js';
 import { runCodegenUI } from './ui/codegen-ui.js';
-import { putSystemMessage, putUserMessage } from './common/content-bus.js';
+import {
+  putSystemMessage,
+  putUserMessage,
+  setCurrentIterationId,
+  unsetCurrentIterationId,
+} from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 
 /** Executes codegen */
@@ -92,6 +97,8 @@ export async function runCodegenIteration(
 ) {
   refreshFiles();
 
+  setCurrentIterationId();
+
   putUserMessage(options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.');
 
   if (rcConfig.lintCommand && !options.disableInitialLint) {
@@ -105,6 +112,7 @@ export async function runCodegenIteration(
         'Lint command failed. Aborting codegen, please fix lint issues before running codegen, or use --disable-initial-lint',
       );
       console.log('Lint errors:', stdout, stderr);
+      unsetCurrentIterationId();
       return;
     }
   } else if (rcConfig.lintCommand && options.disableInitialLint) {
@@ -112,6 +120,7 @@ export async function runCodegenIteration(
   }
 
   if (abortSignal?.aborted) {
+    unsetCurrentIterationId();
     throw new Error('Codegen iteration aborted');
   }
 
@@ -220,6 +229,8 @@ export async function runCodegenIteration(
       putSystemMessage('An unknown error occurred during codegen');
     }
     console.error('Error details:', error);
+  } finally {
+    unsetCurrentIterationId();
   }
 }
 
