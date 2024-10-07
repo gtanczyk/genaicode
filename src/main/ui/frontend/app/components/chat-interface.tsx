@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 import { MessageContainer } from './chat/message-container.js';
 import { SystemMessageContainer, SystemMessageBlock } from './chat/system-message-container.js';
@@ -48,22 +48,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const iterations = useMergedMessages(messages);
   const currentIterationId = executionStatus !== 'idle' ? iterations[iterations.length - 1]?.iterationId : null;
 
+  const isAtBottom = useCallback(() => {
+    if (!messagesContainerRef.current) return true;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    return Math.abs(scrollHeight - clientHeight - scrollTop) < 1 || scrollHeight <= clientHeight;
+  }, []);
+
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10; // 10px threshold
-      setIsScrolledToBottom(isAtBottom);
-      if (isAtBottom) {
+      const atBottom = isAtBottom();
+      setIsScrolledToBottom(atBottom);
+      if (atBottom) {
         setHasUnreadMessages(false);
       }
     };
 
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [isAtBottom]);
 
   useEffect(() => {
     if (isScrolledToBottom) {
@@ -198,7 +203,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         ))}
         <div ref={messagesEndRef} />
       </MessagesContainer>
-      {hasUnreadMessages && <UnreadMessagesNotification onClick={scrollToBottom} />}
+      {hasUnreadMessages && !isScrolledToBottom && <UnreadMessagesNotification onClick={scrollToBottom} />}
       <ProgressIndicator
         isVisible={executionStatus !== 'idle' && !currentQuestion}
         onInterrupt={onInterrupt}
