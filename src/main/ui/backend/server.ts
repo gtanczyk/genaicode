@@ -36,14 +36,13 @@ export async function startServer(service: Service) {
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
           frameSrc: ["'none'"],
+          frameAncestors: ["'self'", 'vscode-webview:', 'vscode-file:'],
         },
       },
       referrerPolicy: {
         policy: 'strict-origin-when-cross-origin',
       },
-      frameguard: {
-        action: 'deny',
-      },
+      frameguard: false,
     }),
   );
 

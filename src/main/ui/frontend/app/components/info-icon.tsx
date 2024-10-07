@@ -88,6 +88,12 @@ const Tooltip = styled.div`
   max-width: 300px;
   z-index: 1000;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+  @media (max-width: 576px) {
+    left: 0;
+    background-color: ${(props) => props.theme.colors.pageBackground};
+    width: fit-content;
+  }
 `;
 
 const TooltipTitle = styled.h3`
