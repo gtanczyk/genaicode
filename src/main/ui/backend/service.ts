@@ -183,10 +183,11 @@ export class Service {
   async deleteIteration(iterationId: string): Promise<void> {
     const currentIterationId = this.executionStatus !== 'idle' ? this.content.slice(-1)[0]?.message?.iterationId : null;
     this.content = this.content.filter(
-      (content) => content.message?.iterationId !== iterationId || iterationId === currentIterationId,
+      (content) =>
+        content.message?.iterationId !== iterationId ||
+        // do not delete ongoing iterations
+        iterationId === currentIterationId,
     );
-
-    putSystemMessage(`Iteration ${iterationId} deleted successfully`);
   }
 
   private waitForQuestionAnswer(): Promise<void> {
