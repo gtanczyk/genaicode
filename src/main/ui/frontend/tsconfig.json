@@ -6,7 +6,7 @@
     "moduleResolution": "node",
     "lib": ["ES2022", "dom"],
     "outDir": "../../../dist/main/ui/frontend",
-    "rootDir": ".",
+    "rootDir": "../../..",
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -27,6 +27,6 @@
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["index.js"],
+  "include": ["index.js", "vite-env.d.ts"],
   "exclude": ["node_modules"]
 }
