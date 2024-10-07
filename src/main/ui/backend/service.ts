@@ -180,6 +180,15 @@ export class Service {
     return rcConfig;
   }
 
+  async deleteIteration(iterationId: string): Promise<void> {
+    const currentIterationId = this.executionStatus !== 'idle' ? this.content.slice(-1)[0]?.message?.iterationId : null;
+    this.content = this.content.filter(
+      (content) => content.message?.iterationId !== iterationId || iterationId === currentIterationId,
+    );
+
+    putSystemMessage(`Iteration ${iterationId} deleted successfully`);
+  }
+
   private waitForQuestionAnswer(): Promise<void> {
     return new Promise((resolve, reject) => {
       const checkQuestion = () => {

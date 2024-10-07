@@ -139,6 +139,11 @@ export const getRcConfig = async (): Promise<RcConfig> => {
   return response.data.rcConfig;
 };
 
+// New API method to delete an iteration
+export const deleteIteration = async (iterationId: string): Promise<void> => {
+  await api.delete(`/delete-iteration/${iterationId}`);
+};
+
 // Error handling middleware
 api.interceptors.response.use(
   (response) => response,

@@ -46,15 +46,36 @@ export const IterationHeader = styled.div`
   top: -22px;
   z-index: 10;
 
-  span.title {
+  > .title {
     display: flex;
     align-items: start;
     flex-grow: 1;
   }
-  span.meta {
+  > .meta {
     font-size: 12px;
     font-weight: normal;
     color: ${(props) => props.theme.colors.textSecondary};
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+`;
+
+export const DeleteButton = styled.button`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+  border: none;
+  color: ${(props) => props.theme.colors.textSecondary};
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: ${(props) => props.theme.colors.backgroundSecondary};
   }
 `;
 

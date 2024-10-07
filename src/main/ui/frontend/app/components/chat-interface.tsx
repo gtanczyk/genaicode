@@ -11,11 +11,13 @@ import {
   CollapseIcon,
   ExpandIcon,
   IterationContent,
+  DeleteButton,
 } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { UnreadMessagesNotification } from './unread-messages-notification.js';
 import { QuestionHandler } from './question-handler.js';
 import { ProgressIndicator } from './progress-indicator.js';
+import { deleteIteration } from '../api/api-client.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -41,8 +43,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
+  const [confirmDeleteIteration, setConfirmDeleteIteration] = useState<string | null>(null);
 
   const iterations = useMergedMessages(messages);
+  const currentIterationId = executionStatus !== 'idle' ? iterations[iterations.length - 1]?.iterationId : null;
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -119,16 +123,39 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setHasUnreadMessages(false);
   };
 
+  const handleDeleteIteration = async (iterationId: string) => {
+    if (confirmDeleteIteration === iterationId) {
+      try {
+        await deleteIteration(iterationId);
+        setConfirmDeleteIteration(null);
+      } catch (error) {
+        console.error('Failed to delete iteration:', error);
+      }
+    } else {
+      setConfirmDeleteIteration(iterationId);
+    }
+  };
+
   return (
     <ChatContainer>
       <MessagesContainer ref={messagesContainerRef}>
         {iterations.map((iteration, iterationIndex) => (
           <IterationContainer key={iteration.iterationId}>
-            <IterationHeader onClick={() => toggleIterationCollapse(iteration.iterationId)}>
-              {collapsedIterations.has(iteration.iterationId) ? <ExpandIcon /> : <CollapseIcon />}
-              <span className="title">{iteration.iterationTitle ?? `Iteration ${iteration.iterationId}`}</span>
+            <IterationHeader>
+              <div className="title" onClick={() => toggleIterationCollapse(iteration.iterationId)}>
+                {collapsedIterations.has(iteration.iterationId) ? <ExpandIcon /> : <CollapseIcon />}
+                <span>{iteration.iterationTitle ?? `Iteration ${iteration.iterationId}`}</span>
+              </div>
               <span className="meta">
                 {iteration.timestampStart.toLocaleString()} - {iteration.timestampEnd.toLocaleString()}
+                {iteration.iterationId !== currentIterationId && (
+                  <DeleteButton
+                    onClick={() => handleDeleteIteration(iteration.iterationId)}
+                    title={confirmDeleteIteration === iteration.iterationId ? 'Confirm deletion' : 'Delete iteration'}
+                  >
+                    {confirmDeleteIteration === iteration.iterationId ? '🗑️ Confirm' : '🗑️'}
+                  </DeleteButton>
+                )}
               </span>
             </IterationHeader>
             <IterationContent isCollapsed={collapsedIterations.has(iteration.iterationId)}>
