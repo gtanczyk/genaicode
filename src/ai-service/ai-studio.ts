@@ -149,7 +149,7 @@ export async function generateContent(
     }
   }
 
-  return processFunctionCalls(functionCalls);
+  return processFunctionCalls(functionCalls, functionDefs);
 }
 
 function getModel(

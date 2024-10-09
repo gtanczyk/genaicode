@@ -70,7 +70,7 @@ describe('processFunctionCalls', () => {
       { name: functionDefs[0].name, args: {} },
     ];
 
-    const result = processFunctionCalls(validFunctionCalls);
+    const result = processFunctionCalls(validFunctionCalls, functionDefs);
 
     expect(result).toEqual(validFunctionCalls);
   });
@@ -78,7 +78,9 @@ describe('processFunctionCalls', () => {
   it('should throw an error for unknown function names', () => {
     const invalidFunctionCalls = [{ name: 'unknownFunction', args: {} }];
 
-    expect(() => processFunctionCalls(invalidFunctionCalls)).toThrow('Unknown function name: unknownFunction');
+    expect(() => processFunctionCalls(invalidFunctionCalls, functionDefs)).toThrow(
+      'Unknown function name: unknownFunction',
+    );
   });
 
   it('should correctly handle explanations', () => {
@@ -89,7 +91,7 @@ describe('processFunctionCalls', () => {
       { name: functionDefs[0].name, args: {} },
     ];
 
-    processFunctionCalls(functionCallsWithExplanation);
+    processFunctionCalls(functionCallsWithExplanation, functionDefs);
 
     expect(consoleLogSpy).toHaveBeenCalledWith('Explanations:', ['This is an explanation']);
 
@@ -102,7 +104,7 @@ describe('processFunctionCalls', () => {
       { name: functionDefs[0].name, args: {} },
     ];
 
-    const result = processFunctionCalls(functionCalls);
+    const result = processFunctionCalls(functionCalls, functionDefs);
 
     expect(result).toEqual(functionCalls);
     expect(result.length).toBe(2);

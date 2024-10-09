@@ -115,5 +115,5 @@ export async function generateContent(
       args: item.input as Record<string, unknown>,
     }));
 
-  return processFunctionCalls(functionCalls);
+  return processFunctionCalls(functionCalls, functionDefs);
 }

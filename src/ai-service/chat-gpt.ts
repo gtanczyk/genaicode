@@ -163,7 +163,7 @@ export async function generateContent(
       };
     });
 
-    return processFunctionCalls(functionCalls);
+    return processFunctionCalls(functionCalls, functionDefs);
   } else {
     throw new Error('No tool calls found in response');
   }
