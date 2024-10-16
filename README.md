@@ -21,7 +21,8 @@
 
 ---
 
-> [!WARNING] 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
+> [!WARNING]
+> 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
 
 ---
 
