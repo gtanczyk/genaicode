@@ -24,12 +24,12 @@ function mockExistsSync(paths: string[]) {
 
 // Test for findRcFile
 describe('findRcFile', () => {
-  it('should find .genaicoderc in the current or parent directories', () => {
+  it('should find .genaicoderc in the current or parent directories', async () => {
     vi.mocked(fs).existsSync.mockImplementation(mockExistsSync([mockRcFilePath]));
     vi.mocked(path).dirname.mockImplementation((p) => (p === '/project' ? '/' : '/project'));
     vi.mocked(path).join.mockImplementation((...args) => args.join('/'));
 
-    const result = findRcFile();
+    const result = await findRcFile();
     expect(result).toBe(mockRcFilePath);
   });
 
@@ -37,7 +37,7 @@ describe('findRcFile', () => {
     vi.mocked(fs).existsSync.mockReturnValue(false);
     vi.mocked(path).dirname.mockImplementation((p) => (p === '/' ? '/' : '/project'));
 
-    expect(() => findRcFile()).toThrowError(`${CODEGENRC_FILENAME} not found in any parent directory`);
+    expect(findRcFile()).rejects.toThrowError(`${CODEGENRC_FILENAME} not found in any parent directory`);
   });
 });
 

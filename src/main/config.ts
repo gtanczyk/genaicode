@@ -24,7 +24,7 @@ const DEFAULT_EXTENSIONS: string[] = [
 const DEFAULT_IGNORE_PATHS: string[] = ['node_modules', 'build', 'dist', 'package-lock.json', 'coverage'];
 
 // Read and parse the configuration
-const rcFilePath: string = findRcFile();
+const rcFilePath: string = await findRcFile();
 export const rcConfig: RcConfig = parseRcFile(rcFilePath);
 
 // Use extensions from .genaicoderc if available, otherwise use default

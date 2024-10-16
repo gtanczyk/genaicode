@@ -25,15 +25,18 @@
 
 ---
 
-The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with analysis, and modification of code, analysis and generation of assets. Works on any code base, can modify multiple files.
+The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with analysis, and modification of code, and image assets. Works on any code base, can modify multiple files. Can be used via web browser, as a interactive or non-interactive CLI command, or as a node.js library.
 
 ## Quick Start
 
+In your project root directory, run:
+
 ```bash
-echo '{"rootDir": "."}' > .genaicoderc
 npx genaicode --ui
 open http://localhost:1337
 ```
+
+This will start the GenAIcode web server and open the browser with the UI.
 
 ## CLI Features
 

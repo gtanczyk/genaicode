@@ -164,6 +164,7 @@ function getGenModel(
     : (modelOverrides.vertexAi?.default ?? defaultModel);
 
   console.log(`Using Vertex AI model: ${model}`);
+  assert(process.env.GOOGLE_CLOUD_PROJECT, 'GOOGLE_CLOUD_PROJECT environment variable is not set');
 
   // Instantiate the models
   return vertex_ai.preview.getGenerativeModel({

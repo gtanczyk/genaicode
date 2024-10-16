@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import assert from 'node:assert';
+import { confirm } from '@inquirer/prompts';
 
 import { isAncestorDirectory } from '../files/file-utils.js';
 
@@ -45,11 +46,26 @@ export interface RcConfig {
 }
 
 // Find .genaicoderc file
-export function findRcFile(): string {
+export async function findRcFile(): Promise<string> {
   let rcFilePath = process.cwd();
   while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
     const parentDir = path.dirname(rcFilePath);
     if (parentDir === rcFilePath) {
+      // We've reached the root directory, .genaicoderc not found,
+      // so lets ask the user to create one in the current directory
+      // but only if genaicode is run in interactive or ui mode
+      if (process.argv.includes('--interactive') || process.argv.includes('--ui')) {
+        rcFilePath = process.cwd();
+        const createRcFile = await confirm({
+          message: `${CODEGENRC_FILENAME} not found in any parent directory, would you like to create one in the current directory (${rcFilePath})?`,
+          default: false,
+        });
+        if (createRcFile) {
+          fs.writeFileSync(path.join(rcFilePath, CODEGENRC_FILENAME), JSON.stringify({ rootDir: '.' }, null, 2));
+          console.log(`Created ${CODEGENRC_FILENAME} in ${rcFilePath}`);
+          return path.join(rcFilePath, CODEGENRC_FILENAME);
+        }
+      }
       throw new Error(`${CODEGENRC_FILENAME} not found in any parent directory`);
     }
     rcFilePath = parentDir;

@@ -97,6 +97,7 @@ export async function generateContent(
     ? (modelOverrides.anthropic?.cheap ?? defaultModel)
     : (modelOverrides.anthropic?.default ?? defaultModel);
   console.log(`Using Anthropic model: ${model}`);
+  assert(process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY environment variable is not set');
 
   let retryCount = 0;
   let response;

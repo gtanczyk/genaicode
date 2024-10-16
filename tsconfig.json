@@ -2,7 +2,7 @@
   "compilerOptions": {
     "allowJs": true,
     "target": "ES2022",
-    "module": "es2020",
+    "module": "es2022",
     "moduleResolution": "node",
     "lib": ["ES2022", "dom"],
     "outDir": "./dist",

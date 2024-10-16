@@ -87,6 +87,7 @@ export async function generateContent(
     ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
     : (modelOverrides.chatGpt?.default ?? defaultModel);
   console.log(`Using OpenAI model: ${model}`);
+  assert(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY environment variable is not set');
 
   let retryCount = 0;
   const maxRetries = 3;

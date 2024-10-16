@@ -29,6 +29,7 @@ export async function generateImage(
   try {
     const model = contextImagePath ? 'dall-e-2' : cheap ? 'dall-e-2' : 'dall-e-3';
     console.log(`Using DALL-E model: ${model}`);
+    assert(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY environment variable is not set');
 
     const options: OpenAI.Images.ImageGenerateParams = {
       model: model,
