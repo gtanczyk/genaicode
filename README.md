@@ -21,51 +21,18 @@
 
 ---
 
-### 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
+> [!WARNING] 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
 
 ---
 
-The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with the generation of repetitive or complex code.
-
-## Usage
-
-```bash
-echo '{"rootDir": "."}' > .genaicoderc # in your project folder
-npx genaicode --ui
-open http://localhost:1337/
-```
-
-## Demo
-
-_Demonstration usage of GenAIcode in UI mode, fixing a layout problem in GenAIcode UI itself._
-
-https://github.com/user-attachments/assets/6433d799-96af-4ee2-b8cf-5451e1469b34
+The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with analysis, and modification of code, analysis and generation of assets. Works on any code base, can modify multiple files.
 
 ## Quick Start
 
-1. Create a `.genaicoderc` file in your project folder:
-
-```
+```bash
 echo '{"rootDir": "."}' > .genaicoderc
-```
-
-2. Set up AI service credentials:
-
-```bash
-# For Vertex AI:
-gcloud auth login
-export GOOGLE_CLOUD_PROJECT="..."
-
-# For Claude via Vertex AI:
-gcloud auth login
-export GOOGLE_CLOUD_PROJECT="..."
-export GOOGLE_CLOUD_REGION="..."
-```
-
-3. Run GenAIcode:
-
-```bash
 npx genaicode --ui
+open http://localhost:1337
 ```
 
 ## CLI Features
@@ -84,6 +51,8 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
 - `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
 - `--ai-studio`: Uses Google AI Studio for code generation, an alternative to Vertex AI with potentially different capabilities or limitations.
+- `--anthropic`: Uses Anthropic Claude model
+- `--chat-gpt`: Uses OpenAI GPT model
 - `--explicit-prompt=<prompt>`: Provides an explicit prompt for code generation.
 - `--task-file=<file>`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limits the scope of code generation to files marked with `@CODEGEN` and their dependencies.
