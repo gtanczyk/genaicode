@@ -24,6 +24,13 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./*": "./*"
+  },
   "scripts": {
     "cli": "node ./bin/genaicode.cjs",
     "interactive-cli": "node ./bin/genaicode.cjs --interactive",
