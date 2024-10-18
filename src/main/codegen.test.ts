@@ -22,6 +22,7 @@ vi.mock('../files/cache-file.js');
 vi.mock('../cli/cli-params.js', () => ({
   interactive: false,
   ui: false,
+  uiPort: 1337,
   disableExplanations: true,
   considerAllFiles: false,
   dependencyTree: false,

@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
@@ -26,10 +26,14 @@
   ],
   "exports": {
     ".": {
-      "types": "./src/index.d.ts",
-      "default": "./src/index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
-    "./*": "./*"
+    "./vite-plugin": {
+      "types": "./dist/vite-genaicode/vite-genaicode-plugin.d.ts",
+      "default": "./dist/vite-genaicode/vite-genaicode-plugin.js"
+    },
+    "./*": "./dist/*"
   },
   "scripts": {
     "cli": "node ./bin/genaicode.cjs",

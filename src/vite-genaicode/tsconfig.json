@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "target": "ES2022",
+    "module": "es2020",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "dom"],
+    "outDir": "../../dist/vite-genaicode",
+    "rootDir": "../..",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "types": ["vitest/globals"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "ts-node": {
+    "esm": true,
+    "compiler": "typescript",
+    "experimentalSpecifierResolution": "node"
+  },
+  "include": ["vite-genaicode-frontend.ts", "vite-env.d.ts"],
+  "exclude": ["node_modules"]
+}

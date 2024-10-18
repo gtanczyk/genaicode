@@ -73,6 +73,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     disableCache: cliParams.disableCache,
     interactive: cliParams.interactive,
     ui: cliParams.ui,
+    uiPort: cliParams.uiPort,
     disableAiServiceFallback: cliParams.disableAiServiceFallback,
     historyEnabled: !cliParams.disableHistory,
     selfReflectionEnabled: !cliParams.disableSelfReflection,

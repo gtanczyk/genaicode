@@ -8,16 +8,20 @@ import http from 'http';
 
 import { createRouter } from './api.js';
 import { Service } from './service.js';
-import { uiPort } from '../../../cli/cli-params.js';
 
-export async function startServer(service: Service) {
+type ServerOptions = {
+  uiPort: number;
+  additionalFrameAncestors?: string[];
+};
+
+export async function startServer(service: Service, { uiPort, additionalFrameAncestors }: ServerOptions) {
   const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
   const app = express();
 
   // CORS configuration
   const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : 'http://localhost:1337',
+    origin: `http://localhost:${uiPort}`,
     optionsSuccessStatus: 200,
   };
   app.use(cors(corsOptions));
@@ -36,7 +40,7 @@ export async function startServer(service: Service) {
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
           frameSrc: ["'none'"],
-          frameAncestors: ["'self'", 'vscode-webview:', 'vscode-file:'],
+          frameAncestors: ["'self'", 'vscode-webview:', 'vscode-file:', ...(additionalFrameAncestors ?? [])],
         },
       },
       referrerPolicy: {

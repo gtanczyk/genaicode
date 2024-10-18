@@ -33,6 +33,8 @@ export interface CodegenOptions {
   askQuestion?: boolean;
   interactive?: boolean;
   ui?: boolean;
+  uiPort?: number;
+  uiFrameAncestors?: string[];
   disableCache?: boolean;
   dependencyTree?: boolean;
   historyEnabled?: boolean;
