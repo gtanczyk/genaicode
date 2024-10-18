@@ -81,7 +81,6 @@ export async function handleStartCodeGeneration({ askQuestionCall }: ActionHandl
 
 export async function handleRequestFilesContent({
   askQuestionCall,
-  prompt,
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   const requestedFiles = askQuestionCall.args?.requestFilesContent ?? [];
@@ -90,25 +89,30 @@ export async function handleRequestFilesContent({
 
   const { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
 
+  const sourceCallId = (askQuestionCall.id ?? '') + '_source';
   const assistant: AssistantItem = {
     type: 'assistant',
     text: askQuestionCall.args?.content ?? '',
-    functionCalls: [askQuestionCall],
+    functionCalls: [askQuestionCall, { name: 'getSourceCode', id: sourceCallId, args: { filePaths: legitimateFiles } }],
   };
+
+  const sourceCode = getSourceCode({ filterPaths: legitimateFiles, forceAll: true }, options);
   const user: UserItem = {
     type: 'user',
-    text: '',
-    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+    text:
+      illegitimateFiles.length > 0
+        ? 'Some files are not legitimate and their content cannot be provided'
+        : 'All requested file contents have been provided.',
+    functionResponses: [
+      { name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined },
+      {
+        name: 'getSourceCode',
+        call_id: sourceCallId,
+        content: JSON.stringify(sourceCode),
+      },
+    ],
+    cache: true,
   };
-
-  if (legitimateFiles.length > 0) {
-    addFileContentsToPrompt(prompt, legitimateFiles, options);
-  }
-
-  user.text =
-    illegitimateFiles.length > 0
-      ? 'Some files are not legitimate and their content cannot be provided'
-      : 'All requested file contents have been provided automatically.';
 
   return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
 }
@@ -270,20 +274,6 @@ function categorizeLegitimateFiles(requestedFiles: string[]): {
   });
 
   return { legitimateFiles, illegitimateFiles };
-}
-
-function addFileContentsToPrompt(prompt: PromptItem[], filesToAdd: string[], options: CodegenOptions) {
-  putSystemMessage('Automatically providing content for legitimate files', filesToAdd);
-  const response = getSourceCodeResponse(prompt);
-  if (!response || !response.content) {
-    throw new Error('Could not find source code response');
-  }
-  const sourceCode = getSourceCode({ filterPaths: filesToAdd, forceAll: true }, options);
-  const contentObj = JSON.parse(response.content);
-  filesToAdd.forEach((file) => {
-    contentObj[file] = sourceCode[file];
-  });
-  response.content = JSON.stringify(contentObj);
 }
 
 function updatePermissions(askQuestionCall: AskQuestionCall, options: CodegenOptions) {

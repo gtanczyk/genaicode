@@ -29,6 +29,7 @@ export interface AssistantItem {
   type: 'assistant';
   text: string;
   functionCalls: FunctionCall[];
+  cache?: true;
 }
 
 export interface UserItem {
@@ -39,6 +40,7 @@ export interface UserItem {
     call_id: string;
     content: string | undefined;
   }>;
+  cache?: true;
 }
 
 export interface ActionResult {
