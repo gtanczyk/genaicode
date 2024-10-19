@@ -2,7 +2,6 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 import { ViteDevServer } from 'vite';
-import { runCodegenUI } from '../main/ui/codegen-ui.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,8 +11,10 @@ let started = false;
 const GENAICODE_PORT = 1338;
 
 export default function viteGenaicode() {
-  function start() {
+  async function start() {
     if (started) return;
+
+    const { runCodegenUI } = await import('../main/ui/codegen-ui.js');
 
     started = true;
     console.log('Starting GenAIcode in UI mode...');

@@ -1,6 +1,5 @@
 import { setMaxListeners } from 'events';
 import { CodegenOptions } from '../codegen-types.js';
-import { runCodegenIteration } from '../codegen.js';
 import { handleUserInterrupt } from './user-interrupt.js';
 
 export let abortController: AbortController | null = null;
@@ -11,6 +10,8 @@ export const runCodegenWorker = async (
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<void> => {
   console.log('Starting operation...');
+  // not a top level import to avoid circular dependency
+  const { runCodegenIteration } = await import('../codegen.js');
   abortController = new AbortController();
   setMaxListeners(Infinity, abortController.signal);
   const removeInterruptHandler = createInterruptHandler(abortController);

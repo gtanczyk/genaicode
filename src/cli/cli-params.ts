@@ -94,7 +94,7 @@ if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !help
     console.log('Autodetected --ai-studio');
     aiStudio = true;
   } else {
-    throw new Error('Missing --chat-gpt, --anthropic, --ai-studio, --vertex-ai, or --vertex-ai-claude');
+    console.warn('Missing --chat-gpt, --anthropic, --ai-studio, --vertex-ai, or --vertex-ai-claude');
   }
 }
 
