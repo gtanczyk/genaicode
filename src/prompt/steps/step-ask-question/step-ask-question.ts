@@ -5,17 +5,15 @@ import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../
 import { abortController } from '../../../main/interactive/codegen-worker.js';
 import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
 import { AskQuestionCall, ActionType, ActionHandler, SelfReflectionContext } from './step-ask-question-types.js';
-import {
-  handleCancelCodeGeneration,
-  handleConfirmCodeGeneration,
-  handleStartCodeGeneration,
-  handleRequestFilesContent,
-  handleRequestPermissions,
-  handleRemoveFilesFromContext,
-  handleRequestAnswer,
-  handleDefaultAction,
-  handleContextOptimization,
-} from './step-ask-question-handlers.js';
+import { handleRequestFilesContent } from './handlers/request-files-content.js';
+import { handleContextOptimization } from './handlers/context-optimization.js';
+import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
+import { handleRequestPermissions } from './handlers/request-permissions.js';
+import { handleDefaultAction } from './handlers/default-action.js';
+import { handleRequestAnswer } from './handlers/handle-request-answer.js';
+import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
+import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
+import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
 import { performSelfReflection } from './step-ask-question-reflect.js';
 
 export async function executeStepAskQuestion(
