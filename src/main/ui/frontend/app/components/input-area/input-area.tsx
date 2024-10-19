@@ -60,10 +60,10 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
           onImagePaste={handleImagePaste}
         />
       </TextareaContainer>
-      <ImageUpload 
-        images={images} 
-        onImagesChange={handleImageUpload} 
-        error={error} 
+      <ImageUpload
+        images={images}
+        onImagesChange={handleImageUpload}
+        error={error}
         setError={setError}
         fileInputRef={fileInputRef}
       />
