@@ -10,6 +10,7 @@ import {
   resumeExecution,
 } from '../api/api-client.js';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
+import { Question } from '../../../common/api-types.js';
 
 interface AppHandlersProps {
   currentPrompt: string;
@@ -19,9 +20,7 @@ interface AppHandlersProps {
   setExecutionStatus: React.Dispatch<React.SetStateAction<'executing' | 'idle' | 'paused'>>;
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setCurrentQuestion: React.Dispatch<
-    React.SetStateAction<{ id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null>
-  >;
+  setCurrentQuestion: React.Dispatch<React.SetStateAction<Question | null>>;
   codegenOptions: CodegenOptions;
   setCodegenOptions: (options: CodegenOptions) => void;
 }

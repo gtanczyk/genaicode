@@ -2,7 +2,7 @@ import React, { ReactNode, useState } from 'react';
 import styled from 'styled-components';
 import '@fontsource/press-start-2p';
 import { UsageDisplay } from './usage-display.js';
-import { Usage } from '../api/api-types.js';
+import { Usage } from '../../../common/api-types.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;

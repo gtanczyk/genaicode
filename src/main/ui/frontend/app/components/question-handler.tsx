@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { StyledTextarea } from './styled-textarea';
+import { Question } from '../../../common/api-types';
 
 interface QuestionHandlerProps {
   onSubmit: (answer: string, confirmed?: boolean) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
-  question: { id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null;
+  question: Question | null;
   executionStatus: 'idle' | 'executing' | 'paused';
 }
 
@@ -50,7 +51,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     <HandlerContainer>
       {question ? (
         <AnswerForm onSubmit={handleSubmit}>
-          {question.isConfirmation?.includeAnswer !== false && (
+          {question.confirmation?.includeAnswer !== false && (
             <StyledTextarea
               value={answer}
               onChange={setAnswer}
@@ -58,17 +59,19 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               maxViewportHeight={0.3}
             />
           )}
-          {!question.isConfirmation && (
+          {!question.confirmation && (
             <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
           )}
-          {question.isConfirmation && (
+          {question.confirmation && (
             <ButtonGroup>
-              <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
+              <ConfirmButton onClick={() => handleConfirmation(true)}>
+                {question.confirmation.confirmLabel}
+              </ConfirmButton>
               <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-                No
+                {question.confirmation.declineLabel}
               </ConfirmButton>
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>

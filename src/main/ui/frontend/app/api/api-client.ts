@@ -2,7 +2,7 @@ import axios from 'axios';
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
-import { Usage } from './api-types.js';
+import { Question, Usage } from '../../../common/api-types.js';
 
 const API_BASE_URL = '/api';
 
@@ -115,11 +115,7 @@ export const resumeExecution = async (): Promise<void> => {
   await api.post('/resume-execution');
 };
 
-export const getCurrentQuestion = async (): Promise<{
-  id: string;
-  text: string;
-  isConfirmation: { includeAnswer: boolean } | undefined;
-} | null> => {
+export const getCurrentQuestion = async (): Promise<Question | null> => {
   const response = await api.get('/current-question');
   return response.data.question;
 };

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { rcConfig } from '../../config.js';
 import { AiServiceType, CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
@@ -5,18 +6,7 @@ import { runCodegenWorker, abortController } from '../../interactive/codegen-wor
 import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { putSystemMessage } from '../../common/content-bus.js';
-import crypto from 'crypto';
-
-interface CodegenResult {
-  success: boolean;
-  message?: string;
-}
-
-interface Question {
-  id: string;
-  text: string;
-  isConfirmation: { includeAnswer: boolean } | undefined;
-}
+import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 
 interface ImageData {
   buffer: Buffer;
@@ -32,7 +22,7 @@ export class Service {
     question: string;
     answer: string;
     confirmed: boolean | undefined;
-    isConfirmation: { includeAnswer: boolean } | undefined;
+    confirmation: ConfirmationProps;
   }> = [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
@@ -140,13 +130,13 @@ export class Service {
 
   async askQuestion(
     question: string,
-    isConfirmation: { includeAnswer: boolean } | undefined,
+    confirmation: ConfirmationProps,
   ): Promise<{ answer: string; confirmed: boolean | undefined }> {
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
       text: question,
-      isConfirmation,
+      confirmation,
     };
 
     await this.waitForQuestionAnswer();
@@ -166,7 +156,7 @@ export class Service {
         question: this.currentQuestion.text,
         answer: answer,
         confirmed,
-        isConfirmation: this.currentQuestion.isConfirmation,
+        confirmation: this.currentQuestion.confirmation,
       });
       this.currentQuestion = null;
     }

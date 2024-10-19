@@ -18,10 +18,11 @@ import { UnreadMessagesNotification } from './unread-messages-notification.js';
 import { QuestionHandler } from './question-handler.js';
 import { ProgressIndicator } from './progress-indicator.js';
 import { deleteIteration } from '../api/api-client.js';
+import { Question } from '../../../common/api-types.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  currentQuestion: { id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null;
+  currentQuestion: Question | null;
   onQuestionSubmit: (answer: string, confirmed?: boolean) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { AiServiceType } from '../../../../codegen-types.js';
-import { Usage } from '../api/api-types.js';
+import { Usage } from '../../../common/api-types.js';
 
 interface UsageDisplayProps {
   usage: Usage;

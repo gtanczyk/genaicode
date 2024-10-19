@@ -9,7 +9,7 @@ import {
   pauseExecution,
   resumeExecution,
 } from '../api/api-client.js';
-import { Usage } from '../api/api-types.js';
+import { Question, Usage } from '../../../common/api-types.js';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
@@ -23,11 +23,7 @@ export const AppState = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<{
-    id: string;
-    text: string;
-    isConfirmation: { includeAnswer: boolean } | undefined;
-  } | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [theme, setTheme] = useState('dark');
   const [usage, setUsage] = useState<Usage>();
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
