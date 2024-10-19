@@ -2,6 +2,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 import { ViteDevServer } from 'vite';
+import { AddressInfo } from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,7 +12,7 @@ let started = false;
 const GENAICODE_PORT = 1338;
 
 export default function viteGenaicode() {
-  async function start() {
+  async function start(port: number) {
     if (started) return;
 
     const { runCodegenUI } = await import('../main/ui/codegen-ui.js');
@@ -21,7 +22,7 @@ export default function viteGenaicode() {
     runCodegenUI({
       ui: true,
       uiPort: GENAICODE_PORT,
-      uiFrameAncestors: ['http://localhost:5173'],
+      uiFrameAncestors: ['http://localhost:' + port],
       aiService: 'vertex-ai',
       isDev: false,
     });
@@ -34,7 +35,7 @@ export default function viteGenaicode() {
 
     configureServer(server: ViteDevServer) {
       server.httpServer?.once('listening', () => {
-        start();
+        start((server.httpServer!.address() as AddressInfo).port);
       });
     },
 
