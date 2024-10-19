@@ -10,7 +10,7 @@ let genAICodeProcess: ChildProcess;
 describe('genaicode ui', () => {
   beforeAll(async () => {
     // Start GenAIcode in UI mode
-    genAICodeProcess = spawn('node', ['./bin/genaicode.cjs', '--ui', '--force-dist'], {
+    genAICodeProcess = spawn('node', ['./bin/genaicode.cjs', '--ui', '--vertex-ai', '--force-dist'], {
       cwd: path.resolve(__dirname, '..'),
       env: { ...process.env, NODE_ENV: 'test' },
     });
