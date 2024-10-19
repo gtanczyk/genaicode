@@ -14,7 +14,7 @@ import {
 } from '../ai-service/common.js';
 import { importantContext } from '../main/config.js';
 import { AiServiceType, CodegenOptions, ImagenType } from '../main/codegen-types.js';
-import { executeStepAskQuestion } from './steps/step-ask-question.js';
+import { executeStepAskQuestion } from './steps/step-ask-question/step-ask-question.js';
 import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
 import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
 import { executeStepGenerateImage } from './steps/step-generate-image.js';

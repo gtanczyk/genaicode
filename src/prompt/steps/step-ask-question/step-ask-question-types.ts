@@ -1,6 +1,6 @@
-import { FunctionCall, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
-import { StepResult } from './steps-types.js';
+import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../ai-service/common.js';
+import { CodegenOptions } from '../../../main/codegen-types.js';
+import { StepResult } from '../steps-types.js';
 
 export type ActionType =
   | 'requestAnswer'

@@ -1,9 +1,9 @@
-import { PromptItem } from '../../ai-service/common.js';
-import { StepResult } from './steps-types.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
-import { askUserForConfirmation, askUserForInput } from '../../main/common/user-actions.js';
-import { putSystemMessage } from '../../main/common/content-bus.js';
-import { getSourceFiles, refreshFiles } from '../../files/find-files.js';
+import { PromptItem } from '../../../ai-service/common.js';
+import { StepResult } from '../steps-types.js';
+import { CodegenOptions } from '../../../main/codegen-types.js';
+import { askUserForConfirmation, askUserForInput } from '../../../main/common/user-actions.js';
+import { putSystemMessage } from '../../../main/common/content-bus.js';
+import { getSourceFiles, refreshFiles } from '../../../files/find-files.js';
 import {
   AskQuestionCall,
   AssistantItem,
@@ -11,9 +11,9 @@ import {
   ActionResult,
   ActionHandlerProps,
 } from './step-ask-question-types.js';
-import { executeStepContextOptimization } from './step-context-optimization.js';
-import { getSourceCodeResponse } from './steps-utils.js';
-import { getSourceCode } from '../../files/read-files.js';
+import { executeStepContextOptimization } from '../step-context-optimization.js';
+import { getSourceCodeResponse } from '../steps-utils.js';
+import { getSourceCode } from '../../../files/read-files.js';
 
 export async function handleCancelCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Assistant requested to stop code generation. Exiting...');

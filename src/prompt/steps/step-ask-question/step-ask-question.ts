@@ -1,9 +1,9 @@
-import { FunctionDef, GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common.js';
-import { StepResult } from './steps-types.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
-import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../main/common/content-bus.js';
-import { abortController } from '../../main/interactive/codegen-worker.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
+import { FunctionDef, GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../../ai-service/common.js';
+import { StepResult } from '../steps-types.js';
+import { CodegenOptions } from '../../../main/codegen-types.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
+import { abortController } from '../../../main/interactive/codegen-worker.js';
+import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
 import { AskQuestionCall, ActionType, ActionHandler, SelfReflectionContext } from './step-ask-question-types.js';
 import {
   handleCancelCodeGeneration,
