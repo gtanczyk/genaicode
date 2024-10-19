@@ -21,8 +21,8 @@ import { deleteIteration } from '../api/api-client.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  currentQuestion: { id: string; text: string; isConfirmation: boolean } | null;
-  onQuestionSubmit: (answer: string) => void;
+  currentQuestion: { id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null;
+  onQuestionSubmit: (answer: string, confirmed?: boolean) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   executionStatus: 'idle' | 'executing' | 'paused';

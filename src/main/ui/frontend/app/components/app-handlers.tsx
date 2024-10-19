@@ -20,7 +20,7 @@ interface AppHandlersProps {
   chatMessages: ChatMessage[];
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setCurrentQuestion: React.Dispatch<
-    React.SetStateAction<{ id: string; text: string; isConfirmation: boolean } | null>
+    React.SetStateAction<{ id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null>
   >;
   codegenOptions: CodegenOptions;
   setCodegenOptions: (options: CodegenOptions) => void;
@@ -57,12 +57,12 @@ export const AppHandlers = ({
     }
   };
 
-  const handleQuestionSubmit = async (answer: string) => {
+  const handleQuestionSubmit = async (answer: string, confirmed?: boolean) => {
     const currentQuestion = await getCurrentQuestion();
     if (currentQuestion) {
       try {
         setCurrentQuestion(null);
-        await answerQuestion(currentQuestion.id, answer);
+        await answerQuestion(currentQuestion.id, answer, confirmed);
       } catch (error) {
         console.error('Failed to submit answer:', error);
       }

@@ -11,6 +11,6 @@ async function askUserForInput(prompt: string): Promise<string> {
   return await input({ message: prompt });
 }
 
-async function askUserForConfirmation(message: string, defaultValue: boolean): Promise<boolean> {
-  return await confirm({ message, default: defaultValue });
+async function askUserForConfirmation(message: string, defaultValue: boolean): Promise<{ confirmed: boolean }> {
+  return { confirmed: await confirm({ message, default: defaultValue }) };
 }

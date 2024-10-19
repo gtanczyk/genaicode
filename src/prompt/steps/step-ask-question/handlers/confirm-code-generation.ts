@@ -1,14 +1,14 @@
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
-import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
+import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
 export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
-  const userConfirmation = await askUserForConfirmation(
+  const userConfirmation = await askUserForConfirmationWithAnswer(
     'The assistant is ready to start code generation. Do you want to proceed?',
     true,
   );
-  if (userConfirmation) {
+  if (userConfirmation.confirmed) {
     putSystemMessage('Proceeding with code generation.');
     return {
       breakLoop: true,
@@ -16,7 +16,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
       items: [
         {
           assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-          user: { type: 'user', text: 'Confirmed. Proceed with code generation.' },
+          user: { type: 'user', text: userConfirmation.answer ?? 'Confirmed. Proceed with code generation.' },
         },
       ],
     };
@@ -30,7 +30,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
           assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
           user: {
             type: 'user',
-            text: 'Declined. Please continue the conversation.',
+            text: userConfirmation.answer ?? 'Declined. Please continue the conversation.',
             functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
           },
         },

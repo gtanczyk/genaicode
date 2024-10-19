@@ -3,10 +3,10 @@ import styled from 'styled-components';
 import { StyledTextarea } from './styled-textarea';
 
 interface QuestionHandlerProps {
-  onSubmit: (answer: string) => void;
+  onSubmit: (answer: string, confirmed?: boolean) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
-  question: { id: string; text: string; isConfirmation: boolean } | null;
+  question: { id: string; text: string; isConfirmation: { includeAnswer: boolean } | undefined } | null;
   executionStatus: 'idle' | 'executing' | 'paused';
 }
 
@@ -36,7 +36,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
 
   const handleConfirmation = async (isYes: boolean) => {
     try {
-      await onSubmit(isYes ? 'yes' : 'no');
+      await onSubmit(answer, isYes);
       setError(null);
     } catch (err) {
       console.error('Error submitting confirmation:', err);
@@ -49,28 +49,31 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   return (
     <HandlerContainer>
       {question ? (
-        question.isConfirmation ? (
-          <ButtonGroup>
-            <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
-            <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-              No
-            </ConfirmButton>
-            <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
-          </ButtonGroup>
-        ) : (
-          <AnswerForm onSubmit={handleSubmit}>
+        <AnswerForm onSubmit={handleSubmit}>
+          {question.isConfirmation?.includeAnswer !== false && (
             <StyledTextarea
               value={answer}
               onChange={setAnswer}
               placeholder="Enter your answer here"
               maxViewportHeight={0.3}
             />
+          )}
+          {!question.isConfirmation && (
             <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
-          </AnswerForm>
-        )
+          )}
+          {question.isConfirmation && (
+            <ButtonGroup>
+              <ConfirmButton onClick={() => handleConfirmation(true)}>Yes</ConfirmButton>
+              <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+                No
+              </ConfirmButton>
+              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+            </ButtonGroup>
+          )}
+        </AnswerForm>
       ) : (
         <ButtonGroup>
           <PauseResumeButton onClick={onPauseResume} isPaused={isPaused}>

@@ -15,7 +15,7 @@ interface CodegenResult {
 interface Question {
   id: string;
   text: string;
-  isConfirmation: boolean;
+  isConfirmation: { includeAnswer: boolean } | undefined;
 }
 
 interface ImageData {
@@ -27,8 +27,13 @@ interface ImageData {
 export class Service {
   private executionStatus: 'idle' | 'executing' | 'paused' | 'interrupted' = 'idle';
   private currentQuestion: Question | null = null;
-  private askQuestionConversation: Array<{ id: string; question: string; answer: string; isConfirmation: boolean }> =
-    [];
+  private askQuestionConversation: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    confirmed: boolean | undefined;
+    isConfirmation: { includeAnswer: boolean } | undefined;
+  }> = [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
@@ -133,7 +138,10 @@ export class Service {
     return this.currentQuestion;
   }
 
-  async askQuestion(question: string, isConfirmation: boolean = false): Promise<string> {
+  async askQuestion(
+    question: string,
+    isConfirmation: { includeAnswer: boolean } | undefined,
+  ): Promise<{ answer: string; confirmed: boolean | undefined }> {
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
@@ -144,16 +152,20 @@ export class Service {
     await this.waitForQuestionAnswer();
 
     console.log('Question answer wait finished.');
-    const answer = this.askQuestionConversation.find((q) => q.id === questionId)?.answer ?? '';
-    return isConfirmation ? (answer.toLowerCase() === 'yes' ? 'yes' : 'no') : answer;
+    const { answer, confirmed } = this.askQuestionConversation.find((q) => q.id === questionId) ?? {
+      answer: '',
+      confirmed: undefined,
+    };
+    return { answer, confirmed };
   }
 
-  async answerQuestion(questionId: string, answer: string): Promise<void> {
+  async answerQuestion(questionId: string, answer: string, confirmed: boolean | undefined): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
       this.askQuestionConversation.push({
         id: this.currentQuestion.id,
         question: this.currentQuestion.text,
         answer: answer,
+        confirmed,
         isConfirmation: this.currentQuestion.isConfirmation,
       });
       this.currentQuestion = null;

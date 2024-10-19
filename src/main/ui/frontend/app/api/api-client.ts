@@ -115,13 +115,21 @@ export const resumeExecution = async (): Promise<void> => {
   await api.post('/resume-execution');
 };
 
-export const getCurrentQuestion = async (): Promise<{ id: string; text: string; isConfirmation: boolean } | null> => {
+export const getCurrentQuestion = async (): Promise<{
+  id: string;
+  text: string;
+  isConfirmation: { includeAnswer: boolean } | undefined;
+} | null> => {
   const response = await api.get('/current-question');
   return response.data.question;
 };
 
-export const answerQuestion = async (questionId: string, answer: string): Promise<void> => {
-  await api.post('/answer-question', { questionId, answer });
+export const answerQuestion = async (
+  questionId: string,
+  answer: string,
+  confirmed: boolean | undefined,
+): Promise<void> => {
+  await api.post('/answer-question', { questionId, answer, confirmed });
 };
 
 export const getUsage = async (): Promise<Usage> => {

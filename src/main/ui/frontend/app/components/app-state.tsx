@@ -23,9 +23,11 @@ export const AppState = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: string; text: string; isConfirmation: boolean } | null>(
-    null,
-  );
+  const [currentQuestion, setCurrentQuestion] = useState<{
+    id: string;
+    text: string;
+    isConfirmation: { includeAnswer: boolean } | undefined;
+  } | null>(null);
   const [theme, setTheme] = useState('dark');
   const [usage, setUsage] = useState<Usage>();
   const [codegenOptions, setCodegenOptions] = useState<CodegenOptions>({} as CodegenOptions);
