@@ -6,8 +6,8 @@ import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js'
 export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmationWithAnswer(
     'The assistant is ready to start code generation. Do you want to proceed?',
-    'Confirm',
-    'Decline',
+    'Start code generation',
+    'Continue conversation',
     true,
   );
   if (userConfirmation.confirmed) {
