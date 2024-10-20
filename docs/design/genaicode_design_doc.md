@@ -11,9 +11,23 @@ Welcome to the design documentation for the GenAIcode tool. This document provid
 
 ## Quick Start
 
-The GenAIcode tool is designed to automate code generation tasks using genAI (for example Gemini Pro model or Claude on VertexAI). It enhances developer productivity by assisting with the generation of repetitive or complex code and provides flexibility in choosing the AI service that best suits the project's needs.
+The GenAIcode tool is designed to automate code generation tasks using genAI (for example, Gemini Pro model or Claude on VertexAI). It enhances developer productivity by assisting with the generation of repetitive or complex code and provides flexibility in choosing the AI service that best suits the project's needs.
 
-For a comprehensive understanding of the tool's capabilities and how to use it effectively, please explore the linked documents above.
+## Architecture
+
+GenAIcode is built with a modular architecture, allowing easy integration of various AI models and customization through CLI parameters. The tool's architecture includes:
+
+- **AI Services**: Integrates with multiple AI models such as Vertex AI, OpenAI GPT, and Anthropic Claude.
+- **CLI Operations**: Provides a range of command-line options for tailoring the code generation process.
+- **File Handling**: Supports creating, updating, and managing project files.
+- **Image Processing**: Includes capabilities for AI-assisted image analysis and generation.
+
+## Features
+
+- **Interactive Mode**: Allows for conversation-driven code generation with interactive feedback.
+- **UI Mode**: Provides a graphical interface for managing code generation tasks.
+- **Context Optimization**: Reduces token usage by focusing on relevant context during code generation.
+- **Comprehensive File Operations**: Includes support for creating, deleting, and moving files within the project structure.
 
 ## Contributing
 

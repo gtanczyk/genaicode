@@ -6,27 +6,23 @@ The GenAIcode tool supports various file operations to facilitate comprehensive 
 
 1. **Creating New Files**
 
-   - Activation: `--allow-file-create` flag
-   - Description: Allows the tool to create new files within the project structure.
-   - Use Case: Generating entirely new components or modules.
+   - Activation: `--disallow-file-create` flag
+   - Description: Disallows the tool to create new files within the project structure.
 
 2. **Deleting Existing Files**
 
-   - Activation: `--allow-file-delete` flag
-   - Description: Permits the tool to remove existing files from the project.
-   - Use Case: Removing deprecated or redundant code files.
+   - Activation: `--disallow-file-delete` flag
+   - Description: Forbids the tool to remove existing files from the project.
 
 3. **Creating New Directories**
 
-   - Activation: `--allow-directory-create` flag
-   - Description: Enables the tool to create new directories in the project structure.
-   - Use Case: Organizing generated code into new folders or restructuring the project.
+   - Activation: `--disallow-directory-create` flag
+   - Description: Disables the tool to create new directories in the project structure.
 
 4. **Moving Files**
 
-   - Activation: `--allow-file-move` flag
-   - Description: Allows the tool to relocate files within the project structure.
-   - Use Case: Refactoring code organization or implementing architectural changes.
+   - Activation: `--disallow-file-move` flag
+   - Description: Disallows the tool to relocate files within the project structure.
 
 5. **Updating Existing Files**
    - Activation: Always allowed

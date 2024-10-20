@@ -13,6 +13,8 @@ The GenAIcode tool is an advanced code generation assistant designed to enhance 
 5. **Dependency Analysis**: Can analyze and include dependencies of files marked for code generation.
 6. **Linting Integration**: Incorporates lint checks before and after code generation to maintain code quality.
 7. **Vision Capabilities**: Supports image input processing for visual-based code generation tasks.
+8. **Interactive and UI Modes**: Provides both command-line and graphical interfaces for executing tasks.
+9. **Context Optimization**: Reduces token usage by focusing on relevant parts of the codebase during generation tasks.
 
 ## How It Works
 

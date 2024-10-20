@@ -39,7 +39,7 @@ This document outlines the plan for implementing a new context optimization feat
 - Import the new `executeStepContextOptimization` function
 - Add a new step in the `promptService` function to call `executeStepContextOptimization`
 - Use the optimized source code for the subsequent `getSourceCode` function call
-- Implement warning mechanism if the cheap model doesn't provide useful summaries
+- Implement a warning mechanism if the cheap model doesn't provide useful summaries
 
 ### 5. Error Handling and Fallback
 

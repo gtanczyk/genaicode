@@ -8,10 +8,10 @@ The tool accepts various command-line interface (CLI) parameters to control its 
 
 - `--dry-run`: Runs the tool without making any changes to the files.
 - `--consider-all-files`: Considers all files for code generation, even if they don't contain `@CODEGEN` comments.
-- `--allow-file-create`: Allows the tool to create new files.
-- `--allow-file-delete`: Allows the tool to delete files.
-- `--allow-directory-create`: Allows the tool to create directories.
-- `--allow-file-move`: Allows the tool to move files within the project structure.
+- `--disallow-file-create`: Disallows the tool to create new files.
+- `--disallow-file-delete`: Disallows the tool to delete files.
+- `--disallow-directory-create`: Disallows the tool to create directories.
+- `--disallow-file-move`: Disallows the tool to move files within the project structure.
 - `--chat-gpt`: Uses the OpenAI model for code generation.
 - `--anthropic`: Uses Anthropic's Claude model for code generation.
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
