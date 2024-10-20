@@ -11,7 +11,7 @@ interface CodegenOptionsFormProps {
 export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options, onOptionsChange, disabled }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    const newValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    const newValue = type === 'checkbox' ? !(e.target as HTMLInputElement).checked : value;
     onOptionsChange({ ...options, [name]: newValue });
   };
 
@@ -77,7 +77,7 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
             type="checkbox"
             id="allowFileCreate"
             name="allowFileCreate"
-            checked={options.allowFileCreate}
+            checked={options.allowFileCreate !== false}
             onChange={handleChange}
             disabled={disabled}
           />
@@ -88,7 +88,7 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
             type="checkbox"
             id="allowFileDelete"
             name="allowFileDelete"
-            checked={options.allowFileDelete}
+            checked={options.allowFileDelete !== false}
             onChange={handleChange}
             disabled={disabled}
           />
@@ -99,7 +99,7 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
             type="checkbox"
             id="allowDirectoryCreate"
             name="allowDirectoryCreate"
-            checked={options.allowDirectoryCreate}
+            checked={options.allowDirectoryCreate !== false}
             onChange={handleChange}
             disabled={disabled}
           />
@@ -110,7 +110,7 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
             type="checkbox"
             id="allowFileMove"
             name="allowFileMove"
-            checked={options.allowFileMove}
+            checked={options.allowFileMove !== false}
             onChange={handleChange}
             disabled={disabled}
           />

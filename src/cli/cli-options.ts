@@ -18,20 +18,20 @@ const cliOptions: CliOption[] = [
     description: "Consider all files for code generation, even if they don't contain the @" + 'CODEGEN comments.',
   },
   {
-    name: '--allow-file-create',
-    description: 'Allow the codegen script to create new files.',
+    name: '--disallow-file-create',
+    description: 'Disallow the codegen script to create new files (file creation is allowed by default).',
   },
   {
-    name: '--allow-file-delete',
-    description: 'Allow the codegen script to delete files.',
+    name: '--disallow-file-delete',
+    description: 'Disallow the codegen script to delete files (file deletion is allowed by default).',
   },
   {
-    name: '--allow-directory-create',
-    description: 'Allow codegen script to create directories.',
+    name: '--disallow-directory-create',
+    description: 'Disallow codegen script to create directories (directory creation is allowed by default).',
   },
   {
-    name: '--allow-file-move',
-    description: 'Allow the codegen script to move files.',
+    name: '--disallow-file-move',
+    description: 'Disallow the codegen script to move files (file moving is allowed by default).',
   },
   {
     name: '--chat-gpt',

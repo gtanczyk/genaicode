@@ -21,7 +21,7 @@ It was generated using the `--explicit-prompt` option:
 
 - first command:
   ```bash
-  npx genaicode --explicit-prompt="Create an example hello world application using golang, including README with instructions how to compile it and run it" --allow-file-create
+  npx genaicode --explicit-prompt="Create an example hello world application using golang, including README with instructions how to compile it and run it"
   ```
 - second command:
   ```bash
@@ -31,7 +31,7 @@ It was generated using the `--explicit-prompt` option:
 ## [Java Hello World App](./java_hello_world/)
 
 ```bash
-npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application" --allow-file-create --allow-directory-create
+npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello_world, create an example java hello world application"
 ```
 
 ## [Vision Example](./vision_example/)
@@ -39,7 +39,7 @@ npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello
 This example demonstrates vision capabilities, takes a sketch of a web page, and asks for generation of the page accordingly to the sketch:
 
 ```bash
-npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --allow-file-create --dry-run
+npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --dry-run
 ```
 
 | Sketch                                                   | Result                                                                                  |
@@ -52,7 +52,7 @@ npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --allow
 - first iteration:
 
 ```bash
-npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcanoid game" --allow-file-create --allow-directory-create
+npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcanoid game"
 ```
 
 - result: simple game is created, it is using html and plain js
@@ -76,8 +76,8 @@ An example that demonstrates the image generation/editing capabilities.
 Commands:
 
 ```bash
-npx genaicode --allow-file-create --task-file="1_triangle.md" --imagen=vertex-ai
-npx genaicode --allow-file-create --task-file="2_remove_background.md"
-npx genaicode --allow-file-create --task-file="3_genai_edit_image.md" --imagen=dall-e
-npx genaicode --allow-file-create --task-file="4_split_image.md" --vision
+npx genaicode --task-file="1_triangle.md" --imagen=vertex-ai
+npx genaicode --task-file="2_remove_background.md"
+npx genaicode --task-file="3_genai_edit_image.md" --imagen=dall-e
+npx genaicode --task-file="4_split_image.md" --vision
 ```

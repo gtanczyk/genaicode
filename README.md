@@ -48,10 +48,10 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--interactive`: Run the tool in interactive mode
 - `--dry-run`: Runs the tool without making any changes to the files.
 - `--consider-all-files`: Considers all files for code generation, even if they don't contain `@CODEGEN` comments.
-- `--allow-file-create`: Allows the tool to create new files.
-- `--allow-file-delete`: Allows the tool to delete files.
-- `--allow-directory-create`: Allows the tool to create directories.
-- `--allow-file-move`: Allows the tool to move files within the project structure.
+- `--disallow-file-create`: Disallows the tool to create new files (file creation is allowed by default).
+- `--disallow-file-delete`: Disallows the tool to delete files (file deletion is allowed by default).
+- `--disallow-directory-create`: Disallows the tool to create directories (directory creation is allowed by default).
+- `--disallow-file-move`: Disallows the tool to move files within the project structure (file moving is allowed by default).
 - `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
 - `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
 - `--ai-studio`: Uses Google AI Studio for code generation, an alternative to Vertex AI with potentially different capabilities or limitations.
@@ -105,7 +105,7 @@ npx genaicode [options]
 For example:
 
 ```bash
-npx genaicode --allow-file-create --explicit-prompt="Add a new utility function for string manipulation"
+npx genaicode --explicit-prompt="Add a new utility function for string manipulation"
 ```
 
 To run GenAIcode with the web UI on a specific port:
