@@ -51,6 +51,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     <HandlerContainer>
       {question ? (
         <AnswerForm onSubmit={handleSubmit}>
+          {question.confirmation && <p>{question.text}</p>}
           {question.confirmation?.includeAnswer !== false && (
             <StyledTextarea
               value={answer}
@@ -105,7 +106,10 @@ const HandlerContainer = styled.div`
 const AnswerForm = styled.form`
   display: flex;
   flex-direction: column;
-  min-height: 100px;
+
+  > p {
+    margin-top: 0;
+  }
 `;
 
 const ButtonGroup = styled.div`

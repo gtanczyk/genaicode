@@ -18,7 +18,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
       items: [
         {
           assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
-          user: { type: 'user', text: userConfirmation.answer ?? 'Confirmed. Proceed with code generation.' },
+          user: { type: 'user', text: userConfirmation.answer || 'Confirmed. Proceed with code generation.' },
         },
       ],
     };
@@ -32,7 +32,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
           assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
           user: {
             type: 'user',
-            text: userConfirmation.answer ?? 'Declined. Please continue the conversation.',
+            text: userConfirmation.answer || 'Declined. Please continue the conversation.',
             functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
           },
         },

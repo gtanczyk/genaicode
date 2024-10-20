@@ -148,7 +148,7 @@ export function createRouter(service: Service) {
     try {
       const { questionId, answer, confirmed } = req.body;
 
-      if (!questionId || !answer || typeof questionId !== 'string' || typeof answer !== 'string') {
+      if (!questionId || typeof answer !== 'string' || typeof questionId !== 'string' || typeof answer !== 'string') {
         return res.status(400).json({ error: 'Invalid question ID or answer' });
       }
 
