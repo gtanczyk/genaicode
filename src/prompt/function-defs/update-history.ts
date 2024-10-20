@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for updateHistory
  */
-export const updateHistory = {
+export const updateHistory: FunctionDef = {
   name: 'updateHistory',
   description: 'Update the history.',
   parameters: {
@@ -18,4 +20,4 @@ export const updateHistory = {
     },
     required: ['recentConversationSummary', 'newHistoryContent'],
   },
-} as const;
+};

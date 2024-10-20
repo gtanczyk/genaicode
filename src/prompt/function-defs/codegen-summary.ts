@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for codegenSummary
  */
-export const codegenSummary = {
+export const codegenSummary: FunctionDef = {
   name: 'codegenSummary',
   description:
     'This function is called with a summary of proposed updates.\n' +
@@ -84,4 +86,4 @@ export const codegenSummary = {
     },
     required: ['explanation', 'fileUpdates', 'contextPaths'],
   },
-} as const;
+};

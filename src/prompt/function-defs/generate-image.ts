@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for generateImage
  */
-export const generateImage = {
+export const generateImage: FunctionDef = {
   name: 'generateImage',
   description: 'Generate an image using AI service and save it as a file.',
   parameters: {
@@ -41,4 +43,4 @@ export const generateImage = {
     },
     required: ['prompt', 'filePath', 'width', 'height'],
   },
-} as const;
+};

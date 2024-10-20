@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for moveFile
  */
-export const moveFile = {
+export const moveFileDef: FunctionDef = {
   name: 'moveFile',
   description: 'Move a file from one location to another',
   parameters: {
@@ -22,4 +24,10 @@ export const moveFile = {
     },
     required: ['source', 'destination'],
   },
-} as const;
+};
+
+export type MoveFileArgs = {
+  source: string;
+  destination: string;
+  explanation?: string;
+};

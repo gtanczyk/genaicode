@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for createFile
  */
-export const createFile = {
+export const createFileDef: FunctionDef = {
   name: 'createFile',
   description:
     'Create a new file with specified content. The file will be created inside of project folder structure. This tool should not be used of creation if image files.',
@@ -23,4 +25,10 @@ export const createFile = {
     },
     required: ['filePath', 'newContent'],
   },
-} as const;
+};
+
+export type CreateFileArgs = {
+  filePath: string;
+  explanation?: string;
+  newContent: string;
+};

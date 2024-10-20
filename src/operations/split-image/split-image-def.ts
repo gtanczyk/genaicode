@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for splitImage
  */
-export const splitImage = {
+export const splitImageDef: FunctionDef = {
   name: 'splitImage',
   description: 'Split an image into multiple parts and save them as separate files.',
   parameters: {
@@ -42,4 +44,18 @@ export const splitImage = {
     },
     required: ['inputFilePath', 'parts'],
   },
-} as const;
+};
+
+export type SplitImageArgs = {
+  inputFilePath: string;
+  parts: Array<{
+    rect: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    outputFilePath: string;
+  }>;
+  explanation?: string;
+};

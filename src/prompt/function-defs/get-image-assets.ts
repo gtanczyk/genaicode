@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for getImageAssets
  */
-export const getImageAssets = {
+export const getImageAssets: FunctionDef = {
   name: 'getImageAssets',
   description:
     'This function returns a map of application image assets. This map contains absolute file path, and basic metadata information. It does not contain contents. Contents must be requested using dedicated tool.',
@@ -18,4 +20,4 @@ export const getImageAssets = {
     },
     required: [],
   },
-} as const;
+};

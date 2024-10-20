@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for explanation
  */
-export const explanation = {
+export const explanation: FunctionDef = {
   name: 'explanation',
   description: 'Explain the reasoning behind the suggested code changes or reasoning for lack of code changes',
   parameters: {
@@ -14,4 +16,4 @@ export const explanation = {
     },
     required: ['text'],
   },
-} as const;
+};

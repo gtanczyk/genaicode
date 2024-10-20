@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for patchFile
  */
-export const patchFile = {
+export const patchFileDef: FunctionDef = {
   name: 'patchFile',
   description:
     'Partially update a file content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
@@ -36,4 +38,10 @@ Index: filename.js
     },
     required: ['filePath', 'patch'],
   },
-} as const;
+};
+
+export type PatchFileArgs = {
+  filePath: string;
+  explanation?: string;
+  patch: string;
+};

@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for optimizeContext
  */
-export const optimizeContext = {
+export const optimizeContext: FunctionDef = {
   name: 'optimizeContext',
   description:
     'This function narrows the context of code generation to a list of relevant files, including their estimated token counts and relevance scores. It helps prioritize files based on their importance to the user prompt and manages token usage.',
@@ -44,4 +46,4 @@ export const optimizeContext = {
     },
     required: ['userPrompt', 'optimizedContext', 'totalTokenCount'],
   },
-} as const;
+};

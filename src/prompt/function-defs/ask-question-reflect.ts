@@ -1,4 +1,6 @@
-export const askQuestionReflect = {
+import { FunctionDef } from '../../ai-service/common';
+
+export const askQuestionReflect: FunctionDef = {
   name: 'askQuestionReflect',
   description: 'This function is used to decide whether to escalate the request to more advanced model.',
   parameters: {
@@ -18,4 +20,4 @@ export const askQuestionReflect = {
     },
     required: ['reason', 'shouldEscalate'],
   },
-} as const;
+};

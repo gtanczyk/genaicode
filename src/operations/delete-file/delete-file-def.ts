@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for deleteFile
  */
-export const deleteFile = {
+export const deleteFileDef: FunctionDef = {
   name: 'deleteFile',
   description: 'Delete a specified file from the application source code.',
   parameters: {
@@ -18,4 +20,9 @@ export const deleteFile = {
     },
     required: ['filePath'],
   },
-} as const;
+};
+
+export type DeleteFileArgs = {
+  filePath: string;
+  explanation?: string;
+};

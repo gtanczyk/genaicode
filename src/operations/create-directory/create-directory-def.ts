@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for createDirectory
  */
-export const createDirectory = {
+export const createDirectoryDef: FunctionDef = {
   name: 'createDirectory',
   description: 'Create a new directory',
   parameters: {
@@ -18,4 +20,9 @@ export const createDirectory = {
     },
     required: ['filePath'],
   },
-} as const;
+};
+
+export type CreateDirectoryArgs = {
+  filePath: string;
+  explanation?: string;
+};

@@ -1,4 +1,6 @@
-export const readHistory = {
+import { FunctionDef } from '../../ai-service/common';
+
+export const readHistory: FunctionDef = {
   name: 'readHistory',
   description: 'This function reads the history from the cache and returns it as a string.',
   parameters: {

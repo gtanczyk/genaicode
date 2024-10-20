@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for setSummaries
  */
-export const setSummaries = {
+export const setSummaries: FunctionDef = {
   name: 'setSummaries',
   description: 'Use this function to save summaries of files',
   parameters: {
@@ -30,4 +32,4 @@ export const setSummaries = {
     },
     required: ['summaries'],
   },
-} as const;
+};

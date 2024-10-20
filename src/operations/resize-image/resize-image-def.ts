@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for resizeImage
  */
-export const resizeImage = {
+export const resizeImageDef: FunctionDef = {
   name: 'resizeImage',
   description: 'Resize image to the desired size',
   parameters: {
@@ -28,9 +30,18 @@ export const resizeImage = {
       },
       explanation: {
         type: 'string',
-        description: 'The explanation of the reasoning behind removing the background from this image',
+        description: 'The explanation of the reasoning behind resizing this image',
       },
     },
     required: ['filePath', 'size'],
   },
-} as const;
+};
+
+export type ResizeImageArgs = {
+  filePath: string;
+  size: {
+    width: number;
+    height: number;
+  };
+  explanation?: string;
+};

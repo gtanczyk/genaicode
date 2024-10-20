@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for getSourceCode
  */
-export const getSourceCode = {
+export const getSourceCode: FunctionDef = {
   name: 'getSourceCode',
   description:
     'This function returns source code of the application in Map format, where absolute file path is the key, and the value is an object, where one of the properties may be the content of the file.' +
@@ -19,4 +21,4 @@ export const getSourceCode = {
     },
     required: [],
   },
-} as const;
+};

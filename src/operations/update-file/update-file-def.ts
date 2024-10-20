@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for updateFile
  */
-export const updateFile = {
+export const updateFileDef: FunctionDef = {
   name: 'updateFile',
   description:
     'Update a file with new content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
@@ -23,4 +25,10 @@ export const updateFile = {
     },
     required: ['filePath', 'newContent'],
   },
-} as const;
+};
+
+export type UpdateFileArgs = {
+  filePath: string;
+  explanation?: string;
+  newContent: string;
+};

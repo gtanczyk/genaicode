@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for imglyRemoveBackground
  */
-export const imglyRemoveBackground = {
+export const imglyRemoveBackgroundDef: FunctionDef = {
   name: 'imglyRemoveBackground',
   description: 'Removes background from an image using @imgly/background-removal-node',
   parameters: {
@@ -22,4 +24,10 @@ export const imglyRemoveBackground = {
     },
     required: ['inputFilePath', 'outputFilePath'],
   },
-} as const;
+};
+
+export type ImglyRemoveBackgroundArgs = {
+  inputFilePath: string;
+  outputFilePath: string;
+  explanation?: string;
+};

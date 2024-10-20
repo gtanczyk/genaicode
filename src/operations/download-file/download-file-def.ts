@@ -1,7 +1,9 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for downloadFile
  */
-export const downloadFile = {
+export const downloadFileDef: FunctionDef = {
   name: 'downloadFile',
   description: 'Download file from url, and save to file',
   parameters: {
@@ -22,4 +24,10 @@ export const downloadFile = {
     },
     required: ['filePath', 'downloadUrl'],
   },
-} as const;
+};
+
+export type DownloadFileArgs = {
+  filePath: string;
+  downloadUrl: string;
+  explanation?: string;
+};

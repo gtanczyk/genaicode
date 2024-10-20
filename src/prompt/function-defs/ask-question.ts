@@ -1,10 +1,12 @@
+import { FunctionDef } from '../../ai-service/common';
+
 /**
  * Function definition for askQuestion
  *
  * Use this function to ask questions, seek clarification, request file permissions, or manage the flow of the conversation.
  * Each actionType serves a specific purpose, ensuring clarity and proper task execution.
  */
-export const askQuestion = {
+export const askQuestion: FunctionDef = {
   name: 'askQuestion',
   description:
     'Use this function to ask a question, seek clarification, or manage the flow of the conversation. For analysis requests, use actionType "requestAnswer". Only proceed to code generation when explicitly instructed or after confirmation.',
@@ -104,4 +106,4 @@ export const askQuestion = {
     },
     required: ['actionType', 'content', 'promptNecessity'],
   },
-} as const;
+};
