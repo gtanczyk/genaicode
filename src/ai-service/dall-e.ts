@@ -1,4 +1,5 @@
 import OpenAI, { toFile } from 'openai';
+import assert from 'node:assert';
 
 import { setTempBuffer } from '../files/temp-buffer.js';
 import { resizeImageBuffer } from '../images/resize-image.js';

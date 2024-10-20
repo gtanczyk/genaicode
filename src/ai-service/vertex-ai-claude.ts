@@ -1,4 +1,5 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
+import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/interactive/codegen-worker.js';
