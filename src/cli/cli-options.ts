@@ -34,21 +34,9 @@ const cliOptions: CliOption[] = [
     description: 'Disallow the codegen script to move files (file moving is allowed by default).',
   },
   {
-    name: '--chat-gpt',
-    description: "Use the OpenAI model for code generation instead of Vertex AI with Google's Gemini Pro model.",
-  },
-  {
-    name: '--anthropic',
-    description: "Use Anthropic's Claude model for code generation.",
-  },
-  {
-    name: '--vertex-ai',
+    name: '--ai-service=<service>',
     description:
-      "Use Vertex AI with Google's Gemini Pro model for code generation (default if no AI model is specified).",
-  },
-  {
-    name: '--vertex-ai-claude',
-    description: 'Use Claude via Vertex AI for code generation.',
+      'Specify the AI service to use for code generation. Available options include vertex-ai, ai-studio, chat-gpt, anthropic, vertex-ai-claude, and any additional services loaded from plugins.',
   },
   {
     name: '--explicit-prompt=<prompt>',

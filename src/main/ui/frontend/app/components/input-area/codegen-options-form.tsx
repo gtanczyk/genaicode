@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { CodegenOptions } from '../../../../../codegen-types.js';
+import { getAvailableAiServices } from '../../api/api-client.js';
 
 interface CodegenOptionsFormProps {
   options: CodegenOptions;
@@ -9,6 +10,21 @@ interface CodegenOptionsFormProps {
 }
 
 export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options, onOptionsChange, disabled }) => {
+  const [availableAiServices, setAvailableAiServices] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchAiServices = async () => {
+      try {
+        const services = await getAvailableAiServices();
+        setAvailableAiServices(services);
+      } catch (error) {
+        console.error('Error fetching AI services:', error);
+      }
+    };
+
+    fetchAiServices();
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const newValue = type === 'checkbox' ? !(e.target as HTMLInputElement).checked : value;
@@ -20,11 +36,11 @@ export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options,
       <FormGroup>
         <Label htmlFor="aiService">AI Service:</Label>
         <Select id="aiService" name="aiService" value={options.aiService} onChange={handleChange} disabled={disabled}>
-          <option value="vertex-ai">Vertex AI</option>
-          <option value="ai-studio">AI Studio</option>
-          <option value="chat-gpt">ChatGPT</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="vertex-ai-claude">Vertex AI Claude</option>
+          {availableAiServices.map((service) => (
+            <option key={service} value={service}>
+              {service}
+            </option>
+          ))}
         </Select>
       </FormGroup>
 

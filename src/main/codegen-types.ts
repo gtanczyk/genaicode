@@ -1,6 +1,14 @@
 import { FunctionDef, GenerateContentFunction } from '../ai-service/common';
 
-export type AiServiceType = 'vertex-ai' | 'ai-studio' | 'vertex-ai-claude' | 'chat-gpt' | 'anthropic';
+export type PluginAiServiceType = `plugin:${string}`;
+
+export type AiServiceType =
+  | 'vertex-ai'
+  | 'ai-studio'
+  | 'vertex-ai-claude'
+  | 'chat-gpt'
+  | 'anthropic'
+  | PluginAiServiceType;
 
 export type ImagenType = 'vertex-ai' | 'dall-e';
 

@@ -4,6 +4,7 @@ import { rcConfig as globalRcConfig } from '../../config.js';
 import { validateCodegenOptions } from './api-utils.js';
 import { Service } from './service.js';
 import { CodegenOptions } from '../../codegen-types.js';
+import { getSupportedAiServices } from '../../codegen-utils.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -202,6 +203,17 @@ export function createRouter(service: Service) {
     } catch (error) {
       console.error('Error deleting iteration:', error);
       res.status(500).json({ error: 'An error occurred while deleting the iteration' });
+    }
+  });
+
+  // New endpoint to fetch available AI services
+  router.get('/available-ai-services', async (_, res) => {
+    try {
+      const availableServices = getSupportedAiServices();
+      res.json({ services: availableServices });
+    } catch (error) {
+      console.error('Error fetching available AI services:', error);
+      res.status(500).json({ error: 'An error occurred while fetching available AI services' });
     }
   });
 

@@ -1,13 +1,11 @@
 import { CodegenOptions } from '../../codegen-types.js';
+import { getSupportedAiServices } from '../../codegen-utils.js';
 
 // Validation function for CodegenOptions
 export function validateCodegenOptions(options: CodegenOptions): string[] {
   const errors: string[] = [];
 
-  if (
-    typeof options.aiService !== 'string' ||
-    !['vertex-ai', 'ai-studio', 'vertex-ai-claude', 'chat-gpt', 'anthropic'].includes(options.aiService)
-  ) {
+  if (typeof options.aiService !== 'string' || !getSupportedAiServices().includes(options.aiService)) {
     errors.push('Invalid aiService');
   }
 

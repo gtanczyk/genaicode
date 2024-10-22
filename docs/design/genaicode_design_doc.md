@@ -3,11 +3,9 @@
 Welcome to the design documentation for the GenAIcode tool. This document provides an overview of the tool's architecture, components, and features. For detailed information on specific aspects of the tool, please refer to the following sections:
 
 1. [Overview](./overview.md)
-2. [Components](./components.md)
-3. [AI Models](./ai_models.md)
-4. [File Operations](./file_operations.md)
-5. [Features](./features.md)
-6. [Configuration](./configuration.md)
+2. [File Operations](./file_operations.md)
+3. [Features](./features.md)
+4. [Configuration](./configuration.md)
 
 ## Quick Start
 

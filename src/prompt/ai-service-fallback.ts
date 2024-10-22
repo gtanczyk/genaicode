@@ -87,7 +87,7 @@ export async function handleAiServiceFallback(
 }
 
 function getNextAiService(currentService: AiServiceType): AiServiceType | undefined {
-  const options = AI_SERVICES_MAP.filter(([check]) => check()).map(([, service]) => service);
+  const options: AiServiceType[] = AI_SERVICES_MAP.filter(([check]) => check()).map(([, service]) => service);
   const currentIndex = options.indexOf(currentService);
   if (currentIndex === -1 || currentIndex === options.length - 1) {
     return undefined;

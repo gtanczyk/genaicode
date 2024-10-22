@@ -43,6 +43,7 @@ This will start the GenAIcode web server and open the browser with the UI.
 
 GenAIcode supports various command-line options to customize its behavior:
 
+- `--ai-service=<ai service>`: Pick an ai service/model that will be used for code generation
 - `--ui`: Run the tool as a web server, and use it via browser
 - `--ui-port=<port>`: Specify the port for the web server when using --ui (default: 1337)
 - `--interactive`: Run the tool in interactive mode
@@ -52,11 +53,6 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--disallow-file-delete`: Disallows the tool to delete files (file deletion is allowed by default).
 - `--disallow-directory-create`: Disallows the tool to create directories (directory creation is allowed by default).
 - `--disallow-file-move`: Disallows the tool to move files within the project structure (file moving is allowed by default).
-- `--vertex-ai`: Uses Vertex AI with Google's Gemini Pro model for code generation.
-- `--vertex-ai-claude`: Uses Claude via Vertex AI for code generation.
-- `--ai-studio`: Uses Google AI Studio for code generation, an alternative to Vertex AI with potentially different capabilities or limitations.
-- `--anthropic`: Uses Anthropic Claude model
-- `--chat-gpt`: Uses OpenAI GPT model
 - `--explicit-prompt=<prompt>`: Provides an explicit prompt for code generation.
 - `--task-file=<file>`: Specifies a file with a task description for code generation.
 - `--dependency-tree`: Limits the scope of code generation to files marked with `@CODEGEN` and their dependencies.

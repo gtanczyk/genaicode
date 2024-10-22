@@ -11,11 +11,7 @@ export const allowFileDelete = !params.includes('--disallow-file-delete');
 export const allowDirectoryCreate = !params.includes('--disallow-directory-create');
 export const allowFileMove = !params.includes('--disallow-file-move');
 
-export let chatGpt = params.includes('--chat-gpt');
-export let anthropic = params.includes('--anthropic');
-export let vertexAi = params.includes('--vertex-ai');
-export let aiStudio = params.includes('--ai-studio');
-export const vertexAiClaude = params.includes('--vertex-ai-claude');
+export let aiService = params.find((param) => param.startsWith('--ai-service='))?.split('=')[1];
 
 export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
@@ -75,26 +71,13 @@ if (considerAllFiles && dependencyTree) {
   throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
-if ([chatGpt, anthropic, vertexAi, vertexAiClaude, aiStudio].filter(Boolean).length > 1) {
-  throw new Error('--chat-gpt, --anthropic, --ai-studio, --vertex-ai, and --vertex-ai-claude are mutually exclusive.');
-}
-
-if (!chatGpt && !anthropic && !vertexAi && !vertexAiClaude && !aiStudio && !helpRequested) {
+if (!aiService && !helpRequested) {
   const detected = serviceAutoDetect();
-  if (detected === 'anthropic') {
-    console.log('Autodetected --anthropic');
-    anthropic = true;
-  } else if (detected === 'chat-gpt') {
-    console.log('Autodetected --chat-gpt');
-    chatGpt = true;
-  } else if (detected === 'vertex-ai') {
-    console.log('Autodetected --vertex-ai');
-    vertexAi = true;
-  } else if (detected === 'ai-studio') {
-    console.log('Autodetected --ai-studio');
-    aiStudio = true;
+  if (detected) {
+    console.log(`Autodetected --ai-service=${detected}`);
+    aiService = detected;
   } else {
-    console.warn('Missing --chat-gpt, --anthropic, --ai-studio, --vertex-ai, or --vertex-ai-claude');
+    console.warn('Missing --ai-service option. Please specify which AI service should be used.');
   }
 }
 

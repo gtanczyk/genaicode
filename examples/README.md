@@ -39,7 +39,7 @@ npx genaicode --explicit-prompt="similar to golang_hello_world, and python_hello
 This example demonstrates vision capabilities, takes a sketch of a web page, and asks for generation of the page accordingly to the sketch:
 
 ```bash
-npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --dry-run
+npx genaicode --task-file="./vision_task.md" -vision --dry-run
 ```
 
 | Sketch                                                   | Result                                                                                  |
@@ -52,7 +52,7 @@ npx genaicode --task-file="./vision_task.md" --vertex-ai-claude --vision --dry-r
 - first iteration:
 
 ```bash
-npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcanoid game"
+npx genaicode --explicit-prompt="Please create a simple arcanoid game"
 ```
 
 - result: simple game is created, it is using html and plain js
@@ -62,7 +62,7 @@ npx genaicode --vertex-ai-claude --explicit-prompt="Please create a simple arcan
 - second iteration: Replace window.alert with html based messages
 
   ```bash
-  npx genaicode --vertex-ai-claude --explicit-prompt="Instead of using window.alert to show messages, show them using HTML, and pause the game when a message is shown. Allow user to confirm the message to continue"
+  npx genaicode --explicit-prompt="Instead of using window.alert to show messages, show them using HTML, and pause the game when a message is shown. Allow user to confirm the message to continue"
   ```
 
 - result: window.alert is replaced with nice html based image

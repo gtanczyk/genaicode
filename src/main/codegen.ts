@@ -1,6 +1,5 @@
 import { exec } from 'child_process';
 import util from 'util';
-import assert from 'node:assert';
 
 import * as cliParams from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
@@ -31,6 +30,7 @@ import {
 } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 import { getRegisteredAiServices } from './plugin-loader.js';
+import { cliParamToAiService } from './codegen-utils.js';
 
 /** Executes codegen */
 export async function runCodegen(isDev = false): Promise<void> {
@@ -249,7 +249,7 @@ function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFun
     'ai-studio': generateContentAiStudio,
     anthropic: generateContentAnthropic,
     'chat-gpt': generateContentGPT,
-    ...getRegisteredAiServices(),
+    ...Object.fromEntries(getRegisteredAiServices().entries()),
   };
 }
 
@@ -257,19 +257,3 @@ const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
   'dall-e': generateImageDallE,
   'vertex-ai': generateImageVertexAi,
 } as const;
-
-function cliParamToAiService(): AiServiceType {
-  const result = cliParams.vertexAi
-    ? 'vertex-ai'
-    : cliParams.aiStudio
-      ? 'ai-studio'
-      : cliParams.vertexAiClaude
-        ? 'vertex-ai-claude'
-        : cliParams.chatGpt
-          ? 'chat-gpt'
-          : cliParams.anthropic
-            ? 'anthropic'
-            : undefined;
-  assert(result, 'Please specify which AI service should be used');
-  return result;
-}

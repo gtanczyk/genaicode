@@ -1,10 +1,10 @@
 import path from 'path';
-import { Operation, Plugin } from './codegen-types.js';
+import { Operation, Plugin, PluginAiServiceType } from './codegen-types.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
 import { RcConfig } from './config-lib.js';
 
 // Global storage for registered AI services and operations
-const registeredAiServices: Record<string, GenerateContentFunction> = {};
+const registeredAiServices: Map<PluginAiServiceType, GenerateContentFunction> = new Map();
 const registeredOperations: Record<string, Operation> = {};
 
 export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
@@ -20,7 +20,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
 
       if (plugin.aiServices) {
         Object.entries(plugin.aiServices).forEach(([name, service]) => {
-          registeredAiServices[name] = service;
+          registeredAiServices.set(`plugin:${name}`, service);
           console.log(`Registered AI service: ${name}`);
         });
       }
@@ -39,7 +39,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   }
 }
 
-export function getRegisteredAiServices(): Record<string, GenerateContentFunction> {
+export function getRegisteredAiServices(): Map<PluginAiServiceType, GenerateContentFunction> {
   return registeredAiServices;
 }
 

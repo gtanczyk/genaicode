@@ -39,9 +39,11 @@ describe('validateCliParams', () => {
 
   it('should throw an error when both vision and vertexAi flags are true', () => {
     process.argv.push('--vision');
-    process.argv.push('--vertex-ai');
+    process.argv.push('--ai-service=vertex-ai');
 
-    expect(() => validateCliParams()).toThrow('--vision and --vertex-ai are currently not supported together.');
+    expect(() => validateCliParams()).toThrow(
+      '--vision and --ai-service=vertex-ai are currently not supported together.',
+    );
   });
 
   // New tests for --imagen parameter

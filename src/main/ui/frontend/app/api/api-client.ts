@@ -148,6 +148,11 @@ export const deleteIteration = async (iterationId: string): Promise<void> => {
   await api.delete(`/delete-iteration/${iterationId}`);
 };
 
+export const getAvailableAiServices = async (): Promise<string[]> => {
+  const response = await api.get('/available-ai-services');
+  return response.data.services;
+};
+
 // Error handling middleware
 api.interceptors.response.use(
   (response) => response,

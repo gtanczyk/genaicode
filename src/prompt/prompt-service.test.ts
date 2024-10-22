@@ -82,9 +82,6 @@ const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
 describe('promptService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(cliParams).anthropic = false;
-    vi.mocked(cliParams).chatGpt = false;
-    vi.mocked(cliParams).vertexAi = false;
     vi.mocked(cliParams).dryRun = false;
     vi.mocked(cliParams).vision = false;
     vi.mocked(cliParams).imagen = undefined;
@@ -92,7 +89,7 @@ describe('promptService', () => {
   });
 
   it('should process the codegen summary and return the result with Vertex AI', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Hello");' } },
     ];
@@ -109,7 +106,7 @@ describe('promptService', () => {
   });
 
   it('should process the codegen summary and return the result with ChatGPT', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).aiService = 'chat-gpt';
     const mockFunctionCalls = [{ name: 'createFile', args: { filePath: 'new.js', newContent: 'const x = 5;' } }];
     vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
@@ -124,7 +121,7 @@ describe('promptService', () => {
   });
 
   it('should process the codegen summary and return the result with Anthropic', async () => {
-    vi.mocked(cliParams).anthropic = true;
+    vi.mocked(cliParams).aiService = 'anthropic';
     const mockFunctionCalls = [{ name: 'deleteFile', args: { filePath: 'obsolete.js' } }];
     vi.mocked(anthropic.generateContent).mockResolvedValueOnce(mockFunctionCalls);
 
@@ -139,7 +136,7 @@ describe('promptService', () => {
   });
 
   it('should not update files in dry run mode', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).dryRun = true;
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("Dry run");' } },
@@ -157,7 +154,7 @@ describe('promptService', () => {
   });
 
   it('should handle invalid patchFile call and retry without patchFile function', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -213,7 +210,7 @@ describe('promptService', () => {
   });
 
   it('should include image assets when vision flag is true', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).aiService = 'chat-gpt';
     vi.mocked(cliParams).vision = true;
     const mockImageAssets = {
       '/path/to/image1.png': { width: 100, height: 100, mimeType: 'image/png' },
@@ -253,7 +250,7 @@ describe('promptService', () => {
   });
 
   it('should include image data in the prompt when processing files with vision', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).aiService = 'chat-gpt';
     vi.mocked(cliParams).vision = true;
     const mockCodegenSummary = [
       {
@@ -319,7 +316,7 @@ describe('promptService', () => {
   });
 
   it('should not include image assets when vision flag is false', async () => {
-    vi.mocked(cliParams).chatGpt = true;
+    vi.mocked(cliParams).aiService = 'chat-gpt';
     vi.mocked(cliParams).vision = false;
     const mockFunctionCalls = [
       { name: 'updateFile', args: { filePath: 'test.js', newContent: 'console.log("No vision test");' } },
@@ -346,7 +343,7 @@ describe('promptService', () => {
   });
 
   it('should handle context optimization', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -396,7 +393,7 @@ describe('promptService', () => {
   });
 
   it('should handle disableContextOptimization flag', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).disableContextOptimization = true;
     const mockCodegenSummary = [
       {
@@ -447,7 +444,7 @@ describe('promptService', () => {
   });
 
   it('should handle image generation requests', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).imagen = 'dall-e';
     const mockCodegenSummary = [
       {
@@ -509,7 +506,7 @@ describe('promptService', () => {
   });
 
   it('should handle image generation failure', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).imagen = 'dall-e';
     const mockCodegenSummary = [
       {
@@ -570,7 +567,7 @@ describe('promptService', () => {
   });
 
   it('should handle unexpected response without codegen summary', async () => {
-    vi.mocked(cliParams).vertexAi = true;
+    vi.mocked(cliParams).aiService = 'vertex-ai';
     const mockUnexpectedResponse = [
       {
         name: 'updateFile',
@@ -595,7 +592,7 @@ describe('promptService', () => {
 
   describe('validateAndRecoverSingleResult', () => {
     it('should successfully recover from an invalid function call', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).aiService = 'vertex-ai';
       const mockInvalidCall = [
         {
           name: 'codegenSummary',
@@ -651,7 +648,7 @@ describe('promptService', () => {
     });
 
     it('should handle unsuccessful recovery', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).aiService = 'vertex-ai';
       const mockInvalidCall = [
         {
           name: 'updateFile',
@@ -687,7 +684,7 @@ describe('promptService', () => {
     });
 
     it('should not attempt recovery for multiple valid function calls', async () => {
-      vi.mocked(cliParams).vertexAi = true;
+      vi.mocked(cliParams).aiService = 'vertex-ai';
       const mockValidCalls = [
         {
           name: 'updateFile',

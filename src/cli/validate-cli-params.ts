@@ -14,11 +14,7 @@ const allowedParameters: string[] = [
   '--disallow-file-delete',
   '--disallow-directory-create',
   '--disallow-file-move',
-  '--chat-gpt',
-  '--ai-studio',
-  '--vertex-ai',
-  '--vertex-ai-claude',
-  '--anthropic',
+  '--ai-service=',
   '--explicit-prompt=',
   '--task-file=',
   '--dependency-tree',
@@ -75,6 +71,18 @@ export function validateCliParams(): void {
     }
   });
 
+  // Validate --ai-service parameter
+  const aiServiceParam: string | undefined = providedParameters.find((param) => param.startsWith('--ai-service='));
+  if (aiServiceParam) {
+    const aiServiceValue: string = aiServiceParam.split('=')[1];
+    if (
+      !['vertex-ai', 'chat-gpt', 'anthropic', 'ai-studio', 'vertex-ai-claude'].includes(aiServiceValue) &&
+      !aiServiceValue.startsWith('plugin:')
+    ) {
+      throw new Error('Invalid --ai-service value');
+    }
+  }
+
   // Validate temperature parameter, it must be a number between 0.0 and 2.0
   const temperatureParam: string | undefined = providedParameters.find((param) => param.startsWith('--temperature='));
   if (temperatureParam) {
@@ -94,8 +102,8 @@ export function validateCliParams(): void {
     }
   }
 
-  if (providedParameters.includes('--vision') && providedParameters.includes('--vertex-ai')) {
-    throw new Error('--vision and --vertex-ai are currently not supported together.');
+  if (providedParameters.includes('--vision') && providedParameters.includes('--ai-service=vertex-ai')) {
+    throw new Error('--vision and --ai-service=vertex-ai are currently not supported together.');
   }
 
   // Validate content mask parameter
