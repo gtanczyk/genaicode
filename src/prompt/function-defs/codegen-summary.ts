@@ -1,5 +1,5 @@
-import { FunctionDef } from '../../ai-service/common';
-import { getRegisteredOperations } from '../../main/plugin-loader';
+import { FunctionDef } from '../../ai-service/common.js';
+import { getRegisteredOperations } from '../../main/plugin-loader.js';
 
 /**
  * Function definition for codegenSummary

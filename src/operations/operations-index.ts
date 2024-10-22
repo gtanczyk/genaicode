@@ -1,8 +1,8 @@
-import { getRegisteredOperations } from '../main/plugin-loader';
-import { OperationExecutor } from '../main/codegen-types';
+import { getRegisteredOperations } from '../main/plugin-loader.js';
+import { OperationExecutor } from '../main/codegen-types.js';
 
-import * as createDirectory from './create-directory/create-directory-executor';
-import * as createFile from './create-file/create-file-executor';
+import * as createDirectory from './create-directory/create-directory-executor.js';
+import * as createFile from './create-file/create-file-executor.js';
 import * as updateFile from './update-file/update-file-executor.js';
 import * as patchFile from './patch-file/patch-file-executor.js';
 import * as deleteFile from './delete-file/delete-file-executor.js';
