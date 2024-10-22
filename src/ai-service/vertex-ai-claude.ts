@@ -67,7 +67,7 @@ export async function generateContent(
     })
     .filter((message) => !!message);
 
-  const model = cheap ? 'claude-3-haiku@20240307' : 'claude-3-5-sonnet@20241022';
+  const model = cheap ? 'claude-3-haiku@20240307' : 'claude-3-5-sonnet@20240620';
   console.log(`Using Vertex AI Claude model: ${model}`);
   assert(process.env.GOOGLE_CLOUD_PROJECT, 'GOOGLE_CLOUD_PROJECT environment variable is not set');
   assert(process.env.GOOGLE_CLOUD_REGION, 'GOOGLE_CLOUD_REGION environment variable is not set');
