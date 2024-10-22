@@ -24,6 +24,23 @@ export async function generateContent(
 ): Promise<FunctionCall[]> {
   const openai = new OpenAI();
 
+  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-08-06';
+  const model = cheap
+    ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
+    : (modelOverrides.chatGpt?.default ?? defaultModel);
+
+  return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, model, openai);
+}
+
+export async function internalGenerateContent(
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  requiredFunctionName: string | null,
+  temperature: number,
+  cheap = false,
+  model: string,
+  openai: OpenAI,
+): Promise<FunctionCall[]> {
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
       if (item.type === 'systemPrompt') {
@@ -82,10 +99,6 @@ export async function generateContent(
     })
     .flat();
 
-  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-08-06';
-  const model = cheap
-    ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
-    : (modelOverrides.chatGpt?.default ?? defaultModel);
   console.log(`Using OpenAI model: ${model}`);
   assert(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY environment variable is not set');
 

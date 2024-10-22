@@ -16,6 +16,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   for (let pluginPath of rcConfig.plugins) {
     try {
       pluginPath = path.isAbsolute(pluginPath) ? pluginPath : path.join(rcConfig.rootDir, pluginPath);
+      console.log('Loading plugin:', pluginPath);
       const plugin = (await import(pluginPath)).default as Plugin;
 
       if (plugin.aiServices) {
