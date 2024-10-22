@@ -1,7 +1,7 @@
 import { GenerateContentArgs, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
-import { functionDefs } from '../function-calling.js';
+import { getFunctionDefs } from '../function-calling.js';
 import { ChatMessageFlags } from '../../main/common/content-bus-types.js';
 
 export async function executeStepGenerateSummary(
@@ -23,7 +23,7 @@ export async function executeStepGenerateSummary(
         text: `Now please summarize our conversation, I want maximum 1 sentence of maximum 10 words explaning the conversation.`,
       },
     ],
-    functionDefs,
+    getFunctionDefs(),
     'explanation',
     0.3, // Use a lower temperature for more focused summaries
     true, // Use cheap model by default for summaries

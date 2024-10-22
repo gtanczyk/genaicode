@@ -1,4 +1,5 @@
-import { CodegenOptions } from '../main/codegen-types';
+import { getRegisteredOperations } from '../main/plugin-loader';
+import { OperationExecutor } from '../main/codegen-types';
 
 import * as createDirectory from './create-directory/create-directory-executor';
 import * as createFile from './create-file/create-file-executor';
@@ -24,12 +25,14 @@ const INDEX = [
   imglyRemoveBackground,
 ] as const;
 
-export function getOperationExecutor(name: string) {
-  return INDEX.find((operation) => operation.def.name === name)?.executor as
-    | ((args: Record<string, unknown>, options: CodegenOptions) => Promise<void>)
-    | undefined;
+function getOperations() {
+  return [...getRegisteredOperations(), ...INDEX];
+}
+
+export function getOperationExecutor(name: string): OperationExecutor | undefined {
+  return getOperations().find((operation) => operation.def.name === name)?.executor as OperationExecutor | undefined;
 }
 
 export function getOperationDefs() {
-  return INDEX.map((operation) => operation.def);
+  return getOperations().map((operation) => operation.def);
 }

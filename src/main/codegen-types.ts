@@ -1,3 +1,5 @@
+import { FunctionDef, GenerateContentFunction } from '../ai-service/common';
+
 export type AiServiceType = 'vertex-ai' | 'ai-studio' | 'vertex-ai-claude' | 'chat-gpt' | 'anthropic';
 
 export type ImagenType = 'vertex-ai' | 'dall-e';
@@ -44,4 +46,21 @@ export interface CodegenOptions {
   conversationSummaryEnabled?: boolean;
   images?: UploadedImage[];
   isDev?: boolean;
+}
+
+interface ExecutorArgs {
+  [key: string]: unknown;
+}
+
+export type OperationExecutor = (args: ExecutorArgs, options: CodegenOptions) => Promise<void>;
+
+export type Operation = {
+  executor: OperationExecutor;
+  def: FunctionDef;
+};
+
+export interface Plugin {
+  name: string;
+  aiServices?: Record<string, GenerateContentFunction>;
+  operations?: Record<string, Operation>;
 }

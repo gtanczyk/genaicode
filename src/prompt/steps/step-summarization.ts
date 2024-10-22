@@ -1,7 +1,7 @@
 import { GenerateContentFunction, GenerateContentArgs, PromptItem, FunctionCall } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { SourceCodeMap } from '../../files/read-files.js';
-import { functionDefs } from '../function-calling.js';
+import { getFunctionDefs } from '../function-calling.js';
 import { SummaryInfo, SummaryCache } from './steps-types.js';
 import { md5, readCache, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -71,7 +71,7 @@ async function summarizeBatch(
       },
     ];
 
-    const request: GenerateContentArgs = [summarizationPrompt, functionDefs, 'setSummaries', 0.2, true, options];
+    const request: GenerateContentArgs = [summarizationPrompt, getFunctionDefs(), 'setSummaries', 0.2, true, options];
     let result = await generateContentFn(...request);
     result = await validateAndRecoverSingleResult(request, result, generateContentFn);
     const batchSummaries = parseSummarizationResult(result);

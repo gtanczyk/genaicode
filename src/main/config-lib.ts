@@ -43,6 +43,7 @@ export interface RcConfig {
   ignorePaths?: string[];
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
+  plugins?: string[]; // New field for plugins
 }
 
 // Find .genaicoderc file
@@ -81,6 +82,14 @@ export function parseRcFile(rcFilePath: string): RcConfig {
 
   const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
   assert(isAncestorDirectory(path.dirname(rcFilePath), rootDir), 'Root dir is not located inside project directory');
+
+  // Validate plugins array if it exists
+  if (rcConfig.plugins) {
+    assert(Array.isArray(rcConfig.plugins), 'Plugins must be an array of strings');
+    rcConfig.plugins.forEach((plugin, index) => {
+      assert(typeof plugin === 'string', `Plugin at index ${index} must be a string`);
+    });
+  }
 
   return { ...rcConfig, rootDir };
 }

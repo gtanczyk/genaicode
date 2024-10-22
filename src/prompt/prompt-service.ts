@@ -3,7 +3,7 @@ import fs from 'fs';
 import mime from 'mime-types';
 
 import { getSystemPrompt } from './systemprompt.js';
-import { functionDefs } from './function-calling.js';
+import { getFunctionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import {
   PromptItem,
@@ -137,7 +137,7 @@ async function executePromptService(
     const askQuestionResult = await executeStepAskQuestion(
       generateContentFn,
       prompt,
-      functionDefs,
+      getFunctionDefs(),
       codegenPrompt.options.temperature ?? 0.7,
       messages,
       codegenPrompt.options,
@@ -156,7 +156,7 @@ async function executePromptService(
 
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
     prompt,
-    functionDefs,
+    getFunctionDefs(),
     'codegenSummary',
     codegenPrompt.options.temperature ?? 0.7,
     codegenPrompt.options.cheap ?? false,
@@ -230,7 +230,7 @@ async function executePromptService(
 
       const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
         prompt,
-        functionDefs,
+        getFunctionDefs(),
         file.updateToolName,
         file.temperature ?? codegenPrompt.options.temperature,
         file.cheap === true,
@@ -256,7 +256,7 @@ async function executePromptService(
           patchFileCall.args as { filePath: string; patch: string },
           generateContentFn,
           prompt,
-          functionDefs,
+          getFunctionDefs(),
           file.temperature ?? codegenPrompt.options.temperature,
           file.cheap === true,
           codegenPrompt.options,

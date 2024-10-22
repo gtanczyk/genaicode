@@ -30,6 +30,7 @@ import {
   unsetCurrentIterationId,
 } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
+import { getRegisteredAiServices } from './plugin-loader.js';
 
 /** Executes codegen */
 export async function runCodegen(isDev = false): Promise<void> {
@@ -132,7 +133,7 @@ export async function runCodegenIteration(
   putSystemMessage('Generating response');
   try {
     const functionCalls = await promptService(
-      GENERATE_CONTENT_FNS,
+      getGenerateContentFunctions(),
       GENERATE_IMAGE_FNS,
       getCodeGenPrompt(options),
       waitIfPaused,
@@ -179,7 +180,7 @@ export async function runCodegenIteration(
 
           putSystemMessage('Generating response for lint fixes');
           const lintFixFunctionCalls = (await promptService(
-            GENERATE_CONTENT_FNS,
+            getGenerateContentFunctions(),
             GENERATE_IMAGE_FNS,
             {
               prompt: lintErrorPrompt,
@@ -241,13 +242,16 @@ export async function runCodegenIteration(
 
 const execPromise = util.promisify(exec);
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
-  'vertex-ai-claude': generateContentVertexAiClaude,
-  'vertex-ai': generateContentVertexAi,
-  'ai-studio': generateContentAiStudio,
-  anthropic: generateContentAnthropic,
-  'chat-gpt': generateContentGPT,
-} as const;
+function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
+  return {
+    'vertex-ai-claude': generateContentVertexAiClaude,
+    'vertex-ai': generateContentVertexAi,
+    'ai-studio': generateContentAiStudio,
+    anthropic: generateContentAnthropic,
+    'chat-gpt': generateContentGPT,
+    ...getRegisteredAiServices(),
+  };
+}
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
   'dall-e': generateImageDallE,

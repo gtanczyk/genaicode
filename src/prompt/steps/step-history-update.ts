@@ -2,7 +2,7 @@ import { GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../
 import { readCache, writeCache } from '../../files/cache-file.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
-import { functionDefs } from '../function-calling.js';
+import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 
@@ -47,7 +47,7 @@ ${currentHistory}
     },
   ];
 
-  const request: GenerateContentArgs = [optimizationPrompt, functionDefs, 'updateHistory', 1, true, options];
+  const request: GenerateContentArgs = [optimizationPrompt, getFunctionDefs(), 'updateHistory', 1, true, options];
   let result = await generateContentFn(...request);
   result = await validateAndRecoverSingleResult(request, result, generateContentFn);
   const { newHistoryContent, recentConversationSummary } =

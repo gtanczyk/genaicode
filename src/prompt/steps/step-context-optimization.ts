@@ -2,7 +2,7 @@ import { GenerateContentFunction, PromptItem, FunctionCall, GenerateContentArgs 
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getSourceCode, SourceCodeMap } from '../../files/read-files.js';
-import { functionDefs } from '../function-calling.js';
+import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { getSummary } from './step-summarization.js';
@@ -131,7 +131,14 @@ export async function executeStepContextOptimization(
         },
       ];
 
-      const request: GenerateContentArgs = [optimizationPrompt, functionDefs, 'optimizeContext', 0.2, true, options];
+      const request: GenerateContentArgs = [
+        optimizationPrompt,
+        getFunctionDefs(),
+        'optimizeContext',
+        0.2,
+        true,
+        options,
+      ];
       let result = await generateContentFn(...request);
       result = await validateAndRecoverSingleResult(request, result, generateContentFn);
 

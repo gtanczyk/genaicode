@@ -1,4 +1,5 @@
 import { findRcFile, parseRcFile, RcConfig, ImportantContext, ModelOverrides } from './config-lib.js';
+import { loadPlugins } from './plugin-loader.js';
 import path from 'path';
 
 // Default extensions if not specified in .genaicoderc
@@ -26,6 +27,9 @@ const DEFAULT_IGNORE_PATHS: string[] = ['node_modules', 'build', 'dist', 'packag
 // Read and parse the configuration
 const rcFilePath: string = await findRcFile();
 export const rcConfig: RcConfig = parseRcFile(rcFilePath);
+
+// Load plugins
+await loadPlugins(rcConfig);
 
 // Use extensions from .genaicoderc if available, otherwise use default
 export const sourceExtensions: string[] = rcConfig.extensions || DEFAULT_EXTENSIONS;

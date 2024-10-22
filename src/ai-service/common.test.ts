@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import { functionDefs } from '../prompt/function-calling.js';
+import { getFunctionDefs } from '../prompt/function-calling.js';
 
 // Mock cli-params.js
 vi.mock('../cli/cli-params.js', () => ({
@@ -64,6 +64,8 @@ describe('printTokenUsageAndCost', () => {
 });
 
 describe('processFunctionCalls', () => {
+  const functionDefs = getFunctionDefs();
+
   it('should process valid function calls correctly', () => {
     const validFunctionCalls = [
       { name: 'explanation', args: { text: 'This is an explanation' } },

@@ -1,9 +1,10 @@
 import { FunctionDef } from '../../ai-service/common';
+import { getRegisteredOperations } from '../../main/plugin-loader';
 
 /**
  * Function definition for codegenSummary
  */
-export const codegenSummary: FunctionDef = {
+export const getCodegenSummaryDef = (): FunctionDef => ({
   name: 'codegenSummary',
   description:
     'This function is called with a summary of proposed updates.\n' +
@@ -50,6 +51,7 @@ export const codegenSummary: FunctionDef = {
                 'splitImage',
                 'resizeImage',
                 'imglyRemoveBackground',
+                ...getRegisteredOperations().map((operation) => operation.def.name),
               ],
               description: 'The name of the tool that will be used to perform the update.',
             },
@@ -86,4 +88,4 @@ export const codegenSummary: FunctionDef = {
     },
     required: ['explanation', 'fileUpdates', 'contextPaths'],
   },
-};
+});

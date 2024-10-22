@@ -1,7 +1,7 @@
 import { Validator, ValidatorResult, Schema, ValidationError } from 'jsonschema';
 import path from 'path';
 import { FunctionDef, FunctionCall } from '../ai-service/common.js';
-import { functionDefs } from './function-calling.js';
+import { getFunctionDefs } from './function-calling.js';
 import { rcConfig } from '../main/config.js';
 
 export function validateFunctionCall(
@@ -9,7 +9,7 @@ export function validateFunctionCall(
   requiredFunctionName: string,
 ): Omit<ValidatorResult, 'addError'> | undefined {
   const validator = new Validator();
-  const functionDef: FunctionDef | undefined = functionDefs.find((def) => def.name === call?.name);
+  const functionDef: FunctionDef | undefined = getFunctionDefs().find((def) => def.name === call?.name);
 
   // Step 1: Check if the function name matches
   if (!call || call.name !== requiredFunctionName) {

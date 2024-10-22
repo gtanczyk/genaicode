@@ -27,5 +27,9 @@
       "src/main/codegen.ts",
       "src/main/codegen-types.ts"
     ]
-  }
+  },
+  "plugins": [
+    "./examples/genaicode_plugins/fake_ai_service.js",
+    "./examples/genaicode_plugins/nonsense_operation.js"
+  ]
 }
