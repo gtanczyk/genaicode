@@ -1,11 +1,14 @@
 import path from 'path';
-import { Operation, Plugin, PluginAiServiceType } from './codegen-types.js';
+import { Operation, Plugin, PluginActionType, PluginAiServiceType } from './codegen-types.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
+import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-lib.js';
 
 // Global storage for registered AI services and operations
 const registeredAiServices: Map<PluginAiServiceType, GenerateContentFunction> = new Map();
 const registeredOperations: Record<string, Operation> = {};
+const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
+const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
 
 export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   if (!rcConfig.plugins || rcConfig.plugins.length === 0) {
@@ -33,6 +36,14 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
         });
       }
 
+      if (plugin.actionHandlers) {
+        Object.entries(plugin.actionHandlers).forEach(([name, { handler, description }]) => {
+          registeredActionHandlers.set(`plugin:${name}`, handler);
+          registeredActionHandlerDescriptions.set(`plugin:${name}`, description);
+          console.log(`Registered action handler: ${name}`);
+        });
+      }
+
       console.log(`Successfully loaded plugin: ${pluginPath}`);
     } catch (error) {
       console.error(`Failed to load plugin: ${pluginPath}`, error);
@@ -46,4 +57,12 @@ export function getRegisteredAiServices(): Map<PluginAiServiceType, GenerateCont
 
 export function getRegisteredOperations(): Operation[] {
   return Object.values(registeredOperations);
+}
+
+export function getRegisteredActionHandlers(): Map<PluginActionType, ActionHandler> {
+  return registeredActionHandlers;
+}
+
+export function getRegisteredActionHandlerDescriptions(): Map<PluginActionType, string> {
+  return registeredActionHandlerDescriptions;
 }

@@ -1,6 +1,7 @@
 import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../ai-service/common.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { StepResult } from '../steps-types.js';
+import { PluginActionType } from '../../../main/codegen-types.js';
 
 export type ActionType =
   | 'requestAnswer'
@@ -10,7 +11,8 @@ export type ActionType =
   | 'confirmCodeGeneration'
   | 'startCodeGeneration'
   | 'cancelCodeGeneration'
-  | 'contextOptimization';
+  | 'contextOptimization'
+  | PluginActionType;
 
 type AskQuestionArgs = {
   actionType: ActionType;

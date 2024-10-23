@@ -31,6 +31,7 @@ export async function generateContent(
     },
   });
 
+  let cacheControlCount = 0;
   const messages: PromptCachingBetaMessageParam[] = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
@@ -64,10 +65,15 @@ export async function generateContent(
           );
         }
 
+        const shouldAddCache = item.cache && !options.disableCache && cacheControlCount < 4;
+        if (shouldAddCache) {
+          cacheControlCount++;
+        }
+
         content.push({
           type: 'text' as const,
           text: item.text!,
-          ...(item.cache && !options.disableCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+          ...(shouldAddCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
         });
         const message: PromptCachingBetaMessageParam = {
           role: 'user',

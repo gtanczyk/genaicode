@@ -1,4 +1,5 @@
 import { FunctionDef } from '../../ai-service/common';
+import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 
 /**
  * Function definition for askQuestion
@@ -6,7 +7,32 @@ import { FunctionDef } from '../../ai-service/common';
  * Use this function to ask questions, seek clarification, request file permissions, or manage the flow of the conversation.
  * Each actionType serves a specific purpose, ensuring clarity and proper task execution.
  */
-export const askQuestion: FunctionDef = {
+function getActionTypeDescription(): string {
+  const pluginDescriptions = Array.from(getRegisteredActionHandlerDescriptions().entries())
+    .map(([actionType, description]) => ` - ${actionType}: ${description}`)
+    .join('\n');
+
+  return `This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.,
+
+Detailed Explanation of actionTypes:
+- requestAnswer: Use for general information, clarifications, or when no specific code is needed.
+- requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
+- requestFilesContent: Use specifically when needing to access or review the contents of files.
+- removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
+- confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
+- startCodeGeneration: Use only after receiving confirmation to begin code generation.
+- cancelCodeGeneration: Use if code generation should be stopped or canceled.
+- contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
+${pluginDescriptions}`;
+}
+
+/**
+ * Function definition for askQuestion
+ *
+ * Use this function to ask questions, seek clarification, request file permissions, or manage the flow of the conversation.
+ * Each actionType serves a specific purpose, ensuring clarity and proper task execution.
+ */
+export const getAskQuestionDef = (): FunctionDef => ({
   name: 'askQuestion',
   description:
     'Use this function to ask a question, seek clarification, or manage the flow of the conversation. For analysis requests, use actionType "requestAnswer". Only proceed to code generation when explicitly instructed or after confirmation.',
@@ -24,19 +50,9 @@ export const askQuestion: FunctionDef = {
           'startCodeGeneration',
           'cancelCodeGeneration',
           'contextOptimization',
+          ...Array.from(getRegisteredActionHandlers().keys()),
         ],
-        description: `This value instructs the program on what should happen next. Use "requestAnswer" for analysis requests or clarifications.,
-
-           Detailed Explanation of actionTypes:
-           - requestAnswer: Use for general information, clarifications, or when no specific code is needed.
-           - requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
-           - requestFilesContent: Use specifically when needing to access or review the contents of files.
-           - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
-           - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
-           - startCodeGeneration: Use only after receiving confirmation to begin code generation.
-           - cancelCodeGeneration: Use if code generation should be stopped or canceled.
-           - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
-        `,
+        description: getActionTypeDescription(),
       },
       content: {
         type: 'string',
@@ -106,4 +122,4 @@ export const askQuestion: FunctionDef = {
     },
     required: ['actionType', 'content', 'promptNecessity'],
   },
-};
+});

@@ -14,6 +14,7 @@ import { handleRequestAnswer } from './handlers/handle-request-answer.js';
 import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
+import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { performSelfReflection } from './step-ask-question-reflect.js';
 
 export async function executeStepAskQuestion(
@@ -122,6 +123,13 @@ async function getAskQuestionCall(
 }
 
 function getActionHandler(actionType: ActionType): ActionHandler {
+  // First, check if there's a plugin-provided handler for this action type
+  const pluginHandler = getRegisteredActionHandlers().get(actionType as `plugin:${string}`);
+  if (pluginHandler) {
+    return pluginHandler;
+  }
+
+  // If no plugin handler is found, use the built-in handlers
   const handlers: Record<ActionType, ActionHandler> = {
     cancelCodeGeneration: handleCancelCodeGeneration,
     confirmCodeGeneration: handleConfirmCodeGeneration,

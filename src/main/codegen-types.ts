@@ -1,6 +1,8 @@
 import { FunctionDef, GenerateContentFunction } from '../ai-service/common';
+import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types';
 
 export type PluginAiServiceType = `plugin:${string}`;
+export type PluginActionType = `plugin:${string}`;
 
 export type AiServiceType =
   | 'vertex-ai'
@@ -71,4 +73,17 @@ export interface Plugin {
   name: string;
   aiServices?: Record<string, GenerateContentFunction>;
   operations?: Record<string, Operation>;
+  actionHandlers?: Record<
+    string,
+    {
+      /** The action handler implementation */
+      handler: ActionHandler;
+      /**
+       * Description of what this action handler does.
+       * This description will be included in the askQuestion function definition
+       * to help the AI understand when to use this action.
+       */
+      description: string;
+    }
+  >;
 }
