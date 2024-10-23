@@ -1,8 +1,4 @@
-import { Plugin } from '../../src/main/codegen-types.js';
-import { ActionHandlerProps, ActionResult } from '../../src/prompt/steps/step-ask-question/step-ask-question-types.js';
-import { putSystemMessage } from '../../src/main/common/content-bus.js';
-import { StepResult } from '../../src/prompt/steps/steps-types.js';
-import { askUserForInput } from '../../src/main/common/user-actions.js';
+import { Plugin, ActionHandlerProps, ActionResult } from '../../src/index.js';
 
 const nonsenseActionHandler: Plugin = {
   name: 'nonsense-action-handler',
@@ -11,6 +7,8 @@ const nonsenseActionHandler: Plugin = {
       description:
         'A demonstration action handler that echoes back the received content. Use this action when you want to test the plugin system or demonstrate its capabilities.',
       handler: async (props: ActionHandlerProps): Promise<ActionResult> => {
+        const { StepResult, putSystemMessage, askUserForInput } = await import('../../src/index.js');
+
         putSystemMessage('Custom action handler executed', props.askQuestionCall.args);
 
         // Example implementation that echoes the content back

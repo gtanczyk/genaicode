@@ -1,4 +1,4 @@
-import { Plugin } from '../../src/main/codegen-types';
+import { Plugin } from '../../src/index.js';
 
 const fakeAiService: Plugin = {
   name: 'nonsense-operation',

@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { FunctionCall, FunctionDef, PromptItem } from '../../src/ai-service/common.js';
-import { Plugin } from '../../src/main/codegen-types.js';
+import { FunctionCall, FunctionDef, PromptItem, Plugin } from '../../src/index.js';
 
 const grokAiService: Plugin = {
   name: 'grok-ai-service',
