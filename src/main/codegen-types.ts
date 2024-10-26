@@ -1,7 +1,10 @@
 import { FunctionDef, GenerateContentFunction } from '../ai-service/common';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types';
 
+/** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
 export type PluginAiServiceType = `plugin:${string}`;
+
+/** Example: {@link ../../examples/genaicode_plugins/nonsense_action_handlers.ts} */
 export type PluginActionType = `plugin:${string}`;
 
 export type AiServiceType =

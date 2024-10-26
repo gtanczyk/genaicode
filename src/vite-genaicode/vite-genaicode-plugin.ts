@@ -3,6 +3,9 @@ import { dirname } from 'path';
 
 import { ViteDevServer } from 'vite';
 import { AddressInfo } from 'net';
+import { serviceAutoDetect } from '../cli/service-autodetect.js';
+import { stringToAiServiceType } from '../main/codegen-utils.js';
+import { CodegenOptions } from '../main/codegen-types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,7 +14,7 @@ let started = false;
 
 const GENAICODE_PORT = 1338;
 
-export default function viteGenaicode() {
+export default function viteGenaicode(options?: Partial<CodegenOptions>) {
   async function start(port: number) {
     if (started) return;
 
@@ -23,8 +26,25 @@ export default function viteGenaicode() {
       ui: true,
       uiPort: GENAICODE_PORT,
       uiFrameAncestors: ['http://localhost:' + port],
-      aiService: 'vertex-ai',
+      aiService: stringToAiServiceType(serviceAutoDetect()),
       isDev: false,
+
+      considerAllFiles: false,
+      allowFileCreate: true,
+      allowFileDelete: true,
+      allowDirectoryCreate: true,
+      allowFileMove: true,
+      vision: true,
+
+      temperature: 0.7,
+      requireExplanations: true,
+      askQuestion: true,
+      historyEnabled: true,
+
+      selfReflectionEnabled: true,
+      conversationSummaryEnabled: true,
+
+      ...options,
     });
   }
 

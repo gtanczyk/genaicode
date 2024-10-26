@@ -30,7 +30,7 @@ import {
 } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 import { getRegisteredAiServices } from './plugin-loader.js';
-import { cliParamToAiService } from './codegen-utils.js';
+import { stringToAiServiceType } from './codegen-utils.js';
 
 /** Executes codegen */
 export async function runCodegen(isDev = false): Promise<void> {
@@ -56,7 +56,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     allowDirectoryCreate: cliParams.allowDirectoryCreate,
     allowFileMove: cliParams.allowFileMove,
 
-    aiService: cliParamToAiService(),
+    aiService: stringToAiServiceType(cliParams.aiService),
     vision: cliParams.vision,
     imagen: cliParams.imagen,
 
