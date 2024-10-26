@@ -21,7 +21,7 @@ Then add it to your Vite config:
 ```typescript
 // vite.config.ts
 import { defineConfig } from 'vite';
-import viteGenaicode from 'vite-genaicode';
+import viteGenaicode from 'genaicode/vite-plugin';
 
 export default defineConfig({
   plugins: [viteGenaicode()],

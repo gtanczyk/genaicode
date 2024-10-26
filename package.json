@@ -9,7 +9,8 @@
   "keywords": [
     "generate",
     "code",
-    "ai"
+    "ai",
+    "vite-plugin"
   ],
   "type": "module",
   "bin": "./bin/genaicode.cjs",
