@@ -1,4 +1,10 @@
-import { FunctionDef, GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../../ai-service/common.js';
+import {
+  FunctionDef,
+  GenerateContentFunction,
+  GenerateContentArgs,
+  PromptItem,
+  GenerateImageFunction,
+} from '../../../ai-service/common.js';
 import { StepResult } from '../steps-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
@@ -11,6 +17,7 @@ import { handleRemoveFilesFromContext } from './handlers/remove-files-from-conte
 import { handleRequestPermissions } from './handlers/request-permissions.js';
 import { handleDefaultAction } from './handlers/default-action.js';
 import { handleRequestAnswer } from './handlers/handle-request-answer.js';
+import { handleRequestAnswerWithImage } from './handlers/handle-request-answer-with-image.js';
 import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
@@ -19,6 +26,7 @@ import { performSelfReflection } from './step-ask-question-reflect.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
+  generateImageFn: GenerateImageFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
@@ -57,7 +65,14 @@ export async function executeStepAskQuestion(
       const actionType = askQuestionCall.args?.actionType;
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
-        const result = await actionHandler({ askQuestionCall, prompt, options, messages, generateContentFn });
+        const result = await actionHandler({
+          askQuestionCall,
+          prompt,
+          options,
+          messages,
+          generateContentFn,
+          generateImageFn,
+        });
 
         // This is important to display the content to the user interface (ui or interactive cli)
         putUserMessage(result.items.slice(-1)[0].user.text);
@@ -138,6 +153,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,
     requestAnswer: handleRequestAnswer,
+    requestAnswerWithImage: handleRequestAnswerWithImage,
     contextOptimization: handleContextOptimization,
   };
 

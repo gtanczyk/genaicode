@@ -4,7 +4,19 @@ import { FunctionCall, GenerateImageFunction } from '../../ai-service/common.js'
 export async function executeStepGenerateImage(
   generateImageFn: GenerateImageFunction,
   generateImageCall: FunctionCall,
-): Promise<FunctionCall> {
+): Promise<
+  FunctionCall<
+    | {
+        filePath: string;
+        downloadUrl: string;
+        explanation: string;
+      }
+    | {
+        text: string;
+        downloadUrl: undefined;
+      }
+  >
+> {
   assert(!!generateImageFn, 'Image generation requested, but an image generation service was not provided');
 
   console.log('Processing image generation request:', generateImageCall.args);
@@ -43,6 +55,7 @@ export async function executeStepGenerateImage(
       name: 'explanation',
       args: {
         text: `Failed to generate image: ${(error as Error).message}`,
+        downloadUrl: undefined,
       },
     };
   }

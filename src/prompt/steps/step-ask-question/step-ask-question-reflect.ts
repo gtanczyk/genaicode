@@ -23,6 +23,7 @@ Common problems/pitfalls:
 - Saying that an analysis will be done, instead of actually doing the analysis
 - The response is too similar to a previous question or response
 - The assistant takes on the user's voice or persona instead of maintaining its own identity
+- The assistant is using invalid actionType values, for example when requesting files contents not using requestFilesContent action types
 
 Specific examples of problematic responses:
 

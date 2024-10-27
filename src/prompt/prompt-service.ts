@@ -136,6 +136,7 @@ async function executePromptService(
   if (codegenPrompt.options.askQuestion !== false && (codegenPrompt.options.interactive || codegenPrompt.options.ui)) {
     const askQuestionResult = await executeStepAskQuestion(
       generateContentFn,
+      generateImageFn,
       prompt,
       getFunctionDefs(),
       codegenPrompt.options.temperature ?? 0.7,

@@ -1,10 +1,16 @@
-import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../ai-service/common.js';
+import {
+  FunctionCall,
+  GenerateContentFunction,
+  GenerateImageFunction,
+  PromptItem,
+} from '../../../ai-service/common.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { StepResult } from '../steps-types.js';
 import { PluginActionType } from '../../../main/codegen-types.js';
 
 export type ActionType =
   | 'requestAnswer'
+  | 'requestAnswerWithImage'
   | 'requestPermissions'
   | 'requestFilesContent'
   | 'removeFilesFromContext'
@@ -17,6 +23,10 @@ export type ActionType =
 type AskQuestionArgs = {
   actionType: ActionType;
   content: string;
+  imageGenerationRequest?: {
+    prompt: string;
+    contextImage?: string;
+  };
   requestFilesContent?: string[];
   requestPermissions?: Record<
     'allowDirectoryCreate' | 'allowFileCreate' | 'allowFileDelete' | 'allowFileMove' | 'enableVision' | 'enableImagen',
@@ -59,6 +69,7 @@ export type ActionHandlerProps = {
   prompt: PromptItem[];
   options: CodegenOptions;
   generateContentFn: GenerateContentFunction;
+  generateImageFn: GenerateImageFunction;
   messages: {
     contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
   };

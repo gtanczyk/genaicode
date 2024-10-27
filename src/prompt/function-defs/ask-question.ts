@@ -16,6 +16,7 @@ function getActionTypeDescription(): string {
 
 Detailed Explanation of actionTypes:
 - requestAnswer: Use for general information, clarifications, or when no specific code is needed.
+- requestAnswerWithImage: Use when the question can be better explained with an accompanying image. Requires imageGenerationRequest parameter to generate the supporting image.
 - requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
 - requestFilesContent: Use specifically when needing to access or review the contents of files.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
@@ -43,6 +44,7 @@ export const getAskQuestionDef = (): FunctionDef => ({
         type: 'string',
         enum: [
           'requestAnswer',
+          'requestAnswerWithImage',
           'requestPermissions',
           'requestFilesContent',
           'removeFilesFromContext',
@@ -58,6 +60,22 @@ export const getAskQuestionDef = (): FunctionDef => ({
         type: 'string',
         description:
           'The message you want to display to the user. It can be a question if you need more information, an analysis result, or a confirmation request before proceeding with code generation.',
+      },
+      imageGenerationRequest: {
+        type: 'object',
+        description:
+          'When using requestAnswerWithImage, this object specifies how to generate the image that supports the question.',
+        properties: {
+          prompt: {
+            type: 'string',
+            description: 'The prompt that will be used to generate the image.',
+          },
+          contextImage: {
+            type: 'string',
+            description: 'Optional path to an image file that will be used as context for image generation.',
+          },
+        },
+        required: ['prompt'],
       },
       promptNecessity: {
         type: 'number',
