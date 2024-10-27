@@ -1,4 +1,4 @@
-import { ChatMessageFlags, ChatMessageType, ContentProps } from './content-bus-types.js';
+import { ChatMessageFlags, ChatMessageType, ContentProps, ChatMessageImage } from './content-bus-types.js';
 
 type ContentHandler = (content: ContentProps) => void;
 
@@ -13,7 +13,7 @@ export function unsetCurrentIterationId() {
   currentIterationId = null;
 }
 
-type MessageArgs = [data?: unknown, flags?: ChatMessageFlags[]];
+type MessageArgs = [data?: unknown, flags?: ChatMessageFlags[], images?: ChatMessageImage[]];
 
 export function putUserMessage(message: string, ...args: MessageArgs) {
   putMessage(message, ChatMessageType.USER, ...args);
@@ -27,7 +27,13 @@ export function putAssistantMessage(message: string, ...args: MessageArgs) {
   putMessage(message, ChatMessageType.ASSISTANT, ...args);
 }
 
-function putMessage(message: string, type: ChatMessageType, data?: unknown, flags?: ChatMessageFlags[]) {
+function putMessage(
+  message: string,
+  type: ChatMessageType,
+  data?: unknown,
+  flags?: ChatMessageFlags[],
+  images?: ChatMessageImage[],
+) {
   if (!currentIterationId) {
     console.warn('No current iteration ID set');
   }
@@ -42,6 +48,8 @@ function putMessage(message: string, type: ChatMessageType, data?: unknown, flag
       type: type,
       flags,
       timestamp: new Date(),
+      data,
+      images,
     },
     data,
   });

@@ -103,7 +103,12 @@ export async function runCodegenIteration(
 
   setCurrentIterationId();
 
-  putUserMessage(options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.');
+  putUserMessage(
+    options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.',
+    undefined,
+    undefined,
+    options.images,
+  );
 
   if (rcConfig.lintCommand && !options.disableInitialLint) {
     try {

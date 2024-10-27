@@ -8,6 +8,12 @@ export enum ChatMessageFlags {
   CONVERSATION_SUMMARY = 'conversation-summary',
 }
 
+export interface ChatMessageImage {
+  base64url: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  originalName?: string;
+}
+
 export interface ChatMessage {
   id: string;
   iterationId: string;
@@ -16,6 +22,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   data?: unknown;
+  images?: ChatMessageImage[];
 }
 
 export type ContentProps = {

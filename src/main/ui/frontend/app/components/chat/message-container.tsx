@@ -10,6 +10,32 @@ import {
   MessageTimestamp,
   ShowDataLink,
 } from './styles/message-container-styles.js';
+import styled from 'styled-components';
+
+const ImageGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  max-width: 800px;
+  margin: 8px 0;
+`;
+
+const ImageContainer = styled.div`
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* Creates a square aspect ratio */
+`;
+
+const StyledImage = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.05);
+`;
 
 interface MessageContainerProps {
   message: ChatMessage;
@@ -27,6 +53,19 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
       <MessageBubble>
         <MessageHeader>{message.type === 'user' ? 'You' : 'Assistant'}</MessageHeader>
         <MessageContent>{message.content}</MessageContent>
+        {message.images && message.images.length > 0 && (
+          <ImageGrid>
+            {message.images.map((image, index) => (
+              <ImageContainer key={index}>
+                <StyledImage
+                  src={`data:${image.mediaType};base64,${image.base64url}`}
+                  alt={image.originalName || `Image ${index + 1}`}
+                  title={image.originalName || `Image ${index + 1}`}
+                />
+              </ImageContainer>
+            ))}
+          </ImageGrid>
+        )}
         <MessageFooter>
           {message.data ? (
             <ShowDataLink onClick={() => toggleDataVisibility(message.id)}>
