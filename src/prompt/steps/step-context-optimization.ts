@@ -8,6 +8,7 @@ import { estimateTokenCount } from '../token-estimator.js';
 import { getSummary } from './step-summarization.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
+import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
@@ -90,7 +91,7 @@ export async function executeStepContextOptimization(
     return StepResult.CONTINUE;
   }
 
-  const sourceCode = JSON.parse(sourceCodeResponse.content) as SourceCodeMap;
+  const sourceCode = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content) as SourceCodeTree);
   const sourceCodeEntries = Object.entries(sourceCode);
 
   // Lets remove source code from the context, because we will be providing it below, so lets not duplicate (and save some tokens)
@@ -172,7 +173,7 @@ export async function executeStepContextOptimization(
     const percentageReduced = ((tokensBefore - tokensAfter) / tokensBefore) * 100;
 
     // Update the getSourceCode function response in the prompt
-    sourceCodeResponse.content = JSON.stringify(optimizedSourceCode);
+    sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(optimizedSourceCode));
 
     putSystemMessage('Context optimization completed successfully.', {
       tokensBefore,

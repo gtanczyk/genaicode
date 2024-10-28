@@ -80,7 +80,7 @@ export const getAskQuestionDef = (): FunctionDef => ({
       requestFilesContent: {
         type: 'array',
         description:
-          'An array of absolute file paths for which you need the content. Use this when specific files are missing and you need them to proceed with the task.',
+          "An array of absolute file paths for which you need the content. Use this when you don't see content of files are missing and you need them to proceed with the current task. The requested files must exist in the `getSourceCode` function call response.",
         items: {
           type: 'string',
         },

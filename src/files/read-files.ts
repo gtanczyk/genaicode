@@ -10,7 +10,7 @@ import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { getSummary } from '../prompt/steps/step-summarization.js';
 
-export type SourceCodeMap = Record<string, { content: string | null } | { summary: string; tokenCount: number }>;
+export type SourceCodeMap = Record<string, { content: string | null } | { summary: string }>;
 
 type ImageAssetsMap = Record<
   string,

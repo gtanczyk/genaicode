@@ -26,6 +26,7 @@ import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
 import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
 import { executeStepGenerateSummary } from './steps/step-generate-summary.js';
+import { getSourceCodeTree } from '../files/source-code-tree.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -297,7 +298,9 @@ function prepareMessages(codegen: CodegenPrompt) {
     prompt:
       codegen.prompt +
       '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
-    sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
+    sourceCode: JSON.stringify(
+      getSourceCodeTree(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
+    ),
     contextSourceCode: (paths: string[], pathsOnly: boolean = false) =>
       JSON.stringify(
         Object.fromEntries(

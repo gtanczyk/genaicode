@@ -1,4 +1,5 @@
 import { PromptItem } from '../../../../ai-service/common.js';
+import { getSourceCodeTree, parseSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { StepResult } from '../../steps-types.js';
 import { getSourceCodeResponse } from '../../steps-utils.js';
@@ -40,11 +41,11 @@ function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: strin
   if (!response || !response.content) {
     throw new Error('Could not find source code response');
   }
-  const contentObj = JSON.parse(response.content);
+  const contentObj = parseSourceCodeTree(JSON.parse(response.content));
   filesToRemove.forEach((file) => {
-    if (contentObj[file]) {
-      delete contentObj[file].content;
+    if (contentObj[file] && 'content' in contentObj[file]) {
+      contentObj[file].content = null;
     }
   });
-  response.content = JSON.stringify(contentObj);
+  response.content = JSON.stringify(getSourceCodeTree(contentObj));
 }
