@@ -79,7 +79,6 @@ describe('promptService with askQuestion', () => {
         args: {
           content: 'Do you want to proceed with code generation?',
           actionType: 'requestAnswer',
-          promptNecessity: 80,
         },
       },
     ];
@@ -89,7 +88,6 @@ describe('promptService with askQuestion', () => {
         args: {
           content: 'Ok lets go',
           actionType: 'startCodeGeneration',
-          promptNecessity: 80,
         },
       },
     ];
@@ -136,7 +134,6 @@ describe('promptService with askQuestion', () => {
         name: 'askQuestion',
         args: {
           content: 'Stopping code generation as requested.',
-          promptNecessity: 100,
           actionType: 'cancelCodeGeneration',
         },
       },
@@ -190,7 +187,6 @@ describe('promptService with askQuestion', () => {
         args: {
           content: 'Do you want to proceed with code generation?',
           actionType: 'requestAnswer',
-          promptNecessity: 80,
         },
       },
     ];
@@ -218,7 +214,7 @@ describe('promptService with askQuestion', () => {
         args: {
           content: 'Startin code generation',
           actionType: 'startCodeGeneration',
-          promptNecessity: 80,
+          ssity: 80,
         },
       },
     ];

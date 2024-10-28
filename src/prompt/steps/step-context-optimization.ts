@@ -37,7 +37,6 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
        - \`"path"\`: The absolute file path.
        - \`"relevance"\`: The calculated relevance score (0 to 1).
        - \`"tokenCount"\`: The token count for the file.
-     - \`"totalTokenCount"\`: The estimated total token count for the context.
 
 **Important Guidelines**:
 - **Only include files that are mentioned in \`getSourceCode\` function responses**. **Do not add any other files**.
@@ -57,7 +56,6 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
   "function": "optimizeContext",
   "arguments": {
     "userPrompt": "Please review the helper modules.",
-    "totalTokenCount": 800,
     "optimizedContext": [
       {
         "path": "/home/src/utils/helpers.js",

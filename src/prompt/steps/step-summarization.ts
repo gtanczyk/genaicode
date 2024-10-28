@@ -9,10 +9,13 @@ import { estimateTokenCount } from '../token-estimator.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 
 const BATCH_SIZE = 50;
-const MAX_SUMMARY_TOKENS = 15;
-const CACHE_VERSION = 'v2';
+const MAX_SUMMARY_TOKENS = 10;
+const CACHE_VERSION = 'v4';
 
 const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer. 
+Fit as much information as possible given the limit, the summary must be understandable for LLM, does not need to be human readable.
+Include as much key information as possible, even if readability and style are sacrificed.
+Do not include information if they can be already derived from the file name or file path.
 Focus on the main purpose or functionality. 
 Provide your response using the \`setSummaries\` function.
 The length of summary should be max ${MAX_SUMMARY_TOKENS} tokens.

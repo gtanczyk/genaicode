@@ -39,11 +39,7 @@ export const optimizeContext: FunctionDef = {
           required: ['filePath', 'relevance', 'tokenCount'],
         },
       },
-      totalTokenCount: {
-        type: 'number',
-        description: 'The estimated token count for the entire context.',
-      },
     },
-    required: ['userPrompt', 'optimizedContext', 'totalTokenCount'],
+    required: ['userPrompt', 'optimizedContext'],
   },
 };

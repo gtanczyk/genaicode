@@ -77,13 +77,6 @@ export const getAskQuestionDef = (): FunctionDef => ({
         },
         required: ['prompt'],
       },
-      promptNecessity: {
-        type: 'number',
-        minimum: 0,
-        maximum: 100,
-        description:
-          'Indicates how strongly you need a response from the user. A higher value means a stronger need for user input.',
-      },
       requestFilesContent: {
         type: 'array',
         description:
@@ -138,6 +131,6 @@ export const getAskQuestionDef = (): FunctionDef => ({
         },
       },
     },
-    required: ['actionType', 'content', 'promptNecessity'],
+    required: ['actionType', 'content'],
   },
 });
