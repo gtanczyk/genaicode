@@ -35,12 +35,11 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
    - The function should have the following parameters:
      - \`"userPrompt"\`: The user's original prompt.
      - \`"optimizedContext"\`: An array of objects, each containing:
-       - \`"path"\`: The absolute file path.
+       - \`"filePath"\`: The absolute file path.
        - \`"relevance"\`: The calculated relevance score (0 to 1).
-       - \`"tokenCount"\`: The token count for the file.
 
 **Important Guidelines**:
-- **Only include files that are mentioned in \`getSourceCode\` function responses**. **Do not add any other files**.
+- **Only include files that are mentioned in \`getSourceCode\` function response**. **Do not add any other files**.
 - **Do not infer or guess additional files**.
 - **Evaluate each file individually** based on the criteria above.
 - **Avoid assumptions or hallucinations**; stick strictly to the provided data.
@@ -49,6 +48,7 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 - **Do not include any extra text** outside of the function call.
 - **Ensure the JSON is properly formatted** and **does not contain strings representing JSON** (i.e., do not stringify the JSON, do not wrap strings into quotes).
 - **Do not return files which are not relevant to the user prompt. Use relevance rating to judge that**
+- **Formulate full file paths correctly using directoryPath and filePath from the \`getSourceCode\` function response**.
 
 **Example of valid Function Call**:
 
@@ -56,17 +56,15 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 {
   "function": "optimizeContext",
   "arguments": {
-    "userPrompt": "Please review the helper modules.",
+    "userPrompt": "Please review the helper module.",
     "optimizedContext": [
       {
         "path": "/home/src/utils/helpers.js",
         "relevance": 0.9,
-        "tokenCount": 500
       },
       {
         "path": "/home/src/utils/math.js",
-        "relevance": 0.8,
-        "tokenCount": 300
+        "relevance": 0.4,
       }
     ]
   }
@@ -76,7 +74,7 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 Now could you please analyze the source code and return me the optimized context?
 `;
 
-const BATCH_SIZE = 100;
+// const BATCH_SIZE = 100;
 const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
@@ -85,6 +83,13 @@ export async function executeStepContextOptimization(
   options: CodegenOptions,
 ): Promise<StepResult> {
   const fullSourceCode = getSourceCode({ forceAll: true }, options);
+  const tokensBefore = estimateTokenCount(JSON.stringify(fullSourceCode));
+
+  if (tokensBefore < MAX_TOTAL_TOKENS) {
+    putSystemMessage('Context optimization is not needed, because the code base is small.');
+    return StepResult.CONTINUE;
+  }
+
   const sourceCodeResponse = getSourceCodeResponse(prompt);
   if (!sourceCodeResponse || !sourceCodeResponse.content) {
     console.warn('Could not find source code response, something is wrong, but lets continue anyway.');
@@ -92,82 +97,46 @@ export async function executeStepContextOptimization(
   }
 
   const sourceCode = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content) as SourceCodeTree);
-  const sourceCodeEntries = Object.entries(sourceCode);
-
-  // Lets remove source code from the context, because we will be providing it below, so lets not duplicate (and save some tokens)
-  const sourceCodeResponseContent = sourceCodeResponse.content;
-  sourceCodeResponse.content = '{}';
 
   try {
     putSystemMessage('Context optimization is starting');
 
-    const totalFiles = sourceCodeEntries.length;
-    const batchCount = Math.ceil(totalFiles / BATCH_SIZE);
-    const optimizedContext = new Set<string>();
+    const optimizationPrompt: PromptItem[] = [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: 'Thank you for describing the task, I have noticed you have provided a very large context for your question. The amount of source code is very big in particular. Can we do something about it?',
+      },
+      {
+        type: 'user',
+        text: OPTIMIZATION_PROMPT,
+      },
+    ];
 
-    for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
-      const start = batchIndex * BATCH_SIZE;
-      const end = Math.min((batchIndex + 1) * BATCH_SIZE, totalFiles);
-      const batchSourceCode = Object.fromEntries(
-        sourceCodeEntries.filter(([path], index) => optimizedContext.has(path) || (index >= start && index <= end)),
-      );
+    const request: GenerateContentArgs = [optimizationPrompt, getFunctionDefs(), 'optimizeContext', 0.2, true, options];
+    let result = await generateContentFn(...request);
+    result = await validateAndRecoverSingleResult(request, result, generateContentFn);
 
-      const optimizationPrompt: PromptItem[] = [
-        ...prompt,
-        {
-          type: 'assistant',
-          text: 'Thank you for describing the task, I have noticed you have provided a very large context for your question. The amount of source code is very big in particular. Can we do something about it?',
-          functionCalls: [
-            { id: 'get_batch_source', name: 'getSourceCode', args: { filePaths: Object.keys(batchSourceCode) } },
-          ],
-        },
-        {
-          type: 'user',
-          text: OPTIMIZATION_PROMPT,
-          functionResponses: [
-            { call_id: 'get_batch_source', name: 'getSourceCode', content: JSON.stringify(batchSourceCode) },
-          ],
-        },
-      ];
-
-      const request: GenerateContentArgs = [
-        optimizationPrompt,
-        getFunctionDefs(),
-        'optimizeContext',
-        0.2,
-        true,
-        options,
-      ];
-      let result = await generateContentFn(...request);
-      result = await validateAndRecoverSingleResult(request, result, generateContentFn);
-
-      const batchOptimized = parseOptimizationResult(result);
-      if (!batchOptimized) {
-        putSystemMessage(
-          `Warning: Context optimization failed to produce useful summaries for batch ${batchIndex + 1}. We need to abort.`,
-        );
-        return StepResult.BREAK;
-      }
-
-      optimizedContext.clear();
-      batchOptimized.forEach((path) => optimizedContext.add(path));
+    const optimizedContext = parseOptimizationResult(fullSourceCode, result);
+    if (!optimizedContext) {
+      putSystemMessage(`Warning: Context optimization failed. We need to abort.`);
+      return StepResult.BREAK;
     }
 
-    if (optimizedContext.size === 0) {
-      // Restore the original context
-      sourceCodeResponse.content = sourceCodeResponseContent;
-
+    if (optimizedContext.length === 0) {
       putSystemMessage(
         'Warning: Context optimization failed to produce useful summaries for all batches. Proceeding with current context.',
       );
       return StepResult.CONTINUE;
     }
 
-    const tokensBefore = estimateTokenCount(JSON.stringify(fullSourceCode));
-
     putSystemMessage('Context optimization in progress.', Array.from(optimizedContext));
 
-    const optimizedSourceCode = optimizeSourceCode(sourceCode, fullSourceCode, Array.from(optimizedContext));
+    const [optimizedSourceCode, contentTokenCount, summaryTokenCount] = optimizeSourceCode(
+      sourceCode,
+      fullSourceCode,
+      Array.from(optimizedContext),
+    );
 
     const tokensAfter = estimateTokenCount(JSON.stringify(optimizedSourceCode));
     const percentageReduced = ((tokensBefore - tokensAfter) / tokensBefore) * 100;
@@ -178,6 +147,8 @@ export async function executeStepContextOptimization(
     putSystemMessage('Context optimization completed successfully.', {
       tokensBefore,
       tokensAfter,
+      contentTokenCount,
+      summaryTokenCount,
       percentageReduced: percentageReduced.toFixed(2) + '%',
     });
     return StepResult.CONTINUE;
@@ -188,26 +159,28 @@ export async function executeStepContextOptimization(
   }
 }
 
-function parseOptimizationResult(calls: FunctionCall[]): string[] | null {
+function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionCall[]) {
   const optimizeCall = calls.find((call) => call.name === 'optimizeContext');
   if (!optimizeCall || !optimizeCall.args || !optimizeCall.args.optimizedContext) {
     return null;
   }
 
   let totalTokens = 0;
-  const result: string[] = [];
+  const result: [filePath: string, relevance: number][] = [];
 
-  for (const item of (
-    optimizeCall.args.optimizedContext as { relevance: number; filePath: string; tokenCount: number }[]
-  ).sort((a, b) => (a.relevance > b.relevance ? -1 : 1))) {
-    if (item.relevance < 0.5) {
+  for (const item of (optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]).sort((a, b) =>
+    a.relevance > b.relevance ? -1 : 1,
+  )) {
+    const { filePath, relevance } = item;
+    if (relevance < 0.5) {
       break;
     }
 
-    totalTokens += item.tokenCount;
-    result.push(item.filePath);
+    const content = ('content' in fullSourceCode[filePath] ? fullSourceCode[filePath]?.content : undefined) ?? '';
+    totalTokens += estimateTokenCount(content);
+    result.push([item.filePath, item.relevance]);
 
-    if (totalTokens > MAX_TOTAL_TOKENS && item.relevance < 0.7) {
+    if (totalTokens > MAX_TOTAL_TOKENS && relevance < 0.7) {
       break;
     }
   }
@@ -218,19 +191,23 @@ function parseOptimizationResult(calls: FunctionCall[]): string[] | null {
 function optimizeSourceCode(
   sourceCode: SourceCodeMap,
   fullSourceCode: SourceCodeMap,
-  optimizedContext: string[],
-): SourceCodeMap {
+  optimizedContext: [filePath: string, relevance: number][],
+): [optimizedSourceCode: SourceCodeMap, contentTokenCount: number, summaryTokenCount: number] {
   const optimizedSourceCode: SourceCodeMap = {};
+  let contentTokenCount = 0;
+  let summaryTokenCount = 0;
 
   for (const [path] of Object.entries(sourceCode)) {
-    const isContext = optimizedContext.includes(path);
+    const isContext = optimizedContext.filter((item) => item[0] === path).length > 0;
     const summary = getSummary(path);
-    if (isContext) {
+    const content = ('content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
+    if (isContext && content) {
+      contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
-        content: ('content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null,
-        ...summary,
+        content,
       };
     } else {
+      summaryTokenCount += estimateTokenCount(summary?.summary ?? '');
       optimizedSourceCode[path] = summary
         ? { ...summary }
         : {
@@ -239,5 +216,5 @@ function optimizeSourceCode(
     }
   }
 
-  return optimizedSourceCode;
+  return [optimizedSourceCode, contentTokenCount, summaryTokenCount];
 }

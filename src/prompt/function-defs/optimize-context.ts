@@ -5,8 +5,39 @@ import { FunctionDef } from '../../ai-service/common';
  */
 export const optimizeContext: FunctionDef = {
   name: 'optimizeContext',
-  description:
-    'This function narrows the context of code generation to a list of relevant files, including their estimated token counts and relevance scores. It helps prioritize files based on their importance to the user prompt and manages token usage.',
+  description: `This function helps prioritize files based on their importance to the user prompt.
+
+Example:
+1. User prompt: "I want to add a new test to util unit tests."
+2. Assistant makes a function call for \`getSourceCode\` to get the source code.
+3. User provides the source code in \`getSourceCode\` function response:
+\`\`\`
+{
+  '/path/to/directory': {
+    'something.js': ['console.log('Hello, World!');'],
+  },
+  '/path/to/directory/sub1/sub2': {
+    'util-tests.js': [null, 'This file contains unit tests.'],
+  }
+}
+\`\`\`
+4. Assistant calls the \`optimizeContext\` function to narrow the context to relevant files:
+\`\`\`
+{
+  userPrompt: "I want to add a new test to util unit tests.",
+  optimizedContext: [
+    {
+      filePath: '/path/to/directory/sub1/sub2/util-tests.js',
+      relevance: 0.8,
+    },
+    {
+      filePath: '/path/to/directory/something.js',
+      relevance: 0.2,
+    }
+  ]
+\`\`\`
+
+This means that the file \`something.js\` file is less relevant to the user prompt, and \`util-tests.js\` is more relevant.`,
   parameters: {
     type: 'object',
     properties: {
@@ -30,13 +61,8 @@ export const optimizeContext: FunctionDef = {
               minimum: 0,
               maximum: 1,
             },
-            tokenCount: {
-              type: 'integer',
-              description: 'The estimated token count for the file content.',
-              minimum: 0,
-            },
           },
-          required: ['filePath', 'relevance', 'tokenCount'],
+          required: ['filePath', 'relevance'],
         },
       },
     },
