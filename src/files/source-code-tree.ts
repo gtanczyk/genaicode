@@ -1,6 +1,6 @@
 import path from 'path';
-import { SourceCodeMap } from '../files/read-files';
-import { rcConfig } from '../main/config';
+import { SourceCodeMap } from '../files/read-files.js';
+import { rcConfig } from '../main/config.js';
 
 export type SourceCodeTree = {
   [directoryPath: string]: {
