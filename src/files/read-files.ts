@@ -51,11 +51,14 @@ function readSourceFiles(
         }
       }
 
-      if (!forceAll && ignorePatterns?.some((pattern) => globRegex(pattern).test(file))) {
-        sourceCode[file] = summary ? { ...summary } : { content: null };
+      if (!forceAll) {
+        sourceCode[file] =
+          !ignorePatterns?.some((pattern) => globRegex(pattern).test(file)) && summary
+            ? { ...summary }
+            : { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
-        sourceCode[file] = { content, ...summary };
+        sourceCode[file] = { content };
       }
     }
   }

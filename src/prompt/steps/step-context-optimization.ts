@@ -176,7 +176,10 @@ function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionC
       break;
     }
 
-    const content = ('content' in fullSourceCode[filePath] ? fullSourceCode[filePath]?.content : undefined) ?? '';
+    const content =
+      (fullSourceCode[filePath] && 'content' in fullSourceCode[filePath]
+        ? fullSourceCode[filePath]?.content
+        : undefined) ?? '';
     totalTokens += estimateTokenCount(content);
     result.push([item.filePath, item.relevance]);
 
@@ -200,7 +203,8 @@ function optimizeSourceCode(
   for (const [path] of Object.entries(sourceCode)) {
     const isContext = optimizedContext.filter((item) => item[0] === path).length > 0;
     const summary = getSummary(path);
-    const content = ('content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
+    const content =
+      (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
     if (isContext && content) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {

@@ -105,5 +105,5 @@ function parseSummarizationResult(result: FunctionCall[]): SummaryInfo[] {
 
 export function getSummary(filePath: string) {
   const summary = summaryCache[filePath];
-  return summary ? { summary: summary.summary, tokenCount: summary.tokenCount } : undefined;
+  return summary ? { summary: summary.summary } : undefined;
 }
