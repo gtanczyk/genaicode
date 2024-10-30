@@ -33,7 +33,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
           user: {
             type: 'user',
             text: userConfirmation.answer || 'Declined. Please continue the conversation.',
-            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
           },
         },
       ],

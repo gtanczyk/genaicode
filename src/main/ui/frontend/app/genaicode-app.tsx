@@ -81,6 +81,7 @@ const GenAIcodeApp = () => {
           <ChatInterface
             messages={chatMessages}
             currentQuestion={currentQuestion}
+            codegenOptions={codegenOptions}
             onQuestionSubmit={handleQuestionSubmit}
             onInterrupt={handleInterrupt}
             onPauseResume={handlePauseResume}

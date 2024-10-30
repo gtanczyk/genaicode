@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { CodegenOptions } from '../../../../codegen-types.js';
+import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
 import { Question, Usage } from '../../../common/api-types.js';
@@ -124,8 +124,9 @@ export const answerQuestion = async (
   questionId: string,
   answer: string,
   confirmed: boolean | undefined,
+  options: CodegenOptions,
 ): Promise<void> => {
-  await api.post('/answer-question', { questionId, answer, confirmed });
+  await api.post('/answer-question', { questionId, answer, confirmed, options });
 };
 
 export const getUsage = async (): Promise<Usage> => {
@@ -148,9 +149,9 @@ export const deleteIteration = async (iterationId: string): Promise<void> => {
   await api.delete(`/delete-iteration/${iterationId}`);
 };
 
-export const getAvailableAiServices = async (): Promise<string[]> => {
+export const getAvailableAiServices = async (): Promise<AiServiceType[]> => {
   const response = await api.get('/available-ai-services');
-  return response.data.services;
+  return response.data.services as AiServiceType[];
 };
 
 // Error handling middleware

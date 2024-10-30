@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { StyledTextarea } from './styled-textarea';
 import { Question } from '../../../common/api-types';
+import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
+import { AiServiceSelector } from './input-area/ai-service-selector';
 
 interface QuestionHandlerProps {
-  onSubmit: (answer: string, confirmed?: boolean) => void;
+  onSubmit: (answer: string, confirmed?: boolean, aiService?: AiServiceType) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   question: Question | null;
+  codegenOptions: CodegenOptions;
   executionStatus: 'idle' | 'executing' | 'paused';
 }
 
@@ -16,16 +19,23 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   onInterrupt,
   onPauseResume,
   question,
+  codegenOptions,
   executionStatus,
 }) => {
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [aiService, setAiService] = useState<AiServiceType>(codegenOptions.aiService);
+
+  // Update aiService when codegenOptions.aiService changes
+  useEffect(() => {
+    setAiService(codegenOptions.aiService);
+  }, [codegenOptions.aiService]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (answer.trim() && question) {
       try {
-        await onSubmit(answer);
+        await onSubmit(answer, undefined, aiService);
         setAnswer('');
         setError(null);
       } catch (err) {
@@ -37,7 +47,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
 
   const handleConfirmation = async (isYes: boolean) => {
     try {
-      await onSubmit(answer, isYes);
+      await onSubmit(answer, isYes, aiService);
       setError(null);
     } catch (err) {
       console.error('Error submitting confirmation:', err);
@@ -63,6 +73,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
           {!question.confirmation && (
             <ButtonGroup>
               <SubmitButton type="submit">Submit Answer</SubmitButton>
+              <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
           )}
@@ -74,6 +85,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
                 {question.confirmation.declineLabel}
               </ConfirmButton>
+              <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
           )}

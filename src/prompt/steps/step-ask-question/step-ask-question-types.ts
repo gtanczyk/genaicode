@@ -49,7 +49,7 @@ export interface UserItem {
   text: string;
   functionResponses?: Array<{
     name: string;
-    call_id: string;
+    call_id: string | undefined;
     content: string | undefined;
   }>;
   cache?: true;

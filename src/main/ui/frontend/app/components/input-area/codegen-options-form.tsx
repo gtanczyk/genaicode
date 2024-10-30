@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import { CodegenOptions } from '../../../../../codegen-types.js';
-import { getAvailableAiServices } from '../../api/api-client.js';
+import { AiServiceSelector } from './ai-service-selector';
 
 interface CodegenOptionsFormProps {
   options: CodegenOptions;
@@ -10,38 +10,21 @@ interface CodegenOptionsFormProps {
 }
 
 export const CodegenOptionsForm: React.FC<CodegenOptionsFormProps> = ({ options, onOptionsChange, disabled }) => {
-  const [availableAiServices, setAvailableAiServices] = useState<string[]>([]);
-
-  useEffect(() => {
-    const fetchAiServices = async () => {
-      try {
-        const services = await getAvailableAiServices();
-        setAvailableAiServices(services);
-      } catch (error) {
-        console.error('Error fetching AI services:', error);
-      }
-    };
-
-    fetchAiServices();
-  }, []);
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const newValue = type === 'checkbox' ? !(e.target as HTMLInputElement).checked : value;
     onOptionsChange({ ...options, [name]: newValue });
   };
 
+  const handleAiServiceChange = (aiService: string) => {
+    onOptionsChange({ ...options, aiService: aiService as CodegenOptions['aiService'] });
+  };
+
   return (
     <FormContainer>
       <FormGroup>
         <Label htmlFor="aiService">AI Service:</Label>
-        <Select id="aiService" name="aiService" value={options.aiService} onChange={handleChange} disabled={disabled}>
-          {availableAiServices.map((service) => (
-            <option key={service} value={service}>
-              {service}
-            </option>
-          ))}
-        </Select>
+        <AiServiceSelector value={options.aiService} onChange={handleAiServiceChange} disabled={disabled} />
       </FormGroup>
 
       <FormGroup>
@@ -156,20 +139,6 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
-  width: 100%;
-  padding: 8px;
-  border: 1px solid ${(props) => props.theme.colors.border};
-  border-radius: 4px;
-  background-color: ${(props) => props.theme.colors.inputBg};
-  color: ${(props) => props.theme.colors.inputText};
-
-  &:disabled {
-    background-color: ${(props) => props.theme.colors.disabled};
-    cursor: not-allowed;
-  }
-`;
-
-const Select = styled.select`
   width: 100%;
   padding: 8px;
   border: 1px solid ${(props) => props.theme.colors.border};

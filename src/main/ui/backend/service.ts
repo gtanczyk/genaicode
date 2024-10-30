@@ -131,7 +131,7 @@ export class Service {
   async askQuestion(
     question: string,
     confirmation: ConfirmationProps,
-  ): Promise<{ answer: string; confirmed: boolean | undefined }> {
+  ): Promise<{ answer: string; confirmed: boolean | undefined; options: CodegenOptions }> {
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
@@ -146,11 +146,21 @@ export class Service {
       answer: '',
       confirmed: undefined,
     };
-    return { answer, confirmed };
+    return { answer, confirmed, options: this.codegenOptions };
   }
 
-  async answerQuestion(questionId: string, answer: string, confirmed: boolean | undefined): Promise<void> {
+  async answerQuestion(
+    questionId: string,
+    answer: string,
+    confirmed: boolean | undefined,
+    options?: CodegenOptions,
+  ): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
+      // Update codegenOptions if provided
+      if (options) {
+        this.codegenOptions = { ...this.codegenOptions, ...options };
+      }
+
       this.askQuestionConversation.push({
         id: this.currentQuestion.id,
         question: this.currentQuestion.text,

@@ -19,7 +19,7 @@ export async function handleContextOptimization({
   const user: UserItem = {
     type: 'user',
     text: userConfirmation ? 'Context optimization applied.' : 'Context optimization not applied.',
-    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
   };
 
   const assistant: AssistantItem = {

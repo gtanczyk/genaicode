@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { CodegenOptions } from '../../../../codegen-types.js';
+import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
   getExecutionStatus,
@@ -56,12 +56,15 @@ export const AppHandlers = ({
     }
   };
 
-  const handleQuestionSubmit = async (answer: string, confirmed?: boolean) => {
+  const handleQuestionSubmit = async (answer: string, confirmed?: boolean, aiService?: AiServiceType) => {
     const currentQuestion = await getCurrentQuestion();
     if (currentQuestion) {
       try {
         setCurrentQuestion(null);
-        await answerQuestion(currentQuestion.id, answer, confirmed);
+        await answerQuestion(currentQuestion.id, answer, confirmed, {
+          ...codegenOptions,
+          aiService: aiService ?? codegenOptions.aiService,
+        });
       } catch (error) {
         console.error('Failed to submit answer:', error);
       }

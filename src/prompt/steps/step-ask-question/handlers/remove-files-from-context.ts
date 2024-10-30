@@ -29,7 +29,7 @@ export async function handleRemoveFilesFromContext({
         user: {
           type: 'user',
           text: userText,
-          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
         },
       },
     ],

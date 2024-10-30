@@ -15,7 +15,7 @@ export async function handleRequestPermissions({
   const user: UserItem = {
     type: 'user',
     text: userConfirmation ? 'Permissions granted.' : 'Permission request denied.',
-    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
   };
 
   if (userConfirmation) {

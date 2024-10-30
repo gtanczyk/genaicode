@@ -75,7 +75,10 @@ export async function handleRequestAnswerWithImage({
   );
 
   // Get user's response with the image displayed
-  const userText = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+  if (inputResponse.options?.aiService) {
+    options.aiService = inputResponse.options.aiService;
+  }
 
   // Return the conversation items with the generated image
   return {
@@ -90,11 +93,11 @@ export async function handleRequestAnswerWithImage({
         },
         user: {
           type: 'user',
-          text: userText,
+          text: inputResponse.answer,
           functionResponses: [
             {
               name: 'askQuestion',
-              call_id: askQuestionCall.id ?? '',
+              call_id: askQuestionCall.id,
               content: undefined,
             },
           ],

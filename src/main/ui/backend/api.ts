@@ -147,13 +147,20 @@ export function createRouter(service: Service) {
   // Answer question
   router.post('/answer-question', async (req, res) => {
     try {
-      const { questionId, answer, confirmed } = req.body;
+      const { questionId, answer, confirmed, options } = req.body;
 
-      if (!questionId || typeof answer !== 'string' || typeof questionId !== 'string' || typeof answer !== 'string') {
+      if (!questionId || typeof answer !== 'string' || typeof questionId !== 'string') {
         return res.status(400).json({ error: 'Invalid question ID or answer' });
       }
 
-      await service.answerQuestion(questionId, answer, confirmed);
+      if (options) {
+        const validationErrors = validateCodegenOptions(options);
+        if (validationErrors.length > 0) {
+          return res.status(400).json({ errors: validationErrors });
+        }
+      }
+
+      await service.answerQuestion(questionId, answer, confirmed, options as CodegenOptions);
       res.json({ message: 'Question answered successfully' });
     } catch (error) {
       console.error('Error answering question:', error);

@@ -2,8 +2,11 @@ import { askUserForInput } from '../../../../main/common/user-actions.js';
 import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
-export async function handleRequestAnswer({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
-  const userText = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+export async function handleRequestAnswer({ askQuestionCall, options }: ActionHandlerProps): Promise<ActionResult> {
+  const response = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+  if (response.options?.aiService) {
+    options.aiService = response.options.aiService;
+  }
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
@@ -12,8 +15,8 @@ export async function handleRequestAnswer({ askQuestionCall }: ActionHandlerProp
         assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
         user: {
           type: 'user',
-          text: userText,
-          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+          text: response.answer,
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
         },
       },
     ],

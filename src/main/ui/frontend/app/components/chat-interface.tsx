@@ -19,11 +19,13 @@ import { QuestionHandler } from './question-handler.js';
 import { ProgressIndicator } from './progress-indicator.js';
 import { deleteIteration } from '../api/api-client.js';
 import { Question } from '../../../common/api-types.js';
+import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
   currentQuestion: Question | null;
-  onQuestionSubmit: (answer: string, confirmed?: boolean) => void;
+  codegenOptions: CodegenOptions;
+  onQuestionSubmit: (answer: string, confirmed?: boolean, aiService?: AiServiceType) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   executionStatus: 'idle' | 'executing' | 'paused';
@@ -32,6 +34,7 @@ interface ChatInterfaceProps {
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   messages,
   currentQuestion,
+  codegenOptions,
   onQuestionSubmit,
   onInterrupt,
   onPauseResume,
@@ -194,6 +197,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         onInterrupt={onInterrupt}
                         onPauseResume={onPauseResume}
                         question={currentQuestion}
+                        codegenOptions={codegenOptions}
                         executionStatus={executionStatus}
                       />
                     )}

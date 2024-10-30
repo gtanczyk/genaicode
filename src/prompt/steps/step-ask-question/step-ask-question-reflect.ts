@@ -97,7 +97,7 @@ async function runSelfReflect(
       {
         type: 'user',
         text: SELF_REFLECT_PROMPT,
-        functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+        functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
       },
     ],
     functionDefs,

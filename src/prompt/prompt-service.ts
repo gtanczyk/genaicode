@@ -303,10 +303,15 @@ function prepareMessages(codegen: CodegenPrompt) {
     ),
     contextSourceCode: (paths: string[], pathsOnly: boolean = false) =>
       JSON.stringify(
-        Object.fromEntries(
-          Object.entries(
-            getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true }, codegen.options),
-          ).filter(([path]) => !pathsOnly || paths.includes(path)),
+        getSourceCodeTree(
+          Object.fromEntries(
+            Object.entries(
+              getSourceCode(
+                { filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true },
+                codegen.options,
+              ),
+            ).filter(([path]) => !pathsOnly || paths.includes(path)),
+          ),
         ),
       ),
     imageAssets: JSON.stringify(getImageAssets()),

@@ -1,4 +1,11 @@
-type InputHandler = (prompt: string, message: string) => Promise<string>;
+import { CodegenOptions } from '../codegen-types';
+
+export type InputHandlerResponse = {
+  answer: string;
+  options?: CodegenOptions;
+};
+
+type InputHandler = (prompt: string, message: string) => Promise<InputHandlerResponse>;
 
 type ConfirmHandlerResponse = {
   confirmed: boolean | undefined;
@@ -15,7 +22,7 @@ export type ConfirmHandlerProps = {
 
 type ConfirmHandler = (props: ConfirmHandlerProps) => Promise<ConfirmHandlerResponse>;
 
-export async function askUserForInput(prompt: string, message: string): Promise<string> {
+export async function askUserForInput(prompt: string, message: string): Promise<InputHandlerResponse> {
   return await inputHandler(prompt, message);
 }
 

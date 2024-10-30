@@ -7,10 +7,12 @@ import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import * as cliParams from '../cli/cli-params.js';
 import { rcConfig } from '../main/config.js';
+import { getSummary } from '../prompt/steps/step-summarization.js';
 
 vi.mock('fs');
 vi.mock('mime-types');
 vi.mock('image-size');
+vi.mock('../prompt/steps/step-summarization.js');
 vi.mock('./find-files.js', () => ({
   getImageAssetFiles: vi.fn(),
   getSourceFiles: vi.fn(),
@@ -31,6 +33,7 @@ describe('read-files', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(cliParams).contentMask = undefined;
+    vi.mocked(getSummary).mockImplementation((file) => ({ summary: `Summary of ${file}` }));
   });
 
   afterEach(() => {
@@ -38,7 +41,7 @@ describe('read-files', () => {
   });
 
   describe('getSourceCode', () => {
-    it('should return source code for all files', () => {
+    it('should return source code summaries for all files', () => {
       const mockFiles = ['/home/project/file1.js', '/home/project/file2.js'];
       vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
@@ -47,8 +50,8 @@ describe('read-files', () => {
       const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai' });
 
       expect(result).toEqual({
-        '/home/project/file1.js': { content: 'Content of /home/project/file1.js' },
-        '/home/project/file2.js': { content: 'Content of /home/project/file2.js' },
+        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
+        '/home/project/file2.js': { summary: 'Summary of /home/project/file2.js' },
       });
       expect(verifySourceCodeLimit).toHaveBeenCalled();
     });
@@ -62,9 +65,9 @@ describe('read-files', () => {
       const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai', contentMask: 'subfolder' });
 
       expect(result).toEqual({
-        '/home/project/file1.js': { content: null },
+        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
         '/home/project/subfolder/file2.js': {
-          content: 'Content of /home/project/subfolder/file2.js',
+          summary: 'Summary of /home/project/subfolder/file2.js',
         },
       });
     });
@@ -78,7 +81,7 @@ describe('read-files', () => {
       const result = getSourceCode({ taskFile: '/home/project/task.md' }, { aiService: 'vertex-ai' });
 
       expect(result).toEqual({
-        '/home/project/file1.js': { content: 'Content of /home/project/file1.js' },
+        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
         '/home/project/task.md': { content: 'Content of /home/project/task.md' },
       });
     });

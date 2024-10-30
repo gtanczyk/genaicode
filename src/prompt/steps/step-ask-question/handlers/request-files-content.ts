@@ -13,7 +13,7 @@ export async function handleRequestFilesContent({
 
   const { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
 
-  const sourceCallId = (askQuestionCall.id ?? '') + '_source';
+  const sourceCallId = (askQuestionCall.id ?? askQuestionCall.name) + '_source';
   const assistant: AssistantItem = {
     type: 'assistant',
     text: askQuestionCall.args?.content ?? '',
@@ -28,7 +28,7 @@ export async function handleRequestFilesContent({
         ? 'Some files are not legitimate and their content cannot be provided'
         : 'All requested file contents have been provided.',
     functionResponses: [
-      { name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined },
+      { name: 'askQuestion', call_id: askQuestionCall.id, content: undefined },
       {
         name: 'getSourceCode',
         call_id: sourceCallId,

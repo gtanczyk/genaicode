@@ -11,7 +11,7 @@ export async function handleDefaultAction({ askQuestionCall }: ActionHandlerProp
         user: {
           type: 'user',
           text: "I don't want to start the code generation yet, let's talk a bit more.",
-          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id ?? '', content: undefined }],
+          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
         },
       },
     ],
