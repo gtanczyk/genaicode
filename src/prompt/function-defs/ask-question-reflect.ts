@@ -8,14 +8,14 @@ export const askQuestionReflect: FunctionDef = {
     properties: {
       reason: {
         type: 'string',
-        description: 'The reason for the escalation necessity.',
+        description: 'The reason for the escalation necessity, clear and concise guidance on what should be improved.',
       },
       shouldEscalate: {
         type: 'number',
         description:
-          'A number that expresses the escalation necessity: 0 - no need to escalate, 100 - absolutely need to escalate to more advanced model.',
+          'A number in range [0, 1] that expresses the escalation necessity: 0 - no need to escalate, 1 - absolutely need to escalate to more advanced model.',
         minimum: 0,
-        maximum: 100,
+        maximum: 1,
       },
     },
     required: ['reason', 'shouldEscalate'],

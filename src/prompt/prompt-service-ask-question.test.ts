@@ -194,7 +194,7 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestionReflect',
         args: {
-          shouldEscalate: 70,
+          shouldEscalate: 0.9,
           reason: 'The response requires more advanced processing.',
         },
       },
@@ -203,7 +203,7 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestionReflect',
         args: {
-          shouldEscalate: 30,
+          shouldEscalate: 0.2,
           reason: 'The response is ok.',
         },
       },
@@ -214,7 +214,6 @@ describe('promptService with askQuestion', () => {
         args: {
           content: 'Startin code generation',
           actionType: 'startCodeGeneration',
-          ssity: 80,
         },
       },
     ];
