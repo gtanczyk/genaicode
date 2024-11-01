@@ -194,8 +194,8 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestionReflect',
         args: {
-          shouldEscalate: 0.9,
-          reason: 'The response requires more advanced processing.',
+          qualityScore: 0.2,
+          assessment: 'The response requires more advanced processing.',
         },
       },
     ];
@@ -203,8 +203,8 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestionReflect',
         args: {
-          shouldEscalate: 0.2,
-          reason: 'The response is ok.',
+          qualityScore: 0.9,
+          assessment: 'The response is ok.',
         },
       },
     ];
@@ -232,6 +232,7 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockAskQuestionReflectCall)
       .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockAskQuestionReflectCall2)
       .mockResolvedValueOnce(mockAskQuestionCall2)
       .mockResolvedValueOnce(mockAskQuestionReflectCall2)
       .mockResolvedValueOnce(mockCodegenSummary);
@@ -252,7 +253,7 @@ describe('promptService with askQuestion', () => {
       }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(6);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(7);
     expect(console.log).toHaveBeenCalledWith(
       'Received codegen summary, will collect partial updates',
       expect.any(Object),

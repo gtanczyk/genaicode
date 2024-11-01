@@ -77,13 +77,7 @@ export type ActionHandlerProps = {
 
 export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>;
 
-// Self-reflection related types
-export interface EscalationDecision {
-  shouldEscalate: boolean;
-  reason: string;
-}
-
 export interface SelfReflectionContext {
-  escalationCount: number;
-  lastEscalationTime: number;
+  improvementCount: number;
+  lastImprovementTime: number;
 }

@@ -2,22 +2,23 @@ import { FunctionDef } from '../../ai-service/common';
 
 export const askQuestionReflect: FunctionDef = {
   name: 'askQuestionReflect',
-  description: 'This function is used to decide whether to escalate the request to more advanced model.',
+  description:
+    'This function is used to provide feedback on the quality and usefulness of the recent message from assistant.',
   parameters: {
     type: 'object',
     properties: {
-      reason: {
+      assessment: {
         type: 'string',
-        description: 'The reason for the escalation necessity, clear and concise guidance on what should be improved.',
+        description: 'Clear and concise guidance on what should be improved in the recent message from the assistant.',
       },
-      shouldEscalate: {
+      qualityScore: {
         type: 'number',
         description:
-          'A number in range [0, 1] that expresses the escalation necessity: 0 - no need to escalate, 1 - absolutely need to escalate to more advanced model.',
+          'A number in range [0, 1] that expresses the quality score of the recent message from the assistant. 0 means very quality, 1 means high quality. 0.5 means good enough.',
         minimum: 0,
         maximum: 1,
       },
     },
-    required: ['reason', 'shouldEscalate'],
+    required: ['assessment', 'qualityScore'],
   },
 };

@@ -31,7 +31,7 @@ export async function generateContent(
     },
   });
 
-  let cacheControlCount = 0;
+  let cacheControlCount = prompt.filter((item) => item.cache).length;
   const messages: PromptCachingBetaMessageParam[] = prompt
     .filter((item) => item.type !== 'systemPrompt')
     .map((item) => {
@@ -65,10 +65,7 @@ export async function generateContent(
           );
         }
 
-        const shouldAddCache = item.cache && !options.disableCache && cacheControlCount < 4;
-        if (shouldAddCache) {
-          cacheControlCount++;
-        }
+        const shouldAddCache = item.cache && !options.disableCache && cacheControlCount-- < 4;
 
         content.push({
           type: 'text' as const,

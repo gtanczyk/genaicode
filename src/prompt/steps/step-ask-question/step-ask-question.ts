@@ -38,8 +38,8 @@ export async function executeStepAskQuestion(
   console.log('Allowing the assistant to ask a question...');
 
   const selfReflectionContext: SelfReflectionContext = {
-    escalationCount: 0,
-    lastEscalationTime: 0,
+    improvementCount: 0,
+    lastImprovementTime: 0,
   };
 
   while (!abortController?.signal.aborted) {
@@ -115,36 +115,18 @@ async function getAskQuestionCall(
     | undefined;
 
   if (cheapModelResponse) {
-    const escalationDecision = await performSelfReflection(
+    return await performSelfReflection(
       cheapModelResponse,
       selfReflectionContext,
       prompt,
       functionDefs,
+      temperature,
       options,
       generateContentFn,
     );
-
-    if (escalationDecision.shouldEscalate) {
-      console.log('Self-reflection suggests escalating to non-cheap model.');
-
-      prompt.push(
-        { type: 'assistant', text: cheapModelResponse.args?.content ?? '', functionCalls: [cheapModelResponse] },
-        {
-          type: 'user',
-          text: escalationDecision.reason,
-          functionResponses: [{ name: 'askQuestion', call_id: cheapModelResponse.id, content: undefined }],
-        },
-      );
-
-      // Re-run with non-cheap model
-      const nonCheapRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, false, options];
-      let nonCheapResult = await generateContentFn(...nonCheapRequest);
-      nonCheapResult = await validateAndRecoverSingleResult(nonCheapRequest, nonCheapResult, generateContentFn);
-      return nonCheapResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
-    }
+  } else {
+    return cheapModelResponse;
   }
-
-  return cheapModelResponse;
 }
 
 function getActionHandler(actionType: ActionType): ActionHandler {

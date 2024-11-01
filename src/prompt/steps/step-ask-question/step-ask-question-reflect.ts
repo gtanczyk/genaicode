@@ -1,7 +1,7 @@
 import { FunctionDef, GenerateContentArgs, GenerateContentFunction, PromptItem } from '../../../ai-service/common.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
-import { AskQuestionCall, EscalationDecision, SelfReflectionContext } from './step-ask-question-types.js';
+import { AskQuestionCall, SelfReflectionContext } from './step-ask-question-types.js';
 
 const SELF_REFLECT_PROMPT = `Please reflect on your last response provided in \`askQuestion\` function call in the context of our conversation by considering these questions:
 
@@ -54,9 +54,10 @@ Specific examples of problematic responses:
    Problem: The assistant states readiness to perform an analysis without actually providing any analysis or engaging with the user's request.
    Solution: Provide the analysis or ask for specific details to proceed with the analysis.
 
-If your response meets the criteria for a clear, helpful, and non-repetitive answer, continue the conversation as usual. If you believe that escalating to a more advanced model would significantly improve assistance or if the response is too similar to previous interactions, please indicate that using the \`shouldEscalate\` parameter and provide a \`reason\`.
+Please provide assessment and feedback on your response to the last question. Based on your reflection, do you think there are any areas you can improve in your response? If so, please provide a clear explanation of what you can improve and how you can achieve it.
+Do that using the \`assessment\` and \`qualityScore\` parameters in the \`askQuestionReflect\` function call.
 
-** IMPORTANT **: The \`reason\` must must be a clear and concise explanation of what the assistant should improve, and how they can achieve it.
+** IMPORTANT **: The \`assessment\` must must be a clear and concise explanation of what the assistant should improve, and how they can achieve it.
 `;
 
 export async function performSelfReflection(
@@ -64,19 +65,56 @@ export async function performSelfReflection(
   context: SelfReflectionContext,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
+  temperature: number,
   options: CodegenOptions,
   generateContentFn: GenerateContentFunction,
-): Promise<EscalationDecision> {
+): Promise<AskQuestionCall> {
   if (!options.selfReflectionEnabled) {
-    return {
-      shouldEscalate: false,
-      reason: 'Self-reflection is disabled by user configuration.',
-    };
+    return askQuestionCall;
   }
 
+  const initialResult = await performSelfReflectionIteration(
+    askQuestionCall,
+    context,
+    prompt,
+    functionDefs,
+    temperature,
+    options,
+    generateContentFn,
+    true,
+  );
+
+  if (!initialResult.improved) {
+    return initialResult.askQuestionCall;
+  } else {
+    return (
+      await performSelfReflectionIteration(
+        initialResult.askQuestionCall,
+        context,
+        prompt,
+        functionDefs,
+        temperature,
+        options,
+        generateContentFn,
+        false,
+      )
+    ).askQuestionCall;
+  }
+}
+
+async function performSelfReflectionIteration(
+  askQuestionCall: AskQuestionCall,
+  context: SelfReflectionContext,
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  temperature: number,
+  options: CodegenOptions,
+  generateContentFn: GenerateContentFunction,
+  cheap: boolean,
+) {
   const currentTime = Date.now();
 
-  const { shouldEscalate, reason } = await runSelfReflect(
+  const { qualityScore, assessment } = await runSelfReflect(
     askQuestionCall,
     prompt,
     functionDefs,
@@ -84,19 +122,43 @@ export async function performSelfReflection(
     generateContentFn,
   );
 
-  if (shouldEscalate) {
-    context.escalationCount++;
-    context.lastEscalationTime = currentTime;
+  const shouldImprove = qualityScore < 0.5;
+
+  if (shouldImprove) {
+    context.improvementCount++;
+    context.lastImprovementTime = currentTime;
   }
 
-  return {
-    shouldEscalate,
-    reason: shouldEscalate
-      ? `Your last response was evaluated, and this is the feedback: "${reason}".
+  if (shouldImprove) {
+    console.log('Self-reflection suggests escalating to non-cheap model.');
+    const instruction = `Your last response was evaluated, and this is the feedback: "${assessment}".
 Please reflect on your response, consider the feedback provided, and try generating a better response.
-In the response please do not refer to the feedback.`
-      : '',
-  };
+In the response please do not refer to the feedback.`;
+
+    prompt.push(
+      { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+      {
+        type: 'user',
+        text: instruction,
+        functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
+      },
+    );
+
+    // Re-run with non-cheap model
+    const nonCheapRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, cheap, options];
+    let nonCheapResult = await generateContentFn(...nonCheapRequest);
+    nonCheapResult = await validateAndRecoverSingleResult(nonCheapRequest, nonCheapResult, generateContentFn);
+    return {
+      askQuestionCall:
+        (nonCheapResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined) ?? askQuestionCall,
+      improved: true,
+    };
+  } else {
+    return {
+      askQuestionCall,
+      improved: false,
+    };
+  }
 }
 
 async function runSelfReflect(
@@ -105,7 +167,7 @@ async function runSelfReflect(
   functionDefs: FunctionDef[],
   options: CodegenOptions,
   generateContentFn: GenerateContentFunction,
-): Promise<{ shouldEscalate: boolean; reason: string }> {
+): Promise<{ assessment: string; qualityScore: number }> {
   const currentResponse = askQuestionCall.args?.content ?? '';
 
   const reflectRequest: GenerateContentArgs = [
@@ -129,11 +191,9 @@ async function runSelfReflect(
   result = await validateAndRecoverSingleResult(reflectRequest, result, generateContentFn);
 
   const reflectionResult = result.find((call) => call.name === 'askQuestionReflect')?.args;
-  const shouldEscalate = ((reflectionResult?.shouldEscalate as number | undefined) ?? 0) > 0.4;
-  const reason = reflectionResult?.reason as string;
 
   return {
-    shouldEscalate,
-    reason,
+    qualityScore: (reflectionResult?.qualityScore as number | undefined) ?? 0,
+    assessment: reflectionResult?.assessment as string,
   };
 }
