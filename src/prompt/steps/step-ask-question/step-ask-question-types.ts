@@ -76,8 +76,3 @@ export type ActionHandlerProps = {
 };
 
 export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>;
-
-export interface SelfReflectionContext {
-  improvementCount: number;
-  lastImprovementTime: number;
-}

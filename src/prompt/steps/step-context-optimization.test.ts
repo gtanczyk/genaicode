@@ -57,8 +57,8 @@ describe('executeStepContextOptimization', () => {
 
       const mockSourceCodeTree: SourceCodeTree = {
         '/test': {
-          'file1.ts': ['content1' + Array.from(Array(10000).keys()).join(',')],
-          'file2.ts': ['content2'],
+          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+          'file2.ts': { content: 'content2' },
         },
       };
 
@@ -159,9 +159,9 @@ describe('executeStepContextOptimization', () => {
 
       const mockSourceCodeTree: SourceCodeTree = {
         '/test': {
-          'high-relevance.ts': ['important content'],
-          'medium-relevance.ts': ['somewhat important'],
-          'low-relevance.ts': ['not important'],
+          'high-relevance.ts': { content: 'important content' },
+          'medium-relevance.ts': { content: 'somewhat important' },
+          'low-relevance.ts': { content: 'not important' },
         },
       };
 
@@ -221,7 +221,7 @@ describe('executeStepContextOptimization', () => {
 
       const mockSourceCodeTree: SourceCodeTree = {
         '/test': {
-          'file.ts': ['test content'.repeat(1000)],
+          'file.ts': { content: 'test content'.repeat(1000) },
         },
       };
 
@@ -332,8 +332,8 @@ describe('executeStepContextOptimization', () => {
 
       const mockSourceCodeTree: SourceCodeTree = {
         '/test': {
-          'large-file.ts': [largeContent],
-          'small-file.ts': [smallContent],
+          'large-file.ts': { content: largeContent },
+          'small-file.ts': { content: smallContent },
         },
       };
 

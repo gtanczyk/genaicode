@@ -55,7 +55,6 @@ export interface CodegenOptions {
   historyEnabled?: boolean;
 
   disableAiServiceFallback?: boolean;
-  selfReflectionEnabled?: boolean;
   conversationSummaryEnabled?: boolean;
   images?: UploadedImage[];
   isDev?: boolean;

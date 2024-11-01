@@ -4,7 +4,7 @@ import { rcConfig } from '../main/config.js';
 
 export type SourceCodeTree = {
   [directoryPath: string]: {
-    [filePath: string]: [content: string | null] | [content: null, summary: string];
+    [filePath: string]: { content: string | null } | { summary: string };
   };
 };
 
@@ -22,7 +22,7 @@ export function getSourceCodeTree(sourceCode: SourceCodeMap): SourceCodeTree {
       result[dirPath] = {};
     }
 
-    result[dirPath][fileName] = 'content' in fileData ? [fileData.content] : [null, fileData.summary];
+    result[dirPath][fileName] = 'content' in fileData ? { content: fileData.content } : { summary: fileData.summary };
   }
 
   return result;
@@ -33,8 +33,7 @@ export function parseSourceCodeTree(sourceCodeTree: SourceCodeTree): SourceCodeM
 
   for (const [dirPath, files] of Object.entries(sourceCodeTree)) {
     for (const [filePath, fileData] of Object.entries(files)) {
-      const [content, summary] = fileData;
-      result[`${dirPath}/${filePath}`] = content ? { content } : summary ? { summary } : { content: null };
+      result[`${dirPath}/${filePath}`] = fileData;
     }
   }
 

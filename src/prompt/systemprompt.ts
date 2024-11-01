@@ -119,7 +119,7 @@ When using the \`askQuestion\` function, choose the appropriate \`actionType\` b
 
 Key distinctions:
 - Use \`requestAnswer\` when the query is answerable without code, seeks opinions/preferences, or deals with conceptual information.
-- Use \`requestFilesContent\` when you need to see actual code, review user's code, access configuration files, or diagnose code-specific errors.
+- Use \`requestFilesContent\` only when after analysis of preceeding \`getSourceCode\` function responses, you realize you were not provided yet with the necessary file contents to proceed with the task.
 
 Always be specific in your requests, avoid unnecessary code requests, and clarify why the information or code is needed.
 

@@ -166,8 +166,7 @@ describe('promptService with askQuestion', () => {
     ];
 
     vi.mocked(vertexAi.generateContent)
-      .mockResolvedValueOnce(mockAskQuestionCall)
-      .mockResolvedValueOnce(mockAskQuestionCall)
+      .mockResolvedValueOnce(mockAskQuestionCall) // First question
       .mockResolvedValueOnce(mockCodegenSummary);
 
     await promptService(
@@ -178,85 +177,5 @@ describe('promptService with askQuestion', () => {
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
     expect(prompts.input).not.toHaveBeenCalled();
-  });
-
-  it('should handle self-reflection mechanism', async () => {
-    const mockAskQuestionCall = [
-      {
-        name: 'askQuestion',
-        args: {
-          content: 'Do you want to proceed with code generation?',
-          actionType: 'requestAnswer',
-        },
-      },
-    ];
-    const mockAskQuestionReflectCall = [
-      {
-        name: 'askQuestionReflect',
-        args: {
-          qualityScore: 0.2,
-          assessment: 'The response requires more advanced processing.',
-        },
-      },
-    ];
-    const mockAskQuestionReflectCall2 = [
-      {
-        name: 'askQuestionReflect',
-        args: {
-          qualityScore: 0.9,
-          assessment: 'The response is ok.',
-        },
-      },
-    ];
-    const mockAskQuestionCall2 = [
-      {
-        name: 'askQuestion',
-        args: {
-          content: 'Startin code generation',
-          actionType: 'startCodeGeneration',
-        },
-      },
-    ];
-    const mockCodegenSummary = [
-      {
-        name: 'codegenSummary',
-        args: {
-          fileUpdates: [],
-          contextPaths: [],
-          explanation: 'No updates needed',
-        },
-      },
-    ];
-
-    vi.mocked(vertexAi.generateContent)
-      .mockResolvedValueOnce(mockAskQuestionCall)
-      .mockResolvedValueOnce(mockAskQuestionReflectCall)
-      .mockResolvedValueOnce(mockAskQuestionCall)
-      .mockResolvedValueOnce(mockAskQuestionReflectCall2)
-      .mockResolvedValueOnce(mockAskQuestionCall2)
-      .mockResolvedValueOnce(mockAskQuestionReflectCall2)
-      .mockResolvedValueOnce(mockCodegenSummary);
-
-    vi.mocked(prompts.input).mockImplementationOnce(
-      () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
-    );
-
-    await promptService(
-      GENERATE_CONTENT_FNS,
-      GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({
-        aiService: 'vertex-ai',
-        disableContextOptimization: true,
-        interactive: true,
-        askQuestion: true,
-        selfReflectionEnabled: true,
-      }),
-    );
-
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(7);
-    expect(console.log).toHaveBeenCalledWith(
-      'Received codegen summary, will collect partial updates',
-      expect.any(Object),
-    );
   });
 });

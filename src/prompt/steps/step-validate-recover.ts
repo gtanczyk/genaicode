@@ -24,7 +24,8 @@ export async function validateAndRecoverSingleResult(
       }
     }
 
-    prompt.push(
+    prompt = [
+      ...prompt,
       { type: 'assistant', functionCalls: [call] },
       {
         type: 'user',
@@ -38,7 +39,7 @@ export async function validateAndRecoverSingleResult(
           },
         ],
       },
-    );
+    ];
 
     console.log('Trying to recover...');
     if (cheap) {

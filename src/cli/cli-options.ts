@@ -111,10 +111,6 @@ const cliOptions: CliOption[] = [
     description: 'Disable the unescaping of special characters in Vertex AI responses.',
   },
   {
-    name: '--disable-self-reflection',
-    description: 'Disable the self-reflection feature of the AI model.',
-  },
-  {
     name: '--disable-conversation-summary',
     description: 'Disable the summary generation feature of the AI model.',
   },

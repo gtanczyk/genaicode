@@ -10,7 +10,6 @@ import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
 import { updateHistory } from './function-defs/update-history.js';
 import { readHistory } from './function-defs/read-history.js';
-import { askQuestionReflect } from './function-defs/ask-question-reflect.js';
 import { getOperationDefs } from '../operations/operations-index.js';
 
 /**
@@ -28,7 +27,6 @@ export function getFunctionDefs(): FunctionDef[] {
     setSummaries,
     updateHistory,
     readHistory,
-    askQuestionReflect,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

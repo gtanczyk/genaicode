@@ -18,7 +18,7 @@ Detailed Explanation of actionTypes:
 - requestAnswer: Use for general information, clarifications, or when no specific code is needed.
 - requestAnswerWithImage: Use when the question can be better explained with an accompanying image. Requires imageGenerationRequest parameter to generate the supporting image.
 - requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
-- requestFilesContent: Use specifically when needing to access or review the contents of files.
+- requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - startCodeGeneration: Use only after receiving confirmation to begin code generation.
@@ -79,8 +79,14 @@ export const getAskQuestionDef = (): FunctionDef => ({
       },
       requestFilesContent: {
         type: 'array',
-        description:
-          "An array of absolute file paths for which you need the content. Use this when you don't see content of files are missing and you need them to proceed with the current task. The requested files must exist in the `getSourceCode` function call response.",
+        description: `An array of absolute file paths for which you need the content. Use this when you don't see content of files are missing and you need them to proceed with the current task. The requested files must exist in the \`getSourceCode\` function call response.
+          
+          How to construct correct file paths:
+          1. See the \`getSourceCode\` function responses.
+          2. Find the directory path.
+          3. Find the file name.
+          4. Combine the directory path and file name to get the absolute file path.
+          `,
         items: {
           type: 'string',
         },

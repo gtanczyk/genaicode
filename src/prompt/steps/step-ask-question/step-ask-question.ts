@@ -10,7 +10,7 @@ import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
 import { abortController } from '../../../main/interactive/codegen-worker.js';
 import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
-import { AskQuestionCall, ActionType, ActionHandler, SelfReflectionContext } from './step-ask-question-types.js';
+import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import { handleRequestFilesContent } from './handlers/request-files-content.js';
 import { handleContextOptimization } from './handlers/context-optimization.js';
 import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
@@ -22,7 +22,6 @@ import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
-import { performSelfReflection } from './step-ask-question-reflect.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -37,21 +36,9 @@ export async function executeStepAskQuestion(
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
 
-  const selfReflectionContext: SelfReflectionContext = {
-    improvementCount: 0,
-    lastImprovementTime: 0,
-  };
-
   while (!abortController?.signal.aborted) {
     try {
-      const askQuestionCall = await getAskQuestionCall(
-        generateContentFn,
-        prompt,
-        functionDefs,
-        temperature,
-        options,
-        selfReflectionContext,
-      );
+      const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
 
       if (!askQuestionCall) {
         break;
@@ -104,29 +91,12 @@ async function getAskQuestionCall(
   functionDefs: FunctionDef[],
   temperature: number,
   options: CodegenOptions,
-  selfReflectionContext: SelfReflectionContext,
 ): Promise<AskQuestionCall | undefined> {
   const askQuestionRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, true, options];
   let askQuestionResult = await generateContentFn(...askQuestionRequest);
   askQuestionResult = await validateAndRecoverSingleResult(askQuestionRequest, askQuestionResult, generateContentFn);
 
-  const cheapModelResponse = askQuestionResult.find((call) => call.name === 'askQuestion') as
-    | AskQuestionCall
-    | undefined;
-
-  if (cheapModelResponse) {
-    return await performSelfReflection(
-      cheapModelResponse,
-      selfReflectionContext,
-      prompt,
-      functionDefs,
-      temperature,
-      options,
-      generateContentFn,
-    );
-  } else {
-    return cheapModelResponse;
-  }
+  return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }
 
 function getActionHandler(actionType: ActionType): ActionHandler {

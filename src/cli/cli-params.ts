@@ -31,7 +31,6 @@ export const cheap = params.includes('--cheap');
 export const askQuestion = !params.includes('--disable-ask-question'); // Default enabled
 export const interactive = params.includes('--interactive');
 export const ui = params.includes('--ui');
-export const disableSelfReflection = params.includes('--disable-self-reflection');
 export const disableConversationSummary = params.includes('--disable-conversation-summary');
 
 // Add support for --help option
@@ -119,10 +118,6 @@ if (disableAiServiceFallback) {
   console.log('AI service fallback is disabled');
 } else {
   console.log('AI service fallback is enabled (default)');
-}
-
-if (disableSelfReflection) {
-  console.log('Self-reflection mechanism is disabled');
 }
 
 // Log the UI port

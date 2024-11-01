@@ -9,7 +9,7 @@ export const getSourceCode: FunctionDef = {
 \`\`\`
 {
   [directoryPath: string]: {
-    [filePath: string]: [content: string | null] | [content: null, summary: string];
+    [filePath: string]: {content: string | null} | {summary: string};
   };
 }
 \`\`\`
@@ -20,10 +20,10 @@ Here is an example of the returned object:
 \`\`\`
 {
   '/path/to/directory': {
-    'file1.js': ['console.log('Hello, World!');'],
+    'file1.js': {content: 'console.log('Hello, World!');'},
   },
   '/path/to/directory/sub1/sub2': {
-    'file2.js': [null, 'This file contains a simple log statement.'],
+    'file2.js': {summary: 'This file contains a simple log statement.'},
   }
 }
 \`\`\`

@@ -41,7 +41,6 @@ export default function viteGenaicode(options?: Partial<CodegenOptions>) {
       askQuestion: true,
       historyEnabled: true,
 
-      selfReflectionEnabled: true,
       conversationSummaryEnabled: true,
 
       ...options,
