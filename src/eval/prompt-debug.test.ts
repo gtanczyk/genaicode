@@ -3,7 +3,7 @@ import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
-import * as debugPrompts from './data/prompt2.js';
+import * as debugPrompts from './data/prompt3.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem } from '../ai-service/common';
 // import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
@@ -13,8 +13,8 @@ vi.setConfig({
 });
 
 describe('prompt-debug', () => {
-  const prompt = debugPrompts.DEBUG_PROMPT2 as PromptItem[];
-  const requiredFunctionName = 'optimizeContext';
+  const prompt = debugPrompts.DEBUG_PROMPT3 as PromptItem[];
+  const requiredFunctionName = 'codegenSummary';
   const temperature = 0.2;
 
   it('Gemini Flash', async () => {

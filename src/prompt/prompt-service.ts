@@ -27,6 +27,13 @@ import { summarizeSourceCode } from './steps/step-summarization.js';
 import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
 import { executeStepGenerateSummary } from './steps/step-generate-summary.js';
 import { getSourceCodeTree } from '../files/source-code-tree.js';
+import {
+  INITIAL_GREETING,
+  REQUEST_SOURCE_CODE,
+  SOURCE_CODE_RESPONSE,
+  READY_TO_ASSIST,
+  getPartialPromptTemplate,
+} from './static-prompts.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -85,15 +92,10 @@ async function executePromptService(
 
   const prompt: PromptItem[] = [
     { type: 'systemPrompt', systemPrompt: getSystemPrompt(codegenPrompt.options) },
-    { type: 'user', text: 'Hello, GenAIcode!' },
+    { type: 'user', text: INITIAL_GREETING },
     {
       type: 'assistant',
-      text: `Hello there! I guess you have a task for me today. Before we start, could you please provide me with: 
-      - the current source code of your application
-      - the image assets (if available)
-      - and conversational history (if available)
-      
-      Thanks`,
+      text: REQUEST_SOURCE_CODE,
       functionCalls: [
         getSourceCodeRequest,
         ...(codegenPrompt.options.vision ? [{ name: 'getImageAssets' }] : []),
@@ -109,7 +111,7 @@ async function executePromptService(
       ...(codegenPrompt.options.vision ? [{ name: 'getImageAssets', content: messages.imageAssets }] : []),
       ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory', content: getCurrentHistory() }] : []),
     ],
-    text: 'Sure, here is the application source code, image assets, and the history.',
+    text: SOURCE_CODE_RESPONSE,
     cache: true,
   };
   prompt.push(getSourceCodeResponse);
@@ -117,7 +119,7 @@ async function executePromptService(
   prompt.push(
     {
       type: 'assistant',
-      text: "Thank you, I'm ready to assist you with your request.",
+      text: READY_TO_ASSIST,
     },
     {
       type: 'user',
@@ -229,9 +231,9 @@ async function executePromptService(
 
       // this is needed, otherwise we will get an error
       if (prompt.slice(-1)[0].type === 'user') {
-        prompt.slice(-1)[0].text = file.prompt ?? messages.partialPromptTemplate(file.filePath);
+        prompt.slice(-1)[0].text = file.prompt ?? getPartialPromptTemplate(file.filePath);
       } else {
-        prompt.push({ type: 'user', text: file.prompt ?? messages.partialPromptTemplate(file.filePath) });
+        prompt.push({ type: 'user', text: file.prompt ?? getPartialPromptTemplate(file.filePath) });
       }
 
       if (codegenPrompt.options.vision && file.contextImageAssets) {
@@ -320,8 +322,5 @@ function prepareMessages(codegen: CodegenPrompt) {
         ),
       ),
     imageAssets: JSON.stringify(getImageAssets()),
-    partialPromptTemplate(path: string) {
-      return `Thank you for providing the summary, now suggest changes for the \`${path}\` file using appropriate tools.`;
-    },
   };
 }
