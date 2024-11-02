@@ -15,6 +15,7 @@ export async function handleConfirmCodeGeneration({
   );
   if (userConfirmation.options?.aiService) {
     options.aiService = userConfirmation.options.aiService;
+    options.cheap = userConfirmation.options.cheap;
   }
   if (userConfirmation.confirmed) {
     putSystemMessage('Proceeding with code generation.');

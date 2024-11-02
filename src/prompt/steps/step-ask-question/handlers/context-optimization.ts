@@ -16,6 +16,11 @@ export async function handleContextOptimization({
     false,
   );
 
+  if (userConfirmation.options?.aiService) {
+    options.aiService = userConfirmation.options.aiService;
+    options.cheap = userConfirmation.options.cheap;
+  }
+
   const user: UserItem = {
     type: 'user',
     text: userConfirmation ? 'Context optimization applied.' : 'Context optimization not applied.',
@@ -26,7 +31,7 @@ export async function handleContextOptimization({
     text: askQuestionCall.args?.message ?? '',
   };
 
-  if (userConfirmation) {
+  if (userConfirmation.confirmed) {
     // the request may be caused be an appearance of a new file, so lets refresh
     refreshFiles();
 
