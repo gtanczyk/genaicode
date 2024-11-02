@@ -8,7 +8,7 @@ import {
   FunctionDef,
   TokenUsage,
 } from './common.js';
-import { ChatCompletionMessageParam } from 'openai/resources/index';
+import { ChatCompletionContentPartText, ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { modelOverrides } from '../main/config.js';
 
@@ -87,7 +87,16 @@ export async function internalGenerateContent(
         assert(item.type === 'assistant');
         const message: ChatCompletionMessageParam = {
           role: 'assistant' as const,
-          ...(item.text ? { content: item.text } : {}),
+          content: [
+            ...(item.text ? [{ type: 'text', text: item.text }] : []),
+            // Currently broken: https://github.com/openai/openai-node/issues/1030
+            ...(item.images ?? []).map((image) => ({
+              type: 'image_url' as const,
+              image_url: {
+                url: 'data:' + image.mediaType + ';base64,' + image.base64url,
+              },
+            })),
+          ] as ChatCompletionContentPartText[],
           tool_calls: item.functionCalls?.map((call) => ({
             type: 'function' as const,
             function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },

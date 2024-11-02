@@ -61,6 +61,14 @@ export async function generateContent(
               name: call.name,
               input: call.args ?? {},
             })),
+            ...(item.images ?? []).map((image) => ({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: image.mediaType,
+                data: image.base64url,
+              },
+            })),
           ],
         };
       }

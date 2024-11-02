@@ -64,11 +64,12 @@ export async function executeStepAskQuestion(
         // This is important to display the content to the user interface (ui or interactive cli)
         putUserMessage(result.items.slice(-1)[0].user.text);
 
+        prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
+
         if (result.breakLoop) {
           return result.stepResult;
         }
 
-        prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
         console.log('The question was answered');
       } else {
         console.error('Invalid action type received');

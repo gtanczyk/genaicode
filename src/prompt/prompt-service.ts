@@ -34,6 +34,7 @@ import {
   READY_TO_ASSIST,
   getPartialPromptTemplate,
 } from './static-prompts.js';
+import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -170,6 +171,11 @@ async function executePromptService(
     // Also there is no need to generate conversation summary
   }
 
+  const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, codegenPrompt.options);
+  if (planningResult === StepResult.BREAK) {
+    return { result: [], prompt };
+  }
+
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
     prompt,
     getFunctionDefs(),
@@ -219,12 +225,6 @@ async function executePromptService(
 
     for (const file of codegenSummaryRequest!.args.fileUpdates) {
       putSystemMessage('Collecting partial update for: ' + file.filePath + ' using tool: ' + file.updateToolName, file);
-      console.log('- Prompt:', file.prompt);
-      console.log('- Temperature', file.temperature);
-      console.log('- Cheap', file.cheap);
-      if (codegenPrompt.options.vision) {
-        console.log('- Context image assets', file.contextImageAssets);
-      }
 
       // Check if execution is paused before proceeding
       await waitIfPaused();

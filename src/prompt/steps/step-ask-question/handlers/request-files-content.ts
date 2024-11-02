@@ -1,11 +1,13 @@
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../../ai-service/common.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
+import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { StepResult } from '../../steps-types.js';
 import {
   ActionHandlerProps,
   ActionResult,
+  AskQuestionCall,
   AssistantItem,
   RequestFilesContentArgs,
   UserItem,
@@ -17,24 +19,13 @@ export async function handleRequestFilesContent({
   prompt,
   generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> {
-  const [requestFilesContentCall] = (await generateContentFn(
-    [
-      ...prompt,
-      {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
-      },
-      {
-        type: 'user',
-        text: 'Yes, you can request the files contents.',
-      },
-    ],
-    getFunctionDefs(),
-    'requestFilesContent',
-    0.7,
-    true,
+  let requestFilesContentCall = await generateRequestFilesContentCall(
+    generateContentFn,
+    prompt,
+    askQuestionCall,
     options,
-  )) as [FunctionCall<RequestFilesContentArgs> | undefined];
+    false,
+  );
 
   if (!requestFilesContentCall) {
     return {
@@ -44,12 +35,35 @@ export async function handleRequestFilesContent({
     };
   }
 
-  const requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
+  let requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
 
   // the request may be caused be an appearance of a new file, so lets refresh
   refreshFiles();
 
-  const { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
+  let { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
+
+  if (illegitimateFiles.length > 0) {
+    requestFilesContentCall = await generateRequestFilesContentCall(
+      generateContentFn,
+      prompt,
+      askQuestionCall,
+      options,
+      false,
+    );
+
+    if (!requestFilesContentCall) {
+      return {
+        breakLoop: true,
+        stepResult: StepResult.BREAK,
+        items: [],
+      };
+    }
+
+    requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
+    const categorized = categorizeLegitimateFiles(requestedFiles);
+    legitimateFiles = categorized.legitimateFiles;
+    illegitimateFiles = categorized.illegitimateFiles;
+  }
 
   const sourceCallId = (askQuestionCall.id ?? askQuestionCall.name) + '_source';
   const assistant: AssistantItem = {
@@ -84,6 +98,35 @@ export async function handleRequestFilesContent({
   };
 
   return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
+}
+
+async function generateRequestFilesContentCall(
+  generateContentFn: GenerateContentFunction,
+  prompt: PromptItem[],
+  askQuestionCall: AskQuestionCall,
+  options: CodegenOptions,
+  cheap: boolean,
+) {
+  const [requestFilesContentCall] = (await generateContentFn(
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Yes, you can request the files contents.',
+      },
+    ],
+    getFunctionDefs(),
+    'requestFilesContent',
+    0.7,
+    cheap,
+    options,
+  )) as [FunctionCall<RequestFilesContentArgs> | undefined];
+
+  return requestFilesContentCall;
 }
 
 function categorizeLegitimateFiles(requestedFiles: string[]): {

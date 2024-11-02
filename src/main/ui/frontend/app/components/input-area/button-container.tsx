@@ -1,12 +1,36 @@
 import React from 'react';
 import styled from 'styled-components';
+import { AiServiceSelector } from './ai-service-selector';
+import { AiServiceType, CodegenOptions } from '../../../../../codegen-types';
 
 interface ButtonContainerProps {
   onSubmit: () => void;
   onToggleOptions: () => void;
   onUploadClick: () => void;
+  onAiServiceChange: (aiService: AiServiceType) => void;
+  options: CodegenOptions;
   disabled: boolean;
 }
+
+export const ButtonContainer: React.FC<ButtonContainerProps> = ({
+  onSubmit,
+  onToggleOptions,
+  onUploadClick,
+  onAiServiceChange,
+  options,
+  disabled,
+}) => {
+  return (
+    <ButtonContainerWrapper>
+      <SubmitButton onClick={onSubmit} disabled={disabled}>
+        Submit
+      </SubmitButton>
+      <Button onClick={onUploadClick}>Upload Images</Button>
+      <AiServiceSelector value={options.aiService} onChange={onAiServiceChange} />
+      <ConfigurationButton onClick={onToggleOptions}>Configuration</ConfigurationButton>
+    </ButtonContainerWrapper>
+  );
+};
 
 const Button = styled.button`
   color: ${({ theme }) => theme.colors.buttonText};
@@ -52,20 +76,3 @@ const ButtonContainerWrapper = styled.div`
   justify-content: flex-start;
   margin-top: 10px;
 `;
-
-export const ButtonContainer: React.FC<ButtonContainerProps> = ({
-  onSubmit,
-  onToggleOptions,
-  onUploadClick,
-  disabled,
-}) => {
-  return (
-    <ButtonContainerWrapper>
-      <SubmitButton onClick={onSubmit} disabled={disabled}>
-        Submit
-      </SubmitButton>
-      <Button onClick={onUploadClick}>Upload Images</Button>
-      <ConfigurationButton onClick={onToggleOptions}>Configuration</ConfigurationButton>
-    </ButtonContainerWrapper>
-  );
-};

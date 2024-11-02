@@ -18,6 +18,7 @@ import { setSummaries } from './function-defs/set-summaries.js';
 import { updateHistory } from './function-defs/update-history.js';
 import { readHistory } from './function-defs/read-history.js';
 import { getOperationDefs } from '../operations/operations-index.js';
+import { getCodegenPlanningDef } from './function-defs/codegen-planning.js';
 
 /**
  * Function definitions for function calling feature
@@ -27,6 +28,7 @@ export function getFunctionDefs(): FunctionDef[] {
     getSourceCode,
     getImageAssets,
     getCodegenSummaryDef(),
+    getCodegenPlanningDef(),
     explanation,
     generateImage,
     getAskQuestionDef(),

@@ -31,7 +31,7 @@ export async function handleSendMessageWithImage({
       },
       {
         type: 'user',
-        text: 'Yes, you can request the files contents.',
+        text: 'Yes, you can generate an image.',
       },
     ],
     getFunctionDefs(),
@@ -65,6 +65,7 @@ export async function handleSendMessageWithImage({
 
   // Generate the image using generateImage function call
   const generateImageCall = {
+    id: 'generate_image_' + sendMessageWithImageCall.id,
     name: 'generateImage',
     args: {
       prompt: imageGenerationRequest.prompt,
@@ -92,18 +93,12 @@ export async function handleSendMessageWithImage({
   const response = await fetch(downloadFileCall.args?.downloadUrl);
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  const imageData = {
+    base64url: buffer.toString('base64'),
+    mediaType: 'image/png',
+  } as const;
 
-  putAssistantMessage(
-    'Here is the image to support the question:',
-    generateImageCall.args,
-    [],
-    [
-      {
-        base64url: buffer.toString('base64'),
-        mediaType: 'image/png',
-      },
-    ],
-  );
+  putAssistantMessage('Here is the image to support the question:', generateImageCall.args, [], [imageData]);
 
   // Get user's response with the image displayed
   const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '');
@@ -111,7 +106,7 @@ export async function handleSendMessageWithImage({
     options.aiService = inputResponse.options.aiService;
   }
 
-  // Return the conversation items with the generated image
+  // Return the conversation items with the generated image included in the context
   return {
     breakLoop: false,
     stepResult: StepResult.CONTINUE,
@@ -120,10 +115,13 @@ export async function handleSendMessageWithImage({
         assistant: {
           type: 'assistant',
           text: askQuestionCall.args?.message ?? '',
+          functionCalls: [generateImageCall],
         },
         user: {
           type: 'user',
           text: inputResponse.answer,
+          images: [imageData],
+          functionResponses: [{ name: generateImageCall.name, call_id: generateImageCall.id, content: undefined }],
         },
       },
     ],

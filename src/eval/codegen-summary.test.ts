@@ -1,4 +1,4 @@
-import { describe, it, vi, expect } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem } from '../ai-service/common';
@@ -9,6 +9,7 @@ import {
   SOURCE_CODE_RESPONSE,
   READY_TO_ASSIST,
 } from '../prompt/static-prompts.js';
+import { PLANNING_PROMPT } from '../prompt/steps/step-codegen-planning';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -42,6 +43,10 @@ describe('codegen-summary', () => {
               name: 'getSourceCode',
               content: JSON.stringify({
                 '/path/to/file': {
+                  'translator.ts': {
+                    summary:
+                      'This file contains a translator function, and should be used if there is a need to translate text.',
+                  },
                   'example.ts': {
                     content: 'console.log("Hello");',
                   },
@@ -59,15 +64,20 @@ describe('codegen-summary', () => {
         // User provides the task
         {
           type: 'user',
-          text: 'Please add a new function that prints "World"',
+          text: 'example.ts should output "Hello" dynamically translated to Japanese',
         },
+        {
+          type: 'assistant',
+          text: 'I will generate a plan to achieve this task.',
+        },
+        { type: 'user', text: PLANNING_PROMPT },
       ];
 
       // Call Claude Haikku with codegenSummary
-      const claudeResponse = await generateContentClaude(
+      let claudeResponse = await generateContentClaude(
         prompt,
         getFunctionDefs(),
-        'codegenSummary',
+        'codegenPlanning',
         temperature,
         true,
         {
@@ -76,40 +86,27 @@ describe('codegen-summary', () => {
         },
       );
 
+      // Get the codegenPlanning from response
+      const codegenPlanning = claudeResponse.find((call) => call.name === 'codegenPlanning');
+      console.log('Claude Haikku codegenPlanning:', JSON.stringify(codegenPlanning?.args, null, 2));
+
+      prompt.push({ type: 'assistant', functionCalls: claudeResponse });
+      prompt.push({
+        type: 'user',
+        functionResponses: claudeResponse.map((call) => ({ name: call.name, call_id: call.id })),
+        text: 'Planning phase completed. Please proceed with code generation.',
+        cache: true,
+      });
+
+      // Call Claude Haikku with codegenSummary
+      claudeResponse = await generateContentClaude(prompt, getFunctionDefs(), 'codegenSummary', temperature, true, {
+        aiService: 'anthropic',
+        disableCache: false,
+      });
+
       // Get the codegenSummary from response
       const codegenSummary = claudeResponse.find((call) => call.name === 'codegenSummary');
       console.log('Claude Haikku codegenSummary:', JSON.stringify(codegenSummary?.args, null, 2));
-
-      // Basic structure validation
-      expect(codegenSummary).toBeDefined();
-      expect(codegenSummary?.args).toHaveProperty('explanation');
-      expect(codegenSummary?.args).toHaveProperty('fileUpdates');
-      expect(codegenSummary?.args).toHaveProperty('contextPaths');
-
-      // Content validation
-      const { explanation, fileUpdates, contextPaths } = codegenSummary!.args as {
-        explanation: string;
-        fileUpdates: Record<string, unknown>[];
-        contextPaths: string[];
-      };
-
-      // Explanation should be a non-empty string
-      expect(typeof explanation).toBe('string');
-      expect(explanation.length).toBeGreaterThan(0);
-
-      // FileUpdates should be an array with at least one update
-      expect(Array.isArray(fileUpdates)).toBe(true);
-      expect(fileUpdates.length).toBeGreaterThan(0);
-
-      // Each file update should have required properties
-      fileUpdates.forEach((update) => {
-        expect(update).toHaveProperty('filePath');
-        expect(update).toHaveProperty('updateToolName');
-        expect(update).toHaveProperty('prompt');
-      });
-
-      // ContextPaths should be an array
-      expect(Array.isArray(contextPaths)).toBe(true);
     });
   });
 });

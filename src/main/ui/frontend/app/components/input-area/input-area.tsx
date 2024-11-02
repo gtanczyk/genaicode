@@ -50,6 +50,13 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
     handleImageUpload(newImages);
   };
 
+  const handleAiServiceChange = (aiService: CodegenOptions['aiService']) => {
+    onOptionsChange({
+      ...codegenOptions,
+      aiService,
+    });
+  };
+
   return (
     <InputContainer>
       <TextareaContainer>
@@ -71,6 +78,8 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
         onSubmit={handleSubmit}
         onToggleOptions={toggleOptions}
         onUploadClick={handleUploadClick}
+        onAiServiceChange={handleAiServiceChange}
+        options={codegenOptions}
         disabled={!input.trim() && images.length === 0}
       />
       {showOptions && (

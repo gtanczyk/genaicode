@@ -9,9 +9,9 @@ export const getCodegenSummaryDef = (): FunctionDef => ({
   description:
     'This function is called with a summary of proposed updates.\n' +
     '- `explanation`: A general explanation of the planned code generation updates or reasoning for no code changes.\n' +
-    '- `fileUpdates`: A list of proposed file updates that will be subject to subsequent code generation requests.\n' +
+    '- `fileUpdates`: A list of proposed file updates, including all affected files and dependencies.\n' +
     '- `contextPaths`: A list of file paths that make sense to use as context for code generation requests.\n' +
-    'It is critically important to adhere to the schema of parameters.',
+    'It is critically important to adhere to the schema of parameters and include all relevant files.',
   parameters: {
     type: 'object',
     properties: {

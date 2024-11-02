@@ -26,6 +26,11 @@ export interface FunctionCall<T = Record<string, unknown>> {
   args?: T;
 }
 
+export type PromptItemImage = {
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  base64url: string;
+};
+
 export interface PromptItem {
   type: 'systemPrompt' | 'user' | 'assistant';
   systemPrompt?: string;
@@ -36,10 +41,7 @@ export interface PromptItem {
     content?: string;
     isError?: boolean;
   }[];
-  images?: {
-    mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-    base64url: string;
-  }[];
+  images?: PromptItemImage[];
   functionCalls?: FunctionCall[];
   cache?: boolean;
 }
@@ -76,16 +78,7 @@ interface CostInfo {
  */
 export function printTokenUsageAndCost(costInfo: CostInfo): void {
   const { usage, inputCostPerToken, outputCostPerToken, cheap } = costInfo;
-  console.log('Token Usage:');
-  console.log('  - Input tokens: ', usage.inputTokens);
-  console.log('  - Output tokens: ', usage.outputTokens);
-  console.log('  - Total tokens: ', usage.totalTokens);
-  if (usage.cacheCreateTokens) {
-    console.log('  - Cache create tokens: ', usage.cacheCreateTokens);
-  }
-  if (usage.cacheReadTokens) {
-    console.log('  - Cache read tokens: ', usage.cacheReadTokens);
-  }
+  console.log('Token Usage:', usage);
 
   const inputCost =
     ((usage.inputTokens ?? 0) * inputCostPerToken +
@@ -94,8 +87,8 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
     (cheap ? 0.1 : 1);
   const outputCost = (usage.outputTokens ?? 0) * outputCostPerToken;
   const totalCost = inputCost + outputCost;
-  console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
-  console.log('  - Cheap model: ', cheap);
+
+  console.log('Cost:', totalCost.toFixed(6), ' USD');
 
   collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, costInfo.aiService, cheap);
 }

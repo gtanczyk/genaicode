@@ -52,6 +52,7 @@ export async function generateContent(
             })),
           );
         }
+
         if (item.images) {
           content.push(
             ...(item.images ?? []).map((image) => ({
@@ -79,17 +80,37 @@ export async function generateContent(
         return message;
       } else {
         assert(item.type === 'assistant');
+        const content: Array<
+          | PromptCachingBetaTextBlockParam
+          | PromptCachingBetaImageBlockParam
+          | PromptCachingBetaToolUseBlockParam
+          | PromptCachingBetaToolResultBlockParam
+        > = [
+          ...(item.text ? [{ type: 'text' as const, text: item.text }] : []),
+          ...(item.functionCalls ?? []).map((call) => ({
+            id: call.id ?? call.name,
+            name: call.name,
+            input: call.args ?? {},
+            type: 'tool_use' as const,
+          })),
+        ];
+
+        if (item.images) {
+          content.push(
+            ...(item.images ?? []).map((image) => ({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: image.mediaType,
+                data: image.base64url,
+              },
+            })),
+          );
+        }
+
         const message: PromptCachingBetaMessageParam = {
           role: 'assistant' as const,
-          content: [
-            ...(item.text ? [{ type: 'text' as const, text: item.text }] : []),
-            ...(item.functionCalls ?? []).map((call) => ({
-              id: call.id ?? call.name,
-              name: call.name,
-              input: call.args ?? {},
-              type: 'tool_use' as const,
-            })),
-          ],
+          content,
         };
         return message;
       }

@@ -56,6 +56,12 @@ export async function generateContent(
           role: 'model' as const,
           parts: [
             ...(item.text ? [{ text: item.text }] : []),
+            ...(item.images ?? []).map((image) => ({
+              inlineData: {
+                mimeType: image.mediaType,
+                data: image.base64url,
+              },
+            })),
             ...(item.functionCalls ?? []).map((call) => ({
               functionCall: {
                 name: call.name,

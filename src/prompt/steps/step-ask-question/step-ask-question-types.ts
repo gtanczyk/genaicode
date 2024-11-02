@@ -3,6 +3,7 @@ import {
   GenerateContentFunction,
   GenerateImageFunction,
   PromptItem,
+  PromptItemImage,
 } from '../../../ai-service/common.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { StepResult } from '../steps-types.js';
@@ -53,6 +54,7 @@ export interface AssistantItem {
   type: 'assistant';
   text: string;
   functionCalls?: FunctionCall[];
+  images?: PromptItemImage[];
   cache?: true;
 }
 
@@ -64,6 +66,7 @@ export interface UserItem {
     call_id: string | undefined;
     content: string | undefined;
   }>;
+  images?: PromptItemImage[];
   cache?: true;
 }
 

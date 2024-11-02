@@ -64,6 +64,12 @@ export async function generateContent(
                 args: call.args ?? {},
               },
             })),
+            ...(item.images ?? []).map((image) => ({
+              inlineData: {
+                mimeType: image.mediaType,
+                data: image.base64url,
+              },
+            })),
           ],
         };
         return content;
