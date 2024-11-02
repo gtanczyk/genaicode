@@ -48,8 +48,6 @@ export async function runCodegen(isDev = false): Promise<void> {
   const options: CodegenOptions = {
     explicitPrompt: cliParams.explicitPrompt,
     taskFile: cliParams.taskFile,
-    considerAllFiles: cliParams.considerAllFiles,
-    dependencyTree: cliParams.dependencyTree,
 
     allowFileCreate: cliParams.allowFileCreate,
     allowFileDelete: cliParams.allowFileDelete,
@@ -188,7 +186,7 @@ export async function runCodegenIteration(
             GENERATE_IMAGE_FNS,
             {
               prompt: lintErrorPrompt,
-              options: { ...options, considerAllFiles: true },
+              options,
             },
             waitIfPaused,
           )) as FunctionCall[];

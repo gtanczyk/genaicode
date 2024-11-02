@@ -45,12 +45,17 @@ export async function validateAndRecoverSingleResult(
     if (cheap) {
       console.log('Disabling --cheap for recovery.');
     }
-    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
+    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, true, options);
     console.log('Recover result:', result);
 
     if (result?.length === 1) {
-      const recoveryError = validateFunctionCall(result[0], requiredFunctionName);
-      assert(!recoveryError, 'Recovery failed');
+      let recoveryError = validateFunctionCall(result[0], requiredFunctionName);
+      if (recoveryError) {
+        console.log("Use more expensive recovery method, because we couldn't recover.");
+        result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
+        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName);
+        assert(!recoveryError, 'Recovery failed');
+      }
       console.log('Recovery was successful');
     } else if (result?.length === 0) {
       throw new Error('Did not receive any function calls unexpectedly.');

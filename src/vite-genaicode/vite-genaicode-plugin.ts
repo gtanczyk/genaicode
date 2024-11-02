@@ -29,7 +29,6 @@ export default function viteGenaicode(options?: Partial<CodegenOptions>) {
       aiService: stringToAiServiceType(serviceAutoDetect()),
       isDev: false,
 
-      considerAllFiles: false,
       allowFileCreate: true,
       allowFileDelete: true,
       allowDirectoryCreate: true,

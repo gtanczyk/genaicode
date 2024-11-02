@@ -24,8 +24,6 @@ vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../cli/cli-params.js', () => ({
   disableExplanations: true,
-  considerAllFiles: false,
-  dependencyTree: false,
   explicitPrompt: false,
   allowFileCreate: false,
   allowFileDelete: false,
@@ -86,6 +84,7 @@ describe('promptService', () => {
     vi.mocked(cliParams).vision = false;
     vi.mocked(cliParams).imagen = undefined;
     vi.mocked(cliParams).disableContextOptimization = false;
+    vi.mocked(cliParams).explicitPrompt = 'testx';
   });
 
   it('should process the codegen summary and return the result with Vertex AI', async () => {
@@ -98,7 +97,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -113,7 +117,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'chat-gpt' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'chat-gpt',
+      }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -128,7 +137,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'anthropic' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'anthropic',
+      }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -146,7 +160,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(result).toEqual(mockFunctionCalls);
@@ -200,7 +219,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -226,7 +250,13 @@ describe('promptService', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'chat-gpt', vision: true }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'chat-gpt',
+        vision: true,
+      }),
     );
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
@@ -235,15 +265,17 @@ describe('promptService', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'user',
-          text: expect.stringContaining('I should also provide you with a summary of application image assets'),
+          text: expect.stringContaining('Hello, GenAIcode'),
         }),
         expect.objectContaining({
           type: 'assistant',
-          text: expect.stringContaining('Please provide summary of application image assets.'),
+          text: expect.stringContaining('I guess you have a task for me'),
         }),
         expect.objectContaining({
           type: 'user',
-          functionResponses: [{ name: 'getImageAssets', content: JSON.stringify(mockImageAssets) }],
+          functionResponses: expect.arrayContaining([
+            { name: 'getImageAssets', content: JSON.stringify(mockImageAssets) },
+          ]),
         }),
       ]),
     );
@@ -288,7 +320,13 @@ describe('promptService', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'chat-gpt', vision: true }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'chat-gpt',
+        vision: true,
+      }),
     );
 
     expect(chatGpt.generateContent).toHaveBeenCalledTimes(2);
@@ -327,7 +365,12 @@ describe('promptService', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'chat-gpt' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'chat-gpt',
+      }),
     );
 
     expect(chatGpt.generateContent).toHaveBeenCalled();
@@ -372,7 +415,12 @@ describe('promptService', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -423,7 +471,12 @@ describe('promptService', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
@@ -490,6 +543,7 @@ describe('promptService', () => {
       getCodeGenPrompt({
         askQuestion: false,
         disableContextOptimization: true,
+        explicitPrompt: 'testx',
         aiService: 'vertex-ai',
         imagen: 'dall-e',
       }),
@@ -542,6 +596,7 @@ describe('promptService', () => {
       getCodeGenPrompt({
         askQuestion: false,
         disableContextOptimization: true,
+        explicitPrompt: 'testx',
         aiService: 'vertex-ai',
         imagen: 'dall-e',
       }),
@@ -583,7 +638,12 @@ describe('promptService', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+      getCodeGenPrompt({
+        askQuestion: false,
+        disableContextOptimization: true,
+        explicitPrompt: 'testx',
+        aiService: 'vertex-ai',
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
@@ -632,7 +692,12 @@ describe('promptService', () => {
       const result = await promptService(
         GENERATE_CONTENT_FNS,
         GENERATE_IMAGE_FNS,
-        getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+        getCodeGenPrompt({
+          askQuestion: false,
+          disableContextOptimization: true,
+          explicitPrompt: 'testx',
+          aiService: 'vertex-ai',
+        }),
       );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
@@ -670,17 +735,23 @@ describe('promptService', () => {
           },
         ])
         .mockResolvedValueOnce(mockInvalidCall)
+        .mockResolvedValueOnce(mockInvalidCall)
         .mockResolvedValueOnce(mockInvalidCall); // Second call also returns invalid result
 
       await expect(
         promptService(
           GENERATE_CONTENT_FNS,
           GENERATE_IMAGE_FNS,
-          getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+          getCodeGenPrompt({
+            askQuestion: false,
+            disableContextOptimization: true,
+            explicitPrompt: 'testx',
+            aiService: 'vertex-ai',
+          }),
         ),
       ).rejects.toThrow('Recovery failed');
 
-      expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
+      expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
     });
 
     it('should not attempt recovery for multiple valid function calls', async () => {
@@ -701,7 +772,12 @@ describe('promptService', () => {
       const result = await promptService(
         GENERATE_CONTENT_FNS,
         GENERATE_IMAGE_FNS,
-        getCodeGenPrompt({ askQuestion: false, disableContextOptimization: true, aiService: 'vertex-ai' }),
+        getCodeGenPrompt({
+          askQuestion: false,
+          disableContextOptimization: true,
+          explicitPrompt: 'testx',
+          aiService: 'vertex-ai',
+        }),
       );
 
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);

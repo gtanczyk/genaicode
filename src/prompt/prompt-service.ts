@@ -85,11 +85,20 @@ async function executePromptService(
 
   const prompt: PromptItem[] = [
     { type: 'systemPrompt', systemPrompt: getSystemPrompt(codegenPrompt.options) },
-    { type: 'user', text: messages.suggestSourceCode },
+    { type: 'user', text: 'Hello, GenAIcode!' },
     {
       type: 'assistant',
-      text: messages.requestSourceCode,
-      functionCalls: [getSourceCodeRequest, ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory' }] : [])],
+      text: `Hello there! I guess you have a task for me today. Before we start, could you please provide me with: 
+      - the current source code of your application
+      - the image assets (if available)
+      - and conversational history (if available)
+      
+      Thanks`,
+      functionCalls: [
+        getSourceCodeRequest,
+        ...(codegenPrompt.options.vision ? [{ name: 'getImageAssets' }] : []),
+        ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory' }] : []),
+      ],
     },
   ];
 
@@ -97,21 +106,24 @@ async function executePromptService(
     type: 'user',
     functionResponses: [
       { name: 'getSourceCode', content: messages.sourceCode },
+      ...(codegenPrompt.options.vision ? [{ name: 'getImageAssets', content: messages.imageAssets }] : []),
       ...(codegenPrompt.options.historyEnabled ? [{ name: 'readHistory', content: getCurrentHistory() }] : []),
     ],
+    text: 'Sure, here is the application source code, image assets, and the history.',
     cache: true,
   };
   prompt.push(getSourceCodeResponse);
 
-  if (codegenPrompt.options.vision) {
-    prompt.slice(-1)[0].text = messages.suggestImageAssets;
-    prompt.push(
-      { type: 'assistant', text: messages.requestImageAssets, functionCalls: [{ name: 'getImageAssets' }] },
-      { type: 'user', functionResponses: [{ name: 'getImageAssets', content: messages.imageAssets }] },
-    );
-  }
-
-  prompt.slice(-1)[0].text = messages.prompt;
+  prompt.push(
+    {
+      type: 'assistant',
+      text: "Thank you, I'm ready to assist you with your request.",
+    },
+    {
+      type: 'user',
+      text: codegenPrompt.prompt,
+    },
+  );
 
   // Add uploaded images to the prompt if available
   if (codegenPrompt.options.images && codegenPrompt.options.images.length > 0 && codegenPrompt.options.vision) {
@@ -291,13 +303,6 @@ async function executePromptService(
  */
 function prepareMessages(codegen: CodegenPrompt) {
   return {
-    suggestSourceCode: 'I should provide you with application source code.',
-    requestSourceCode: 'Please provide application source code.',
-    suggestImageAssets: 'I should also provide you with a summary of application image assets',
-    requestImageAssets: 'Please provide summary of application image assets.',
-    prompt:
-      codegen.prompt +
-      '\n Start from generating codegen summary, this summary will be used as a context to generate updates, so make sure that it contains useful information.',
     sourceCode: JSON.stringify(
       getSourceCodeTree(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
     ),

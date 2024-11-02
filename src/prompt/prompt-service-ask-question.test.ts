@@ -18,8 +18,6 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 vi.mock('../cli/cli-params.js', () => ({
   disableExplanations: true,
-  considerAllFiles: false,
-  dependencyTree: false,
   explicitPrompt: false,
   allowFileCreate: false,
   allowFileDelete: false,
@@ -77,8 +75,8 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          content: 'Do you want to proceed with code generation?',
-          actionType: 'requestAnswer',
+          message: 'Do you want to proceed with code generation?',
+          actionType: 'sendMessage',
         },
       },
     ];
@@ -86,7 +84,7 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          content: 'Ok lets go',
+          message: 'Ok lets go',
           actionType: 'startCodeGeneration',
         },
       },
@@ -117,6 +115,7 @@ describe('promptService with askQuestion', () => {
       getCodeGenPrompt({
         aiService: 'vertex-ai',
         disableContextOptimization: true,
+        explicitPrompt: 'test',
         interactive: true,
         askQuestion: true,
       }),
@@ -133,7 +132,7 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          content: 'Stopping code generation as requested.',
+          message: 'Stopping code generation as requested.',
           actionType: 'cancelCodeGeneration',
         },
       },
@@ -144,7 +143,12 @@ describe('promptService with askQuestion', () => {
     const result = await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
+      getCodeGenPrompt({
+        aiService: 'vertex-ai',
+        explicitPrompt: 'testx',
+        disableContextOptimization: true,
+        interactive: true,
+      }),
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(1);
@@ -172,10 +176,15 @@ describe('promptService with askQuestion', () => {
     await promptService(
       GENERATE_CONTENT_FNS,
       GENERATE_IMAGE_FNS,
-      getCodeGenPrompt({ aiService: 'vertex-ai', disableContextOptimization: true, interactive: true }),
+      getCodeGenPrompt({
+        aiService: 'vertex-ai',
+        explicitPrompt: 'testx',
+        disableContextOptimization: true,
+        interactive: true,
+      }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(prompts.input).not.toHaveBeenCalled();
   });
 });

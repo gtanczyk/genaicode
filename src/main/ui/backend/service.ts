@@ -67,7 +67,6 @@ export class Service {
         {
           ...this.codegenOptions,
           explicitPrompt: prompt,
-          considerAllFiles: true,
           images: imageDataForPrompt,
           vision: this.codegenOptions.vision || !!imageDataForPrompt?.length,
         },

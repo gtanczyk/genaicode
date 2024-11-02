@@ -10,7 +10,7 @@ export async function runTextPrompt(options: CodegenOptions): Promise<void> {
 
     console.log(`Received prompt: ${prompt}`);
     if (prompt) {
-      await runCodegenWorker({ ...options, explicitPrompt: prompt, considerAllFiles: true });
+      await runCodegenWorker({ ...options, explicitPrompt: prompt });
     }
   } catch (error) {
     console.error('Error getting text prompt:', error);

@@ -17,7 +17,6 @@ const configureGeneralOptions = async (options: CodegenOptions): Promise<void> =
   const generalOptions = await checkbox({
     message: 'Select general options:',
     choices: [
-      { name: 'Consider all files', value: 'considerAllFiles', checked: options.considerAllFiles },
       { name: 'Dry run', value: 'dryRun', checked: options.dryRun },
       { name: 'Verbose', value: 'verbose', checked: options.verbose },
       { name: 'Require explanations', value: 'requireExplanations', checked: options.requireExplanations },
@@ -27,7 +26,6 @@ const configureGeneralOptions = async (options: CodegenOptions): Promise<void> =
     ],
   });
 
-  options.considerAllFiles = generalOptions.includes('considerAllFiles');
   options.dryRun = generalOptions.includes('dryRun');
   options.verbose = generalOptions.includes('verbose');
   options.requireExplanations = generalOptions.includes('requireExplanations');

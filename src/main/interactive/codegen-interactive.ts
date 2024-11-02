@@ -5,7 +5,6 @@ import { selectAiService } from './select-ai-service.js';
 import { getUserOptions } from './configure.js';
 import { printHelpMessage } from '../../cli/cli-options.js';
 import { CodegenOptions } from '../codegen-types.js';
-import { runProcessComments } from './process-comments.js';
 import { handleError } from './error-handling.js';
 import { registerUserActionHandlers } from './user-action-handlers.js';
 
@@ -39,9 +38,6 @@ export const runInteractiveMode = async (options: CodegenOptions): Promise<void>
 
 const handleUserAction = async (action: UserAction, options: CodegenOptions): Promise<void> => {
   switch (action) {
-    case 'process_comments':
-      await runProcessComments(options);
-      break;
     case 'text_prompt':
       await runTextPrompt(options);
       break;

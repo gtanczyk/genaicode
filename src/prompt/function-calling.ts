@@ -5,7 +5,14 @@ import { getImageAssets } from './function-defs/get-image-assets.js';
 import { getCodegenSummaryDef } from './function-defs/codegen-summary.js';
 import { explanation } from './function-defs/explanation.js';
 import { generateImage } from './function-defs/generate-image.js';
-import { getAskQuestionDef } from './function-defs/ask-question.js';
+import {
+  getAskQuestionDef,
+  sendMessageWithImage,
+  requestPermissions,
+  requestFilesContent,
+  removeFilesFromContext,
+  contextOptimization,
+} from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
 import { updateHistory } from './function-defs/update-history.js';
@@ -23,6 +30,11 @@ export function getFunctionDefs(): FunctionDef[] {
     explanation,
     generateImage,
     getAskQuestionDef(),
+    sendMessageWithImage,
+    requestPermissions,
+    requestFilesContent,
+    removeFilesFromContext,
+    contextOptimization,
     optimizeContext,
     setSummaries,
     updateHistory,

@@ -1,6 +1,5 @@
 import { select, Separator } from '@inquirer/prompts';
 import { createRequire } from 'module';
-import { CODEGEN_TRIGGER } from '../../prompt/prompt-consts.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../../package.json');
@@ -12,7 +11,6 @@ export const displayWelcome = () => {
 export type UserAction =
   | 'text_prompt'
   | 'task_file'
-  | 'process_comments'
   | 'select_ai_service'
   | 'configure'
   | 'help'
@@ -25,7 +23,6 @@ const getUserActionChoices = () =>
   [
     { name: 'Enter a text prompt', value: 'text_prompt' },
     { name: 'Select a task file', value: 'task_file' },
-    { name: `Process ${CODEGEN_TRIGGER} comments`, value: 'process_comments' },
     new Separator(),
     { name: 'Select AI service', value: 'select_ai_service' },
     { name: 'Configuration', value: 'configure' },

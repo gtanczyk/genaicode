@@ -9,7 +9,7 @@ export async function handleCancelCodeGeneration({ askQuestionCall }: ActionHand
     stepResult: StepResult.BREAK,
     items: [
       {
-        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+        assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
         user: { type: 'user', text: 'Code generation cancelled.' },
       },
     ],

@@ -5,7 +5,6 @@ import { serviceAutoDetect } from './service-autodetect.js';
 const params = process.argv.slice(2);
 
 export const dryRun = params.includes('--dry-run');
-export const considerAllFiles = params.includes('--consider-all-files');
 export const allowFileCreate = !params.includes('--disallow-file-create');
 export const allowFileDelete = !params.includes('--disallow-file-delete');
 export const allowDirectoryCreate = !params.includes('--disallow-directory-create');
@@ -13,7 +12,6 @@ export const allowFileMove = !params.includes('--disallow-file-move');
 
 export let aiService = params.find((param) => param.startsWith('--ai-service='))?.split('=')[1];
 
-export const dependencyTree = params.includes('--dependency-tree');
 export const verbosePrompt = params.includes('--verbose-prompt');
 export const disableCache = params.includes('--disable-cache');
 export const explicitPrompt = params.find((param) => param.startsWith('--explicit-prompt'))?.split('=')[1];
@@ -64,10 +62,6 @@ if (taskFile) {
   if (!path.isAbsolute(taskFile)) {
     taskFile = path.join(process.cwd(), taskFile);
   }
-}
-
-if (considerAllFiles && dependencyTree) {
-  throw new Error('--consider-all-files and --dependency-tree are exclusive.');
 }
 
 if (!aiService && !helpRequested) {

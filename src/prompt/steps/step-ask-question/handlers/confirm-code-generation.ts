@@ -3,13 +3,19 @@ import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-a
 import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
-export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
+export async function handleConfirmCodeGeneration({
+  askQuestionCall,
+  options,
+}: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmationWithAnswer(
     'The assistant is ready to start code generation. Do you want to proceed?',
     'Start code generation',
     'Continue conversation',
     true,
   );
+  if (userConfirmation.options?.aiService) {
+    options.aiService = userConfirmation.options.aiService;
+  }
   if (userConfirmation.confirmed) {
     putSystemMessage('Proceeding with code generation.');
     return {
@@ -17,7 +23,7 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
       stepResult: StepResult.CONTINUE,
       items: [
         {
-          assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+          assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '', functionCalls: [] },
           user: { type: 'user', text: userConfirmation.answer || 'Confirmed. Proceed with code generation.' },
         },
       ],
@@ -29,11 +35,10 @@ export async function handleConfirmCodeGeneration({ askQuestionCall }: ActionHan
       stepResult: StepResult.CONTINUE,
       items: [
         {
-          assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+          assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
           user: {
             type: 'user',
             text: userConfirmation.answer || 'Declined. Please continue the conversation.',
-            functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
           },
         },
       ],

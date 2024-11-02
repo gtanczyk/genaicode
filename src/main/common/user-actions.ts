@@ -9,6 +9,7 @@ type InputHandler = (prompt: string, message: string) => Promise<InputHandlerRes
 
 type ConfirmHandlerResponse = {
   confirmed: boolean | undefined;
+  options?: CodegenOptions;
   answer?: string;
 };
 

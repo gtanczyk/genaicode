@@ -1,5 +1,4 @@
 import { printHelpMessage } from '../../cli/cli-options.js';
-import { CODEGEN_TRIGGER } from '../../prompt/prompt-consts.js';
 
 export function displayHelp() {
   console.log('Genaicode Interactive Mode Help');
@@ -9,9 +8,6 @@ export function displayHelp() {
   console.log('');
   console.log('1. Enter a text prompt: Provide a custom prompt for code generation.');
   console.log('2. Select a task file: Choose a file containing a task description.');
-  console.log(
-    `3. Process ${CODEGEN_TRIGGER} comments: Analyze and process ${CODEGEN_TRIGGER} comments in your codebase.`,
-  );
   console.log('4. Select AI service: Choose the AI model for code generation.');
   console.log('5. Configuration: Modify various options for code generation.');
   console.log('6. Print help: Display this help message.');

@@ -1,12 +1,16 @@
 import { askUserForInput } from '../../../../main/common/user-actions.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
 import { StepResult } from '../../steps-types.js';
-import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult, SendMessageWithImageArgs } from '../step-ask-question-types.js';
 import { executeStepGenerateImage } from '../../step-generate-image.js';
+import { getFunctionDefs } from '../../../function-calling.js';
+import { FunctionCall } from '../../../../ai-service/common.js';
 
-export async function handleRequestAnswerWithImage({
+export async function handleSendMessageWithImage({
   askQuestionCall,
   options,
+  generateContentFn,
+  prompt,
   generateImageFn,
 }: ActionHandlerProps): Promise<ActionResult> {
   if (!options.imagen) {
@@ -18,10 +22,37 @@ export async function handleRequestAnswerWithImage({
     };
   }
 
+  const [sendMessageWithImageCall] = (await generateContentFn(
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Yes, you can request the files contents.',
+      },
+    ],
+    getFunctionDefs(),
+    'sendMessageWithImage',
+    0.7,
+    true,
+    options,
+  )) as [FunctionCall<SendMessageWithImageArgs> | undefined];
+
+  if (!sendMessageWithImageCall) {
+    return {
+      breakLoop: true,
+      stepResult: StepResult.BREAK,
+      items: [],
+    };
+  }
+
   // Get the image generation request from the args
-  const imageGenerationRequest = askQuestionCall.args?.imageGenerationRequest;
+  const imageGenerationRequest = sendMessageWithImageCall.args;
   if (!imageGenerationRequest?.prompt) {
-    putSystemMessage('Image generation request with prompt is required for requestAnswerWithImage action.');
+    putSystemMessage('Image generation request with prompt is required for sendMessageWithImage action.');
     return {
       breakLoop: true,
       stepResult: StepResult.BREAK,
@@ -75,7 +106,7 @@ export async function handleRequestAnswerWithImage({
   );
 
   // Get user's response with the image displayed
-  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.content ?? '');
+  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '');
   if (inputResponse.options?.aiService) {
     options.aiService = inputResponse.options.aiService;
   }
@@ -88,19 +119,11 @@ export async function handleRequestAnswerWithImage({
       {
         assistant: {
           type: 'assistant',
-          text: askQuestionCall.args?.content ?? '',
-          functionCalls: [askQuestionCall, generateImageCall, downloadFileCall],
+          text: askQuestionCall.args?.message ?? '',
         },
         user: {
           type: 'user',
           text: inputResponse.answer,
-          functionResponses: [
-            {
-              name: 'askQuestion',
-              call_id: askQuestionCall.id,
-              content: undefined,
-            },
-          ],
         },
       },
     ],

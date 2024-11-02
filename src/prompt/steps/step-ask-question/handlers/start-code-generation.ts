@@ -9,7 +9,7 @@ export async function handleStartCodeGeneration({ askQuestionCall }: ActionHandl
     stepResult: StepResult.CONTINUE,
     items: [
       {
-        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [] },
+        assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
         user: { type: 'user', text: 'Proceeding with code generation.' },
       },
     ],

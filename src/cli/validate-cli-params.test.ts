@@ -13,7 +13,7 @@ describe('validateCliParams', () => {
   });
 
   it('should not throw for valid parameters', () => {
-    process.argv.push('--dry-run', '--consider-all-files');
+    process.argv.push('--dry-run');
     expect(() => validateCliParams()).not.toThrow();
   });
 

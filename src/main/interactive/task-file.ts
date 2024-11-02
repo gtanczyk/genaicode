@@ -18,7 +18,7 @@ export async function runTaskFile(options: CodegenOptions): Promise<void> {
       return;
     } else if (taskFile) {
       console.log(`Selected task file: ${taskFile}`);
-      await runCodegenWorker({ ...options, taskFile, considerAllFiles: true });
+      await runCodegenWorker({ ...options, taskFile });
       console.log('Task file processing completed.');
     } else {
       console.log('No task file selected.');

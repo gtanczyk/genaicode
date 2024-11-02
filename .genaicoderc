@@ -13,7 +13,8 @@
     ".husky",
     "coverage",
     "package-lock.json",
-    ".vscode"
+    ".vscode",
+    "src/eval/data"
   ],
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {

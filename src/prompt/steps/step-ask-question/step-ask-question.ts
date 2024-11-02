@@ -16,8 +16,8 @@ import { handleContextOptimization } from './handlers/context-optimization.js';
 import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
 import { handleRequestPermissions } from './handlers/request-permissions.js';
 import { handleDefaultAction } from './handlers/default-action.js';
-import { handleRequestAnswer } from './handlers/handle-request-answer.js';
-import { handleRequestAnswerWithImage } from './handlers/handle-request-answer-with-image.js';
+import { handleSendMessage } from './handlers/handle-send-message.js';
+import { handleSendMessageWithImage } from './handlers/handle-send-message-with-image.js';
 import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
@@ -45,8 +45,8 @@ export async function executeStepAskQuestion(
       }
 
       console.log('Assistant asks:', askQuestionCall.args);
-      if (askQuestionCall.args?.content) {
-        putAssistantMessage(askQuestionCall.args.content, askQuestionCall.args);
+      if (askQuestionCall.args?.message) {
+        putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);
       }
 
       const actionType = askQuestionCall.args?.actionType;
@@ -114,8 +114,8 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     requestFilesContent: handleRequestFilesContent,
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,
-    requestAnswer: handleRequestAnswer,
-    requestAnswerWithImage: handleRequestAnswerWithImage,
+    sendMessage: handleSendMessage,
+    sendMessageWithImage: handleSendMessageWithImage,
     contextOptimization: handleContextOptimization,
   };
 

@@ -1,13 +1,51 @@
+import { FunctionCall } from '../../../../ai-service/common.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
+import { getFunctionDefs } from '../../../function-calling.js';
 import { StepResult } from '../../steps-types.js';
-import { ActionHandlerProps, ActionResult, AssistantItem, UserItem } from '../step-ask-question-types.js';
+import {
+  ActionHandlerProps,
+  ActionResult,
+  AssistantItem,
+  RequestFilesContentArgs,
+  UserItem,
+} from '../step-ask-question-types.js';
 
 export async function handleRequestFilesContent({
   askQuestionCall,
   options,
+  prompt,
+  generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> {
-  const requestedFiles = askQuestionCall.args?.requestFilesContent ?? [];
+  const [requestFilesContentCall] = (await generateContentFn(
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Yes, you can request the files contents.',
+      },
+    ],
+    getFunctionDefs(),
+    'requestFilesContent',
+    0.7,
+    true,
+    options,
+  )) as [FunctionCall<RequestFilesContentArgs> | undefined];
+
+  if (!requestFilesContentCall) {
+    return {
+      breakLoop: true,
+      stepResult: StepResult.BREAK,
+      items: [],
+    };
+  }
+
+  const requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
+
   // the request may be caused be an appearance of a new file, so lets refresh
   refreshFiles();
 
@@ -16,8 +54,11 @@ export async function handleRequestFilesContent({
   const sourceCallId = (askQuestionCall.id ?? askQuestionCall.name) + '_source';
   const assistant: AssistantItem = {
     type: 'assistant',
-    text: askQuestionCall.args?.content ?? '',
-    functionCalls: [askQuestionCall, { name: 'getSourceCode', id: sourceCallId, args: { filePaths: legitimateFiles } }],
+    text: askQuestionCall.args?.message ?? '',
+    functionCalls: [
+      requestFilesContentCall,
+      { name: 'getSourceCode', id: sourceCallId, args: { filePaths: legitimateFiles } },
+    ],
   };
 
   const sourceCode = getSourceCode({ filterPaths: legitimateFiles, forceAll: true }, options);
@@ -25,10 +66,14 @@ export async function handleRequestFilesContent({
     type: 'user',
     text:
       illegitimateFiles.length > 0
-        ? 'Some files are not legitimate and their content cannot be provided'
+        ? `Some files are not legitimate and their content cannot be provided:\n\n${illegitimateFiles.join('\n')}`
         : 'All requested file contents have been provided.',
     functionResponses: [
-      { name: 'askQuestion', call_id: askQuestionCall.id, content: undefined },
+      {
+        name: 'requestFilesContent',
+        call_id: requestFilesContentCall.id,
+        content: JSON.stringify({ filePaths: requestedFiles }),
+      },
       {
         name: 'getSourceCode',
         call_id: sourceCallId,

@@ -1,12 +1,43 @@
+import { FunctionCall } from '../../../../ai-service/common.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
+import { getFunctionDefs } from '../../../function-calling.js';
 import { StepResult } from '../../steps-types.js';
-import { ActionHandlerProps, ActionResult, AskQuestionCall, UserItem } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult, RequestPermissionsArgs, UserItem } from '../step-ask-question-types.js';
 
 export async function handleRequestPermissions({
   askQuestionCall,
   options,
+  prompt,
+  generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> {
+  const [requestPermissionsCall] = (await generateContentFn(
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Yes, you can request the permissions.',
+      },
+    ],
+    getFunctionDefs(),
+    'requestPermissions',
+    0.7,
+    true,
+    options,
+  )) as [FunctionCall<RequestPermissionsArgs> | undefined];
+
+  if (!requestPermissionsCall) {
+    return {
+      breakLoop: true,
+      stepResult: StepResult.BREAK,
+      items: [],
+    };
+  }
+
   const userConfirmation = await askUserForConfirmation(
     'The assistant is requesting additional permissions. Do you want to grant them?',
     false,
@@ -15,11 +46,17 @@ export async function handleRequestPermissions({
   const user: UserItem = {
     type: 'user',
     text: userConfirmation ? 'Permissions granted.' : 'Permission request denied.',
-    functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
+    functionResponses: [
+      {
+        name: 'requestPermissions',
+        call_id: requestPermissionsCall.id,
+        content: JSON.stringify({ confirmed: userConfirmation.confirmed }),
+      },
+    ],
   };
 
-  if (userConfirmation) {
-    updatePermissions(askQuestionCall, options);
+  if (userConfirmation.confirmed) {
+    updatePermissions(requestPermissionsCall, options);
   }
 
   return {
@@ -27,30 +64,27 @@ export async function handleRequestPermissions({
     stepResult: StepResult.CONTINUE,
     items: [
       {
-        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        assistant: {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+          functionCalls: [requestPermissionsCall],
+        },
         user,
       },
     ],
   };
 }
 
-function updatePermissions(askQuestionCall: AskQuestionCall, options: CodegenOptions) {
-  if (
-    askQuestionCall.args &&
-    typeof askQuestionCall.args === 'object' &&
-    'requestPermissions' in askQuestionCall.args
-  ) {
-    const permissions = askQuestionCall.args.requestPermissions;
-    if (permissions && typeof permissions === 'object') {
-      if ('enableImagen' in permissions && permissions.enableImagen) {
-        options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
-      }
-      if ('enableVision' in permissions && permissions.enableVision) options.vision = true;
-      if ('allowDirectoryCreate' in permissions && permissions.allowDirectoryCreate)
-        options.allowDirectoryCreate = true;
-      if ('allowFileCreate' in permissions && permissions.allowFileCreate) options.allowFileCreate = true;
-      if ('allowFileDelete' in permissions && permissions.allowFileDelete) options.allowFileDelete = true;
-      if ('allowFileMove' in permissions && permissions.allowFileMove) options.allowFileMove = true;
+function updatePermissions(requestPermissionsCall: FunctionCall<RequestPermissionsArgs>, options: CodegenOptions) {
+  const permissions = requestPermissionsCall.args;
+  if (permissions) {
+    if ('enableImagen' in permissions && permissions.enableImagen) {
+      options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
     }
+    if ('enableVision' in permissions && permissions.enableVision) options.vision = true;
+    if ('allowDirectoryCreate' in permissions && permissions.allowDirectoryCreate) options.allowDirectoryCreate = true;
+    if ('allowFileCreate' in permissions && permissions.allowFileCreate) options.allowFileCreate = true;
+    if ('allowFileDelete' in permissions && permissions.allowFileDelete) options.allowFileDelete = true;
+    if ('allowFileMove' in permissions && permissions.allowFileMove) options.allowFileMove = true;
   }
 }

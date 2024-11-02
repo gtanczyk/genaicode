@@ -2,16 +2,6 @@
 
 The GenAIcode tool offers several advanced features to enhance its code generation capabilities and provide a more flexible and powerful development experience. This document outlines these features and their usage.
 
-## Dependency Tree Analysis
-
-- **Activation**: `--dependency-tree` flag
-- **Description**: Analyzes the dependencies of files marked with `@CODEGEN` and includes them in the code generation process.
-- **Benefits**:
-  - Ensures all relevant files are considered, even if not directly marked for code generation.
-  - Provides a more comprehensive understanding of the codebase structure.
-- **Limitation**: Currently only works for JavaScript/TypeScript codebases with ESM modules.
-- **Use Case**: When modifying a component that other parts of the application depend on, this feature ensures that the changes are propagated correctly.
-
 ## Verbose Mode
 
 - **Activation**: `--verbose-prompt` flag

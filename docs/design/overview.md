@@ -8,21 +8,17 @@ The GenAIcode tool is an advanced code generation assistant designed to enhance 
 
 1. **Multiple AI Model Support**: Utilizes Vertex AI (with Google's Gemini Pro model), OpenAI's GPT model, Anthropic's Claude model, and Claude via Vertex AI.
 2. **Flexible Configuration**: Offers various CLI parameters to customize the tool's behavior according to project needs.
-3. **Intelligent Code Generation**: Identifies code fragments marked with `@CODEGEN` comments and generates appropriate code.
-4. **File Management**: Supports creating, updating, and deleting files within the project structure.
-5. **Dependency Analysis**: Can analyze and include dependencies of files marked for code generation.
-6. **Linting Integration**: Incorporates lint checks before and after code generation to maintain code quality.
-7. **Vision Capabilities**: Supports image input processing for visual-based code generation tasks.
-8. **Interactive and UI Modes**: Provides both command-line and graphical interfaces for executing tasks.
-9. **Context Optimization**: Reduces token usage by focusing on relevant parts of the codebase during generation tasks.
+3. **Dependency Analysis**: Can analyze and include dependencies of files marked for code generation.
+4. **Linting Integration**: Incorporates lint checks before and after code generation to maintain code quality.
+5. **Vision Capabilities**: Supports image input processing for visual-based code generation tasks.
+6. **Interactive and UI Modes**: Provides both command-line and graphical interfaces for executing tasks.
+7. **Context Optimization**: Reduces token usage by focusing on relevant parts of the codebase during generation tasks.
 
 ## How It Works
 
 1. **Source Code Analysis**: The tool reads the entire source code of the application.
-2. **Identification of Generation Points**: It identifies fragments marked with `@CODEGEN` comments, indicating sections where code generation is required.
-3. **AI-Powered Generation**: Depending on the configuration, the tool sends these fragments to the selected AI model to generate the required code.
-4. **Code Integration**: The generated code is seamlessly integrated into the existing codebase, replacing the identified fragments.
-5. **Quality Assurance**: Post-generation lint checks ensure the newly generated code meets project standards.
+2. **Code Integration**: The generated code is seamlessly integrated into the existing codebase, replacing the identified fragments.
+3. **Quality Assurance**: Post-generation lint checks ensure the newly generated code meets project standards.
 
 ## Benefits
 

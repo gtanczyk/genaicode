@@ -9,8 +9,8 @@ import { StepResult } from '../steps-types.js';
 import { PluginActionType } from '../../../main/codegen-types.js';
 
 export type ActionType =
-  | 'requestAnswer'
-  | 'requestAnswerWithImage'
+  | 'sendMessage'
+  | 'sendMessageWithImage'
   | 'requestPermissions'
   | 'requestFilesContent'
   | 'removeFilesFromContext'
@@ -22,17 +22,29 @@ export type ActionType =
 
 type AskQuestionArgs = {
   actionType: ActionType;
-  content: string;
-  imageGenerationRequest?: {
-    prompt: string;
-    contextImage?: string;
-  };
-  requestFilesContent?: string[];
-  requestPermissions?: Record<
-    'allowDirectoryCreate' | 'allowFileCreate' | 'allowFileDelete' | 'allowFileMove' | 'enableVision' | 'enableImagen',
-    boolean
-  >;
-  removeFilesFromContext?: string[];
+  message: string;
+};
+
+export type SendMessageWithImageArgs = {
+  prompt: string;
+  contextImage?: string;
+};
+
+export type RequestPermissionsArgs = Record<
+  'allowDirectoryCreate' | 'allowFileCreate' | 'allowFileDelete' | 'allowFileMove' | 'enableVision' | 'enableImagen',
+  boolean
+>;
+
+export type RequestFilesContentArgs = {
+  filePaths: string[];
+};
+
+export type RemoveFilesFromContextArgs = {
+  filePaths: string[];
+};
+
+export type ContextOptimizationArgs = {
+  filePaths: string[];
 };
 
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
@@ -40,7 +52,7 @@ export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
 export interface AssistantItem {
   type: 'assistant';
   text: string;
-  functionCalls: FunctionCall[];
+  functionCalls?: FunctionCall[];
   cache?: true;
 }
 

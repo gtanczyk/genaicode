@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as common from './common.js';
 import * as textPrompt from './text-prompt.js';
 import * as taskFile from './task-file.js';
-import * as processComments from './process-comments.js';
 import * as selectAiService from './select-ai-service.js';
 import * as configure from './configure.js';
 import * as help from '../../cli/cli-options.js';
@@ -53,12 +52,6 @@ describe('runInteractiveMode', () => {
     vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('task_file').mockResolvedValueOnce('exit');
     await runInteractiveMode(mockOptions);
     expect(taskFile.runTaskFile).toBeCalled();
-  });
-
-  it('should handle process comments action', async () => {
-    vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('process_comments').mockResolvedValueOnce('exit');
-    await runInteractiveMode(mockOptions);
-    expect(processComments.runProcessComments).toBeCalled();
   });
 
   it('should handle select AI service action', async () => {

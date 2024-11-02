@@ -14,10 +14,6 @@ const cliOptions: CliOption[] = [
     description: 'Run the codegen script without updating the source code.',
   },
   {
-    name: '--consider-all-files',
-    description: "Consider all files for code generation, even if they don't contain the @" + 'CODEGEN comments.',
-  },
-  {
     name: '--disallow-file-create',
     description: 'Disallow the codegen script to create new files (file creation is allowed by default).',
   },
@@ -45,10 +41,6 @@ const cliOptions: CliOption[] = [
   {
     name: '--task-file=<file>',
     description: 'Specifies a file with a task description for code generation.',
-  },
-  {
-    name: '--dependency-tree',
-    description: 'Limit the scope of codegen only to files marked with @' + 'CODEGEN and their dependencies.',
   },
   {
     name: '--verbose-prompt',

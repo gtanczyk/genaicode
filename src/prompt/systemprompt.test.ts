@@ -6,8 +6,6 @@ import '../main/config.js';
 
 vi.mock('../cli/cli-params.js', () => ({
   disableExplanations: true,
-  considerAllFiles: false,
-  dependencyTree: false,
   explicitPrompt: false,
   allowFileCreate: false,
   allowFileDelete: false,
@@ -34,7 +32,7 @@ describe('getSystemPrompt', () => {
     const systemPrompt = getSystemPrompt({ aiService: 'vertex-ai' });
 
     expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
-    expect(systemPrompt).toContain('You can generate new code or modify existing');
+    expect(systemPrompt).toContain('You should parse my application source code');
     expect(systemPrompt).toContain(
       'Please limit any changes to the root directory of my application, which is `/mocked/root/dir`',
     );

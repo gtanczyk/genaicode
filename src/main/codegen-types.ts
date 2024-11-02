@@ -26,7 +26,6 @@ export interface UploadedImage {
 export interface CodegenOptions {
   explicitPrompt?: string;
   taskFile?: string;
-  considerAllFiles?: boolean;
   allowFileCreate?: boolean;
   allowFileDelete?: boolean;
   allowDirectoryCreate?: boolean;
@@ -51,7 +50,6 @@ export interface CodegenOptions {
   uiPort?: number;
   uiFrameAncestors?: string[];
   disableCache?: boolean;
-  dependencyTree?: boolean;
   historyEnabled?: boolean;
 
   disableAiServiceFallback?: boolean;

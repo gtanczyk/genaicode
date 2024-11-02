@@ -7,11 +7,10 @@ export async function handleDefaultAction({ askQuestionCall }: ActionHandlerProp
     stepResult: StepResult.CONTINUE,
     items: [
       {
-        assistant: { type: 'assistant', text: askQuestionCall.args?.content ?? '', functionCalls: [askQuestionCall] },
+        assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
         user: {
           type: 'user',
           text: "I don't want to start the code generation yet, let's talk a bit more.",
-          functionResponses: [{ name: 'askQuestion', call_id: askQuestionCall.id, content: undefined }],
         },
       },
     ],
