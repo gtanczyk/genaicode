@@ -1,6 +1,7 @@
 import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../../ai-service/common.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
+import { getSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { StepResult } from '../../steps-types.js';
@@ -75,7 +76,9 @@ export async function handleRequestFilesContent({
     ],
   };
 
-  const sourceCode = getSourceCode({ filterPaths: legitimateFiles, forceAll: true }, options);
+  const sourceCode = getSourceCodeTree(
+    getSourceCode({ filterPaths: legitimateFiles, forceAll: true, ignoreImportantFiles: true }, options),
+  );
   const user: UserItem = {
     type: 'user',
     text:

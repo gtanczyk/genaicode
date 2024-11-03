@@ -28,9 +28,10 @@ function readSourceFiles(
   { contentMask, ignorePatterns }: CodegenOptions,
   filterPaths?: string[],
   forceAll = false,
+  ignoreImportantFiles = false,
 ): SourceCodeMap {
   const sourceCode: SourceCodeMap = {};
-  const importantFiles = new Set(importantContext.files || []);
+  const importantFiles = ignoreImportantFiles ? new Set() : new Set(importantContext.files || []);
 
   for (const file of getSourceFiles()) {
     if (!filterPaths || filterPaths.includes(file) || importantFiles.has(file)) {
@@ -71,14 +72,16 @@ export function getSourceCode(
     filterPaths,
     taskFile,
     forceAll,
+    ignoreImportantFiles,
   }: {
     filterPaths?: string[];
     taskFile?: string | undefined;
     forceAll?: boolean;
+    ignoreImportantFiles?: boolean;
   },
   options: CodegenOptions,
 ): SourceCodeMap {
-  const sourceCode = readSourceFiles(options, filterPaths, forceAll);
+  const sourceCode = readSourceFiles(options, filterPaths, forceAll, ignoreImportantFiles);
 
   if (taskFile && !sourceCode[taskFile]) {
     sourceCode[taskFile] = {
