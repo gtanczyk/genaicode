@@ -2,16 +2,17 @@ import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
+import * as debugPrompts from './data/prompt4';
 import { getFunctionDefs } from '../prompt/function-calling.js';
+import { PromptItem } from '../ai-service/common';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
-import { DEBUG_CURRENT_PROMPT } from './data/current-prompt';
 
 vi.setConfig({
   testTimeout: 60000,
 });
 
 describe('prompt-debug', () => {
-  const prompt = DEBUG_CURRENT_PROMPT;
+  const prompt = debugPrompts.DEBUG_PROMPT_4 as PromptItem[];
   const requiredFunctionName = 'askQuestion';
   const temperature = 0.7;
 

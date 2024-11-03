@@ -15,7 +15,7 @@ Detailed Explanation of actionTypes:
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
-- cancelCodeGeneration: Use if code generation should be stopped or canceled.
+- cancelCodeGeneration: Use to stop the session, and the conversation.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 ${pluginDescriptions}`;
 }
@@ -29,26 +29,26 @@ ${pluginDescriptions}`;
 export const getAskQuestionDef = (): FunctionDef => ({
   name: 'askQuestion',
   description: `Use this function to interact with the user for various purposes.
+  The \`decisionMakingProcess\` must be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
   The \`message\` property must align with the chosen \`actionType\`.
-  The \`decisionMakingProcess\` should be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
   
   The desired format of parameters is as follows:
   \`\`\`
   {
-    "decisionMakingProcess": "A detailed decision-making framework the assistant followed before selecting an action.",
-    "actionType": "The type of action to perform.",
-    "message": "The message to display to the user."
+    "decisionMakingProcess": "...", // A detailed decision-making framework the assistant followed before selecting an action.",
+    "actionType": "...", // The type of action to perform.
+    "message": "..." // The message to display to the user.
   }
   \`\`\`
   
-  **IMPORTANT**: Mind the order of the parameters, as the decision-making process should be provided first to ensure clarity in decision-making.
+  **IMPORTANT**: Mind the order of the parameters, as the decision-making process must be provided first to ensure clarity in decision-making.
   `,
   parameters: {
     type: 'object',
     properties: {
       decisionMakingProcess: {
         type: 'string',
-        description: `A detailed decision-making framework the assistant followed before selecting an action. This process should include the following steps:
+        description: `A detailed decision-making framework the assistant followed before selecting an action. You must think step about step about this, this process should include the following steps:
 
 1. **Contextual Analysis**: Assess the current information, including available permissions, current context, and task requirements. Identify any missing elements that are critical to task completion.
 
@@ -58,7 +58,7 @@ export const getAskQuestionDef = (): FunctionDef => ({
 
 4. **Evaluation of Action Choice**: Double-check if the selected action aligns with task requirements and user-provided constraints.
 
-Output this process step-by-step to ensure clarity in decision-making.`,
+Output this in step-by-step format to ensure clarity in decision-making.`,
       },
       actionType: {
         type: 'string',

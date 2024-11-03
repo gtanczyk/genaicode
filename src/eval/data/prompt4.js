@@ -69,6 +69,6 @@ export const DEBUG_PROMPT_4 = [
   },
   {
     type: 'user',
-    text: 'yes, it sounds good, lets do this, and please create a new file with tests for the new feature',
+    text: 'yes, it sounds good, lets do this, and please create a new file with tests',
   },
 ];
