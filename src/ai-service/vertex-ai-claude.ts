@@ -47,7 +47,7 @@ export async function generateContent(
                 data: image.base64url,
               },
             })),
-            { type: 'text' as const, text: item.text ?? '' },
+            ...(item.text ? [{ type: 'text' as const, text: item.text ?? '' }] : []),
           ],
         };
       } else if (item.type === 'assistant') {
@@ -60,14 +60,6 @@ export async function generateContent(
               id: call.id ?? call.name,
               name: call.name,
               input: call.args ?? {},
-            })),
-            ...(item.images ?? []).map((image) => ({
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: image.mediaType,
-                data: image.base64url,
-              },
             })),
           ],
         };

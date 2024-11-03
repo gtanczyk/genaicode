@@ -48,7 +48,7 @@ export async function generateContent(
                 data: image.base64url,
               },
             })),
-            { text: item.text! },
+            ...(item.text ? [{ text: item.text }] : []),
           ],
         };
         return content;

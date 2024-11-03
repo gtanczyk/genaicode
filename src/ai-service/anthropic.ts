@@ -66,13 +66,17 @@ export async function generateContent(
           );
         }
 
-        const shouldAddCache = item.cache && !options.disableCache && cacheControlCount-- < 4;
+        if (item.text) {
+          content.push({
+            type: 'text' as const,
+            text: item.text,
+          });
+        }
 
-        content.push({
-          type: 'text' as const,
-          text: item.text!,
-          ...(shouldAddCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
-        });
+        const shouldAddCache = item.cache && !options.disableCache && cacheControlCount-- < 4;
+        if (shouldAddCache) {
+          content.slice(-1)[0].cache_control = { type: 'ephemeral' as const };
+        }
         const message: PromptCachingBetaMessageParam = {
           role: 'user',
           content,

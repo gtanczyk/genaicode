@@ -70,16 +70,20 @@ export async function internalGenerateContent(
                   url: 'data:' + image.mediaType + ';base64,' + image.base64url,
                 },
               })),
-              {
-                type: 'text' as const,
-                text: item.text!,
-              },
+              ...(item.text
+                ? [
+                    {
+                      type: 'text' as const,
+                      text: item.text,
+                    },
+                  ]
+                : []),
             ],
           });
-        } else {
+        } else if (item.text) {
           messages.push({
             role: 'user' as const,
-            content: item.text!,
+            content: item.text,
           });
         }
         return messages;
