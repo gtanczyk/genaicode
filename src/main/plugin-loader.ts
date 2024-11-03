@@ -1,5 +1,5 @@
 import path from 'path';
-import { Operation, Plugin, PluginActionType, PluginAiServiceType } from './codegen-types.js';
+import { Operation, Plugin, PluginActionType, PluginAiServiceType, GenerateContentHook } from './codegen-types.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-lib.js';
@@ -9,6 +9,7 @@ const registeredAiServices: Map<PluginAiServiceType, GenerateContentFunction> = 
 const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
 const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
+const registeredGenerateContentHooks: GenerateContentHook[] = [];
 
 export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   if (!rcConfig.plugins || rcConfig.plugins.length === 0) {
@@ -44,6 +45,11 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
         });
       }
 
+      if (plugin.generateContentHook) {
+        registeredGenerateContentHooks.push(plugin.generateContentHook);
+        console.log('Registered generateContent hook');
+      }
+
       console.log(`Successfully loaded plugin: ${pluginPath}`);
     } catch (error) {
       console.error(`Failed to load plugin: ${pluginPath}`, error);
@@ -65,4 +71,8 @@ export function getRegisteredActionHandlers(): Map<PluginActionType, ActionHandl
 
 export function getRegisteredActionHandlerDescriptions(): Map<PluginActionType, string> {
   return registeredActionHandlerDescriptions;
+}
+
+export function getRegisteredGenerateContentHooks(): GenerateContentHook[] {
+  return registeredGenerateContentHooks;
 }

@@ -18,7 +18,6 @@ import { handleRequestPermissions } from './handlers/request-permissions.js';
 import { handleDefaultAction } from './handlers/default-action.js';
 import { handleSendMessage } from './handlers/handle-send-message.js';
 import { handleSendMessageWithImage } from './handlers/handle-send-message-with-image.js';
-import { handleStartCodeGeneration } from './handlers/start-code-generation.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
@@ -29,9 +28,6 @@ export async function executeStepAskQuestion(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
-  messages: {
-    contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
-  },
   options: CodegenOptions,
 ): Promise<StepResult> {
   console.log('Allowing the assistant to ask a question...');
@@ -56,7 +52,6 @@ export async function executeStepAskQuestion(
           askQuestionCall,
           prompt,
           options,
-          messages,
           generateContentFn,
           generateImageFn,
         });
@@ -111,7 +106,6 @@ function getActionHandler(actionType: ActionType): ActionHandler {
   const handlers: Record<ActionType, ActionHandler> = {
     cancelCodeGeneration: handleCancelCodeGeneration,
     confirmCodeGeneration: handleConfirmCodeGeneration,
-    startCodeGeneration: handleStartCodeGeneration,
     requestFilesContent: handleRequestFilesContent,
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,

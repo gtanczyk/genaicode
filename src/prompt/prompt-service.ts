@@ -35,6 +35,7 @@ import {
   getPartialPromptTemplate,
 } from './static-prompts.js';
 import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
+import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -44,12 +45,20 @@ export async function promptService(
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<FunctionCall[]> {
   const generateContentFn: GenerateContentFunction = async (...args) => {
-    return await handleAiServiceFallback(
+    // Get the base result from the AI service
+    const result = await handleAiServiceFallback(
       generateContentFns,
       codegenPrompt.options.aiService,
       codegenPrompt.options,
       ...args,
     );
+
+    // Get registered hooks for the current AI service
+    for (const hook of getRegisteredGenerateContentHooks()) {
+      await hook(args, result);
+    }
+
+    return result;
   };
 
   const generateImageFn: GenerateImageFunction = (...args) => {
@@ -156,7 +165,6 @@ async function executePromptService(
       prompt,
       getFunctionDefs(),
       codegenPrompt.options.temperature ?? 0.7,
-      messages,
       codegenPrompt.options,
     );
 

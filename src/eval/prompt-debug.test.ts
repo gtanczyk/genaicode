@@ -2,17 +2,16 @@ import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
-import * as debugPrompts from './data/prompt-assistant-image';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { PromptItem } from '../ai-service/common';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
+import { DEBUG_CURRENT_PROMPT } from './data/current-prompt';
 
 vi.setConfig({
   testTimeout: 60000,
 });
 
 describe('prompt-debug', () => {
-  const prompt = debugPrompts.DEBUG_PROMPT_ASSISTANT_IMAGE as PromptItem[];
+  const prompt = DEBUG_CURRENT_PROMPT;
   const requiredFunctionName = 'askQuestion';
   const temperature = 0.7;
 
@@ -34,9 +33,10 @@ describe('prompt-debug', () => {
   });
 
   it('Claude Haikku', async () => {
+    const defs = getFunctionDefs();
     const req = [
       prompt,
-      getFunctionDefs(),
+      defs,
       requiredFunctionName,
       temperature,
       true,

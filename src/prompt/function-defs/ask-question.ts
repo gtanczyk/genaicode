@@ -11,11 +11,10 @@ function getActionTypeDescription(): string {
 Detailed Explanation of actionTypes:
 - sendMessage: Use for general information, clarifications, or when no specific code is needed.
 - sendMessageWithImage: Use when an image is needed to provide context or additional information.
-- requestPermissions: Use when additional permissions are required for actions like creating or deleting files.
+- requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
-- startCodeGeneration: Use only after receiving confirmation to begin code generation.
 - cancelCodeGeneration: Use if code generation should be stopped or canceled.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 ${pluginDescriptions}`;
@@ -30,10 +29,37 @@ ${pluginDescriptions}`;
 export const getAskQuestionDef = (): FunctionDef => ({
   name: 'askQuestion',
   description: `Use this function to interact with the user for various purposes.
-  The \`message\` property must align with the chosen \`actionType\`.`,
+  The \`message\` property must align with the chosen \`actionType\`.
+  The \`decisionMakingProcess\` should be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
+  
+  The desired format of parameters is as follows:
+  \`\`\`
+  {
+    "decisionMakingProcess": "A detailed decision-making framework the assistant followed before selecting an action.",
+    "actionType": "The type of action to perform.",
+    "message": "The message to display to the user."
+  }
+  \`\`\`
+  
+  **IMPORTANT**: Mind the order of the parameters, as the decision-making process should be provided first to ensure clarity in decision-making.
+  `,
   parameters: {
     type: 'object',
     properties: {
+      decisionMakingProcess: {
+        type: 'string',
+        description: `A detailed decision-making framework the assistant followed before selecting an action. This process should include the following steps:
+
+1. **Contextual Analysis**: Assess the current information, including available permissions, current context, and task requirements. Identify any missing elements that are critical to task completion.
+
+2. **Decision Justification**: State the reasoning for the proposed action, considering whether planning, clarification, or action is required. If there's any ambiguity, prefer a confirmatory action (\`confirmCodeGeneration\`).
+
+3. **Minimal Action Selection**: Determine the minimal action that can make progress toward the task goal. Avoid requesting unnecessary permissions or context that isn't strictly needed.
+
+4. **Evaluation of Action Choice**: Double-check if the selected action aligns with task requirements and user-provided constraints.
+
+Output this process step-by-step to ensure clarity in decision-making.`,
+      },
       actionType: {
         type: 'string',
         enum: [
@@ -43,7 +69,6 @@ export const getAskQuestionDef = (): FunctionDef => ({
           'requestFilesContent',
           'removeFilesFromContext',
           'confirmCodeGeneration',
-          'startCodeGeneration',
           'cancelCodeGeneration',
           'contextOptimization',
           ...Array.from(getRegisteredActionHandlers().keys()),
@@ -55,7 +80,7 @@ export const getAskQuestionDef = (): FunctionDef => ({
         description: 'The message to display to the user.',
       },
     },
-    required: ['actionType', 'message'],
+    required: ['decisionMakingProcess', 'actionType', 'message'],
   },
 });
 

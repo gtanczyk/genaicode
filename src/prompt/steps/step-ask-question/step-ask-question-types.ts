@@ -16,7 +16,6 @@ export type ActionType =
   | 'requestFilesContent'
   | 'removeFilesFromContext'
   | 'confirmCodeGeneration'
-  | 'startCodeGeneration'
   | 'cancelCodeGeneration'
   | 'contextOptimization'
   | PluginActionType;
@@ -85,9 +84,6 @@ export type ActionHandlerProps = {
   options: CodegenOptions;
   generateContentFn: GenerateContentFunction;
   generateImageFn: GenerateImageFunction;
-  messages: {
-    contextSourceCode: (paths: string[], pathsOnly: boolean) => string;
-  };
 };
 
 export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>;
