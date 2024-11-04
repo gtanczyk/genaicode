@@ -109,9 +109,12 @@ It is **VERY IMPORTANT** to not make the following mistakes:
 - Assistant says that it starts analysis, but it does not provide any analysis.
 - Assistant says something like "please wait", instead of providing a meaningful response.
 - Assistant starts code generation without requesting missing permissions.
-
-${importantContext ? `# Important Context\n\n${importantContext}\n` : ''}
 `;
+  }
+
+  if (importantContext.textPrompts && importantContext.textPrompts.length > 0) {
+    systemPrompt += `## Important Context
+${importantContext.textPrompts.join('\n')}`;
   }
 
   if (verbose) {
