@@ -120,7 +120,7 @@ export async function generateContent(
       }
     });
 
-  const defaultModel = cheap ? 'claude-3-haiku-20240307' : 'claude-3-5-sonnet-20241022';
+  const defaultModel = cheap ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
   const model = cheap
     ? (modelOverrides.anthropic?.cheap ?? defaultModel)
     : (modelOverrides.anthropic?.default ?? defaultModel);
