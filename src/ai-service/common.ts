@@ -81,6 +81,12 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
 
   console.log('Token Usage:');
   console.log('  - Input tokens: ', usage.inputTokens ?? 0);
+  if (usage.cacheCreateTokens) {
+    console.log('  - Cache create tokens: ', usage.cacheCreateTokens);
+  }
+  if (usage.cacheReadTokens) {
+    console.log('  - Cache read tokens: ', usage.cacheReadTokens);
+  }
   console.log('  - Output tokens: ', usage.outputTokens ?? 0);
   console.log('  - Total tokens: ', usage.totalTokens ?? 0);
 

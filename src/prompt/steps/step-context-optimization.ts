@@ -141,8 +141,41 @@ export async function executeStepContextOptimization(
     const tokensAfter = estimateTokenCount(JSON.stringify(optimizedSourceCode));
     const percentageReduced = ((tokensBefore - tokensAfter) / tokensBefore) * 100;
 
-    // Update the getSourceCode function response in the prompt
-    sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(optimizedSourceCode));
+    prompt.push(
+      {
+        type: 'assistant',
+        // we may want to put text question here
+        functionCalls: [
+          {
+            name: 'requestFilesContent',
+            args: {
+              filePaths: Object.keys(optimizedSourceCode),
+            },
+          },
+          {
+            name: 'getSourceCode',
+            args: {
+              filePaths: Object.keys(optimizedSourceCode),
+            },
+          },
+        ],
+      },
+      {
+        type: 'user',
+        // we may want to put text answer here
+        functionResponses: [
+          {
+            name: 'requestFilesContent',
+            content: JSON.stringify({ filePaths: Object.keys(optimizedSourceCode) }),
+          },
+          {
+            name: 'getSourceCode',
+            content: JSON.stringify(getSourceCodeTree(optimizedSourceCode)),
+          },
+        ],
+        cache: true,
+      },
+    );
 
     putSystemMessage('Context optimization completed successfully.', {
       tokensBefore,
@@ -205,18 +238,13 @@ function optimizeSourceCode(
     const summary = getSummary(path);
     const content =
       (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
-    if (isContext && content) {
+    if (isContext && content && !('content' in sourceCode[path])) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
         content,
       };
     } else {
       summaryTokenCount += estimateTokenCount(summary?.summary ?? '');
-      optimizedSourceCode[path] = summary
-        ? { ...summary }
-        : {
-            content: null,
-          };
     }
   }
 
