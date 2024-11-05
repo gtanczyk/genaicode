@@ -23,17 +23,17 @@ export const getCodegenPlanningDef = (): FunctionDef => ({
       },
       affectedFiles: {
         type: 'array',
-        description: 'A list of all files that need to be modified.',
+        description: 'A list of all files that need to be modified. The reason must precede the file path.',
         items: {
           type: 'object',
           properties: {
-            filePath: {
-              type: 'string',
-              description: 'Absolute path of the file.',
-            },
             reason: {
               type: 'string',
               description: 'Reason for modifying this file.',
+            },
+            filePath: {
+              type: 'string',
+              description: 'Absolute path of the file.',
             },
             dependencies: {
               type: 'array',
@@ -43,7 +43,7 @@ export const getCodegenPlanningDef = (): FunctionDef => ({
               },
             },
           },
-          required: ['filePath', 'reason'],
+          required: ['reason', 'filePath'],
         },
       },
     },

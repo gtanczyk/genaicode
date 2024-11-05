@@ -101,11 +101,15 @@ export async function internalGenerateContent(
               },
             })),
           ] as ChatCompletionContentPartText[],
-          tool_calls: item.functionCalls?.map((call) => ({
-            type: 'function' as const,
-            function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
-            id: call.name,
-          })),
+          ...(item.functionCalls && item.functionCalls.length > 0
+            ? {
+                tool_calls: item.functionCalls.map((call) => ({
+                  type: 'function' as const,
+                  function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
+                  id: call.name,
+                })),
+              }
+            : {}),
         };
         return message;
       }
