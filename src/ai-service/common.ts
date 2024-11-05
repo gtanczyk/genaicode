@@ -78,7 +78,11 @@ interface CostInfo {
  */
 export function printTokenUsageAndCost(costInfo: CostInfo): void {
   const { usage, inputCostPerToken, outputCostPerToken, cheap } = costInfo;
-  console.log('Token Usage:', usage);
+
+  console.log('Token Usage:');
+  console.log('  - Input tokens: ', usage.inputTokens ?? 0);
+  console.log('  - Output tokens: ', usage.outputTokens ?? 0);
+  console.log('  - Total tokens: ', usage.totalTokens ?? 0);
 
   const inputCost =
     ((usage.inputTokens ?? 0) * inputCostPerToken +
@@ -88,7 +92,7 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
   const outputCost = (usage.outputTokens ?? 0) * outputCostPerToken;
   const totalCost = inputCost + outputCost;
 
-  console.log('Cost:', totalCost.toFixed(6), ' USD');
+  console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
 
   collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, costInfo.aiService, cheap);
 }

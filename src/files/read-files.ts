@@ -34,6 +34,10 @@ function readSourceFiles(
   const importantFiles = ignoreImportantFiles ? new Set() : new Set(importantContext.files || []);
 
   for (const file of getSourceFiles()) {
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+
     if (!filterPaths || filterPaths.includes(file) || importantFiles.has(file)) {
       // Always include important files
       if (importantFiles.has(file)) {

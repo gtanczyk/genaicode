@@ -15,6 +15,7 @@ import { registerUserActionHandlers } from '../main/interactive/user-action-hand
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({
   input: vi.fn(),
+  confirm: vi.fn(),
 }));
 vi.mock('../cli/cli-params.js', () => ({
   disableExplanations: true,
@@ -75,8 +76,9 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
+          decisionMakingProcess: '',
           message: 'Do you want to proceed with code generation?',
-          actionType: 'sendMessage',
+          actionType: 'confirmCodeGeneration',
         },
       },
     ];
@@ -84,8 +86,9 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
+          decisionMakingProcess: '',
           message: 'Ok lets go',
-          actionType: 'startCodeGeneration',
+          actionType: 'confirmCodeGeneration',
         },
       },
     ];
@@ -105,8 +108,8 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockAskQuestionCall2)
       .mockResolvedValueOnce(mockCodegenSummary);
 
-    vi.mocked(prompts.input).mockImplementationOnce(
-      () => CancelablePromise.resolve('Yes') as CancelablePromise<string>,
+    vi.mocked(prompts.confirm).mockImplementationOnce(
+      () => CancelablePromise.resolve(true) as CancelablePromise<boolean>,
     );
 
     await promptService(
@@ -121,8 +124,11 @@ describe('promptService with askQuestion', () => {
       }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(prompts.input).toHaveBeenCalledWith({ message: 'Your answer' });
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
+    expect(prompts.confirm).toHaveBeenCalledWith({
+      default: true,
+      message: 'The assistant is ready to start code generation. Do you want to proceed?',
+    });
     expect(console.log).toHaveBeenCalledWith('Assistant asks:', expect.any(Object));
     expect(console.log).toHaveBeenCalledWith('Proceeding with code generation.', undefined);
   });
@@ -132,6 +138,7 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
+          decisionMakingProcess: '',
           message: 'Stopping code generation as requested.',
           actionType: 'cancelCodeGeneration',
         },

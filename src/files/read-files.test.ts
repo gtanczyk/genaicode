@@ -44,6 +44,7 @@ describe('read-files', () => {
     it('should return source code summaries for all files', () => {
       const mockFiles = ['/home/project/file1.js', '/home/project/file2.js'];
       vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).existsSync.mockReturnValue(true);
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
@@ -59,6 +60,7 @@ describe('read-files', () => {
     it('should apply content mask when specified', () => {
       const mockFiles = ['/home/project/file1.js', '/home/project/subfolder/file2.js'];
       vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).existsSync.mockReturnValue(true);
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
@@ -75,6 +77,7 @@ describe('read-files', () => {
     it('should include task file when specified', () => {
       const mockFiles = ['/home/project/file1.js'];
       vi.mocked(getSourceFiles).mockReturnValue(mockFiles);
+      vi.mocked(fs).existsSync.mockReturnValue(true);
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 

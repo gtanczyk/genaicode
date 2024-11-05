@@ -21,6 +21,7 @@ vi.mock('../files/find-files.js', () => ({
 
 vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/mocked/root/dir' },
+  importantContext: {},
 }));
 
 describe('getSystemPrompt', () => {

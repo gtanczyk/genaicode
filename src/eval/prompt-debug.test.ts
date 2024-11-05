@@ -29,10 +29,21 @@ describe('prompt-debug', () => {
   });
 
   it('GPT Mini', async () => {
-    const gptArgs = (await generateContentGPT(prompt, getFunctionDefs(), requiredFunctionName, temperature, true))[0]
-      .args;
+    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, true] as const;
+    let result = await generateContentGPT(...req);
+    result = await validateAndRecoverSingleResult(
+      [
+        ...req,
+        {
+          aiService: 'chat-gpt',
+          disableCache: false,
+        },
+      ],
+      result,
+      generateContentGPT,
+    );
 
-    console.log('GPT', JSON.stringify(gptArgs, null, 4));
+    console.log('GPT', JSON.stringify(result, null, 4));
   });
 
   it('Claude Haikku', async () => {
