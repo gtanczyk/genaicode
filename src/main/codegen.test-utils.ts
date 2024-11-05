@@ -15,7 +15,7 @@ export interface MockPlanningResponse {
 
 export interface MockExecutionResponse {
   name: string;
-  args: Record<string, any>;
+  args: Record<string, unknown>;
 }
 
 export interface MockCodegenSummary {
@@ -71,7 +71,7 @@ export function createMockCodegenSummary(
 /**
  * Creates a mock file update response
  */
-export function createMockFileUpdate(name: string, args: Record<string, any> = {}): FunctionCall[] {
+export function createMockFileUpdate(name: string, args: Record<string, unknown> = {}): FunctionCall[] {
   return [{ name, args }];
 }
 
