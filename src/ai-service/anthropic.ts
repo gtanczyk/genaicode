@@ -121,7 +121,7 @@ export async function generateContent(
     });
 
   const defaultModel = cheap ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
-  const model = cheap
+  let model = cheap
     ? (modelOverrides.anthropic?.cheap ?? defaultModel)
     : (modelOverrides.anthropic?.default ?? defaultModel);
   console.log(`Using Anthropic model: ${model}`);
@@ -155,6 +155,26 @@ export async function generateContent(
       );
       break; // Exit loop if successful
     } catch (error) {
+      // Check for vision capability error
+      if (
+        error instanceof Anthropic.APIError &&
+        error.status === 400 &&
+        error.message?.includes('does not support image input')
+      ) {
+        // If using haiku, fallback to sonnet for vision
+        if (model.includes('haiku')) {
+          putSystemMessage('Model does not support vision features. Falling back to claude-3-5-sonnet-20241022...');
+          model = 'claude-3-5-sonnet-20241022';
+          // Don't increment retry count for vision fallback
+          continue;
+        } else {
+          // If already using sonnet or other model, propagate the error
+          console.error('Vision features not supported by the model and fallback failed:', error);
+          throw new Error('Vision features not supported by any available model. Operation aborted.');
+        }
+      }
+
+      // Handle rate limiting
       if (error instanceof Anthropic.APIError && error.headers?.['retry-after']) {
         let retryAfter: number;
         if (error.headers['retry-after'] === '0') {
