@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepContextOptimization } from './step-context-optimization';
 import { getSourceCode } from '../../files/read-files';
-import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree';
+import { SourceCodeTree } from '../../files/source-code-tree';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
 import { putSystemMessage } from '../../main/common/content-bus';
 import '../../main/config.js';
 import '../../files/find-files.js';
+import { PromptItem } from '../../ai-service/common';
 
 // Mock dependencies
 vi.mock('../../files/read-files');
@@ -15,7 +16,6 @@ vi.mock('../../files/find-files.js', () => ({
   getImageAssetFiles: () => [],
   refreshFiles: () => null,
 }));
-vi.mock('../../files/source-code-tree');
 vi.mock('../../main/common/content-bus');
 vi.mock('../token-estimator', () => ({
   estimateTokenCount: vi.fn((content: string) => {
@@ -63,8 +63,6 @@ describe('executeStepContextOptimization', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
-      vi.mocked(getSourceCodeTree).mockReturnValue(mockSourceCodeTree);
-      vi.mocked(parseSourceCodeTree).mockReturnValue(mockSourceCode);
 
       // Mock optimization response with high relevance scores
       mockGenerateContentFn.mockResolvedValueOnce([
@@ -97,8 +95,6 @@ describe('executeStepContextOptimization', () => {
       );
 
       expect(result).toBe(StepResult.CONTINUE);
-      expect(getSourceCodeTree).toHaveBeenCalledWith(expect.any(Object));
-      expect(parseSourceCodeTree).toHaveBeenCalledWith(mockSourceCodeTree);
       expect(putSystemMessage).toHaveBeenCalledWith(
         'Context optimization in progress.',
         expect.arrayContaining([
@@ -113,8 +109,6 @@ describe('executeStepContextOptimization', () => {
       const emptySourceCodeTree = {};
 
       vi.mocked(getSourceCode).mockReturnValue(emptySourceCode);
-      vi.mocked(getSourceCodeTree).mockReturnValue(emptySourceCodeTree);
-      vi.mocked(parseSourceCodeTree).mockReturnValue(emptySourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
         {
@@ -149,6 +143,198 @@ describe('executeStepContextOptimization', () => {
     });
   });
 
+  describe('Multiple getSourceCode responses handling', () => {
+    it('should clear previous getSourceCode responses while preserving structure', async () => {
+      const mockSourceCode = {
+        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+      };
+
+      const mockSourceCodeTree: SourceCodeTree = {
+        '/test': {
+          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+
+      mockGenerateContentFn.mockResolvedValueOnce([
+        {
+          name: 'optimizeContext',
+          args: {
+            userPrompt: 'test prompt',
+            optimizedContext: [{ filePath: '/test/file1.ts', relevance: 0.9 }],
+          },
+        },
+      ]);
+
+      const prompt: PromptItem[] = [
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify({ '/test': { 'old-file.ts': { content: 'old content' } } }),
+            },
+          ],
+        },
+        {
+          type: 'assistant',
+          text: 'Some response',
+        },
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify(mockSourceCodeTree),
+            },
+          ],
+        },
+      ];
+
+      const result = await executeStepContextOptimization(mockGenerateContentFn, prompt, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+
+      // Verify that previous responses were cleared
+      expect(JSON.parse(prompt[0].functionResponses![0].content!)).toEqual({});
+      // Verify that structure was preserved
+      expect(prompt[0].type).toBe('user');
+      expect(prompt[0].functionResponses![0].name).toBe('getSourceCode');
+      // Verify that non-getSourceCode items were preserved
+      expect(prompt[1].type).toBe('assistant');
+      expect(prompt[1].text).toBe('Some response');
+    });
+
+    it('should handle multiple responses with different content', async () => {
+      const mockSourceCode = {
+        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file2.ts': { content: 'content2' },
+      };
+
+      const mockSourceCodeTree: SourceCodeTree = {
+        '/test': {
+          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+          'file2.ts': { content: 'content2' },
+        },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+
+      mockGenerateContentFn.mockResolvedValueOnce([
+        {
+          name: 'optimizeContext',
+          args: {
+            userPrompt: 'test prompt',
+            optimizedContext: [
+              { filePath: '/test/file1.ts', relevance: 0.9 },
+              { filePath: '/test/file2.ts', relevance: 0.8 },
+            ],
+          },
+        },
+      ]);
+
+      const prompt: PromptItem[] = [
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify({ '/test': { 'file1.ts': { content: 'old content 1' } } }),
+            },
+          ],
+        },
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify({ '/test': { 'file2.ts': { content: 'old content 2' } } }),
+            },
+          ],
+        },
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify(mockSourceCodeTree),
+            },
+          ],
+        },
+      ];
+
+      const result = await executeStepContextOptimization(mockGenerateContentFn, prompt, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      // Verify that all previous responses were cleared
+      prompt.slice(0, -1).forEach((item) => {
+        if (item.type === 'user' && item.functionResponses) {
+          const response = item.functionResponses.find((r) => r.name === 'getSourceCode');
+          expect(JSON.parse(response!.content!)).toEqual({});
+        }
+      });
+    });
+
+    it('should handle edge case with no getSourceCode responses', async () => {
+      const mockSourceCode = {
+        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+
+      const prompt: PromptItem[] = [
+        {
+          type: 'user',
+          text: 'Some user message',
+        },
+        {
+          type: 'assistant',
+          text: 'Some assistant response',
+        },
+      ];
+
+      const result = await executeStepContextOptimization(mockGenerateContentFn, prompt, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      // Verify that the prompt structure remains unchanged
+      expect(prompt).toHaveLength(2);
+      expect(prompt[0].type).toBe('user');
+      expect(prompt[0].text).toBe('Some user message');
+      expect(prompt[1].type).toBe('assistant');
+      expect(prompt[1].text).toBe('Some assistant response');
+    });
+
+    it('should handle edge case with empty functionResponses', async () => {
+      const mockSourceCode = {
+        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+
+      const prompt: PromptItem[] = [
+        {
+          type: 'user',
+          functionResponses: [],
+        },
+        {
+          type: 'user',
+          functionResponses: undefined,
+        },
+      ];
+
+      const result = await executeStepContextOptimization(mockGenerateContentFn, prompt, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      // Verify that the prompt structure remains unchanged
+      expect(prompt).toHaveLength(2);
+      expect(prompt[0].type).toBe('user');
+      expect(prompt[0].functionResponses).toEqual([]);
+      expect(prompt[1].type).toBe('user');
+      expect(prompt[1].functionResponses).toBeUndefined();
+    });
+  });
+
   describe('Context optimization process', () => {
     it('should optimize context based on relevance scores', async () => {
       const mockSourceCode = {
@@ -166,8 +352,6 @@ describe('executeStepContextOptimization', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
-      vi.mocked(getSourceCodeTree).mockReturnValue(mockSourceCodeTree);
-      vi.mocked(parseSourceCodeTree).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
         {
@@ -226,8 +410,6 @@ describe('executeStepContextOptimization', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
-      vi.mocked(getSourceCodeTree).mockReturnValue(mockSourceCodeTree);
-      vi.mocked(parseSourceCodeTree).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
         {
@@ -263,6 +445,14 @@ describe('executeStepContextOptimization', () => {
   });
 
   describe('Edge cases and error handling', () => {
+    beforeEach(() => {
+      const mockSourceCode = {
+        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+    });
+
     it('should handle missing source code response', async () => {
       const result = await executeStepContextOptimization(
         mockGenerateContentFn,
@@ -338,8 +528,6 @@ describe('executeStepContextOptimization', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
-      vi.mocked(getSourceCodeTree).mockReturnValue(mockSourceCodeTree);
-      vi.mocked(parseSourceCodeTree).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
         {

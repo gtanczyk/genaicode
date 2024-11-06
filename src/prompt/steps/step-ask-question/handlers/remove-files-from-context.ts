@@ -3,7 +3,6 @@ import { getSourceCodeTree, parseSourceCodeTree } from '../../../../files/source
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { StepResult } from '../../steps-types.js';
-import { getSourceCodeResponse } from '../../steps-utils.js';
 import { ActionHandlerProps, ActionResult, RemoveFilesFromContextArgs } from '../step-ask-question-types.js';
 
 export async function handleRemoveFilesFromContext({
@@ -73,15 +72,42 @@ export async function handleRemoveFilesFromContext({
 }
 
 function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: string[]) {
-  const response = getSourceCodeResponse(prompt);
-  if (!response || !response.content) {
-    throw new Error('Could not find source code response');
+  // Find all source code responses in the prompt history
+  const sourceCodeResponses = prompt.filter(
+    (item) => item.type === 'user' && item.functionResponses?.some((fr) => fr.name === 'getSourceCode'),
+  );
+
+  if (sourceCodeResponses.length === 0) {
+    console.warn('No source code responses found in prompt history');
+    return;
   }
-  const contentObj = parseSourceCodeTree(JSON.parse(response.content));
-  filesToRemove.forEach((file) => {
-    if (contentObj[file] && 'content' in contentObj[file]) {
-      contentObj[file].content = null;
+
+  sourceCodeResponses.forEach((response) => {
+    const sourceCodeResponse = response.functionResponses?.find((fr) => fr.name === 'getSourceCode');
+
+    if (!sourceCodeResponse || !sourceCodeResponse.content) {
+      console.warn('Skipping invalid source code response');
+      return;
+    }
+
+    try {
+      const contentObj = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content));
+
+      let modifiedFiles = 0;
+      filesToRemove.forEach((file) => {
+        if (contentObj[file] && 'content' in contentObj[file]) {
+          contentObj[file].content = null;
+          modifiedFiles++;
+        }
+      });
+
+      // Only update if files were actually modified
+      if (modifiedFiles > 0) {
+        sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(contentObj));
+        console.log(`Removed content from ${modifiedFiles} files in source code response`);
+      }
+    } catch (error) {
+      console.error('Error processing source code response:', error);
     }
   });
-  response.content = JSON.stringify(getSourceCodeTree(contentObj));
 }

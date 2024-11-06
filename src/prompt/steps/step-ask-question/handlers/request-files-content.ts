@@ -14,6 +14,39 @@ import {
   UserItem,
 } from '../step-ask-question-types.js';
 
+/**
+ * Checks if a file's content is already provided in the conversation history
+ * @param filePath The path of the file to check
+ * @param prompt The conversation history
+ * @returns true if the file content is already available in the history
+ */
+function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): boolean {
+  return prompt.some((item) => {
+    if (item.type !== 'user' || !item.functionResponses) {
+      return false;
+    }
+
+    return item.functionResponses.some((response) => {
+      if (response.name !== 'getSourceCode' || !response.content) {
+        return false;
+      }
+
+      try {
+        const sourceCodeTree = JSON.parse(response.content);
+        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+
+        return (
+          sourceCodeTree[dirPath] && sourceCodeTree[dirPath][fileName] && 'content' in sourceCodeTree[dirPath][fileName]
+        );
+      } catch (error) {
+        console.warn('Error parsing getSourceCode response:', error);
+        return false;
+      }
+    });
+  });
+}
+
 export async function handleRequestFilesContent({
   askQuestionCall,
   options,
@@ -37,6 +70,36 @@ export async function handleRequestFilesContent({
   }
 
   let requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
+
+  // Check which files are already provided in the conversation history
+  const alreadyProvidedFiles = requestedFiles.filter((file) => isFileContentAlreadyProvided(file, prompt));
+
+  if (alreadyProvidedFiles.length === requestedFiles.length) {
+    // All requested files are already provided
+    const assistant: AssistantItem = {
+      type: 'assistant',
+      text: askQuestionCall.args?.message ?? '',
+      functionCalls: [requestFilesContentCall],
+    };
+
+    const user: UserItem = {
+      type: 'user',
+      text: 'The requested file contents are already provided in the conversation history.',
+      functionResponses: [
+        {
+          name: 'requestFilesContent',
+          call_id: requestFilesContentCall.id,
+          content: JSON.stringify({ filePaths: requestedFiles }),
+        },
+      ],
+      cache: true,
+    };
+
+    return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
+  }
+
+  // Filter out already provided files
+  requestedFiles = requestedFiles.filter((file) => !isFileContentAlreadyProvided(file, prompt));
 
   // the request may be caused be an appearance of a new file, so lets refresh
   refreshFiles();
@@ -84,7 +147,9 @@ export async function handleRequestFilesContent({
     text:
       illegitimateFiles.length > 0
         ? `Some files are not legitimate and their content cannot be provided:\n\n${illegitimateFiles.join('\n')}`
-        : 'All requested file contents have been provided.',
+        : alreadyProvidedFiles.length > 0
+          ? `Some files were already provided in the conversation history:\n${alreadyProvidedFiles.join('\n')}\n\nProviding content for the remaining files.`
+          : 'All requested file contents have been provided.',
     functionResponses: [
       {
         name: 'requestFilesContent',

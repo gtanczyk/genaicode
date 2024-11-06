@@ -141,6 +141,9 @@ export async function executeStepContextOptimization(
     const tokensAfter = estimateTokenCount(JSON.stringify(optimizedSourceCode));
     const percentageReduced = ((tokensBefore - tokensAfter) / tokensBefore) * 100;
 
+    // Clear previous getSourceCode responses
+    clearPreviousSourceCodeResponses(prompt);
+
     prompt.push(
       {
         type: 'assistant',
@@ -233,12 +236,12 @@ function optimizeSourceCode(
   let contentTokenCount = 0;
   let summaryTokenCount = 0;
 
-  for (const [path] of Object.entries(sourceCode)) {
+  for (const [path] of Object.entries(fullSourceCode)) {
     const isContext = optimizedContext.filter((item) => item[0] === path).length > 0;
     const summary = getSummary(path);
     const content =
       (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
-    if (isContext && content && !('content' in sourceCode[path])) {
+    if (isContext && content && !(sourceCode[path] && 'content' in sourceCode[path])) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
         content,
@@ -249,4 +252,26 @@ function optimizeSourceCode(
   }
 
   return [optimizedSourceCode, contentTokenCount, summaryTokenCount];
+}
+
+/**
+ * Helper function to clear content from previous getSourceCode responses while preserving the conversation structure
+ */
+function clearPreviousSourceCodeResponses(prompt: PromptItem[]) {
+  for (const item of prompt) {
+    if (item.type === 'user' && item.functionResponses) {
+      for (const response of item.functionResponses) {
+        if (response.name === 'getSourceCode' && response.content) {
+          // Zero out the contents but keep the structure
+          const sourceCode = parseSourceCodeTree(JSON.parse(response.content));
+          for (const path in sourceCode) {
+            if ('content' in sourceCode[path]) {
+              delete sourceCode[path];
+            }
+          }
+          response.content = JSON.stringify(getSourceCodeTree(sourceCode));
+        }
+      }
+    }
+  }
 }
