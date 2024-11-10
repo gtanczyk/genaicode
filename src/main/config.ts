@@ -19,10 +19,23 @@ const DEFAULT_EXTENSIONS: string[] = [
   '.html',
   '.txt',
   '.json',
+  '.java',
+  '.fxml',
 ];
 
 // A list of paths that are ignored by default
-const DEFAULT_IGNORE_PATHS: string[] = ['node_modules', 'build', 'dist', 'package-lock.json', 'coverage'];
+const DEFAULT_IGNORE_PATHS: string[] = [
+  'node_modules',
+  'build',
+  'dist',
+  'package-lock.json',
+  'coverage',
+  'target',
+  'bin',
+  '.settings',
+  '.idea',
+  '.mvn',
+];
 
 // Read and parse the configuration
 const rcFilePath: string = await findRcFile();
