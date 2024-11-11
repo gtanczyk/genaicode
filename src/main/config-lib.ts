@@ -4,6 +4,7 @@ import assert from 'node:assert';
 import { confirm } from '@inquirer/prompts';
 
 import { isAncestorDirectory } from '../files/file-utils.js';
+import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
 
 // This file contains project codegen configuration
 const CODEGENRC_FILENAME = '.genaicoderc';
@@ -43,7 +44,37 @@ export interface RcConfig {
   ignorePaths?: string[];
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
-  plugins?: string[]; // New field for plugins
+  plugins?: string[];
+}
+
+/**
+ * Create initial .genaicoderc content with profile detection
+ */
+async function createInitialConfig(rcFilePath: string): Promise<RcConfig> {
+  const rootDir = path.dirname(rcFilePath);
+
+  // Try to detect project profile
+  const detectionResult = await detectAndConfigureProfile(rootDir);
+  const profile = detectionResult.profile;
+
+  const config: RcConfig = {
+    rootDir: '.',
+    // Use detected profile if available, otherwise use npm profile as default
+    ...(profile
+      ? {
+          type: profile.id,
+          extensions: profile.extensions,
+          ignorePaths: profile.ignorePaths,
+          lintCommand: profile.lintCommand,
+        }
+      : {
+          type: npmProfile.id,
+          extensions: npmProfile.extensions,
+          ignorePaths: npmProfile.ignorePaths,
+        }),
+  };
+
+  return config;
 }
 
 // Find .genaicoderc file
@@ -62,8 +93,9 @@ export async function findRcFile(): Promise<string> {
           default: false,
         });
         if (createRcFile) {
-          fs.writeFileSync(path.join(rcFilePath, CODEGENRC_FILENAME), JSON.stringify({ rootDir: '.' }, null, 2));
-          console.log(`Created ${CODEGENRC_FILENAME} in ${rcFilePath}`);
+          const config = await createInitialConfig(path.join(rcFilePath, CODEGENRC_FILENAME));
+          fs.writeFileSync(path.join(rcFilePath, CODEGENRC_FILENAME), JSON.stringify(config, null, 2));
+          console.log(`Created ${CODEGENRC_FILENAME} in ${rcFilePath} with detected project profile`);
           return path.join(rcFilePath, CODEGENRC_FILENAME);
         }
       }

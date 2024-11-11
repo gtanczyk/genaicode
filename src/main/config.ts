@@ -1,62 +1,23 @@
 import { findRcFile, parseRcFile, RcConfig, ImportantContext, ModelOverrides } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import path from 'path';
-
-// Default extensions if not specified in .genaicoderc
-const DEFAULT_EXTENSIONS: string[] = [
-  '.md',
-  '.js',
-  '.ts',
-  '.tsx',
-  '.css',
-  '.scss',
-  '.py',
-  '.go',
-  '.c',
-  '.h',
-  '.cpp',
-  '.txt',
-  '.html',
-  '.txt',
-  '.json',
-  '.java',
-  '.fxml',
-];
-
-// A list of paths that are ignored by default
-const DEFAULT_IGNORE_PATHS: string[] = [
-  'node_modules',
-  'build',
-  'dist',
-  'package-lock.json',
-  'coverage',
-  'target',
-  'bin',
-  '.settings',
-  '.idea',
-  '.mvn',
-];
+import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
 
 // Read and parse the configuration
 const rcFilePath: string = await findRcFile();
 export const rcConfig: RcConfig = parseRcFile(rcFilePath);
 
-// Load plugins
 await loadPlugins(rcConfig);
 
-// Use extensions from .genaicoderc if available, otherwise use default
-export const sourceExtensions: string[] = rcConfig.extensions || DEFAULT_EXTENSIONS;
+export const sourceExtensions: string[] = rcConfig.extensions ?? [...DEFAULT_EXTENSIONS.JS];
 
-// Image extensions (driven by ai service limitations)
+// Image extensions (driven by ai service limitations, so not configurable)
 export const IMAGE_ASSET_EXTENSIONS: string[] = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
-// Export ignore paths
-export const ignorePaths: string[] = rcConfig.ignorePaths ?? DEFAULT_IGNORE_PATHS;
+export const ignorePaths: string[] = rcConfig.ignorePaths ?? [...DEFAULT_IGNORE_PATHS.JS];
 
-// Process and export important context
 export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext);
 
-// Export model overrides
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
 
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {

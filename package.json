@@ -57,6 +57,7 @@
     "@types/multer": "^1.4.12",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "@types/xml2js": "^0.4.14",
     "@typescript-eslint/eslint-plugin": "^7.17.0",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^2.0.5",
@@ -103,7 +104,8 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^4.67.1",
     "please-upgrade-node": "^3.2.0",
-    "sharp": "^0.33.4"
+    "sharp": "^0.33.4",
+    "xml2js": "^0.6.2"
   },
   "lint-staged": {
     "*.{js,ts,css,md}": "prettier --write"

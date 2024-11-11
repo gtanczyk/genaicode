@@ -3,6 +3,8 @@ import { Operation, Plugin, PluginActionType, PluginAiServiceType, GenerateConte
 import { GenerateContentFunction } from '../ai-service/common.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-lib.js';
+import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
+import { registerProfile } from '../project-profiles/index.js';
 
 // Global storage for registered AI services and operations
 const registeredAiServices: Map<PluginAiServiceType, GenerateContentFunction> = new Map();
@@ -10,6 +12,9 @@ const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
 const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
 const registeredGenerateContentHooks: GenerateContentHook[] = [];
+
+// Project profile plugin storage
+const registeredProfilePlugins: ProjectProfilePlugin[] = [];
 
 export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   if (!rcConfig.plugins || rcConfig.plugins.length === 0) {
@@ -23,6 +28,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
       console.log('Loading plugin:', pluginPath);
       const plugin = (await import(pluginPath)).default as Plugin;
 
+      // Handle AI services
       if (plugin.aiServices) {
         Object.entries(plugin.aiServices).forEach(([name, service]) => {
           registeredAiServices.set(`plugin:${name}`, service);
@@ -30,6 +36,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
         });
       }
 
+      // Handle operations
       if (plugin.operations) {
         Object.entries(plugin.operations).forEach(([name, operation]) => {
           registeredOperations[name] = operation;
@@ -37,6 +44,7 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
         });
       }
 
+      // Handle action handlers
       if (plugin.actionHandlers) {
         Object.entries(plugin.actionHandlers).forEach(([name, { handler, description }]) => {
           registeredActionHandlers.set(`plugin:${name}`, handler);
@@ -45,15 +53,59 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
         });
       }
 
+      // Handle generateContent hooks
       if (plugin.generateContentHook) {
         registeredGenerateContentHooks.push(plugin.generateContentHook);
         console.log('Registered generateContent hook');
+      }
+
+      // Handle project profile plugins
+      if ('profiles' in plugin) {
+        const profilePlugin = plugin as Plugin & ProjectProfilePlugin;
+
+        // Register project profiles
+        if (profilePlugin.profiles) {
+          profilePlugin.profiles.forEach((profile: ProjectProfile) => {
+            // Validate profile
+            validateProfile(profile);
+            // Register profile
+            registerProfile(profile);
+            console.log(`Registered project profile: ${profile.name} (${profile.id})`);
+          });
+        }
       }
 
       console.log(`Successfully loaded plugin: ${pluginPath}`);
     } catch (error) {
       console.error(`Failed to load plugin: ${pluginPath}`, error);
     }
+  }
+}
+
+/**
+ * Validate project profile structure
+ */
+function validateProfile(profile: ProjectProfile): void {
+  if (!profile.id || typeof profile.id !== 'string') {
+    throw new Error('Profile must have a string id');
+  }
+  if (!profile.name || typeof profile.name !== 'string') {
+    throw new Error('Profile must have a string name');
+  }
+  if (!Array.isArray(profile.extensions)) {
+    throw new Error('Profile must have an array of extensions');
+  }
+  if (!Array.isArray(profile.ignorePaths)) {
+    throw new Error('Profile must have an array of ignore paths');
+  }
+  if (!profile.detect || typeof profile.detect !== 'function') {
+    throw new Error('Profile must have a detect function');
+  }
+  if (typeof profile.detectionWeight !== 'number') {
+    throw new Error('Profile must have a numeric detectionWeight');
+  }
+  if (profile.initialize && typeof profile.initialize !== 'function') {
+    throw new Error('Profile initialize must be a function if provided');
   }
 }
 
@@ -75,4 +127,11 @@ export function getRegisteredActionHandlerDescriptions(): Map<PluginActionType, 
 
 export function getRegisteredGenerateContentHooks(): GenerateContentHook[] {
   return registeredGenerateContentHooks;
+}
+
+/**
+ * Get all registered project profile plugins
+ */
+export function getRegisteredProfilePlugins(): ProjectProfilePlugin[] {
+  return registeredProfilePlugins;
 }
