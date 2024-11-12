@@ -25,50 +25,45 @@ import { mavenProfile } from './profiles/java-maven.js';
 import { golangProfile } from './profiles/golang.js';
 import { djangoProfile } from './profiles/python-django.js';
 
-// Registry for all available profiles
-const profileRegistry = new Map<string, ProjectProfile>();
+// Simple array to store all available profiles
+const profiles: ProjectProfile[] = [];
 
 /**
- * Register a single project profile
+ * Register a project profile
  */
 function registerProfile(profile: ProjectProfile): void {
-  if (profileRegistry.has(profile.id)) {
+  const existingIndex = profiles.findIndex((p) => p.id === profile.id);
+  if (existingIndex !== -1) {
     console.warn(`Warning: Profile with ID "${profile.id}" is already registered. Overwriting...`);
+    profiles[existingIndex] = profile;
+  } else {
+    profiles.push(profile);
   }
-  profileRegistry.set(profile.id, profile);
-}
-
-/**
- * Register multiple project profiles
- */
-function registerProfiles(profiles: ProjectProfile[]): void {
-  profiles.forEach(registerProfile);
 }
 
 /**
  * Get a registered profile by ID
  */
 function getProfile(id: string): ProjectProfile | undefined {
-  return profileRegistry.get(id);
+  return profiles.find((profile) => profile.id === id);
 }
 
 /**
  * Get all registered profiles
  */
 function getAllProfiles(): ProjectProfile[] {
-  return Array.from(profileRegistry.values());
+  return [...profiles];
 }
 
 /**
  * Register a project profile plugin
  */
 function registerProfilePlugin(plugin: ProjectProfilePlugin): void {
-  // Register all profiles from the plugin
-  registerProfiles(plugin.profiles);
+  plugin.profiles.forEach(registerProfile);
 }
 
 // Register default profiles
-registerProfiles([npmProfile, reactProfile, mavenProfile, golangProfile, djangoProfile]);
+[npmProfile, reactProfile, mavenProfile, golangProfile, djangoProfile].forEach(registerProfile);
 
 /**
  * Main function to detect and configure project profile
@@ -100,7 +95,6 @@ export {
   // Core functions
   detectAndConfigureProfile,
   registerProfile,
-  registerProfiles,
   registerProfilePlugin,
   getProfile,
   getAllProfiles,

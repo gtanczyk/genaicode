@@ -52,26 +52,15 @@ export interface RcConfig {
  */
 async function createInitialConfig(rcFilePath: string): Promise<RcConfig> {
   const rootDir = path.dirname(rcFilePath);
-
-  // Try to detect project profile
   const detectionResult = await detectAndConfigureProfile(rootDir);
-  const profile = detectionResult.profile;
+  const profile = detectionResult.profile ?? npmProfile;
 
+  // Create config using detected profile or npm profile as fallback
   const config: RcConfig = {
     rootDir: '.',
-    // Use detected profile if available, otherwise use npm profile as default
-    ...(profile
-      ? {
-          type: profile.id,
-          extensions: profile.extensions,
-          ignorePaths: profile.ignorePaths,
-          lintCommand: profile.lintCommand,
-        }
-      : {
-          type: npmProfile.id,
-          extensions: npmProfile.extensions,
-          ignorePaths: npmProfile.ignorePaths,
-        }),
+    extensions: profile.extensions,
+    ignorePaths: profile.ignorePaths,
+    ...(profile.lintCommand ? { lintCommand: profile.lintCommand } : {}),
   };
 
   return config;
