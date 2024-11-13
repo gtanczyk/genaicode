@@ -23,6 +23,62 @@ async function anyFileExists(rootDir: string, filePaths: string[]): Promise<bool
 }
 
 /**
+ * Recursively find files matching patterns in directory and subdirectories
+ * @param rootDir - The root directory to start searching from
+ * @param patterns - Array of file patterns to match (e.g., ['main.go', 'go.sum'])
+ * @param ignoreDirs - Optional array of directory names to ignore (e.g., ['vendor', 'node_modules'])
+ * @returns Array of found file paths relative to rootDir
+ */
+async function findFilesRecursively(rootDir: string, patterns: string[], ignoreDirs: string[] = []): Promise<string[]> {
+  const foundFiles: string[] = [];
+
+  async function searchDirectory(currentDir: string): Promise<void> {
+    try {
+      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relativePath = path.relative(rootDir, fullPath);
+
+        // Skip ignored directories
+        if (entry.isDirectory()) {
+          if (!ignoreDirs.includes(entry.name)) {
+            await searchDirectory(fullPath);
+          }
+          continue;
+        }
+
+        // Check if file matches any pattern
+        if (patterns.includes(entry.name)) {
+          foundFiles.push(relativePath);
+        }
+      }
+    } catch (error) {
+      console.error(`Error reading directory ${currentDir}:`, error);
+    }
+  }
+
+  await searchDirectory(rootDir);
+  return foundFiles;
+}
+
+/**
+ * Check if any files matching patterns exist in directory or its subdirectories
+ * @param rootDir - The root directory to start searching from
+ * @param patterns - Array of file patterns to match
+ * @param ignoreDirs - Optional array of directory names to ignore
+ * @returns true if any matching file is found
+ */
+async function anyFileExistsRecursively(
+  rootDir: string,
+  patterns: string[],
+  ignoreDirs: string[] = [],
+): Promise<boolean> {
+  const files = await findFilesRecursively(rootDir, patterns, ignoreDirs);
+  return files.length > 0;
+}
+
+/**
  * Detect the project profile with the highest weight
  */
 export async function detectProjectProfile(
@@ -96,4 +152,6 @@ export async function initializeProfile(
 export const profileUtils = {
   fileExists,
   anyFileExists,
+  findFilesRecursively,
+  anyFileExistsRecursively,
 } as const;

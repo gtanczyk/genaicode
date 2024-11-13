@@ -92,6 +92,7 @@ async function parseGoWork(filePath: string): Promise<string[] | null> {
 async function detectGoProjectType(rootDir: string): Promise<{ type: GoProjectType; weight: number }> {
   // Check for workspace first
   if (await profileUtils.fileExists(rootDir, PROJECT_FILE_PATTERNS.GO.WORK)) {
+    console.log('Detected Go workspace project');
     return { type: GO_PROJECT_TYPES.WORKSPACE, weight: DETECTION_WEIGHTS.BASE.GO_BASE + 1 };
   }
 
@@ -103,11 +104,13 @@ async function detectGoProjectType(rootDir: string): Promise<{ type: GoProjectTy
     // Check for known frameworks
     for (const [framework, importPath] of Object.entries(GO_FRAMEWORK_IMPORTS)) {
       if (goMod.requires.some((req) => req.startsWith(importPath))) {
+        console.log(`Detected Go ${framework} project`);
         return { type: framework as GoProjectType, weight: DETECTION_WEIGHTS.FRAMEWORK.REACT };
       }
     }
   }
 
+  console.log('Detected Go module project');
   return { type: GO_PROJECT_TYPES.MODULE, weight: DETECTION_WEIGHTS.BASE.GO_BASE };
 }
 
@@ -162,42 +165,77 @@ export const golangProfile: ProjectProfile = {
    * Detect if this is a Go project
    */
   async detect(rootDir: string): Promise<boolean> {
-    // Check for go.mod or go.work
-    const hasGoFiles = await profileUtils.anyFileExists(rootDir, [
-      PROJECT_FILE_PATTERNS.GO.MOD,
-      PROJECT_FILE_PATTERNS.GO.WORK,
-    ]);
+    try {
+      // Check for go.mod or go.work
+      const hasGoFiles = await profileUtils.anyFileExists(rootDir, [
+        PROJECT_FILE_PATTERNS.GO.MOD,
+        PROJECT_FILE_PATTERNS.GO.WORK,
+      ]);
 
-    if (!hasGoFiles) return false;
+      if (!hasGoFiles) {
+        console.log('No Go files (go.mod/go.work) found');
+        return false;
+      }
 
-    // Verify it's a valid Go project by checking for .go files
-    const hasSourceFiles = await profileUtils.anyFileExists(rootDir, ['main.go', 'go.sum']);
+      console.log('Found Go files (go.mod/go.work)');
 
-    return hasSourceFiles;
+      // For workspace projects, check recursively
+      const isWorkspace = await profileUtils.fileExists(rootDir, PROJECT_FILE_PATTERNS.GO.WORK);
+      if (isWorkspace) {
+        console.log('Checking workspace modules recursively for source files');
+        const hasSourceFiles = await profileUtils.anyFileExistsRecursively(
+          rootDir,
+          ['main.go', 'go.sum'],
+          [...DEFAULT_IGNORE_PATHS.GO],
+        );
+        console.log('Workspace source files found:', hasSourceFiles);
+        return hasSourceFiles;
+      }
+
+      // For regular modules, check in the root directory
+      console.log('Checking root directory for source files');
+      const hasSourceFiles = await profileUtils.anyFileExists(rootDir, ['main.go', 'go.sum']);
+      console.log('Root directory source files found:', hasSourceFiles);
+      return hasSourceFiles;
+    } catch (error) {
+      console.error('Error during Go project detection:', error);
+      return false;
+    }
   },
 
   /**
    * Initialize Go-specific configuration
    */
   async initialize(rootDir: string): Promise<void> {
-    // Detect Go project type
-    const { type: projectType } = await detectGoProjectType(rootDir);
+    try {
+      // Detect Go project type
+      const { type: projectType } = await detectGoProjectType(rootDir);
+      console.log(`Initializing Go profile (${projectType})`);
 
-    // Set Go-specific ignore paths
-    this.ignorePaths = await getGoIgnorePaths(projectType);
+      // Set Go-specific ignore paths
+      this.ignorePaths = await getGoIgnorePaths(projectType);
 
-    // Set appropriate lint command
-    this.lintCommand = await detectLintCommand(rootDir);
+      // Set appropriate lint command
+      this.lintCommand = await detectLintCommand(rootDir);
 
-    // Add .go and .mod files to extensions
-    this.extensions = [...DEFAULT_EXTENSIONS.GO];
+      // Add .go and .mod files to extensions
+      this.extensions = [...DEFAULT_EXTENSIONS.GO];
 
-    // For workspaces, add additional extensions
-    if (projectType === GO_PROJECT_TYPES.WORKSPACE) {
-      this.extensions.push('.work');
+      // For workspaces, add additional extensions
+      if (projectType === GO_PROJECT_TYPES.WORKSPACE) {
+        this.extensions.push('.work');
+      }
+
+      console.log('Go profile initialization completed:', {
+        type: projectType,
+        extensions: this.extensions,
+        ignorePaths: this.ignorePaths,
+        lintCommand: this.lintCommand,
+      });
+    } catch (error) {
+      console.error('Error during Go profile initialization:', error);
+      throw error;
     }
-
-    console.log(`Initialized Go profile (${projectType})`);
   },
 };
 
