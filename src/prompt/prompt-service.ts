@@ -1,41 +1,23 @@
 import assert from 'node:assert';
-import fs from 'fs';
-import mime from 'mime-types';
 
 import { getSystemPrompt } from './systemprompt.js';
 import { getFunctionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
-import {
-  PromptItem,
-  FunctionDef,
-  FunctionCall,
-  GenerateContentFunction,
-  GenerateImageFunction,
-} from '../ai-service/common.js';
-import { importantContext } from '../main/config.js';
-import { AiServiceType, CodegenOptions, ImagenType } from '../main/codegen-types.js';
+import { PromptItem, FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { AiServiceType, ImagenType } from '../main/codegen-types.js';
 import { executeStepAskQuestion } from './steps/step-ask-question/step-ask-question.js';
-import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
-import { executeStepVerifyPatch } from './steps/step-verify-patch.js';
-import { executeStepGenerateImage } from './steps/step-generate-image.js';
 import { executeStepContextOptimization } from './steps/step-context-optimization.js';
 import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
-import { putSystemMessage } from '../main/common/content-bus.js';
 import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
 import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
 import { executeStepGenerateSummary } from './steps/step-generate-summary.js';
 import { getSourceCodeTree } from '../files/source-code-tree.js';
-import {
-  INITIAL_GREETING,
-  REQUEST_SOURCE_CODE,
-  SOURCE_CODE_RESPONSE,
-  READY_TO_ASSIST,
-  getPartialPromptTemplate,
-} from './static-prompts.js';
+import { INITIAL_GREETING, REQUEST_SOURCE_CODE, SOURCE_CODE_RESPONSE, READY_TO_ASSIST } from './static-prompts.js';
 import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
+import { executeStepCodegenSummary } from './steps/step-codegen-summary.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -184,128 +166,20 @@ async function executePromptService(
     return { result: [], prompt };
   }
 
-  const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
+  // Execute the codegen summary step
+  const result = await executeStepCodegenSummary(
+    generateContentFn,
     prompt,
     getFunctionDefs(),
-    'codegenSummary',
-    codegenPrompt.options.temperature ?? 0.7,
-    codegenPrompt.options.cheap ?? false,
+    getSourceCodeRequest,
+    getSourceCodeResponse,
+    messages,
     codegenPrompt.options,
-  ];
-  let baseResult = await generateContentFn(...baseRequest);
+    waitIfPaused,
+    generateImageFn,
+  );
 
-  let codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
-
-  if (codegenSummaryRequest) {
-    // Second stage: for each file request the actual code updates
-    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
-
-    baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
-    codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
-
-    // Sometimes the result happens to be a string
-    assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
-    assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
-
-    if (!codegenPrompt.options.disableContextOptimization) {
-      console.log('Optimize with context paths.');
-      // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
-      getSourceCodeRequest.args = {
-        filePaths: [
-          ...codegenSummaryRequest.args.fileUpdates.map((file: { filePath: string }) => file.filePath),
-          ...codegenSummaryRequest.args.contextPaths,
-          ...(importantContext.files ?? []),
-        ],
-      };
-      getSourceCodeResponse.functionResponses!.find((item) => item.name === 'getSourceCode')!.content =
-        messages.contextSourceCode(getSourceCodeRequest.args?.filePaths as string[]);
-    }
-
-    // Store the first stage response entirely in conversation history
-    prompt.push({ type: 'assistant', functionCalls: baseResult });
-    prompt.push({
-      type: 'user',
-      functionResponses: baseResult.map((call) => ({ name: call.name, call_id: call.id })),
-      cache: true,
-    });
-
-    const result: FunctionCall[] = [];
-
-    for (const file of codegenSummaryRequest!.args.fileUpdates) {
-      putSystemMessage('Collecting partial update for: ' + file.filePath + ' using tool: ' + file.updateToolName, file);
-
-      // Check if execution is paused before proceeding
-      await waitIfPaused();
-
-      // this is needed, otherwise we will get an error
-      if (prompt.slice(-1)[0].type === 'user') {
-        prompt.slice(-1)[0].text = file.prompt ?? getPartialPromptTemplate(file.filePath);
-      } else {
-        prompt.push({ type: 'user', text: file.prompt ?? getPartialPromptTemplate(file.filePath) });
-      }
-
-      if (codegenPrompt.options.vision && file.contextImageAssets) {
-        prompt.slice(-1)[0].images = file.contextImageAssets.map((path: string) => ({
-          path,
-          base64url: fs.readFileSync(path, 'base64'),
-          mediaType: mime.lookup(path) || '',
-        }));
-      }
-
-      const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
-        prompt,
-        getFunctionDefs(),
-        file.updateToolName,
-        file.temperature ?? codegenPrompt.options.temperature,
-        file.cheap === true,
-        codegenPrompt.options,
-      ];
-      let partialResult = await generateContentFn(...partialRequest);
-
-      putSystemMessage('Received partial update', partialResult);
-
-      // Validate if function call is compliant with the schema
-      partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
-
-      // Handle image generation requests
-      const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
-      if (generateImageCall) {
-        partialResult.push(await executeStepGenerateImage(generateImageFn, generateImageCall));
-      }
-
-      // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
-      const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
-      if (patchFileCall) {
-        partialResult = await executeStepVerifyPatch(
-          patchFileCall.args as { filePath: string; patch: string },
-          generateContentFn,
-          prompt,
-          getFunctionDefs(),
-          file.temperature ?? codegenPrompt.options.temperature,
-          file.cheap === true,
-          codegenPrompt.options,
-        );
-      }
-
-      // add the code gen result to the context, as the subsequent code gen may depend on the result
-      prompt.push(
-        { type: 'assistant', functionCalls: partialResult },
-        {
-          type: 'user',
-          text: 'Update applied.',
-          functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
-        },
-      );
-
-      result.push(...partialResult);
-    }
-
-    return { result, prompt };
-  } else {
-    // This is unexpected, if happens probably means no code updates.
-    putSystemMessage('Did not receive codegen summary, returning result.');
-    return { result: baseResult, prompt };
-  }
+  return { result, prompt };
 }
 
 /**
