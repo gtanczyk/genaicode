@@ -37,14 +37,14 @@ describe('executeStepCodegenSummary', () => {
       },
     },
   ];
-  const mockGetSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
-  const mockGetSourceCodeResponse: PromptItem = {
-    type: 'user',
-    functionResponses: [{ name: 'getSourceCode', content: '{}' }],
-  };
-  const mockMessages = {
-    contextSourceCode: (paths: string[]) => JSON.stringify({ paths }),
-  };
+  // const mockGetSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
+  // const mockGetSourceCodeResponse: PromptItem = {
+  //   type: 'user',
+  //   functionResponses: [{ name: 'getSourceCode', content: '{}' }],
+  // };
+  // const mockMessages = {
+  //   contextSourceCode: (paths: string[]) => JSON.stringify({ paths }),
+  // };
   const mockOptions: CodegenOptions = {
     aiService: 'vertex-ai',
     temperature: 0.7,
@@ -86,9 +86,9 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      mockGetSourceCodeRequest,
-      mockGetSourceCodeResponse,
-      mockMessages,
+      // mockGetSourceCodeRequest,
+      // mockGetSourceCodeResponse,
+      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -121,9 +121,9 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      mockGetSourceCodeRequest,
-      mockGetSourceCodeResponse,
-      mockMessages,
+      // mockGetSourceCodeRequest,
+      // mockGetSourceCodeResponse,
+      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -140,9 +140,9 @@ describe('executeStepCodegenSummary', () => {
         mockGenerateContentFn,
         mockPrompt,
         mockFunctionDefs,
-        mockGetSourceCodeRequest,
-        mockGetSourceCodeResponse,
-        mockMessages,
+        // mockGetSourceCodeRequest,
+        // mockGetSourceCodeResponse,
+        // mockMessages,
         mockOptions,
         mockWaitIfPaused,
       ),
@@ -161,9 +161,9 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      mockGetSourceCodeRequest,
-      mockGetSourceCodeResponse,
-      mockMessages,
+      // mockGetSourceCodeRequest,
+      // mockGetSourceCodeResponse,
+      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -198,9 +198,9 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      mockGetSourceCodeRequest,
-      mockGetSourceCodeResponse,
-      mockMessages,
+      // mockGetSourceCodeRequest,
+      // mockGetSourceCodeResponse,
+      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );

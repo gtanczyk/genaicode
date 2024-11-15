@@ -2,7 +2,6 @@ import { refreshFiles } from '../../../../files/find-files.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { executeStepContextOptimization } from '../../step-context-optimization.js';
-import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult, UserItem, AssistantItem } from '../step-ask-question-types.js';
 
 export async function handleContextOptimization({
@@ -42,7 +41,6 @@ export async function handleContextOptimization({
 
   return {
     breakLoop: false,
-    stepResult: StepResult.CONTINUE,
     items: [
       {
         assistant,

@@ -10,7 +10,7 @@ import {
   PromptItem,
 } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { importantContext } from '../../main/config.js';
+// import { importantContext } from '../../main/config.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
@@ -25,9 +25,7 @@ export async function executeStepCodegenSummary(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
-  getSourceCodeRequest: FunctionCall,
-  getSourceCodeResponse: PromptItem,
-  messages: { contextSourceCode: (paths: string[]) => string },
+  // messages: { contextSourceCode: (paths: string[]) => string },
   options: CodegenOptions,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
   generateImageFn?: GenerateImageFunction,
@@ -46,7 +44,7 @@ export async function executeStepCodegenSummary(
 
   if (codegenSummaryRequest) {
     // Second stage: for each file request the actual code updates
-    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest.args);
+    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest);
 
     baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
     codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
@@ -55,19 +53,19 @@ export async function executeStepCodegenSummary(
     assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
     assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
 
-    if (!options.disableContextOptimization) {
-      console.log('Optimize with context paths.');
-      // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
-      getSourceCodeRequest.args = {
-        filePaths: [
-          ...codegenSummaryRequest.args.fileUpdates.map((file: { filePath: string }) => file.filePath),
-          ...codegenSummaryRequest.args.contextPaths,
-          ...(importantContext.files ?? []),
-        ],
-      };
-      getSourceCodeResponse.functionResponses!.find((item) => item.name === 'getSourceCode')!.content =
-        messages.contextSourceCode(getSourceCodeRequest.args?.filePaths as string[]);
-    }
+    // if (!options.disableContextOptimization) {
+    //   console.log('Optimize with context paths.');
+    //   // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
+    //   getSourceCodeRequest.args = {
+    //     filePaths: [
+    //       ...codegenSummaryRequest.args.fileUpdates.map((file: { filePath: string }) => file.filePath),
+    //       ...codegenSummaryRequest.args.contextPaths,
+    //       ...(importantContext.files ?? []),
+    //     ],
+    //   };
+    //   getSourceCodeResponse.functionResponses!.find((item) => item.name === 'getSourceCode')!.content =
+    //     messages.contextSourceCode(getSourceCodeRequest.args?.filePaths as string[]);
+    // }
 
     // Store the first stage response entirely in conversation history
     prompt.push({ type: 'assistant', functionCalls: baseResult });
@@ -110,10 +108,10 @@ export async function executeStepCodegenSummary(
       ];
       let partialResult = await generateContentFn(...partialRequest);
 
-      putSystemMessage('Received partial update', partialResult);
-
       // Validate if function call is compliant with the schema
       partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
+
+      putSystemMessage('Received partial update', partialResult);
 
       // Handle image generation requests
       const generateImageCall = partialResult.find((call) => call.name === 'generateImage');

@@ -1,6 +1,5 @@
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
-import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
 export async function handleConfirmCodeGeneration({
@@ -21,7 +20,7 @@ export async function handleConfirmCodeGeneration({
     putSystemMessage('Proceeding with code generation.');
     return {
       breakLoop: true,
-      stepResult: StepResult.CONTINUE,
+      executeCodegen: true,
       items: [
         {
           assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '', functionCalls: [] },
@@ -33,7 +32,6 @@ export async function handleConfirmCodeGeneration({
     putSystemMessage('Declined. Continuing the conversation.');
     return {
       breakLoop: false,
-      stepResult: StepResult.CONTINUE,
       items: [
         {
           assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },

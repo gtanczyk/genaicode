@@ -57,7 +57,7 @@ export async function executeStepCodegenPlanning(
     const codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
 
     if (codegenPlanningRequest) {
-      putSystemMessage('Planning phase completed successfully', codegenPlanningRequest.args);
+      putSystemMessage('Planning phase completed successfully', codegenPlanningRequest);
 
       // Store the planning response in conversation history
       prompt.push({ type: 'assistant', functionCalls: planningResult });

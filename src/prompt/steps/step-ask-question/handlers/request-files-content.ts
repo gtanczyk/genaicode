@@ -4,7 +4,6 @@ import { getSourceCode } from '../../../../files/read-files.js';
 import { getSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { StepResult } from '../../steps-types.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -64,7 +63,6 @@ export async function handleRequestFilesContent({
   if (!requestFilesContentCall) {
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -95,7 +93,7 @@ export async function handleRequestFilesContent({
       cache: true,
     };
 
-    return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
+    return { breakLoop: false, items: [{ assistant, user }] };
   }
 
   // Filter out already provided files
@@ -118,7 +116,6 @@ export async function handleRequestFilesContent({
     if (!requestFilesContentCall) {
       return {
         breakLoop: true,
-        stepResult: StepResult.BREAK,
         items: [],
       };
     }
@@ -165,7 +162,7 @@ export async function handleRequestFilesContent({
     cache: true,
   };
 
-  return { breakLoop: false, stepResult: StepResult.CONTINUE, items: [{ assistant, user }] };
+  return { breakLoop: false, items: [{ assistant, user }] };
 }
 
 async function generateRequestFilesContentCall(

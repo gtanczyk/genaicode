@@ -4,8 +4,8 @@ import {
   GenerateContentArgs,
   PromptItem,
   GenerateImageFunction,
+  FunctionCall,
 } from '../../../ai-service/common.js';
-import { StepResult } from '../steps-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
 import { abortController } from '../../../main/interactive/codegen-worker.js';
@@ -21,15 +21,17 @@ import { handleSendMessageWithImage } from './handlers/handle-send-message-with-
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
+import { handleCodeGeneration } from './handlers/code-generation.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
   generateImageFn: GenerateImageFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
+  waitIfPaused: () => Promise<void>,
   temperature: number,
   options: CodegenOptions,
-): Promise<StepResult> {
+): Promise<FunctionCall[]> {
   console.log('Allowing the assistant to ask a question...');
 
   while (!abortController?.signal.aborted) {
@@ -48,12 +50,13 @@ export async function executeStepAskQuestion(
       const actionType = askQuestionCall.args?.actionType;
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
-        const result = await actionHandler({
+        let result = await actionHandler({
           askQuestionCall,
           prompt,
           options,
           generateContentFn,
           generateImageFn,
+          waitIfPaused,
         });
 
         // This is important to display the content to the user interface (ui or interactive cli)
@@ -61,8 +64,19 @@ export async function executeStepAskQuestion(
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
 
+        if (result.executeCodegen) {
+          result = await getActionHandler('codeGeneration')({
+            askQuestionCall,
+            prompt,
+            options,
+            generateContentFn,
+            generateImageFn,
+            waitIfPaused,
+          });
+        }
+
         if (result.breakLoop) {
-          return result.stepResult;
+          return result.stepResult ?? [];
         }
 
         console.log('The question was answered');
@@ -73,12 +87,12 @@ export async function executeStepAskQuestion(
     } catch (error) {
       console.error('Error in executeStepAskQuestion:', error);
       putSystemMessage(`An error occurred: ${error instanceof Error ? error.message : String(error)}`);
-      return StepResult.BREAK;
+      return [];
     }
   }
 
   putSystemMessage('Assistant did not ask a question. This unexpected, we need to abort.');
-  return StepResult.BREAK;
+  return [];
 }
 
 async function getAskQuestionCall(
@@ -104,6 +118,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
 
   // If no plugin handler is found, use the built-in handlers
   const handlers: Record<ActionType, ActionHandler> = {
+    codeGeneration: handleCodeGeneration,
     cancelCodeGeneration: handleCancelCodeGeneration,
     confirmCodeGeneration: handleConfirmCodeGeneration,
     requestFilesContent: handleRequestFilesContent,

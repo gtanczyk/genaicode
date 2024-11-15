@@ -6,10 +6,10 @@ import {
   PromptItemImage,
 } from '../../../ai-service/common.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
-import { StepResult } from '../steps-types.js';
 import { PluginActionType } from '../../../main/codegen-types.js';
 
 export type ActionType =
+  | 'codeGeneration'
   | 'sendMessage'
   | 'sendMessageWithImage'
   | 'requestPermissions'
@@ -71,7 +71,8 @@ export interface UserItem {
 
 export interface ActionResult {
   breakLoop: boolean;
-  stepResult: StepResult;
+  executeCodegen?: boolean;
+  stepResult?: FunctionCall[];
   items: Array<{
     assistant: AssistantItem;
     user: UserItem;
@@ -84,6 +85,7 @@ export type ActionHandlerProps = {
   options: CodegenOptions;
   generateContentFn: GenerateContentFunction;
   generateImageFn: GenerateImageFunction;
+  waitIfPaused: () => Promise<void>;
 };
 
 export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>;

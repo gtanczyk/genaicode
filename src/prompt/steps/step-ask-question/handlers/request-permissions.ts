@@ -2,7 +2,6 @@ import { FunctionCall } from '../../../../ai-service/common.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult, RequestPermissionsArgs, UserItem } from '../step-ask-question-types.js';
 
 export async function handleRequestPermissions({
@@ -33,7 +32,6 @@ export async function handleRequestPermissions({
   if (!requestPermissionsCall) {
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -61,7 +59,6 @@ export async function handleRequestPermissions({
 
   return {
     breakLoop: false,
-    stepResult: StepResult.CONTINUE,
     items: [
       {
         assistant: {

@@ -146,6 +146,7 @@ async function executePromptService(
       generateImageFn,
       prompt,
       getFunctionDefs(),
+      waitIfPaused,
       codegenPrompt.options.temperature ?? 0.7,
       codegenPrompt.options,
     );
@@ -153,33 +154,31 @@ async function executePromptService(
     // Summary based on the ask-question conversation history (may be different from the initial summary)
     await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);
 
-    if (askQuestionResult === StepResult.BREAK) {
-      return { result: [], prompt };
-    }
+    return { result: askQuestionResult, prompt };
   } else if (codegenPrompt.options.askQuestion === false) {
     console.log('Ask question is not enabled.');
     // Also there is no need to generate conversation summary
-  }
 
-  const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, codegenPrompt.options);
-  if (planningResult === StepResult.BREAK) {
+    const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, codegenPrompt.options);
+    if (planningResult === StepResult.BREAK) {
+      return { result: [], prompt };
+    }
+
+    // Execute the codegen summary step
+    const result = await executeStepCodegenSummary(
+      generateContentFn,
+      prompt,
+      getFunctionDefs(),
+      // messages,
+      codegenPrompt.options,
+      waitIfPaused,
+      generateImageFn,
+    );
+
+    return { result, prompt };
+  } else {
     return { result: [], prompt };
   }
-
-  // Execute the codegen summary step
-  const result = await executeStepCodegenSummary(
-    generateContentFn,
-    prompt,
-    getFunctionDefs(),
-    getSourceCodeRequest,
-    getSourceCodeResponse,
-    messages,
-    codegenPrompt.options,
-    waitIfPaused,
-    generateImageFn,
-  );
-
-  return { result, prompt };
 }
 
 /**

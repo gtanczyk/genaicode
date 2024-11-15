@@ -2,7 +2,6 @@ import { FunctionCall, PromptItem } from '../../../../ai-service/common.js';
 import { getSourceCodeTree, parseSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult, RemoveFilesFromContextArgs } from '../step-ask-question-types.js';
 
 export async function handleRemoveFilesFromContext({
@@ -33,7 +32,6 @@ export async function handleRemoveFilesFromContext({
   if (!removeFilesFromContextCall) {
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -51,7 +49,6 @@ export async function handleRemoveFilesFromContext({
 
   return {
     breakLoop: false,
-    stepResult: StepResult.CONTINUE,
     items: [
       {
         assistant: {

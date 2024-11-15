@@ -1,6 +1,5 @@
 import { askUserForInput } from '../../../../main/common/user-actions.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
-import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult, SendMessageWithImageArgs } from '../step-ask-question-types.js';
 import { executeStepGenerateImage } from '../../step-generate-image.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -17,7 +16,6 @@ export async function handleSendMessageWithImage({
     putSystemMessage('Image generation is not enabled. Please enable it using --imagen parameter.');
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -44,7 +42,6 @@ export async function handleSendMessageWithImage({
   if (!sendMessageWithImageCall) {
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -55,7 +52,6 @@ export async function handleSendMessageWithImage({
     putSystemMessage('Image generation request with prompt is required for sendMessageWithImage action.');
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -85,7 +81,6 @@ export async function handleSendMessageWithImage({
     putSystemMessage('Failed to generate image for the question.');
     return {
       breakLoop: true,
-      stepResult: StepResult.BREAK,
       items: [],
     };
   }
@@ -109,7 +104,6 @@ export async function handleSendMessageWithImage({
   // Return the conversation items with the generated image included in the context
   return {
     breakLoop: false,
-    stepResult: StepResult.CONTINUE,
     items: [
       {
         assistant: {
