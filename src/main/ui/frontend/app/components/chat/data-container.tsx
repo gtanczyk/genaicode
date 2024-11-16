@@ -1,4 +1,5 @@
 import React from 'react';
+import JsonView from '@uiw/react-json-view';
 import { DataContainer as StyledDataContainer } from './styles/data-container-styles.js';
 
 interface DataContainerProps {
@@ -6,9 +7,9 @@ interface DataContainerProps {
 }
 
 export const DataContainer: React.FC<DataContainerProps> = ({ data }) => {
-  const renderData = (data: unknown) => {
-    return JSON.stringify(data, null, 2);
-  };
-
-  return <StyledDataContainer>{renderData(data)}</StyledDataContainer>;
+  return (
+    <StyledDataContainer>
+      {typeof data === 'object' ? <JsonView value={data as object} /> : JSON.stringify(data, null, 2)}
+    </StyledDataContainer>
+  );
 };
