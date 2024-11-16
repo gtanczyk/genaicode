@@ -10,12 +10,13 @@ import {
   PromptItem,
 } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-// import { importantContext } from '../../main/config.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
 import { executeStepVerifyPatch } from './step-verify-patch.js';
 import { getPartialPromptTemplate } from '../static-prompts.js';
+import { executeStepEnsureContext } from './step-ensure-context.js';
+import { StepResult } from './steps-types.js';
 
 /**
  * Executes the codegen summary step.
@@ -25,7 +26,6 @@ export async function executeStepCodegenSummary(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
-  // messages: { contextSourceCode: (paths: string[]) => string },
   options: CodegenOptions,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
   generateImageFn?: GenerateImageFunction,
@@ -53,19 +53,11 @@ export async function executeStepCodegenSummary(
     assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
     assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
 
-    // if (!options.disableContextOptimization) {
-    //   console.log('Optimize with context paths.');
-    //   // Monkey patch the initial getSourceCode, do not send parts of source code that are consider irrelevant
-    //   getSourceCodeRequest.args = {
-    //     filePaths: [
-    //       ...codegenSummaryRequest.args.fileUpdates.map((file: { filePath: string }) => file.filePath),
-    //       ...codegenSummaryRequest.args.contextPaths,
-    //       ...(importantContext.files ?? []),
-    //     ],
-    //   };
-    //   getSourceCodeResponse.functionResponses!.find((item) => item.name === 'getSourceCode')!.content =
-    //     messages.contextSourceCode(getSourceCodeRequest.args?.filePaths as string[]);
-    // }
+    // Ensure all necessary files are in context
+    const contextResult = await executeStepEnsureContext(prompt, codegenSummaryRequest, options);
+    if (contextResult === StepResult.BREAK) {
+      return baseResult;
+    }
 
     // Store the first stage response entirely in conversation history
     prompt.push({ type: 'assistant', functionCalls: baseResult });

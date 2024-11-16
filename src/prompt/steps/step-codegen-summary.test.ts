@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepCodegenSummary } from './step-codegen-summary.js';
 import { FunctionCall, PromptItem, FunctionDef } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
+import { getSourceCode } from '../../files/read-files.js';
 
 vi.mock('../../files/find-files.js', () => ({
   refreshFiles: vi.fn(),
 }));
-
+vi.mock('../../files/read-files.js', () => ({
+  getSourceCode: vi.fn(),
+}));
 vi.mock('../../main/config.js', () => ({
   rootDir: '/test',
   rcConfig: {
@@ -37,14 +40,7 @@ describe('executeStepCodegenSummary', () => {
       },
     },
   ];
-  // const mockGetSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
-  // const mockGetSourceCodeResponse: PromptItem = {
-  //   type: 'user',
-  //   functionResponses: [{ name: 'getSourceCode', content: '{}' }],
-  // };
-  // const mockMessages = {
-  //   contextSourceCode: (paths: string[]) => JSON.stringify({ paths }),
-  // };
+
   const mockOptions: CodegenOptions = {
     aiService: 'vertex-ai',
     temperature: 0.7,
@@ -54,6 +50,8 @@ describe('executeStepCodegenSummary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWaitIfPaused.mockResolvedValue(undefined);
+
+    vi.mocked(getSourceCode).mockReturnValue({});
   });
 
   it('should handle successful codegen summary generation', async () => {
@@ -87,9 +85,6 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      // mockGetSourceCodeRequest,
-      // mockGetSourceCodeResponse,
-      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -122,9 +117,6 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      // mockGetSourceCodeRequest,
-      // mockGetSourceCodeResponse,
-      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -137,16 +129,7 @@ describe('executeStepCodegenSummary', () => {
     mockGenerateContentFn.mockRejectedValueOnce(new Error('Test error'));
 
     await expect(
-      executeStepCodegenSummary(
-        mockGenerateContentFn,
-        mockPrompt,
-        mockFunctionDefs,
-        // mockGetSourceCodeRequest,
-        // mockGetSourceCodeResponse,
-        // mockMessages,
-        mockOptions,
-        mockWaitIfPaused,
-      ),
+      executeStepCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions, mockWaitIfPaused),
     ).rejects.toThrow('Test error');
   });
 
@@ -162,9 +145,6 @@ describe('executeStepCodegenSummary', () => {
       mockGenerateContentFn,
       mockPrompt,
       mockFunctionDefs,
-      // mockGetSourceCodeRequest,
-      // mockGetSourceCodeResponse,
-      // mockMessages,
       mockOptions,
       mockWaitIfPaused,
     );
@@ -195,16 +175,7 @@ describe('executeStepCodegenSummary', () => {
         { name: 'updateFile', args: { filePath: '/test/file2.ts', newContent: 'test', explanation: 'test' } },
       ]);
 
-    await executeStepCodegenSummary(
-      mockGenerateContentFn,
-      mockPrompt,
-      mockFunctionDefs,
-      // mockGetSourceCodeRequest,
-      // mockGetSourceCodeResponse,
-      // mockMessages,
-      mockOptions,
-      mockWaitIfPaused,
-    );
+    await executeStepCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions, mockWaitIfPaused);
 
     expect(mockWaitIfPaused).toHaveBeenCalledTimes(2);
   });
