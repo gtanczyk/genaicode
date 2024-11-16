@@ -177,6 +177,7 @@ async function executePromptService(
 
     return { result, prompt };
   } else {
+    console.log('Code generation skipped altogether.');
     return { result: [], prompt };
   }
 }

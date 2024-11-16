@@ -48,7 +48,7 @@ describe('read-files', () => {
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
-      const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai' });
+      const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai', askQuestion: false });
 
       expect(result).toEqual({
         '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
@@ -64,7 +64,10 @@ describe('read-files', () => {
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
-      const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai', contentMask: 'subfolder' });
+      const result = getSourceCode(
+        { taskFile: undefined },
+        { aiService: 'vertex-ai', contentMask: 'subfolder', askQuestion: false },
+      );
 
       expect(result).toEqual({
         '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
@@ -81,7 +84,10 @@ describe('read-files', () => {
       vi.mocked(fs).readFileSync.mockImplementation((file) => `Content of ${file}`);
       rcConfig.rootDir = '/home/project';
 
-      const result = getSourceCode({ taskFile: '/home/project/task.md' }, { aiService: 'vertex-ai' });
+      const result = getSourceCode(
+        { taskFile: '/home/project/task.md' },
+        { aiService: 'vertex-ai', askQuestion: false },
+      );
 
       expect(result).toEqual({
         '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },

@@ -40,6 +40,7 @@ describe('executeStepContextOptimization', () => {
   const mockGenerateContentFn = vi.fn();
   const mockOptions: CodegenOptions = {
     aiService: 'vertex-ai',
+    askQuestion: false,
   };
 
   beforeEach(() => {

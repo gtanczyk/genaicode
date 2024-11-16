@@ -44,6 +44,7 @@ describe('getCodeGenPrompt', () => {
       temperature: 0.7,
       cheap: false,
       explicitPrompt: 'testx',
+      askQuestion: false,
     }).prompt;
 
     expect(prompt).toContain('testx');
@@ -63,7 +64,7 @@ describe('getLintFixPrompt', () => {
     const stdout = 'Fixed 2 errors';
     const stderr = '';
 
-    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
+    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai', askQuestion: false }, stdout, stderr);
 
     expect(prompt).toContain('The following lint errors were encountered after the initial code generation:');
     expect(prompt).toContain(`Lint command: ${command}`);
@@ -78,7 +79,7 @@ describe('getLintFixPrompt', () => {
     const stdout = '';
     const stderr = 'Error: Unable to resolve path';
 
-    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
+    const prompt = getLintFixPrompt(command, { aiService: 'vertex-ai', askQuestion: false }, stdout, stderr);
 
     expect(prompt).toContain('Lint command stderr:');
     expect(prompt).toContain(stderr);
@@ -89,7 +90,7 @@ describe('getLintFixPrompt', () => {
     const stdout = 'Fixed 1 error';
     const stderr = '';
 
-    getLintFixPrompt(command, { aiService: 'vertex-ai' }, stdout, stderr);
+    getLintFixPrompt(command, { aiService: 'vertex-ai', askQuestion: false }, stdout, stderr);
 
     expect(limits.verifyCodegenPromptLimit).toHaveBeenCalledWith(expect.any(String));
   });
@@ -101,7 +102,7 @@ describe('getLintFixPrompt', () => {
     const stdout = 'Fixed 1 error';
     const stderr = '';
 
-    getLintFixPrompt(command, { aiService: 'vertex-ai', verbose: true }, stdout, stderr);
+    getLintFixPrompt(command, { aiService: 'vertex-ai', verbose: true, askQuestion: false }, stdout, stderr);
 
     expect(consoleSpy).toHaveBeenCalledWith('Lint fix prompt:');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('The following lint errors were encountered'));

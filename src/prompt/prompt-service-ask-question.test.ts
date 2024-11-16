@@ -155,6 +155,7 @@ describe('promptService with askQuestion', () => {
         explicitPrompt: 'testx',
         disableContextOptimization: true,
         interactive: true,
+        askQuestion: true,
       }),
     );
 
@@ -188,6 +189,7 @@ describe('promptService with askQuestion', () => {
         explicitPrompt: 'testx',
         disableContextOptimization: true,
         interactive: true,
+        askQuestion: true,
       }),
     );
 

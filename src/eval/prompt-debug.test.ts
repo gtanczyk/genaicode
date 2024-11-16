@@ -22,6 +22,7 @@ describe('prompt-debug', () => {
     const geminiArgs = (
       await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, true, {
         aiService: 'vertex-ai',
+        askQuestion: false,
       })
     )[0].args;
 
@@ -37,6 +38,7 @@ describe('prompt-debug', () => {
         {
           aiService: 'chat-gpt',
           disableCache: false,
+          askQuestion: false,
         },
       ],
       result,
@@ -57,6 +59,7 @@ describe('prompt-debug', () => {
       {
         aiService: 'anthropic',
         disableCache: false,
+        askQuestion: false,
       },
     ] as const;
     let result = await generateContentClaude(...req);
@@ -69,6 +72,7 @@ describe('prompt-debug', () => {
     const geminiArgs = (
       await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, false, {
         aiService: 'vertex-ai',
+        askQuestion: false,
       })
     )[0].args;
 
@@ -87,6 +91,7 @@ describe('prompt-debug', () => {
       await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false, {
         aiService: 'anthropic',
         disableCache: false,
+        askQuestion: false,
       })
     )[0].args;
 

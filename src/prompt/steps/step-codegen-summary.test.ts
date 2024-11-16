@@ -48,6 +48,7 @@ describe('executeStepCodegenSummary', () => {
   const mockOptions: CodegenOptions = {
     aiService: 'vertex-ai',
     temperature: 0.7,
+    askQuestion: false,
   };
 
   beforeEach(() => {

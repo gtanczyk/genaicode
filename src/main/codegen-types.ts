@@ -44,7 +44,7 @@ export interface CodegenOptions {
   disableInitialLint?: boolean;
   contentMask?: string;
   ignorePatterns?: string[];
-  askQuestion?: boolean;
+  askQuestion: boolean;
   interactive?: boolean;
   ui?: boolean;
   uiPort?: number;

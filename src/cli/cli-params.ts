@@ -26,9 +26,9 @@ export const imagen = params.find((param) => param.startsWith('--imagen'))?.spli
   | 'vertex-ai'
   | undefined;
 export const cheap = params.includes('--cheap');
-export const askQuestion = !params.includes('--disable-ask-question'); // Default enabled
 export const interactive = params.includes('--interactive');
 export const ui = params.includes('--ui');
+export const askQuestion = (interactive || ui) && !params.includes('--disable-ask-question'); // Default enabled in interactive/ui
 export const disableConversationSummary = params.includes('--disable-conversation-summary');
 
 // Add support for --help option

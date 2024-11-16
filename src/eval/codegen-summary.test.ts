@@ -25,7 +25,7 @@ describe('codegen-summary', () => {
         // System prompt
         {
           type: 'systemPrompt',
-          systemPrompt: getSystemPrompt({ aiService: 'anthropic' }),
+          systemPrompt: getSystemPrompt({ aiService: 'anthropic', askQuestion: false }),
         },
         // Initial greeting
         { type: 'user', text: INITIAL_GREETING },
@@ -83,6 +83,7 @@ describe('codegen-summary', () => {
         {
           aiService: 'anthropic',
           disableCache: false,
+          askQuestion: false,
         },
       );
 
@@ -102,6 +103,7 @@ describe('codegen-summary', () => {
       claudeResponse = await generateContentClaude(prompt, getFunctionDefs(), 'codegenSummary', temperature, true, {
         aiService: 'anthropic',
         disableCache: false,
+        askQuestion: false,
       });
 
       // Get the codegenSummary from response

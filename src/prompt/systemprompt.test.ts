@@ -30,7 +30,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('generates correct system prompt', () => {
-    const systemPrompt = getSystemPrompt({ aiService: 'vertex-ai' });
+    const systemPrompt = getSystemPrompt({ aiService: 'vertex-ai', askQuestion: false });
 
     expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
     expect(systemPrompt).toContain('You should parse my application source code');
@@ -43,7 +43,7 @@ describe('getSystemPrompt', () => {
   it('verifies system prompt limit', () => {
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    getSystemPrompt({ aiService: 'vertex-ai', verbose: true });
+    getSystemPrompt({ aiService: 'vertex-ai', verbose: true, askQuestion: false });
 
     expect(consoleSpy).toHaveBeenCalledWith('System prompt:');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('You are GenAIcode, a code generation assistant'));

@@ -30,7 +30,7 @@ vi.mock('../../cli/cli-options');
 vi.mock('./codegen-worker.js');
 
 describe('runInteractiveMode', () => {
-  const mockOptions = { aiService: 'vertex-ai' } as const;
+  const mockOptions = { aiService: 'vertex-ai', askQuestion: false } as const;
 
   beforeEach(() => {
     vi.resetAllMocks();
