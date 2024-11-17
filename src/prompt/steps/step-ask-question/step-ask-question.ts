@@ -73,6 +73,10 @@ export async function executeStepAskQuestion(
             generateImageFn,
             waitIfPaused,
           });
+
+          putUserMessage(result.items.slice(-1)[0].user.text);
+
+          prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
         }
 
         if (result.breakLoop) {
