@@ -15,7 +15,11 @@ export const DataContainer: React.FC<DataContainerProps> = ({ data }) => {
   return (
     <StyledDataContainer>
       {typeof data === 'object' ? (
-        <JsonView value={data as object} style={theme.name === 'dark' ? darkTheme : lightTheme} />
+        <JsonView
+          value={data as object}
+          shortenTextAfterLength={0}
+          style={theme.name === 'dark' ? darkTheme : lightTheme}
+        />
       ) : (
         JSON.stringify(data, null, 2)
       )}
