@@ -10,7 +10,37 @@ import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { getSummary } from '../prompt/steps/step-summarization.js';
 
-export type SourceCodeMap = Record<string, { content: string | null } | { summary: string }>;
+/**
+ * Represents a dependency in the source code
+ */
+export interface DependencyInfo {
+  /** Path of the dependeny */
+  path: string;
+  /** Type of dependency */
+  type: 'local' | 'external';
+}
+
+/**
+ * Represents file content with optional dependencies
+ */
+export interface FileContent {
+  /** The actual content of the file */
+  content: string | null;
+  /** Optional list of dependencies */
+  dependencies?: DependencyInfo[];
+}
+
+/**
+ * Represents a file summary with optional dependencies
+ */
+export interface FileSummary {
+  /** Summary of the file content */
+  summary: string;
+  /** Optional list of dependencies */
+  dependencies?: DependencyInfo[];
+}
+
+export type SourceCodeMap = Record<string, FileContent | FileSummary>;
 
 type ImageAssetsMap = Record<
   string,
@@ -39,19 +69,29 @@ function readSourceFiles(
     }
 
     if (!filterPaths || filterPaths.includes(file) || importantFiles.has(file)) {
+      const summary = getSummary(file);
+
       // Always include important files
       if (importantFiles.has(file)) {
-        sourceCode[file] = { content: fs.readFileSync(file, 'utf-8') };
+        const content = fs.readFileSync(file, 'utf-8');
+        sourceCode[file] = {
+          content,
+          dependencies: summary?.dependencies,
+        };
         continue;
       }
-
-      const summary = getSummary(file);
 
       // Apply content mask filter if it's set
       if (!filterPaths && contentMask && !forceAll) {
         const relativePath = path.relative(rcConfig.rootDir, file);
         if (!relativePath.startsWith(contentMask)) {
-          sourceCode[file] = summary ? { ...summary } : { content: null };
+          sourceCode[file] = summary
+            ? {
+                summary: summary.summary,
+                ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
+              }
+            : { content: null };
+
           continue;
         }
       }
@@ -59,11 +99,17 @@ function readSourceFiles(
       if (!forceAll) {
         sourceCode[file] =
           !ignorePatterns?.some((pattern) => globRegex(pattern).test(file)) && summary
-            ? { ...summary }
+            ? {
+                summary: summary.summary,
+                ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
+              }
             : { content: null };
       } else {
         const content = fs.readFileSync(file, 'utf-8');
-        sourceCode[file] = { content };
+        sourceCode[file] = {
+          content,
+          dependencies: summary?.dependencies,
+        };
       }
     }
   }

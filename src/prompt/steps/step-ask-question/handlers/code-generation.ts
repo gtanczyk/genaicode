@@ -80,7 +80,7 @@ export async function handleCodeGeneration({
         },
         user: {
           type: 'user',
-          text: confirmed.answer || 'Code changes generated. Applying changes.',
+          text: confirmed.answer || 'Apply code changes.',
         },
       },
     ],

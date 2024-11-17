@@ -33,7 +33,7 @@ describe('read-files', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(cliParams).contentMask = undefined;
-    vi.mocked(getSummary).mockImplementation((file) => ({ summary: `Summary of ${file}` }));
+    vi.mocked(getSummary).mockImplementation((file) => ({ summary: `Summary of ${file}`, dependencies: [] }));
   });
 
   afterEach(() => {

@@ -1,6 +1,6 @@
 import { GenerateContentFunction, GenerateContentArgs, PromptItem, FunctionCall } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { SourceCodeMap } from '../../files/read-files.js';
+import { SourceCodeMap, DependencyInfo } from '../../files/read-files.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { SummaryInfo, SummaryCache } from './steps-types.js';
 import { md5, readCache, writeCache } from '../../files/cache-file.js';
@@ -10,19 +10,44 @@ import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v6'; // Incremented version for dependency support
 
-const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer. 
-Fit as much information as possible given the limit, the summary must be understandable for LLM, does not need to be human readable.
-Include as much key information as possible, even if readability and style are sacrificed.
-Do not include information if they can be already derived from the file name or file path.
-Focus on the main purpose or functionality. 
-Provide your response using the \`setSummaries\` function.
-The length of summary should be max ${MAX_SUMMARY_TOKENS} tokens.
+const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer while also detecting dependencies. 
+
+For the summary:
+- Fit as much information as possible given the limit
+- The summary must be understandable for LLM, does not need to be human readable
+- Include as much key information as possible, even if readability and style are sacrificed
+- Do not include information if they can be already derived from the file name or file path
+- Focus on the main purpose or functionality
+- The length of summary should be max ${MAX_SUMMARY_TOKENS} tokens
+
+For dependencies:
+- Identify all import and require statements in the code
+- Detect both local (relative) and external (package) dependencies
+- For local dependencies, include the full resolved path
+- For external dependencies, include the package name
+- Mark dependencies as either 'local' or 'external'
+- Include the original import path as provided in the code
+
+Provide your response using the \`setSummaries\` function with the following structure:
+{
+  "filePath": "absolute/path/to/file",
+  "summary": "concise summary",
+  "dependencies": [
+    {
+      "path": "resolved/path/or/package",
+      "type": "local|external",
+    }
+  ]
+}
+
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
-const summaryCache: SummaryCache = readCache('summaries', { _version: CACHE_VERSION } as SummaryCache);
+const summaryCache: SummaryCache = readCache<SummaryCache>('summaries', {
+  _version: CACHE_VERSION,
+} as SummaryCache);
 
 export async function summarizeSourceCode(
   generateContentFn: GenerateContentFunction,
@@ -32,6 +57,7 @@ export async function summarizeSourceCode(
   const items = Object.entries(sourceCode).map(([path, file]) => ({
     path,
     content: 'content' in file ? file.content : null,
+    dependencies: 'dependencies' in file ? file.dependencies : undefined,
   }));
 
   await summarizeBatch(generateContentFn, items, options);
@@ -39,7 +65,7 @@ export async function summarizeSourceCode(
 
 async function summarizeBatch(
   generateContentFn: GenerateContentFunction,
-  items: { path: string; content: string | null }[],
+  items: { path: string; content: string | null; dependencies?: DependencyInfo[] }[],
   options: CodegenOptions,
 ): Promise<void> {
   const uncachedItems = items.filter(
@@ -80,11 +106,13 @@ async function summarizeBatch(
     const batchSummaries = parseSummarizationResult(result);
 
     batchSummaries.forEach((file) => {
-      const content = items.find((item) => item.path === file.filePath)?.content ?? '';
+      const item = items.find((item) => item.path === file.filePath);
+      const content = item?.content ?? '';
       summaryCache[file.filePath] = {
         tokenCount: estimateTokenCount(content),
         summary: file.summary,
         checksum: md5(content),
+        dependencies: file.dependencies ?? item?.dependencies ?? [],
       };
     });
   }
@@ -96,7 +124,7 @@ async function summarizeBatch(
   putSystemMessage('Summarization of the source code is finished.');
 }
 
-function parseSummarizationResult(result: FunctionCall[]): SummaryInfo[] {
+function parseSummarizationResult(result: FunctionCall[]): (SummaryInfo & { dependencies?: DependencyInfo[] })[] {
   if (!Array.isArray(result) || result.length === 0 || !result[0].args || !Array.isArray(result[0].args.summaries)) {
     throw new Error('Invalid summarization result');
   }
@@ -105,5 +133,10 @@ function parseSummarizationResult(result: FunctionCall[]): SummaryInfo[] {
 
 export function getSummary(filePath: string) {
   const summary = summaryCache[filePath];
-  return summary ? { summary: summary.summary } : undefined;
+  return summary
+    ? {
+        summary: summary.summary,
+        ...(summary.dependencies && { dependencies: summary.dependencies }),
+      }
+    : undefined;
 }

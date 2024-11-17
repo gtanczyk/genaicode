@@ -12,69 +12,56 @@ import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../fi
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
-1. **Relevance and Token Cost Evaluation**:
+1. **Relevance and Dependency Analysis**:
    - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
      - **0.0 – 0.3 (Not Relevant)**: The file has no apparent connection to the user's prompt.
      - **0.3 – 0.7 (Somewhat Relevant)**: The file has minor or indirect relevance to the prompt.
      - **0.7 – 0.9 (Moderately Relevant)**: The file is related and could contribute to addressing the prompt.
      - **0.9 – 1.0 (Highly Relevant)**: The file is directly related and is important for addressing the prompt.
+   
    - **Evaluation Criteria**:
-     - **Keyword Matching**: Does the file contain keywords or topics mentioned in the user's prompt?
-     - **Functional Alignment**: Does the file implement features or functionalities requested by the user?
-     - **Dependency**: Is the file a dependency of other relevant modules?
-   - Prioritize files with higher relevance scores, but be mindful of the total token count.
-   - Consider the cost of adding more tokens; prioritize files where the relevance justifies the token usage.
+     - **Direct Relevance**: Does the file directly implement features mentioned in the prompt?
+     - **Dependency Chain**: Is the file part of a dependency chain of relevant files?
+     - **Keyword Matching**: Does the file contain keywords or topics from the prompt?
+     - **Dependency Importance**: Is the file a critical dependency for other relevant files?
 
-2. **Token-Aware Optimization**:
-   - Aim to optimize the context: less relevant files with higher token count should not be added to the context
-   - Do not add irrelevant files to context
-   - The goal is to have as much as possible of high relevancy files in the context while keeping the total token count reasonably low
+2. **Dependency-Aware Optimization**:
+   - Consider both direct and indirect dependencies
+   - Prioritize files that are:
+     - Directly relevant to the prompt
+     - Dependencies of highly relevant files
+     - Part of important dependency chains
+   - Handle dependency chains intelligently:
+     - Include critical dependencies even if they seem less relevant
+     - Consider the full dependency tree when evaluating relevance
+     - Avoid breaking dependency chains of important files
 
-3. **Function Call Response**:
-   - Respond by **calling the \`optimizeContext\` function**.
-   - The function should have the following parameters:
-     - \`"userPrompt"\`: The user's original prompt.
-     - \`"optimizedContext"\`: An array of objects, each containing:
-       - \`"filePath"\`: The absolute file path.
-       - \`"relevance"\`: The calculated relevance score (0 to 1).
+3. **Token-Aware Optimization**:
+   - Balance relevance against token usage
+   - Consider the combined token cost of dependency chains
+   - Prioritize files where the relevance justifies the token usage
+   - Consider the token cost of including entire dependency chains
+
+4. **Function Call Response**:
+   - Call the \`optimizeContext\` function with:
+     - \`"userPrompt"\`: The original prompt
+     - \`"optimizedContext"\`: Array of objects containing:
+       - \`"filePath"\`: Absolute file path
+       - \`"relevance"\`: Calculated relevance score (0 to 1)
 
 **Important Guidelines**:
-- **Only include files that are mentioned in \`getSourceCode\` function response**. **Do not add any other files**.
-- **Do not infer or guess additional files**.
-- **Evaluate each file individually** based on the criteria above.
-- **Avoid assumptions or hallucinations**; stick strictly to the provided data.
-- Ensure the **function call is properly formatted** and **valid**.
-- **Provide the response in valid JSON format**.
-- **Do not include any extra text** outside of the function call.
-- **Ensure the JSON is properly formatted** and **does not contain strings representing JSON** (i.e., do not stringify the JSON, do not wrap strings into quotes).
-- **Do not return files which are not relevant to the user prompt. Use relevance rating to judge that**
-- **Formulate full file paths correctly using directoryPath and filePath from the \`getSourceCode\` function response**.
-
-**Example of valid Function Call**:
-
-\`\`\`json
-{
-  "function": "optimizeContext",
-  "arguments": {
-    "userPrompt": "Please review the helper module.",
-    "optimizedContext": [
-      {
-        "path": "/home/src/utils/helpers.js",
-        "relevance": 0.9,
-      },
-      {
-        "path": "/home/src/utils/math.js",
-        "relevance": 0.4,
-      }
-    ]
-  }
-}
-\`\`\`
+- **Only include files from \`getSourceCode\` response**
+- **Do not guess or infer additional files**
+- **Evaluate each file individually and as part of dependency chains**
+- **Consider both direct and indirect dependencies**
+- **Ensure proper JSON formatting**
+- **Include full file paths**
+- **Filter out low-relevance files (< 0.5)**
+- **Maintain dependency chain integrity**
 
 Now could you please analyze the source code and return me the optimized context?
 `;
 
-// const BATCH_SIZE = 100;
 const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
@@ -147,7 +134,6 @@ export async function executeStepContextOptimization(
     prompt.push(
       {
         type: 'assistant',
-        // we may want to put text question here
         functionCalls: [
           {
             name: 'requestFilesContent',
@@ -165,7 +151,6 @@ export async function executeStepContextOptimization(
       },
       {
         type: 'user',
-        // we may want to put text answer here
         functionResponses: [
           {
             name: 'requestFilesContent',
@@ -203,7 +188,16 @@ function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionC
 
   let totalTokens = 0;
   const result: [filePath: string, relevance: number][] = [];
+  const relevantFiles = new Set<string>();
 
+  // First pass: collect initially relevant files
+  for (const item of optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]) {
+    if (item.relevance >= 0.5) {
+      relevantFiles.add(item.filePath);
+    }
+  }
+
+  // Second pass: calculate final relevance including dependency weights
   for (const item of (optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]).sort((a, b) =>
     a.relevance > b.relevance ? -1 : 1,
   )) {
@@ -212,14 +206,29 @@ function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionC
       break;
     }
 
+    // Calculate dependency weight (0-0.3) and add to base relevance
+    const depWeight = calculateDependencyWeight(filePath, fullSourceCode, relevantFiles);
+    const finalRelevance = Math.min(1, relevance + depWeight);
+
     const content =
       (fullSourceCode[filePath] && 'content' in fullSourceCode[filePath]
         ? fullSourceCode[filePath]?.content
         : undefined) ?? '';
-    totalTokens += estimateTokenCount(content);
-    result.push([item.filePath, item.relevance]);
 
-    if (totalTokens > MAX_TOTAL_TOKENS && relevance < 0.7) {
+    // Get all dependencies for token counting
+    const allDeps = getAllDependencies(filePath, fullSourceCode);
+    const depsContent = Array.from(allDeps)
+      .map(
+        (dep) =>
+          (fullSourceCode[dep] && 'content' in fullSourceCode[dep] ? fullSourceCode[dep]?.content : undefined) ?? '',
+      )
+      .join('');
+
+    totalTokens += estimateTokenCount(content + depsContent);
+    result.push([item.filePath, finalRelevance]);
+
+    // Break if we exceed token limit and the file isn't highly relevant
+    if (totalTokens > MAX_TOTAL_TOKENS && finalRelevance < 0.7) {
       break;
     }
   }
@@ -236,18 +245,35 @@ function optimizeSourceCode(
   let contentTokenCount = 0;
   let summaryTokenCount = 0;
 
+  // Create a set of all required files (including dependencies)
+  const requiredFiles = new Set<string>();
+  for (const [path] of optimizedContext) {
+    requiredFiles.add(path);
+    // Add all dependencies
+    const deps = getAllDependencies(path, fullSourceCode);
+    deps.forEach((dep) => requiredFiles.add(dep));
+  }
+
   for (const [path] of Object.entries(fullSourceCode)) {
-    const isContext = optimizedContext.filter((item) => item[0] === path).length > 0;
+    const isRequired = requiredFiles.has(path);
     const summary = getSummary(path);
     const content =
       (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
-    if (isContext && content && !(sourceCode[path] && 'content' in sourceCode[path])) {
+    const dependencies =
+      fullSourceCode[path] && 'dependencies' in fullSourceCode[path] ? fullSourceCode[path]?.dependencies : undefined;
+
+    if (isRequired && content && !(sourceCode[path] && 'content' in sourceCode[path])) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
         content,
+        ...(dependencies && { dependencies }),
       };
-    } else {
-      summaryTokenCount += estimateTokenCount(summary?.summary ?? '');
+    } else if (summary) {
+      summaryTokenCount += estimateTokenCount(summary.summary);
+      optimizedSourceCode[path] = {
+        ...summary,
+        ...(dependencies && { dependencies }),
+      };
     }
   }
 
@@ -274,4 +300,65 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[]) {
       }
     }
   }
+}
+
+/**
+ * Calculate dependency chain weight for a file
+ * Returns a value between 0 and 0.3 based on dependency importance
+ */
+function calculateDependencyWeight(
+  filePath: string,
+  sourceCode: SourceCodeMap,
+  relevantFiles: Set<string>,
+  visited = new Set<string>(),
+): number {
+  if (visited.has(filePath)) {
+    return 0; // Prevent circular dependency loops
+  }
+  visited.add(filePath);
+
+  const fileData = sourceCode[filePath];
+  if (!fileData || !('dependencies' in fileData) || !fileData.dependencies) {
+    return 0;
+  }
+
+  let weight = 0;
+  for (const dep of fileData.dependencies) {
+    if (dep.type === 'local' && relevantFiles.has(dep.path)) {
+      // Direct dependency of a relevant file gets higher weight
+      weight = Math.max(weight, 0.2);
+      // Recursively check dependencies with diminishing weight
+      const depWeight = calculateDependencyWeight(dep.path, sourceCode, relevantFiles, visited) * 0.7;
+      weight = Math.max(weight, depWeight);
+    }
+  }
+
+  return weight;
+}
+
+/**
+ * Get all dependencies for a file, including transitive ones
+ */
+function getAllDependencies(filePath: string, sourceCode: SourceCodeMap, visited = new Set<string>()): Set<string> {
+  if (visited.has(filePath)) {
+    return new Set(); // Prevent circular dependency loops
+  }
+  visited.add(filePath);
+
+  const deps = new Set<string>();
+  const fileData = sourceCode[filePath];
+  if (!fileData || !('dependencies' in fileData) || !fileData.dependencies) {
+    return deps;
+  }
+
+  for (const dep of fileData.dependencies) {
+    if (dep.type === 'local') {
+      deps.add(dep.path);
+      // Add transitive dependencies
+      const transitiveDeps = getAllDependencies(dep.path, sourceCode, visited);
+      transitiveDeps.forEach((d) => deps.add(d));
+    }
+  }
+
+  return deps;
 }
