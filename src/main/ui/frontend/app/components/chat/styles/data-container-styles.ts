@@ -9,4 +9,8 @@ export const DataContainer = styled.pre`
   overflow-x: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
+
+  .w-json-view-container {
+    background: none !important;
+  }
 `;
