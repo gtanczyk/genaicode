@@ -34,7 +34,7 @@ export async function executeStepEnsureContext(
     }
 
     // Get source code for missing paths
-    putSystemMessage(`Ensuring context completeness. Adding ${missingPaths.length} missing files.`);
+    putSystemMessage(`Ensuring context completeness. Adding ${missingPaths.length} missing files.`, { missingPaths });
     const sourceCode = getSourceCode({ filterPaths: missingPaths }, options);
 
     // Append getSourceCode function call/response to the prompt
