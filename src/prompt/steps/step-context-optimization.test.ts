@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepContextOptimization } from './step-context-optimization';
-import { getSourceCode } from '../../files/read-files';
+import { FileContent, getSourceCode } from '../../files/read-files';
 import { SourceCodeTree } from '../../files/source-code-tree';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
@@ -24,7 +24,7 @@ vi.mock('../token-estimator', () => ({
   }),
 }));
 vi.mock('./step-summarization', () => ({
-  getSummary: vi.fn().mockReturnValue({ summary: 'Test summary' }),
+  getSummary: vi.fn().mockReturnValue({ summary: 'Test summary', dependencies: [{ path: 'test-dep', type: 'local' }] }),
 }));
 vi.mock('../../main/config.js', () => ({
   rootDir: '/test',
@@ -145,6 +145,10 @@ describe('executeStepContextOptimization', () => {
   });
 
   describe('Multiple getSourceCode responses handling', () => {
+    // This test verifies that when clearing previous getSourceCode responses:
+    // 1. Directory structure is preserved
+    // 2. File content is set to null
+    // 3. The overall structure of the conversation remains intact
     it('should clear previous getSourceCode responses while preserving structure', async () => {
       const mockSourceCode = {
         '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
@@ -197,8 +201,14 @@ describe('executeStepContextOptimization', () => {
 
       expect(result).toBe(StepResult.CONTINUE);
 
-      // Verify that previous responses were cleared
-      expect(JSON.parse(prompt[0].functionResponses![0].content!)).toEqual({});
+      // Verify that previous responses maintain structure but clear content
+      const expectedStructure = {
+        '/test': {
+          'old-file.ts': { content: null },
+        },
+      };
+      expect(JSON.parse(prompt[0].functionResponses![0].content!)).toEqual(expectedStructure);
+
       // Verify that structure was preserved
       expect(prompt[0].type).toBe('user');
       expect(prompt[0].functionResponses![0].name).toBe('getSourceCode');
@@ -207,6 +217,10 @@ describe('executeStepContextOptimization', () => {
       expect(prompt[1].text).toBe('Some response');
     });
 
+    // This test verifies that when handling multiple responses:
+    // 1. Each response maintains its directory structure
+    // 2. Content is cleared (set to null) for all previous responses
+    // 3. The latest response remains unchanged
     it('should handle multiple responses with different content', async () => {
       const mockSourceCode = {
         '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
@@ -268,11 +282,16 @@ describe('executeStepContextOptimization', () => {
       const result = await executeStepContextOptimization(mockGenerateContentFn, prompt, mockOptions);
 
       expect(result).toBe(StepResult.CONTINUE);
-      // Verify that all previous responses were cleared
+      // Verify that previous responses maintain structure but clear content
       prompt.slice(0, -1).forEach((item) => {
         if (item.type === 'user' && item.functionResponses) {
           const response = item.functionResponses.find((r) => r.name === 'getSourceCode');
-          expect(JSON.parse(response!.content!)).toEqual({});
+          const parsedContent = JSON.parse(response!.content!);
+          // Check that structure is preserved but content is null
+          expect(parsedContent).toHaveProperty('/test');
+          Object.values(parsedContent['/test']).forEach((file) => {
+            expect((file as FileContent).content).toBe(null);
+          });
         }
       });
     });

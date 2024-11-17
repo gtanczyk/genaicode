@@ -1,7 +1,7 @@
 import { GenerateContentFunction, PromptItem, FunctionCall, GenerateContentArgs } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
-import { getSourceCode, SourceCodeMap } from '../../files/read-files.js';
+import { FileContent, getSourceCode, SourceCodeMap } from '../../files/read-files.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
@@ -104,7 +104,7 @@ export async function executeStepContextOptimization(
     let result = await generateContentFn(...request);
     result = await validateAndRecoverSingleResult(request, result, generateContentFn);
 
-    const optimizedContext = parseOptimizationResult(fullSourceCode, result);
+    const [optimizedContext, irrelevantFiles] = parseOptimizationResult(fullSourceCode, result);
     if (!optimizedContext) {
       putSystemMessage(`Warning: Context optimization failed. We need to abort.`);
       return StepResult.BREAK;
@@ -123,13 +123,14 @@ export async function executeStepContextOptimization(
       sourceCode,
       fullSourceCode,
       Array.from(optimizedContext),
+      irrelevantFiles,
     );
 
     const tokensAfter = estimateTokenCount(JSON.stringify(optimizedSourceCode));
     const percentageReduced = ((tokensBefore - tokensAfter) / tokensBefore) * 100;
 
     // Clear previous getSourceCode responses
-    clearPreviousSourceCodeResponses(prompt);
+    clearPreviousSourceCodeResponses(prompt, irrelevantFiles);
 
     prompt.push(
       {
@@ -180,20 +181,33 @@ export async function executeStepContextOptimization(
   }
 }
 
-function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionCall[]) {
+function parseOptimizationResult(
+  fullSourceCode: SourceCodeMap,
+  calls: FunctionCall[],
+): [[string, number][], Set<string>] {
   const optimizeCall = calls.find((call) => call.name === 'optimizeContext');
   if (!optimizeCall || !optimizeCall.args || !optimizeCall.args.optimizedContext) {
-    return null;
+    return [[], new Set()];
   }
 
   let totalTokens = 0;
   const result: [filePath: string, relevance: number][] = [];
   const relevantFiles = new Set<string>();
+  const irrelevantFiles = new Set<string>();
 
-  // First pass: collect initially relevant files
+  // First pass: collect initially relevant files and track irrelevant ones
   for (const item of optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]) {
     if (item.relevance >= 0.5) {
       relevantFiles.add(item.filePath);
+    } else {
+      irrelevantFiles.add(item.filePath);
+    }
+  }
+
+  // Add files which are in full source and are not in the optimized context
+  for (const filePath in fullSourceCode) {
+    if (!relevantFiles.has(filePath) && !irrelevantFiles.has(filePath)) {
+      irrelevantFiles.add(filePath);
     }
   }
 
@@ -233,13 +247,14 @@ function parseOptimizationResult(fullSourceCode: SourceCodeMap, calls: FunctionC
     }
   }
 
-  return result;
+  return [result, irrelevantFiles];
 }
 
 function optimizeSourceCode(
   sourceCode: SourceCodeMap,
   fullSourceCode: SourceCodeMap,
   optimizedContext: [filePath: string, relevance: number][],
+  irrelevantFiles: Set<string>,
 ): [optimizedSourceCode: SourceCodeMap, contentTokenCount: number, summaryTokenCount: number] {
   const optimizedSourceCode: SourceCodeMap = {};
   let contentTokenCount = 0;
@@ -256,6 +271,7 @@ function optimizeSourceCode(
 
   for (const [path] of Object.entries(fullSourceCode)) {
     const isRequired = requiredFiles.has(path);
+    const isIrrelevant = irrelevantFiles.has(path);
     const summary = getSummary(path);
     const content =
       (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
@@ -266,9 +282,9 @@ function optimizeSourceCode(
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
         content,
-        ...(dependencies && { dependencies }),
+        ...(dependencies && !isIrrelevant && { dependencies }),
       };
-    } else if (summary) {
+    } else if (summary && !isIrrelevant) {
       summaryTokenCount += estimateTokenCount(summary.summary);
       optimizedSourceCode[path] = {
         ...summary,
@@ -283,7 +299,7 @@ function optimizeSourceCode(
 /**
  * Helper function to clear content from previous getSourceCode responses while preserving the conversation structure
  */
-function clearPreviousSourceCodeResponses(prompt: PromptItem[]) {
+function clearPreviousSourceCodeResponses(prompt: PromptItem[], irrelevantFiles: Set<string>) {
   for (const item of prompt) {
     if (item.type === 'user' && item.functionResponses) {
       for (const response of item.functionResponses) {
@@ -292,7 +308,19 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[]) {
           const sourceCode = parseSourceCodeTree(JSON.parse(response.content));
           for (const path in sourceCode) {
             if ('content' in sourceCode[path]) {
-              delete sourceCode[path];
+              sourceCode[path].content = null;
+            } else {
+              // Zero out content for irrelevant files
+              const file = sourceCode[path] as FileContent;
+              file.content = null;
+            }
+
+            if (irrelevantFiles.has(path) && sourceCode[path]) {
+              // Remove summary and dependencies for irrelevant files
+              if ('summary' in sourceCode[path]) {
+                delete sourceCode[path].summary;
+              }
+              delete sourceCode[path].dependencies;
             }
           }
           response.content = JSON.stringify(getSourceCodeTree(sourceCode));

@@ -35,7 +35,7 @@ export interface FileContent {
  */
 export interface FileSummary {
   /** Summary of the file content */
-  summary: string;
+  summary?: string;
   /** Optional list of dependencies */
   dependencies?: DependencyInfo[];
 }
