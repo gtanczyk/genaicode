@@ -12,7 +12,6 @@ export async function handleCodeGeneration({
   waitIfPaused,
   prompt,
   options,
-  askQuestionCall,
 }: ActionHandlerProps): Promise<ActionResult> {
   const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, options);
   if (planningResult === StepResult.BREAK) {
@@ -38,7 +37,7 @@ export async function handleCodeGeneration({
         {
           assistant: {
             type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
+            text: 'Planning phase completed. Would you like to proceed with the planned changes?',
             functionCalls: [],
           },
           user: {
@@ -73,6 +72,17 @@ export async function handleCodeGeneration({
   return {
     breakLoop: confirmed.confirmed ?? true,
     stepResult: result,
-    items: [],
+    items: [
+      {
+        assistant: {
+          type: 'assistant',
+          text: 'Code changes are generated, now what?',
+        },
+        user: {
+          type: 'user',
+          text: confirmed.answer || 'Code changes generated. Applying changes.',
+        },
+      },
+    ],
   };
 }

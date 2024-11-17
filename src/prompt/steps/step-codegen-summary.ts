@@ -44,10 +44,10 @@ export async function executeStepCodegenSummary(
 
   if (codegenSummaryRequest) {
     // Second stage: for each file request the actual code updates
-    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest);
-
     baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
     codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
+
+    putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest);
 
     // Sometimes the result happens to be a string
     assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
