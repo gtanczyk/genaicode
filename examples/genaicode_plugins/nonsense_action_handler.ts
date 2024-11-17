@@ -7,7 +7,7 @@ const nonsenseActionHandler: Plugin = {
       description:
         'A demonstration action handler that echoes back the received content. Use this action when you want to test the plugin system or demonstrate its capabilities.',
       handler: async (props: ActionHandlerProps): Promise<ActionResult> => {
-        const { StepResult, putSystemMessage, askUserForInput } = await import('../../src/index.js');
+        const { putSystemMessage, askUserForInput } = await import('../../src/index.js');
 
         putSystemMessage('Custom action handler executed', props.askQuestionCall.args);
 
@@ -24,7 +24,6 @@ const nonsenseActionHandler: Plugin = {
 
         return {
           breakLoop: false,
-          stepResult: StepResult.CONTINUE,
           items: [{ assistant: assistantItem, user: userItem }],
         };
       },
