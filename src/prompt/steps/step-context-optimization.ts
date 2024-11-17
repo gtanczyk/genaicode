@@ -72,21 +72,24 @@ export async function executeStepContextOptimization(
   const fullSourceCode = getSourceCode({ forceAll: true }, options);
   const tokensBefore = estimateTokenCount(JSON.stringify(fullSourceCode));
 
-  if (tokensBefore < MAX_TOTAL_TOKENS) {
-    putSystemMessage('Context optimization is not needed, because the code base is small.');
-    return StepResult.CONTINUE;
-  }
-
   const sourceCodeResponse = getSourceCodeResponse(prompt);
   if (!sourceCodeResponse || !sourceCodeResponse.content) {
     console.warn('Could not find source code response, something is wrong, but lets continue anyway.');
     return StepResult.CONTINUE;
   }
 
+  if (tokensBefore < MAX_TOTAL_TOKENS) {
+    putSystemMessage('Context optimization is not needed, because the code base is small.');
+
+    sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(fullSourceCode));
+
+    return StepResult.CONTINUE;
+  }
+
   const sourceCode = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content) as SourceCodeTree);
 
   try {
-    putSystemMessage('Context optimization is starting');
+    putSystemMessage('Context optimization is starting for large codebase');
 
     const optimizationPrompt: PromptItem[] = [
       ...prompt,
