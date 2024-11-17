@@ -34,6 +34,7 @@
     "./examples/genaicode_plugins/grok_ai_service.js",
     "./examples/genaicode_plugins/nonsense_action_handler.js",
     "./examples/genaicode_plugins/nonsense_operation.js",
+    "./examples/genaicode_plugins/vitest_runner.js",
     "./src/eval/current-prompt-plugin.js"
   ]
 }

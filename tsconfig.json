@@ -27,6 +27,6 @@
     "compiler": "typescript",
     "experimentalSpecifierResolution": "node"
   },
-  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts"],
+  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts", "examples/genaicode_plugins/**/*.ts"],
   "exclude": ["node_modules", "src/main/ui/frontend/**/*"]
 }

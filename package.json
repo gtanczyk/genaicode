@@ -42,6 +42,7 @@
     "ui": "node ./bin/genaicode.cjs --ui",
     "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest  --config vitest.unit.config.ts",
+    "test:ci": "vitest run --config vitest.unit.config.ts --reporter=json",
     "test:e2e": "vitest --config vitest.e2e.config.ts",
     "coverage": "vitest run --coverage",
     "prepare": "husky install || true",
