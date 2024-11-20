@@ -24,7 +24,7 @@ export async function generateContent(
 ): Promise<FunctionCall[]> {
   const openai = new OpenAI();
 
-  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-08-06';
+  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-11-20';
   const model = cheap
     ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
     : (modelOverrides.chatGpt?.default ?? defaultModel);

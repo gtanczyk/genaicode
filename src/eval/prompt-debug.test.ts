@@ -2,9 +2,8 @@ import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
 import { generateContent as generateContentGPT } from '../ai-service/chat-gpt';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
-// import * as debugPrompts from './data/prompt4';
+import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-// import { PromptItem } from '../ai-service/common';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
 import { DEBUG_CURRENT_PROMPT } from './data/current-prompt';
 import { PromptItem } from '../ai-service/common';
@@ -49,7 +48,7 @@ describe('prompt-debug', () => {
   });
 
   it('Claude Haikku', async () => {
-    const defs = getFunctionDefs();
+    const defs = getFunctionDefs(); //.filter((fd) => fd.name === 'askQuestion');
     const req = [
       prompt,
       defs,
@@ -66,6 +65,26 @@ describe('prompt-debug', () => {
     result = await validateAndRecoverSingleResult([...req], result, generateContentClaude);
 
     console.log('CLAUDE', JSON.stringify(result[0].args, null, 4));
+  });
+
+  it('Claude Haikku (Vertex)', async () => {
+    const defs = getFunctionDefs(); //.filter((fd) => fd.name === 'askQuestion');
+    const req = [prompt, defs, requiredFunctionName, temperature, true] as const;
+    let result = await generateContentVertexClaude(...req);
+    result = await validateAndRecoverSingleResult(
+      [
+        ...req,
+        {
+          aiService: 'vertex-ai-claude',
+          disableCache: false,
+          askQuestion: false,
+        },
+      ],
+      result,
+      generateContentVertexClaude,
+    );
+
+    console.log('CLAUDE VERTEX', JSON.stringify(result[0].args, null, 4));
   });
 
   it('Gemini Pro', async () => {
@@ -96,5 +115,13 @@ describe('prompt-debug', () => {
     )[0].args;
 
     console.log('CLAUDE', JSON.stringify(claudeArgs, null, 4));
+  });
+
+  it('Claude Sonnet (Vertex)', async () => {
+    const claudeArgs = (
+      await generateContentVertexClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
+    )[0].args;
+
+    console.log('CLAUDE VERTEX', JSON.stringify(claudeArgs, null, 4));
   });
 });
