@@ -29,6 +29,7 @@ import {
   unsetCurrentIterationId,
 } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
+import { askUserForConfirmation } from './common/user-actions.js';
 import { getRegisteredAiServices } from './plugin-loader.js';
 import { stringToAiServiceType } from './codegen-utils.js';
 
@@ -113,13 +114,23 @@ export async function runCodegenIteration(
       await execPromise(rcConfig.lintCommand, { cwd: rcConfig.rootDir });
       putSystemMessage('Lint command executed successfully');
     } catch (error) {
-      const { stderr, stdout } = error as { stdout: string; stderr: string };
-      putSystemMessage(
-        'Lint command failed. Aborting codegen, please fix lint issues before running codegen, or use --disable-initial-lint',
-      );
-      console.log('Lint errors:', stdout, stderr);
-      unsetCurrentIterationId();
-      return;
+      const userConfirmation =
+        options.interactive || options.ui
+          ? await askUserForConfirmation(
+              'Lint command failed. Do you want to continue with code generation anyway?',
+              false,
+            )
+          : { confirmed: false };
+
+      if (!userConfirmation.confirmed) {
+        const { stderr, stdout } = error as { stdout: string; stderr: string };
+        putSystemMessage(
+          'Lint command failed. Aborting codegen, please fix lint issues before running codegen, or use --disable-initial-lint',
+        );
+        console.log('Lint errors:', stdout, stderr);
+        unsetCurrentIterationId();
+        return;
+      }
     }
   } else if (rcConfig.lintCommand && options.disableInitialLint) {
     console.log('Initial lint was skipped.');
