@@ -1,6 +1,7 @@
 import { putAssistantMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { CODEGEN_SUMMARY_PROMPT } from '../../../static-prompts.js';
 import { executeStepCodegenPlanning } from '../../step-codegen-planning.js';
 import { executeStepCodegenSummary } from '../../step-codegen-summary.js';
 import { StepResult } from '../../steps-types.js';
@@ -37,7 +38,7 @@ export async function handleCodeGeneration({
         {
           assistant: {
             type: 'assistant',
-            text: 'Planning phase completed. Would you like to proceed with the planned changes?',
+            text: CODEGEN_SUMMARY_PROMPT,
             functionCalls: [],
           },
           user: {
@@ -50,7 +51,19 @@ export async function handleCodeGeneration({
   }
 
   putAssistantMessage('Planning phase completed. Would you like to proceed with the planned changes?');
-  putUserMessage('Accept planning and continue');
+  putUserMessage(planningConfirmation.answer || 'Accept planning and continue');
+
+  // Add user's planning confirmation answer to prompt history
+  prompt.push(
+    {
+      type: 'assistant',
+      text: CODEGEN_SUMMARY_PROMPT,
+    },
+    {
+      type: 'user',
+      text: planningConfirmation.answer || 'Accept planning and continue',
+    },
+  );
 
   // Execute the codegen summary step
   const result = await executeStepCodegenSummary(

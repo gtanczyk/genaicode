@@ -4,7 +4,6 @@ import { getFunctionDefs } from '../function-calling.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { StepResult } from './steps-types.js';
-import { CODEGEN_SUMMARY_PROMPT } from '../static-prompts.js';
 
 export const PLANNING_PROMPT = `Please analyze the conversation so far and help plan the implementation:
 
@@ -64,7 +63,6 @@ export async function executeStepCodegenPlanning(
       prompt.push({
         type: 'user',
         functionResponses: planningResult.map((call) => ({ name: call.name, call_id: call.id })),
-        text: CODEGEN_SUMMARY_PROMPT,
         cache: true,
       });
 

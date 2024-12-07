@@ -21,7 +21,7 @@ export const SOURCE_CODE_RESPONSE = 'Sure, here is the application source code, 
 export const READY_TO_ASSIST = "Thank you, I'm ready to assist you with your request.";
 
 /** Assistant's response when generating code */
-export const CODEGEN_SUMMARY_PROMPT = 'Planning phase completed. Now please create the code generation summary.';
+export const CODEGEN_SUMMARY_PROMPT = 'Planning phase completed. Would you like to proceed with the planned changes?';
 
 /** Template for partial prompt when requesting changes for a specific file */
 export const getPartialPromptTemplate = (path: string): string =>
