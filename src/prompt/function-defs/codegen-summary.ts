@@ -27,21 +27,21 @@ export const getCodegenSummaryDef = (): FunctionDef => ({
           description:
             'An object representing a proposed update to a file, containing properties like the absolute file path, the update tool name, and other important properties.',
           properties: {
-            filePath: {
-              type: 'string',
-              description:
-                'An absolute path of the project file that will be updated. This must be an absolute file path.',
-            },
             prompt: {
               type: 'string',
               description:
                 'A detailed prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file.',
             },
+            filePath: {
+              type: 'string',
+              description:
+                'An absolute path of the project file that will be updated. This must be an absolute file path.',
+            },
             updateToolName: {
               type: 'string',
               enum: [
-                'createFile',
                 'updateFile',
+                'createFile',
                 'patchFile',
                 'deleteFile',
                 'createDirectory',
@@ -74,7 +74,7 @@ export const getCodegenSummaryDef = (): FunctionDef => ({
               items: { type: 'string' },
             },
           },
-          required: ['filePath', 'prompt', 'updateToolName'],
+          required: ['prompt', 'filePath', 'updateToolName'],
         },
       },
       contextPaths: {

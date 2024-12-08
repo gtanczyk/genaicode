@@ -5,8 +5,9 @@ import { FunctionDef } from '../../ai-service/common';
  */
 export const createFileDef: FunctionDef = {
   name: 'createFile',
-  description:
-    'Create a new file with specified content. The file will be created inside of project folder structure. This tool should not be used of creation if image files.',
+  description: `Create a new file with specified content. The file will be created inside of project folder structure.    
+    - This tool should not be used of creation of image files
+    - Use this tool for file paths that are not yet present in the project (not added to any getSourceCode function call in the conversation context)`,
   parameters: {
     type: 'object',
     properties: {
