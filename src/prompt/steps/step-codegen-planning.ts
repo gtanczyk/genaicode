@@ -4,6 +4,7 @@ import { getFunctionDefs } from '../function-calling.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { StepResult } from './steps-types.js';
+import { executeStepEnsureContext } from './step-ensure-context.js';
 
 export const PLANNING_PROMPT = `Please analyze the conversation so far and help plan the implementation:
 
@@ -56,6 +57,15 @@ export async function executeStepCodegenPlanning(
     const codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
 
     if (codegenPlanningRequest) {
+      putSystemMessage('Planning phase completed, ensuring context completeness...');
+
+      // Ensure all necessary files are in context
+      const contextResult = await executeStepEnsureContext(prompt, codegenPlanningRequest, options);
+      if (contextResult === StepResult.BREAK) {
+        putSystemMessage('Failed to ensure context completeness during planning phase');
+        return StepResult.BREAK;
+      }
+
       putSystemMessage('Planning phase completed successfully', codegenPlanningRequest);
 
       // Store the planning response in conversation history

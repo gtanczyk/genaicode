@@ -12,13 +12,13 @@ import { getSourceCodeTree } from '../../files/source-code-tree.js';
  */
 export async function executeStepEnsureContext(
   prompt: { type: string; functionResponses?: { name: string; content?: string }[]; functionCalls?: FunctionCall[] }[],
-  codegenSummaryCall: FunctionCall,
+  functionCall: FunctionCall,
   options: CodegenOptions,
 ): Promise<StepResult> {
   try {
     // Extract all required paths
-    const requiredPaths = extractRequiredPaths(codegenSummaryCall);
-    if (requiredPaths.length === 0) {
+    const requiredPaths = extractRequiredPaths(functionCall);
+    if (!requiredPaths || requiredPaths.length === 0) {
       putSystemMessage('No paths to ensure in context.');
       return StepResult.CONTINUE;
     }
@@ -74,23 +74,40 @@ export async function executeStepEnsureContext(
 }
 
 /**
- * Extract all required file paths from codegenSummary function call
+ * Extract all required file paths from function call using flexible extraction strategies
  */
-function extractRequiredPaths(codegenSummaryCall: FunctionCall): string[] {
-  if (!codegenSummaryCall.args?.fileUpdates || !codegenSummaryCall.args?.contextPaths) {
-    throw new Error('Invalid codegenSummary call: missing fileUpdates or contextPaths');
+function extractRequiredPaths(functionCall: FunctionCall): string[] {
+  const paths: string[] = [];
+
+  // Extract paths from function call arguments
+  if (functionCall.args) {
+    // Handle codegenSummary specific structure (backward compatibility)
+    if (functionCall.name === 'codegenSummary') {
+      if (Array.isArray(functionCall.args.fileUpdates)) {
+        paths.push(
+          ...functionCall.args.fileUpdates
+            .filter((update): update is { filePath: string } => typeof update === 'object' && update !== null)
+            .map((update) => update.filePath),
+        );
+      }
+      if (Array.isArray(functionCall.args.contextPaths)) {
+        paths.push(...functionCall.args.contextPaths.filter((path): path is string => typeof path === 'string'));
+      }
+    } else if (functionCall.name === 'codegenPlanning') {
+      if (Array.isArray(functionCall.args.affectedFiles)) {
+        paths.push(
+          ...functionCall.args.affectedFiles.map((file) => [file.filePath, ...(file.dependencies ?? [])]).flat(),
+        );
+      }
+    }
   }
 
-  // Ensure fileUpdates is an array and has the correct type
-  const fileUpdatePaths = Array.isArray(codegenSummaryCall.args.fileUpdates)
-    ? codegenSummaryCall.args.fileUpdates.map((update: { filePath: string }) => update.filePath)
-    : [];
-
-  const contextPaths = codegenSummaryCall.args.contextPaths as string[];
+  // Add important context paths
   const importantPaths = importantContext.files ?? [];
+  paths.push(...importantPaths);
 
-  // Use Set to deduplicate paths
-  return Array.from(new Set([...fileUpdatePaths, ...contextPaths, ...importantPaths]));
+  // Deduplicate and filter out empty/invalid paths
+  return Array.from(new Set(paths)).filter((path) => typeof path === 'string' && path.length > 0);
 }
 
 /**

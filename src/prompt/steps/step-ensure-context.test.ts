@@ -94,7 +94,120 @@ describe('executeStepEnsureContext', () => {
       const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
 
       expect(result).toBe(StepResult.CONTINUE);
-      expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('No paths to ensure'));
+      expect(putSystemMessage).toHaveBeenCalledWith('No paths to ensure in context.');
+      expect(getSourceCode).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing args in codegenSummary', async () => {
+      importantContext.files = [];
+      const mockCodegenSummary = {
+        name: 'codegenSummary',
+        args: undefined,
+      };
+
+      const prompt: PromptItem[] = [];
+      const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(putSystemMessage).toHaveBeenCalledWith('No paths to ensure in context.');
+      expect(getSourceCode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Path extraction from codegenPlanning', () => {
+    it('should extract paths from affectedFiles including dependencies', async () => {
+      const mockCodegenPlanning = {
+        name: 'codegenPlanning',
+        args: {
+          affectedFiles: [
+            {
+              filePath: '/test/main.ts',
+              dependencies: ['/test/util1.ts', '/test/util2.ts'],
+            },
+            {
+              filePath: '/test/component.ts',
+              dependencies: ['/test/shared.ts'],
+            },
+          ],
+        },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue({
+        '/test/main.ts': { content: 'main content' },
+        '/test/util1.ts': { content: 'util1 content' },
+        '/test/util2.ts': { content: 'util2 content' },
+        '/test/component.ts': { content: 'component content' },
+        '/test/shared.ts': { content: 'shared content' },
+        '/test/important.ts': { content: 'important content' },
+      });
+
+      const prompt: PromptItem[] = [];
+      const result = await executeStepEnsureContext(prompt, mockCodegenPlanning, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(getSourceCode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filterPaths: expect.arrayContaining([
+            '/test/main.ts',
+            '/test/util1.ts',
+            '/test/util2.ts',
+            '/test/component.ts',
+            '/test/shared.ts',
+            '/test/important.ts',
+          ]),
+        }),
+        mockOptions,
+      );
+
+      // Verify that all paths are included in the getSourceCode function call
+      expect(prompt[0].functionCalls?.[0].args?.filePaths).toEqual(
+        expect.arrayContaining([
+          '/test/main.ts',
+          '/test/util1.ts',
+          '/test/util2.ts',
+          '/test/component.ts',
+          '/test/shared.ts',
+          '/test/important.ts',
+        ]),
+      );
+
+      // Verify the source code response is properly formatted
+      expect(prompt[1].functionResponses?.[0].name).toBe('getSourceCode');
+      const responseContent = JSON.parse(prompt[1].functionResponses?.[0].content ?? '');
+      expect(responseContent['/test']).toBeDefined();
+      expect(Object.keys(responseContent['/test'])).toHaveLength(6); // All files should be included
+    });
+
+    it('should handle empty affectedFiles in codegenPlanning', async () => {
+      importantContext.files = [];
+      const mockCodegenPlanning = {
+        name: 'codegenPlanning',
+        args: {
+          affectedFiles: [],
+        },
+      };
+
+      const prompt: PromptItem[] = [];
+      const result = await executeStepEnsureContext(prompt, mockCodegenPlanning, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(putSystemMessage).toHaveBeenCalledWith('No paths to ensure in context.');
+      expect(getSourceCode).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing affectedFiles in codegenPlanning', async () => {
+      importantContext.files = [];
+      const mockCodegenPlanning = {
+        name: 'codegenPlanning',
+        args: {},
+      };
+
+      const prompt: PromptItem[] = [];
+      const result = await executeStepEnsureContext(prompt, mockCodegenPlanning, mockOptions);
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(putSystemMessage).toHaveBeenCalledWith('No paths to ensure in context.');
+      expect(getSourceCode).not.toHaveBeenCalled();
     });
   });
 
@@ -254,18 +367,6 @@ describe('executeStepEnsureContext', () => {
 
       expect(result).toBe(StepResult.CONTINUE);
       expect(console.warn).toHaveBeenCalledWith('Failed to parse getSourceCode response:', expect.any(Error));
-    });
-
-    it('should handle missing args in codegenSummary', async () => {
-      const mockCodegenSummary = {
-        name: 'codegenSummary',
-        args: {},
-      };
-
-      const prompt: PromptItem[] = [];
-      const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
-
-      expect(result).toEqual(StepResult.BREAK);
     });
 
     it('should handle getSourceCode errors', async () => {
