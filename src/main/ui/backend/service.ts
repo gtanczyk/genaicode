@@ -111,13 +111,20 @@ export class Service {
       // Use the AI service fallback mechanism for better reliability
       const result = await generateContenFn(
         [
+          { type: 'systemPrompt', systemPrompt: '' },
           {
             type: 'user',
             text: prompt,
           },
         ],
-        [],
-        null,
+        [
+          {
+            name: 'printMessage',
+            description: 'Print a message',
+            parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] },
+          },
+        ],
+        'printMessage',
         temperature,
         cheap,
         options,

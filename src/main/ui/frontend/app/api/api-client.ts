@@ -108,8 +108,8 @@ export const generateContent = async (
 ): Promise<FunctionCall[]> => {
   try {
     // Check required parameters
-    if (!Array.isArray(prompt)) {
-      throw new Error('Prompt must be an array of PromptItem');
+    if (!prompt || typeof prompt !== 'string') {
+      throw new Error('Prompt must be a string');
     }
     if (typeof temperature !== 'number' || temperature < 0 || temperature > 2) {
       throw new Error('Temperature must be a number between 0 and 2');

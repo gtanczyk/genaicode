@@ -9,6 +9,7 @@ import { InputArea } from './components/input-area/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
 import { InfoIcon } from './components/info-icon.js';
 import { GlobalStyle } from './theme/global-style.js';
+import { ContentGenerationModal } from './components/content-generation-modal.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -101,6 +102,7 @@ const GenAIcodeApp = () => {
         }
         usage={usage}
       />
+      <ContentGenerationModal currentService={codegenOptions.aiService} />
     </ThemeProvider>
   );
 };

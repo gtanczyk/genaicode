@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import { AiServiceType } from '../../../../../codegen-types';
-import { getAvailableAiServices } from '../../api/api-client';
+import { useAvailableServices } from '../../hooks/available-service.js';
 
 interface AiServiceSelectorProps {
   value: AiServiceType;
@@ -10,22 +10,7 @@ interface AiServiceSelectorProps {
 }
 
 export const AiServiceSelector: React.FC<AiServiceSelectorProps> = ({ value, onChange, disabled }) => {
-  const [availableServices, setAvailableServices] = useState<AiServiceType[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchAiServices = async () => {
-      try {
-        const services = await getAvailableAiServices();
-        setAvailableServices(services);
-      } catch (err) {
-        console.error('Error fetching AI services:', err);
-        setError('Failed to fetch available AI services.');
-      }
-    };
-
-    fetchAiServices();
-  }, []);
+  const [availableServices, error] = useAvailableServices();
 
   const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(event.target.value as AiServiceType);

@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import '@fontsource/press-start-2p';
 import { UsageDisplay } from './usage-display.js';
 import { Usage } from '../../../common/api-types.js';
+import { ContentGenerationIcon } from './content-generation-modal.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -27,6 +28,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, cha
             <UsageDisplay usage={usage} />
           </UsageDisplayWrapper>
           <IconContainer isOpen={isMenuOpen}>
+            <ContentGenerationIcon />
             {themeToggle}
             {infoIcon}
           </IconContainer>
