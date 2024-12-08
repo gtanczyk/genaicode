@@ -36,7 +36,10 @@ function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): b
         const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
 
         return (
-          sourceCodeTree[dirPath] && sourceCodeTree[dirPath][fileName] && 'content' in sourceCodeTree[dirPath][fileName]
+          sourceCodeTree[dirPath] &&
+          sourceCodeTree[dirPath][fileName] &&
+          'content' in sourceCodeTree[dirPath][fileName] &&
+          sourceCodeTree[dirPath][fileName].content !== null
         );
       } catch (error) {
         console.warn('Error parsing getSourceCode response:', error);
@@ -110,6 +113,7 @@ export async function handleRequestFilesContent({
       prompt,
       askQuestionCall,
       options,
+      // use non cheap mode, as maybe the cheap mode didn't provide correct files
       false,
     );
 
