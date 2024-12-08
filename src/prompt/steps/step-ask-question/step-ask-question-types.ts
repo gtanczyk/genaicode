@@ -60,6 +60,7 @@ export interface AssistantItem {
 export interface UserItem {
   type: 'user';
   text: string;
+  data?: Record<string, unknown>;
   functionResponses?: Array<{
     name: string;
     call_id: string | undefined;

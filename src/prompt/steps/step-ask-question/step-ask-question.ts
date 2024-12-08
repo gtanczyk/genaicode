@@ -60,7 +60,8 @@ export async function executeStepAskQuestion(
         });
 
         // This is important to display the content to the user interface (ui or interactive cli)
-        putUserMessage(result.items.slice(-1)[0].user.text);
+        const lastItem = result.items.slice(-1)[0];
+        putUserMessage(lastItem.user.text, lastItem.user.data);
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
 

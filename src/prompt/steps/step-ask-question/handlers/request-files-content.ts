@@ -3,6 +3,7 @@ import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { getSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
+import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import {
   ActionHandlerProps,
@@ -72,6 +73,8 @@ export async function handleRequestFilesContent({
 
   let requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
 
+  putSystemMessage('Requesting files content', requestFilesContentCall.args);
+
   // Check which files are already provided in the conversation history
   const alreadyProvidedFiles = requestedFiles.filter((file) => isFileContentAlreadyProvided(file, prompt));
 
@@ -86,6 +89,7 @@ export async function handleRequestFilesContent({
     const user: UserItem = {
       type: 'user',
       text: 'The requested file contents are already provided in the conversation history.',
+      data: { requestedFiles },
       functionResponses: [
         {
           name: 'requestFilesContent',
@@ -146,16 +150,24 @@ export async function handleRequestFilesContent({
   const user: UserItem = {
     type: 'user',
     text:
-      illegitimateFiles.length > 0
-        ? `Some files are not legitimate and their content cannot be provided:\n\n${illegitimateFiles.join('\n')}`
-        : alreadyProvidedFiles.length > 0
-          ? `Some files were already provided in the conversation history:\n${alreadyProvidedFiles.join('\n')}\n\nProviding content for the remaining files.`
-          : 'All requested file contents have been provided.',
+      (alreadyProvidedFiles.length > 0
+        ? `Some files were already provided in the conversation history:
+${alreadyProvidedFiles.map((path) => `- ${path}`).join('\n')}
+
+Providing content for the remaining files:
+${requestedFiles.map((path) => `- ${path}`).join('\n')}`
+        : `All requested file contents have been provided:
+${requestedFiles.map((path) => `- ${path}`).join('\n')}`) +
+      (illegitimateFiles.length > 0
+        ? `\n\nSome files are not legitimate and their content cannot be provided:
+${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
+        : ''),
+    data: { legitimateFiles, illegitimateFiles },
     functionResponses: [
       {
         name: 'requestFilesContent',
         call_id: requestFilesContentCall.id,
-        content: JSON.stringify({ filePaths: requestedFiles }),
+        content: JSON.stringify({ filePaths: legitimateFiles }),
       },
       {
         name: 'getSourceCode',
