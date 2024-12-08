@@ -3,6 +3,7 @@ import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
 import { Question, Usage } from '../../../common/api-types.js';
+import { FunctionCall } from '../../../../../ai-service/common.js';
 
 const API_BASE_URL = '/api';
 
@@ -95,6 +96,53 @@ export const executeCodegen = async (prompt: string, options: CodegenOptions, im
     } else {
       throw new Error('An unexpected error occurred');
     }
+  }
+};
+
+// New function to handle direct content generation
+export const generateContent = async (
+  prompt: string,
+  temperature: number,
+  cheap: boolean,
+  options: CodegenOptions,
+): Promise<FunctionCall[]> => {
+  try {
+    // Check required parameters
+    if (!Array.isArray(prompt)) {
+      throw new Error('Prompt must be an array of PromptItem');
+    }
+    if (typeof temperature !== 'number' || temperature < 0 || temperature > 2) {
+      throw new Error('Temperature must be a number between 0 and 2');
+    }
+    if (typeof cheap !== 'boolean') {
+      throw new Error('Cheap parameter must be a boolean');
+    }
+
+    const response = await api.post('/generate-content', {
+      prompt,
+      temperature,
+      cheap,
+      options,
+    });
+
+    return response.data.result;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        // Handle specific API error responses
+        const errorMessage = error.response.data.error || 'Unknown server error';
+        throw new Error(`Content generation failed: ${errorMessage}`);
+      } else if (error.request) {
+        throw new Error('No response received from server during content generation');
+      } else {
+        throw new Error(`Request setup failed: ${error.message}`);
+      }
+    }
+    // Re-throw validation errors
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred during content generation');
   }
 };
 

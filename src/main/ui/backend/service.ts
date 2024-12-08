@@ -7,6 +7,8 @@ import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
+import { getGenerateContentFunctions } from '../../codegen.js';
+import { FunctionCall } from '../../../ai-service/common.js';
 
 interface ImageData {
   buffer: Buffer;
@@ -89,6 +91,42 @@ export class Service {
         return { success: false, message: `An error occurred: ${error.message}` };
       }
       return { success: false, message: 'An unknown error occurred' };
+    }
+  }
+
+  async generateContent(
+    prompt: string,
+    temperature: number,
+    cheap: boolean,
+    options: CodegenOptions,
+  ): Promise<FunctionCall[]> {
+    try {
+      // Validate the AI service is available
+      const generateContentFns = getGenerateContentFunctions();
+      if (!generateContentFns[options.aiService]) {
+        throw new Error(`AI service ${options.aiService} is not available`);
+      }
+      const generateContenFn = generateContentFns[options.aiService];
+
+      // Use the AI service fallback mechanism for better reliability
+      const result = await generateContenFn(
+        [
+          {
+            type: 'user',
+            text: prompt,
+          },
+        ],
+        [],
+        null,
+        temperature,
+        cheap,
+        options,
+      );
+
+      return result;
+    } catch (error) {
+      console.error('Error in generateContent:', error);
+      throw error;
     }
   }
 
@@ -191,8 +229,12 @@ export class Service {
     return rcConfig;
   }
 
+  getCurrentIterationId(): string | null {
+    return this.executionStatus !== 'idle' ? (this.content.slice(-1)[0]?.message?.iterationId ?? null) : null;
+  }
+
   async deleteIteration(iterationId: string): Promise<void> {
-    const currentIterationId = this.executionStatus !== 'idle' ? this.content.slice(-1)[0]?.message?.iterationId : null;
+    const currentIterationId = this.getCurrentIterationId();
     this.content = this.content.filter(
       (content) =>
         content.message?.iterationId !== iterationId ||

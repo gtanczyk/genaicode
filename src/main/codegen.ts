@@ -255,7 +255,7 @@ export async function runCodegenIteration(
 
 const execPromise = util.promisify(exec);
 
-function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
+export function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
   return {
     'vertex-ai-claude': generateContentVertexAiClaude,
     'vertex-ai': generateContentVertexAi,
