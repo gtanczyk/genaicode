@@ -19,6 +19,7 @@ Detailed Explanation of actionTypes:
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - cancelCodeGeneration: Use to stop the session, and the conversation.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
+- searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
 ${rcConfig.lintCommand && !disableInitialLint ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}`;
 }
@@ -74,6 +75,8 @@ Output this in step-by-step format to ensure clarity in decision-making.`,
           'confirmCodeGeneration',
           'cancelCodeGeneration',
           'contextOptimization',
+          'searchCode',
+          ...(rcConfig.lintCommand && !disableInitialLint ? ['lint'] : []),
           ...Array.from(getRegisteredActionHandlers().keys()),
         ],
         description: getActionTypeDescription(),
@@ -203,5 +206,51 @@ export const requestPermissions: FunctionDef = {
       'enableVision',
       'enableImagen',
     ],
+  },
+};
+
+// searchCode
+export const searchCode: FunctionDef = {
+  name: 'searchCode',
+  description: 'Use this function to search through source code files with flexible filtering.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query string',
+      },
+      includePatterns: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional glob patterns to include files',
+      },
+      excludePatterns: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional glob patterns to exclude files',
+      },
+      searchInContent: {
+        type: 'boolean',
+        description: 'Whether to search in file contents (default: true)',
+      },
+      searchInFilenames: {
+        type: 'boolean',
+        description: 'Whether to search in file names (default: true)',
+      },
+      caseSensitive: {
+        type: 'boolean',
+        description: 'Case sensitive search (default: false)',
+      },
+      maxResults: {
+        type: 'number',
+        description: 'Maximum number of results to return (default: 50)',
+      },
+      contextLines: {
+        type: 'number',
+        description: 'Number of context lines to include around content matches (default: 2)',
+      },
+    },
+    required: ['query'],
   },
 };

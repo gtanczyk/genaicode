@@ -18,6 +18,7 @@ export type ActionType =
   | 'confirmCodeGeneration'
   | 'cancelCodeGeneration'
   | 'contextOptimization'
+  | 'searchCode'
   | 'lint'
   | PluginActionType;
 
@@ -47,6 +48,28 @@ export type RemoveFilesFromContextArgs = {
 
 export type ContextOptimizationArgs = {
   filePaths: string[];
+};
+
+/**
+ * Arguments for the searchCode action
+ */
+export type SearchCodeArgs = {
+  /** The search query string */
+  query: string;
+  /** Optional glob patterns to include files */
+  includePatterns?: string[];
+  /** Optional glob patterns to exclude files */
+  excludePatterns?: string[];
+  /** Whether to search in file contents (default: true) */
+  searchInContent?: boolean;
+  /** Whether to search in file names (default: true) */
+  searchInFilenames?: boolean;
+  /** Case sensitive search (default: false) */
+  caseSensitive?: boolean;
+  /** Maximum number of results to return */
+  maxResults?: number;
+  /** Number of context lines to include around content matches */
+  contextLines?: number;
 };
 
 export type LintResult = {

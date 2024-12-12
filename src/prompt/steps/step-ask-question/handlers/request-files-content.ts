@@ -61,7 +61,7 @@ export async function handleRequestFilesContent({
     prompt,
     askQuestionCall,
     options,
-    false,
+    true,
   );
 
   if (!requestFilesContentCall) {
@@ -157,7 +157,7 @@ ${alreadyProvidedFiles.map((path) => `- ${path}`).join('\n')}
 Providing content for the remaining files:
 ${requestedFiles.map((path) => `- ${path}`).join('\n')}`
         : `All requested file contents have been provided:
-${requestedFiles.map((path) => `- ${path}`).join('\n')}`) +
+${legitimateFiles.map((path) => `- ${path}`).join('\n')}`) +
       (illegitimateFiles.length > 0
         ? `\n\nSome files are not legitimate and their content cannot be provided:
 ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`

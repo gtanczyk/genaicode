@@ -23,6 +23,7 @@ import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js
 import { handleLint } from './handlers/lint.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handleCodeGeneration } from './handlers/code-generation.js';
+import { handleSearchCode } from './handlers/handle-search-code.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -132,6 +133,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     removeFilesFromContext: handleRemoveFilesFromContext,
     sendMessage: handleSendMessage,
     sendMessageWithImage: handleSendMessageWithImage,
+    searchCode: handleSearchCode,
     lint: handleLint,
     contextOptimization: handleContextOptimization,
   };
