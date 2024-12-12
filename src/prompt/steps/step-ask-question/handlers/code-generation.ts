@@ -1,4 +1,4 @@
-import { putAssistantMessage, putUserMessage } from '../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { CODEGEN_SUMMARY_PROMPT } from '../../../static-prompts.js';
@@ -6,6 +6,9 @@ import { executeStepCodegenPlanning } from '../../step-codegen-planning.js';
 import { executeStepCodegenSummary } from '../../step-codegen-summary.js';
 import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
+import { updateFiles } from '../../../../files/update-files.js';
+import { handleLint } from './lint.js';
+import { rcConfig } from '../../../../main/config.js';
 
 export async function handleCodeGeneration({
   generateContentFn,
@@ -14,6 +17,28 @@ export async function handleCodeGeneration({
   prompt,
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
+  // Run initial lint check if enabled
+  if (!options.disableInitialLint && rcConfig.lintCommand) {
+    const lintResult = await handleLint({
+      generateContentFn,
+      generateImageFn,
+      waitIfPaused,
+      prompt,
+      options,
+      askQuestionCall: {
+        name: 'askQuestion',
+        args: {
+          actionType: 'lint',
+          message: 'Running initial lint check',
+        },
+      },
+    });
+
+    if (lintResult.breakLoop) {
+      return lintResult;
+    }
+  }
+
   const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, options);
   if (planningResult === StepResult.BREAK) {
     return {
@@ -66,7 +91,7 @@ export async function handleCodeGeneration({
   );
 
   // Execute the codegen summary step
-  const result = await executeStepCodegenSummary(
+  const functionCalls = await executeStepCodegenSummary(
     generateContentFn,
     prompt,
     getFunctionDefs(),
@@ -82,9 +107,51 @@ export async function handleCodeGeneration({
     true,
   );
 
+  if (confirmed.confirmed) {
+    putSystemMessage('Applying code changes...');
+
+    if (options.dryRun) {
+      putSystemMessage('Dry run mode, not updating files');
+    } else {
+      // Apply the code changes
+      await updateFiles(
+        functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+        options,
+      );
+      putSystemMessage('Code changes applied successfully');
+
+      // Run lint after applying changes if enabled
+      if (!options.disableInitialLint && rcConfig.lintCommand) {
+        const postUpdateLintResult = await handleLint({
+          generateContentFn,
+          generateImageFn,
+          waitIfPaused,
+          prompt,
+          options,
+          askQuestionCall: {
+            name: 'askQuestion',
+            args: {
+              actionType: 'lint',
+              message: 'Running lint check after applying changes',
+            },
+          },
+        });
+
+        // If lint fails after applying changes, we still want to break the loop
+        // but we also want to keep the changes that were applied
+        if (postUpdateLintResult.breakLoop) {
+          return {
+            ...postUpdateLintResult,
+            stepResult: functionCalls,
+          };
+        }
+      }
+    }
+  }
+
   return {
     breakLoop: confirmed.confirmed ?? true,
-    stepResult: result,
+    stepResult: functionCalls,
     items: [
       {
         assistant: {

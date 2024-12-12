@@ -18,11 +18,13 @@ export type ActionType =
   | 'confirmCodeGeneration'
   | 'cancelCodeGeneration'
   | 'contextOptimization'
+  | 'lint'
   | PluginActionType;
 
 type AskQuestionArgs = {
   actionType: ActionType;
   message: string;
+  decisionMakingProcess?: string;
 };
 
 export type SendMessageWithImageArgs = {
@@ -45,6 +47,12 @@ export type RemoveFilesFromContextArgs = {
 
 export type ContextOptimizationArgs = {
   filePaths: string[];
+};
+
+export type LintResult = {
+  success: boolean;
+  stdout?: string;
+  stderr?: string;
 };
 
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
@@ -78,6 +86,7 @@ export interface ActionResult {
     assistant: AssistantItem;
     user: UserItem;
   }>;
+  lintResult?: LintResult;
 }
 
 export type ActionHandlerProps = {

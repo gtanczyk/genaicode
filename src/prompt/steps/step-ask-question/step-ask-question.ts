@@ -20,6 +20,7 @@ import { handleSendMessage } from './handlers/handle-send-message.js';
 import { handleSendMessageWithImage } from './handlers/handle-send-message-with-image.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
 import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
+import { handleLint } from './handlers/lint.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handleCodeGeneration } from './handlers/code-generation.js';
 
@@ -131,6 +132,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     removeFilesFromContext: handleRemoveFilesFromContext,
     sendMessage: handleSendMessage,
     sendMessageWithImage: handleSendMessageWithImage,
+    lint: handleLint,
     contextOptimization: handleContextOptimization,
   };
 

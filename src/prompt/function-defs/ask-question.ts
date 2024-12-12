@@ -1,4 +1,6 @@
 import { FunctionDef } from '../../ai-service/common';
+import { disableInitialLint } from '../../cli/cli-params';
+import { rcConfig } from '../../main/config';
 import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 
 function getActionTypeDescription(): string {
@@ -17,6 +19,7 @@ Detailed Explanation of actionTypes:
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - cancelCodeGeneration: Use to stop the session, and the conversation.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
+${rcConfig.lintCommand && !disableInitialLint ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}`;
 }
 
