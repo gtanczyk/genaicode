@@ -36,7 +36,6 @@ vi.mock('../cli/cli-params.js', () => ({
   temperature: 0.7,
   cheap: false,
   taskFile: undefined,
-  disableInitialLint: undefined,
   askQuestion: false,
   disableContextOptimization: true,
   geminiBlockNone: undefined,
@@ -75,7 +74,6 @@ describe('CLI Options', () => {
     vi.resetAllMocks();
     // Reset CLI parameters to default values
     vi.mocked(cliParams).aiService = undefined;
-    vi.mocked(cliParams).disableInitialLint = true;
     vi.mocked(cliParams).dryRun = false;
     vi.mocked(cliParams).helpRequested = false;
     vi.mocked(cliParams).vision = false;

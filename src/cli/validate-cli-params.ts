@@ -20,7 +20,6 @@ const allowedParameters: string[] = [
   '--disable-explanations',
   '--disable-context-optimization',
   '--gemini-block-none',
-  '--disable-initial-lint',
   '--temperature=',
   '--vision',
   '--imagen=',

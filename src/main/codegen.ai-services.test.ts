@@ -37,7 +37,6 @@ vi.mock('../cli/cli-params.js', () => ({
   temperature: 0.7,
   cheap: false,
   taskFile: undefined,
-  disableInitialLint: undefined,
   askQuestion: false,
   disableContextOptimization: true,
   geminiBlockNone: undefined,

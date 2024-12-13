@@ -87,9 +87,8 @@ The GenAIcode tool offers several advanced features to enhance its code generati
 ## Lint Command Integration
 
 - **Configuration**: Via `.genaicoderc` file
-- **Description**: Specifies a lint command to be run before and after code generation.
+- **Description**: Specifies a lint command to be run before and after code generation to ensure code quality.
 - **Features**:
-  - Initial lint check (can be disabled with `--disable-initial-lint` flag).
   - Post-generation lint check.
   - Automatic lint fix attempts for failed checks.
 - **Benefits**:

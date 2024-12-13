@@ -19,7 +19,6 @@ export const disableContextOptimization = params.includes('--disable-context-opt
 export let taskFile = params.find((param) => param.startsWith('--task-file'))?.split('=')[1];
 export const disableExplanations = params.includes('--disable-explanations');
 export const geminiBlockNone = params.includes('--gemini-block-none');
-export const disableInitialLint = params.includes('--disable-initial-lint');
 export const vision = params.includes('--vision');
 export const imagen = params.find((param) => param.startsWith('--imagen'))?.split('=')[1] as
   | 'dall-e'

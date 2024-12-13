@@ -1,5 +1,4 @@
 import { FunctionDef } from '../../ai-service/common';
-import { disableInitialLint } from '../../cli/cli-params';
 import { rcConfig } from '../../main/config';
 import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 
@@ -20,7 +19,7 @@ Detailed Explanation of actionTypes:
 - cancelCodeGeneration: Use to stop the session, and the conversation.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
-${rcConfig.lintCommand && !disableInitialLint ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
+${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}`;
 }
 
@@ -76,7 +75,7 @@ Output this in step-by-step format to ensure clarity in decision-making.`,
           'cancelCodeGeneration',
           'contextOptimization',
           'searchCode',
-          ...(rcConfig.lintCommand && !disableInitialLint ? ['lint'] : []),
+          ...(rcConfig.lintCommand ? ['lint'] : []),
           ...Array.from(getRegisteredActionHandlers().keys()),
         ],
         description: getActionTypeDescription(),

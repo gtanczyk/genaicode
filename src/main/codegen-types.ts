@@ -41,7 +41,6 @@ export interface CodegenOptions {
   verbose?: boolean;
   requireExplanations?: boolean;
   geminiBlockNone?: boolean;
-  disableInitialLint?: boolean;
   contentMask?: string;
   ignorePatterns?: string[];
   askQuestion: boolean;

@@ -20,7 +20,6 @@ const configureGeneralOptions = async (options: CodegenOptions): Promise<void> =
       { name: 'Dry run', value: 'dryRun', checked: options.dryRun },
       { name: 'Verbose', value: 'verbose', checked: options.verbose },
       { name: 'Require explanations', value: 'requireExplanations', checked: options.requireExplanations },
-      { name: 'Disable initial lint', value: 'disableInitialLint', checked: options.disableInitialLint },
       { name: 'Ask questions', value: 'askQuestion', checked: options.askQuestion },
       { name: 'Disable cache', value: 'disableCache', checked: options.disableCache },
     ],
@@ -29,7 +28,6 @@ const configureGeneralOptions = async (options: CodegenOptions): Promise<void> =
   options.dryRun = generalOptions.includes('dryRun');
   options.verbose = generalOptions.includes('verbose');
   options.requireExplanations = generalOptions.includes('requireExplanations');
-  options.disableInitialLint = generalOptions.includes('disableInitialLint');
   options.askQuestion = generalOptions.includes('askQuestion');
   options.disableCache = generalOptions.includes('disableCache');
 };

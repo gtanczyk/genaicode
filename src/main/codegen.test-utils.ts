@@ -129,7 +129,6 @@ export const mockOptions = {
   verbose: false,
   requireExplanations: false,
   geminiBlockNone: undefined,
-  disableInitialLint: undefined,
   contentMask: undefined,
   ignorePatterns: [],
   disableCache: undefined,

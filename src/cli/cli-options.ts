@@ -59,10 +59,6 @@ const cliOptions: CliOption[] = [
     description: 'Disable safety settings for Gemini Pro model (requires whitelisted Cloud project).',
   },
   {
-    name: '--disable-initial-lint',
-    description: 'Skip the initial lint check before running the code generation process.',
-  },
-  {
     name: '--temperature=<value>',
     description: 'Set the temperature parameter for the AI model (default: 0.7).',
   },

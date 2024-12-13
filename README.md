@@ -58,7 +58,6 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--disable-explanations`: Disables explanations for code generation operations. By default, explanations are enabled, as it improves response quality.
 - `--disable-context-optimization`: Disables the optimization that uses context paths for more efficient code generation.
 - `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
-- `--disable-initial-lint`: Skips the initial lint check before running the code generation process.
 - `--temperature=<value>`: Sets the temperature parameter for the AI model (default: 0.7).
 - `--vision`: Enables vision capabilities for processing image inputs.
 - `--imagen`: Enables image generation capabilities using AI models.

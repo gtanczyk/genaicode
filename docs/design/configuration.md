@@ -150,7 +150,6 @@ The lint command is specified in the `.genaicoderc` file using the `lintCommand`
 1. **Initial Lint Check**:
 
    - Before code generation, the tool runs the specified lint command to check for any existing issues.
-   - This step can be skipped using the `--disable-initial-lint` CLI flag.
 
 2. **Post-Generation Lint**:
 
@@ -183,7 +182,7 @@ Many of the configuration options set in the `.genaicoderc` file can be overridd
 Example:
 
 ```
-npx genaicode --dry-run --disable-initial-lint --temperature 0.8
+npx genaicode --dry-run --temperature 0.8
 ```
 
 ## Best Practices
