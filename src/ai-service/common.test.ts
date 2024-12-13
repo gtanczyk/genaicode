@@ -13,6 +13,7 @@ vi.mock('../cli/cli-params.js', () => ({
   geminiBlockNone: false,
   disableExplanations: true,
   vision: false,
+  disableInitialLint: false,
 }));
 
 describe('printTokenUsageAndCost', () => {
