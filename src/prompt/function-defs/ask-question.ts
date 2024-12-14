@@ -1,5 +1,5 @@
-import { FunctionDef } from '../../ai-service/common';
-import { rcConfig } from '../../main/config';
+import { FunctionDef } from '../../ai-service/common.js';
+import { rcConfig } from '../../main/config.js';
 import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 
 function getActionTypeDescription(): string {
