@@ -47,7 +47,7 @@
     "coverage": "vitest run --coverage",
     "prepare": "husky install || true",
     "type-check": "tsc --noEmit",
-    "build": "tsc && npm run build-frontend",
+    "build": "tsc -p tsconfig.build.json && npm run build-frontend",
     "build-frontend": "vite build src/main/ui/frontend",
     "prepublishOnly": "npm run build"
   },

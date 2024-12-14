@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json", // Inherit from the main tsconfig.json
+  "exclude": [
+    "node_modules", // Exclude dependencies
+    "**/*.test.ts", // Exclude test files
+    "dist", // Exclude the output directory itself
+    "src/eval", // Exclude the eval directory from build
+    "src/main/ui/frontend/**/*" // Exclude the frontend directory
+  ]
+}
