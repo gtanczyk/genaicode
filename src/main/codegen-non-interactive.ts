@@ -1,7 +1,7 @@
-import { updateFiles } from '../files/update-files';
-import { runCodegenIteration } from './codegen';
-import { CodegenOptions } from './codegen-types';
-import { putSystemMessage } from './common/content-bus';
+import { updateFiles } from '../files/update-files.js';
+import { runCodegenIteration } from './codegen.js';
+import { CodegenOptions } from './codegen-types.js';
+import { putSystemMessage } from './common/content-bus.js';
 
 export async function runCodegenNonInteractive(options: CodegenOptions): Promise<void> {
   console.log('Executing codegen in non-interactive mode');
