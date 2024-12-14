@@ -26,7 +26,9 @@ describe('genaicode ui', () => {
     });
 
     // Launch the browser
-    browser = await puppeteer.launch();
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     page = await browser.newPage();
 
     // Navigate to the GenAIcode UI

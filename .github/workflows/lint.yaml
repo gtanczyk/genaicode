@@ -24,4 +24,4 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm run test
-      - run: NODE_OPTIONS='--no-sandbox' npm run test:e2e
+      - run: npm run test:e2e
