@@ -30,14 +30,10 @@ Example:
       filePath: '/path/to/directory/sub1/sub2/util-tests.js',
       relevance: 0.8,
     },
-    {
-      filePath: '/path/to/directory/something.js',
-      relevance: 0.2,
-    }
   ]
 \`\`\`
 
-This means that the file \`something.js\` file is less relevant to the user prompt, and \`util-tests.js\` is more relevant.`,
+This means that the file \`something.js\` file is not relevant to the user prompt (therefore it is not included in the context), and \`util-tests.js\` is very relevant.`,
   parameters: {
     type: 'object',
     properties: {
@@ -45,27 +41,35 @@ This means that the file \`something.js\` file is less relevant to the user prom
         type: 'string',
         description: "The user's original prompt.",
       },
+      reasoning: {
+        type: 'string',
+        description: 'Analysis of what is needed for the user prompt and which files are needed to fullfil the prompt.',
+      },
       optimizedContext: {
         type: 'array',
-        description: 'An array of objects representing relevant files, their relevance scores, and token counts.',
+        description: 'An array of objects representing relevant files, their relevance scores.',
         items: {
           type: 'object',
           properties: {
+            reasoning: {
+              type: 'string',
+              description: 'Reasoning for why the file is relevant.',
+            },
             filePath: {
               type: 'string',
               description: 'The absolute file path of a relevant file.',
             },
             relevance: {
               type: 'number',
-              description: 'A score from 0 to 1 indicating the relevance of the file to the user prompt.',
-              minimum: 0,
+              description: 'A score from 0.5 to 1 indicating the relevance of the file to the user prompt.',
+              minimum: 0.5,
               maximum: 1,
             },
           },
-          required: ['filePath', 'relevance'],
+          required: ['reasoning', 'filePath', 'relevance'],
         },
       },
     },
-    required: ['userPrompt', 'optimizedContext'],
+    required: ['userPrompt', 'reasoning', 'optimizedContext'],
   },
 };
