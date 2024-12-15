@@ -39,6 +39,7 @@ const configurations: ServiceConfigurations = {
   },
   'vertex-ai-claude': {
     googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT,
+    googleCloudRegion: process.env.GOOGLE_CLOUD_REGION,
     modelOverrides: {
       default: 'claude-3-5-sonnet-20240620',
       cheap: 'claude-3-haiku-20240307',
