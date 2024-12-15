@@ -36,8 +36,23 @@ const lightTheme: DefaultTheme = {
     userMessageBackground: '#e8f5e9',
     userMessageText: '#1b5e20',
     userMessageTimestamp: '#2e7d32',
+    menuBackdrop: 'rgba(0, 0, 0, 0.5)',
+    menuBackground: '#ffffff',
+    menuHover: '#f6f8fa',
+    menuBorder: '#e1e4e8',
+    menuShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
   },
   backgroundImage: backgroundLight,
+  zIndex: {
+    modal: 1000,
+    menuBackdrop: 998,
+    menu: 999,
+  },
+  transitions: {
+    menuFade: '0.2s ease',
+    menuSlide: '0.2s ease',
+    menuHover: '0.2s ease',
+  },
 };
 
 const darkTheme: DefaultTheme = {
@@ -73,8 +88,23 @@ const darkTheme: DefaultTheme = {
     userMessageBackground: '#1c4a7d',
     userMessageText: '#e6f3ff',
     userMessageTimestamp: '#a8c7f0',
+    menuBackdrop: 'rgba(0, 0, 0, 0.7)',
+    menuBackground: '#1e1e1e',
+    menuHover: '#2d333b',
+    menuBorder: '#30363d',
+    menuShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
   },
   backgroundImage: backgroundDark,
+  zIndex: {
+    modal: 1000,
+    menuBackdrop: 998,
+    menu: 999,
+  },
+  transitions: {
+    menuFade: '0.2s ease',
+    menuSlide: '0.2s ease',
+    menuHover: '0.2s ease',
+  },
 };
 
 export { lightTheme, darkTheme };

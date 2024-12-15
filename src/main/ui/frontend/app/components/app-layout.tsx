@@ -3,39 +3,81 @@ import styled from 'styled-components';
 import '@fontsource/press-start-2p';
 import { UsageDisplay } from './usage-display.js';
 import { Usage } from '../../../common/api-types.js';
-import { ContentGenerationIcon } from './content-generation-modal.js';
-import { HealthCheckIcon } from './health-check-modal.js';
-import { ServiceConfigurationIcon } from './service-configuration/service-configuration-modal.js';
+import { ContentGenerationIcon, dispatchContentGenerationModelOpen } from './content-generation-modal.js';
+import { dispatchHealthCheckModalOpen, HealthCheckIcon } from './health-check-modal.js';
+import {
+  dispatchServiceConfigurationModalOpen,
+  ServiceConfigurationIcon,
+} from './service-configuration/service-configuration-modal.js';
+import { HamburgerMenu } from './hamburger-menu/hamburger-menu.js';
+import { MenuItem } from './hamburger-menu/types.js';
+import { dispatchRcConfigModalOpen } from './rc-config-modal.js';
+import { InfoIcon } from './info-icon.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
-  infoIcon: ReactNode;
   chatInterface: ReactNode;
   inputArea: ReactNode;
   usage: Usage;
+  toggleTheme: () => void;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, chatInterface, inputArea, usage }) => {
+export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface, inputArea, usage, toggleTheme }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const menuItems: MenuItem[] = [
+    {
+      content: <ServiceConfigurationIcon />,
+      ariaLabel: 'Service Configuration',
+      key: 'service-config',
+      onClick: dispatchServiceConfigurationModalOpen,
+    },
+    {
+      content: <HealthCheckIcon />,
+      ariaLabel: 'Health Check',
+      key: 'health-check',
+      onClick: dispatchHealthCheckModalOpen,
+    },
+    {
+      content: <ContentGenerationIcon />,
+      ariaLabel: 'Content Generation',
+      key: 'content-gen',
+      onClick: dispatchContentGenerationModelOpen,
+    },
+    {
+      content: themeToggle,
+      ariaLabel: 'Theme Toggle',
+      key: 'theme-toggle',
+      onClick: toggleTheme,
+    },
+    {
+      content: <InfoIcon />,
+      ariaLabel: 'Information',
+      key: 'info',
+      onClick: dispatchRcConfigModalOpen,
+    },
+  ];
 
   return (
     <AppContainer>
       <AppHeader>
         <HeaderLeftSection>
-          <MenuButton onClick={() => setIsMenuOpen(!isMenuOpen)}>☰</MenuButton>
           <AppTitle>GenAIcode</AppTitle>
         </HeaderLeftSection>
         <HeaderRightSection>
           <UsageDisplayWrapper>
             <UsageDisplay usage={usage} />
           </UsageDisplayWrapper>
-          <IconContainer isOpen={isMenuOpen}>
-            <ServiceConfigurationIcon />
-            <HealthCheckIcon />
-            <ContentGenerationIcon />
-            {themeToggle}
-            {infoIcon}
-          </IconContainer>
+          <HamburgerMenuWrapper>
+            <HamburgerMenu
+              menuItems={menuItems}
+              isOpen={isMenuOpen}
+              onToggle={() => setIsMenuOpen(!isMenuOpen)}
+              buttonAriaLabel="Toggle navigation menu"
+              menuAriaLabel="Navigation menu"
+              position={{ top: '100%', right: 0 }}
+            />
+          </HamburgerMenuWrapper>
         </HeaderRightSection>
       </AppHeader>
       <MainContent>
@@ -71,18 +113,6 @@ const HeaderLeftSection = styled.div`
   gap: 10px;
 `;
 
-const MenuButton = styled.button`
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  display: none;
-
-  @media (max-width: 576px) {
-    display: block;
-  }
-`;
-
 const AppTitle = styled.h1`
   text-transform: uppercase;
   font-family: 'Press Start 2P', system-ui;
@@ -111,25 +141,12 @@ const UsageDisplayWrapper = styled.div`
   min-width: 0;
 `;
 
-const IconContainer = styled.div<{ isOpen: boolean }>`
+const HamburgerMenuWrapper = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
 
   @media (max-width: 576px) {
-    display: ${({ isOpen }) => (isOpen ? 'flex' : 'none')};
-    flex-direction: column;
-    position: absolute;
-    z-index: 2;
-    top: 100%;
-    left: -10px;
-    background-color: ${({ theme }) => theme.colors.pageBackground};
-    padding: 10px;
-    border-radius: 4px;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    box-shadow: 0 10px 10px rgba(0, 0, 0, 0.1);
+    position: relative;
   }
 `;
 

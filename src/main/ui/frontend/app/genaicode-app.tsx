@@ -7,11 +7,11 @@ import { AppHandlers } from './components/app-handlers.js';
 import { ChatInterface } from './components/chat-interface.js';
 import { InputArea } from './components/input-area/input-area.js';
 import { ThemeToggle } from './components/theme-toggle.js';
-import { InfoIcon } from './components/info-icon.js';
 import { GlobalStyle } from './theme/global-style.js';
 import { ContentGenerationModal } from './components/content-generation-modal.js';
 import { HealthCheckModal } from './components/health-check-modal.js';
 import { ServiceConfigurationModal } from './components/service-configuration/service-configuration-modal.js';
+import { RcConfigModal } from './components/rc-config-modal.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -79,7 +79,7 @@ const GenAIcodeApp = () => {
       <GlobalStyle />
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
-        infoIcon={<InfoIcon rcConfig={rcConfig} />}
+        toggleTheme={toggleTheme}
         chatInterface={
           <ChatInterface
             messages={chatMessages}
@@ -107,6 +107,7 @@ const GenAIcodeApp = () => {
       <ContentGenerationModal currentService={codegenOptions.aiService} />
       <HealthCheckModal />
       <ServiceConfigurationModal />
+      <RcConfigModal rcConfig={rcConfig} />
     </ThemeProvider>
   );
 };
