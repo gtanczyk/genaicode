@@ -68,8 +68,6 @@ const validateServiceConfig = (serviceType: AiServiceType, config: ServiceConfig
     if (serviceType === 'vertex-ai-claude' && !config.googleCloudRegion) {
       return 'GCP Region is required for Vertex AI Claude';
     }
-  } else if (!config.apiKey) {
-    return `API Key is required for ${serviceType}`;
   }
   return null;
 };
