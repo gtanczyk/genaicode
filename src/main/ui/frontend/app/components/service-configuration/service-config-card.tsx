@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AiServiceType } from '../../../../../codegen-types.js';
 import { ServiceConfig, SanitizedServiceConfig } from '../../../../common/api-types.js';
 import {
@@ -21,6 +21,8 @@ interface ServiceConfigCardProps {
   config?: SanitizedServiceConfig;
   onUpdate: (config: ServiceConfig) => void;
   isLoading: boolean;
+  isExpanded?: boolean;
+  onCardClick?: (serviceType: AiServiceType) => void;
 }
 
 const isVertexService = (serviceType: AiServiceType): boolean => {
@@ -31,8 +33,14 @@ const isVertexClaudeService = (serviceType: AiServiceType): boolean => {
   return serviceType === 'vertex-ai-claude';
 };
 
-export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ serviceType, config, onUpdate, isLoading }) => {
-  const [isCollapsed, setIsCollapsed] = useState(true);
+export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
+  serviceType,
+  config,
+  onUpdate,
+  isLoading,
+  isExpanded,
+  onCardClick,
+}) => {
   const [apiKey, setApiKey] = useState('');
   const [hasApiKey, setHasApiKey] = useState(!!config?.hasApiKey);
   const [defaultModel, setDefaultModel] = useState(config?.modelOverrides?.default || '');
@@ -96,9 +104,11 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ serviceTyp
     onUpdate(updatedConfig);
   };
 
-  const toggleCollapse = () => {
-    setIsCollapsed(!isCollapsed);
-  };
+  const toggleCollapse = useCallback(() => {
+    if (onCardClick) {
+      onCardClick(serviceType);
+    }
+  }, [onCardClick, serviceType]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -114,7 +124,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ serviceTyp
         onKeyDown={handleKeyPress}
         role="button"
         tabIndex={0}
-        aria-expanded={!isCollapsed}
+        aria-expanded={!!isExpanded}
         aria-controls={`config-content-${serviceType}`}
       >
         <ServiceHeader>
@@ -122,10 +132,10 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ serviceTyp
           {!isVertexService(serviceType) && hasApiKey && <span title="API Key is set">🔑</span>}
           {isVertexService(serviceType) && googleCloudProjectId && <span title="GCP Project ID is set">🌐</span>}
         </ServiceHeader>
-        <CollapseIndicator $isCollapsed={isCollapsed}>▼</CollapseIndicator>
+        <CollapseIndicator $isCollapsed={!isExpanded}>▼</CollapseIndicator>
       </CollapsibleHeader>
 
-      <CollapsibleContent $isCollapsed={isCollapsed} id={`config-content-${serviceType}`} aria-hidden={isCollapsed}>
+      <CollapsibleContent $isCollapsed={!isExpanded} id={`config-content-${serviceType}`} aria-hidden={!isExpanded}>
         <Form onSubmit={handleSubmit}>
           {/* API Key input for non-Vertex services */}
           {!isVertexService(serviceType) && (

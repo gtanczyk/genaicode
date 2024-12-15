@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AiServiceType } from '../../../../../codegen-types.js';
 import { SanitizedServiceConfigurations, ServiceConfig, ServiceConfigUpdate } from '../../../../common/api-types.js';
 import { getServiceConfigurations, updateServiceConfiguration } from '../../api/api-client.js';
@@ -147,6 +147,17 @@ export const ServiceConfigurationModal: React.FC = () => {
     }
   };
 
+  const [expandedService, setExpandedService] = useState<AiServiceType | null>(null);
+
+  const handleCardClick = useCallback(
+    (serviceType: AiServiceType) => {
+      setExpandedService((prevExpanded) => {
+        return prevExpanded === serviceType ? null : serviceType;
+      });
+    },
+    [setExpandedService],
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -188,6 +199,8 @@ export const ServiceConfigurationModal: React.FC = () => {
                 config={configurations[serviceType]}
                 onUpdate={(config) => handleUpdate(serviceType, config)}
                 isLoading={isLoading}
+                isExpanded={expandedService === serviceType}
+                onCardClick={handleCardClick}
               />
             ))
           )}
