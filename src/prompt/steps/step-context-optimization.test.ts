@@ -71,9 +71,10 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [
-              { filePath: '/test/file1.ts', relevance: 0.9 },
-              { filePath: '/test/file2.ts', relevance: 0.8 },
+              { reasoning: 'test reasoning', filePath: '/test/file1.ts', relevance: 0.9 },
+              { reasoning: 'test reasoning', filePath: '/test/file2.ts', relevance: 0.8 },
             ],
           },
         },
@@ -116,6 +117,7 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [],
           },
         },
@@ -167,7 +169,8 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
-            optimizedContext: [{ filePath: '/test/file1.ts', relevance: 0.9 }],
+            reasoning: 'test reasoning',
+            optimizedContext: [{ reasoning: 'test reasoning', filePath: '/test/file1.ts', relevance: 0.9 }],
           },
         },
       ]);
@@ -241,9 +244,10 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [
-              { filePath: '/test/file1.ts', relevance: 0.9 },
-              { filePath: '/test/file2.ts', relevance: 0.8 },
+              { reasoning: 'test reasoning', filePath: '/test/file1.ts', relevance: 0.9 },
+              { reasoning: 'test reasoning', filePath: '/test/file2.ts', relevance: 0.8 },
             ],
           },
         },
@@ -378,10 +382,11 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [
-              { filePath: '/test/high-relevance.ts', relevance: 0.9 },
-              { filePath: '/test/medium-relevance.ts', relevance: 0.6 },
-              { filePath: '/test/low-relevance.ts', relevance: 0.2 },
+              { reasoning: 'test reasoning', filePath: '/test/high-relevance.ts', relevance: 0.9 },
+              { reasoning: 'test reasoning', filePath: '/test/medium-relevance.ts', relevance: 0.6 },
+              { reasoning: 'test reasoning', filePath: '/test/low-relevance.ts', relevance: 0.5 },
             ],
           },
         },
@@ -436,6 +441,7 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [], // Empty context indicates optimization failure
           },
         },
@@ -554,9 +560,10 @@ describe('executeStepContextOptimization', () => {
           name: 'optimizeContext',
           args: {
             userPrompt: 'test prompt',
+            reasoning: 'test reasoning',
             optimizedContext: [
-              { filePath: '/test/large-file.ts', relevance: 0.9 },
-              { filePath: '/test/small-file.ts', relevance: 0.8 },
+              { reasoning: 'test reasoning', filePath: '/test/large-file.ts', relevance: 0.9 },
+              { reasoning: 'test reasoning', filePath: '/test/small-file.ts', relevance: 0.8 },
             ],
           },
         },
