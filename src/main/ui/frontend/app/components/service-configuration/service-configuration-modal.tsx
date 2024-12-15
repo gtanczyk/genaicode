@@ -23,7 +23,10 @@ export function dispatchServiceConfigurationModalOpen() {
 
 export function ServiceConfigurationIcon() {
   return (
-    <ToggleButton onClick={dispatchServiceConfigurationModalOpen} aria-label="Service configuration modal">
+    <ToggleButton 
+      onClick={dispatchServiceConfigurationModalOpen} 
+      aria-label="Open service configuration"
+    >
       ⚙️
     </ToggleButton>
   );
@@ -39,7 +42,11 @@ export const ServiceConfigurationModal: React.FC = () => {
 
   useCustomEvent('openServiceConfigurationModal', () => setOpen(true));
 
-  const onClose = () => setOpen(false);
+  const onClose = () => {
+    setOpen(false);
+    setError(null);
+    setSuccessMessage(null);
+  };
 
   // Fetch current configurations when modal opens
   useEffect(() => {
@@ -80,31 +87,55 @@ export const ServiceConfigurationModal: React.FC = () => {
   if (!isOpen) return null;
 
   return (
-    <ModalOverlay onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <ModalOverlay 
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="service-config-title"
+    >
       <ModalContent>
-        <CloseButton onClick={onClose}>&times;</CloseButton>
+        <CloseButton 
+          onClick={onClose}
+          aria-label="Close configuration modal"
+        >
+          &times;
+        </CloseButton>
         <ModalHeader>
-          <h2>AI Services Configuration</h2>
+          <h2 id="service-config-title">AI Services Configuration</h2>
         </ModalHeader>
 
-        {error && <ErrorMessage>{error}</ErrorMessage>}
-        {successMessage && <SuccessMessage>{successMessage}</SuccessMessage>}
+        {error && (
+          <ErrorMessage role="alert" aria-live="polite">
+            {error}
+          </ErrorMessage>
+        )}
+        {successMessage && (
+          <SuccessMessage role="status" aria-live="polite">
+            {successMessage}
+          </SuccessMessage>
+        )}
 
         <ServicesContainer>
-          {!configurations
-            ? 'Loading...'
-            : availableServices.map((serviceType) => (
-                <ServiceConfigCard
-                  key={serviceType}
-                  serviceType={serviceType}
-                  config={configurations[serviceType]}
-                  onUpdate={(config) => handleUpdate(serviceType, config)}
-                  isLoading={isLoading}
-                />
-              ))}
+          {!configurations ? (
+            <div aria-live="polite">Loading...</div>
+          ) : (
+            availableServices.map((serviceType) => (
+              <ServiceConfigCard
+                key={serviceType}
+                serviceType={serviceType}
+                config={configurations[serviceType]}
+                onUpdate={(config) => handleUpdate(serviceType, config)}
+                isLoading={isLoading}
+              />
+            ))
+          )}
         </ServicesContainer>
 
-        {isLoading && <LoadingOverlay>Updating configurations...</LoadingOverlay>}
+        {isLoading && (
+          <LoadingOverlay role="status" aria-live="polite">
+            Updating configurations...
+          </LoadingOverlay>
+        )}
       </ModalContent>
     </ModalOverlay>
   );

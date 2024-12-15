@@ -60,20 +60,57 @@ export const ServicesContainer = styled.div`
 export const ServiceCard = styled.div`
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: 4px;
-  padding: 1rem;
   background: ${({ theme }) => theme.colors.backgroundSecondary};
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+`;
+
+export const CollapsibleHeader = styled.div`
+  cursor: pointer;
+  padding: 1rem;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  color: ${({ theme }) => theme.colors.text};
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: ${({ theme }) => `${theme.colors.border}20`};
+  }
 `;
 
 export const ServiceHeader = styled.div`
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  gap: 0.5rem;
 `;
 
 export const ServiceName = styled.h3`
   margin: 0;
   font-size: 1.1rem;
+`;
+
+export const CollapseIndicator = styled.span<{ $isCollapsed: boolean }>`
+  display: inline-block;
+  transition: transform 0.2s ease;
+  transform: rotate(${({ $isCollapsed }) => ($isCollapsed ? '0deg' : '180deg')});
+  font-size: 0.8rem;
+`;
+
+export const CollapsibleContent = styled.div<{ $isCollapsed: boolean }>`
+  overflow: hidden;
+  transition: height 0.3s ease;
+  height: ${({ $isCollapsed }) => ($isCollapsed ? '0' : 'auto')};
+  padding: ${({ $isCollapsed }) => ($isCollapsed ? '0 1rem' : '0 1rem 1rem')};
+  opacity: ${({ $isCollapsed }) => ($isCollapsed ? '0' : '1')};
+  transition: all 0.3s ease;
 `;
 
 export const Form = styled.form`
