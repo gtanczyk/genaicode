@@ -5,6 +5,7 @@ import { UsageDisplay } from './usage-display.js';
 import { Usage } from '../../../common/api-types.js';
 import { ContentGenerationIcon } from './content-generation-modal.js';
 import { HealthCheckIcon } from './health-check-modal.js';
+import { ServiceConfigurationIcon } from './service-configuration-modal.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -29,6 +30,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, infoIcon, cha
             <UsageDisplay usage={usage} />
           </UsageDisplayWrapper>
           <IconContainer isOpen={isMenuOpen}>
+            <ServiceConfigurationIcon />
             <HealthCheckIcon />
             <ContentGenerationIcon />
             {themeToggle}

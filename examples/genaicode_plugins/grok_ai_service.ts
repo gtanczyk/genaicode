@@ -4,7 +4,16 @@ import { FunctionCall, FunctionDef, PromptItem, Plugin } from '../../src/index.j
 const grokAiService: Plugin = {
   name: 'grok-ai-service',
   aiServices: {
-    'grok-ai-service': generateContent,
+    'grok-ai-service': {
+      generateContent,
+      serviceConfig: {
+        apiKey: process.env.GROK_OPENAI_API_KEY,
+        modelOverrides: {
+          default: 'grok-beta',
+          cheap: 'grok-beta',
+        },
+      },
+    },
   },
 };
 
@@ -15,14 +24,27 @@ async function generateContent(
   temperature: number,
   cheap = false,
 ): Promise<FunctionCall[]> {
+  const { getServiceConfig } = await import('../../src/ai-service/service-configurations.js');
+  const serviceConfig = getServiceConfig('plugin:grok-ai-service');
+
   const openai = new OpenAI({
-    apiKey: process.env.GROK_OPENAI_API_KEY,
+    apiKey: serviceConfig.apiKey,
     baseURL: 'https://api.x.ai/v1',
   });
 
   const { internalGenerateContent } = await import('../../src/ai-service/chat-gpt.js');
 
-  return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, 'grok-beta', openai);
+  return internalGenerateContent(
+    prompt,
+    functionDefs,
+    requiredFunctionName,
+    temperature,
+    cheap,
+    cheap
+      ? (serviceConfig.modelOverrides?.cheap ?? 'grok-beta')
+      : (serviceConfig.modelOverrides?.default ?? 'grok-beta'),
+    openai,
+  );
 }
 
 export default grokAiService;

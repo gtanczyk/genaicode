@@ -1,5 +1,6 @@
 import { FunctionCall, FunctionDef, GenerateContentArgs, GenerateContentFunction } from '../ai-service/common';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types';
+import { ServiceConfig } from './ui/common/api-types';
 
 /** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
 export type PluginAiServiceType = `plugin:${string}`;
@@ -73,7 +74,13 @@ export type Operation = {
 
 export interface Plugin {
   name: string;
-  aiServices?: Record<string, GenerateContentFunction>;
+  aiServices?: Record<
+    string,
+    {
+      generateContent: GenerateContentFunction;
+      serviceConfig: ServiceConfig;
+    }
+  >;
   /**
    * Hook that will be executed for each generateContent function call.
    */

@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/interactive/codegen-worker.js';
+import { getServiceConfig } from './service-configurations.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -14,16 +15,13 @@ export async function generateContent(
   temperature: number,
   cheap = false,
 ): Promise<FunctionCall[]> {
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-  const region = process.env.GOOGLE_CLOUD_REGION;
-
-  if (!projectId || !region) {
-    throw new Error('GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_REGION environment variables must be set');
-  }
+  const serviceConfig = getServiceConfig('vertex-ai-claude');
+  assert(serviceConfig.googleCloudProjectId, 'googleCloudProjectId is not set in the service configuration');
+  assert(serviceConfig.googleCloudRegion, 'googleCloudRegion is not set in the service configuration');
 
   const client: AnthropicVertex = new AnthropicVertex({
-    projectId,
-    region,
+    projectId: serviceConfig.googleCloudProjectId,
+    region: serviceConfig.googleCloudRegion,
   });
 
   const messages: MessageParam[] = prompt
@@ -67,10 +65,10 @@ export async function generateContent(
     })
     .filter((message) => !!message);
 
-  const model = cheap ? 'claude-3-haiku@20240307' : 'claude-3-5-sonnet@20240620';
+  const model = cheap
+    ? (serviceConfig.modelOverrides?.cheap ?? 'claude-3-5-haiku@20240620')
+    : (serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620');
   console.log(`Using Vertex AI Claude model: ${model}`);
-  assert(process.env.GOOGLE_CLOUD_PROJECT, 'GOOGLE_CLOUD_PROJECT environment variable is not set');
-  assert(process.env.GOOGLE_CLOUD_REGION, 'GOOGLE_CLOUD_REGION environment variable is not set');
 
   const response: Message = await client.messages.create(
     {

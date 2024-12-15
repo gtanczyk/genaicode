@@ -5,9 +5,13 @@ import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-questi
 import { RcConfig } from './config-lib.js';
 import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
 import { registerProfile } from '../project-profiles/index.js';
+import { ServiceConfig } from './ui/common/api-types.js';
 
 // Global storage for registered AI services and operations
-const registeredAiServices: Map<PluginAiServiceType, GenerateContentFunction> = new Map();
+const registeredAiServices: Map<
+  PluginAiServiceType,
+  { generateContent: GenerateContentFunction; serviceConfig: ServiceConfig }
+> = new Map();
 const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
 const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
@@ -109,7 +113,10 @@ function validateProfile(profile: ProjectProfile): void {
   }
 }
 
-export function getRegisteredAiServices(): Map<PluginAiServiceType, GenerateContentFunction> {
+export function getRegisteredAiServices(): Map<
+  PluginAiServiceType,
+  { generateContent: GenerateContentFunction; serviceConfig: ServiceConfig }
+> {
   return registeredAiServices;
 }
 

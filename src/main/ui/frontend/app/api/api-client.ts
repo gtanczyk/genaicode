@@ -2,7 +2,7 @@ import axios from 'axios';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-lib.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
-import { Question, Usage } from '../../../common/api-types.js';
+import { Question, Usage, SanitizedServiceConfigurations, ServiceConfigUpdate } from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common.js';
 
 const API_BASE_URL = '/api';
@@ -200,6 +200,26 @@ export const deleteIteration = async (iterationId: string): Promise<void> => {
 export const getAvailableAiServices = async (): Promise<AiServiceType[]> => {
   const response = await api.get('/available-ai-services');
   return response.data.services as AiServiceType[];
+};
+
+/**
+ * Get current service configurations
+ * API keys will be masked in the response
+ */
+export const getServiceConfigurations = async (): Promise<SanitizedServiceConfigurations> => {
+  try {
+    const response = await api.get('/service-configurations');
+    return response.data.configurations;
+  } catch (error) {
+    throw new Error('Failed to fetch service configurations');
+  }
+};
+
+/**
+ * Update configuration for a specific service
+ */
+export const updateServiceConfiguration = async (update: ServiceConfigUpdate): Promise<void> => {
+  await api.post('/service-configuration', update);
 };
 
 // Error handling middleware

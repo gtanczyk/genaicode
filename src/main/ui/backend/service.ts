@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { rcConfig } from '../../config.js';
 import { AiServiceType, CodegenOptions } from '../../codegen-types.js';
 import { RcConfig } from '../../config-lib.js';
+import { ServiceConfigUpdate, SanitizedServiceConfigurations } from '../common/api-types.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
@@ -9,6 +10,7 @@ import { putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 import { getGenerateContentFunctions } from '../../codegen.js';
 import { FunctionCall } from '../../../ai-service/common.js';
+import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 
 interface ImageData {
   buffer: Buffer;
@@ -34,6 +36,23 @@ export class Service {
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
     this.securityToken = this.generateToken();
+  }
+
+  /**
+   * Get service configurations in a safe format that excludes sensitive data.
+   * This method is used by external API endpoints.
+   */
+  public getServiceConfigurations(): SanitizedServiceConfigurations {
+    return getSanitizedServiceConfigurations();
+  }
+
+  /**
+   * Update service configuration.
+   * This method still accepts full configuration updates to maintain functionality,
+   * but sensitive data is properly handled internally.
+   */
+  public updateServiceConfiguration(update: ServiceConfigUpdate): void {
+    updateServiceConfig(update.serviceType, update.config);
   }
 
   private generateToken(): string {

@@ -11,6 +11,7 @@ import { InfoIcon } from './components/info-icon.js';
 import { GlobalStyle } from './theme/global-style.js';
 import { ContentGenerationModal } from './components/content-generation-modal.js';
 import { HealthCheckModal } from './components/health-check-modal.js';
+import { ServiceConfigurationModal } from './components/service-configuration-modal.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -105,6 +106,7 @@ const GenAIcodeApp = () => {
       />
       <ContentGenerationModal currentService={codegenOptions.aiService} />
       <HealthCheckModal />
+      <ServiceConfigurationModal />
     </ThemeProvider>
   );
 };

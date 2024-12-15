@@ -10,7 +10,7 @@ import {
 } from './common.js';
 import { ChatCompletionContentPartText, ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/interactive/codegen-worker.js';
-import { modelOverrides } from '../main/config.js';
+import { getServiceConfig } from './service-configurations.js';
 
 /**
  * This function generates content using the OpenAI chat model.
@@ -22,14 +22,21 @@ export async function generateContent(
   temperature: number,
   cheap = false,
 ): Promise<FunctionCall[]> {
-  const openai = new OpenAI();
+  try {
+    const serviceConfig = getServiceConfig('chat-gpt');
+    const openai = new OpenAI({ apiKey: serviceConfig?.apiKey });
 
-  const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-11-20';
-  const model = cheap
-    ? (modelOverrides.chatGpt?.cheap ?? defaultModel)
-    : (modelOverrides.chatGpt?.default ?? defaultModel);
+    const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-11-20';
+    const modelOverrides = serviceConfig?.modelOverrides;
+    const model = cheap ? (modelOverrides?.cheap ?? defaultModel) : (modelOverrides?.default ?? defaultModel);
 
-  return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, model, openai);
+    return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, model, openai);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('API key not configured')) {
+      throw new Error('OpenAI API key not configured. Please set up the service configuration.');
+    }
+    throw error;
+  }
 }
 
 export async function internalGenerateContent(
@@ -117,7 +124,6 @@ export async function internalGenerateContent(
     .flat();
 
   console.log(`Using OpenAI model: ${model}`);
-  assert(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY environment variable is not set');
 
   let retryCount = 0;
   const maxRetries = 3;

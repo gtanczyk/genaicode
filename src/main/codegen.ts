@@ -147,7 +147,7 @@ export function getGenerateContentFunctions(): Record<AiServiceType, GenerateCon
     'ai-studio': generateContentAiStudio,
     anthropic: generateContentAnthropic,
     'chat-gpt': generateContentGPT,
-    ...Object.fromEntries(getRegisteredAiServices().entries()),
+    ...Object.fromEntries([...getRegisteredAiServices().entries()].map(([key, value]) => [key, value.generateContent])),
   };
 }
 

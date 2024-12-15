@@ -12,9 +12,9 @@ import assert from 'node:assert';
 import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
-import { modelOverrides } from '../main/config.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { disableVertexUnescape } from '../cli/cli-params.js';
+import { getServiceConfig } from './service-configurations.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -90,7 +90,7 @@ export async function generateContent(
   };
 
   const model = getModel(
-    cheap ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002',
+    cheap,
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     options.geminiBlockNone,
@@ -158,19 +158,14 @@ export async function generateContent(
   return processFunctionCalls(functionCalls, functionDefs);
 }
 
-function getModel(
-  defaultModel: string,
-  temperature: number,
-  systemPrompt: string,
-  geminiBlockNone: boolean | undefined,
-) {
-  assert(process.env.API_KEY, 'API_KEY environment variable is not set');
-  const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+function getModel(cheap: boolean, temperature: number, systemPrompt: string, geminiBlockNone: boolean | undefined) {
+  const serviceConfig = getServiceConfig('ai-studio');
+  assert(serviceConfig.apiKey, 'API key not configured');
+  const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
-  const cheap = defaultModel === 'gemini-1.5-flash-001';
   const model = cheap
-    ? (modelOverrides.aiStudio?.cheap ?? defaultModel)
-    : (modelOverrides.aiStudio?.default ?? defaultModel);
+    ? (serviceConfig.modelOverrides?.cheap ?? 'gemini-1.5-flash-002')
+    : (serviceConfig.modelOverrides?.default ?? 'gemini-1.5-pro-002');
 
   console.log(`Using AI Studio model: ${model}`);
 
@@ -219,7 +214,7 @@ async function recoverFunctionCall(
   // @ts-expect-error: "object" !== "OBJECT"
   const schema: ResponseSchema = functionDef.parameters;
   const result = await getModel(
-    'gemini-1.5-pro-002',
+    false,
     0.2,
     'Your role is read the text below and if possible, return it in the desired format.',
     undefined,
