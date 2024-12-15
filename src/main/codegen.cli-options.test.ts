@@ -67,6 +67,7 @@ vi.mock('./config.js', () => ({
     lintCommand: 'echo "mock lint"',
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 describe('CLI Options', () => {

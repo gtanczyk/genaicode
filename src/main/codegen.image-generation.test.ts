@@ -16,6 +16,7 @@ import {
   createMockImageGenerationResponse,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
+import { modelOverrides } from './config.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -67,6 +68,7 @@ vi.mock('./config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 describe('Image Generation', () => {

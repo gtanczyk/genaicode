@@ -67,6 +67,7 @@ vi.mock('./config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 describe('AI Services Integration', () => {
