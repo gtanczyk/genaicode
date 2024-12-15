@@ -31,18 +31,18 @@ const configurations: ServiceConfigurations = {
     },
   },
   'vertex-ai': {
-    googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT,
+    googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT ?? '',
     modelOverrides: {
       default: modelOverrides.vertexAi?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-1.5-flash-002',
     },
   },
   'vertex-ai-claude': {
-    googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT,
-    googleCloudRegion: process.env.GOOGLE_CLOUD_REGION,
+    googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT ?? '',
+    googleCloudRegion: process.env.GOOGLE_CLOUD_REGION ?? '',
     modelOverrides: {
-      default: 'claude-3-5-sonnet-20240620',
-      cheap: 'claude-3-haiku-20240307',
+      default: 'claude-3-5-sonnet@20240620',
+      cheap: 'claude-3-haiku@20240307',
     },
   },
 };
@@ -67,8 +67,8 @@ export function getServiceConfigurations() {
  * For external use, prefer getSanitizedConfiguration().
  * @internal
  */
-export function getServiceConfig(serviceType: AiServiceType): ServiceConfig {
-  return configurations[serviceType];
+export function getServiceConfig<T extends AiServiceType>(serviceType: T): ServiceConfig<T> {
+  return configurations[serviceType] as ServiceConfig<T>;
 }
 
 /**
@@ -78,7 +78,7 @@ export function getServiceConfig(serviceType: AiServiceType): ServiceConfig {
 export function getSanitizedServiceConfigurations(): SanitizedServiceConfigurations {
   return Object.fromEntries(
     Object.entries(configurations).map(([serviceType, config]) => {
-      return [serviceType, sanitizeServiceConfig(config)];
+      return [serviceType, sanitizeServiceConfig(serviceType as AiServiceType, config)];
     }),
   ) as SanitizedServiceConfigurations;
 }
@@ -87,37 +87,53 @@ export function getSanitizedServiceConfigurations(): SanitizedServiceConfigurati
  * Get sanitized configuration for a specific service.
  * This version excludes sensitive data like API keys.
  */
-export function getSanitizedServiceConfiguration(serviceType: AiServiceType): SanitizedServiceConfig | undefined {
+export function getSanitizedServiceConfiguration<T extends AiServiceType>(
+  serviceType: T,
+): SanitizedServiceConfig | undefined {
   const config = configurations[serviceType];
   if (!config) return undefined;
 
-  return sanitizeServiceConfig(config);
+  return sanitizeServiceConfig(serviceType, config as ServiceConfig<T>);
 }
 
 /**
  * Update configuration for a specific service
  */
-export function updateServiceConfig(serviceType: AiServiceType, config: ServiceConfig): void {
+export function updateServiceConfig<T extends AiServiceType>(serviceType: T, config: ServiceConfig<T>): void {
   const currentConfig = configurations[serviceType] || {};
 
-  // If apiKey is not provided, keep the existing one
-  const apiKey = config.apiKey || currentConfig.apiKey;
-
-  configurations[serviceType] = {
+  // Only handle API key for services that use it
+  const updatedConfig: ServiceConfig<T> = {
     ...currentConfig,
     ...config,
-    apiKey,
   };
+
+  // For services that use API key, preserve the existing one if not provided
+  if (serviceType !== 'vertex-ai' && serviceType !== 'vertex-ai-claude') {
+    updatedConfig.apiKey = config.apiKey || currentConfig.apiKey;
+  }
+
+  configurations[serviceType] = updatedConfig as ServiceConfigurations[T];
 }
 
 /**
  * Helper method to sanitize a service configuration by removing sensitive data
  */
-function sanitizeServiceConfig(config: ServiceConfig): SanitizedServiceConfig {
-  return {
-    hasApiKey: !!config.apiKey,
-    modelOverrides: config.modelOverrides,
-    googleCloudProjectId: config.googleCloudProjectId,
-    googleCloudRegion: config.googleCloudRegion,
-  };
+function sanitizeServiceConfig<T extends AiServiceType>(
+  serviceType: T,
+  config: ServiceConfig<T>,
+): SanitizedServiceConfig {
+  if (serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude') {
+    return {
+      modelOverrides: config.modelOverrides,
+      googleCloudProjectId: config.googleCloudProjectId,
+      googleCloudRegion: serviceType === 'vertex-ai-claude' ? config.googleCloudRegion : undefined,
+      hasApiKey: false,
+    };
+  } else {
+    return {
+      modelOverrides: config.modelOverrides,
+      hasApiKey: !!config.apiKey,
+    };
+  }
 }
