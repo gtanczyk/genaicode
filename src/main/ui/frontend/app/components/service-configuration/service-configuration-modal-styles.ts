@@ -179,6 +179,10 @@ export const SuccessMessage = styled.div`
   border-radius: 4px;
 `;
 
+export const ValidationMessage = styled.div`
+  color: ${({ theme }) => theme.colors.error};
+`;
+
 export const LoadingOverlay = styled.div`
   position: absolute;
   top: 0;

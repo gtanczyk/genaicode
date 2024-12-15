@@ -28,16 +28,41 @@ export interface Question {
 // Service configuration types
 
 /**
+ * Type map defining which configuration fields are required for each service type
+ */
+export type ServiceConfigRequirements = {
+  'vertex-ai': {
+    apiKey?: never;
+    googleCloudProjectId: string;
+    googleCloudRegion?: never;
+  };
+  'vertex-ai-claude': {
+    apiKey?: never;
+    googleCloudProjectId: string;
+    googleCloudRegion: string;
+  };
+  'chat-gpt': {
+    apiKey: string | undefined;
+    googleCloudProjectId?: never;
+    googleCloudRegion?: never;
+  };
+  'ai-studio': {
+    apiKey: string | undefined;
+    googleCloudProjectId?: never;
+    googleCloudRegion?: never;
+  };
+  anthropic: {
+    apiKey: string | undefined;
+    googleCloudProjectId?: never;
+    googleCloudRegion?: never;
+  };
+};
+
+/**
  * Full service configuration interface.
  * This interface includes sensitive data and should only be used internally.
  */
-export interface ServiceConfig {
-  /**
-   * API key for the service.
-   * When retrieved from server, this will be masked.
-   */
-  apiKey?: string;
-
+export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
   /**
    * Model overrides for the service.
    * Allows customizing model names for different modes.
@@ -46,28 +71,19 @@ export interface ServiceConfig {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
   };
-
-  /**
-   * Project ID for Vertex AI services.
-   */
-  googleCloudProjectId?: string;
-
-  /**
-   * Google Cloud region for Vertex AI services.
-   */
-  googleCloudRegion?: string;
-}
+} & (T extends keyof ServiceConfigRequirements
+  ? ServiceConfigRequirements[T]
+  : {
+      apiKey?: string;
+      googleCloudProjectId?: string;
+      googleCloudRegion?: string;
+    });
 
 /**
  * Sanitized version of ServiceConfig that excludes sensitive data.
  * This interface is safe to expose through the API.
  */
-export interface SanitizedServiceConfig {
-  /**
-   * Indicates whether an API key is configured for this service
-   */
-  hasApiKey: boolean;
-
+export type SanitizedServiceConfig = {
   /**
    * Model overrides for the service.
    * Allows customizing model names for different modes.
@@ -76,35 +92,44 @@ export interface SanitizedServiceConfig {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
   };
-
-  /**
-   * Project ID for Vertex AI services.
-   */
-  googleCloudProjectId?: string;
-
-  /**
-   * Google Cloud region for Vertex AI services.
-   */
-  googleCloudRegion?: string;
-}
+} & (
+  | {
+      /**
+       * Indicates whether an API key is configured for this service
+       * Only relevant for services that use API keys
+       */
+      hasApiKey?: boolean;
+      googleCloudProjectId?: '';
+      googleCloudRegion?: '';
+    }
+  | {
+      hasApiKey: false;
+      googleCloudProjectId?: string;
+      googleCloudRegion?: string;
+    }
+);
 
 /**
  * Map of service configurations by service type.
  * This type includes sensitive data and should only be used internally.
  */
-export type ServiceConfigurations = Record<AiServiceType, ServiceConfig>;
+export type ServiceConfigurations = {
+  [K in AiServiceType]: ServiceConfig<K>;
+};
 
 /**
  * Map of sanitized service configurations by service type.
  * This type is safe to expose through the API.
  */
-export type SanitizedServiceConfigurations = Record<AiServiceType, SanitizedServiceConfig>;
+export type SanitizedServiceConfigurations = {
+  [K in AiServiceType]: SanitizedServiceConfig;
+};
 
 /**
  * Type for updating service configuration.
  * Includes service type and new configuration.
  */
-export interface ServiceConfigUpdate {
-  serviceType: AiServiceType;
-  config: ServiceConfig;
+export interface ServiceConfigUpdate<T extends AiServiceType = AiServiceType> {
+  serviceType: T;
+  config: ServiceConfig<T>;
 }

@@ -13,6 +13,7 @@ import {
   Label,
   Input,
   UpdateButton,
+  ValidationMessage,
 } from './service-configuration-modal-styles.js';
 
 interface ServiceConfigCardProps {
@@ -22,35 +23,75 @@ interface ServiceConfigCardProps {
   isLoading: boolean;
 }
 
-export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ 
-  serviceType, 
-  config, 
-  onUpdate, 
-  isLoading 
-}) => {
+const isVertexService = (serviceType: AiServiceType): boolean => {
+  return serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude';
+};
+
+const isVertexClaudeService = (serviceType: AiServiceType): boolean => {
+  return serviceType === 'vertex-ai-claude';
+};
+
+export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({ serviceType, config, onUpdate, isLoading }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [apiKey, setApiKey] = useState('');
   const [hasApiKey, setHasApiKey] = useState(!!config?.hasApiKey);
   const [defaultModel, setDefaultModel] = useState(config?.modelOverrides?.default || '');
   const [cheapModel, setCheapModel] = useState(config?.modelOverrides?.cheap || '');
+  const [googleCloudProjectId, setGoogleCloudProjectId] = useState(config?.googleCloudProjectId || '');
+  const [googleCloudRegion, setGoogleCloudRegion] = useState(config?.googleCloudRegion || '');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Update local state when config changes
   useEffect(() => {
     setHasApiKey(!!config?.hasApiKey);
     setDefaultModel(config?.modelOverrides?.default || '');
     setCheapModel(config?.modelOverrides?.cheap || '');
+    setGoogleCloudProjectId(config?.googleCloudProjectId || '');
+    setGoogleCloudRegion(config?.googleCloudRegion || '');
   }, [config]);
+
+  const validateForm = (): boolean => {
+    if (isVertexService(serviceType)) {
+      if (!googleCloudProjectId) {
+        setValidationError('GCP Project ID is required for Vertex AI services');
+        return false;
+      }
+      if (isVertexClaudeService(serviceType) && !googleCloudRegion) {
+        setValidationError('GCP Region is required for Vertex AI Claude');
+        return false;
+      }
+    } else if (!hasApiKey && !apiKey) {
+      setValidationError('API Key is required');
+      return false;
+    }
+
+    setValidationError(null);
+    return true;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!validateForm()) {
+      return;
+    }
+
     const updatedConfig: ServiceConfig = {
-      apiKey: apiKey || undefined,
       modelOverrides: {
         default: defaultModel || undefined,
         cheap: cheapModel || undefined,
       },
     };
+
+    // Add service-specific configuration
+    if (isVertexService(serviceType)) {
+      updatedConfig.googleCloudProjectId = googleCloudProjectId;
+      if (isVertexClaudeService(serviceType)) {
+        updatedConfig.googleCloudRegion = googleCloudRegion;
+      }
+    } else {
+      updatedConfig.apiKey = apiKey || undefined;
+    }
 
     onUpdate(updatedConfig);
   };
@@ -78,28 +119,62 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
       >
         <ServiceHeader>
           <ServiceName>{serviceType}</ServiceName>
-          {hasApiKey && <span title="API Key is set">🔑</span>}
+          {!isVertexService(serviceType) && hasApiKey && <span title="API Key is set">🔑</span>}
+          {isVertexService(serviceType) && googleCloudProjectId && <span title="GCP Project ID is set">🌐</span>}
         </ServiceHeader>
         <CollapseIndicator $isCollapsed={isCollapsed}>▼</CollapseIndicator>
       </CollapsibleHeader>
-      
-      <CollapsibleContent 
-        $isCollapsed={isCollapsed}
-        id={`config-content-${serviceType}`}
-        aria-hidden={isCollapsed}
-      >
+
+      <CollapsibleContent $isCollapsed={isCollapsed} id={`config-content-${serviceType}`} aria-hidden={isCollapsed}>
         <Form onSubmit={handleSubmit}>
-          <FormGroup>
-            <Label htmlFor={`apiKey-${serviceType}`}>API Key</Label>
-            <Input
-              id={`apiKey-${serviceType}`}
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={hasApiKey ? 'API key is set' : 'Enter API key'}
-              aria-label={`API Key for ${serviceType}`}
-            />
-          </FormGroup>
+          {/* API Key input for non-Vertex services */}
+          {!isVertexService(serviceType) && (
+            <FormGroup>
+              <Label htmlFor={`apiKey-${serviceType}`}>API Key</Label>
+              <Input
+                id={`apiKey-${serviceType}`}
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={hasApiKey ? 'API key is set' : 'Enter API key'}
+                aria-label={`API Key for ${serviceType}`}
+              />
+            </FormGroup>
+          )}
+
+          {/* GCP Project ID for Vertex services */}
+          {isVertexService(serviceType) && (
+            <FormGroup>
+              <Label htmlFor={`projectId-${serviceType}`}>GCP Project ID</Label>
+              <Input
+                id={`projectId-${serviceType}`}
+                type="text"
+                value={googleCloudProjectId}
+                onChange={(e) => setGoogleCloudProjectId(e.target.value)}
+                placeholder="Enter GCP Project ID"
+                aria-label={`GCP Project ID for ${serviceType}`}
+                required
+              />
+            </FormGroup>
+          )}
+
+          {/* GCP Region for Vertex AI Claude */}
+          {isVertexClaudeService(serviceType) && (
+            <FormGroup>
+              <Label htmlFor={`region-${serviceType}`}>GCP Region</Label>
+              <Input
+                id={`region-${serviceType}`}
+                type="text"
+                value={googleCloudRegion}
+                onChange={(e) => setGoogleCloudRegion(e.target.value)}
+                placeholder="Enter GCP Region"
+                aria-label={`GCP Region for ${serviceType}`}
+                required
+              />
+            </FormGroup>
+          )}
+
+          {/* Model configuration fields */}
           <FormGroup>
             <Label htmlFor={`defaultModel-${serviceType}`}>Default Model</Label>
             <Input
@@ -122,12 +197,15 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
               aria-label={`Cheap Model for ${serviceType}`}
             />
           </FormGroup>
-          <UpdateButton 
-            type="submit" 
-            disabled={isLoading}
-            aria-busy={isLoading}
-          >
-            Update Configuration
+
+          {validationError && (
+            <ValidationMessage role="alert" aria-live="polite">
+              {validationError}
+            </ValidationMessage>
+          )}
+
+          <UpdateButton type="submit" disabled={isLoading} aria-busy={isLoading}>
+            {isLoading ? 'Updating...' : 'Update Configuration'}
           </UpdateButton>
         </Form>
       </CollapsibleContent>
