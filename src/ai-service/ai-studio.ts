@@ -160,7 +160,7 @@ export async function generateContent(
 
 function getModel(cheap: boolean, temperature: number, systemPrompt: string, geminiBlockNone: boolean | undefined) {
   const serviceConfig = getServiceConfig('ai-studio');
-  assert(serviceConfig.apiKey, 'API key not configured');
+  assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
   const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
   const model = cheap

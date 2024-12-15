@@ -26,6 +26,7 @@ export async function generateContent(
 ): Promise<FunctionCall[]> {
   try {
     const serviceConfig = getServiceConfig('anthropic');
+    assert(serviceConfig?.apiKey, 'Anthropic API key not configured, use ANTHROPIC_API_KEY environment variable.');
     const anthropic = new Anthropic({
       apiKey: serviceConfig?.apiKey,
       defaultHeaders: {
