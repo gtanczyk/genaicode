@@ -192,6 +192,6 @@ describe('promptService - AI Services', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
-    expect(result).toEqual(mockUnexpectedResponse);
+    expect(result).toEqual([]);
   });
 });
