@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeStepCodegenSummary } from './step-codegen-summary.js';
+import { generateCodegenSummary } from './step-generate-codegen-summary.js';
 import { FunctionCall, PromptItem, FunctionDef } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { getSourceCode } from '../../files/read-files.js';
@@ -19,9 +19,8 @@ vi.mock('../../main/config.js', () => ({
   importantContext: {},
 }));
 
-describe('executeStepCodegenSummary', () => {
+describe('generateCodegenSummary', () => {
   const mockGenerateContentFn = vi.fn();
-  const mockWaitIfPaused = vi.fn();
 
   // Mock data
   const mockPrompt: PromptItem[] = [{ type: 'user', text: 'test prompt' }];
@@ -49,8 +48,6 @@ describe('executeStepCodegenSummary', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockWaitIfPaused.mockResolvedValue(undefined);
-
     vi.mocked(getSourceCode).mockReturnValue({});
   });
 
@@ -70,28 +67,13 @@ describe('executeStepCodegenSummary', () => {
       },
     };
 
-    const mockUpdateResult: FunctionCall = {
-      name: 'updateFile',
-      args: {
-        filePath: '/test/path.ts',
-        newContent: 'updated content',
-        explanation: 'Updated file',
-      },
-    };
+    mockGenerateContentFn.mockResolvedValueOnce([mockCodegenSummary]);
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockCodegenSummary]).mockResolvedValueOnce([mockUpdateResult]);
+    const result = await generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions);
 
-    const result = await executeStepCodegenSummary(
-      mockGenerateContentFn,
-      mockPrompt,
-      mockFunctionDefs,
-      mockOptions,
-      mockWaitIfPaused,
-    );
-
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(mockUpdateResult);
-    expect(mockGenerateContentFn).toHaveBeenCalledTimes(2);
+    expect(result.codegenSummaryRequest).toEqual(mockCodegenSummary);
+    expect(result.baseResult).toHaveLength(1);
+    expect(mockGenerateContentFn).toHaveBeenCalledTimes(1);
   });
 
   it('should handle validation and recovery of invalid codegen summary', async () => {
@@ -113,15 +95,9 @@ describe('executeStepCodegenSummary', () => {
 
     mockGenerateContentFn.mockResolvedValueOnce([invalidCodegenSummary]).mockResolvedValueOnce([validCodegenSummary]);
 
-    const result = await executeStepCodegenSummary(
-      mockGenerateContentFn,
-      mockPrompt,
-      mockFunctionDefs,
-      mockOptions,
-      mockWaitIfPaused,
-    );
+    const result = await generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions);
 
-    expect(result).toHaveLength(0);
+    expect(result.codegenSummaryRequest).toEqual(validCodegenSummary);
     expect(mockGenerateContentFn).toHaveBeenCalledTimes(2);
   });
 
@@ -129,7 +105,7 @@ describe('executeStepCodegenSummary', () => {
     mockGenerateContentFn.mockRejectedValueOnce(new Error('Test error'));
 
     await expect(
-      executeStepCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions, mockWaitIfPaused),
+      generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions),
     ).rejects.toThrow('Test error');
   });
 
@@ -141,42 +117,28 @@ describe('executeStepCodegenSummary', () => {
       },
     ]);
 
-    const result = await executeStepCodegenSummary(
-      mockGenerateContentFn,
-      mockPrompt,
-      mockFunctionDefs,
-      mockOptions,
-      mockWaitIfPaused,
-    );
-
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('explanation');
+    await expect(
+      generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions),
+    ).rejects.toThrow('No codegen summary received');
   });
 
-  it('should respect waitIfPaused during file updates', async () => {
+  it('should add response to prompt history', async () => {
     const mockCodegenSummary: FunctionCall = {
       name: 'codegenSummary',
       args: {
-        explanation: 'Test pause handling',
-        fileUpdates: [
-          { filePath: '/test/file1.ts', updateToolName: 'updateFile', prompt: 'Update 1' },
-          { filePath: '/test/file2.ts', updateToolName: 'updateFile', prompt: 'Update 2' },
-        ],
+        explanation: 'Test explanation',
+        fileUpdates: [],
         contextPaths: [],
       },
     };
 
-    mockGenerateContentFn
-      .mockResolvedValueOnce([mockCodegenSummary])
-      .mockResolvedValueOnce([
-        { name: 'updateFile', args: { filePath: '/test/file1.ts', newContent: 'test', explanation: 'test' } },
-      ])
-      .mockResolvedValueOnce([
-        { name: 'updateFile', args: { filePath: '/test/file2.ts', newContent: 'test', explanation: 'test' } },
-      ]);
+    mockGenerateContentFn.mockResolvedValueOnce([mockCodegenSummary]);
 
-    await executeStepCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions, mockWaitIfPaused);
+    const prompt: PromptItem[] = [{ type: 'user', text: 'test prompt' }];
+    await generateCodegenSummary(mockGenerateContentFn, prompt, mockFunctionDefs, mockOptions);
 
-    expect(mockWaitIfPaused).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveLength(3); // original + assistant + user response
+    expect(prompt[1].type).toBe('assistant');
+    expect(prompt[2].type).toBe('user');
   });
 });

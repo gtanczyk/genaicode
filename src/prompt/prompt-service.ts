@@ -17,7 +17,8 @@ import { getSourceCodeTree } from '../files/source-code-tree.js';
 import { INITIAL_GREETING, REQUEST_SOURCE_CODE, SOURCE_CODE_RESPONSE, READY_TO_ASSIST } from './static-prompts.js';
 import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
-import { executeStepCodegenSummary } from './steps/step-codegen-summary.js';
+import { generateCodegenSummary } from './steps/step-generate-codegen-summary.js';
+import { processFileUpdates } from './steps/step-process-file-updates.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -164,18 +165,32 @@ async function executePromptService(
       return { result: [], prompt };
     }
 
-    // Execute the codegen summary step
-    const result = await executeStepCodegenSummary(
-      generateContentFn,
-      prompt,
-      getFunctionDefs(),
-      // messages,
-      codegenPrompt.options,
-      waitIfPaused,
-      generateImageFn,
-    );
+    // Execute the codegen summary step (now split into two steps)
+    try {
+      // First step: Generate and validate codegen summary
+      const { codegenSummaryRequest, baseResult } = await generateCodegenSummary(
+        generateContentFn,
+        prompt,
+        getFunctionDefs(),
+        codegenPrompt.options,
+      );
 
-    return { result, prompt };
+      // Second step: Process file updates
+      const result = await processFileUpdates(
+        generateContentFn,
+        prompt,
+        getFunctionDefs(),
+        codegenPrompt.options,
+        codegenSummaryRequest,
+        waitIfPaused,
+        generateImageFn,
+      );
+
+      return { result: [...baseResult, ...result], prompt };
+    } catch (error) {
+      console.error('Error during code generation:', error);
+      return { result: [], prompt };
+    }
   } else {
     console.log('Code generation skipped altogether.');
     return { result: [], prompt };
