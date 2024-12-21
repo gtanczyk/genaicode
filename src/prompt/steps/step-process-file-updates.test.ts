@@ -3,13 +3,29 @@ import { processFileUpdates } from './step-process-file-updates.js';
 import { FunctionCall, PromptItem, FunctionDef } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { getSourceCode } from '../../files/read-files.js';
+import fs from 'fs';
+import * as diff from 'diff';
 
+// Mock dependencies
 vi.mock('../../files/find-files.js', () => ({
   refreshFiles: vi.fn(),
 }));
+
 vi.mock('../../files/read-files.js', () => ({
   getSourceCode: vi.fn(),
 }));
+
+vi.mock('fs', () => ({
+  default: {
+    readFileSync: vi.fn(),
+    writeFileSync: vi.fn(),
+  },
+}));
+
+vi.mock('diff', () => ({
+  applyPatch: vi.fn(),
+}));
+
 vi.mock('../../main/config.js', () => ({
   rootDir: '/test',
   rcConfig: {
@@ -40,6 +56,19 @@ describe('processFileUpdates', () => {
         required: ['filePath', 'newContent', 'explanation'],
       },
     },
+    {
+      name: 'patchFile',
+      description: 'Function for patching files',
+      parameters: {
+        type: 'object',
+        properties: {
+          filePath: { type: 'string' },
+          patch: { type: 'string' },
+          explanation: { type: 'string' },
+        },
+        required: ['filePath', 'patch', 'explanation'],
+      },
+    },
   ];
 
   const mockOptions: CodegenOptions = {
@@ -67,6 +96,9 @@ describe('processFileUpdates', () => {
     vi.clearAllMocks();
     mockWaitIfPaused.mockResolvedValue(undefined);
     vi.mocked(getSourceCode).mockReturnValue({});
+    vi.mocked(fs.readFileSync).mockReturnValue('original content');
+    vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+    vi.mocked(diff.applyPatch).mockReturnValue('patched content');
   });
 
   it('should process single file update successfully', async () => {
@@ -193,25 +225,29 @@ describe('processFileUpdates', () => {
       },
     };
 
+    const originalContent = 'original content';
+    const patchContent = `Index: file.ts
+===================================================================
+--- file.ts
++++ file.ts
+@@ -1,1 +1,1 @@
+-original content
++patched content`;
+
     const mockPatchResult: FunctionCall = {
       name: 'patchFile',
       args: {
         filePath: '/test/file.ts',
-        patch: 'test patch content',
+        patch: patchContent,
         explanation: 'Test patch',
       },
     };
 
-    const mockVerifiedPatchResult: FunctionCall = {
-      name: 'updateFile',
-      args: {
-        filePath: '/test/file.ts',
-        newContent: 'verified patch content',
-        explanation: 'Verified patch',
-      },
-    };
+    // Mock file system operations
+    vi.mocked(fs.readFileSync).mockReturnValue(originalContent);
+    vi.mocked(diff.applyPatch).mockReturnValue('patched content');
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockPatchResult]).mockResolvedValueOnce([mockVerifiedPatchResult]);
+    mockGenerateContentFn.mockResolvedValueOnce([mockPatchResult]);
 
     const result = await processFileUpdates(
       mockGenerateContentFn,
@@ -223,7 +259,68 @@ describe('processFileUpdates', () => {
     );
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(mockVerifiedPatchResult);
+    expect(result[0]).toEqual(mockPatchResult);
+    expect(fs.readFileSync).toHaveBeenCalledWith('/test/file.ts', 'utf-8');
+    expect(diff.applyPatch).toHaveBeenCalledWith(originalContent, patchContent);
+  });
+
+  it('should handle patch file verification failure and retry with updateFile', async () => {
+    const mockPatchSummary: FunctionCall = {
+      name: 'codegenSummary',
+      args: {
+        explanation: 'Test patch',
+        fileUpdates: [
+          {
+            filePath: '/test/file.ts',
+            updateToolName: 'patchFile',
+            prompt: 'Patch test file',
+          },
+        ],
+        contextPaths: [],
+      },
+    };
+
+    const originalContent = 'original content';
+    const invalidPatch = 'invalid patch content';
+
+    const mockPatchResult: FunctionCall = {
+      name: 'patchFile',
+      args: {
+        filePath: '/test/file.ts',
+        patch: invalidPatch,
+        explanation: 'Test patch',
+      },
+    };
+
+    const mockUpdateResult: FunctionCall = {
+      name: 'updateFile',
+      args: {
+        filePath: '/test/file.ts',
+        newContent: 'updated content',
+        explanation: 'Updated after patch failure',
+      },
+    };
+
+    // Mock file system operations
+    vi.mocked(fs.readFileSync).mockReturnValue(originalContent);
+    vi.mocked(diff.applyPatch).mockReturnValue(false); // Simulate patch failure
+
+    mockGenerateContentFn.mockResolvedValueOnce([mockPatchResult]).mockResolvedValueOnce([mockUpdateResult]);
+
+    const result = await processFileUpdates(
+      mockGenerateContentFn,
+      mockPrompt,
+      mockFunctionDefs,
+      mockOptions,
+      mockPatchSummary,
+      mockWaitIfPaused,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(mockUpdateResult);
+    expect(fs.readFileSync).toHaveBeenCalledWith('/test/file.ts', 'utf-8');
+    expect(diff.applyPatch).toHaveBeenCalledWith(originalContent, invalidPatch);
+    expect(mockGenerateContentFn).toHaveBeenCalledTimes(2);
   });
 
   it('should update prompt with function calls and responses', async () => {

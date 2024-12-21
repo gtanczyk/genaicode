@@ -82,7 +82,7 @@ export async function processFileUpdates(
     const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
     if (patchFileCall) {
       partialResult = await executeStepVerifyPatch(
-        patchFileCall.args as { filePath: string; patch: string },
+        patchFileCall.args as { filePath: string; patch: string; explanation: string },
         generateContentFn,
         prompt,
         functionDefs,

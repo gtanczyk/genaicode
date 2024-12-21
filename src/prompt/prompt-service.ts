@@ -19,6 +19,7 @@ import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
 import { generateCodegenSummary } from './steps/step-generate-codegen-summary.js';
 import { processFileUpdates } from './steps/step-process-file-updates.js';
+import { putSystemMessage } from '../main/common/content-bus.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -188,11 +189,11 @@ async function executePromptService(
 
       return { result, prompt };
     } catch (error) {
-      console.error('Error during code generation:', error);
+      putSystemMessage('Error during code generation', { error });
       return { result: [], prompt };
     }
   } else {
-    console.log('Code generation skipped altogether.');
+    putSystemMessage('Code generation skipped altogether.');
     return { result: [], prompt };
   }
 }

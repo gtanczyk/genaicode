@@ -11,7 +11,7 @@ import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepVerifyPatch(
-  { filePath, patch }: { filePath: string; patch: string },
+  { filePath, patch, explanation }: { filePath: string; patch: string; explanation: string },
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
@@ -50,6 +50,6 @@ export async function executeStepVerifyPatch(
     return partialResult;
   } else {
     console.log('Patch verified successfully');
-    return [{ name: 'patchFile', args: { filePath, patch } }];
+    return [{ name: 'patchFile', args: { filePath, patch, explanation } }];
   }
 }
