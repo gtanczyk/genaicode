@@ -168,7 +168,7 @@ async function executePromptService(
     // Execute the codegen summary step (now split into two steps)
     try {
       // First step: Generate and validate codegen summary
-      const { codegenSummaryRequest, baseResult } = await generateCodegenSummary(
+      const { codegenSummaryRequest } = await generateCodegenSummary(
         generateContentFn,
         prompt,
         getFunctionDefs(),
@@ -186,7 +186,7 @@ async function executePromptService(
         generateImageFn,
       );
 
-      return { result: [...baseResult, ...result], prompt };
+      return { result, prompt };
     } catch (error) {
       console.error('Error during code generation:', error);
       return { result: [], prompt };
