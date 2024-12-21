@@ -1,0 +1,16 @@
+- continue conversation after codegen
+- summary of file changes, option to revert file change
+- js config, custom tool to ask question
+- fix programmatic usage problems
+- an option to compress/summarize current history of conversation
+- option to regenerate an assistant message (with different model)
+- ollama (openai api?)
+- sound notification
+- visual notification in vite
+- show diff
+- show reasoning
+- timestamp misaligned on list of system messages
+- patchFile is broken, replace it with other way of partial updates
+- file update before summary
+- retry failed api operation
+- prompt for api key on failure

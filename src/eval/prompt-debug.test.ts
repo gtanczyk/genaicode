@@ -7,6 +7,7 @@ import { getFunctionDefs } from '../prompt/function-calling.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
 import { DEBUG_CURRENT_PROMPT } from './data/current-prompt';
 import { PromptItem } from '../ai-service/common';
+import { updateServiceConfig } from '../ai-service/service-configurations';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -14,13 +15,19 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'askQuestion';
+  const requiredFunctionName = 'optimizeContext';
   const temperature = 0.7;
 
   it('Gemini Flash', async () => {
+    updateServiceConfig('ai-studio', {
+      modelOverrides: {
+        cheap: 'gemini-2.0-flash-exp',
+      },
+      apiKey: process.env.API_KEY,
+    });
     const geminiArgs = (
       await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, true, {
-        aiService: 'vertex-ai',
+        aiService: 'ai-studio',
         askQuestion: false,
       })
     )[0].args;
