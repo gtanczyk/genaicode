@@ -52,20 +52,20 @@ export async function handleCodeGeneration({
     };
   }
 
-  putAssistantMessage('Planning phase completed. Would you like to proceed with the planned changes?');
-  putUserMessage(planningConfirmation.answer || 'Accept planning and continue');
-
   // Add user's planning confirmation answer to prompt history
-  prompt.push(
-    {
-      type: 'assistant',
-      text: CODEGEN_SUMMARY_PROMPT,
-    },
-    {
-      type: 'user',
-      text: planningConfirmation.answer || 'Accept planning and continue',
-    },
-  );
+  const assistantItem = {
+    type: 'assistant',
+    text: CODEGEN_SUMMARY_PROMPT,
+  } as const;
+  putAssistantMessage(assistantItem.text, undefined, undefined, undefined, assistantItem);
+  prompt.push(assistantItem);
+
+  const userItem = {
+    type: 'user',
+    text: planningConfirmation.answer || 'Accept planning and continue',
+  } as const;
+  putUserMessage(userItem.text, undefined, undefined, undefined, userItem);
+  prompt.push(userItem);
 
   try {
     // First step: Generate and validate codegen summary

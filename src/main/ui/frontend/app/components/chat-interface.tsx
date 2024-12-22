@@ -43,6 +43,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(() => new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(() => new Set());
   const [collapsedIterations, setCollapsedIterations] = useState<Set<string>>(() => new Set());
+  const [editingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -112,13 +113,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
-  const toggleIterationCollapse = (id: string) => {
+  const toggleIterationCollapse = (iterationId: string) => {
+    // Don't allow collapsing if a message is being edited in this iteration
+    if (editingMessageId && messages.find((m) => m.id === editingMessageId)?.iterationId === iterationId) {
+      return;
+    }
+
     setCollapsedIterations((prevIds) => {
       const newIds = new Set(prevIds);
-      if (newIds.has(id)) {
-        newIds.delete(id);
+      if (newIds.has(iterationId)) {
+        newIds.delete(iterationId);
       } else {
-        newIds.add(id);
+        newIds.add(iterationId);
       }
       return newIds;
     });

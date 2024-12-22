@@ -6,7 +6,7 @@ import { ServiceConfigUpdate, SanitizedServiceConfigurations } from '../common/a
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
-import { putSystemMessage } from '../../common/content-bus.js';
+import { editMessage, putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 import { getGenerateContentFunctions } from '../../codegen.js';
 import { FunctionCall } from '../../../ai-service/common.js';
@@ -36,6 +36,41 @@ export class Service {
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
     this.securityToken = this.generateToken();
+  }
+
+  /**
+   * Edit a message in the conversation
+   * @param messageId ID of the message to edit
+   * @param newContent New content for the message
+   * @returns true if the message was successfully edited, false otherwise
+   * @throws Error if the message ID is invalid or if editing is not allowed
+   */
+  async editMessage(messageId: string, newContent: string): Promise<boolean> {
+    // Basic input validation
+    if (!messageId || !newContent.trim()) {
+      throw new Error('Invalid message ID or content');
+    }
+
+    // Find the message in the content array
+    const contentItem = this.content.find((item) => item.message?.id === messageId);
+    if (!contentItem || !contentItem.message) {
+      throw new Error('Message not found');
+    }
+
+    // Check if editing is allowed for this message type
+    if (contentItem.message.type === 'system') {
+      throw new Error('System messages cannot be edited');
+    }
+
+    // Check if the message is from an ongoing iteration
+    const currentIterationId = this.getCurrentIterationId();
+    if (contentItem.message.iterationId !== currentIterationId || this.executionStatus === 'idle') {
+      throw new Error('Can only edit messages from the currently ongoing iteration');
+    }
+
+    // Try to edit the message using content bus
+    const success = editMessage(contentItem, newContent);
+    return success;
   }
 
   /**

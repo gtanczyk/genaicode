@@ -16,12 +16,7 @@ import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { runInteractiveMode } from './interactive/codegen-interactive.js';
 import { runCodegenUI } from './ui/codegen-ui.js';
-import {
-  putSystemMessage,
-  putUserMessage,
-  setCurrentIterationId,
-  unsetCurrentIterationId,
-} from './common/content-bus.js';
+import { putSystemMessage, setCurrentIterationId, unsetCurrentIterationId } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 import { getRegisteredAiServices } from './plugin-loader.js';
 import { stringToAiServiceType } from './codegen-utils.js';
@@ -93,13 +88,6 @@ export async function runCodegenIteration(
 
   setCurrentIterationId();
 
-  putUserMessage(
-    options.explicitPrompt ?? options.taskFile ?? 'Run codegen iteration without explicit prompt.',
-    undefined,
-    undefined,
-    options.images,
-  );
-
   if (abortSignal?.aborted) {
     unsetCurrentIterationId();
     throw new Error('Codegen iteration aborted');
@@ -107,7 +95,6 @@ export async function runCodegenIteration(
 
   await waitIfPaused();
 
-  putSystemMessage('Generating response');
   try {
     const functionCalls = await promptService(
       getGenerateContentFunctions(),

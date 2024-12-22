@@ -1,3 +1,4 @@
+import { PromptItem } from '../../ai-service/common.js';
 import { ChatMessageFlags, ChatMessageType, ContentProps, ChatMessageImage } from './content-bus-types.js';
 
 type ContentHandler = (content: ContentProps) => void;
@@ -13,7 +14,7 @@ export function unsetCurrentIterationId() {
   currentIterationId = null;
 }
 
-type MessageArgs = [data?: unknown, flags?: ChatMessageFlags[], images?: ChatMessageImage[]];
+type MessageArgs = [data?: unknown, flags?: ChatMessageFlags[], images?: ChatMessageImage[], promptItem?: PromptItem];
 
 export function putUserMessage(message: string, ...args: MessageArgs) {
   putMessage(message, ChatMessageType.USER, ...args);
@@ -33,9 +34,14 @@ function putMessage(
   data?: unknown,
   flags?: ChatMessageFlags[],
   images?: ChatMessageImage[],
+  promptItem?: PromptItem,
 ) {
   if (!currentIterationId) {
     console.warn('No current iteration ID set');
+  }
+
+  if (promptItem) {
+    flags = [...(flags ?? []), ChatMessageFlags.MESSAGE_EDITABLE];
   }
 
   console.log(message, data);
@@ -52,7 +58,18 @@ function putMessage(
       images,
     },
     data,
+    promptItem,
   });
+}
+
+export function editMessage(content: ContentProps, newContent: string) {
+  if (content.message && content.promptItem) {
+    content.message.content = newContent;
+    content.promptItem.text = newContent;
+    return true;
+  } else {
+    return false;
+  }
 }
 
 export function registerContentHandler(handler: ContentHandler) {

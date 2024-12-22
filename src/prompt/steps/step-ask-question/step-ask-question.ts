@@ -46,6 +46,7 @@ export async function executeStepAskQuestion(
 
       console.log('Assistant asks:', askQuestionCall.args);
       if (askQuestionCall.args?.message) {
+        // TODO: PromptItem should be included here, but a small refactor is needed to achieve this
         putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);
       }
 
@@ -62,8 +63,8 @@ export async function executeStepAskQuestion(
         });
 
         // This is important to display the content to the user interface (ui or interactive cli)
-        const lastItem = result.items.slice(-1)[0];
-        putUserMessage(lastItem.user.text, lastItem.user.data);
+        let lastItem = result.items.slice(-1)[0];
+        putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
 
@@ -77,7 +78,8 @@ export async function executeStepAskQuestion(
             waitIfPaused,
           });
 
-          putUserMessage(result.items.slice(-1)[0].user.text);
+          lastItem = result.items.slice(-1)[0];
+          putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
 
           prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
         }

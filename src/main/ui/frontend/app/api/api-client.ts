@@ -62,6 +62,48 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * Edit a message in the conversation
+ * @param messageId - The ID of the message to edit
+ * @param newContent - The new content for the message
+ * @throws Error if the message editing fails
+ */
+export const editMessage = async (messageId: string, newContent: string): Promise<void> => {
+  try {
+    // Validate input
+    if (!messageId || !newContent.trim()) {
+      throw new Error('Invalid message ID or content');
+    }
+
+    const response = await api.post('/edit-message', {
+      messageId,
+      newContent,
+    });
+
+    if (response.status !== 200) {
+      throw new Error('Failed to edit message');
+    }
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        throw new Error(error.response.data.error || 'Failed to edit message');
+      } else if (error.request) {
+        // The request was made but no response was received
+        throw new Error('No response received from server');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        throw new Error(`Error setting up request: ${error.message}`);
+      }
+    } else if (error instanceof Error) {
+      throw error;
+    } else {
+      throw new Error('An unexpected error occurred while editing the message');
+    }
+  }
+};
+
 export const getContent = async (): Promise<ContentProps[]> => {
   const response = await api.get('/content');
   return response.data.content;

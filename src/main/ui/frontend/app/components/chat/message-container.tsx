@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChatMessage } from '../../../../../common/content-bus-types.js';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChatMessage, ChatMessageFlags } from '../../../../../common/content-bus-types.js';
 import { DataContainer } from './data-container.js';
 import {
   MessageContainer as StyledMessageContainer,
@@ -9,8 +9,15 @@ import {
   MessageFooter,
   MessageTimestamp,
   ShowDataLink,
+  EditableContent,
+  EditControls,
+  EditButton,
+  SaveButton,
+  CancelButton,
+  LoadingSpinner,
 } from './styles/message-container-styles.js';
 import styled from 'styled-components';
+import { editMessage } from '../../api/api-client.js';
 
 const ImageGrid = styled.div`
   display: grid;
@@ -48,11 +55,109 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
   visibleDataIds,
   toggleDataVisibility,
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      // Place cursor at the end of the content
+      textareaRef.current.selectionStart = textareaRef.current.value.length;
+      textareaRef.current.selectionEnd = textareaRef.current.value.length;
+    }
+  }, [isEditing]);
+
+  const handleEditClick = () => {
+    setEditContent(message.content);
+    setIsEditing(true);
+    setError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent(message.content);
+    setError(null);
+  };
+
+  const validateEdit = (content: string): boolean => {
+    if (!content.trim()) {
+      setError('Message content cannot be empty');
+      return false;
+    }
+    if (content === message.content) {
+      setError('No changes made to the message');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSaveEdit = async () => {
+    if (!validateEdit(editContent)) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      await editMessage(message.id, editContent);
+      setIsEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
+    }
+  };
+
+  const isEditable = message.type !== 'system' && message.flags?.includes(ChatMessageFlags.MESSAGE_EDITABLE);
+
   return (
     <StyledMessageContainer data-type={message.type}>
-      <MessageBubble>
-        <MessageHeader>{message.type === 'user' ? 'You' : 'Assistant'}</MessageHeader>
-        <MessageContent>{message.content}</MessageContent>
+      <MessageBubble data-edit-mode={isEditing}>
+        <MessageHeader>
+          <div>{message.type === 'user' ? 'You' : 'Assistant'}</div>
+          {isEditable && !isEditing && (
+            <EditButton onClick={handleEditClick} title="Edit message">
+              ✎
+            </EditButton>
+          )}
+        </MessageHeader>
+
+        {isEditing ? (
+          <>
+            <EditableContent
+              ref={textareaRef}
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Enter your message..."
+            />
+            {error && <div style={{ color: 'red', fontSize: '0.8em', marginTop: '4px' }}>{error}</div>}
+            <EditControls>
+              <SaveButton onClick={handleSaveEdit} disabled={isLoading}>
+                {isLoading ? <LoadingSpinner /> : 'Save'}
+              </SaveButton>
+              <CancelButton onClick={handleCancelEdit} disabled={isLoading}>
+                Cancel
+              </CancelButton>
+            </EditControls>
+          </>
+        ) : (
+          <MessageContent>{message.content}</MessageContent>
+        )}
+
         {message.images && message.images.length > 0 && (
           <ImageGrid>
             {message.images.map((image, index) => (
@@ -66,6 +171,7 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
             ))}
           </ImageGrid>
         )}
+
         <MessageFooter>
           {message.data ? (
             <ShowDataLink onClick={() => toggleDataVisibility(message.id)}>

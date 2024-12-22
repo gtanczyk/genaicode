@@ -19,7 +19,7 @@ import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
 import { generateCodegenSummary } from './steps/step-generate-codegen-summary.js';
 import { processFileUpdates } from './steps/step-process-file-updates.js';
-import { putSystemMessage } from '../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage } from '../main/common/content-bus.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -110,16 +110,17 @@ async function executePromptService(
   };
   prompt.push(getSourceCodeResponse);
 
-  prompt.push(
-    {
-      type: 'assistant',
-      text: READY_TO_ASSIST,
-    },
-    {
-      type: 'user',
-      text: codegenPrompt.prompt,
-    },
-  );
+  prompt.push({
+    type: 'assistant',
+    text: READY_TO_ASSIST,
+  });
+
+  const initialPromptItem: PromptItem = {
+    type: 'user',
+    text: codegenPrompt.prompt,
+  };
+
+  prompt.push(initialPromptItem);
 
   // Add uploaded images to the prompt if available
   if (codegenPrompt.options.images && codegenPrompt.options.images.length > 0 && codegenPrompt.options.vision) {
@@ -128,6 +129,17 @@ async function executePromptService(
       mediaType: img.mediaType,
     }));
   }
+
+  putUserMessage(
+    codegenPrompt.options.explicitPrompt ??
+      codegenPrompt.options.taskFile ??
+      'Run codegen iteration without explicit prompt.',
+    undefined,
+    undefined,
+    codegenPrompt.options.images,
+    initialPromptItem,
+  );
+  putSystemMessage('Generating response');
 
   // Initial summary based on first user input
   await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);

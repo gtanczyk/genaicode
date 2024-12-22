@@ -1,3 +1,5 @@
+import { PromptItem } from '../../ai-service/common';
+
 export enum ChatMessageType {
   USER = 'user',
   ASSISTANT = 'assistant',
@@ -6,6 +8,7 @@ export enum ChatMessageType {
 
 export enum ChatMessageFlags {
   CONVERSATION_SUMMARY = 'conversation-summary',
+  MESSAGE_EDITABLE = 'editable',
 }
 
 export interface ChatMessageImage {
@@ -28,4 +31,5 @@ export interface ChatMessage {
 export type ContentProps = {
   message?: ChatMessage;
   data?: unknown;
+  promptItem?: PromptItem;
 };
