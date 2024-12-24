@@ -113,7 +113,7 @@ It is **VERY IMPORTANT** to not make the following mistakes:
   }
 
   if (importantContext.systemPrompt && importantContext.systemPrompt.length > 0) {
-    systemPrompt += `\n${importantContext.systemPrompt.join('\n')}`;
+    systemPrompt += `\n# OTHER IMPORTANT INSTRUCTIONS\n\n${importantContext.systemPrompt.join('\n')}`;
   }
 
   if (verbose) {
