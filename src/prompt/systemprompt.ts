@@ -112,9 +112,8 @@ It is **VERY IMPORTANT** to not make the following mistakes:
 `;
   }
 
-  if (importantContext.textPrompts && importantContext.textPrompts.length > 0) {
-    systemPrompt += `## Important Context
-${importantContext.textPrompts.join('\n')}`;
+  if (importantContext.systemPrompt && importantContext.systemPrompt.length > 0) {
+    systemPrompt += `\n${importantContext.systemPrompt.join('\n')}`;
   }
 
   if (verbose) {

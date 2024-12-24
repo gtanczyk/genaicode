@@ -9,12 +9,8 @@ import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index
 // This file contains project codegen configuration
 const CODEGENRC_FILENAME = '.genaicoderc';
 
-export interface TextPrompt {
-  content: string;
-}
-
 export interface ImportantContext {
-  textPrompts?: TextPrompt[];
+  systemPrompt?: string[];
   files?: string[];
 }
 

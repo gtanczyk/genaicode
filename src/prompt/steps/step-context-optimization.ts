@@ -9,6 +9,7 @@ import { getSummary } from './step-summarization.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
+import { importantContext } from '../../main/config.js';
 
 const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
@@ -224,6 +225,10 @@ function parseOptimizationResult(
     if (relevance < 0.5) {
       break;
     }
+    if (importantContext.files?.includes(filePath)) {
+      // Preserving important files
+      continue;
+    }
 
     // Calculate dependency weight (0-0.3) and add to base relevance
     const depWeight = calculateDependencyWeight(filePath, fullSourceCode, relevantFiles);
@@ -312,6 +317,9 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[], irrelevantFiles:
           // Zero out the contents but keep the structure
           const sourceCode = parseSourceCodeTree(JSON.parse(response.content));
           for (const path in sourceCode) {
+            if (importantContext.files?.includes(path)) {
+              continue; // Preserve important files
+            }
             if ('content' in sourceCode[path]) {
               sourceCode[path].content = null;
             } else {

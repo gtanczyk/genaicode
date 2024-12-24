@@ -21,10 +21,10 @@ export const importantContext: ImportantContext = processImportantContext(rcConf
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
 
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {
-  if (!context) return { textPrompts: [], files: [] };
+  if (!context) return { systemPrompt: [], files: [] };
 
   return {
-    textPrompts: context.textPrompts || [],
+    systemPrompt: context.systemPrompt || [],
     files: (context.files || []).map((file) => path.resolve(rcConfig.rootDir, file)),
   };
 }

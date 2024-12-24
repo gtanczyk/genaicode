@@ -18,13 +18,9 @@
   ],
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {
-    "textPrompts": [
-      {
-        "content": "GenAIcode is an AI-powered code generation and management tool designed to streamline software development. It leverages various AI services (Vertex AI, AI Studio, ChatGPT, Anthropic) to generate, modify, and analyze code. The project features a modular architecture with components for AI services, CLI operations, file handling, and image processing. It supports interactive and UI modes, allowing developers to execute code generation tasks, manage prompts, and visualize outputs. GenAIcode offers customizable options for code generation, including file operations, context optimization, and temperature settings. The tool aims to enhance developer productivity by automating repetitive coding tasks and providing AI-assisted code improvements."
-      },
-      {
-        "content": "When making changes to the codebase, it is important to follow the project's coding standards and conventions. This includes adhering to the linting rules, maintaining consistent formatting, and writing clear and concise code. It is also recommended to document the changes made, including the purpose of the modifications, any dependencies added or removed, and any potential impact on the project. By following these guidelines, developers can ensure that the codebase remains clean, readable, and maintainable."
-      }
+    "systemPrompt": [
+      "GenAIcode is an AI-powered code generation and management tool designed to streamline software development. It leverages various AI services (Vertex AI, AI Studio, ChatGPT, Anthropic) to generate, modify, and analyze code. The project features a modular architecture with components for AI services, CLI operations, file handling, and image processing. It supports interactive and UI modes, allowing developers to execute code generation tasks, manage prompts, and visualize outputs. GenAIcode offers customizable options for code generation, including file operations, context optimization, and temperature settings. The tool aims to enhance developer productivity by automating repetitive coding tasks and providing AI-assisted code improvements.",
+      "When making changes to the codebase, it is important to follow the project's coding standards and conventions. This includes adhering to the linting rules, maintaining consistent formatting, and writing clear and concise code. It is also recommended to document the changes made, including the purpose of the modifications, any dependencies added or removed, and any potential impact on the project. By following these guidelines, developers can ensure that the codebase remains clean, readable, and maintainable."
     ],
     "files": [
       "docs/design/feature-implementation-status.md",
