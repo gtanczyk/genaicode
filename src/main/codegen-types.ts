@@ -61,6 +61,41 @@ export interface CodegenOptions {
 /** Hook function type for generateContent hooks */
 export type GenerateContentHook = (args: GenerateContentArgs, result: FunctionCall[]) => Promise<void>;
 
+/** Arguments of the codegen planning function call */
+export type CodegenPlanningArgs = {
+  problemAnalysis: string;
+  codeChanges: string;
+  affectedFiles: {
+    reason: string;
+    filePath: string;
+    dependencies: string[];
+  }[];
+};
+
+/**
+ * Arguments passed to the planning hooks
+ */
+export interface PlanningHookArgs {
+  /** The original planning prompt */
+  prompt: string;
+  /** The options passed to the codegen */
+  options: CodegenOptions;
+  /** The result of the planning step, if in post-processing phase */
+  result?: FunctionCall<CodegenPlanningArgs>;
+}
+
+/**
+ * Hook function type for modifying the planning prompt before execution
+ * Return modified prompt or undefined to use original prompt
+ */
+export type PlanningPreHook = (args: PlanningHookArgs) => Promise<string | void>;
+
+/**
+ * Hook function type for post-processing the planning result
+ * Return modified result or undefined to use original result
+ */
+export type PlanningPostHook = (args: PlanningHookArgs) => Promise<FunctionCall<CodegenPlanningArgs> | void>;
+
 interface ExecutorArgs {
   [key: string]: unknown;
 }
@@ -99,4 +134,16 @@ export interface Plugin {
       description: string;
     }
   >;
+  /**
+   * Hook that will be executed before the planning prompt is sent to the model.
+   * Can be used to modify the prompt.
+   * Return modified prompt or undefined to use original prompt.
+   */
+  planningPreHook?: PlanningPreHook;
+  /**
+   * Hook that will be executed after the planning result is received from the model.
+   * Can be used to modify the result.
+   * Return modified result or undefined to use original result.
+   */
+  planningPostHook?: PlanningPostHook;
 }

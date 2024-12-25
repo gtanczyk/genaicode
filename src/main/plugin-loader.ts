@@ -1,5 +1,13 @@
 import path from 'path';
-import { Operation, Plugin, PluginActionType, PluginAiServiceType, GenerateContentHook } from './codegen-types.js';
+import {
+  Operation,
+  Plugin,
+  PluginActionType,
+  PluginAiServiceType,
+  GenerateContentHook,
+  PlanningPreHook,
+  PlanningPostHook,
+} from './codegen-types.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-lib.js';
@@ -16,6 +24,10 @@ const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
 const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
 const registeredGenerateContentHooks: GenerateContentHook[] = [];
+
+// Storage for planning and summary hooks
+const registeredPlanningPreHooks: PlanningPreHook[] = [];
+const registeredPlanningPostHooks: PlanningPostHook[] = [];
 
 // Project profile plugin storage
 const registeredProfilePlugins: ProjectProfilePlugin[] = [];
@@ -61,6 +73,16 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
       if (plugin.generateContentHook) {
         registeredGenerateContentHooks.push(plugin.generateContentHook);
         console.log('Registered generateContent hook');
+      }
+
+      // Handle planning hooks
+      if (plugin.planningPreHook) {
+        registeredPlanningPreHooks.push(plugin.planningPreHook);
+        console.log('Registered planning pre-hook');
+      }
+      if (plugin.planningPostHook) {
+        registeredPlanningPostHooks.push(plugin.planningPostHook);
+        console.log('Registered planning post-hook');
       }
 
       // Handle project profile plugins
@@ -134,6 +156,20 @@ export function getRegisteredActionHandlerDescriptions(): Map<PluginActionType, 
 
 export function getRegisteredGenerateContentHooks(): GenerateContentHook[] {
   return registeredGenerateContentHooks;
+}
+
+/**
+ * Get all registered planning pre-hooks
+ */
+export function getRegisteredPlanningPreHooks(): PlanningPreHook[] {
+  return registeredPlanningPreHooks;
+}
+
+/**
+ * Get all registered planning post-hooks
+ */
+export function getRegisteredPlanningPostHooks(): PlanningPostHook[] {
+  return registeredPlanningPostHooks;
 }
 
 /**

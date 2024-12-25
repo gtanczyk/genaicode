@@ -23,6 +23,7 @@
       "When making changes to the codebase, it is important to follow the project's coding standards and conventions. This includes adhering to the linting rules, maintaining consistent formatting, and writing clear and concise code. It is also recommended to document the changes made, including the purpose of the modifications, any dependencies added or removed, and any potential impact on the project. By following these guidelines, developers can ensure that the codebase remains clean, readable, and maintainable."
     ],
     "files": [
+      "GENAICODE_TRACKER.md",
       "docs/design/feature-implementation-status.md",
       "src/prompt/prompt-service.ts",
       "src/main/codegen.ts",
@@ -30,6 +31,7 @@
     ]
   },
   "plugins": [
+    "./examples/genaicode_plugins/genaicode_tracker.js",
     "./examples/genaicode_plugins/fake_ai_service.js",
     "./examples/genaicode_plugins/grok_ai_service.js",
     "./examples/genaicode_plugins/nonsense_action_handler.js",

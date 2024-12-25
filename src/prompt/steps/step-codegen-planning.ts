@@ -1,10 +1,11 @@
-import { FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
+import { FunctionCall, FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { CodegenOptions, CodegenPlanningArgs } from '../../main/codegen-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { StepResult } from './steps-types.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
+import { getRegisteredPlanningPreHooks, getRegisteredPlanningPostHooks } from '../../main/plugin-loader.js';
 
 export const PLANNING_PROMPT = `Please analyze the conversation so far and help plan the implementation:
 
@@ -34,11 +35,14 @@ export async function executeStepCodegenPlanning(
 ): Promise<StepResult> {
   putSystemMessage('Starting codegen planning phase...');
 
+  // Execute pre-hooks to potentially modify the planning prompt
+  const modifiedPlanningPrompt = await executePlanningPreHooks(PLANNING_PROMPT, options);
+
   // Add the planning prompt to the conversation
   if (prompt.slice(-1)[0].type === 'user') {
-    prompt.slice(-1)[0].text += '\n\\n' + PLANNING_PROMPT;
+    prompt.slice(-1)[0].text += '\\n\\n' + modifiedPlanningPrompt;
   } else {
-    prompt.push({ type: 'user', text: PLANNING_PROMPT });
+    prompt.push({ type: 'user', text: modifiedPlanningPrompt });
   }
 
   const planningRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
@@ -54,9 +58,16 @@ export async function executeStepCodegenPlanning(
     let planningResult = await generateContentFn(...planningRequest);
     planningResult = await validateAndRecoverSingleResult(planningRequest, planningResult, generateContentFn);
 
-    const codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
+    let codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
 
     if (codegenPlanningRequest) {
+      // Execute post-hooks to potentially modify the planning result
+      codegenPlanningRequest = await executePlanningPostHooks(
+        codegenPlanningRequest as FunctionCall<CodegenPlanningArgs>,
+        modifiedPlanningPrompt,
+        options,
+      );
+
       putSystemMessage('Planning phase completed, ensuring context completeness...');
 
       // Ensure all necessary files are in context
@@ -85,4 +96,69 @@ export async function executeStepCodegenPlanning(
     putSystemMessage('Error during planning phase: ' + (error as Error).message);
     return StepResult.BREAK;
   }
+}
+
+/**
+ * Execute registered planning pre-hooks
+ * Returns modified prompt if any hook provides one, otherwise returns the original prompt
+ */
+async function executePlanningPreHooks(originalPrompt: string, options: CodegenOptions): Promise<string> {
+  let modifiedPrompt = originalPrompt;
+  const preHooks = getRegisteredPlanningPreHooks();
+
+  if (preHooks.length > 0) {
+    putSystemMessage(`Executing ${preHooks.length} planning pre-hooks...`);
+
+    for (const hook of preHooks) {
+      try {
+        const result = await hook({
+          prompt: modifiedPrompt,
+          options,
+        });
+        if (result) {
+          modifiedPrompt = result;
+        }
+      } catch (error) {
+        putSystemMessage(`Error in planning pre-hook: ${(error as Error).message}`);
+        console.error('Planning pre-hook error:', error);
+      }
+    }
+  }
+
+  return modifiedPrompt;
+}
+
+/**
+ * Execute registered planning post-hooks
+ * Returns modified result if any hook provides one, otherwise returns the original result
+ */
+async function executePlanningPostHooks(
+  originalResult: FunctionCall<CodegenPlanningArgs>,
+  originalPrompt: string,
+  options: CodegenOptions,
+): Promise<FunctionCall<CodegenPlanningArgs>> {
+  let modifiedResult = originalResult;
+  const postHooks = getRegisteredPlanningPostHooks();
+
+  if (postHooks.length > 0) {
+    putSystemMessage(`Executing ${postHooks.length} planning post-hooks...`);
+
+    for (const hook of postHooks) {
+      try {
+        const result = await hook({
+          prompt: originalPrompt,
+          options,
+          result: modifiedResult,
+        });
+        if (result) {
+          modifiedResult = result;
+        }
+      } catch (error) {
+        putSystemMessage(`Error in planning post-hook: ${(error as Error).message}`);
+        console.error('Planning post-hook error:', error);
+      }
+    }
+  }
+
+  return modifiedResult;
 }

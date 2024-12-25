@@ -14,3 +14,8 @@
 - file update before summary
 - retry failed api operation
 - prompt for api key on failure
+- double logging in console
+- new tool: quick file update
+- include some info about genaicode configurability in system prompt (.genaicoderc)
+- allow read/modification of .genaicoderc
+- inline plugin in genaicode vite
