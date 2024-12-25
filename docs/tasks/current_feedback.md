@@ -16,3 +16,5 @@
 - new tool: quick file update
 - inline plugin in genaicode vite
 - schema corner case -> proper virtual files
+- on api failure, let the user chose option to recover
+- option to apply code changes after partially failed codegen
