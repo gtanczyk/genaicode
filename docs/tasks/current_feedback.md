@@ -11,11 +11,8 @@
 - show reasoning
 - timestamp misaligned on list of system messages
 - patchFile is broken, replace it with other way of partial updates
-- file update before summary
 - retry failed api operation
 - prompt for api key on failure
-- double logging in console
 - new tool: quick file update
-- include some info about genaicode configurability in system prompt (.genaicoderc)
-- allow read/modification of .genaicoderc
 - inline plugin in genaicode vite
+- schema corner case -> proper virtual files
