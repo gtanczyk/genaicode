@@ -1,6 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { rcConfig, sourceExtensions, IMAGE_ASSET_EXTENSIONS, ignorePaths, importantContext } from '../main/config.js';
+import {
+  rcConfig,
+  sourceExtensions,
+  IMAGE_ASSET_EXTENSIONS,
+  ignorePaths,
+  importantContext,
+  rcConfigSchemaFilePath,
+} from '../main/config.js';
 
 // List of possible extensions for dependency resolution
 const POSSIBLE_DEPENDENCY_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx'];
@@ -93,6 +100,7 @@ export function getImageAssetFiles(): string[] {
 export function refreshFiles() {
   sourceFiles = [
     ...new Set([...findFiles(rcConfig.rootDir, true, sourceExtensions), ...(importantContext.files ?? [])]),
+    rcConfigSchemaFilePath,
   ];
   imageAssetFiles = findFiles(rcConfig.rootDir, true, IMAGE_ASSET_EXTENSIONS);
 }

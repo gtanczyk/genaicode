@@ -113,10 +113,5 @@ export function processFunctionCalls(functionCalls: FunctionCall[], functionDefs
     'Unknown function name: ' + unknownFunctionCalls.map((call) => call.name).join(', '),
   );
 
-  console.log(
-    'Explanations:',
-    functionCalls.filter((fn) => fn.name === 'explanation').map((call) => call.args?.text),
-  );
-
-  return functionCalls; // .filter((fn) => fn.name !== 'explanation');
+  return functionCalls;
 }

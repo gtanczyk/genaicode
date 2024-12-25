@@ -4,9 +4,19 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
 
 ## Issues
 
-[x] Implement code planning plugin hook
-[x] Add .genaicoderc configuration assistance - Added .genaicoderc explanation to system prompt - Made .genaicoderc always available in context - Enhanced ability to assist with configuration issues
-
-## Planned Improvements
-
-[ ] Enhance configuration assistance - Add configuration validation - Provide configuration templates - Add configuration migration support - Implement configuration backup/restore
+- [x] Update AI Studio Models Configuration
+  - Added experimental Gemini models support
+  - Configured gemini-exp-1206 as default model
+  - Configured gemini-2.0-flash-exp as cheap model
+  - Enhanced model selection flexibility
+- [x] Implement code planning plugin hook
+- [x] Add .genaicoderc configuration assistance
+  - Added .genaicoderc explanation to system prompt
+  - Made .genaicoderc always available in context
+  - Enhanced ability to assist with configuration issues
+- [x] Add JSON Schema Support for .genaicoderc
+  - Created comprehensive JSON schema definition
+  - Implemented virtual files mechanism
+  - Made schema always available in context
+  - Added schema documentation
+  - Enhanced configuration validation support

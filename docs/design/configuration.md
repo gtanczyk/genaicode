@@ -106,10 +106,6 @@ The basic structure of the `.genaicoderc` file is as follows:
   "extensions": [".js", ".ts", ".jsx", ".tsx", ".css"],
   "ignorePaths": ["node_modules", "build", "test"],
   "lintCommand": "npm run lint",
-  "customPrompts": {
-    "reactComponent": "Create a React functional component with TypeScript and styled-components",
-    "unittest": "Generate a Jest unit test for the following component"
-  },
   "modelOverrides": {
     "chatGpt": {
       "cheap": "gpt-4o-mini",
@@ -194,7 +190,3 @@ npx genaicode --dry-run --temperature 0.8
 3. **Regular Updates**: Periodically review and update your `.genaicoderc` file to ensure it aligns with your project's evolving needs and structure.
 
 4. **Documentation**: Document any custom configurations or prompts in your project's README or documentation to help team members understand how the tool is set up for your specific project.
-
-5. **Gradual Adoption**: Start with basic configurations and gradually add more advanced options as you become more familiar with the tool and its impact on your development process.
-
-By leveraging these configuration options, you can tailor the GenAIcode tool to fit seamlessly into your development workflow, ensuring that it generates code that aligns with your project's standards and requirements.

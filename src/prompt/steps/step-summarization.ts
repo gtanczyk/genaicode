@@ -7,6 +7,7 @@ import { md5, readCache, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
+import { refreshFiles } from '../../files/find-files.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
@@ -61,6 +62,8 @@ export async function summarizeSourceCode(
   }));
 
   await summarizeBatch(generateContentFn, items, options);
+
+  refreshFiles();
 }
 
 async function summarizeBatch(

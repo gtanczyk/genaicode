@@ -142,7 +142,9 @@ export async function handleCodeGeneration({
       } else {
         // Apply the code changes
         await updateFiles(
-          functionCalls.filter((call) => call.name !== 'explanation' && call.name !== 'getSourceCode'),
+          functionCalls.filter(
+            (call) => call.name !== 'explanation' && call.name !== 'getSourceCode' && call.name !== 'codegenSummary',
+          ),
           options,
         );
         putSystemMessage('Code changes applied successfully');

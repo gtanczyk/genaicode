@@ -70,8 +70,6 @@ async function executePromptService(
   codegenPrompt: CodegenPrompt,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<{ result: FunctionCall[]; prompt: PromptItem[] }> {
-  const messages = prepareMessages(codegenPrompt);
-
   // First stage: summarize the source code
   if (!codegenPrompt.options.disableContextOptimization) {
     await summarizeSourceCode(
@@ -80,6 +78,9 @@ async function executePromptService(
       codegenPrompt.options,
     );
   }
+
+  // Prepare messages for AI services
+  const messages = prepareMessages(codegenPrompt);
 
   // Second stage: generate code generation summary, which should not take a lot of output tokens
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };

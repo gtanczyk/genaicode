@@ -44,7 +44,6 @@ export async function executeStepAskQuestion(
         break;
       }
 
-      console.log('Assistant asks:', askQuestionCall.args);
       if (askQuestionCall.args?.message) {
         // TODO: PromptItem should be included here, but a small refactor is needed to achieve this
         putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);

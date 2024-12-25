@@ -5,6 +5,7 @@ import { confirm } from '@inquirer/prompts';
 
 import { isAncestorDirectory } from '../files/file-utils.js';
 import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
+import { validateRcConfig } from './config-schema.js';
 
 // This file contains project codegen configuration
 export const CODEGENRC_FILENAME = '.genaicoderc';
@@ -33,6 +34,11 @@ export interface ModelOverrides {
   };
 }
 
+/**
+ * Configuration for the project codegen
+ *
+ * IMPORTANT: Keep this interface in sync with the JSON schema in config-schema.ts
+ */
 export interface RcConfig {
   rootDir: string;
   lintCommand?: string;
@@ -95,10 +101,14 @@ export async function findRcFile(): Promise<string> {
 export function parseRcFile(rcFilePath: string): RcConfig {
   assert(fs.existsSync(rcFilePath), `${CODEGENRC_FILENAME} not found`);
   const rcConfig: RcConfig = JSON.parse(fs.readFileSync(rcFilePath, 'utf-8'));
+  validateRcConfig(rcConfig);
+
   assert(rcConfig.rootDir, 'Root dir not configured');
 
   const rootDir = path.resolve(path.dirname(rcFilePath), rcConfig.rootDir);
   assert(isAncestorDirectory(path.dirname(rcFilePath), rootDir), 'Root dir is not located inside project directory');
+
+  // Validate content using json schema
 
   // Validate plugins array if it exists
   if (rcConfig.plugins) {

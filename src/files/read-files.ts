@@ -5,10 +5,11 @@ import path from 'path';
 import globRegex from 'glob-regex';
 
 import { getSourceFiles, getImageAssetFiles } from './find-files.js';
-import { rcConfig, importantContext } from '../main/config.js';
+import { rcConfig, importantContext, rcConfigSchemaFilePath } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { getSummary } from '../prompt/steps/step-summarization.js';
+import { GENAICODERC_SCHEMA } from '../main/config-schema.js';
 
 /**
  * Represents a dependency in the source code
@@ -64,7 +65,7 @@ function readSourceFiles(
   const importantFiles = ignoreImportantFiles ? new Set() : new Set(importantContext.files || []);
 
   for (const file of getSourceFiles()) {
-    if (!fs.existsSync(file)) {
+    if (!fs.existsSync(file) && file !== rcConfigSchemaFilePath) {
       continue;
     }
 
@@ -73,7 +74,7 @@ function readSourceFiles(
 
       // Always include important files
       if (importantFiles.has(file)) {
-        const content = fs.readFileSync(file, 'utf-8');
+        const content = readFileContent(file);
         sourceCode[file] = {
           content,
           dependencies: summary?.dependencies,
@@ -105,7 +106,7 @@ function readSourceFiles(
               }
             : { content: null };
       } else {
-        const content = fs.readFileSync(file, 'utf-8');
+        const content = readFileContent(file);
         sourceCode[file] = {
           content,
           dependencies: summary?.dependencies,
@@ -114,6 +115,14 @@ function readSourceFiles(
     }
   }
   return sourceCode;
+}
+
+// Read file content
+export function readFileContent(file: string): string {
+  if (file === rcConfigSchemaFilePath) {
+    return JSON.stringify(GENAICODERC_SCHEMA, null, 2);
+  }
+  return fs.readFileSync(file, 'utf-8');
 }
 
 /** Print source code of all source files */
@@ -135,7 +144,7 @@ export function getSourceCode(
 
   if (taskFile && !sourceCode[taskFile]) {
     sourceCode[taskFile] = {
-      content: fs.readFileSync(taskFile, 'utf-8'),
+      content: readFileContent(taskFile),
     };
   }
 
