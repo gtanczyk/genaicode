@@ -170,7 +170,7 @@ export async function handleCodeGeneration({
   } catch (error) {
     putSystemMessage(`Error during code generation: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return {
-      breakLoop: false,
+      breakLoop: true,
       items: [
         {
           assistant: {
