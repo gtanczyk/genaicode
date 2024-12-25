@@ -38,6 +38,7 @@ vi.mock('../files/cache-file.js');
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
   getImageAssetFiles: () => [],
+  refreshFiles: () => null,
 }));
 vi.mock('../files/read-files.js', () => ({
   getSourceCode: () => ({}),

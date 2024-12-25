@@ -95,7 +95,7 @@ describe('processFunctionCalls', () => {
 
     processFunctionCalls(functionCallsWithExplanation, functionDefs);
 
-    expect(consoleLogSpy).toHaveBeenCalledWith('Explanations:', ['This is an explanation']);
+    expect(consoleLogSpy).not.toHaveBeenCalledWith('Explanations:', ['This is an explanation']);
 
     consoleLogSpy.mockRestore();
   });

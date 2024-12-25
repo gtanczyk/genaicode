@@ -65,7 +65,9 @@ describe('parseRcFile', () => {
     vi.mocked(fs).existsSync.mockReturnValue(true);
     vi.mocked(fs).readFileSync.mockReturnValue(invalidContent);
 
-    expect(() => parseRcFile(mockRcFilePath)).toThrowError('Root dir not configured');
+    expect(() => parseRcFile(mockRcFilePath)).toThrowError(
+      'Invalid .genaicoderc configuration: instance requires property "rootDir"',
+    );
   });
 
   it('should throw an error if rootDir is not located inside project directory', () => {

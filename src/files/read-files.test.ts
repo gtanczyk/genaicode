@@ -27,6 +27,7 @@ vi.mock('../cli/cli-params.js', () => ({
 vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/home/project' },
   importantContext: {},
+  rcConfigSchemaFilePath: '/path/to/rcConfigSchema.json',
 }));
 
 describe('read-files', () => {
@@ -71,9 +72,7 @@ describe('read-files', () => {
 
       expect(result).toEqual({
         '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
-        '/home/project/subfolder/file2.js': {
-          summary: 'Summary of /home/project/subfolder/file2.js',
-        },
+        '/home/project/subfolder/file2.js': { summary: 'Summary of /home/project/subfolder/file2.js' },
       });
     });
 
