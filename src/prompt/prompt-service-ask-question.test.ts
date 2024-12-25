@@ -9,7 +9,7 @@ import '../files/cache-file.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { AiServiceType, ImagenType } from '../main/codegen-types.js';
+import { AiServiceType, CodegenPlanningArgs, ImagenType } from '../main/codegen-types.js';
 import { registerUserActionHandlers } from '../main/interactive/user-action-handlers.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
@@ -92,6 +92,16 @@ describe('promptService with askQuestion', () => {
         },
       },
     ];
+    const mockCodegenPlanning: FunctionCall<CodegenPlanningArgs>[] = [
+      {
+        name: 'codegenPlanning',
+        args: {
+          problemAnalysis: '',
+          codeChanges: '',
+          affectedFiles: [],
+        },
+      },
+    ];
     const mockCodegenSummary = [
       {
         name: 'codegenSummary',
@@ -106,6 +116,7 @@ describe('promptService with askQuestion', () => {
     vi.mocked(vertexAi.generateContent)
       .mockResolvedValueOnce(mockAskQuestionCall)
       .mockResolvedValueOnce(mockAskQuestionCall2)
+      .mockResolvedValueOnce(mockCodegenPlanning)
       .mockResolvedValueOnce(mockCodegenSummary);
 
     vi.mocked(prompts.confirm).mockImplementationOnce(
@@ -124,12 +135,12 @@ describe('promptService with askQuestion', () => {
       }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(5);
     expect(prompts.confirm).toHaveBeenCalledWith({
       default: true,
       message: 'The assistant is ready to start code generation. Do you want to proceed?',
     });
-    expect(console.log).toHaveBeenCalledWith('Assistant asks:', expect.any(Object));
+    expect(console.log).toHaveBeenCalledWith('Do you want to proceed with code generation?', expect.any(Object));
     expect(console.log).toHaveBeenCalledWith('Proceeding with code generation.', undefined);
   });
 
