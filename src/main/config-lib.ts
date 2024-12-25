@@ -7,7 +7,7 @@ import { isAncestorDirectory } from '../files/file-utils.js';
 import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
 
 // This file contains project codegen configuration
-const CODEGENRC_FILENAME = '.genaicoderc';
+export const CODEGENRC_FILENAME = '.genaicoderc';
 
 export interface ImportantContext {
   systemPrompt?: string[];

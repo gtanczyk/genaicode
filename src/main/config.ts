@@ -1,4 +1,11 @@
-import { findRcFile, parseRcFile, RcConfig, ImportantContext, ModelOverrides } from './config-lib.js';
+import {
+  findRcFile,
+  parseRcFile,
+  RcConfig,
+  ImportantContext,
+  ModelOverrides,
+  CODEGENRC_FILENAME,
+} from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import path from 'path';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
@@ -21,11 +28,19 @@ export const importantContext: ImportantContext = processImportantContext(rcConf
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
 
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {
-  if (!context) return { systemPrompt: [], files: [] };
+  if (!context) {
+    return { systemPrompt: [], files: [] };
+  }
+
+  // Always include .genaicoderc in important files
+  const files = context.files || [];
+  if (!files.includes(CODEGENRC_FILENAME)) {
+    files.push(CODEGENRC_FILENAME);
+  }
 
   return {
     systemPrompt: context.systemPrompt || [],
-    files: (context.files || []).map((file) => path.resolve(rcConfig.rootDir, file)),
+    files: files.map((file) => path.resolve(rcConfig.rootDir, file)),
   };
 }
 
