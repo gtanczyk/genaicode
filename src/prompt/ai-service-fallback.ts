@@ -40,10 +40,18 @@ export async function handleAiServiceFallback(
           throw error; // Re-throw the interruption error
         }
 
+        if (!options.disableAiServiceFallback && (options.interactive || options.ui)) {
+          putSystemMessage(`Content generation failed for ${permanentService}`, { error });
+          const shouldRetry = await askUserForConfirmation(`Content generation failed, do you want to retry?`, true);
+          if (shouldRetry.confirmed) {
+            continue;
+          }
+        }
+
         if (error.message.includes('Rate limit exceeded')) {
           putSystemMessage(`Rate limit exceeded for ${permanentService}`);
 
-          if (options.disableAiServiceFallback) {
+          if (!options.disableAiServiceFallback) {
             if (options.interactive || options.ui) {
               const nextService = getNextAiService(permanentService);
               if (nextService) {
@@ -51,7 +59,7 @@ export async function handleAiServiceFallback(
                   `Rate limit exceeded for ${permanentService}. Would you like to switch to ${nextService}?`,
                   true,
                 );
-                if (shouldSwitch) {
+                if (shouldSwitch.confirmed) {
                   putSystemMessage(`Switching to ${nextService} due to rate limiting.`);
                   permanentService = nextService;
                   retryCount++;

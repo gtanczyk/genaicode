@@ -288,7 +288,11 @@ function optimizeSourceCode(
     const dependencies =
       fullSourceCode[path] && 'dependencies' in fullSourceCode[path] ? fullSourceCode[path]?.dependencies : undefined;
 
-    if (isRequired && content && !(sourceCode[path] && 'content' in sourceCode[path])) {
+    if (
+      isRequired &&
+      content &&
+      !(sourceCode[path] && 'content' in sourceCode[path] && sourceCode[path].content !== null)
+    ) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
         content,

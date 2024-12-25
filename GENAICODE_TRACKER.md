@@ -20,3 +20,4 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
   - Made schema always available in context
   - Added schema documentation
   - Enhanced configuration validation support
+- [x] Add unit test for content generation retry in handleAiServiceFallback
