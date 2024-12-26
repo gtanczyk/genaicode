@@ -26,7 +26,7 @@ export async function handleCodeGeneration({
 
   // Ask user to confirm the planning result
   const planningConfirmation = await askUserForConfirmationWithAnswer(
-    'Planning phase completed. Would you like to proceed with the planned changes?',
+    CODEGEN_SUMMARY_PROMPT,
     'Accept planning and continue',
     'Reject planning and return to conversation',
     true,
@@ -144,7 +144,6 @@ export async function handleCodeGeneration({
       {
         type: 'assistant',
         text: 'Code changes are generated, now what?',
-        functionCalls,
       },
       {
         type: 'user',
