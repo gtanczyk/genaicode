@@ -2,33 +2,86 @@
 
 This file is used by GenAIcode to keep track of done, in progress, and planned changes in the GenAIcode project.
 
+Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Each issue includes:
+
+- A unique identifier (e.g., GEN-001)
+- Status (done [x], in progress [ ])
+- Creation date
+- Last update date
+- Optional description and sub-items
+
 ## Issues
 
-- [x] File Updates Processing Enhancement
+- [ ] [GEN-011] Plugins in Vite Genaicode
+
+  - Let Vite Genaicode users define plugins inside vite config
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-010] GenAIcode Tracker Enhancement
+      Added issue tracking improvements with keys and dates
+
+  - Added unique identifiers (GEN-XXX format) for each issue
+  - Added creation and update date tracking
+  - Enhanced tracker plugin functionality
+  - Improved issue formatting and structure
+  - Added automatic issue key generation
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-001] File Updates Processing Enhancement
+      Enhanced file processing system with improved error handling and type safety
+
   - Completed refactoring of step-process-file-updates.ts
   - Added proper TypeScript types and interfaces
   - Improved error handling and recovery
   - Enhanced file update processing logic
   - Added detailed system messages
   - Improved code organization and maintainability
-- [x] Update AI Studio Models Configuration
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-002] Update AI Studio Models Configuration
+      Configured new Gemini models and enhanced model selection
+
   - Added experimental Gemini models support
   - Configured gemini-exp-1206 as default model
   - Configured gemini-2.0-flash-exp as cheap model
   - Enhanced model selection flexibility
-- [x] Implement code planning plugin hook
-- [x] Add .genaicoderc configuration assistance
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-003] Implement code planning plugin hook
+      Created: 2024-12-26
+      Updated: 2024-12-26
+
+- [x] [GEN-004] Add .genaicoderc configuration assistance
+      Enhanced configuration support and documentation
+
   - Added .genaicoderc explanation to system prompt
   - Made .genaicoderc always available in context
   - Enhanced ability to assist with configuration issues
-- [x] Add JSON Schema Support for .genaicoderc
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-005] Add JSON Schema Support for .genaicoderc
+      Comprehensive JSON schema implementation
+
   - Created comprehensive JSON schema definition
   - Implemented virtual files mechanism
   - Made schema always available in context
   - Added schema documentation
   - Enhanced configuration validation support
-- [x] Add unit test for content generation retry in handleAiServiceFallback
-- [x] Enhanced UI for Codegen Data Display
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-006] Add unit test for content generation retry in handleAiServiceFallback
+      Created: 2024-12-26
+      Updated: 2024-12-26
+
+- [x] [GEN-007] Enhanced UI for Codegen Data Display
+      Comprehensive UI improvements for better data visualization
+
   - Added specialized components for planning and summary views
   - Implemented collapsible sections for better organization
   - Added syntax highlighting and improved readability
@@ -36,106 +89,29 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
   - Enhanced visual hierarchy and user experience
   - Added type safety and validation
   - Improved responsive design
-- [x] System Message Container Enhancement
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-008] System Message Container Enhancement
+      Split view implementation and visual improvements
+
   - Implemented split view for codegen planning and summary
   - Added visual separation between system messages and codegen views
   - Enhanced styling and spacing for better readability
   - Maintained existing functionality for collapsing and data visibility
   - Added smooth transitions for visual changes
   - Improved TypeScript type safety
-- [x] UI Component Theme Dependency Cleanup
+    Created: 2024-12-26
+    Updated: 2024-12-26
+
+- [x] [GEN-009] UI Component Theme Dependency Cleanup
+      Theme system optimization and component enhancement
+
   - Removed direct theme dependencies from CodegenSummaryView
   - Aligned implementation with CodegenPlanningView
   - Enhanced themed styled components
   - Improved code consistency across components
   - Added type-safe update type variants
   - Maintained visual consistency while reducing coupling
-
-## Future Improvements
-
-### UI/UX Enhancements
-
-1. **Data Visualization Improvements**:
-
-   - Add code diff visualization
-   - Implement syntax highlighting for more languages
-   - Add file tree visualization
-   - Enhance mobile responsiveness
-   - Add visual transitions for state changes ✓
-   - Improve data visualization components spacing ✓
-
-2. **Interactive Features**:
-
-   - Add copy to clipboard functionality
-   - Implement file preview on hover
-   - Add search within code blocks
-   - Add expand/collapse all sections button
-   - Add keyboard shortcuts for common actions
-
-3. **Visual Feedback**:
-
-   - Add loading states for data fetching
-   - Implement smooth transitions ✓
-   - Add tooltips for better guidance
-   - Enhance error state visualization
-   - Add progress indicators for long operations
-
-4. **Accessibility**:
-   - Implement keyboard navigation
-   - Add ARIA labels and roles
-   - Improve color contrast
-   - Add screen reader support
-   - Enhance focus management
-
-### File Processing System
-
-1. **Error Recovery Enhancement**:
-
-   - Add retry mechanisms for failed file updates
-   - Implement rollback capability for failed operations
-   - Add transaction-like processing for related file updates
-
-2. **Progress Tracking**:
-
-   - Add detailed progress reporting for file operations
-   - Implement file operation statistics collection
-   - Add visual progress indicators in UI mode
-
-3. **Validation Improvements**:
-
-   - Add pre-execution validation for file operations
-   - Implement dependency checking before updates
-   - Add syntax validation for generated code
-
-4. **Performance Optimization**:
-   - Implement parallel processing for independent file updates
-   - Add caching for repeated operations
-   - Optimize context management during updates
-
-### System Architecture
-
-1. **Plugin System**:
-
-   - Enhance plugin hook system
-   - Add more extension points
-   - Improve plugin documentation
-
-2. **Testing**:
-   - Add more unit tests for file operations
-   - Implement integration tests
-   - Add performance benchmarks
-
-### Documentation
-
-1. **Developer Guide**:
-
-   - Add detailed architecture documentation
-   - Include plugin development guide
-   - Add troubleshooting section
-
-2. **User Documentation**:
-   - Enhance configuration documentation
-   - Add more examples
-   - Include best practices
-
-The recent UI improvements for system message container and theme dependency cleanup have significantly enhanced the code organization and maintainability. The implementation now includes better structured components with reduced coupling through themed styled components. The changes maintain visual consistency while improving the overall architecture. Future improvements will focus on adding more interactive features, enhancing accessibility, and further improving the visual experience.
+    Created: 2024-12-26
+    Updated: 2024-12-26

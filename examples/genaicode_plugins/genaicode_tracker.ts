@@ -1,7 +1,16 @@
 import { Plugin } from '../../src/index.js';
 
+const TRACKER_PROMPT = `## GENAICODE TRACKER
+  
+The GENAICODE_TRACKER.md file must be updated with information about the changes made in this code generation session.
+It is important to keep this file up-to-date for tracking purposes.
+You can add future changes to this file as well, or mark other planned changes as obsolete if they are no longer relevant due to the current changes.
+It is fine to shrink description of old completed(or obsolete) issues to keep the file clean and concise.
+Each issue is tracked with a unique identifier (GEN-XXX) and includes creation and update dates.
+The issues should be sorted descending (from newest to oldest) based on the creation date.`;
+
 /**
- * Example plugin demonstrating the usage of planning hook
+ * Example plugin demonstrating the usage of planning hook with enhanced issue tracking
  */
 const genaicodeTracker: Plugin = {
   name: 'genaicode-tracker',
@@ -11,11 +20,8 @@ const genaicodeTracker: Plugin = {
     try {
       console.log('Planning pre-hook executing...');
 
-      // Example: Add additional instructions to the planning prompt
-      const additionalInstructions =
-        `\n\nThe GENAICODE_TRACKER.md file must be updated with information about the changes made in this code generation session. ` +
-        `It is important to keep this file up-to-date for tracking purposes. ` +
-        `You can add future changes to this file as well, or mark other planned changes as obsolete if they are no longer relevant due to the current changes.`;
+      // Add additional instructions to the planning prompt
+      const additionalInstructions = TRACKER_PROMPT;
 
       // Return modified prompt
       return prompt + additionalInstructions;
