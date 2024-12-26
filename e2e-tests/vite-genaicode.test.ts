@@ -29,7 +29,6 @@ describe('vite genaicode', () => {
     // Launch the browser
     browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-features=site-per-process'],
-      headless: false,
     });
     page = await browser.newPage();
 

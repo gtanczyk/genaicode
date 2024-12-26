@@ -10,18 +10,22 @@ let genAICodeProcess: ChildProcess;
 describe('genaicode ui', () => {
   beforeAll(async () => {
     // Start GenAIcode in UI mode
-    genAICodeProcess = spawn('node', ['./bin/genaicode.cjs', '--ui', '--ai-service=vertex-ai', '--force-dist'], {
-      cwd: path.resolve(__dirname, '..'),
+    genAICodeProcess = spawn('node', ['../../bin/genaicode.cjs', '--ui', '--ai-service=vertex-ai', '--force-dist'], {
+      cwd: path.resolve(__dirname, '..', 'examples/arcanoid_game'),
       env: { ...process.env, NODE_ENV: 'test' },
     });
 
     // Wait for the server to start and get the port
     const port = await new Promise<number>((resolve) => {
       genAICodeProcess.stdout!.on('data', (data) => {
+        console.log(data.toString());
         const match = data.toString().match(/Server is running on http:\/\/localhost:(\d+)/);
         if (match) {
           resolve(parseInt(match[1], 10));
         }
+      });
+      genAICodeProcess.stderr!.on('data', (data) => {
+        console.log(data.toString());
       });
     });
 
