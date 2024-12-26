@@ -1,4 +1,4 @@
-import styled, { css } from 'styled-components';
+import styled, { css, DefaultTheme } from 'styled-components';
 
 export const ViewContainer = styled.div`
   display: flex;
@@ -141,14 +141,56 @@ export const CodeBlock = styled.pre`
   word-wrap: break-word;
 `;
 
-export const UpdateType = styled.div<{ color: string }>`
+type UpdateVariant = 'createFile' | 'updateFile' | 'deleteFile' | 'moveFile' | string;
+
+const getUpdateTypeStyles = (variant: UpdateVariant, theme: DefaultTheme) => {
+  switch (variant) {
+    case 'createFile':
+      return css`
+        background: ${theme.colors.info}22;
+        color: ${theme.colors.info};
+        border-color: ${theme.colors.info}44;
+      `;
+    case 'updateFile':
+      return css`
+        background: ${theme.colors.primary}22;
+        color: ${theme.colors.primary};
+        border-color: ${theme.colors.primary}44;
+      `;
+    case 'deleteFile':
+      return css`
+        background: ${theme.colors.error}22;
+        color: ${theme.colors.error};
+        border-color: ${theme.colors.error}44;
+      `;
+    case 'moveFile':
+      return css`
+        background: ${theme.colors.warning}22;
+        color: ${theme.colors.warning};
+        border-color: ${theme.colors.warning}44;
+      `;
+    default:
+      return css`
+        background: ${theme.colors.secondary}22;
+        color: ${theme.colors.secondary};
+        border-color: ${theme.colors.secondary}44;
+      `;
+  }
+};
+
+export const UpdateType = styled.div<{ variant: UpdateVariant }>`
   display: inline-block;
   padding: 2px 8px;
   border-radius: 3px;
   font-size: 0.85em;
   font-weight: 500;
   margin-bottom: 6px;
-  background: ${(props) => props.color}22;
-  color: ${(props) => props.color};
-  border: 1px solid ${(props) => props.color}44;
+  border: 1px solid;
+  ${(props) => getUpdateTypeStyles(props.variant, props.theme)}
+`;
+
+export const FileMetadata = styled.div`
+  margin-top: 8px;
+  font-size: 0.9em;
+  color: ${(props) => props.theme.colors.textSecondary};
 `;

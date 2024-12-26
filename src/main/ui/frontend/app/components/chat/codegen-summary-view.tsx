@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useTheme } from 'styled-components';
 import {
   ViewContainer,
   Section,
@@ -13,6 +12,7 @@ import {
   IconContainer,
   UpdateType,
   FilePrompt,
+  FileMetadata,
 } from './styles/codegen-view-styles.js';
 
 interface FileUpdate {
@@ -36,7 +36,6 @@ interface CodegenSummaryViewProps {
 }
 
 export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) => {
-  const theme = useTheme();
   const [sectionsState, setSectionsState] = useState({
     explanation: true,
     updates: true,
@@ -48,36 +47,6 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
       ...prev,
       [section]: !prev[section],
     }));
-  };
-
-  const getUpdateTypeColor = (updateToolName: string): string => {
-    switch (updateToolName) {
-      case 'createFile':
-        return theme.colors.info;
-      case 'updateFile':
-        return theme.colors.primary;
-      case 'deleteFile':
-        return theme.colors.error;
-      case 'moveFile':
-        return theme.colors.warning;
-      default:
-        return theme.colors.secondary;
-    }
-  };
-
-  const getUpdateTypeLabel = (updateToolName: string): string => {
-    switch (updateToolName) {
-      case 'createFile':
-        return 'Create';
-      case 'updateFile':
-        return 'Update';
-      case 'deleteFile':
-        return 'Delete';
-      case 'moveFile':
-        return 'Move';
-      default:
-        return updateToolName;
-    }
   };
 
   return (
@@ -108,17 +77,15 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
             <FileList>
               {data.args.fileUpdates.map((update, index) => (
                 <FileItem key={index}>
-                  <UpdateType color={getUpdateTypeColor(update.updateToolName)}>
-                    {getUpdateTypeLabel(update.updateToolName)}
-                  </UpdateType>
+                  <UpdateType variant={update.updateToolName}>{update.updateToolName}</UpdateType>
                   <FilePath>{update.filePath}</FilePath>
                   <FilePrompt>{update.prompt}</FilePrompt>
                   {(update.temperature || update.cheap) && (
-                    <div style={{ fontSize: '0.9em', color: theme.colors.textSecondary }}>
+                    <FileMetadata>
                       {update.temperature && `Temperature: ${update.temperature}`}
                       {update.temperature && update.cheap && ' | '}
                       {update.cheap && 'Using cheap model'}
-                    </div>
+                    </FileMetadata>
                   )}
                 </FileItem>
               ))}

@@ -42,7 +42,7 @@ export async function generateCodegenSummary(
   baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
   codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
-  putSystemMessage('Received codegen summary, will collect partial updates', codegenSummaryRequest);
+  putSystemMessage('Received codegen summary', codegenSummaryRequest);
 
   // Sometimes the result happens to be a string
   assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');

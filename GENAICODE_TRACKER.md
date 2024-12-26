@@ -43,6 +43,13 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
   - Maintained existing functionality for collapsing and data visibility
   - Added smooth transitions for visual changes
   - Improved TypeScript type safety
+- [x] UI Component Theme Dependency Cleanup
+  - Removed direct theme dependencies from CodegenSummaryView
+  - Aligned implementation with CodegenPlanningView
+  - Enhanced themed styled components
+  - Improved code consistency across components
+  - Added type-safe update type variants
+  - Maintained visual consistency while reducing coupling
 
 ## Future Improvements
 
@@ -54,8 +61,8 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
    - Implement syntax highlighting for more languages
    - Add file tree visualization
    - Enhance mobile responsiveness
-   - Add visual transitions for state changes
-   - Improve data visualization components spacing
+   - Add visual transitions for state changes ✓
+   - Improve data visualization components spacing ✓
 
 2. **Interactive Features**:
 
@@ -131,4 +138,4 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
    - Add more examples
    - Include best practices
 
-The recent UI improvements for system message container have significantly enhanced the user experience by providing better visual separation between different types of content. The implementation now includes structured layouts with proper spacing, smooth transitions, and improved type safety. Future improvements will focus on adding more interactive features, enhancing accessibility, and further improving the visual experience.
+The recent UI improvements for system message container and theme dependency cleanup have significantly enhanced the code organization and maintainability. The implementation now includes better structured components with reduced coupling through themed styled components. The changes maintain visual consistency while improving the overall architecture. Future improvements will focus on adding more interactive features, enhancing accessibility, and further improving the visual experience.
