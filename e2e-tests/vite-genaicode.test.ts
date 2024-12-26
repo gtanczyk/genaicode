@@ -12,7 +12,7 @@ describe.concurrent('vite genaicode', () => {
     // Start GenAIcode in UI mode
     genAICodeProcess = spawn('npx', ['vite'], {
       cwd: path.resolve(__dirname, '..', 'examples', 'vite_genaicode_example'),
-      env: { ...process.env, NODE_ENV: 'test' },
+      env: { ...process.env, NODE_ENV: 'test', API_KEY: 'fake' },
       detached: true,
     });
 
@@ -32,7 +32,7 @@ describe.concurrent('vite genaicode', () => {
 
     // Launch the browser
     browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-features=site-per-process'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     page = await browser.newPage();
 

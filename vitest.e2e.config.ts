@@ -19,6 +19,8 @@ export default defineConfig({
     // Specific configuration for e2e tests
     testTimeout: 30000, // Increase timeout for e2e tests
 
+    maxConcurrency: 1, // Run e2e tests sequentially
+
     // Use different configurations based on the test type
     typecheck: {
       tsconfig: './tsconfig.json',
