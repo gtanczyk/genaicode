@@ -1,6 +1,6 @@
-import { FunctionCall, FunctionDef, GenerateContentArgs, GenerateContentFunction } from '../ai-service/common';
-import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types';
-import { ServiceConfig } from './ui/common/api-types';
+import { FunctionCall, FunctionDef, GenerateContentArgs, GenerateContentFunction } from '../ai-service/common.js';
+import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ServiceConfig } from './ui/common/api-types.js';
 
 /** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
 export type PluginAiServiceType = `plugin:${string}`;

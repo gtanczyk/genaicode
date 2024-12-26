@@ -14,13 +14,10 @@ import { printHelpMessage } from '../cli/cli-options.js';
 import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
-import { runInteractiveMode } from './interactive/codegen-interactive.js';
-import { runCodegenUI } from './ui/codegen-ui.js';
 import { putSystemMessage, setCurrentIterationId, unsetCurrentIterationId } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
 import { getRegisteredAiServices } from './plugin-loader.js';
 import { stringToAiServiceType } from './codegen-utils.js';
-import { runCodegenNonInteractive } from './codegen-non-interactive.js';
 
 /** Executes codegen */
 export async function runCodegen(isDev = false): Promise<void> {
@@ -70,11 +67,14 @@ export async function runCodegen(isDev = false): Promise<void> {
   };
 
   if (cliParams.ui) {
+    const { runCodegenUI } = await import('./ui/codegen-ui.js');
     await runCodegenUI(options);
   } else if (cliParams.interactive) {
+    const { runInteractiveMode } = await import('./interactive/codegen-interactive.js');
     // Handle interactive mode
     await runInteractiveMode(options);
   } else {
+    const { runCodegenNonInteractive } = await import('./codegen-non-interactive.js');
     await runCodegenNonInteractive(options);
   }
 }

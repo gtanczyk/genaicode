@@ -15,7 +15,8 @@ import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.
 import { registerProfile } from '../project-profiles/index.js';
 import { ServiceConfig } from './ui/common/api-types.js';
 
-// Global storage for registered AI services and operations
+// Global storage for registered plugins and their components
+const loadedPlugins: Map<string, Plugin> = new Map();
 const registeredAiServices: Map<
   PluginAiServiceType,
   { generateContent: GenerateContentFunction; serviceConfig: ServiceConfig }
@@ -24,14 +25,153 @@ const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
 const registeredActionHandlers: Map<PluginActionType, ActionHandler> = new Map();
 const registeredGenerateContentHooks: GenerateContentHook[] = [];
-
-// Storage for planning and summary hooks
 const registeredPlanningPreHooks: PlanningPreHook[] = [];
 const registeredPlanningPostHooks: PlanningPostHook[] = [];
-
-// Project profile plugin storage
 const registeredProfilePlugins: ProjectProfilePlugin[] = [];
 
+/**
+ * Validates a plugin's structure and required fields
+ * @throws {Error} If plugin validation fails
+ */
+function validatePlugin(plugin: Plugin): void {
+  if (!plugin.name) {
+    throw new Error('Plugin must have a name');
+  }
+
+  // Validate AI services if present
+  if (plugin.aiServices) {
+    Object.entries(plugin.aiServices).forEach(([name, service]) => {
+      if (!service.generateContent || typeof service.generateContent !== 'function') {
+        throw new Error(`AI service ${name} must have a generateContent function`);
+      }
+      if (!service.serviceConfig) {
+        throw new Error(`AI service ${name} must have a serviceConfig`);
+      }
+    });
+  }
+
+  // Validate operations if present
+  if (plugin.operations) {
+    Object.entries(plugin.operations).forEach(([name, operation]) => {
+      if (!operation.executor || typeof operation.executor !== 'function') {
+        throw new Error(`Operation ${name} must have an executor function`);
+      }
+      if (!operation.def) {
+        throw new Error(`Operation ${name} must have a definition`);
+      }
+    });
+  }
+
+  // Validate action handlers if present
+  if (plugin.actionHandlers) {
+    Object.entries(plugin.actionHandlers).forEach(([name, { handler, description }]) => {
+      if (!handler || typeof handler !== 'function') {
+        throw new Error(`Action handler ${name} must have a handler function`);
+      }
+      if (!description) {
+        throw new Error(`Action handler ${name} must have a description`);
+      }
+    });
+  }
+
+  // Validate hooks if present
+  if (plugin.generateContentHook && typeof plugin.generateContentHook !== 'function') {
+    throw new Error('generateContentHook must be a function');
+  }
+  if (plugin.planningPreHook && typeof plugin.planningPreHook !== 'function') {
+    throw new Error('planningPreHook must be a function');
+  }
+  if (plugin.planningPostHook && typeof plugin.planningPostHook !== 'function') {
+    throw new Error('planningPostHook must be a function');
+  }
+
+  // Validate project profiles if present
+  if ('profiles' in plugin) {
+    const profilePlugin = plugin as Plugin & ProjectProfilePlugin;
+    if (!Array.isArray(profilePlugin.profiles)) {
+      throw new Error('Plugin profiles must be an array');
+    }
+    profilePlugin.profiles.forEach(validateProfile);
+  }
+}
+
+/**
+ * Registers a single plugin with validation and idempotency checks
+ * @throws {Error} If plugin registration fails
+ */
+export async function registerPlugin(plugin: Plugin, pluginPath?: string): Promise<void> {
+  try {
+    // Validate plugin structure
+    validatePlugin(plugin);
+
+    // Check if plugin is already loaded
+    if (loadedPlugins.has(plugin.name)) {
+      console.log(`Plugin ${plugin.name} is already loaded, overwriting registration`);
+    }
+
+    // Register AI services
+    if (plugin.aiServices) {
+      Object.entries(plugin.aiServices).forEach(([name, service]) => {
+        registeredAiServices.set(`plugin:${name}`, service);
+        console.log(`Registered AI service: ${name}`);
+      });
+    }
+
+    // Register operations
+    if (plugin.operations) {
+      Object.entries(plugin.operations).forEach(([name, operation]) => {
+        registeredOperations[name] = operation;
+        console.log(`Registered operation: ${name}`);
+      });
+    }
+
+    // Register action handlers
+    if (plugin.actionHandlers) {
+      Object.entries(plugin.actionHandlers).forEach(([name, { handler, description }]) => {
+        registeredActionHandlers.set(`plugin:${name}`, handler);
+        registeredActionHandlerDescriptions.set(`plugin:${name}`, description);
+        console.log(`Registered action handler: ${name}`);
+      });
+    }
+
+    // Register hooks
+    if (plugin.generateContentHook) {
+      registeredGenerateContentHooks.push(plugin.generateContentHook);
+      console.log('Registered generateContent hook');
+    }
+    if (plugin.planningPreHook) {
+      registeredPlanningPreHooks.push(plugin.planningPreHook);
+      console.log('Registered planning pre-hook');
+    }
+    if (plugin.planningPostHook) {
+      registeredPlanningPostHooks.push(plugin.planningPostHook);
+      console.log('Registered planning post-hook');
+    }
+
+    // Register project profiles
+    if ('profiles' in plugin) {
+      const profilePlugin = plugin as Plugin & ProjectProfilePlugin;
+      if (profilePlugin.profiles) {
+        profilePlugin.profiles.forEach((profile: ProjectProfile) => {
+          registerProfile(profile);
+          console.log(`Registered project profile: ${profile.name} (${profile.id})`);
+        });
+      }
+    }
+
+    // Add plugin to loaded plugins registry
+    loadedPlugins.set(plugin.name, plugin);
+    console.log(`Successfully loaded plugin${pluginPath ? `: ${pluginPath}` : ': ' + plugin.name}`);
+  } catch (error) {
+    const errorMessage = `Failed to register plugin${pluginPath ? `: ${pluginPath}` : ': ' + plugin.name}`;
+    console.error(errorMessage, error);
+    throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Loads plugins from configuration with idempotency checks
+ */
 export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
   if (!rcConfig.plugins || rcConfig.plugins.length === 0) {
     console.log('No plugins specified in the configuration.');
@@ -43,73 +183,16 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
       pluginPath = path.isAbsolute(pluginPath) ? pluginPath : path.join(rcConfig.rootDir, pluginPath);
       console.log('Loading plugin:', pluginPath);
       const plugin = (await import(pluginPath)).default as Plugin;
-
-      // Handle AI services
-      if (plugin.aiServices) {
-        Object.entries(plugin.aiServices).forEach(([name, service]) => {
-          registeredAiServices.set(`plugin:${name}`, service);
-          console.log(`Registered AI service: ${name}`);
-        });
-      }
-
-      // Handle operations
-      if (plugin.operations) {
-        Object.entries(plugin.operations).forEach(([name, operation]) => {
-          registeredOperations[name] = operation;
-          console.log(`Registered operation: ${name}`);
-        });
-      }
-
-      // Handle action handlers
-      if (plugin.actionHandlers) {
-        Object.entries(plugin.actionHandlers).forEach(([name, { handler, description }]) => {
-          registeredActionHandlers.set(`plugin:${name}`, handler);
-          registeredActionHandlerDescriptions.set(`plugin:${name}`, description);
-          console.log(`Registered action handler: ${name}`);
-        });
-      }
-
-      // Handle generateContent hooks
-      if (plugin.generateContentHook) {
-        registeredGenerateContentHooks.push(plugin.generateContentHook);
-        console.log('Registered generateContent hook');
-      }
-
-      // Handle planning hooks
-      if (plugin.planningPreHook) {
-        registeredPlanningPreHooks.push(plugin.planningPreHook);
-        console.log('Registered planning pre-hook');
-      }
-      if (plugin.planningPostHook) {
-        registeredPlanningPostHooks.push(plugin.planningPostHook);
-        console.log('Registered planning post-hook');
-      }
-
-      // Handle project profile plugins
-      if ('profiles' in plugin) {
-        const profilePlugin = plugin as Plugin & ProjectProfilePlugin;
-
-        // Register project profiles
-        if (profilePlugin.profiles) {
-          profilePlugin.profiles.forEach((profile: ProjectProfile) => {
-            // Validate profile
-            validateProfile(profile);
-            // Register profile
-            registerProfile(profile);
-            console.log(`Registered project profile: ${profile.name} (${profile.id})`);
-          });
-        }
-      }
-
-      console.log(`Successfully loaded plugin: ${pluginPath}`);
+      await registerPlugin(plugin, pluginPath);
     } catch (error) {
       console.error(`Failed to load plugin: ${pluginPath}`, error);
+      throw error; // Re-throw to handle the error at a higher level
     }
   }
 }
 
 /**
- * Validate project profile structure
+ * Validates project profile structure
  */
 function validateProfile(profile: ProjectProfile): void {
   if (!profile.id || typeof profile.id !== 'string') {
@@ -158,23 +241,28 @@ export function getRegisteredGenerateContentHooks(): GenerateContentHook[] {
   return registeredGenerateContentHooks;
 }
 
-/**
- * Get all registered planning pre-hooks
- */
 export function getRegisteredPlanningPreHooks(): PlanningPreHook[] {
   return registeredPlanningPreHooks;
 }
 
-/**
- * Get all registered planning post-hooks
- */
 export function getRegisteredPlanningPostHooks(): PlanningPostHook[] {
   return registeredPlanningPostHooks;
 }
 
-/**
- * Get all registered project profile plugins
- */
 export function getRegisteredProfilePlugins(): ProjectProfilePlugin[] {
   return registeredProfilePlugins;
+}
+
+/**
+ * Checks if a plugin is already loaded
+ */
+export function isPluginLoaded(pluginName: string): boolean {
+  return loadedPlugins.has(pluginName);
+}
+
+/**
+ * Gets a loaded plugin by name
+ */
+export function getLoadedPlugin(pluginName: string): Plugin | undefined {
+  return loadedPlugins.get(pluginName);
 }
