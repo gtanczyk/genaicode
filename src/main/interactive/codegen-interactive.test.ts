@@ -56,7 +56,7 @@ describe('runInteractiveMode', () => {
 
   it('should handle select AI service action', async () => {
     vi.spyOn(common, 'getUserAction').mockResolvedValueOnce('select_ai_service').mockResolvedValueOnce('exit');
-    vi.spyOn(selectAiService, 'selectAiService').mockResolvedValueOnce('chat-gpt');
+    vi.spyOn(selectAiService, 'selectAiService').mockResolvedValueOnce('openai');
     await runInteractiveMode(mockOptions);
     expect(selectAiService.selectAiService).toHaveBeenCalledWith('vertex-ai');
   });

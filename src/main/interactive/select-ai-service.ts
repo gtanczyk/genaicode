@@ -4,7 +4,7 @@ import { AiServiceType } from '../codegen-types.js';
 const AI_SERVICE_CHOICES = [
   { name: 'Vertex AI (Gemini)', value: 'vertex-ai' },
   { name: 'AI Studio (Gemini)', value: 'ai-studio' },
-  { name: 'ChatGPT', value: 'chat-gpt' },
+  { name: 'OpenAI', value: 'openai' },
   { name: 'Anthropic Claude', value: 'anthropic' },
   { name: 'Claude via Vertex AI', value: 'vertex-ai-claude' },
 ] as const;

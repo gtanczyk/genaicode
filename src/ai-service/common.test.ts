@@ -4,7 +4,6 @@ import { getFunctionDefs } from '../prompt/function-calling.js';
 
 // Mock cli-params.js
 vi.mock('../cli/cli-params.js', () => ({
-  chatGpt: true,
   anthropic: false,
   vertexAi: false,
   vertexAiClaude: false,

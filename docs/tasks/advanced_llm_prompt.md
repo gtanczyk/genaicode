@@ -42,7 +42,7 @@ GenAICode is facing challenges with high token usage, particularly in input toke
 6. Consider the implementation challenges:
 
    - What are the most significant technical hurdles in implementing these strategies?
-   - How might these strategies need to be adapted for different AI models (e.g., vertex-ai-claude vs chat-gpt)?
+   - How might these strategies need to be adapted for different AI models (e.g., vertex-ai-claude vs openai)?
 
 7. Think about future scalability:
 

@@ -1,7 +1,7 @@
 import * as cliParams from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
-import { generateContent as generateContentGPT } from '../ai-service/chat-gpt.js';
+import { generateContent as generateContentGPT } from '../ai-service/openai.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
@@ -133,7 +133,7 @@ export function getGenerateContentFunctions(): Record<AiServiceType, GenerateCon
     'vertex-ai': generateContentVertexAi,
     'ai-studio': generateContentAiStudio,
     anthropic: generateContentAnthropic,
-    'chat-gpt': generateContentGPT,
+    openai: generateContentGPT,
     ...Object.fromEntries([...getRegisteredAiServices().entries()].map(([key, value]) => [key, value.generateContent])),
   };
 }

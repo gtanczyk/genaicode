@@ -170,7 +170,7 @@ export const testConfigs = {
     askQuestion: false,
     disableContextOptimization: true,
     explicitPrompt: 'testx',
-    aiService: 'chat-gpt' as const,
+    aiService: 'openai' as const,
     vision: true,
   },
 

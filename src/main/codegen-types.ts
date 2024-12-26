@@ -12,7 +12,7 @@ export type AiServiceType =
   | 'vertex-ai'
   | 'ai-studio'
   | 'vertex-ai-claude'
-  | 'chat-gpt'
+  | 'openai'
   | 'anthropic'
   | PluginAiServiceType;
 

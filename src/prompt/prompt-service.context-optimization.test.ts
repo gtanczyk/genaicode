@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
-import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as cliParams from '../cli/cli-params.js';
 import * as dalleService from '../ai-service/dall-e.js';
@@ -15,7 +15,7 @@ import { mockData, mockResponses, testConfigs } from './prompt-service.test-util
 // Mock all external dependencies
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
@@ -58,7 +58,7 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
   anthropic: anthropic.generateContent,
-  'chat-gpt': chatGpt.generateContent,
+  openai: openai.generateContent,
 } as const;
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {

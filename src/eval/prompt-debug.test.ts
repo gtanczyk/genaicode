@@ -1,6 +1,6 @@
 import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
-import { generateContent as generateContentGPT } from '../ai-service/chat-gpt';
+import { generateContent as generateContentGPT } from '../ai-service/openai';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic';
 import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude';
 import { getFunctionDefs } from '../prompt/function-calling.js';
@@ -15,7 +15,7 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'optimizeContext';
+  const requiredFunctionName = 'codegenPlanning';
   const temperature = 0.7;
 
   it('Gemini Flash', async () => {
@@ -42,7 +42,7 @@ describe('prompt-debug', () => {
       [
         ...req,
         {
-          aiService: 'chat-gpt',
+          aiService: 'openai',
           disableCache: false,
           askQuestion: false,
         },
@@ -95,9 +95,16 @@ describe('prompt-debug', () => {
   });
 
   it('Gemini Pro', async () => {
+    updateServiceConfig('ai-studio', {
+      modelOverrides: {
+        default: 'gemini-exp-1206',
+      },
+      apiKey: process.env.API_KEY,
+    });
+
     const geminiArgs = (
       await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, false, {
-        aiService: 'vertex-ai',
+        aiService: 'ai-studio',
         askQuestion: false,
       })
     )[0].args;
@@ -125,6 +132,11 @@ describe('prompt-debug', () => {
   });
 
   it('Claude Sonnet (Vertex)', async () => {
+    updateServiceConfig('vertex-ai-claude', {
+      googleCloudRegion: 'europe-west1',
+      googleCloudProjectId: 'gamedevpl',
+    });
+
     const claudeArgs = (
       await generateContentVertexClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
     )[0].args;

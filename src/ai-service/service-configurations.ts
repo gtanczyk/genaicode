@@ -23,11 +23,11 @@ const configurations: ServiceConfigurations = {
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
     },
   },
-  'chat-gpt': {
+  openai: {
     apiKey: process.env.OPENAI_API_KEY,
     modelOverrides: {
-      default: modelOverrides.chatGpt?.default ?? 'gpt-4o-2024-11-20',
-      cheap: modelOverrides.chatGpt?.cheap ?? 'gpt-4o-mini',
+      default: modelOverrides.openai?.default ?? 'gpt-4o-2024-11-20',
+      cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
     },
   },
   'vertex-ai': {

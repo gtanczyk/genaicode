@@ -65,17 +65,17 @@ Examples: ['node_modules', 'dist', 'build'], ['coverage', '.vscode', '.github']`
       type: 'object',
       description: 'Override configurations for different AI service models.',
       properties: {
-        chatGpt: {
+        openai: {
           type: 'object',
           properties: {
             cheap: {
               type: 'string',
-              description: `Model to use when cheap flag is enabled for ChatGPT service.
+              description: `Model to use when cheap flag is enabled for OpenAI compatible service.
 Example: ['gpt-4o-mini']`,
             },
             default: {
               type: 'string',
-              description: `Default model to use for ChatGPT service. Example: ['gpt-4o']`,
+              description: `Default model to use for OpenAI compatible service. Example: ['gpt-4o']`,
             },
           },
         },

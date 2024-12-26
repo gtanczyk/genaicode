@@ -2,7 +2,7 @@ import { AiServiceType } from './codegen-types';
 import { getRegisteredAiServices } from './plugin-loader.js';
 
 export function getSupportedAiServices(): AiServiceType[] {
-  return ['vertex-ai', 'ai-studio', 'vertex-ai-claude', 'chat-gpt', 'anthropic', ...getRegisteredAiServices().keys()];
+  return ['vertex-ai', 'ai-studio', 'vertex-ai-claude', 'openai', 'anthropic', ...getRegisteredAiServices().keys()];
 }
 
 export function stringToAiServiceType(aiService: string | undefined | null): AiServiceType {

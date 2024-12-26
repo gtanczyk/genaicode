@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
-import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as cliParams from '../cli/cli-params.js';
 import fs from 'fs';
@@ -18,7 +18,7 @@ import { mockData, mockResponses, testConfigs } from './prompt-service.test-util
 // Mock all external dependencies
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
@@ -62,7 +62,7 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
   anthropic: anthropic.generateContent,
-  'chat-gpt': chatGpt.generateContent,
+  openai: openai.generateContent,
 } as const;
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
@@ -82,12 +82,12 @@ describe('promptService - Image Handling', () => {
 
   describe('Vision Features', () => {
     it('should include image assets when vision flag is true', async () => {
-      vi.mocked(cliParams).aiService = 'chat-gpt';
+      vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = true;
 
       // Setup mocks
       vi.mocked(getImageAssets).mockReturnValue(mockData.imageAssets);
-      vi.mocked(chatGpt.generateContent)
+      vi.mocked(openai.generateContent)
         // First mock for codegenPlanning
         .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
         // Second mock for codegenSummary
@@ -97,8 +97,8 @@ describe('promptService - Image Handling', () => {
 
       await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.visionConfig));
 
-      expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
-      const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
+      expect(openai.generateContent).toHaveBeenCalledTimes(3);
+      const calls = vi.mocked(openai.generateContent).mock.calls[0];
       expect(calls[0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -112,7 +112,7 @@ describe('promptService - Image Handling', () => {
     });
 
     it('should include image data in the prompt when processing files with vision', async () => {
-      vi.mocked(cliParams).aiService = 'chat-gpt';
+      vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = true;
 
       const mockCodegenSummary = [
@@ -134,7 +134,7 @@ describe('promptService - Image Handling', () => {
       ];
 
       // Setup mocks
-      vi.mocked(chatGpt.generateContent)
+      vi.mocked(openai.generateContent)
         // First mock for codegenPlanning
         .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
         // Second mock for codegenSummary
@@ -149,8 +149,8 @@ describe('promptService - Image Handling', () => {
 
       await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.visionConfig));
 
-      expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
-      const secondCall = vi.mocked(chatGpt.generateContent).mock.calls[1];
+      expect(openai.generateContent).toHaveBeenCalledTimes(3);
+      const secondCall = vi.mocked(openai.generateContent).mock.calls[1];
       expect(secondCall[0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -174,11 +174,11 @@ describe('promptService - Image Handling', () => {
     });
 
     it('should not include image assets when vision flag is false', async () => {
-      vi.mocked(cliParams).aiService = 'chat-gpt';
+      vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = false;
 
       // Setup mocks
-      vi.mocked(chatGpt.generateContent)
+      vi.mocked(openai.generateContent)
         // First mock for codegenPlanning
         .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
         // Second mock for codegenSummary
@@ -189,11 +189,11 @@ describe('promptService - Image Handling', () => {
       await promptService(
         GENERATE_CONTENT_FNS,
         GENERATE_IMAGE_FNS,
-        getCodeGenPrompt({ ...testConfigs.baseConfig, aiService: 'chat-gpt' }),
+        getCodeGenPrompt({ ...testConfigs.baseConfig, aiService: 'openai' }),
       );
 
-      expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
-      const calls = vi.mocked(chatGpt.generateContent).mock.calls[0];
+      expect(openai.generateContent).toHaveBeenCalledTimes(3);
+      const calls = vi.mocked(openai.generateContent).mock.calls[0];
       expect(calls[0]).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({

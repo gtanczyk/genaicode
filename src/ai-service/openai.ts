@@ -23,7 +23,7 @@ export async function generateContent(
   cheap = false,
 ): Promise<FunctionCall[]> {
   try {
-    const serviceConfig = getServiceConfig('chat-gpt');
+    const serviceConfig = getServiceConfig('openai');
     assert(serviceConfig?.apiKey, 'OpenAI API key not configured, use OPENAI_API_KEY environment variable.');
     const openai = new OpenAI({ apiKey: serviceConfig?.apiKey });
 
@@ -167,7 +167,7 @@ export async function internalGenerateContent(
 
   assert(response);
 
-  // Print token usage for chat gpt
+  // Print token usage for openai
   const usage: TokenUsage = {
     inputTokens: response.usage!.prompt_tokens - (response.usage?.prompt_tokens_details?.cached_tokens ?? 0),
     outputTokens: response.usage!.completion_tokens,
@@ -175,7 +175,7 @@ export async function internalGenerateContent(
     cacheReadTokens: response.usage?.prompt_tokens_details?.cached_tokens,
   };
   printTokenUsageAndCost({
-    aiService: 'chat-gpt',
+    aiService: 'openai',
     usage,
     inputCostPerToken: 0.000005,
     outputCostPerToken: 0.000015,

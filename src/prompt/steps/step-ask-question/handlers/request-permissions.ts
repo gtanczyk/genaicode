@@ -76,7 +76,7 @@ function updatePermissions(requestPermissionsCall: FunctionCall<RequestPermissio
   const permissions = requestPermissionsCall.args;
   if (permissions) {
     if ('enableImagen' in permissions && permissions.enableImagen) {
-      options.imagen = options.aiService === 'chat-gpt' ? 'dall-e' : 'vertex-ai';
+      options.imagen = options.aiService === 'openai' ? 'dall-e' : 'vertex-ai';
     }
     if ('enableVision' in permissions && permissions.enableVision) options.vision = true;
     if ('allowDirectoryCreate' in permissions && permissions.allowDirectoryCreate) options.allowDirectoryCreate = true;

@@ -71,7 +71,7 @@ GenAICode, an AI-powered code generation and management tool, is currently facin
 2. Configuration Options: Provide users with granular control over token reduction strategies through configuration files.
 3. Monitoring and Metrics: Implement robust monitoring to track token usage, strategy effectiveness, and impact on code quality.
 4. Fallback Mechanisms: Design systems to gracefully handle cases where token reduction strategies might fail or be insufficient.
-5. AI Model Compatibility: Ensure that implemented strategies are compatible with different AI models used by GenAICode (vertex-ai-claude, chat-gpt, etc.).
+5. AI Model Compatibility: Ensure that implemented strategies are compatible with different AI models used by GenAICode (vertex-ai-claude, openai, etc.).
 6. Testing and Validation: Develop a comprehensive testing suite to validate the effectiveness of token reduction strategies and ensure they don't negatively impact code generation quality.
 7. Gradual Rollout: Consider implementing these changes incrementally, starting with the most impactful and least risky strategies.
 8. User Feedback Loop: Establish a mechanism to collect and incorporate user feedback on the effectiveness and impact of token reduction strategies.

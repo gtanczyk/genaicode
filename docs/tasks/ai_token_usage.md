@@ -4,7 +4,7 @@ Measurement and protection for token usage
 
 # Description
 
-Whenever using codegen with either Vertex AI, or Chat GPT, I want to be informed about token usage. The message should be displayed at the end.
+Whenever using codegen with either Vertex AI, or OpenAI, I want to be informed about token usage. The message should be displayed at the end.
 Also estimate the cost of running the prompt.
 
 ## Implementation hints

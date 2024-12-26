@@ -15,9 +15,9 @@ describe('serviceAutoDetect', () => {
     expect(serviceAutoDetect()).toBe('anthropic');
   });
 
-  it('should return "chat-gpt" when OPENAI_API_KEY is set', () => {
+  it('should return "openai" when OPENAI_API_KEY is set', () => {
     process.env.OPENAI_API_KEY = 'test-key';
-    expect(serviceAutoDetect()).toBe('chat-gpt');
+    expect(serviceAutoDetect()).toBe('openai');
   });
 
   it('should return "vertex-ai" when GOOGLE_CLOUD_PROJECT is set', () => {
@@ -36,9 +36,9 @@ describe('serviceAutoDetect', () => {
     expect(serviceAutoDetect()).toBe('anthropic');
   });
 
-  it('should prioritize chat-gpt over vertex-ai', () => {
+  it('should prioritize openai over vertex-ai', () => {
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.GOOGLE_CLOUD_PROJECT = 'test-project';
-    expect(serviceAutoDetect()).toBe('chat-gpt');
+    expect(serviceAutoDetect()).toBe('openai');
   });
 });

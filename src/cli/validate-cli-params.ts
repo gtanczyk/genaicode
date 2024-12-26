@@ -73,7 +73,7 @@ export function validateCliParams(): void {
   if (aiServiceParam) {
     const aiServiceValue: string = aiServiceParam.split('=')[1];
     if (
-      !['vertex-ai', 'chat-gpt', 'anthropic', 'ai-studio', 'vertex-ai-claude'].includes(aiServiceValue) &&
+      !['vertex-ai', 'openai', 'anthropic', 'ai-studio', 'vertex-ai-claude'].includes(aiServiceValue) &&
       !aiServiceValue.startsWith('plugin:')
     ) {
       throw new Error('Invalid --ai-service value');

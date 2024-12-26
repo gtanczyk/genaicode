@@ -40,7 +40,7 @@ viteGenaicode({
   uiPort: 1338, // Default port
 
   // AI behavior
-  aiService: 'vertex-ai', // Or others like 'chat-gpt', 'anthropic', 'ai-studio', or custom
+  aiService: 'vertex-ai', // Or others like 'openai', 'anthropic', 'ai-studio', or custom
   temperature: 0.7, // Higher = more creative (default: 0.7)
   vision: true, // Enable vision capabilities (default: true)
   imagen: 'vertex-ai', // Enable image generation capabilities

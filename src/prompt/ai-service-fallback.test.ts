@@ -12,7 +12,7 @@ describe('handleAiServiceFallback', () => {
   const mockGenerateContent: GenerateContentFunction = vi.fn();
   const mockOptions: CodegenOptions = {
     askQuestion: false,
-    aiService: 'chat-gpt',
+    aiService: 'openai',
     disableAiServiceFallback: false,
     interactive: true,
     ui: false,
@@ -35,13 +35,13 @@ describe('handleAiServiceFallback', () => {
 
     const result = await handleAiServiceFallback(
       {
-        'chat-gpt': mockGenerateContent,
+        openai: mockGenerateContent,
         anthropic: mockGenerateContent,
         'vertex-ai': mockGenerateContent,
         'ai-studio': mockGenerateContent,
         'vertex-ai-claude': mockGenerateContent,
       },
-      'chat-gpt',
+      'openai',
       mockOptions,
       [],
       [],
@@ -68,13 +68,13 @@ describe('handleAiServiceFallback', () => {
     await expect(
       handleAiServiceFallback(
         {
-          'chat-gpt': mockGenerateContent,
+          openai: mockGenerateContent,
           anthropic: mockGenerateContent,
           'vertex-ai': mockGenerateContent,
           'ai-studio': mockGenerateContent,
           'vertex-ai-claude': mockGenerateContent,
         },
-        'chat-gpt',
+        'openai',
         options,
         [],
         [],
@@ -86,6 +86,6 @@ describe('handleAiServiceFallback', () => {
     ).rejects.toThrow('Service failure');
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
-    expect(options.aiService).toEqual('chat-gpt');
+    expect(options.aiService).toEqual('openai');
   });
 });

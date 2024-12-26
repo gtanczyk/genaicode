@@ -7,7 +7,7 @@ import { abortController } from '../main/interactive/codegen-worker.js';
 const AI_SERVICES_MAP = [
   [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],
   [() => process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_CLOUD_REGION, 'vertex-ai-claude'],
-  [() => process.env.OPENAI_API_KEY, 'chat-gpt'],
+  [() => process.env.OPENAI_API_KEY, 'openai'],
   [() => process.env.GOOGLE_CLOUD_PROJECT, 'vertex-ai'],
   [() => process.env.API_KEY, 'ai-studio'],
 ] as const;

@@ -79,7 +79,7 @@ The basic structure of the `.genaicoderc` file is as follows:
    - **Example**:
      ```json
      "modelOverrides": {
-       "chatGpt": {
+       "openai": {
          "cheap": "gpt-4o-mini",
          "default": "o1-preview"
        },
@@ -107,7 +107,7 @@ The basic structure of the `.genaicoderc` file is as follows:
   "ignorePaths": ["node_modules", "build", "test"],
   "lintCommand": "npm run lint",
   "modelOverrides": {
-    "chatGpt": {
+    "openai": {
       "cheap": "gpt-4o-mini",
       "default": "o1-preview"
     },

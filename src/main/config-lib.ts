@@ -16,7 +16,7 @@ export interface ImportantContext {
 }
 
 export interface ModelOverrides {
-  chatGpt?: {
+  openai?: {
     cheap?: string;
     default?: string;
   };

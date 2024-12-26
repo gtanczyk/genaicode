@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
-import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as dalleService from '../ai-service/dall-e.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
@@ -15,7 +15,7 @@ import { mockData, mockResponses, testConfigs } from './prompt-service.test-util
 // Mock all external dependencies
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
@@ -57,7 +57,7 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
   anthropic: anthropic.generateContent,
-  'chat-gpt': chatGpt.generateContent,
+  openai: openai.generateContent,
 } as const;
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
@@ -97,11 +97,11 @@ describe('promptService - AI Services', () => {
     expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Hello");'));
   });
 
-  it('should process requests with ChatGPT', async () => {
-    vi.mocked(cliParams).aiService = 'chat-gpt';
+  it('should process requests with OpenAI', async () => {
+    vi.mocked(cliParams).aiService = 'openai';
 
     // Setup mocks for the entire flow
-    vi.mocked(chatGpt.generateContent)
+    vi.mocked(openai.generateContent)
       // First mock for codegenPlanning
       .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
       // Second mock for codegenSummary
@@ -114,11 +114,11 @@ describe('promptService - AI Services', () => {
       GENERATE_IMAGE_FNS,
       getCodeGenPrompt({
         ...testConfigs.baseConfig,
-        aiService: 'chat-gpt',
+        aiService: 'openai',
       }),
     );
 
-    expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
+    expect(openai.generateContent).toHaveBeenCalledTimes(3);
     expect(result).toEqual(mockResponses.mockCreateFile(mockData.paths.test, 'const x = 5;'));
   });
 

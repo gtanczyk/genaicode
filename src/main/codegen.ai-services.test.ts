@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runCodegen } from './codegen.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as updateFiles from '../files/update-files.js';
@@ -50,7 +50,7 @@ vi.mock('../cli/cli-params.js', () => ({
   dryRun: false,
 }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../files/update-files.js');
@@ -115,11 +115,11 @@ describe('AI Services Integration', () => {
     });
   });
 
-  describe('ChatGPT', () => {
-    it('should run codegen with ChatGPT when specified', async () => {
-      vi.mocked(cliParams).aiService = 'chat-gpt';
+  describe('OpenAI', () => {
+    it('should run codegen with OpenAI when specified', async () => {
+      vi.mocked(cliParams).aiService = 'openai';
 
-      const mockPlanning = createMockPlanningResponse('Test analysis for ChatGPT', 'Create new.js file', [
+      const mockPlanning = createMockPlanningResponse('Test analysis for OpenAI', 'Create new.js file', [
         { filePath: '/mocked/root/dir/new.js', reason: 'New file creation' },
       ]);
 
@@ -136,12 +136,12 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockCreate]);
       mockSequence.forEach((response) => {
-        vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(response);
+        vi.mocked(openai.generateContent).mockResolvedValueOnce(response);
       });
 
       await runCodegen();
 
-      expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
+      expect(openai.generateContent).toHaveBeenCalledTimes(3);
       expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockCreate, expect.anything());
     });
   });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runCodegen } from './codegen.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import * as chatGpt from '../ai-service/chat-gpt.js';
+import * as openai from '../ai-service/openai.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import * as dallE from '../ai-service/dall-e.js';
 import * as updateFiles from '../files/update-files.js';
@@ -50,7 +50,7 @@ vi.mock('../cli/cli-params.js', () => ({
   dryRun: false,
 }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/chat-gpt.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../files/update-files.js');
@@ -192,7 +192,7 @@ describe('Image Generation', () => {
   describe('DALL-E', () => {
     it('should use DALL-E when imagen flag is set to dall-e', async () => {
       vi.mocked(cliParams).imagen = 'dall-e';
-      vi.mocked(cliParams).aiService = 'chat-gpt';
+      vi.mocked(cliParams).aiService = 'openai';
 
       const mockPlanning = createMockPlanningResponse('Test analysis for DALL-E', 'Generate city image', [
         { filePath: '/mocked/root/dir/city.png', reason: 'Generate test image' },
@@ -220,14 +220,14 @@ describe('Image Generation', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
-        vi.mocked(chatGpt.generateContent).mockResolvedValueOnce(response);
+        vi.mocked(openai.generateContent).mockResolvedValueOnce(response);
       });
 
       vi.mocked(dallE.generateImage).mockResolvedValueOnce('mocked-image-data');
 
       await runCodegen();
 
-      expect(chatGpt.generateContent).toHaveBeenCalledTimes(3);
+      expect(openai.generateContent).toHaveBeenCalledTimes(3);
       expect(dallE.generateImage).toHaveBeenCalledWith(
         'A futuristic city',
         undefined,

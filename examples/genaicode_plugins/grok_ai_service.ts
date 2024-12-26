@@ -32,7 +32,7 @@ async function generateContent(
     baseURL: 'https://api.x.ai/v1',
   });
 
-  const { internalGenerateContent } = await import('../../src/ai-service/chat-gpt.js');
+  const { internalGenerateContent } = await import('../../src/ai-service/openai.js');
 
   return internalGenerateContent(
     prompt,

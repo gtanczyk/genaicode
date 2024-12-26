@@ -9,7 +9,7 @@ This document provides a detailed comparison between documented features and the
 | Feature                | Documentation Status | Implementation Status | Location                             | Discrepancies/Notes                 |
 | ---------------------- | -------------------- | --------------------- | ------------------------------------ | ----------------------------------- |
 | Vertex AI              | ✅ Documented        | ✅ Implemented        | ai-service/vertex-ai.ts              | Includes Gemini Pro model support   |
-| Chat GPT               | ✅ Documented        | ✅ Implemented        | ai-service/chat-gpt.ts               | GPT-4 support with function calling |
+| OpenAI                 | ✅ Documented        | ✅ Implemented        | ai-service/openai.ts                 | GPT-4 support with function calling |
 | Anthropic              | ✅ Documented        | ✅ Implemented        | ai-service/anthropic.ts              | Claude 3 support with tool use      |
 | AI Studio              | ✅ Documented        | ✅ Implemented        | ai-service/ai-studio.ts              | Gemini Pro model support            |
 | AI Service Fallback    | ✅ Documented        | ✅ Implemented        | prompt/ai-service-fallback.ts        | Includes rate limit handling        |

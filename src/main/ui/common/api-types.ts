@@ -41,7 +41,7 @@ export type ServiceConfigRequirements = {
     googleCloudProjectId: string;
     googleCloudRegion: string;
   };
-  'chat-gpt': {
+  openai: {
     apiKey: string | undefined;
     googleCloudProjectId?: never;
     googleCloudRegion?: never;
