@@ -7,7 +7,7 @@ let browser: Browser;
 let page: Page;
 let genAICodeProcess: ChildProcess;
 
-describe('vite genaicode', () => {
+describe.concurrent('vite genaicode', () => {
   beforeAll(async () => {
     // Start GenAIcode in UI mode
     genAICodeProcess = spawn('npx', ['vite'], {
@@ -19,10 +19,14 @@ describe('vite genaicode', () => {
     // Wait for the server to start and get the port
     const port = await new Promise<number>((resolve) => {
       genAICodeProcess.stdout!.on('data', (data) => {
+        console.log(data.toString());
         const match = data.toString().match(/Local:(?:.+)http:\/\/localhost:(\d+)\//);
         if (match) {
           resolve(parseInt(match[1], 10));
         }
+      });
+      genAICodeProcess.stderr!.on('data', (data) => {
+        console.log(data.toString());
       });
     });
 

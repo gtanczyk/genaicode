@@ -7,7 +7,7 @@ let browser: Browser;
 let page: Page;
 let genAICodeProcess: ChildProcess;
 
-describe('genaicode ui', () => {
+describe.concurrent('genaicode ui', () => {
   beforeAll(async () => {
     // Start GenAIcode in UI mode
     genAICodeProcess = spawn('node', ['../../bin/genaicode.cjs', '--ui', '--ai-service=vertex-ai', '--force-dist'], {
