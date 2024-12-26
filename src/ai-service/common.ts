@@ -26,8 +26,10 @@ export interface FunctionCall<T = Record<string, unknown>> {
   args?: T;
 }
 
+export type PromptImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
 export type PromptItemImage = {
-  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  mediaType: PromptImageMediaType;
   base64url: string;
 };
 

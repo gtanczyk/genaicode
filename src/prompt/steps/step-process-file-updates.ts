@@ -5,6 +5,7 @@ import {
   FunctionDef,
   GenerateContentFunction,
   GenerateImageFunction,
+  PromptImageMediaType,
   PromptItem,
 } from '../../ai-service/common.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
@@ -31,41 +32,97 @@ export async function processFileUpdates(
   const result: FunctionCall[] = [];
 
   if (!Array.isArray(codegenSummaryRequest.args?.fileUpdates)) {
+    putSystemMessage('No file updates found in codegen summary');
     return result;
   }
 
   for (const file of codegenSummaryRequest.args.fileUpdates) {
+    try {
+      const fileResult = await processFileUpdate(
+        file,
+        generateContentFn,
+        generateImageFn,
+        prompt,
+        functionDefs,
+        options,
+        waitIfPaused,
+      );
+
+      if (fileResult.success) {
+        result.push(...fileResult.functionCalls);
+      } else {
+        putSystemMessage(`Failed to process update for ${file.filePath}`, { error: fileResult.error });
+      }
+    } catch (error) {
+      putSystemMessage(`Unexpected error processing update for ${file.filePath}`, { error });
+    }
+  }
+
+  return result;
+}
+
+interface FileUpdate {
+  filePath: string;
+  updateToolName: string;
+  prompt: string;
+  temperature?: number;
+  cheap?: boolean;
+  contextImageAssets?: string[];
+}
+
+interface ProcessFileUpdateResult {
+  success: boolean;
+  functionCalls: FunctionCall[];
+  error?: Error;
+}
+
+/**
+ * Processes a single file update, handling image generation and patch verification.
+ * @returns Object containing success status and function calls or error
+ */
+async function processFileUpdate(
+  file: FileUpdate,
+  generateContentFn: GenerateContentFunction,
+  generateImageFn: GenerateImageFunction | undefined,
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  options: CodegenOptions,
+  waitIfPaused: () => Promise<void>,
+): Promise<ProcessFileUpdateResult> {
+  try {
     putSystemMessage('Collecting partial update for: ' + file.filePath + ' using tool: ' + file.updateToolName, file);
 
     // Check if execution is paused before proceeding
     await waitIfPaused();
 
-    // this is needed, otherwise we will get an error
+    // Update prompt with file-specific information
     if (prompt.slice(-1)[0].type === 'user') {
       prompt.slice(-1)[0].text = file.prompt ?? getPartialPromptTemplate(file.filePath);
     } else {
       prompt.push({ type: 'user', text: file.prompt ?? getPartialPromptTemplate(file.filePath) });
     }
 
+    // Handle image assets if vision is enabled
     if (options.vision && file.contextImageAssets) {
       prompt.slice(-1)[0].images = file.contextImageAssets.map((path: string) => ({
         path,
         base64url: fs.readFileSync(path, 'base64'),
-        mediaType: mime.lookup(path) || '',
+        mediaType: (mime.lookup(path) || '') as PromptImageMediaType,
       }));
     }
 
+    // Prepare and execute content generation request
     const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
       prompt,
       functionDefs,
       file.updateToolName,
-      file.temperature ?? options.temperature,
+      file.temperature ?? options.temperature!,
       file.cheap === true,
       options,
     ];
     let partialResult = await generateContentFn(...partialRequest);
 
-    // Validate if function call is compliant with the schema
+    // Validate function call compliance
     partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
 
     putSystemMessage('Received partial update', partialResult);
@@ -78,7 +135,7 @@ export async function processFileUpdates(
       console.warn('Image generation requested but generateImageFn not provided');
     }
 
-    // Verify if patchFile is one of the functions called, and test if patch is valid and can be applied successfully
+    // Verify patch file operations
     const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
     if (patchFileCall) {
       partialResult = await executeStepVerifyPatch(
@@ -86,13 +143,13 @@ export async function processFileUpdates(
         generateContentFn,
         prompt,
         functionDefs,
-        file.temperature ?? options.temperature,
+        file.temperature ?? options.temperature!,
         file.cheap === true,
         options,
       );
     }
 
-    // add the code gen result to the context, as the subsequent code gen may depend on the result
+    // Update prompt with results
     prompt.push(
       { type: 'assistant', functionCalls: partialResult },
       {
@@ -102,8 +159,15 @@ export async function processFileUpdates(
       },
     );
 
-    result.push(...partialResult);
+    return {
+      success: true,
+      functionCalls: partialResult,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      functionCalls: [],
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
   }
-
-  return result;
 }
