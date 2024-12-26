@@ -103,6 +103,9 @@ export async function handleCodeGeneration({
       };
     }
 
+    putAssistantMessage('Codegen summary is generated. Would you like to proceed with the code changes?');
+    putUserMessage(codegenSummaryConfirmation.answer || 'Accept codegen summary and continue');
+
     prompt.push(
       {
         type: 'assistant',
@@ -134,6 +137,21 @@ export async function handleCodeGeneration({
       true,
     );
 
+    putAssistantMessage('Code changes are generated, now what?');
+    putUserMessage(confirmed.answer || 'Apply code changes.');
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: 'Code changes are generated, now what?',
+        functionCalls,
+      },
+      {
+        type: 'user',
+        text: confirmed.answer || 'Apply code changes.',
+      },
+    );
+
     if (confirmed.confirmed) {
       putSystemMessage('Applying code changes...');
 
@@ -154,18 +172,7 @@ export async function handleCodeGeneration({
     return {
       breakLoop: confirmed.confirmed ?? true,
       stepResult: functionCalls,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: 'Code changes are generated, now what?',
-          },
-          user: {
-            type: 'user',
-            text: confirmed.answer || 'Apply code changes.',
-          },
-        },
-      ],
+      items: [],
     };
   } catch (error) {
     putSystemMessage(`Error during code generation: ${error instanceof Error ? error.message : 'Unknown error'}`);

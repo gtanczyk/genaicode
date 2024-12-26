@@ -10,6 +10,13 @@ export const SystemMessageContainer = styled.div<{ isExecutionEnd?: boolean }>`
   font-style: italic;
   font-size: 0.9em;
   opacity: 0.8;
+  transition: margin 0.2s ease-in-out;
+
+  /* Increase bottom margin when followed by a codegen view */
+  & + div {
+    margin-top: 16px;
+  }
+
   ${(props) =>
     props.isExecutionEnd &&
     `
@@ -21,6 +28,13 @@ export const SystemMessageHeader = styled.div`
   cursor: pointer;
   font-weight: bold;
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    opacity: 0.8;
+  }
 `;
 
 export const SystemMessageContent = styled.div`
@@ -28,16 +42,29 @@ export const SystemMessageContent = styled.div`
   word-wrap: break-word;
   font-family: inherit;
   margin: 0;
+
+  /* Add spacing between content sections */
+  & > *:not(:last-child) {
+    margin-bottom: 12px;
+  }
 `;
 
 export const SystemMessagePart = styled.div`
   margin-bottom: 8px;
+  position: relative;
+  padding-right: 150px; /* Space for timestamp and data link */
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
 export const SystemMessageTimestamp = styled.div`
   font-size: 0.8em;
   color: ${(props) => props.theme.colors.systemMessageTimestamp};
-  float: right;
+  position: absolute;
+  right: 60px;
+  top: 0;
 `;
 
 export const ShowDataLink = styled.span`
@@ -45,8 +72,9 @@ export const ShowDataLink = styled.span`
   color: ${(props) => props.theme.colors.primary};
   cursor: pointer;
   text-decoration: underline;
-  float: right;
-  margin-right: 5px;
+  position: absolute;
+  right: 0;
+  top: 0;
 
   &:hover {
     color: ${(props) => props.theme.colors.primaryHover};

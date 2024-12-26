@@ -63,7 +63,9 @@ export async function executeStepAskQuestion(
 
         // This is important to display the content to the user interface (ui or interactive cli)
         let lastItem = result.items.slice(-1)[0];
-        putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
+        if (lastItem) {
+          putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
+        }
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
 
@@ -78,7 +80,9 @@ export async function executeStepAskQuestion(
           });
 
           lastItem = result.items.slice(-1)[0];
-          putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
+          if (lastItem) {
+            putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
+          }
 
           prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
         }

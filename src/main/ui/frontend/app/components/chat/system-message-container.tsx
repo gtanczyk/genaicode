@@ -26,6 +26,11 @@ interface SystemMessageContainerProps {
   toggleDataVisibility: (id: string) => void;
 }
 
+interface MessageSection {
+  parts: ChatMessage[];
+  codegenView?: React.ReactNode;
+}
+
 export const SystemMessageContainer: React.FC<SystemMessageContainerProps> = ({
   message,
   collapsedExecutions,
@@ -33,33 +38,79 @@ export const SystemMessageContainer: React.FC<SystemMessageContainerProps> = ({
   visibleDataIds,
   toggleDataVisibility,
 }) => {
-  return (
-    <StyledSystemMessageContainer isExecutionEnd={message.isExecutionEnd}>
-      <SystemMessageHeader onClick={() => toggleExecutionCollapse(message.id)}>
-        {collapsedExecutions.has(message.id) ? '▶' : '▼'} Execution {message.id.split('_')[1]}
-      </SystemMessageHeader>
-      {!collapsedExecutions.has(message.id) && (
+  if (collapsedExecutions.has(message.id)) {
+    return (
+      <StyledSystemMessageContainer isExecutionEnd={message.isExecutionEnd}>
+        <SystemMessageHeader onClick={() => toggleExecutionCollapse(message.id)}>
+          ▶ Execution {message.id.split('_')[1]}
+        </SystemMessageHeader>
+      </StyledSystemMessageContainer>
+    );
+  }
+
+  const sections = splitMessageParts(message.parts);
+
+  return sections.map((section, sectionIndex) => (
+    <React.Fragment key={`section-${sectionIndex}`}>
+      <StyledSystemMessageContainer isExecutionEnd={message.isExecutionEnd}>
+        <SystemMessageHeader onClick={() => toggleExecutionCollapse(message.id)}>
+          ▼ Execution {message.id.split('_')[1]}
+        </SystemMessageHeader>
         <SystemMessageContent>
-          {message.parts.map((part) => {
-            return (
-              <>
-                <SystemMessagePart key={part.id}>
-                  {part.content}
-                  <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
-                  {part.data ? (
-                    <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
-                      {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
-                    </ShowDataLink>
-                  ) : null}
-                  {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
-                </SystemMessagePart>
-                {isCodegenPlanningData(part.data) && <CodegenPlanningView data={part.data} />}
-                {isCodegenSummaryData(part.data) && <CodegenSummaryView data={part.data} />}
-              </>
-            );
-          })}
+          {section.parts.map((part) => (
+            <SystemMessagePart key={part.id}>
+              {part.content}
+              <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
+              {part.data && (
+                <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
+                  {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
+                </ShowDataLink>
+              )}
+              {visibleDataIds.has(part.id) && part.data && <DataContainer data={part.data} />}
+            </SystemMessagePart>
+          ))}
         </SystemMessageContent>
-      )}
-    </StyledSystemMessageContainer>
-  );
+      </StyledSystemMessageContainer>
+      {section.codegenView && <React.Fragment key={`view-${sectionIndex}`}>{section.codegenView}</React.Fragment>}
+    </React.Fragment>
+  ));
 };
+
+/**
+ * Helper function to split message parts into sections based on codegen data
+ */
+function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
+  const sections: MessageSection[] = [];
+  let currentParts: ChatMessage[] = [];
+
+  parts.forEach((part) => {
+    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data)) {
+      // If we have accumulated regular parts, add them as a section
+      if (currentParts.length > 0) {
+        sections.push({ parts: [...currentParts] });
+        currentParts = [];
+      }
+
+      // Add the codegen view section
+      const codegenView = isCodegenPlanningData(part.data) ? (
+        <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
+      ) : (
+        <CodegenSummaryView key={`summary-${part.id}`} data={part.data} />
+      );
+
+      sections.push({
+        parts: [part],
+        codegenView,
+      });
+    } else {
+      currentParts.push(part);
+    }
+  });
+
+  // Add any remaining regular parts
+  if (currentParts.length > 0) {
+    sections.push({ parts: currentParts });
+  }
+
+  return sections;
+}

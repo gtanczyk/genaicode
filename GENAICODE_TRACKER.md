@@ -36,6 +36,13 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
   - Enhanced visual hierarchy and user experience
   - Added type safety and validation
   - Improved responsive design
+- [x] System Message Container Enhancement
+  - Implemented split view for codegen planning and summary
+  - Added visual separation between system messages and codegen views
+  - Enhanced styling and spacing for better readability
+  - Maintained existing functionality for collapsing and data visibility
+  - Added smooth transitions for visual changes
+  - Improved TypeScript type safety
 
 ## Future Improvements
 
@@ -47,6 +54,8 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
    - Implement syntax highlighting for more languages
    - Add file tree visualization
    - Enhance mobile responsiveness
+   - Add visual transitions for state changes
+   - Improve data visualization components spacing
 
 2. **Interactive Features**:
 
@@ -54,19 +63,22 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
    - Implement file preview on hover
    - Add search within code blocks
    - Add expand/collapse all sections button
+   - Add keyboard shortcuts for common actions
 
 3. **Visual Feedback**:
 
    - Add loading states for data fetching
-   - Implement smooth transitions
+   - Implement smooth transitions ✓
    - Add tooltips for better guidance
    - Enhance error state visualization
+   - Add progress indicators for long operations
 
 4. **Accessibility**:
    - Implement keyboard navigation
    - Add ARIA labels and roles
    - Improve color contrast
    - Add screen reader support
+   - Enhance focus management
 
 ### File Processing System
 
@@ -119,4 +131,4 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
    - Add more examples
    - Include best practices
 
-The recent UI improvements for codegen data display have significantly enhanced the user experience when working with planning and summary data. The implementation now includes structured layouts, collapsible sections, and better visual organization. Future improvements will focus on adding more interactive features, enhancing accessibility, and further improving the visual experience.
+The recent UI improvements for system message container have significantly enhanced the user experience by providing better visual separation between different types of content. The implementation now includes structured layouts with proper spacing, smooth transitions, and improved type safety. Future improvements will focus on adding more interactive features, enhancing accessibility, and further improving the visual experience.
