@@ -12,7 +12,7 @@ describe.concurrent('vite genaicode', () => {
     // Start GenAIcode in UI mode
     genAICodeProcess = spawn('npx', ['vite'], {
       cwd: path.resolve(__dirname, '..', 'examples', 'vite_genaicode_example'),
-      env: { ...process.env, NODE_ENV: 'test', API_KEY: 'fake' },
+      env: { ...process.env, NODE_ENV: 'test', API_KEY: 'fake', NODE_DISABLE_COLORS: '1', NO_COLOR: 'true' },
       detached: true,
     });
 
