@@ -9,6 +9,8 @@ import {
   SystemMessageTimestamp,
   ShowDataLink,
 } from './styles/system-message-container-styles.js';
+import { CodegenPlanningView, isCodegenPlanningData } from './codegen-planning-view.js';
+import { CodegenSummaryView, isCodegenSummaryData } from './codegen-summary-view.js';
 
 export interface SystemMessageBlock extends Omit<ChatMessage, 'type'> {
   type: ChatMessageType.SYSTEM;
@@ -38,18 +40,24 @@ export const SystemMessageContainer: React.FC<SystemMessageContainerProps> = ({
       </SystemMessageHeader>
       {!collapsedExecutions.has(message.id) && (
         <SystemMessageContent>
-          {message.parts.map((part) => (
-            <SystemMessagePart key={part.id}>
-              {part.content}
-              <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
-              {part.data ? (
-                <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
-                  {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
-                </ShowDataLink>
-              ) : null}
-              {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
-            </SystemMessagePart>
-          ))}
+          {message.parts.map((part) => {
+            return (
+              <>
+                <SystemMessagePart key={part.id}>
+                  {part.content}
+                  <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
+                  {part.data ? (
+                    <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
+                      {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
+                    </ShowDataLink>
+                  ) : null}
+                  {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
+                </SystemMessagePart>
+                {isCodegenPlanningData(part.data) && <CodegenPlanningView data={part.data} />}
+                {isCodegenSummaryData(part.data) && <CodegenSummaryView data={part.data} />}
+              </>
+            );
+          })}
         </SystemMessageContent>
       )}
     </StyledSystemMessageContainer>
