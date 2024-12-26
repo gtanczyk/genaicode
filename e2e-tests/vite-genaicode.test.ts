@@ -31,21 +31,26 @@ describe.concurrent('vite genaicode', () => {
     });
 
     // Launch the browser
+    console.log('Launching browser');
     browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+    console.log('Creating new page');
     page = await browser.newPage();
 
     // Navigate to the GenAIcode UI
+    console.log('Navigating to localhost');
     await page.goto(`http://localhost:${port}`);
   });
 
   test('GenAIcode UI is rendered', async () => {
     // Wait for the main container to be rendered
+    console.log('Waiting for selector');
     await page.waitForSelector('genaicode-overlay >>>> .button');
 
     await page.click('genaicode-overlay >>>> .button');
 
+    console.log('Waiting for iframe');
     const iframe = await page.waitForSelector('genaicode-overlay >>>> iframe');
     expect(iframe).not.toBeNull();
 

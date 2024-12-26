@@ -20,6 +20,7 @@ export default defineConfig({
     testTimeout: 30000, // Increase timeout for e2e tests
 
     maxConcurrency: 1, // Run e2e tests sequentially
+    fileParallelism: false, // Run e2e tests sequentially
 
     // Use different configurations based on the test type
     typecheck: {
