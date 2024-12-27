@@ -1,13 +1,6 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import {
-  PromptCachingBetaImageBlockParam,
-  PromptCachingBetaMessageParam,
-  PromptCachingBetaTextBlockParam,
-  PromptCachingBetaToolResultBlockParam,
-  PromptCachingBetaToolUseBlockParam,
-} from '@anthropic-ai/sdk/resources/beta/prompt-caching/messages';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
@@ -36,15 +29,15 @@ export async function generateContent(
     });
 
     let cacheControlCount = prompt.filter((item) => item.cache).length;
-    const messages: PromptCachingBetaMessageParam[] = prompt
+    const messages: Anthropic.MessageParam[] = prompt
       .filter((item) => item.type !== 'systemPrompt')
       .map((item) => {
         if (item.type === 'user') {
           const content: Array<
-            | PromptCachingBetaTextBlockParam
-            | PromptCachingBetaImageBlockParam
-            | PromptCachingBetaToolUseBlockParam
-            | PromptCachingBetaToolResultBlockParam
+            | Anthropic.TextBlockParam
+            | Anthropic.ImageBlockParam
+            | Anthropic.ToolUseBlockParam
+            | Anthropic.ToolResultBlockParam
           > = [];
           if (item.functionResponses) {
             content.push(
@@ -81,7 +74,7 @@ export async function generateContent(
           if (shouldAddCache) {
             content.slice(-1)[0].cache_control = { type: 'ephemeral' as const };
           }
-          const message: PromptCachingBetaMessageParam = {
+          const message: Anthropic.MessageParam = {
             role: 'user',
             content,
           };
@@ -89,10 +82,10 @@ export async function generateContent(
         } else {
           assert(item.type === 'assistant');
           const content: Array<
-            | PromptCachingBetaTextBlockParam
-            | PromptCachingBetaImageBlockParam
-            | PromptCachingBetaToolUseBlockParam
-            | PromptCachingBetaToolResultBlockParam
+            | Anthropic.TextBlockParam
+            | Anthropic.ImageBlockParam
+            | Anthropic.ToolUseBlockParam
+            | Anthropic.ToolResultBlockParam
           > = [
             ...(item.text ? [{ type: 'text' as const, text: item.text }] : []),
             ...(item.functionCalls ?? []).map((call) => ({
@@ -116,7 +109,7 @@ export async function generateContent(
             );
           }
 
-          const message: PromptCachingBetaMessageParam = {
+          const message: Anthropic.MessageParam = {
             role: 'assistant' as const,
             content,
           };
