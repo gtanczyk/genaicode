@@ -34,6 +34,10 @@ const isVertexService = (serviceType: AiServiceType): boolean => {
   return serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude';
 };
 
+const isOpenAIService = (serviceType: AiServiceType): boolean => {
+  return serviceType === 'openai';
+};
+
 // Helper function to generate appropriate success message
 const getSuccessMessage = (serviceType: AiServiceType, config: ServiceConfig): string => {
   const messages: string[] = ['Configuration updated successfully for ' + serviceType];
@@ -54,6 +58,9 @@ const getSuccessMessage = (serviceType: AiServiceType, config: ServiceConfig): s
   }
   if (config.modelOverrides?.cheap) {
     messages.push(`Cheap model: ${config.modelOverrides.cheap}`);
+  }
+  if (isOpenAIService(serviceType) && 'openaiBaseUrl' in config) {
+    messages.push(`OpenAI base URL: ${config.openaiBaseUrl}`);
   }
 
   return messages.join('\n');

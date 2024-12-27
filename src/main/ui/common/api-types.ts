@@ -43,6 +43,7 @@ export type ServiceConfigRequirements = {
   };
   openai: {
     apiKey: string | undefined;
+    openaiBaseUrl?: string | undefined;
     googleCloudProjectId?: never;
     googleCloudRegion?: never;
   };
@@ -75,6 +76,7 @@ export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
   ? ServiceConfigRequirements[T]
   : {
       apiKey?: string;
+      openaiBaseUrl?: string;
       googleCloudProjectId?: string;
       googleCloudRegion?: string;
     });
@@ -101,11 +103,13 @@ export type SanitizedServiceConfig = {
       hasApiKey?: boolean;
       googleCloudProjectId?: '';
       googleCloudRegion?: '';
+      openaiBaseUrl?: string;
     }
   | {
       hasApiKey: false;
       googleCloudProjectId?: string;
       googleCloudRegion?: string;
+      openaiBaseUrl?: '';
     }
 );
 

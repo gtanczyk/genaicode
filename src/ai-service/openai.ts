@@ -25,7 +25,7 @@ export async function generateContent(
   try {
     const serviceConfig = getServiceConfig('openai');
     assert(serviceConfig?.apiKey, 'OpenAI API key not configured, use OPENAI_API_KEY environment variable.');
-    const openai = new OpenAI({ apiKey: serviceConfig?.apiKey });
+    const openai = new OpenAI({ apiKey: serviceConfig?.apiKey, baseURL: serviceConfig?.openaiBaseUrl });
 
     const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-11-20';
     const modelOverrides = serviceConfig?.modelOverrides;

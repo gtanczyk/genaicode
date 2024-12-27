@@ -33,6 +33,10 @@ const isVertexClaudeService = (serviceType: AiServiceType): boolean => {
   return serviceType === 'vertex-ai-claude';
 };
 
+const isOpenAIService = (serviceType: AiServiceType): boolean => {
+  return serviceType === 'openai';
+};
+
 export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
   serviceType,
   config,
@@ -47,6 +51,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
   const [cheapModel, setCheapModel] = useState(config?.modelOverrides?.cheap || '');
   const [googleCloudProjectId, setGoogleCloudProjectId] = useState(config?.googleCloudProjectId || '');
   const [googleCloudRegion, setGoogleCloudRegion] = useState(config?.googleCloudRegion || '');
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState(config?.openaiBaseUrl || '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Update local state when config changes
@@ -56,6 +61,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
     setCheapModel(config?.modelOverrides?.cheap || '');
     setGoogleCloudProjectId(config?.googleCloudProjectId || '');
     setGoogleCloudRegion(config?.googleCloudRegion || '');
+    setOpenaiBaseUrl(config?.openaiBaseUrl || '');
   }, [config]);
 
   const validateForm = (): boolean => {
@@ -99,6 +105,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
       }
     } else {
       updatedConfig.apiKey = apiKey || undefined;
+      updatedConfig.openaiBaseUrl = openaiBaseUrl || undefined;
     }
 
     onUpdate(updatedConfig);
@@ -148,6 +155,21 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={hasApiKey ? 'API key is set' : 'Enter API key'}
                 aria-label={`API Key for ${serviceType}`}
+              />
+            </FormGroup>
+          )}
+
+          {isOpenAIService(serviceType) && (
+            // baseUrl input for OpenAI service
+            <FormGroup>
+              <Label htmlFor={`baseUrl-${serviceType}`}>Base URL</Label>
+              <Input
+                id={`baseUrl-${serviceType}`}
+                type="text"
+                value={openaiBaseUrl}
+                onChange={(e) => setOpenaiBaseUrl(e.target.value)}
+                placeholder="Enter base URL"
+                aria-label={`Base URL for ${serviceType}`}
               />
             </FormGroup>
           )}

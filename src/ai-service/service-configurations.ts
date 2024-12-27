@@ -6,6 +6,7 @@ import {
   ServiceConfigurations,
   SanitizedServiceConfig,
   SanitizedServiceConfigurations,
+  ServiceConfigRequirements,
 } from '../main/ui/common/api-types.js';
 
 const configurations: ServiceConfigurations = {
@@ -25,6 +26,7 @@ const configurations: ServiceConfigurations = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
+    openaiBaseUrl: process.env.OPENAI_BASE_URL,
     modelOverrides: {
       default: modelOverrides.openai?.default ?? 'gpt-4o-2024-11-20',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
@@ -113,6 +115,11 @@ export function updateServiceConfig<T extends AiServiceType>(serviceType: T, con
     updatedConfig.apiKey = config.apiKey || currentConfig.apiKey;
   }
 
+  if (serviceType === 'openai') {
+    (updatedConfig as ServiceConfigRequirements['openai']).openaiBaseUrl =
+      'openaiBaseUrl' in config ? config.openaiBaseUrl : undefined;
+  }
+
   configurations[serviceType] = updatedConfig as ServiceConfigurations[T];
 }
 
@@ -132,6 +139,7 @@ function sanitizeServiceConfig<T extends AiServiceType>(
     };
   } else {
     return {
+      openaiBaseUrl: serviceType === 'openai' && 'openaiBaseUrl' in config ? config.openaiBaseUrl : undefined,
       modelOverrides: config.modelOverrides,
       hasApiKey: !!config.apiKey,
     };
