@@ -133,7 +133,7 @@ export async function generateContent(
     let response;
     while (retryCount < 3) {
       try {
-        response = await anthropic.beta.promptCaching.messages.create(
+        response = await anthropic.messages.create(
           {
             model: model,
             system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
