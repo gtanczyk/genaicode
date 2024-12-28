@@ -128,7 +128,7 @@ async function processFileUpdate(
     const fileUpdateResult = partialResult[0];
     if (fileUpdateResult.args) {
       const fileSource = getSourceCode({ filterPaths: [file.filePath], forceAll: true }, options)[file.filePath];
-      if ('content' in fileSource) {
+      if (fileSource && 'content' in fileSource) {
         fileUpdateResult.args.oldContent = fileSource.content;
       }
     }
