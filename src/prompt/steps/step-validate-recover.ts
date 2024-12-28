@@ -29,7 +29,7 @@ export async function validateAndRecoverSingleResult(
       { type: 'assistant', functionCalls: [call] },
       {
         type: 'user',
-        text: 'Function call was invalid, please analyze the error and respond with corrected function call.',
+        text: `Function call was invalid, you responded with \`${call.name}\`, while the expectation was to get \`${requiredFunctionName}\` function call. You must respond with the expected function call.`,
         functionResponses: [
           {
             name: call.name,

@@ -99,16 +99,19 @@ export async function internalGenerateContent(
         assert(item.type === 'assistant');
         const message: ChatCompletionMessageParam = {
           role: 'assistant' as const,
-          content: [
-            ...(item.text ? [{ type: 'text', text: item.text }] : []),
-            // Currently broken: https://github.com/openai/openai-node/issues/1030
-            ...(item.images ?? []).map((image) => ({
-              type: 'image_url' as const,
-              image_url: {
-                url: 'data:' + image.mediaType + ';base64,' + image.base64url,
-              },
-            })),
-          ] as ChatCompletionContentPartText[],
+          content:
+            item.text && !item.images
+              ? item.text
+              : ([
+                  ...(item.text ? [{ type: 'text', text: item.text }] : []),
+                  // Currently broken: https://github.com/openai/openai-node/issues/1030
+                  ...(item.images ?? []).map((image) => ({
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: 'data:' + image.mediaType + ';base64,' + image.base64url,
+                    },
+                  })),
+                ] as ChatCompletionContentPartText[]),
           ...(item.functionCalls && item.functionCalls.length > 0
             ? {
                 tool_calls: item.functionCalls.map((call) => ({
@@ -119,6 +122,9 @@ export async function internalGenerateContent(
               }
             : {}),
         };
+        if (Array.isArray(message.content) && message.content.length === 0) {
+          delete message.content;
+        }
         return message;
       }
     })
