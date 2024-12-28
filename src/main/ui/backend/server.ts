@@ -7,7 +7,7 @@ import path from 'path';
 import http from 'http';
 
 import { createRouter } from './api.js';
-import './endpoints';
+import './endpoints/index.js';
 import { Service } from './service.js';
 
 type ServerOptions = {
