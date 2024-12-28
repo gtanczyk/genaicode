@@ -110,16 +110,29 @@ describe('generateCodegenSummary', () => {
   });
 
   it('should handle no codegen summary in response', async () => {
-    mockGenerateContentFn.mockResolvedValueOnce([
-      {
-        name: 'explanation',
-        args: { text: 'No changes needed' },
-      },
-    ]);
+    mockGenerateContentFn
+      .mockResolvedValueOnce([
+        {
+          name: 'explanation',
+          args: { text: 'No changes needed' },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          name: 'explanation',
+          args: { text: 'No changes needed' },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          name: 'explanation',
+          args: { text: 'No changes needed' },
+        },
+      ]);
 
     await expect(
       generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions),
-    ).rejects.toThrow('No codegen summary received');
+    ).rejects.toThrow('Recovery failed');
   });
 
   it('should add response to prompt history', async () => {

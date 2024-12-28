@@ -191,7 +191,7 @@ describe('promptService - AI Services', () => {
       getCodeGenPrompt(testConfigs.baseConfig),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(result).toEqual([]);
   });
 });
