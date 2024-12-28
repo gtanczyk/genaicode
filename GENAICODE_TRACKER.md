@@ -12,9 +12,25 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-018] Refactor utility-endpoint.ts into separate files
+      Split utility-endpoint.ts into question-endpoint.ts, usage-endpoint.ts, config-endpoint.ts, and iteration-endpoint.ts.
+      Created: 2024-12-28
+      Updated: 2024-12-28
+
+- [ ] [GEN-017] Decompose remaining endpoints in api.ts
+      Decompose the remaining endpoints from api.ts into separate files in the backend/endpoints directory.
+      Created: 2024-12-28
+
+      - [ ] [GEN-017.1] Create new endpoint files for remaining endpoints
+      - [ ] [GEN-017.2] Move endpoint logic from api.ts to new files
+      - [ ] [GEN-017.3] Update api.ts to register the new endpoints
+
 - [ ] [GEN-015] Prompt suggestions feature
       Add a feature to suggest prompts to users based on their input and context.
       Created: 2024-12-28
+
+      - [ ] [GEN-015.1] UI Frontend: Add chips component for prompt suggestions
+      - [ ] [GEN-015.2] UI Backend: Implement backend logic for generating prompt suggestions
 
 - [ ] [GEN-016] Input-area autocomplete feature
       Implement autocomplete functionality in the input-area component to enhance user interaction.
