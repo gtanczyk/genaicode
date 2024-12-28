@@ -4,7 +4,6 @@ import { CodegenOptions } from '../../../../../codegen-types.js';
 import { StyledTextarea } from '../styled-textarea';
 import { ImageUpload } from './image-upload';
 import { ButtonContainer } from './button-container';
-import { CodegenOptionsForm } from './codegen-options-form';
 
 interface InputAreaProps {
   onSubmit: (input: string, images: File[]) => void;
@@ -17,7 +16,6 @@ interface InputAreaProps {
 export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, codegenOptions, onOptionsChange }) => {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<File[]>([]);
-  const [showOptions, setShowOptions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,10 +33,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
 
   const handleImageUpload = (newImages: File[]) => {
     setImages(newImages);
-  };
-
-  const toggleOptions = () => {
-    setShowOptions(!showOptions);
   };
 
   const handleUploadClick = () => {
@@ -76,15 +70,11 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
       />
       <ButtonContainer
         onSubmit={handleSubmit}
-        onToggleOptions={toggleOptions}
         onUploadClick={handleUploadClick}
         onAiServiceChange={handleAiServiceChange}
         options={codegenOptions}
         disabled={!input.trim() && images.length === 0}
       />
-      {showOptions && (
-        <CodegenOptionsForm options={codegenOptions} onOptionsChange={onOptionsChange} disabled={false} />
-      )}
     </InputContainer>
   );
 };

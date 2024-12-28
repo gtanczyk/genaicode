@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, KeyboardEvent } from 'react';
 import { HamburgerMenuProps } from './types';
 import { MenuButton, MenuBackdrop, MenuContainer, MenuItem, MenuWrapper } from './styles';
+import { dispatchGenaicodeConfigModalOpen, GenaicodeConfigIcon } from '../genaicode-config/genaicode-config-modal.js';
 
 export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
   menuItems,
@@ -140,6 +141,15 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
             {item.content} {item.ariaLabel}
           </MenuItem>
         ))}
+        <MenuItem
+          key="genaicode-config"
+          onClick={() => handleItemClick(() => dispatchGenaicodeConfigModalOpen())}
+          role="menuitem"
+          tabIndex={isOpen ? 0 : -1}
+          aria-label="Genaicode Config"
+        >
+          <GenaicodeConfigIcon /> Genaicode Config
+        </MenuItem>
       </MenuContainer>
     </MenuWrapper>
   );

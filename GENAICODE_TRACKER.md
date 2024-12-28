@@ -12,6 +12,19 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-012] Convert codegen-options-form to Genaicode Config modal
+      Converted the codegen-options-form into a modal component, following the same pattern as the Service Configuration modal.
+
+  - Created new modal component genaicode-config-modal.tsx
+  - Added styles in genaicode-config-modal-styles.ts
+  - Added menu item in hamburger-menu.tsx
+  - Updated app-layout.tsx to include the new modal
+  - Removed old codegen-options-form.tsx
+  - Updated app-handlers.tsx to handle modal functionality
+  - Included modal in genaicode-app.tsx
+    Created: 2024-12-28
+    Updated: 2024-12-28
+
 - [x] [GEN-011] Plugins in Vite Genaicode
       Enhanced plugin system with improved registration and validation.
 

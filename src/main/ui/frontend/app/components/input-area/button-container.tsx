@@ -5,7 +5,6 @@ import { AiServiceType, CodegenOptions } from '../../../../../codegen-types';
 
 interface ButtonContainerProps {
   onSubmit: () => void;
-  onToggleOptions: () => void;
   onUploadClick: () => void;
   onAiServiceChange: (aiService: AiServiceType) => void;
   options: CodegenOptions;
@@ -14,7 +13,6 @@ interface ButtonContainerProps {
 
 export const ButtonContainer: React.FC<ButtonContainerProps> = ({
   onSubmit,
-  onToggleOptions,
   onUploadClick,
   onAiServiceChange,
   options,
@@ -27,7 +25,6 @@ export const ButtonContainer: React.FC<ButtonContainerProps> = ({
       </SubmitButton>
       <Button onClick={onUploadClick}>Upload Images</Button>
       <AiServiceSelector value={options.aiService} onChange={onAiServiceChange} />
-      <ConfigurationButton onClick={onToggleOptions}>Configuration</ConfigurationButton>
     </ButtonContainerWrapper>
   );
 };
@@ -64,11 +61,6 @@ const SubmitButton = styled(Button)`
   &:disabled {
     background-color: ${({ theme }) => theme.colors.disabled};
   }
-`;
-
-const ConfigurationButton = styled(Button)`
-  margin-left: auto;
-  margin-right: 0;
 `;
 
 const ButtonContainerWrapper = styled.div`

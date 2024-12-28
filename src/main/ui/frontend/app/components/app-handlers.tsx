@@ -29,7 +29,6 @@ export const AppHandlers = ({
   setCurrentPrompt,
   setIsExecuting,
   setExecutionStatus,
-  setChatMessages,
   setCurrentQuestion,
   codegenOptions,
   setCodegenOptions,
@@ -84,7 +83,7 @@ export const AppHandlers = ({
     (newOptions: CodegenOptions) => {
       setCodegenOptions(newOptions);
     },
-    [setCodegenOptions, setChatMessages],
+    [setCodegenOptions],
   );
 
   const handlePauseExecution = useCallback(async () => {
@@ -93,7 +92,7 @@ export const AppHandlers = ({
     } catch (error) {
       console.error('Failed to pause execution:', error);
     }
-  }, [setExecutionStatus, setChatMessages]);
+  }, [setExecutionStatus]);
 
   const handleResumeExecution = useCallback(async () => {
     try {
@@ -101,7 +100,7 @@ export const AppHandlers = ({
     } catch (error) {
       console.error('Failed to resume execution:', error);
     }
-  }, [setExecutionStatus, setChatMessages]);
+  }, [setExecutionStatus]);
 
   return {
     handleExecute,

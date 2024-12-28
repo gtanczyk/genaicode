@@ -12,6 +12,7 @@ import { ContentGenerationModal } from './components/content-generation-modal.js
 import { HealthCheckModal } from './components/health-check-modal.js';
 import { ServiceConfigurationModal } from './components/service-configuration/service-configuration-modal.js';
 import { RcConfigModal } from './components/rc-config-modal.js';
+import { GenaicodeConfigModal } from './components/genaicode-config/genaicode-config-modal.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -108,6 +109,7 @@ const GenAIcodeApp = () => {
       <HealthCheckModal />
       <ServiceConfigurationModal />
       <RcConfigModal rcConfig={rcConfig} />
+      <GenaicodeConfigModal options={codegenOptions} onOptionsChange={handleOptionsChange} />
     </ThemeProvider>
   );
 };

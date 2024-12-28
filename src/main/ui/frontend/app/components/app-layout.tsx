@@ -13,6 +13,7 @@ import { HamburgerMenu } from './hamburger-menu/hamburger-menu.js';
 import { MenuItem } from './hamburger-menu/types.js';
 import { dispatchRcConfigModalOpen } from './rc-config-modal.js';
 import { InfoIcon } from './info-icon.js';
+import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaicode-config/genaicode-config-modal.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -43,6 +44,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
       ariaLabel: 'Content Generation',
       key: 'content-gen',
       onClick: dispatchContentGenerationModelOpen,
+    },
+    {
+      content: <GenaicodeConfigIcon />,
+      ariaLabel: 'Genaicode Config',
+      key: 'genaicode-config',
+      onClick: dispatchGenaicodeConfigModalOpen,
     },
     {
       content: themeToggle,
