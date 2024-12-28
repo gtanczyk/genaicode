@@ -5,12 +5,37 @@ This file is used by GenAIcode to keep track of done, in progress, and planned c
 Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Each issue includes:
 
 - A unique identifier (e.g., GEN-001)
-- Status (done [x], in progress [ ])
+- Status (done [x], in progress [-], planned [ ])
 - Creation date
 - Last update date
 - Optional description and sub-items
 
 ## Issues
+
+- [ ] [GEN-015] Prompt suggestions feature
+      Add a feature to suggest prompts to users based on their input and context.
+      Created: 2024-12-28
+
+- [ ] [GEN-016] Input-area autocomplete feature
+      Implement autocomplete functionality in the input-area component to enhance user interaction.
+      Created: 2024-12-28
+
+- [x] [GEN-014] Add old content handling to file updates
+      Added functionality to read and store old content in file updates using getSourceCode. The old content is stored in fileUpdateResult.args.oldContent in plain text format.
+
+  - Modified processFileUpdate function in step-process-file-updates.ts
+  - Added error handling for file content reading
+    Created: 2024-12-28
+    Updated: 2024-12-28
+
+- [x] [GEN-013] Add FileUpdateView component
+      Added a new component to display file updates with collapsible diffs, file path, prompt, and explanation. The diff is hidden by default and expandable on click, with syntax highlighting and support for both light and dark themes.
+
+  - Created new component file-update-view.tsx
+  - Added styles in file-update-view-styles.ts
+  - Integrated component into SystemMessageContainer
+    Created: 2024-12-28
+    Updated: 2024-12-28
 
 - [x] [GEN-012] Convert codegen-options-form to Genaicode Config modal
       Converted the codegen-options-form into a modal component, following the same pattern as the Service Configuration modal.

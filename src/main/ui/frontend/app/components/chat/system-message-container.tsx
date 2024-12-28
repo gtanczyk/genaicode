@@ -11,6 +11,7 @@ import {
 } from './styles/system-message-container-styles.js';
 import { CodegenPlanningView, isCodegenPlanningData } from './codegen-planning-view.js';
 import { CodegenSummaryView, isCodegenSummaryData } from './codegen-summary-view.js';
+import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
 
 export interface SystemMessageBlock extends Omit<ChatMessage, 'type'> {
   type: ChatMessageType.SYSTEM;
@@ -61,12 +62,12 @@ export const SystemMessageContainer: React.FC<SystemMessageContainerProps> = ({
             <SystemMessagePart key={part.id}>
               {part.content}
               <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
-              {part.data && (
+              {part.data ? (
                 <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
                   {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
                 </ShowDataLink>
-              )}
-              {visibleDataIds.has(part.id) && part.data && <DataContainer data={part.data} />}
+              ) : null}
+              {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
             </SystemMessagePart>
           ))}
         </SystemMessageContent>
@@ -84,7 +85,7 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
   let currentParts: ChatMessage[] = [];
 
   parts.forEach((part) => {
-    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data)) {
+    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data) || isFileUpdateData(part.data)) {
       // If we have accumulated regular parts, add them as a section
       if (currentParts.length > 0) {
         sections.push({ parts: [...currentParts] });
@@ -94,9 +95,11 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
       // Add the codegen view section
       const codegenView = isCodegenPlanningData(part.data) ? (
         <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
-      ) : (
+      ) : isCodegenSummaryData(part.data) ? (
         <CodegenSummaryView key={`summary-${part.id}`} data={part.data} />
-      );
+      ) : isFileUpdateData(part.data) ? (
+        <FileUpdateView key={`file-update-${part.id}`} data={part.data} />
+      ) : null;
 
       sections.push({
         parts: [part],

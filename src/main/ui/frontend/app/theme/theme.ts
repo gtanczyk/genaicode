@@ -41,6 +41,8 @@ const lightTheme: DefaultTheme = {
     menuHover: '#f6f8fa',
     menuBorder: '#e1e4e8',
     menuShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    diffAddedText: 'rgba(0, 128, 0, 0.7)',
+    diffRemovedText: 'rgba(255, 0, 0, 0.7)',
   },
   backgroundImage: backgroundLight,
   zIndex: {
@@ -93,6 +95,8 @@ const darkTheme: DefaultTheme = {
     menuHover: '#2d333b',
     menuBorder: '#30363d',
     menuShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+    diffAddedText: 'rgba(0, 255, 0, 0.7)',
+    diffRemovedText: 'rgba(255, 0, 0, 0.7)',
   },
   backgroundImage: backgroundDark,
   zIndex: {

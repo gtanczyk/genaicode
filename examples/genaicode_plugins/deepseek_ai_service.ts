@@ -56,9 +56,9 @@ async function generateContent(
     openai,
   );
 
-  if (toolCalls.length > 1 && toolCalls.every((call) => call.function.name === requiredFunctionName)) {
-    console.log('Multiple function calls, but all are the same, so keeping only the first one.');
-    toolCalls = [toolCalls[0]];
+  if (requiredFunctionName && toolCalls.length > 1) {
+    console.log('Multiple function calls, but all are the same, so keeping only one.');
+    toolCalls = toolCalls.filter((call) => call.function.name === requiredFunctionName).slice(0, 1);
   }
 
   const functionCalls = toolCalls.map((call) => {

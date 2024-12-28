@@ -14,6 +14,7 @@ import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
 import { executeStepVerifyPatch } from './step-verify-patch.js';
 import { getPartialPromptTemplate } from '../static-prompts.js';
+import { getSourceCode } from '../../files/read-files.js';
 
 /**
  * Processes file updates from the codegen summary.
@@ -124,8 +125,15 @@ async function processFileUpdate(
 
     // Validate function call compliance
     partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
+    const fileUpdateResult = partialResult[0];
+    if (fileUpdateResult.args) {
+      const fileSource = getSourceCode({ filterPaths: [file.filePath], forceAll: true }, options)[file.filePath];
+      if ('content' in fileSource) {
+        fileUpdateResult.args.oldContent = fileSource.content;
+      }
+    }
 
-    putSystemMessage('Received partial update', partialResult);
+    putSystemMessage('Received partial update', fileUpdateResult);
 
     // Handle image generation requests
     const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
