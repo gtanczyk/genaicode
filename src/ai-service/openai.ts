@@ -49,6 +49,39 @@ export async function internalGenerateContent(
   model: string,
   openai: OpenAI,
 ): Promise<FunctionCall[]> {
+  const toolCalls = await internalGenerateToolCalls(
+    prompt,
+    functionDefs,
+    requiredFunctionName,
+    temperature,
+    cheap,
+    model,
+    openai,
+  );
+
+  const functionCalls = toolCalls.map((call) => {
+    const name = call.function.name;
+    const args = JSON.parse(call.function.arguments);
+
+    return {
+      id: call.id,
+      name,
+      args,
+    };
+  });
+
+  return processFunctionCalls(functionCalls, functionDefs);
+}
+
+export async function internalGenerateToolCalls(
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  requiredFunctionName: string | null,
+  temperature: number,
+  cheap = false,
+  model: string,
+  openai: OpenAI,
+) {
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
       if (item.type === 'systemPrompt') {
@@ -194,20 +227,8 @@ export async function internalGenerateContent(
     console.log('Message', responseMessage.content);
   }
 
-  const toolCalls = responseMessage.tool_calls;
-  if (toolCalls) {
-    const functionCalls = toolCalls.map((call) => {
-      const name = call.function.name;
-      const args = JSON.parse(call.function.arguments);
-
-      return {
-        id: call.id,
-        name,
-        args,
-      };
-    });
-
-    return processFunctionCalls(functionCalls, functionDefs);
+  if (responseMessage.tool_calls) {
+    return responseMessage.tool_calls;
   } else {
     throw new Error('No tool calls found in response');
   }

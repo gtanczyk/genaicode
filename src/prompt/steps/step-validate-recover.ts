@@ -7,13 +7,13 @@ export async function validateAndRecoverSingleResult(
   result: FunctionCall[],
   generateContentFn: GenerateContentFunction,
 ): Promise<FunctionCall[]> {
-  if (result.length > 1 || !requiredFunctionName) {
+  if (!requiredFunctionName) {
     // quite unexpected
     return result;
   }
 
   let call: FunctionCall | undefined = result[0];
-  const validatorError = validateFunctionCall(call, requiredFunctionName);
+  const validatorError = validateFunctionCall(call, requiredFunctionName, result);
   if (validatorError) {
     console.log('Invalid function call', call, validatorError);
     if (!call) {
@@ -29,7 +29,7 @@ export async function validateAndRecoverSingleResult(
       { type: 'assistant', functionCalls: [call] },
       {
         type: 'user',
-        text: `Function call was invalid, you responded with \`${call.name}\`, while the expectation was to get \`${requiredFunctionName}\` function call. You must respond with the expected function call.`,
+        text: 'Function call was invalid, you responded, please analyze the error and respond with corrected function call.',
         functionResponses: [
           {
             name: call.name,
@@ -49,11 +49,11 @@ export async function validateAndRecoverSingleResult(
     console.log('Recover result:', result);
 
     if (result?.length === 1) {
-      let recoveryError = validateFunctionCall(result[0], requiredFunctionName);
+      let recoveryError = validateFunctionCall(result[0], requiredFunctionName, result);
       if (recoveryError) {
         console.log("Use more expensive recovery method, because we couldn't recover.");
         result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
-        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName);
+        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName, result);
         assert(!recoveryError, 'Recovery failed');
       }
       console.log('Recovery was successful');

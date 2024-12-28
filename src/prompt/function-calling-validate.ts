@@ -7,21 +7,40 @@ import { rcConfig } from '../main/config.js';
 export function validateFunctionCall(
   call: FunctionCall | undefined,
   requiredFunctionName: string,
+  calls: FunctionCall[],
 ): Omit<ValidatorResult, 'addError'> | undefined {
   const validator = new Validator();
   const functionDef: FunctionDef | undefined = getFunctionDefs().find((def) => def.name === call?.name);
 
-  // Step 1: Check if the function name matches
-  if (!call || call.name !== requiredFunctionName) {
+  // Check if a function was called
+  if (!call) {
     return makeError(`Function "${requiredFunctionName}" was not called.`, call, '');
   }
 
-  // Step 2: Check if the function is defined
+  // Check if only one function was called
+  if (calls.length !== 1) {
+    return makeError(
+      `You called too many functions(${calls.length})! Only one function(${requiredFunctionName}) should be called.`,
+      calls,
+      '',
+    );
+  }
+
+  // Check if the function name is correct
+  if (call.name !== requiredFunctionName) {
+    return makeError(
+      `Function "${call.name}" was called, while the expectation was to get "${requiredFunctionName}" function call.`,
+      call,
+      '',
+    );
+  }
+
+  // Check if the function is defined
   if (!functionDef) {
     return makeError(`Function "${call.name}" is not defined.`, call, '');
   }
 
-  // Step 3: Validate against the schema
+  // Validate against the schema
   const validationResult: ValidatorResult = validator.validate(call.args, functionDef.parameters as unknown as Schema);
 
   if (validationResult.errors.length > 0) {
@@ -99,7 +118,7 @@ function isPathProperty(prop: string): boolean {
   ].includes(prop);
 }
 
-function makeError(message: string, call: FunctionCall | undefined, propertyPath: string) {
+function makeError(message: string, call: FunctionCall | FunctionCall[] | undefined, propertyPath: string) {
   return {
     errors: [
       {

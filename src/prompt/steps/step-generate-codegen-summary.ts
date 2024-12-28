@@ -30,17 +30,14 @@ export async function generateCodegenSummary(
   ];
 
   let baseResult = await generateContentFn(...baseRequest);
-  let codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
+  baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
+  const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
   if (!codegenSummaryRequest) {
     // This is unexpected, if happens probably means no code updates.
     putSystemMessage('Did not receive codegen summary, returning result.');
     throw new Error('No codegen summary received');
   }
-
-  // Second stage: validate the result
-  baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
-  codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
 
   putSystemMessage('Received codegen summary', codegenSummaryRequest);
 
