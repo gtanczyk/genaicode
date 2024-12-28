@@ -22,7 +22,7 @@ describe('Prompt Limits', () => {
 
     it('should throw for a prompt exceeding the limit', () => {
       const invalidPrompt = 'B '.repeat(10000);
-      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 6500 > 1000');
+      expect(() => verifyCodegenPromptLimit(invalidPrompt)).toThrow('Token limit exceeded: 6500 > 1600');
     });
   });
 

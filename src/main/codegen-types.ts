@@ -72,6 +72,16 @@ export type CodegenPlanningArgs = {
   }[];
 };
 
+/** Arguments of the codegen execution function call */
+export interface FileUpdate {
+  filePath: string;
+  updateToolName: string;
+  prompt: string;
+  temperature?: number;
+  cheap?: boolean;
+  contextImageAssets?: string[];
+}
+
 /**
  * Arguments passed to the planning hooks
  */

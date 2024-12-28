@@ -8,13 +8,14 @@ import {
   PromptImageMediaType,
   PromptItem,
 } from '../../ai-service/common.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
+import { CodegenOptions, FileUpdate } from '../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
 import { executeStepVerifyPatch } from './step-verify-patch.js';
 import { getPartialPromptTemplate } from '../static-prompts.js';
 import { getSourceCode } from '../../files/read-files.js';
+import { abortController } from '../../main/interactive/codegen-worker.js';
 
 /**
  * Processes file updates from the codegen summary.
@@ -54,21 +55,17 @@ export async function processFileUpdates(
       } else {
         putSystemMessage(`Failed to process update for ${file.filePath}`, { error: fileResult.error });
       }
+
+      if (abortController?.signal.aborted) {
+        putSystemMessage('Code generation aborted');
+        break;
+      }
     } catch (error) {
       putSystemMessage(`Unexpected error processing update for ${file.filePath}`, { error });
     }
   }
 
   return result;
-}
-
-interface FileUpdate {
-  filePath: string;
-  updateToolName: string;
-  prompt: string;
-  temperature?: number;
-  cheap?: boolean;
-  contextImageAssets?: string[];
 }
 
 interface ProcessFileUpdateResult {
@@ -98,9 +95,9 @@ async function processFileUpdate(
 
     // Update prompt with file-specific information
     if (prompt.slice(-1)[0].type === 'user') {
-      prompt.slice(-1)[0].text = file.prompt ?? getPartialPromptTemplate(file.filePath);
+      prompt.slice(-1)[0].text = getPartialPromptTemplate(file);
     } else {
-      prompt.push({ type: 'user', text: file.prompt ?? getPartialPromptTemplate(file.filePath) });
+      prompt.push({ type: 'user', text: getPartialPromptTemplate(file) });
     }
 
     // Handle image assets if vision is enabled

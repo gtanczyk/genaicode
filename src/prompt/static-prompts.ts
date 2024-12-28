@@ -3,6 +3,8 @@
  * These prompts are used in the initial conversation with the AI service.
  */
 
+import { FileUpdate } from '../main/codegen-types';
+
 /** Initial greeting from the user */
 export const INITIAL_GREETING = 'Hello, GenAIcode!';
 
@@ -24,5 +26,6 @@ export const READY_TO_ASSIST = "Thank you, I'm ready to assist you with your req
 export const CODEGEN_SUMMARY_PROMPT = 'Planning phase completed. Would you like to proceed with the planned changes?';
 
 /** Template for partial prompt when requesting changes for a specific file */
-export const getPartialPromptTemplate = (path: string): string =>
-  `Please now generate update for the \`${path}\` file using appropriate tools according to code generation summary.`;
+export const getPartialPromptTemplate = (file: FileUpdate): string =>
+  `Please now generate update for the \`${file.filePath}\` file using \`${file.updateToolName}\`.` +
+  (file.prompt ? `\n\n${file.prompt}` : '');
