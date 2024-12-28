@@ -51,30 +51,35 @@ export const SystemMessageContainer: React.FC<SystemMessageContainerProps> = ({
 
   const sections = splitMessageParts(message.parts);
 
-  return sections.map((section, sectionIndex) => (
-    <React.Fragment key={`section-${sectionIndex}`}>
-      <StyledSystemMessageContainer isExecutionEnd={message.isExecutionEnd}>
-        <SystemMessageHeader onClick={() => toggleExecutionCollapse(message.id)}>
-          ▼ Execution {message.id.split('_')[1]}
-        </SystemMessageHeader>
-        <SystemMessageContent>
-          {section.parts.map((part) => (
-            <SystemMessagePart key={part.id}>
-              {part.content}
-              <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
-              {part.data ? (
-                <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
-                  {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
-                </ShowDataLink>
-              ) : null}
-              {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
-            </SystemMessagePart>
-          ))}
-        </SystemMessageContent>
-      </StyledSystemMessageContainer>
-      {section.codegenView && <React.Fragment key={`view-${sectionIndex}`}>{section.codegenView}</React.Fragment>}
-    </React.Fragment>
-  ));
+  return sections.map((section, sectionIndex) => {
+    if (section.parts.length > 0) {
+      return (
+        <StyledSystemMessageContainer key={`section-${sectionIndex}`} isExecutionEnd={message.isExecutionEnd}>
+          <SystemMessageHeader onClick={() => toggleExecutionCollapse(message.id)}>
+            ▼ Execution {message.id.split('_')[1]}
+          </SystemMessageHeader>
+          <SystemMessageContent>
+            {section.parts.map((part) => (
+              <SystemMessagePart key={part.id}>
+                {part.content}
+                <SystemMessageTimestamp>{part.timestamp.toLocaleString()}</SystemMessageTimestamp>
+                {part.data ? (
+                  <ShowDataLink onClick={() => toggleDataVisibility(part.id)}>
+                    {visibleDataIds.has(part.id) ? 'Hide data' : 'Show data'}
+                  </ShowDataLink>
+                ) : null}
+                {visibleDataIds.has(part.id) && part.data ? <DataContainer data={part.data} /> : null}
+              </SystemMessagePart>
+            ))}
+          </SystemMessageContent>
+        </StyledSystemMessageContainer>
+      );
+    } else if (section.codegenView) {
+      return <React.Fragment key={`view-${sectionIndex}`}>{section.codegenView}</React.Fragment>;
+    } else {
+      return null;
+    }
+  });
 };
 
 /**
@@ -84,14 +89,12 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
   const sections: MessageSection[] = [];
   let currentParts: ChatMessage[] = [];
 
-  parts.forEach((part) => {
-    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data) || isFileUpdateData(part.data)) {
-      // If we have accumulated regular parts, add them as a section
-      if (currentParts.length > 0) {
-        sections.push({ parts: [...currentParts] });
-        currentParts = [];
-      }
+  sections.push({ parts: currentParts });
 
+  parts.forEach((part) => {
+    currentParts.push(part);
+
+    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data) || isFileUpdateData(part.data)) {
       // Add the codegen view section
       const codegenView = isCodegenPlanningData(part.data) ? (
         <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
@@ -102,18 +105,14 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
       ) : null;
 
       sections.push({
-        parts: [part],
+        parts: [],
         codegenView,
       });
-    } else {
-      currentParts.push(part);
+
+      currentParts = [];
+      sections.push({ parts: currentParts });
     }
   });
-
-  // Add any remaining regular parts
-  if (currentParts.length > 0) {
-    sections.push({ parts: currentParts });
-  }
 
   return sections;
 }
