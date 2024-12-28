@@ -34,6 +34,7 @@
     "./examples/genaicode_plugins/genaicode_tracker.js",
     "./examples/genaicode_plugins/fake_ai_service.js",
     "./examples/genaicode_plugins/grok_ai_service.js",
+    "./examples/genaicode_plugins/deepseek_ai_service.js",
     "./examples/genaicode_plugins/nonsense_action_handler.js",
     "./examples/genaicode_plugins/nonsense_operation.js",
     "./examples/genaicode_plugins/vitest_runner.js",
