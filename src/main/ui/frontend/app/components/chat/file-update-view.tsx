@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { FilePath } from './styles/file-update-view-styles.js';
-import { diffLines } from 'diff';
+import { DiffView } from './diff-view.js';
+import { UpdateType } from './styles/codegen-view-styles.js';
 
 interface FileUpdateViewProps {
-  data: { args: FileUpdate };
+  data: { name: string; args: FileUpdate };
 }
 
 interface FileUpdate {
@@ -16,34 +17,38 @@ interface FileUpdate {
 
 export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
   data: {
+    name,
     args: { filePath, explanation, oldContent, newContent },
   },
 }) => {
+  const [showExplanation, setShowExplanation] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
-  const diff = diffLines(oldContent ?? '', newContent);
 
   return (
     <FileUpdateContainer>
       <FileHeader>
+        <UpdateType variant={name}>{name}</UpdateType>
         <FilePath>{filePath}</FilePath>
-        <Explanation>{explanation}</Explanation>
-        <ShowDiffButton onClick={() => setShowDiff(!showDiff)}>{showDiff ? 'Hide diff' : 'Show diff'}</ShowDiffButton>
+        <ButtonContainer>
+          <Button onClick={() => setShowExplanation(!showExplanation)}>
+            {showExplanation ? 'Hide Explanation' : 'Explanation'}
+          </Button>
+          <Button onClick={() => setShowDiff(!showDiff)}>{showDiff ? 'Hide Diff' : 'Show Diff'}</Button>
+        </ButtonContainer>
       </FileHeader>
 
+      {showExplanation && explanation && <Explanation>{explanation}</Explanation>}
+
       {showDiff && (
-        <DiffContainer>
-          {diff.map((part, index) => (
-            <DiffLine key={index} added={part.added} removed={part.removed}>
-              {part.value}
-            </DiffLine>
-          ))}
-        </DiffContainer>
+        <DiffViewContainer>
+          <DiffView oldContent={oldContent} newContent={newContent} />
+        </DiffViewContainer>
       )}
     </FileUpdateContainer>
   );
 };
 
-export function isFileUpdateData(data: unknown): data is { args: FileUpdate } {
+export function isFileUpdateData(data: unknown): data is { name: string; args: FileUpdate } {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
   if (obj.name !== 'updateFile' && obj.name !== 'createFile') return false;
@@ -62,13 +67,17 @@ const FileUpdateContainer = styled.div`
 
 const FileHeader = styled.div`
   display: flex;
-  flex-direction: column;
   gap: 8px;
-  margin-bottom: 16px;
+  align-items: center;
 `;
 
-const ShowDiffButton = styled.button`
-  align-self: flex-start;
+const ButtonContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+`;
+
+const Button = styled.button`
   padding: 4px 8px;
   border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 4px;
@@ -82,39 +91,16 @@ const ShowDiffButton = styled.button`
   }
 `;
 
-const DiffContainer = styled.div`
-  margin: 16px 0;
-  padding: 8px;
-  border: 1px solid ${(props) => props.theme.colors.border};
-  border-radius: 4px;
-  background-color: ${(props) => props.theme.colors.background};
-  max-height: 400px;
-  overflow-y: auto;
-`;
-
-const DiffLine = styled.div<{ added?: boolean; removed?: boolean }>`
-  white-space: pre-wrap;
-  font-family: monospace;
-  font-size: 0.9em;
-  line-height: 1.5;
-  padding: 2px 4px;
-  margin: 2px 0;
-  background-color: ${(props) =>
-    props.added ? props.theme.colors.diffAdded : props.removed ? props.theme.colors.diffRemoved : 'transparent'};
-  color: ${(props) =>
-    props.added
-      ? props.theme.colors.diffAddedText
-      : props.removed
-        ? props.theme.colors.diffRemovedText
-        : props.theme.colors.text};
-`;
-
 const Explanation = styled.div`
-  margin-top: 16px;
+  margin-top: 8px;
   padding: 8px;
   border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 4px;
   background-color: ${(props) => props.theme.colors.background};
   font-size: 0.9em;
   line-height: 1.5;
+`;
+
+const DiffViewContainer = styled.div`
+  margin: 16px 0;
 `;

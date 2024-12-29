@@ -8,11 +8,10 @@ import {
   FileList,
   FileItem,
   FilePath,
-  CodeBlock,
   IconContainer,
   UpdateType,
   FilePrompt,
-  FileMetadata,
+  FileDetailsRow,
 } from './styles/codegen-view-styles.js';
 
 interface FileUpdate {
@@ -58,11 +57,7 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
             Explanation
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.explanation && (
-          <SectionContent>
-            <CodeBlock>{data.args.explanation}</CodeBlock>
-          </SectionContent>
-        )}
+        {sectionsState.explanation && <SectionContent>{data.args.explanation}</SectionContent>}
       </Section>
 
       <Section>
@@ -77,16 +72,21 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
             <FileList>
               {data.args.fileUpdates.map((update, index) => (
                 <FileItem key={index}>
-                  <UpdateType variant={update.updateToolName}>{update.updateToolName}</UpdateType>
-                  <FilePath>{update.filePath}</FilePath>
-                  <FilePrompt>{update.prompt}</FilePrompt>
-                  {(update.temperature || update.cheap) && (
-                    <FileMetadata>
-                      {update.temperature && `Temperature: ${update.temperature}`}
-                      {update.temperature && update.cheap && ' | '}
-                      {update.cheap && 'Using cheap model'}
-                    </FileMetadata>
-                  )}
+                  <FileDetailsRow>
+                    <UpdateType variant={update.updateToolName}>{update.updateToolName}</UpdateType>
+                    <FilePath>{update.filePath}</FilePath>
+                    {update.temperature && (
+                      <UpdateType variant="temperature" title="Temperature">
+                        {update.temperature}
+                      </UpdateType>
+                    )}
+                    {update.cheap && (
+                      <UpdateType variant="cheap" title="Use cheaper model">
+                        Cheap
+                      </UpdateType>
+                    )}
+                  </FileDetailsRow>
+                  <FilePrompt title="Prompt">{update.prompt}</FilePrompt>
                 </FileItem>
               ))}
             </FileList>

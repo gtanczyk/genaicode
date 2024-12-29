@@ -37,6 +37,9 @@ export const SectionContent = styled.div`
   padding: 12px;
   border-top: 1px solid ${(props) => props.theme.colors.border};
   animation: slideDown 0.2s ease;
+  color: ${(props) => props.theme.colors.textSecondary};
+  font-size: 0.95em;
+  white-space: pre-wrap;
 
   @keyframes slideDown {
     from {
@@ -92,14 +95,17 @@ export const FileItem = styled.div`
 `;
 
 export const FileReason = styled.div`
-  color: ${(props) => props.theme.colors.primary};
+  color: ${(props) => props.theme.colors.textSecondary};
+  font-size: 0.95em;
   font-weight: 500;
   margin-bottom: 6px;
+  margin-top: 8px;
 `;
 
 export const FilePath = styled.div`
   font-family: monospace;
   padding: 4px 8px;
+  padding-left: 0px;
   background: ${(props) => props.theme.colors.codeBackground};
   border-radius: 3px;
   color: ${(props) => props.theme.colors.codeText};
@@ -115,16 +121,41 @@ export const FilePrompt = styled.div`
 `;
 
 export const FileDependencies = styled.div`
-  margin-top: 8px;
   font-size: 0.9em;
   color: ${(props) => props.theme.colors.textSecondary};
 `;
 
 export const DependencyItem = styled.div`
-  margin-left: 16px;
   margin-top: 4px;
   font-family: monospace;
   color: ${(props) => props.theme.colors.info};
+`;
+
+export const DropdownTrigger = styled.div`
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: ${(props) => props.theme.colors.backgroundSecondary}22;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  color: ${(props) => props.theme.colors.textSecondary};
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${(props) => props.theme.colors.backgroundSecondary}44;
+    border-color: ${(props) => props.theme.colors.primary}66;
+  }
+`;
+
+export const DropdownContent = styled.div`
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  background: ${(props) => props.theme.colors.backgroundSecondary}22;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  animation: slideDown 0.2s ease;
 `;
 
 export const CodeBlock = styled.pre`
@@ -141,7 +172,7 @@ export const CodeBlock = styled.pre`
   word-wrap: break-word;
 `;
 
-type UpdateVariant = 'createFile' | 'updateFile' | 'deleteFile' | 'moveFile' | string;
+type UpdateVariant = 'createFile' | 'updateFile' | 'deleteFile' | 'moveFile' | 'temperature' | 'cheap' | string;
 
 const getUpdateTypeStyles = (variant: UpdateVariant, theme: DefaultTheme) => {
   switch (variant) {
@@ -169,6 +200,19 @@ const getUpdateTypeStyles = (variant: UpdateVariant, theme: DefaultTheme) => {
         color: ${theme.colors.warning};
         border-color: ${theme.colors.warning}44;
       `;
+    case 'temperature':
+      return css`
+        background: ${theme.colors.success}22;
+        color: ${theme.colors.success};
+        border-color: ${theme.colors.success}44;
+        margin-left: auto;
+      `;
+    case 'cheap':
+      return css`
+        background: ${theme.colors.secondary}22;
+        color: ${theme.colors.secondary};
+        border-color: ${theme.colors.secondary}44;
+      `;
     default:
       return css`
         background: ${theme.colors.secondary}22;
@@ -193,4 +237,11 @@ export const FileMetadata = styled.div`
   margin-top: 8px;
   font-size: 0.9em;
   color: ${(props) => props.theme.colors.textSecondary};
+`;
+
+export const FileDetailsRow = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 `;

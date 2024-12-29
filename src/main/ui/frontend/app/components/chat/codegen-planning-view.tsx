@@ -11,8 +11,9 @@ import {
   FilePath,
   FileDependencies,
   DependencyItem,
-  CodeBlock,
   IconContainer,
+  DropdownTrigger,
+  DropdownContent,
 } from './styles/codegen-view-styles.js';
 import { CodegenPlanningArgs } from '../../../../../codegen-types.js';
 
@@ -28,11 +29,19 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
     changes: true,
     files: true,
   });
+  const [expandedDependencies, setExpandedDependencies] = useState<Record<string, boolean>>({});
 
   const toggleSection = (section: keyof typeof sectionsState) => {
     setSectionsState((prev) => ({
       ...prev,
       [section]: !prev[section],
+    }));
+  };
+
+  const toggleDependencies = (filePath: string) => {
+    setExpandedDependencies((prev) => ({
+      ...prev,
+      [filePath]: !prev[filePath],
     }));
   };
 
@@ -45,11 +54,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
             Problem Analysis
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.analysis && (
-          <SectionContent>
-            <CodeBlock>{data.args.problemAnalysis}</CodeBlock>
-          </SectionContent>
-        )}
+        {sectionsState.analysis && <SectionContent>{data.args.problemAnalysis}</SectionContent>}
       </Section>
 
       <Section>
@@ -59,11 +64,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
             Implementation Plan
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.changes && (
-          <SectionContent>
-            <CodeBlock>{data.args.codeChanges}</CodeBlock>
-          </SectionContent>
-        )}
+        {sectionsState.changes && <SectionContent>{data.args.codeChanges}</SectionContent>}
       </Section>
 
       <Section>
@@ -78,16 +79,25 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
             <FileList>
               {data.args.affectedFiles.map((file, index) => (
                 <FileItem key={index}>
-                  <FileReason>{file.reason}</FileReason>
-                  <FilePath>{file.filePath}</FilePath>
-                  {file.dependencies && file.dependencies.length > 0 && (
-                    <FileDependencies>
-                      Dependencies:
-                      {file.dependencies.map((dep, depIndex) => (
-                        <DependencyItem key={depIndex}>{dep}</DependencyItem>
-                      ))}
-                    </FileDependencies>
+                  <FilePath>
+                    {file.filePath}
+                    {file.dependencies && file.dependencies.length > 0 && (
+                      <DropdownTrigger onClick={() => toggleDependencies(file.filePath)} title="Dependencies">
+                        ({file.dependencies.length})
+                      </DropdownTrigger>
+                    )}
+                  </FilePath>
+                  {file.dependencies && file.dependencies.length > 0 && expandedDependencies[file.filePath] && (
+                    <DropdownContent>
+                      <FileDependencies>
+                        Dependencies:
+                        {file.dependencies.map((dep, depIndex) => (
+                          <DependencyItem key={depIndex}>{dep}</DependencyItem>
+                        ))}
+                      </FileDependencies>
+                    </DropdownContent>
                   )}
+                  <FileReason>{file.reason}</FileReason>
                 </FileItem>
               ))}
             </FileList>

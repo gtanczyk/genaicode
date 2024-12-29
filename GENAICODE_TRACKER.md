@@ -12,6 +12,16 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-020] Refactor CodegenSummaryView to combine update details into one row
+      Refactored the CodegenSummaryView component to present update type, file path, temperature, and cheap/non-cheap in one row, with temperature and cheap/non-cheap styled as badges similar to UpdateType.
+      Created: 2024-12-29
+      Updated: 2024-12-29
+
+- [x] [GEN-019] Enhanced FileUpdateView with explanation toggle and advanced diff view
+      Added explanation toggle and advanced diff view with multiple modes (unified, side by side, old content, new content).
+      Created: 2024-12-28
+      Updated: 2024-12-28
+
 - [x] [GEN-018] Refactor utility-endpoint.ts into separate files
       Split utility-endpoint.ts into question-endpoint.ts, usage-endpoint.ts, config-endpoint.ts, and iteration-endpoint.ts.
       Created: 2024-12-28

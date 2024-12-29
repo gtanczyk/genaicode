@@ -32,3 +32,39 @@ export const UpdateType = styled.div<{ variant: string }>`
         ? props.theme.colors.success
         : props.theme.colors.warning};
 `;
+
+export const ButtonContainer = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+export const Button = styled.button`
+  padding: 4px 8px;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  border-radius: 4px;
+  background-color: ${(props) => props.theme.colors.background};
+  cursor: pointer;
+  font-size: 0.8em;
+  color: ${(props) => props.theme.colors.text};
+
+  &:hover {
+    background-color: ${(props) => props.theme.colors.backgroundHover};
+  }
+`;
+
+export const ExplanationContainer = styled.div`
+  margin: 16px 0;
+`;
+
+export const Explanation = styled.div`
+  padding: 8px;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  border-radius: 4px;
+  background-color: ${(props) => props.theme.colors.background};
+  font-size: 0.9em;
+  line-height: 1.5;
+`;
+
+export const DiffViewContainer = styled.div`
+  margin: 16px 0;
+`;
