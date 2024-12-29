@@ -12,6 +12,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-021] Decompose backend/service.ts into smaller files
+
 - [x] [GEN-020] Refactor CodegenSummaryView to combine update details into one row
       Refactored the CodegenSummaryView component to present update type, file path, temperature, and cheap/non-cheap in one row, with temperature and cheap/non-cheap styled as badges similar to UpdateType.
       Created: 2024-12-29
@@ -27,13 +29,13 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
       Created: 2024-12-28
       Updated: 2024-12-28
 
-- [ ] [GEN-017] Decompose remaining endpoints in api.ts
+- [x] [GEN-017] Decompose remaining endpoints in api.ts
       Decompose the remaining endpoints from api.ts into separate files in the backend/endpoints directory.
       Created: 2024-12-28
 
-      - [ ] [GEN-017.1] Create new endpoint files for remaining endpoints
-      - [ ] [GEN-017.2] Move endpoint logic from api.ts to new files
-      - [ ] [GEN-017.3] Update api.ts to register the new endpoints
+      - [x] [GEN-017.1] Create new endpoint files for remaining endpoints
+      - [x] [GEN-017.2] Move endpoint logic from api.ts to new files
+      - [x] [GEN-017.3] Update api.ts to register the new endpoints
 
 - [ ] [GEN-015] Prompt suggestions feature
       Add a feature to suggest prompts to users based on their input and context.

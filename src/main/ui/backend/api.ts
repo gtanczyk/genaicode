@@ -1,13 +1,7 @@
-import express, { Router } from 'express';
+import express from 'express';
 import { Service } from './service.js';
-
-type EndpointHandler = (router: Router, service: Service) => void;
-
-const handlers: EndpointHandler[] = [];
-
-export function registerEndpoint(handler: EndpointHandler) {
-  handlers.push(handler);
-}
+import { handlers } from './api-handlers.js';
+import './endpoints/index.js';
 
 export function createRouter(service: Service) {
   const router = express.Router();

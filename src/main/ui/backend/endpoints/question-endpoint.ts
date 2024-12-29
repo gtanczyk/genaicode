@@ -1,5 +1,5 @@
 import { CodegenOptions } from '../../../codegen-types.js';
-import { registerEndpoint } from '../api.js';
+import { registerEndpoint } from '../api-handlers.js';
 import { validateCodegenOptions } from '../api-utils.js';
 
 registerEndpoint((router, service) => {

@@ -1,4 +1,4 @@
-import { registerEndpoint } from '../api.js';
+import { registerEndpoint } from '../api-handlers.js';
 
 registerEndpoint((router, service) => {
   router.post('/edit-message', async (req, res) => {
