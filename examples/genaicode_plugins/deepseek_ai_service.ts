@@ -36,25 +36,32 @@ async function generateContent(
   const { internalGenerateToolCalls } = await import('../../src/ai-service/openai.js');
   const { processFunctionCalls } = await import('../../src/ai-service/common.js');
 
+  const last = prompt.slice(-1)[0];
+  const lastText = last.text;
   if (requiredFunctionName) {
-    const last = { ...prompt.slice(-1)[0] };
     if (last.type === 'user' && last.text && !last.text.includes('IMPORTANT REQUIREMENT')) {
-      last.text += `\n\nIMPORTANT REQUIREMENT: Please respond to me with only one function call. The function called should be \`${requiredFunctionName}\`.`;
-      prompt[prompt.length - 1] = last;
+      last.text += `\n\nIMPORTANT REQUIREMENT: Please respond to me with only one function call. The function called must be \`${requiredFunctionName}\`.`;
     }
   }
 
-  let toolCalls = await internalGenerateToolCalls(
-    prompt,
-    functionDefs,
-    requiredFunctionName,
-    temperature,
-    cheap,
-    cheap
-      ? (serviceConfig.modelOverrides?.cheap ?? 'deepseek-chat')
-      : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat'),
-    openai,
-  );
+  let toolCalls: Awaited<ReturnType<typeof internalGenerateToolCalls>>;
+  try {
+    toolCalls = await internalGenerateToolCalls(
+      prompt,
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      cheap,
+      cheap
+        ? (serviceConfig.modelOverrides?.cheap ?? 'deepseek-chat')
+        : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat'),
+      openai,
+    );
+  } finally {
+    if (lastText) {
+      last.text = lastText;
+    }
+  }
 
   if (requiredFunctionName && toolCalls.length > 1) {
     console.log('Multiple function calls, but all are the same, so keeping only one.');
