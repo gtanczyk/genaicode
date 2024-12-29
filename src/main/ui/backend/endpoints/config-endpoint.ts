@@ -1,6 +1,6 @@
 import { registerEndpoint } from '../api.js';
 import { rcConfig as globalRcConfig } from '../../../config.js';
-import { getSupportedAiServices } from '../../../codegen-utils';
+import { getSupportedAiServices } from '../../../codegen-utils.js';
 
 registerEndpoint((router, service) => {
   // Get default CodegenOptions
