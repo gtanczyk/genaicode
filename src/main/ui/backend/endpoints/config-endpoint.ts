@@ -1,4 +1,4 @@
-import { registerEndpoint } from '../api';
+import { registerEndpoint } from '../api.js';
 import { rcConfig as globalRcConfig } from '../../../config.js';
 import { getSupportedAiServices } from '../../../codegen-utils';
 

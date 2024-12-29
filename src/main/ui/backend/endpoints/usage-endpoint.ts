@@ -1,4 +1,4 @@
-import { registerEndpoint } from '../api';
+import { registerEndpoint } from '../api.js';
 
 registerEndpoint((router, service) => {
   // Get total cost of prompts in the current session

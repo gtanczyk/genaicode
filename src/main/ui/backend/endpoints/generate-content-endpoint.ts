@@ -1,5 +1,5 @@
-import { CodegenOptions } from '../../../codegen-types';
-import { registerEndpoint } from '../api';
+import { CodegenOptions } from '../../../codegen-types.js';
+import { registerEndpoint } from '../api.js';
 
 registerEndpoint((router, service) => {
   router.post('/generate-content', async (req, res) => {

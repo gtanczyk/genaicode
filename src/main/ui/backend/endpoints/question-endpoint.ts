@@ -1,6 +1,6 @@
-import { CodegenOptions } from '../../../codegen-types';
-import { registerEndpoint } from '../api';
-import { validateCodegenOptions } from '../api-utils';
+import { CodegenOptions } from '../../../codegen-types.js';
+import { registerEndpoint } from '../api.js';
+import { validateCodegenOptions } from '../api-utils.js';
 
 registerEndpoint((router, service) => {
   // Get current question

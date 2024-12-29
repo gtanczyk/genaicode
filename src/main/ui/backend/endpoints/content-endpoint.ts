@@ -1,4 +1,4 @@
-import { registerEndpoint } from '../api';
+import { registerEndpoint } from '../api.js';
 
 registerEndpoint((router, service) => {
   router.get('/content', async (_, res) => {

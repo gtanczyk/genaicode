@@ -1,5 +1,5 @@
-import { registerEndpoint } from '../api';
 import multer from 'multer';
+import { registerEndpoint } from '../api.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_IMAGES = 5;

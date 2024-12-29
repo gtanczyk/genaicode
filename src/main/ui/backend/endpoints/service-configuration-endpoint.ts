@@ -1,6 +1,6 @@
-import { registerEndpoint } from '../api';
-import { AiServiceType } from '../../../codegen-types';
-import { getSupportedAiServices } from '../../../codegen-utils';
+import { registerEndpoint } from '../api.js';
+import { AiServiceType } from '../../../codegen-types.js';
+import { getSupportedAiServices } from '../../../codegen-utils.js';
 
 registerEndpoint((router, service) => {
   // Get service configurations
