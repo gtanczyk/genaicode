@@ -40,6 +40,7 @@ async function generateContent(
   const lastText = last.text;
   if (requiredFunctionName) {
     if (last.type === 'user' && last.text && !last.text.includes('IMPORTANT REQUIREMENT')) {
+      /* sometimes it is broken :( */
       last.text += `\n\nIMPORTANT REQUIREMENT: Please respond to me with only one function call. The function called must be \`${requiredFunctionName}\`.`;
     }
   }
@@ -64,12 +65,15 @@ async function generateContent(
   }
 
   if (requiredFunctionName && toolCalls.length > 1) {
+    /* sometimes it is broken :( */
     console.log('Multiple function calls, but all are the same, so keeping only one.');
     toolCalls = toolCalls.filter((call) => call.function.name === requiredFunctionName).slice(0, 1);
   }
 
   const functionCalls = toolCalls.map((call) => {
-    const name = call.function.name;
+    const name =
+      call.function.name /* sometimes it is broken :( */
+        .match(/\w+/)?.[0] ?? call.function.name;
     const args = JSON.parse(call.function.arguments);
 
     return {
