@@ -1,4 +1,4 @@
-import { ActionHandlerProps, ActionResult, AskQuestionCall, SearchCodeArgs } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult, SearchCodeArgs } from '../step-ask-question-types.js';
 import { searchSourceCode } from '../../../../files/search-files.js';
 import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../../ai-service/common.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
@@ -9,13 +9,13 @@ import { putSystemMessage } from '../../../../main/common/content-bus.js';
  * Handler for the searchCode action
  */
 export async function handleSearchCode({
-  askQuestionCall,
+  askQuestionMessage,
   generateContentFn,
   prompt,
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
-    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionCall, options, false);
+    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionMessage, options, false);
 
     // Extract search parameters from the call arguments
     const args = searchCodeCall?.args;
@@ -47,7 +47,7 @@ export async function handleSearchCode({
         {
           assistant: {
             type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
+            text: askQuestionMessage ?? '',
             functionCalls: [searchCodeCall],
           },
           user: {
@@ -89,7 +89,7 @@ export async function handleSearchCode({
 async function generateSearchCodeCall(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
-  askQuestionCall: AskQuestionCall,
+  askQuestionMessage: string | undefined,
   options: CodegenOptions,
   cheap: boolean,
 ) {
@@ -98,7 +98,7 @@ async function generateSearchCodeCall(
       ...prompt,
       {
         type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        text: askQuestionMessage ?? '',
       },
       {
         type: 'user',

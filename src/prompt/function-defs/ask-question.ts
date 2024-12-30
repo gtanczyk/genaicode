@@ -23,6 +23,55 @@ ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide f
 ${pluginDescriptions}`;
 }
 
+const actionTypeOptions: string[] = [
+  'sendMessage',
+  'sendMessageWithImage',
+  'requestPermissions',
+  'requestFilesContent',
+  'removeFilesFromContext',
+  'confirmCodeGeneration',
+  'cancelCodeGeneration',
+  'contextOptimization',
+  'searchCode',
+  ...(rcConfig.lintCommand ? ['lint'] : []),
+  ...Array.from(getRegisteredActionHandlers().keys()),
+];
+
+const getStepsDescription = (): string => `
+- If "type" = "decisionMakingProcess":
+  A detailed reasoning framework describing how you chose the action.
+  It must include the following steps:
+
+  1. **Contextual Analysis**:
+      Assess the current information, including available permissions,
+      the current context, and task requirements. Identify any missing elements
+      that are critical to task completion.
+    
+  2. **Options Evaluation**:
+      Evaluate each possible \`actionType\`(${actionTypeOptions.join(', ')}), considering the task requirements, for each action type think if this is the right action to take right now.
+
+  3. **Decision Justification**:
+      State the reasoning for the proposed action, considering whether planning,
+      clarification, or a direct action is required. If there's any ambiguity,
+      prefer a confirmatory action (e.g., "confirmCodeGeneration").
+
+  4. **Minimal Action Selection**:
+      Determine the minimal action that can make progress toward the task goal.
+      Avoid requesting unnecessary permissions or context that isn't strictly needed.
+
+  5. **Evaluation of Action Choice**:
+      Double-check if the selected action aligns with the task requirements
+      and the user-provided constraints.
+
+- If "type" = "actionType":
+  Must be one of [${actionTypeOptions.join(', ')}].
+  This represents the action chosen after the above decision-making process.
+  ${getActionTypeDescription()}
+
+- If "type" = "message":
+  The message to display to the user, which must align with the chosen "actionType".                  
+`;
+
 /**
  * Function definition for askQuestion
  *
@@ -37,11 +86,11 @@ export const getAskQuestionDef = (): FunctionDef => ({
   
   The desired format of parameters is as follows:
   \`\`\`
-  {
-    "decisionMakingProcess": "...", // A detailed decision-making framework the assistant followed before selecting an action.",
-    "actionType": "...", // The type of action to perform.
-    "message": "..." // The message to display to the user.
-  }
+  [
+    { type: "decisionMakingProcess", value: "..." }, // A detailed decision-making framework the assistant followed before selecting an action.",
+    { type: "actionType", value: "..." }, // The type of action to perform.
+    { type: "message", value: "..." } // The message to display to the user.
+  ]
   \`\`\`
   
   **IMPORTANT**: Mind the order of the parameters, as the decision-making process must be provided first to ensure clarity in decision-making.
@@ -49,43 +98,37 @@ export const getAskQuestionDef = (): FunctionDef => ({
   parameters: {
     type: 'object',
     properties: {
-      decisionMakingProcess: {
-        type: 'string',
-        description: `A detailed decision-making framework the assistant followed before selecting an action. You must think step about step about this, this process should include the following steps:
+      steps: {
+        type: 'array',
+        description: `
+          An array of exactly 3 objects. Each object must have:
+            - "type": one of "decisionMakingProcess", "actionType", "message"
+            - "value": a string
 
-1. **Contextual Analysis**: Assess the current information, including available permissions, current context, and task requirements. Identify any missing elements that are critical to task completion.
-
-2. **Decision Justification**: State the reasoning for the proposed action, considering whether planning, clarification, or action is required. If there's any ambiguity, prefer a confirmatory action (\`confirmCodeGeneration\`).
-
-3. **Minimal Action Selection**: Determine the minimal action that can make progress toward the task goal. Avoid requesting unnecessary permissions or context that isn't strictly needed.
-
-4. **Evaluation of Action Choice**: Double-check if the selected action aligns with task requirements and user-provided constraints.
-
-Output this in step-by-step format to ensure clarity in decision-making.`,
-      },
-      actionType: {
-        type: 'string',
-        enum: [
-          'sendMessage',
-          'sendMessageWithImage',
-          'requestPermissions',
-          'requestFilesContent',
-          'removeFilesFromContext',
-          'confirmCodeGeneration',
-          'cancelCodeGeneration',
-          'contextOptimization',
-          'searchCode',
-          ...(rcConfig.lintCommand ? ['lint'] : []),
-          ...Array.from(getRegisteredActionHandlers().keys()),
-        ],
-        description: getActionTypeDescription(),
-      },
-      message: {
-        type: 'string',
-        description: 'The message to display to the user.',
+          The order of these items MUST be:
+            1) { "type": "decisionMakingProcess", "value": "..." }
+            2) { "type": "actionType", "value": "..." }
+            3) { "type": "message", "value": "..." }
+        `,
+        minItems: 3,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['decisionMakingProcess', 'actionType', 'message'],
+            },
+            value: {
+              type: 'string',
+              description: getStepsDescription(),
+            },
+          },
+          required: ['type', 'value'],
+        },
       },
     },
-    required: ['decisionMakingProcess', 'actionType', 'message'],
+    required: ['steps'],
   },
 });
 

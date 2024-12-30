@@ -6,7 +6,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common.js';
 
 export async function handleSendMessageWithImage({
-  askQuestionCall,
+  askQuestionMessage,
   options,
   generateContentFn,
   prompt,
@@ -25,7 +25,7 @@ export async function handleSendMessageWithImage({
       ...prompt,
       {
         type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        text: askQuestionMessage ?? '',
       },
       {
         type: 'user',
@@ -96,7 +96,7 @@ export async function handleSendMessageWithImage({
   putAssistantMessage('Here is the image to support the question:', generateImageCall.args, [], [imageData]);
 
   // Get user's response with the image displayed
-  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '');
+  const inputResponse = await askUserForInput('Your answer', askQuestionMessage ?? '');
   if (inputResponse.options?.aiService) {
     options.aiService = inputResponse.options.aiService;
   }
@@ -108,7 +108,7 @@ export async function handleSendMessageWithImage({
       {
         assistant: {
           type: 'assistant',
-          text: askQuestionCall.args?.message ?? '',
+          text: askQuestionMessage ?? '',
           functionCalls: [generateImageCall],
         },
         user: {

@@ -10,7 +10,7 @@ const execPromise = promisify(exec);
  * Handles the lint action by executing the lint command and processing its results.
  * If the lint command fails, it will ask for user confirmation to continue with code generation.
  */
-export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promise<ActionResult> {
+export async function handleLint({ askQuestionCall, askQuestionMessage }: ActionHandlerProps): Promise<ActionResult> {
   if (!rcConfig.lintCommand) {
     return {
       breakLoop: false,
@@ -18,7 +18,7 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
         {
           assistant: {
             type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
+            text: askQuestionMessage ?? '',
           },
           user: {
             type: 'user',
@@ -46,7 +46,7 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
         {
           assistant: {
             type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
+            text: askQuestionMessage ?? '',
           },
           user: {
             type: 'user',
@@ -72,7 +72,7 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
         {
           assistant: {
             type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
+            text: askQuestionMessage ?? '',
             functionCalls: [askQuestionCall],
           },
           user: {
