@@ -1,6 +1,6 @@
 import { Plugin } from '../../src/index.js';
 
-const TRACKER_PROMPT = `## GENAICODE TRACKER
+const TRACKER_PROMPT = `\n\n## GENAICODE TRACKER
   
 The GENAICODE_TRACKER.md file must be updated with information about the changes made in this code generation session.
 It is important to keep this file up-to-date for tracking purposes.
