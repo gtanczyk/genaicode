@@ -9,7 +9,7 @@ const genaicodeTracker: Plugin = {
   // Planning post-hook: Modify the planning result
   planningPostHook: async ({ result }) => {
     try {
-      console.log('Planning post-hook executing...');
+      const { getRcConfig } = await import('../../src/index.js');
 
       if (!result) {
         return undefined;
@@ -20,7 +20,7 @@ const genaicodeTracker: Plugin = {
       if (!trackerUpdate) {
         result.args!.affectedFiles.push({
           reason: 'Needs to be updated with the new changes',
-          filePath: '/Users/gtanczyk/src/codegen/GENAICODE_TRACKER.md',
+          filePath: (await getRcConfig()).rootDir + '/GENAICODE_TRACKER.md',
           dependencies: [],
         });
       }
