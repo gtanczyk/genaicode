@@ -40,15 +40,20 @@ const actionTypeOptions: string[] = [
 const getStepsDescription = (): string => `
 - If "type" = "decisionMakingProcess":
   A detailed reasoning framework describing how you chose the action.
-  It must include the following steps:
+  The decisionMakingProcess value must be provided in the following format:
 
+  \`\`\`
   1. **Contextual Analysis**:
       Assess the current information, including available permissions,
       the current context, and task requirements. Identify any missing elements
       that are critical to task completion.
     
   2. **Options Evaluation**:
-      Evaluate each possible \`actionType\`(${actionTypeOptions.join(', ')}), considering the task requirements, for each action type think if this is the right action to take right now.
+      For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
+      \`\`\`
+${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
+      \`\`\`
+      Sort the list, starting with the most relevant action type.
 
   3. **Decision Justification**:
       State the reasoning for the proposed action, considering whether planning,
@@ -62,6 +67,7 @@ const getStepsDescription = (): string => `
   5. **Evaluation of Action Choice**:
       Double-check if the selected action aligns with the task requirements
       and the user-provided constraints.
+  \`\`\`
 
 - If "type" = "actionType":
   Must be one of [${actionTypeOptions.join(', ')}].

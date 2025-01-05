@@ -76,12 +76,14 @@ describe('processFunctionCalls', () => {
     expect(result).toEqual(validFunctionCalls);
   });
 
-  it('should throw an error for unknown function names', () => {
+  it('should not throw an error for unknown function names', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const invalidFunctionCalls = [{ name: 'unknownFunction', args: {} }];
 
-    expect(() => processFunctionCalls(invalidFunctionCalls, functionDefs)).toThrow(
-      'Unknown function name: unknownFunction',
-    );
+    expect(processFunctionCalls(invalidFunctionCalls, functionDefs)).toEqual(invalidFunctionCalls);
+    expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown function name: unknownFunction');
+
+    consoleWarnSpy.mockRestore();
   });
 
   it('should correctly handle explanations', () => {

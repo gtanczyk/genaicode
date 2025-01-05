@@ -15,7 +15,6 @@ import { handleRequestFilesContent } from './handlers/request-files-content.js';
 import { handleContextOptimization } from './handlers/context-optimization.js';
 import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
 import { handleRequestPermissions } from './handlers/request-permissions.js';
-import { handleDefaultAction } from './handlers/default-action.js';
 import { handleSendMessage } from './handlers/handle-send-message.js';
 import { handleSendMessageWithImage } from './handlers/handle-send-message-with-image.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
@@ -146,5 +145,5 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     contextOptimization: handleContextOptimization,
   };
 
-  return handlers[actionType] || handleDefaultAction;
+  return handlers[actionType] || handleSendMessage;
 }

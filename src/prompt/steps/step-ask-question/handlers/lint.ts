@@ -77,7 +77,7 @@ export async function handleLint({ askQuestionCall, askQuestionMessage }: Action
           },
           user: {
             type: 'user',
-            text: 'Lint command failed',
+            text: 'Lint command failed, please analyze the output.',
             data: { stdout, stderr },
             functionResponses: [
               { name: 'askQuestion', call_id: askQuestionCall.id, content: JSON.stringify({ stdout, stderr }) },

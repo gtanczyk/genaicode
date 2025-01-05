@@ -1,4 +1,3 @@
-import assert from 'node:assert';
 import { CodegenOptions, AiServiceType } from '../main/codegen-types.js';
 import { collectCost } from '../main/common/cost-collector.js';
 
@@ -110,10 +109,9 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
  */
 export function processFunctionCalls(functionCalls: FunctionCall[], functionDefs: FunctionDef[]): FunctionCall[] {
   const unknownFunctionCalls = functionCalls.filter((call) => !functionDefs.some((fd) => fd.name === call.name));
-  assert(
-    unknownFunctionCalls.length === 0,
-    'Unknown function name: ' + unknownFunctionCalls.map((call) => call.name).join(', '),
-  );
+  if (unknownFunctionCalls.length > 0) {
+    console.warn('Unknown function name: ' + unknownFunctionCalls.map((call) => call.name).join(', '));
+  }
 
   return functionCalls;
 }
