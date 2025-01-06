@@ -465,7 +465,7 @@ describe('executeStepContextOptimization', () => {
 
       expect(result).toBe(StepResult.CONTINUE);
       expect(putSystemMessage).toHaveBeenCalledWith(
-        'Warning: Context optimization failed to produce useful summaries for all batches. Proceeding with current context.',
+        'Context optimization did not generate changes to current context.',
       );
     });
   });
