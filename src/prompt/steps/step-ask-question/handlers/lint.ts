@@ -19,17 +19,25 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
           assistant: {
             type: 'assistant',
             text: askQuestionCall.args?.message ?? '',
+            functionCalls: [{ name: 'lint', id: askQuestionCall.id + '_lint' }],
           },
           user: {
             type: 'user',
             text: 'Lint command not configured. Skipping lint check.',
+            functionResponses: [
+              {
+                name: 'lint',
+                call_id: askQuestionCall.id + '_lint',
+                content: JSON.stringify({ error: 'Lint command not configured' }),
+              },
+            ],
           },
         },
       ],
     };
   }
 
-  let lintResult: LintResult;
+  let lintResult;
 
   try {
     putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
@@ -47,10 +55,18 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
           assistant: {
             type: 'assistant',
             text: askQuestionCall.args?.message ?? '',
+            functionCalls: [{ name: 'lint', id: askQuestionCall.id + '_lint' }],
           },
           user: {
             type: 'user',
             text: 'Lint command executed successfully, no issues found.',
+            functionResponses: [
+              {
+                name: 'lint',
+                call_id: askQuestionCall.id + '_lint',
+                content: JSON.stringify(lintResult),
+              },
+            ],
           },
         },
       ],
@@ -73,14 +89,18 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
           assistant: {
             type: 'assistant',
             text: askQuestionCall.args?.message ?? '',
-            functionCalls: [askQuestionCall],
+            functionCalls: [{ name: 'lint', id: askQuestionCall.id + '_lint' }],
           },
           user: {
             type: 'user',
             text: 'Lint command failed, please analyze the output.',
             data: { stdout, stderr },
             functionResponses: [
-              { name: 'askQuestion', call_id: askQuestionCall.id, content: JSON.stringify({ stdout, stderr }) },
+              {
+                name: 'lint',
+                call_id: askQuestionCall.id + '_lint',
+                content: JSON.stringify(lintResult),
+              },
             ],
           },
         },

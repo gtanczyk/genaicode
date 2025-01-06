@@ -297,3 +297,20 @@ export const searchCode: FunctionDef = {
     required: ['query'],
   },
 };
+
+// lint
+export const lint: FunctionDef = {
+  name: 'lint',
+  description: 'Use this function to run lint command, and get output.',
+  parameters: {
+    type: 'object',
+    properties: {
+      filePaths: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'An array of absolute file paths to lint. If not provided, all files will be linted.',
+      },
+    },
+    required: [],
+  },
+};

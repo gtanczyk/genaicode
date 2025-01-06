@@ -13,6 +13,7 @@ import {
   removeFilesFromContext,
   contextOptimization,
   searchCode,
+  lint,
 } from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
@@ -36,6 +37,7 @@ export function getFunctionDefs(): FunctionDef[] {
     sendMessageWithImage,
     requestPermissions,
     searchCode,
+    lint,
     requestFilesContent,
     removeFilesFromContext,
     contextOptimization,

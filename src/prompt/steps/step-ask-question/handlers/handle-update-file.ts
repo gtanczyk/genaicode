@@ -17,7 +17,17 @@ export const handleUpdateFile: ActionHandler = async ({
   putSystemMessage('File update requested, new content generation started.', askQuestionCall);
 
   const [updateFileCall] = (await generateContentFn(
-    prompt,
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Ok, please provide the update using `updateFile` function. Please remember to use absolute file path.',
+      },
+    ],
     getFunctionDefs(),
     'updateFile',
     options.temperature ?? 0.7,
@@ -36,7 +46,7 @@ export const handleUpdateFile: ActionHandler = async ({
 
   const file = getSourceCode({ filterPaths: [filePath], forceAll: true }, options)[filePath];
 
-  if (!('content' in file) || !file.content) {
+  if (!file || !('content' in file) || !file.content) {
     // TODO: In this corner case we should probably retry the operation but prefix it with getSourceCode
 
     return {
