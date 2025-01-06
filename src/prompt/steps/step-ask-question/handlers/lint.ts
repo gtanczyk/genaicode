@@ -37,7 +37,7 @@ export async function handleLint({ askQuestionCall }: ActionHandlerProps): Promi
     };
   }
 
-  let lintResult;
+  let lintResult: LintResult;
 
   try {
     putSystemMessage(`Executing lint command: ${rcConfig.lintCommand}`);
