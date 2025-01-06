@@ -16,73 +16,75 @@ vi.setConfig({
   testTimeout: 60000,
 });
 
-describe('Context optimization', () => {
-  it('Should optimize context for math module unit test', async () => {
-    // Prepare prompt items for optimization
-    const prompt: PromptItem[] = [
+describe.each([{ model: 'Gemini Flash', generateContent: generateContentAiStudio, cheap: true }])(
+  'Context optimization: $model',
+  ({ generateContent, cheap }) => {
+    it.each([
       {
-        type: 'systemPrompt',
-        systemPrompt: getSystemPrompt({ aiService: 'ai-studio', askQuestion: true, ui: true }),
+        dataset: 'small, math module',
+        sourceCodeTree: mockSourceCodeTreeSummaries,
+        expectedOptimizedFiles: ['/project/src/math/math.ts', '/project/src/math/math-utils.ts'],
       },
-      { type: 'user', text: INITIAL_GREETING },
-      {
-        type: 'assistant',
-        text: REQUEST_SOURCE_CODE,
-        functionCalls: [{ name: 'getSourceCode' }],
-      },
-      {
-        type: 'user',
-        text: SOURCE_CODE_RESPONSE,
-        functionResponses: [
-          {
-            name: 'getSourceCode',
-            content: JSON.stringify(mockSourceCodeTreeSummaries),
-          },
-        ],
-      },
-      {
-        type: 'assistant',
-        text: READY_TO_ASSIST,
-      },
-      {
-        type: 'user',
-        text: "Let's add a unit test for the math module",
-      },
-      {
-        type: 'assistant',
-        text: OPTIMIZATION_TRIGGER_PROMPT,
-      },
-      {
-        type: 'user',
-        text: OPTIMIZATION_PROMPT,
-      },
-    ];
+    ])('Dataset: $dataset', async ({ sourceCodeTree, expectedOptimizedFiles }) => {
+      // Prepare prompt items for optimization
+      const prompt: PromptItem[] = [
+        {
+          type: 'systemPrompt',
+          systemPrompt: getSystemPrompt({ aiService: 'ai-studio', askQuestion: true, ui: true }),
+        },
+        { type: 'user', text: INITIAL_GREETING },
+        {
+          type: 'assistant',
+          text: REQUEST_SOURCE_CODE,
+          functionCalls: [{ name: 'getSourceCode' }],
+        },
+        {
+          type: 'user',
+          text: SOURCE_CODE_RESPONSE,
+          functionResponses: [
+            {
+              name: 'getSourceCode',
+              content: JSON.stringify(sourceCodeTree),
+            },
+          ],
+        },
+        {
+          type: 'assistant',
+          text: READY_TO_ASSIST,
+        },
+        {
+          type: 'user',
+          text: "Let's add a unit test for the math module",
+        },
+        {
+          type: 'assistant',
+          text: OPTIMIZATION_TRIGGER_PROMPT,
+        },
+        {
+          type: 'user',
+          text: OPTIMIZATION_PROMPT,
+        },
+      ];
 
-    // Execute context optimization
-    const [optimizeContextCall] = await generateContentAiStudio(
-      prompt,
-      getFunctionDefs(),
-      'optimizeContext',
-      0.2,
-      true,
-      {
+      // Execute context optimization
+      const [optimizeContextCall] = await generateContent(prompt, getFunctionDefs(), 'optimizeContext', 0.2, cheap, {
         aiService: 'ai-studio',
         askQuestion: false,
-      },
-    );
+      });
 
-    // Verify optimization results
-    expect(optimizeContextCall).toBeDefined();
-    expect(optimizeContextCall?.args?.optimizedContext).toBeDefined();
+      // Verify optimization results
+      expect(optimizeContextCall).toBeDefined();
+      expect(optimizeContextCall?.args?.optimizedContext).toBeDefined();
 
-    const optimizedContext = optimizeContextCall?.args?.optimizedContext as Array<{
-      filePath: string;
-      relevance: number;
-    }>;
-    const optimizedFiles = optimizedContext.map((item) => item.filePath);
-    const minRelevancy = optimizedContext.reduce((min, item) => Math.min(min, item.relevance), 1);
+      const optimizedContext = optimizeContextCall?.args?.optimizedContext as Array<{
+        filePath: string;
+        relevance: number;
+      }>;
+      const optimizedFiles = optimizedContext.map((item) => item.filePath);
+      const minRelevancy = optimizedContext.reduce((min, item) => Math.min(min, item.relevance), 1);
 
-    expect(optimizedFiles).toEqual(['/project/src/math/math.ts', '/project/src/math/math-utils.ts']);
-    expect(minRelevancy).toBeGreaterThan(0.5);
-  });
-});
+      expect(optimizedFiles).toEqual(expectedOptimizedFiles);
+      expect(minRelevancy).toBeGreaterThan(0.5);
+    });
+  },
+);
