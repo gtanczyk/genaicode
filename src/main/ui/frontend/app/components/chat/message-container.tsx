@@ -18,6 +18,7 @@ import {
 } from './styles/message-container-styles.js';
 import styled from 'styled-components';
 import { editMessage } from '../../api/api-client.js';
+import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
 
 const ImageGrid = styled.div`
   display: grid;
@@ -180,7 +181,15 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
           ) : null}
           <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
         </MessageFooter>
-        {visibleDataIds.has(message.id) && message.data ? <DataContainer data={message.data} /> : null}
+        {visibleDataIds.has(message.id) && message.data ? (
+          <>
+            {isFileUpdateData(message.data) ? (
+              <FileUpdateView data={message.data} />
+            ) : (
+              <DataContainer data={message.data} />
+            )}
+          </>
+        ) : null}
       </MessageBubble>
     </StyledMessageContainer>
   );

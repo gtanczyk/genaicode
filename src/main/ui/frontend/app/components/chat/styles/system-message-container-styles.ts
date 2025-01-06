@@ -13,16 +13,9 @@ export const SystemMessageContainer = styled.div<{ isExecutionEnd?: boolean }>`
   transition: margin 0.2s ease-in-out;
 
   /* Increase bottom margin when followed by a codegen view */
-  & + div {
-    margin-top: 16px;
-  }
-
-  ${(props) =>
-    props.isExecutionEnd &&
-    `
-    border-bottom: 3px solid ${props.theme.colors.primary};
-  `}
-`;
+  & + div {\n    margin-top: 16px;
+  }\n
+  ${(props) => props.isExecutionEnd && `\n    border-bottom: 3px solid ${props.theme.colors.primary};\n  `}\n`;
 
 export const SystemMessageHeader = styled.div`
   cursor: pointer;
@@ -32,10 +25,8 @@ export const SystemMessageHeader = styled.div`
   align-items: center;
   gap: 4px;
 
-  &:hover {
-    opacity: 0.8;
-  }
-`;
+  &:hover {\n    opacity: 0.8;
+  }\n`;
 
 export const SystemMessageContent = styled.div`
   white-space: pre-wrap;
@@ -44,20 +35,16 @@ export const SystemMessageContent = styled.div`
   margin: 0;
 
   /* Add spacing between content sections */
-  & > *:not(:last-child) {
-    margin-bottom: 12px;
-  }
-`;
+  & > *:not(:last-child) {\n    margin-bottom: 12px;
+  }\n`;
 
 export const SystemMessagePart = styled.div`
   margin-bottom: 8px;
   position: relative;
   padding-right: 150px; /* Space for timestamp and data link */
 
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
+  &:last-child {\n    margin-bottom: 0;
+  }\n`;
 
 export const SystemMessageTimestamp = styled.div`
   font-size: 0.8em;
@@ -76,7 +63,4 @@ export const ShowDataLink = styled.span`
   right: 0;
   top: 0;
 
-  &:hover {
-    color: ${(props) => props.theme.colors.primaryHover};
-  }
-`;
+  &:hover {\n    color: ${(props) => props.theme.colors.primaryHover};\n  }\n`;

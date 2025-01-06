@@ -12,27 +12,31 @@ function getActionTypeDescription(): string {
 Detailed Explanation of actionTypes:
 - sendMessage: Use for general information, clarifications, or when no specific code is needed.
 - sendMessageWithImage: Use when an image is needed to provide context or additional information.
+- updateFile: Use to update a single file with new content. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
 - requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
-- confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
-- cancelCodeGeneration: Use to stop the session, and the conversation.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
+- confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
+- cancelCodeGeneration: Use to stop the session, and the conversation.
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
-${pluginDescriptions}`;
+${pluginDescriptions}
+
+This value must be derived from the decision-making process, and must be one of the above values.`;
 }
 
 const actionTypeOptions: string[] = [
   'sendMessage',
   'sendMessageWithImage',
+  'updateFile',
   'requestPermissions',
   'requestFilesContent',
   'removeFilesFromContext',
-  'confirmCodeGeneration',
-  'cancelCodeGeneration',
   'contextOptimization',
   'searchCode',
+  'confirmCodeGeneration',
+  'cancelCodeGeneration',
   ...(rcConfig.lintCommand ? ['lint'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
 ];
@@ -77,7 +81,12 @@ export const getAskQuestionDef = (): FunctionDef => ({
   2. **Options Evaluation**:
       For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
       \`\`\`
-${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
+${actionTypeOptions
+  .map((actionType) => `      - ${actionType}: <reasoning>`)
+  .join(
+    '\
+',
+  )}
       \`\`\`
 
   3. **Decision Justification**:
@@ -92,6 +101,9 @@ ${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).jo
   5. **Evaluation of Action Choice**:
       Double-check if the selected action aligns with the task requirements
       and the user-provided constraints.
+
+  6. **Action type**:
+      Final selection of the action type value based on the above steps.
   \`\`\``,
       },
       actionType: {
@@ -106,6 +118,7 @@ ${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).jo
           'cancelCodeGeneration',
           'contextOptimization',
           'searchCode',
+          'updateFile',
           ...(rcConfig.lintCommand ? ['lint'] : []),
           ...Array.from(getRegisteredActionHandlers().keys()),
         ],

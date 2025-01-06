@@ -23,6 +23,7 @@ import { handleLint } from './handlers/lint.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handleCodeGeneration } from './handlers/code-generation.js';
 import { handleSearchCode } from './handlers/handle-search-code.js';
+import { handleUpdateFile } from './handlers/handle-update-file.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -140,6 +141,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     searchCode: handleSearchCode,
     lint: handleLint,
     contextOptimization: handleContextOptimization,
+    updateFile: handleUpdateFile,
   };
 
   return handlers[actionType] || handleSendMessage;

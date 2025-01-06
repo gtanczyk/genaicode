@@ -20,6 +20,7 @@ export type ActionType =
   | 'contextOptimization'
   | 'searchCode'
   | 'lint'
+  | 'updateFile'
   | PluginActionType;
 
 type AskQuestionArgs = {
