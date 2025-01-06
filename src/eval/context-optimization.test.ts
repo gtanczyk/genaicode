@@ -1,18 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
-import { OPTIMIZATION_PROMPT, OPTIMIZATION_TRIGGER_PROMPT } from '../prompt/steps/step-context-optimization.js';
+import {
+  CONTEXT_OPTIMIZATION_TEMPERATURE,
+  OPTIMIZATION_PROMPT,
+  OPTIMIZATION_TRIGGER_PROMPT,
+} from '../prompt/steps/step-context-optimization.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem } from '../ai-service/common.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
-import { mockSourceCodeTreeSummaries } from './data/mock-source-code-summaries.js';
+import { MOCK_SOURCE_CODE_SUMMARIES } from './data/mock-source-code-summaries.js';
 import {
   INITIAL_GREETING,
   READY_TO_ASSIST,
   REQUEST_SOURCE_CODE,
   SOURCE_CODE_RESPONSE,
 } from '../prompt/static-prompts.js';
-import { mockSourceCodeSummariesLarge } from './data/mock-source-code-summaries-large.js';
+import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summaries-large.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
+import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -21,23 +26,21 @@ vi.setConfig({
 describe.each([
   { model: 'Gemini Flash', generateContent: generateContentAiStudio, cheap: true },
   { model: 'Claude Haikku', generateContent: generateContentAnthropic, cheap: true },
+  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, cheap: true },
 ])('Context optimization: $model', ({ generateContent, cheap }) => {
   it.each([
     {
       dataset: 'small, math module',
-      sourceCodeTree: mockSourceCodeTreeSummaries,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES,
       userMessage: "Let's add a unit test for the math module",
       expectedOptimizedFiles: ['/project/src/math/math.ts', '/project/src/math/math-utils.ts'],
     },
     {
       dataset: 'large',
-      sourceCodeTree: mockSourceCodeSummariesLarge,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Lets create unit tests for validation-utils.ts',
       expectedOptimizedFiles: [
         '/project/src/todo-app/utils/validation-utils.ts',
-        '/project/src/todo-app/auth/login.ts',
-        '/project/src/todo-app/auth/registration.ts',
-        '/project/src/todo-app/settings/update-profile.ts',
         '/project/src/todo-app/utils/api-utils.ts',
       ],
     },
@@ -83,10 +86,17 @@ describe.each([
     ];
 
     // Execute context optimization
-    const [optimizeContextCall] = await generateContent(prompt, getFunctionDefs(), 'optimizeContext', 0.2, cheap, {
-      aiService: 'ai-studio',
-      askQuestion: false,
-    });
+    const [optimizeContextCall] = await generateContent(
+      prompt,
+      getFunctionDefs(),
+      'optimizeContext',
+      CONTEXT_OPTIMIZATION_TEMPERATURE,
+      cheap,
+      {
+        aiService: 'ai-studio',
+        askQuestion: false,
+      },
+    );
 
     // Verify optimization results
     expect(optimizeContextCall).toBeDefined();
@@ -96,12 +106,10 @@ describe.each([
       filePath: string;
       relevance: number;
     }>;
-    const optimizedFiles = optimizedContext.sort((a, b) => a.relevance - b.relevance).map((item) => item.filePath);
+    const optimizedFiles = optimizedContext.sort((a, b) => b.relevance - a.relevance).map((item) => item.filePath);
     const minRelevancy = optimizedContext.reduce((min, item) => Math.min(min, item.relevance), 1);
 
     expect(minRelevancy).toBeGreaterThanOrEqual(0.5);
-    expect(optimizedFiles).toContain(expectedOptimizedFiles[0]);
-    expect(optimizedFiles.length).toBeGreaterThan(expectedOptimizedFiles.length / 2);
-    expect(optimizedFiles.length).toBeLessThan(expectedOptimizedFiles.length * 2);
+    expect(optimizedFiles).toEqual(expectedOptimizedFiles);
   });
 });

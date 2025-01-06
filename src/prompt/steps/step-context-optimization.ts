@@ -11,60 +11,56 @@ import { getSourceCodeResponse } from './steps-utils.js';
 import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
 import { importantContext } from '../../main/config.js';
 
-export const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
+export const OPTIMIZATION_PROMPT = `You need to analyze the provided source code files and determine their relevance to the user's prompt. You will then call the \`optimizeContext\` function with the results.
 
-1. **Relevance and Dependency Analysis**:
-   - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
-     - **0.0 – 0.3 (Not Relevant)**: The file has no apparent connection to the user's prompt.
-     - **0.3 – 0.7 (Somewhat Relevant)**: The file has minor or indirect relevance to the prompt.
-     - **0.7 – 0.9 (Moderately Relevant)**: The file is related and could contribute to addressing the prompt.
-     - **0.9 – 1.0 (Highly Relevant)**: The file is directly related and is important for addressing the prompt.
-   
-   - **Evaluation Criteria**:
-     - **Direct Relevance**: Does the file directly implement features mentioned in the prompt?
-     - **Dependency Chain**: Is the file part of a dependency chain of relevant files?
-     - **Keyword Matching**: Does the file contain keywords or topics from the prompt?
-     - **Dependency Importance**: Is the file a critical dependency for other relevant files?
+**Crucially, only include files in the \`optimizedContext\` array of the \`optimizeContext\` function call if their calculated relevance score is 0.5 or greater.**
 
-2. **Dependency-Aware Optimization**:
-   - Consider both direct and indirect dependencies
-   - Prioritize files that are:
-     - Directly relevant to the prompt
-     - Dependencies of highly relevant files
-     - Part of important dependency chains
-   - Handle dependency chains intelligently:
-     - Include critical dependencies even if they seem less relevant
-     - Consider the full dependency tree when evaluating relevance
-     - Avoid breaking dependency chains of important files
+Here are the detailed steps:
 
-3. **Token-Aware Optimization**:
-   - Balance relevance against token usage
-   - Consider the combined token cost of dependency chains
-   - Prioritize files where the relevance justifies the token usage
-   - Consider the token cost of including entire dependency chains
+1. **Relevance Assessment (Scores from 0.0 to 1.0):**
+   - Evaluate the relevance of each file to the user's prompt based on the following scale:
+     - 0.0 – 0.3: Not Relevant
+     - 0.3 – 0.7: Somewhat Relevant
+     - 0.7 – 0.9: Moderately Relevant
+     - 0.9 – 1.0: Highly Relevant
+   - Consider:
+     - Direct Relevance to the prompt's features.
+     - Role in dependency chains of relevant files.
+     - Keyword matches with the prompt.
+     - Importance as a dependency.
 
-4. **Function Call Response**:
-   - Call the \`optimizeContext\` function with:
-     - \`"userPrompt"\`: The original prompt
-     - \`"optimizedContext"\`: Array of objects containing:
-       - \`"filePath"\`: Absolute file path
-       - \`"relevance"\`: Calculated relevance score (0 to 1)
+2. **Dependency Consideration:**
+   - Understand how files depend on each other.
+   - Prioritize files that are directly relevant or are dependencies of highly relevant files.
+   - When evaluating a file, consider its position within dependency chains, but **do not include a file in the \`optimizedContext\` if its individual relevance score is below 0.5, even if it's part of a dependency chain of a relevant file.**
 
-**Important Guidelines**:
-- **Only include files from \`getSourceCode\` response**
-- **Do not guess or infer additional files**
-- **Evaluate each file individually and as part of dependency chains**
-- **Consider both direct and indirect dependencies**
-- **Ensure proper JSON formatting**
-- **Include full file paths**
-- **Filter out low-relevance files (< 0.5)**
-- **Maintain dependency chain integrity**
+3. **Token Awareness:**
+   - Be mindful of token usage, but **relevance (specifically a score of 0.5 or higher) is the primary criterion for inclusion in \`optimizedContext\`.**
 
-Now could you please analyze the source code and return me the optimized context?
-`;
+4. **Function Call - \`optimizeContext\`:**
+   - Call the \`optimizeContext\` function with the following arguments:
+     - \`"userPrompt"\`: The original user prompt.
+     - \`"reasoning"\`: A clear explanation of your analysis, highlighting why the included files are relevant and why files below 0.5 were excluded.
+     - \`"optimizedContext"\`: **An array containing ONLY files with a relevance score of 0.5 or higher.** Each object in the array should have:
+       - \`"filePath"\`: Absolute file path.
+       - \`"relevance"\`: The calculated relevance score (0.5 to 1.0).
+       - \`"reasoning"\`:  Specific reasoning for why *this particular file* is relevant and has a score of 0.5 or higher.
+
+**Important Guidelines (Reiterated for Function Calling):**
+
+- **Strict Filtering:** **Only files with a relevance score of 0.5 or more should be included in the \`optimizedContext\` array.**
+- **No Guessing:** Only use files provided in the \`getSourceCode\` response.
+- **Evaluate Individually and in Chains:** Consider both individual relevance and dependencies, but the 0.5 threshold is paramount for inclusion.
+- **Proper JSON:** Ensure the \`optimizeContext\` call is valid JSON.
+- **Full Paths:** Use absolute file paths.
+- **Focus on 0.5+:** The \`optimizedContext\` array should be exclusively populated with files meeting the relevance criteria.
+
+Now, analyze the source code and call the \`optimizeContext\` function accordingly.`;
 
 export const OPTIMIZATION_TRIGGER_PROMPT =
   'Thank you for describing the task, I have noticed you have provided a very large context for your question. The amount of source code is very big in particular. Can we do something about it?';
+
+export const CONTEXT_OPTIMIZATION_TEMPERATURE = 0.2;
 
 const MAX_TOTAL_TOKENS = 10000;
 
@@ -107,7 +103,14 @@ export async function executeStepContextOptimization(
       },
     ];
 
-    const request: GenerateContentArgs = [optimizationPrompt, getFunctionDefs(), 'optimizeContext', 0.2, true, options];
+    const request: GenerateContentArgs = [
+      optimizationPrompt,
+      getFunctionDefs(),
+      'optimizeContext',
+      CONTEXT_OPTIMIZATION_TEMPERATURE,
+      true,
+      options,
+    ];
     let result = await generateContentFn(...request);
     result = await validateAndRecoverSingleResult(request, result, generateContentFn);
 
