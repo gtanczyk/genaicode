@@ -15,7 +15,7 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'codegenPlanning';
+  const requiredFunctionName = 'updateFile';
   const temperature = 0.7;
 
   it('Gemini Flash', async () => {
@@ -115,6 +115,36 @@ describe('prompt-debug', () => {
   it('GPT 4o', async () => {
     const gptArgs = (await generateContentGPT(prompt, getFunctionDefs(), requiredFunctionName, temperature, false))[0]
       .args;
+
+    console.log('GPT', JSON.stringify(gptArgs, null, 4));
+  });
+
+  it('DeepSeek', async () => {
+    updateServiceConfig('openai', {
+      modelOverrides: {
+        default: 'deepseek-chat',
+        cheap: 'deepseek-chat',
+      },
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      openaiBaseUrl: 'https://api.deepseek.com',
+    });
+
+    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, false] as const;
+    let result = await generateContentGPT(...req);
+    result = await validateAndRecoverSingleResult(
+      [
+        ...req,
+        {
+          aiService: 'openai',
+          disableCache: false,
+          askQuestion: false,
+        },
+      ],
+      result,
+      generateContentGPT,
+    );
+
+    const gptArgs = result[0].args;
 
     console.log('GPT', JSON.stringify(gptArgs, null, 4));
   });

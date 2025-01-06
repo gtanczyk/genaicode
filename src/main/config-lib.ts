@@ -5,49 +5,11 @@ import { confirm } from '@inquirer/prompts';
 
 import { isAncestorDirectory } from '../files/file-utils.js';
 import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
+import { RcConfig } from './config-types.js';
 import { validateRcConfig } from './config-schema.js';
 
 // This file contains project codegen configuration
 export const CODEGENRC_FILENAME = '.genaicoderc';
-
-export interface ImportantContext {
-  systemPrompt?: string[];
-  files?: string[];
-}
-
-export interface ModelOverrides {
-  openai?: {
-    cheap?: string;
-    default?: string;
-  };
-  anthropic?: {
-    cheap?: string;
-    default?: string;
-  };
-  vertexAi?: {
-    cheap?: string;
-    default?: string;
-  };
-  aiStudio?: {
-    cheap?: string;
-    default?: string;
-  };
-}
-
-/**
- * Configuration for the project codegen
- *
- * IMPORTANT: Keep this interface in sync with the JSON schema in config-schema.ts
- */
-export interface RcConfig {
-  rootDir: string;
-  lintCommand?: string;
-  extensions?: string[];
-  ignorePaths?: string[];
-  importantContext?: ImportantContext;
-  modelOverrides?: ModelOverrides;
-  plugins?: string[];
-}
 
 /**
  * Create initial .genaicoderc content with profile detection

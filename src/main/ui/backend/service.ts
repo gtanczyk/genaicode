@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { rcConfig } from '../../config.js';
 import { AiServiceType, CodegenOptions } from '../../codegen-types.js';
-import { RcConfig } from '../../config-lib.js';
+import { RcConfig } from '../../config-types.js';
 import { ServiceConfigUpdate, SanitizedServiceConfigurations } from '../common/api-types.js';
 import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
 import { ContentProps } from '../../common/content-bus-types.js';

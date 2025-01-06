@@ -10,6 +10,7 @@ import {
   READY_TO_ASSIST,
 } from '../prompt/static-prompts.js';
 import { PLANNING_PROMPT } from '../prompt/steps/step-codegen-planning';
+import { rcConfig } from '../main/config';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -25,7 +26,7 @@ describe('codegen-summary', () => {
         // System prompt
         {
           type: 'systemPrompt',
-          systemPrompt: getSystemPrompt({ aiService: 'anthropic', askQuestion: false }),
+          systemPrompt: getSystemPrompt(rcConfig, { aiService: 'anthropic', askQuestion: false }),
         },
         // Initial greeting
         { type: 'user', text: INITIAL_GREETING },

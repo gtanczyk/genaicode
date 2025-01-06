@@ -10,7 +10,7 @@ import {
 } from './codegen-types.js';
 import { GenerateContentFunction } from '../ai-service/common.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
-import { RcConfig } from './config-lib.js';
+import { RcConfig } from './config-types.js';
 import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
 import { registerProfile } from '../project-profiles/index.js';
 import { ServiceConfig } from './ui/common/api-types.js';

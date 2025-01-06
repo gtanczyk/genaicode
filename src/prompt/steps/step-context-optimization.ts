@@ -42,9 +42,9 @@ Here are the detailed steps:
      - \`"userPrompt"\`: The original user prompt.
      - \`"reasoning"\`: A clear explanation of your analysis, highlighting why the included files are relevant and why files below 0.5 were excluded.
      - \`"optimizedContext"\`: **An array containing ONLY files with a relevance score of 0.5 or higher.** Each object in the array should have:
+       - \`"reasoning"\`:  Specific reasoning for why *this particular file* is relevant and has a score of 0.5 or higher.
        - \`"filePath"\`: Absolute file path.
        - \`"relevance"\`: The calculated relevance score (0.5 to 1.0).
-       - \`"reasoning"\`:  Specific reasoning for why *this particular file* is relevant and has a score of 0.5 or higher.
 
 **Important Guidelines (Reiterated for Function Calling):**
 

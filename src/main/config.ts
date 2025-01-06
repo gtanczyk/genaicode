@@ -1,11 +1,5 @@
-import {
-  findRcFile,
-  parseRcFile,
-  RcConfig,
-  ImportantContext,
-  ModelOverrides,
-  CODEGENRC_FILENAME,
-} from './config-lib.js';
+import { RcConfig, ImportantContext, ModelOverrides } from './config-types.js';
+import { findRcFile, parseRcFile, CODEGENRC_FILENAME } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import path from 'path';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';

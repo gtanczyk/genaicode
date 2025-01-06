@@ -6,6 +6,8 @@
 
 import { SourceCodeTree } from '../../files/source-code-tree';
 
+export const MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR = '/project/src/todo-app';
+
 export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeTree = {
   '/project/src/todo-app/auth': {
     'user-auth.ts': {

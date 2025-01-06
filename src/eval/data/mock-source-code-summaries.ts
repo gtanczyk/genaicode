@@ -4,6 +4,8 @@
 
 import { SourceCodeTree } from '../../files/source-code-tree';
 
+export const MOCK_SOURCE_CODE_SUMMARIES_ROOT_DIR = '/project/src';
+
 export const MOCK_SOURCE_CODE_SUMMARIES: SourceCodeTree = {
   '/project/src/math': {
     'math.ts': {

@@ -1,9 +1,12 @@
 import { verifySystemPromptLimit } from './limits.js';
-import { rcConfig, importantContext } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { RcConfig } from '../main/config-types.js';
 
 /** Generates a system prompt with the codegen prompt merged */
-export function getSystemPrompt(options: CodegenOptions) {
+export function getSystemPrompt(
+  { rootDir, importantContext }: Pick<RcConfig, 'rootDir' | 'importantContext'>,
+  options: CodegenOptions,
+) {
   const {
     verbose,
     askQuestion,
@@ -24,7 +27,7 @@ export function getSystemPrompt(options: CodegenOptions) {
 
 You are GenAIcode, a code generation assistant tasked with helping me implement my ideas into my application's source code.
 You should parse my application source code and then suggest changes using appropriate tools.
-Please limit any changes to the root directory of my application, which is \`${rcConfig.rootDir}\`.
+Please limit any changes to the root directory of my application, which is \`${rootDir}\`.
 
 ## Important Guidelines
 
@@ -125,7 +128,7 @@ GenAIcode can be configured by using the \`.genaicoderc\` file in the root direc
 `;
   }
 
-  if (importantContext.systemPrompt && importantContext.systemPrompt.length > 0) {
+  if (importantContext?.systemPrompt && importantContext.systemPrompt.length > 0) {
     systemPrompt += `\n# ADDITIONAL INSTRUCTIONS\n\n${importantContext.systemPrompt.join('\n')}`;
   }
 

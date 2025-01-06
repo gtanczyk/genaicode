@@ -20,6 +20,7 @@ import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
 import { generateCodegenSummary } from './steps/step-generate-codegen-summary.js';
 import { processFileUpdates } from './steps/step-process-file-updates.js';
 import { putSystemMessage, putUserMessage } from '../main/common/content-bus.js';
+import { rcConfig } from '../main/config.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -86,7 +87,7 @@ async function executePromptService(
   const getSourceCodeRequest: FunctionCall = { name: 'getSourceCode' };
 
   const prompt: PromptItem[] = [
-    { type: 'systemPrompt', systemPrompt: getSystemPrompt(codegenPrompt.options) },
+    { type: 'systemPrompt', systemPrompt: getSystemPrompt(rcConfig, codegenPrompt.options) },
     { type: 'user', text: INITIAL_GREETING },
     {
       type: 'assistant',
