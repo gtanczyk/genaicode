@@ -37,47 +37,6 @@ const actionTypeOptions: string[] = [
   ...Array.from(getRegisteredActionHandlers().keys()),
 ];
 
-const getStepsDescription = (): string => `
-- If "type" = "decisionMakingProcess":
-  A detailed reasoning framework describing how you chose the action.
-  The decisionMakingProcess value must be provided in the following format:
-
-  \`\`\`
-  1. **Contextual Analysis**:
-      Assess the current information, including available permissions,
-      the current context, and task requirements. Identify any missing elements
-      that are critical to task completion.
-    
-  2. **Options Evaluation**:
-      For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
-      \`\`\`
-${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
-      \`\`\`
-      Sort the list, starting with the most relevant action type.
-
-  3. **Decision Justification**:
-      State the reasoning for the proposed action, considering whether planning,
-      clarification, or a direct action is required. If there's any ambiguity,
-      prefer a confirmatory action (e.g., "confirmCodeGeneration").
-
-  4. **Minimal Action Selection**:
-      Determine the minimal action that can make progress toward the task goal.
-      Avoid requesting unnecessary permissions or context that isn't strictly needed.
-
-  5. **Evaluation of Action Choice**:
-      Double-check if the selected action aligns with the task requirements
-      and the user-provided constraints.
-  \`\`\`
-
-- If "type" = "actionType":
-  Must be one of [${actionTypeOptions.join(', ')}].
-  This represents the action chosen after the above decision-making process.
-  ${getActionTypeDescription()}
-
-- If "type" = "message":
-  The message to display to the user, which must align with the chosen "actionType".                  
-`;
-
 /**
  * Function definition for askQuestion
  *
@@ -92,11 +51,11 @@ export const getAskQuestionDef = (): FunctionDef => ({
   
   The desired format of parameters is as follows:
   \`\`\`
-  [
-    { type: "decisionMakingProcess", value: "..." }, // A detailed decision-making framework the assistant followed before selecting an action.",
-    { type: "actionType", value: "..." }, // The type of action to perform.
-    { type: "message", value: "..." } // The message to display to the user.
-  ]
+  {
+    "decisionMakingProcess": "...", // A detailed decision-making framework the assistant followed before selecting an action.",
+    "actionType": "...", // The type of action to perform.
+    "message": "..." // The message to display to the user.
+  }
   \`\`\`
   
   **IMPORTANT**: Mind the order of the parameters, as the decision-making process must be provided first to ensure clarity in decision-making.
@@ -104,37 +63,60 @@ export const getAskQuestionDef = (): FunctionDef => ({
   parameters: {
     type: 'object',
     properties: {
-      steps: {
-        type: 'array',
-        description: `
-          An array of exactly 3 objects. Each object must have:
-            - "type": one of "decisionMakingProcess", "actionType", "message"
-            - "value": a string
+      decisionMakingProcess: {
+        type: 'string',
+        description: `A detailed reasoning framework describing how you chose the action.
+  The decisionMakingProcess value must be provided in the following format:
 
-          The order of these items MUST be:
-            1) { "type": "decisionMakingProcess", "value": "..." }
-            2) { "type": "actionType", "value": "..." }
-            3) { "type": "message", "value": "..." }
-        `,
-        minItems: 3,
-        maxItems: 3,
-        items: {
-          type: 'object',
-          properties: {
-            type: {
-              type: 'string',
-              enum: ['decisionMakingProcess', 'actionType', 'message'],
-            },
-            value: {
-              type: 'string',
-              description: getStepsDescription(),
-            },
-          },
-          required: ['type', 'value'],
-        },
+  \`\`\`
+  1. **Contextual Analysis**:
+      Assess the current information, including available permissions,
+      the current context, and task requirements. Identify any missing elements
+      that are critical to task completion.
+    
+  2. **Options Evaluation**:
+      For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
+      \`\`\`
+${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
+      \`\`\`
+
+  3. **Decision Justification**:
+      State the reasoning for the proposed action, considering whether planning,
+      clarification, or a direct action is required. If there's any ambiguity,
+      prefer a confirmatory action (e.g., "confirmCodeGeneration").
+
+  4. **Minimal Action Selection**:
+      Determine the minimal action that can make progress toward the task goal.
+      Avoid requesting unnecessary permissions or context that isn't strictly needed.
+
+  5. **Evaluation of Action Choice**:
+      Double-check if the selected action aligns with the task requirements
+      and the user-provided constraints.
+  \`\`\``,
+      },
+      actionType: {
+        type: 'string',
+        enum: [
+          'sendMessage',
+          'sendMessageWithImage',
+          'requestPermissions',
+          'requestFilesContent',
+          'removeFilesFromContext',
+          'confirmCodeGeneration',
+          'cancelCodeGeneration',
+          'contextOptimization',
+          'searchCode',
+          ...(rcConfig.lintCommand ? ['lint'] : []),
+          ...Array.from(getRegisteredActionHandlers().keys()),
+        ],
+        description: getActionTypeDescription(),
+      },
+      message: {
+        type: 'string',
+        description: 'The message to display to the user.',
       },
     },
-    required: ['steps'],
+    required: ['decisionMakingProcess', 'actionType', 'message'],
   },
 });
 

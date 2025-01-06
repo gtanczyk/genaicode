@@ -5,7 +5,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { ActionHandlerProps, ActionResult, RequestPermissionsArgs, UserItem } from '../step-ask-question-types.js';
 
 export async function handleRequestPermissions({
-  askQuestionMessage,
+  askQuestionCall,
   options,
   prompt,
   generateContentFn,
@@ -15,7 +15,7 @@ export async function handleRequestPermissions({
       ...prompt,
       {
         type: 'assistant',
-        text: askQuestionMessage ?? '',
+        text: askQuestionCall.args?.message ?? '',
       },
       {
         type: 'user',
@@ -63,7 +63,7 @@ export async function handleRequestPermissions({
       {
         assistant: {
           type: 'assistant',
-          text: askQuestionMessage ?? '',
+          text: askQuestionCall.args?.message ?? '',
           functionCalls: [requestPermissionsCall],
         },
         user,

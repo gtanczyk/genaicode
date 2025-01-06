@@ -76,11 +76,9 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          steps: [
-            { type: 'decisionMakingProcess', value: '' },
-            { type: 'actionType', value: 'confirmCodeGeneration' },
-            { type: 'message', value: 'Do you want to proceed with code generation?' },
-          ],
+          decisionMakingProcess: '',
+          message: 'Do you want to proceed with code generation?',
+          actionType: 'confirmCodeGeneration',
         },
       },
     ];
@@ -88,11 +86,9 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          steps: [
-            { type: 'decisionMakingProcess', value: '' },
-            { type: 'actionType', value: 'confirmCodeGeneration' },
-            { type: 'message', value: 'Ok lets go' },
-          ],
+          decisionMakingProcess: '',
+          message: 'Ok lets go',
+          actionType: 'confirmCodeGeneration',
         },
       },
     ];
@@ -153,11 +149,9 @@ describe('promptService with askQuestion', () => {
       {
         name: 'askQuestion',
         args: {
-          steps: [
-            { type: 'decisionMakingProcess', value: '' },
-            { type: 'actionType', value: 'cancelCodeGeneration' },
-            { type: 'message', value: 'Stopping code generation as requested.' },
-          ],
+          decisionMakingProcess: '',
+          message: 'Stopping code generation as requested.',
+          actionType: 'cancelCodeGeneration',
         },
       },
     ];

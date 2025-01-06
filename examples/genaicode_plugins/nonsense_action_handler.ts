@@ -14,12 +14,12 @@ const nonsenseActionHandler: Plugin = {
         // Example implementation that echoes the content back
         const assistantItem = {
           type: 'assistant' as const,
-          text: `Custom action handler received: ${props.askQuestionMessage}`,
+          text: `Custom action handler received: ${props.askQuestionCall.args?.message}`,
         };
 
         const userItem = {
           type: 'user' as const,
-          text: (await askUserForInput('Your answer', props.askQuestionMessage ?? '')).answer,
+          text: (await askUserForInput('Your answer', props.askQuestionCall.args?.message ?? '')).answer,
         };
 
         return {

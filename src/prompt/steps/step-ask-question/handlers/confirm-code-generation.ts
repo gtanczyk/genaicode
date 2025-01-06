@@ -3,7 +3,7 @@ import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-a
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
 export async function handleConfirmCodeGeneration({
-  askQuestionMessage,
+  askQuestionCall,
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmationWithAnswer(
@@ -23,7 +23,7 @@ export async function handleConfirmCodeGeneration({
       executeCodegen: true,
       items: [
         {
-          assistant: { type: 'assistant', text: askQuestionMessage ?? '', functionCalls: [] },
+          assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '', functionCalls: [] },
           user: { type: 'user', text: userConfirmation.answer || 'Confirmed. Proceed with code generation.' },
         },
       ],
@@ -34,7 +34,7 @@ export async function handleConfirmCodeGeneration({
       breakLoop: false,
       items: [
         {
-          assistant: { type: 'assistant', text: askQuestionMessage ?? '' },
+          assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
           user: {
             type: 'user',
             text: userConfirmation.answer || 'Declined. Please continue the conversation.',

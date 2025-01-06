@@ -23,20 +23,9 @@ export type ActionType =
   | PluginActionType;
 
 type AskQuestionArgs = {
-  steps: [
-    {
-      type: 'decisionMakingProcess';
-      value: string;
-    },
-    {
-      type: 'actionType';
-      value: ActionType;
-    },
-    {
-      type: 'message';
-      value: string;
-    },
-  ];
+  actionType: ActionType;
+  message: string;
+  decisionMakingProcess?: string;
 };
 
 export type SendMessageWithImageArgs = {
@@ -125,7 +114,6 @@ export interface ActionResult {
 
 export type ActionHandlerProps = {
   askQuestionCall: AskQuestionCall;
-  askQuestionMessage: string | undefined;
   prompt: PromptItem[];
   options: CodegenOptions;
   generateContentFn: GenerateContentFunction;

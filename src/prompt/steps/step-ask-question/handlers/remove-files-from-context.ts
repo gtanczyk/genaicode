@@ -5,7 +5,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { ActionHandlerProps, ActionResult, RemoveFilesFromContextArgs } from '../step-ask-question-types.js';
 
 export async function handleRemoveFilesFromContext({
-  askQuestionMessage,
+  askQuestionCall,
   generateContentFn,
   prompt,
   options,
@@ -15,7 +15,7 @@ export async function handleRemoveFilesFromContext({
       ...prompt,
       {
         type: 'assistant',
-        text: askQuestionMessage ?? '',
+        text: askQuestionCall.args?.message ?? '',
       },
       {
         type: 'user',
@@ -53,7 +53,7 @@ export async function handleRemoveFilesFromContext({
       {
         assistant: {
           type: 'assistant',
-          text: askQuestionMessage ?? '',
+          text: askQuestionCall.args?.message ?? '',
           functionCalls: [removeFilesFromContextCall],
         },
         user: {

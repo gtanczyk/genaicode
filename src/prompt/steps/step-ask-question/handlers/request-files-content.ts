@@ -8,6 +8,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import {
   ActionHandlerProps,
   ActionResult,
+  AskQuestionCall,
   AssistantItem,
   RequestFilesContentArgs,
   UserItem,
@@ -51,7 +52,6 @@ function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): b
 
 export async function handleRequestFilesContent({
   askQuestionCall,
-  askQuestionMessage,
   options,
   prompt,
   generateContentFn,
@@ -59,7 +59,7 @@ export async function handleRequestFilesContent({
   let requestFilesContentCall = await generateRequestFilesContentCall(
     generateContentFn,
     prompt,
-    askQuestionMessage,
+    askQuestionCall,
     options,
     true,
   );
@@ -82,7 +82,7 @@ export async function handleRequestFilesContent({
     // All requested files are already provided
     const assistant: AssistantItem = {
       type: 'assistant',
-      text: askQuestionMessage ?? '',
+      text: askQuestionCall.args?.message ?? '',
       functionCalls: [requestFilesContentCall],
     };
 
@@ -115,7 +115,7 @@ export async function handleRequestFilesContent({
     requestFilesContentCall = await generateRequestFilesContentCall(
       generateContentFn,
       prompt,
-      askQuestionMessage,
+      askQuestionCall,
       options,
       // use non cheap mode, as maybe the cheap mode didn't provide correct files
       false,
@@ -137,7 +137,7 @@ export async function handleRequestFilesContent({
   const sourceCallId = (askQuestionCall.id ?? askQuestionCall.name) + '_source';
   const assistant: AssistantItem = {
     type: 'assistant',
-    text: askQuestionMessage ?? '',
+    text: askQuestionCall.args?.message ?? '',
     functionCalls: [
       requestFilesContentCall,
       { name: 'getSourceCode', id: sourceCallId, args: { filePaths: legitimateFiles } },
@@ -184,7 +184,7 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
 async function generateRequestFilesContentCall(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
-  askQuestionMessage: string | undefined,
+  askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
   cheap: boolean,
 ) {
@@ -193,7 +193,7 @@ async function generateRequestFilesContentCall(
       ...prompt,
       {
         type: 'assistant',
-        text: askQuestionMessage ?? '',
+        text: askQuestionCall.args?.message ?? '',
       },
       {
         type: 'user',

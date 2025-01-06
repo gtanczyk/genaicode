@@ -39,22 +39,20 @@ export async function executeStepAskQuestion(
     try {
       const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
 
-      if (!askQuestionCall?.args) {
+      if (!askQuestionCall) {
         break;
       }
 
-      const [, { value: actionType }, { value: message }] = askQuestionCall.args!.steps;
-
-      if (message) {
+      if (askQuestionCall.args?.message) {
         // TODO: PromptItem should be included here, but a small refactor is needed to achieve this
-        putAssistantMessage(message, askQuestionCall.args);
+        putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);
       }
 
+      const actionType = askQuestionCall.args?.actionType;
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
         let result = await actionHandler({
           askQuestionCall,
-          askQuestionMessage: message,
           prompt,
           options,
           generateContentFn,
@@ -73,7 +71,6 @@ export async function executeStepAskQuestion(
         if (result.executeCodegen) {
           result = await getActionHandler('codeGeneration')({
             askQuestionCall,
-            askQuestionMessage: message,
             prompt,
             options,
             generateContentFn,

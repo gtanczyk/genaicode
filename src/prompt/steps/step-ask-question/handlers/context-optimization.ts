@@ -5,7 +5,7 @@ import { executeStepContextOptimization } from '../../step-context-optimization.
 import { ActionHandlerProps, ActionResult, UserItem, AssistantItem } from '../step-ask-question-types.js';
 
 export async function handleContextOptimization({
-  askQuestionMessage,
+  askQuestionCall,
   prompt,
   options,
   generateContentFn,
@@ -27,7 +27,7 @@ export async function handleContextOptimization({
 
   const assistant: AssistantItem = {
     type: 'assistant',
-    text: askQuestionMessage ?? '',
+    text: askQuestionCall.args?.message ?? '',
   };
 
   if (userConfirmation.confirmed) {
