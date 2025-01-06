@@ -40,13 +40,13 @@ Here are the detailed steps:
 4. **Function Call - \`optimizeContext\`:**
    - Call the \`optimizeContext\` function with the following arguments:
      - \`"userPrompt"\`: The original user prompt.
-     - \`"reasoning"\`: A clear explanation of your analysis, highlighting why the included files are relevant and why files below 0.5 were excluded.
+     - \`"reasoning"\`: A detailed, step-by-step explanation of the thought process used to determine the optimized context.
      - \`"optimizedContext"\`: **An array containing ONLY files with a relevance score of 0.5 or higher.** Each object in the array should have:
        - \`"reasoning"\`:  Specific reasoning for why *this particular file* is relevant and has a score of 0.5 or higher.
        - \`"filePath"\`: Absolute file path.
        - \`"relevance"\`: The calculated relevance score (0.5 to 1.0).
 
-**Important Guidelines (Reiterated for Function Calling):**
+**Important Guidelines:**
 
 - **Strict Filtering:** **Only files with a relevance score of 0.5 or more should be included in the \`optimizedContext\` array.**
 - **No Guessing:** Only use files provided in the \`getSourceCode\` response.
@@ -54,6 +54,10 @@ Here are the detailed steps:
 - **Proper JSON:** Ensure the \`optimizeContext\` call is valid JSON.
 - **Full Paths:** Use absolute file paths.
 - **Focus on 0.5+:** The \`optimizedContext\` array should be exclusively populated with files meeting the relevance criteria.
+- **Handling Codebase-Wide Operations:**
+    - If the user prompt indicates a codebase-wide operation, choose one of the following \`optimizeContext\` strategies:
+        - **Empty Context:** For operations applying to all files simultaneously, call \`optimizeContext\` with an empty \`optimizedContext\` and explain in the \`reasoning\`.
+        - **Main Entry Points:** For operations starting with key files, identify main entry points and call \`optimizeContext\` with these files (relevance=1.0), explaining in the \`reasoning\`.
 
 Now, analyze the source code and call the \`optimizeContext\` function accordingly.`;
 
@@ -121,9 +125,7 @@ export async function executeStepContextOptimization(
     }
 
     if (optimizedContext.length === 0) {
-      putSystemMessage(
-        'Warning: Context optimization failed to produce useful summaries for all batches. Proceeding with current context.',
-      );
+      putSystemMessage('Context optimization did not generate changes to current context.');
       return StepResult.CONTINUE;
     }
 

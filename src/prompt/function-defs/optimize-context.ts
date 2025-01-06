@@ -43,7 +43,8 @@ This means that the file \`something.js\` file is not relevant to the user promp
       },
       reasoning: {
         type: 'string',
-        description: 'Analysis of what is needed for the user prompt and which files are needed to fullfil the prompt.',
+        description:
+          'Step-by-step analysis of what is needed for the user prompt and which files are needed to fullfil the prompt.',
       },
       optimizedContext: {
         type: 'array',
@@ -53,7 +54,7 @@ This means that the file \`something.js\` file is not relevant to the user promp
           properties: {
             reasoning: {
               type: 'string',
-              description: 'Reasoning for why the file is relevant.',
+              description: 'Step-by-steo analysis for why the file is relevant to the user prompt.',
             },
             filePath: {
               type: 'string',

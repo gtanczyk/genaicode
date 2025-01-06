@@ -59,8 +59,50 @@ describe.each([
         '/project/src/todo-app/database/project-db.ts',
       ],
     },
+    {
+      dataset: 'large',
+      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      userMessage: 'hello there!',
+      expectedOptimizedFiles: [],
+      optionalOptimizedFiles: [],
+    },
+    {
+      dataset: 'large',
+      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      userMessage: 'need to convert all files to plain javascript',
+      expectedOptimizedFiles: [],
+      optionalOptimizedFiles: [
+        '/project/src/todo-app/frontend/components/app.tsx',
+        '/project/src/todo-app/api/api-manager.ts',
+        '/project/src/todo-app/auth/user-auth.ts',
+        '/project/src/todo-app/tasks/task-manager.ts',
+        '/project/src/todo-app/frontend/utils/api-client.ts',
+      ],
+    },
+    {
+      dataset: 'large',
+      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      userMessage: 'hey, we need to work on the login flow e2e, can you explain how it works currently?',
+      expectedOptimizedFiles: [
+        '/project/src/todo-app/auth/user-auth.ts',
+        '/project/src/todo-app/auth/login.ts',
+        '/project/src/todo-app/frontend/components/auth/login-form.tsx',
+        '/project/src/todo-app/api/auth-routes.ts',
+      ],
+      optionalOptimizedFiles: [
+        '/project/src/todo-app/auth/session-management.ts',
+        '/project/src/todo-app/frontend/utils/api-client.ts',
+        '/project/src/todo-app/utils/security-utils.ts',
+        '/project/src/todo-app/utils/validation-utils.ts',
+        '/project/src/todo-app/api/api-manager.ts',
+        '/project/src/todo-app/database/user-db.ts',
+      ],
+    },
   ])(
-    'Dataset: $dataset',
+    '$dataset, $userMessage',
     async ({ rootDir, sourceCodeTree, userMessage, expectedOptimizedFiles, optionalOptimizedFiles }) => {
       // Prepare prompt items for optimization
       const prompt: PromptItem[] = [
@@ -115,6 +157,8 @@ describe.each([
         },
       );
 
+      console.log(optimizeContextCall);
+
       // Verify optimization results
       expect(optimizeContextCall).toBeDefined();
       expect(optimizeContextCall?.args?.optimizedContext).toBeDefined();
@@ -127,7 +171,7 @@ describe.each([
       const minRelevancy = optimizedContext.reduce((min, item) => Math.min(min, item.relevance), 1);
 
       expect(minRelevancy).toBeGreaterThanOrEqual(0.5);
-      expect(optimizedFiles).toEqual(expect.arrayContaining(expectedOptimizedFiles));
+      expect(optimizedFiles.sort()).toEqual(expect.arrayContaining(expectedOptimizedFiles.sort()));
       expect(
         optimizedFiles.filter(
           (file) => !expectedOptimizedFiles.includes(file) && !optionalOptimizedFiles.includes(file),
