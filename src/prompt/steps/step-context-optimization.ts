@@ -11,7 +11,7 @@ import { getSourceCodeResponse } from './steps-utils.js';
 import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
 import { importantContext } from '../../main/config.js';
 
-const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
+export const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for code generation. Please perform the following tasks and respond by calling the \`optimizeContext\` function with the appropriate arguments:
 
 1. **Relevance and Dependency Analysis**:
    - Rate the **relevance** of each file to the user's prompt on a scale from **0 to 1**, using the following guidelines:
@@ -63,6 +63,9 @@ const OPTIMIZATION_PROMPT = `You're correct, we need to optimize the context for
 Now could you please analyze the source code and return me the optimized context?
 `;
 
+export const OPTIMIZATION_TRIGGER_PROMPT =
+  'Thank you for describing the task, I have noticed you have provided a very large context for your question. The amount of source code is very big in particular. Can we do something about it?';
+
 const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
@@ -96,7 +99,7 @@ export async function executeStepContextOptimization(
       ...prompt,
       {
         type: 'assistant',
-        text: 'Thank you for describing the task, I have noticed you have provided a very large context for your question. The amount of source code is very big in particular. Can we do something about it?',
+        text: OPTIMIZATION_TRIGGER_PROMPT,
       },
       {
         type: 'user',
