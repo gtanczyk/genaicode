@@ -39,6 +39,10 @@ open http://localhost:1337
 
 This will start the GenAIcode web server and open the browser with the UI.
 
+Here is how it looks like:
+
+<img width="1284" alt="image" src="https://github.com/user-attachments/assets/82fae142-f2df-43c9-871a-50e526f37c83" />
+
 ## CLI Features
 
 GenAIcode supports various command-line options to customize its behavior:
@@ -77,7 +81,18 @@ The `.genaicoderc` file allows you to configure various aspects of GenAIcode's b
   "rootDir": ".",
   "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
   "ignorePaths": ["node_modules", "build", "dist", "package-lock.json", "coverage"],
-  "lintCommand": "npm run lint"
+  "lintCommand": "npm run lint",
+  "plugins": [
+    "plugins/custom_tools.ts"
+  ],
+  "importantContext": {
+    "systemPrompt": [
+      "IMPORTANT: Always use typescript"
+    ],
+    "files": [
+      "code_style.md
+    ]
+  }
 }
 ```
 
@@ -86,6 +101,8 @@ The `.genaicoderc` file allows you to configure various aspects of GenAIcode's b
 - `ignorePaths`: An array of paths to be ignored by the tool (optional).
 - `lintCommand`: Specifies a lint command to be run before and after code generation (optional).
 - `modelOverrides`: Allows overriding the default AI models used for each service (optional).
+- `plugins`: Specify plugins to be loaded (see [example plugins](./examples/genaicode_plugins/))
+- `importantContext`: Add your custom instructions to the `systemPrompt`. Force specific `files` to be always included in the context
 
 ## Usage
 
