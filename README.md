@@ -90,7 +90,7 @@ The `.genaicoderc` file allows you to configure various aspects of GenAIcode's b
       "IMPORTANT: Always use typescript"
     ],
     "files": [
-      "code_style.md
+      "code_style.md"
     ]
   }
 }
