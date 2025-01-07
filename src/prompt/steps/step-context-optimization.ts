@@ -24,7 +24,7 @@ Here are the detailed steps:
      - 0.7 – 0.9: Moderately Relevant
      - 0.9 – 1.0: Highly Relevant
    - Consider:
-     - Direct Relevance to the prompt's features.
+     - Directly implements the core logic required to address the prompt's features.
      - Role in dependency chains of relevant files.
      - Keyword matches with the prompt.
      - Importance as a dependency.
@@ -58,6 +58,11 @@ Here are the detailed steps:
     - If the user prompt indicates a codebase-wide operation, choose one of the following \`optimizeContext\` strategies:
         - **Empty Context:** For operations applying to all files simultaneously, call \`optimizeContext\` with an empty \`optimizedContext\` and explain in the \`reasoning\`.
         - **Main Entry Points:** For operations starting with key files, identify main entry points and call \`optimizeContext\` with these files (relevance=1.0), explaining in the \`reasoning\`.
+- **Data Flow Consideration**: Consider the entire lifecycle of the data involved in the user's request, from the user interface to the database and back. Include files involved in handling, storing, and transmitting this data.
+- **Intent and Contribution Analysis:**  For each file, evaluate its purpose and how it contributes to fulfilling the user's prompt. Consider the flow of logic and data. Which files are essential for the requested outcome, not just tangentially related?
+- **Functional Web Analysis:**  Think of the codebase as a web of interconnected functionalities. Identify the key functional areas involved in the user's prompt and trace the connections between files within these areas.
+- **Core Responsibility Assessment:**  Identify the files that are primarily responsible for managing the lifecycle, data, or logic of the entities involved in the \`userPrompt\`. These files are likely to be highly relevant.
+- **Data Flow Mapping:**  Trace the flow of data related to the user's request. Identify the files involved in creating, storing, transforming, and retrieving this data.
 
 Now, analyze the source code and call the \`optimizeContext\` function accordingly.`;
 

@@ -360,7 +360,7 @@ export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeTree = {
         'Handles search functionality within the app, allowing users to search for tasks, projects, and other data.',
       dependencies: [
         {
-          path: '/project/src/todo-app/database/search-db.ts',
+          path: '/project/src/todo-app/search/search-db.ts',
           type: 'local',
         },
         {

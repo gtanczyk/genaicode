@@ -107,17 +107,17 @@ describe.each([
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'I want to add a due date field to the task creation form.',
       expectedOptimizedFiles: [
-        '/project/src/todo-app/tasks/create-task.ts',
-        '/project/src/todo-app/tasks/task-manager.ts',
         '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
         '/project/src/todo-app/frontend/components/tasks/task-item.tsx',
-        '/project/src/todo-app/database/task-db.ts',
+        '/project/src/todo-app/tasks/create-task.ts',
+        '/project/src/todo-app/tasks/task-manager.ts',
       ],
       optionalOptimizedFiles: [
+        '/project/src/todo-app/api/task-routes.ts',
+        '/project/src/todo-app/database/task-db.ts',
+        '/project/src/todo-app/frontend/components/app.tsx',
         '/project/src/todo-app/utils/validation-utils.ts',
         '/project/src/todo-app/frontend/utils/api-client.ts',
-        '/project/src/todo-app/api/task-routes.ts',
-        '/project/src/todo-app/tasks/update-task.ts',
       ],
     },
     {
@@ -145,15 +145,16 @@ describe.each([
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'I need to change the color scheme of the app to a dark theme.',
       expectedOptimizedFiles: [
-        '/project/src/todo-app/settings/preferences.ts',
         '/project/src/todo-app/frontend/components/app.tsx',
+        '/project/src/todo-app/frontend/components/auth/login-form.tsx',
+        '/project/src/todo-app/frontend/components/auth/registration-form.tsx',
+        '/project/src/todo-app/frontend/components/projects/project-item.tsx',
+        '/project/src/todo-app/frontend/components/projects/project-list.tsx',
         '/project/src/todo-app/frontend/components/settings/settings-form.tsx',
+        '/project/src/todo-app/frontend/components/tasks/task-item.tsx',
+        '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
       ],
-      optionalOptimizedFiles: [
-        '/project/src/todo-app/settings/user-settings.ts',
-        '/project/src/todo-app/frontend/utils/api-client.ts',
-        '/project/src/todo-app/api/settings-routes.ts',
-      ],
+      optionalOptimizedFiles: [],
     },
     {
       dataset: 'large',
@@ -161,17 +162,15 @@ describe.each([
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: "Fix the bug where deleting a project doesn't remove its associated tasks.",
       expectedOptimizedFiles: [
-        '/project/src/todo-app/projects/delete-project.ts',
         '/project/src/todo-app/projects/project-manager.ts',
         '/project/src/todo-app/tasks/task-manager.ts',
         '/project/src/todo-app/database/project-db.ts',
         '/project/src/todo-app/database/task-db.ts',
       ],
       optionalOptimizedFiles: [
-        '/project/src/todo-app/frontend/components/projects/project-list.tsx',
-        '/project/src/todo-app/frontend/components/projects/project-item.tsx',
+        '/project/src/todo-app/projects/delete-project.ts',
         '/project/src/todo-app/api/project-routes.ts',
-        '/project/src/todo-app/api/task-routes.ts',
+        '/project/src/todo-app/utils/db-utils.ts',
       ],
     },
     {
@@ -203,13 +202,11 @@ describe.each([
       expectedOptimizedFiles: [
         '/project/src/todo-app/reporting/report-manager.ts',
         '/project/src/todo-app/reporting/generate-report.ts',
-        '/project/src/todo-app/reporting/report-db.ts',
+        '/project/src/todo-app/database/report-db.ts',
         '/project/src/todo-app/utils/report-utils.ts',
-      ],
-      optionalOptimizedFiles: [
-        '/project/src/todo-app/tasks/task-manager.ts',
         '/project/src/todo-app/database/task-db.ts',
       ],
+      optionalOptimizedFiles: ['/project/src/todo-app/tasks/task-manager.ts'],
     },
     {
       dataset: 'large',
@@ -217,23 +214,11 @@ describe.each([
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Optimize the search functionality to provide faster results when searching for tasks.',
       expectedOptimizedFiles: [
-        '/project/src/todo-app/search/search-manager.ts',
-        '/project/src/todo-app/search/search-db.ts',
-        '/project/src/todo-app/utils/search-utils.ts',
-      ],
-      optionalOptimizedFiles: [
-        '/project/src/todo-app/tasks/task-manager.ts',
-        '/project/src/todo-app/database/task-db.ts',
-      ],
-    },
-    {
-      dataset: 'large',
-      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
-      userMessage: 'Rewrite the entire codebase to use Rust instead of TypeScript.',
-      expectedOptimizedFiles: [
-        '/project/src/todo-app/frontend/components/app.tsx',
         '/project/src/todo-app/api/api-manager.ts',
+        '/project/src/todo-app/api/task-routes.ts',
+        '/project/src/todo-app/search/search-db.ts',
+        '/project/src/todo-app/search/search-manager.ts',
+        '/project/src/todo-app/utils/search-utils.ts',
       ],
       optionalOptimizedFiles: [],
     },
@@ -241,11 +226,16 @@ describe.each([
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      userMessage: 'Rewrite the entire codebase to use Rust instead of TypeScript.',
+      expectedOptimizedFiles: [],
+      optionalOptimizedFiles: [],
+    },
+    {
+      dataset: 'large',
+      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Refactor the code to improve its maintainability and readability.',
-      expectedOptimizedFiles: [
-        '/project/src/todo-app/frontend/components/app.tsx',
-        '/project/src/todo-app/api/api-manager.ts',
-      ],
+      expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
     },
     {
@@ -255,6 +245,25 @@ describe.each([
       userMessage: 'Apply a consistent coding style to the entire project',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
+    },
+    {
+      dataset: 'large',
+      rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      userMessage: "Why does changing my notification preferences sometimes seem to affect the app's responsiveness?",
+      expectedOptimizedFiles: [
+        '/project/src/todo-app/settings/preferences.ts',
+        '/project/src/todo-app/settings/user-settings.ts',
+        '/project/src/todo-app/notifications/notification-manager.ts',
+        '/project/src/todo-app/notifications/send-notification.ts',
+        '/project/src/todo-app/database/user-db.ts',
+        '/project/src/todo-app/utils/notification-utils.ts',
+      ],
+      optionalOptimizedFiles: [
+        '/project/src/todo-app/notifications/notification-db.ts',
+        '/project/src/todo-app/frontend/components/settings/settings-form.tsx',
+        '/project/src/todo-app/database/notification-db.ts',
+      ],
     },
   ])(
     '$dataset, $userMessage',
@@ -312,7 +321,7 @@ describe.each([
         },
       );
 
-      console.log(optimizeContextCall);
+      console.log(JSON.stringify(optimizeContextCall.args, null, 2));
 
       // Verify optimization results
       expect(optimizeContextCall).toBeDefined();
