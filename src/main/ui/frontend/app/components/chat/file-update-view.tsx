@@ -21,7 +21,7 @@ export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
     args: { filePath, explanation, oldContent, newContent },
   },
 }) => {
-  const [showExplanation, setShowExplanation] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(true);
   const [showDiff, setShowDiff] = useState(false);
 
   return (
