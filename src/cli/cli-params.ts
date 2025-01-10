@@ -45,7 +45,7 @@ export const ignorePatterns = params
   .map((param) => param.split('=')[1]);
 
 export const disableAiServiceFallback = params.includes('--disable-ai-service-fallback');
-export const disableVertexUnescape = params.includes('--disable-vertex-unescape');
+export const enableVertexUnescape = params.includes('--enable-vertex-unescape');
 export const disableHistory = params.includes('--disable-history');
 
 // New variable to store the ui-port value

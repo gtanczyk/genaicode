@@ -13,7 +13,7 @@ import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls
 import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
-import { disableVertexUnescape } from '../cli/cli-params.js';
+import { enableVertexUnescape } from '../cli/cli-params.js';
 import { getServiceConfig } from './service-configurations.js';
 
 /**
@@ -128,7 +128,7 @@ export async function generateContent(
     .flat()
     .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
     .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
-    .map(disableVertexUnescape ? (call) => call : unescapeFunctionCall);
+    .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
 
   if (functionCalls.length === 0) {
     const textResponse =
