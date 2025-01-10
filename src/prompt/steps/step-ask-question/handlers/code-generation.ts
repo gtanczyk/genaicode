@@ -9,6 +9,11 @@ import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { updateFiles } from '../../../../files/update-files.js';
 
+export const CODEGEN_SUMMARY_GENERATED_MESSAGE =
+  'Codegen summary is generated. Would you like to proceed with the code changes?';
+
+export const CODEGEN_SUMMARY_APPROVED = 'Accept codegen summary and continue';
+
 export async function handleCodeGeneration({
   generateContentFn,
   generateImageFn,
@@ -78,8 +83,8 @@ export async function handleCodeGeneration({
 
     // Ask user to confirm the codegen summary
     const codegenSummaryConfirmation = await askUserForConfirmationWithAnswer(
-      'Codegen summary is generated. Would you like to proceed with the code changes?',
-      'Accept codegen summary and continue',
+      CODEGEN_SUMMARY_GENERATED_MESSAGE,
+      CODEGEN_SUMMARY_APPROVED,
       'Reject codegen summary and return to conversation',
       true,
     );
@@ -92,7 +97,7 @@ export async function handleCodeGeneration({
           {
             assistant: {
               type: 'assistant',
-              text: 'Codegen summary is generated. Would you like to proceed with the code changes?',
+              text: CODEGEN_SUMMARY_GENERATED_MESSAGE,
             },
             user: {
               type: 'user',
@@ -103,17 +108,17 @@ export async function handleCodeGeneration({
       };
     }
 
-    putAssistantMessage('Codegen summary is generated. Would you like to proceed with the code changes?');
-    putUserMessage(codegenSummaryConfirmation.answer || 'Accept codegen summary and continue');
+    putAssistantMessage(CODEGEN_SUMMARY_GENERATED_MESSAGE);
+    putUserMessage(codegenSummaryConfirmation.answer || CODEGEN_SUMMARY_APPROVED);
 
     prompt.push(
       {
         type: 'assistant',
-        text: 'Codegen summary is generated. Would you like to proceed with the code changes?',
+        text: CODEGEN_SUMMARY_GENERATED_MESSAGE,
       },
       {
         type: 'user',
-        text: codegenSummaryConfirmation.answer || 'Accept codegen summary and continue',
+        text: codegenSummaryConfirmation.answer || CODEGEN_SUMMARY_APPROVED,
       },
     );
 

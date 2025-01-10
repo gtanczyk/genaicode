@@ -315,10 +315,6 @@ describe.each([
         'optimizeContext',
         CONTEXT_OPTIMIZATION_TEMPERATURE,
         cheap,
-        {
-          aiService: 'ai-studio',
-          askQuestion: false,
-        },
       );
 
       console.log(JSON.stringify(optimizeContextCall.args, null, 2));

@@ -75,18 +75,7 @@ describe('codegen-summary', () => {
       ];
 
       // Call Claude Haikku with codegenSummary
-      let claudeResponse = await generateContentClaude(
-        prompt,
-        getFunctionDefs(),
-        'codegenPlanning',
-        temperature,
-        true,
-        {
-          aiService: 'anthropic',
-          disableCache: false,
-          askQuestion: false,
-        },
-      );
+      let claudeResponse = await generateContentClaude(prompt, getFunctionDefs(), 'codegenPlanning', temperature, true);
 
       // Get the codegenPlanning from response
       const codegenPlanning = claudeResponse.find((call) => call.name === 'codegenPlanning');
@@ -101,11 +90,7 @@ describe('codegen-summary', () => {
       });
 
       // Call Claude Haikku with codegenSummary
-      claudeResponse = await generateContentClaude(prompt, getFunctionDefs(), 'codegenSummary', temperature, true, {
-        aiService: 'anthropic',
-        disableCache: false,
-        askQuestion: false,
-      });
+      claudeResponse = await generateContentClaude(prompt, getFunctionDefs(), 'codegenSummary', temperature, true);
 
       // Get the codegenSummary from response
       const codegenSummary = claudeResponse.find((call) => call.name === 'codegenSummary');

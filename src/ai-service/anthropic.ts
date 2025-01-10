@@ -1,7 +1,6 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { getServiceConfig } from './service-configurations.js';
@@ -15,7 +14,7 @@ export async function generateContent(
   requiredFunctionName: string | null,
   temperature: number,
   cheap = false,
-  options: CodegenOptions,
+  options: { disableCache?: boolean } = {},
 ): Promise<FunctionCall[]> {
   try {
     const serviceConfig = getServiceConfig('anthropic');

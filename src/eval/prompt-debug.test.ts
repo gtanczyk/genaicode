@@ -26,10 +26,7 @@ describe('prompt-debug', () => {
       apiKey: process.env.API_KEY,
     });
     const geminiArgs = (
-      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, true, {
-        aiService: 'ai-studio',
-        askQuestion: false,
-      })
+      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, true)
     )[0].args;
 
     console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
@@ -42,7 +39,6 @@ describe('prompt-debug', () => {
       [
         ...req,
         {
-          aiService: 'openai',
           disableCache: false,
           askQuestion: false,
         },
@@ -82,7 +78,6 @@ describe('prompt-debug', () => {
       [
         ...req,
         {
-          aiService: 'vertex-ai-claude',
           disableCache: false,
           askQuestion: false,
         },
@@ -103,10 +98,7 @@ describe('prompt-debug', () => {
     });
 
     const geminiArgs = (
-      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, false, {
-        aiService: 'ai-studio',
-        askQuestion: false,
-      })
+      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
     )[0].args;
 
     console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
@@ -135,7 +127,6 @@ describe('prompt-debug', () => {
       [
         ...req,
         {
-          aiService: 'openai',
           disableCache: false,
           askQuestion: false,
         },
@@ -151,11 +142,7 @@ describe('prompt-debug', () => {
 
   it('Claude Sonnet', async () => {
     const claudeArgs = (
-      await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false, {
-        aiService: 'anthropic',
-        disableCache: false,
-        askQuestion: false,
-      })
+      await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
     )[0].args;
 
     console.log('CLAUDE', JSON.stringify(claudeArgs, null, 4));

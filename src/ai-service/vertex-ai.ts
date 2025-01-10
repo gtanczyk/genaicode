@@ -9,7 +9,6 @@ import {
   FunctionCallingMode,
 } from '@google-cloud/vertexai';
 import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
-import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
@@ -24,7 +23,7 @@ export async function generateContent(
   requiredFunctionName: string | null,
   temperature: number,
   cheap = false,
-  options: CodegenOptions,
+  options: { geminiBlockNone?: boolean } = {},
 ): Promise<FunctionCall[]> {
   try {
     // Limitation: https://github.com/googleapis/nodejs-vertexai/issues/143

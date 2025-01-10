@@ -12,6 +12,17 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-028] Create code-generation.test.ts test suite
+      Added a new test suite `code-generation.test.ts` in the `/src/eval/` directory to evaluate the `updateFile` function and how models generate file updates. The test suite includes test cases for different AI models (Gemini Flash, Claude Haikku, GPT-4 Mini) and verifies that the `updateFile` function is called correctly and the file content is updated as expected.
+      Created: 2024-01-09
+      Updated: 2024-01-09
+
+- [ ] [GEN-027] Implement Ask Question Test Suite
+      Added ask-question.test.ts in the /src/eval/ directory to test the ask-question functionality. Initial implementation includes two test cases: - Test handling of 'hello' prompt with sendMessage action type - Test handling of 'good bye' prompt with cancelCodeGeneration action type
+      The test suite follows the structure of context-optimization.test.ts and includes tests across multiple AI models (Gemini Flash, Claude Haikku, GPT-4 Mini).
+      Created: 2024-01-06
+      Updated: 2024-01-06
+
 - [ ] [GEN-026] Generate large variant of mock-source-code-summaries.ts dataset
       Created a new file named `mock-source-code-summaries-large.ts` in the `/Users/gtanczyk/src/codegen/src/eval/data/` directory. This file contains a large dataset of mock source code summaries representing a complex todo app, including components such as user authentication, task management, project organization, settings, and other related functionalities. Each entry in the dataset includes the file path, a brief description of the file's purpose, and a list of its dependencies.
       Created: 2024-01-06

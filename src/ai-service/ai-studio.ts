@@ -10,7 +10,6 @@ import {
 } from '@google/generative-ai';
 import assert from 'node:assert';
 import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
-import { CodegenOptions } from '../main/codegen-types.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
@@ -25,7 +24,7 @@ export async function generateContent(
   requiredFunctionName: string | null,
   temperature: number,
   cheap = false,
-  options: CodegenOptions,
+  options: { geminiBlockNone?: boolean } = {},
 ): Promise<FunctionCall[]> {
   const messages: Content[] = prompt
     .filter((item) => item.type === 'user' || item.type === 'assistant')
