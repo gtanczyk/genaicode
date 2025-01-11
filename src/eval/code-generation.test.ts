@@ -28,7 +28,18 @@ describe.each([
   { model: 'Claude Sonnet', generateContent: generateContentAnthropic },
   { model: 'GPT-4o', generateContent: generateContentOpenAI },
 ])('Code Generation: $model', ({ generateContent }) => {
-  it('should generate file updates correctly', async () => {
+  it.each([
+    {
+      name: 'simple code change',
+      userPrompt: 'I want to add a copy project feature to the application.',
+      contentMatcher: expect.stringContaining('copyProject('),
+    },
+    {
+      name: 'keep existing code',
+      userPrompt: 'add some jsdoc comments to the project-manager.ts file',
+      contentMatcher: expect.stringContaining('this.projects = this.projects.filter((p) => p !== project);'),
+    },
+  ])('$name', async ({ userPrompt, contentMatcher }) => {
     // Mock data for codegenPlanning and codegenSummary
     const codegenPlanning = {
       problemAnalysis: 'The user wants to add a new feature to the application.',
@@ -86,7 +97,7 @@ describe.each([
       },
       {
         type: 'user',
-        text: 'I want to add a copy project feature to the application.',
+        text: userPrompt,
       },
       {
         type: 'assistant',
@@ -152,6 +163,6 @@ describe.each([
     expect(updateFileCall?.args).toBeDefined();
     expect(updateFileCall?.args?.filePath).toBe('/project/src/main/project-manager.ts');
     expect(updateFileCall?.args?.newContent).toBeDefined();
-    expect(updateFileCall?.args?.newContent).not.toBe('');
+    expect(updateFileCall?.args?.newContent).toEqual(contentMatcher);
   });
 });
