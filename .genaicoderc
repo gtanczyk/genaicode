@@ -14,7 +14,8 @@
     "coverage",
     "package-lock.json",
     ".vscode",
-    "src/eval/data"
+    "src/eval/data",
+    "src/prompt-debug/current-prompt.js"
   ],
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {
@@ -38,7 +39,7 @@
     "./examples/genaicode_plugins/nonsense_action_handler.js",
     "./examples/genaicode_plugins/nonsense_operation.js",
     "./examples/genaicode_plugins/vitest_runner.js",
-    "./src/eval/current-prompt-plugin.js"
+    "./src/prompt-debug/current-prompt-plugin.js"
   ],
   "modelOverrides": {
     "aiStudio": {

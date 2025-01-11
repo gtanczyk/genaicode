@@ -5,7 +5,7 @@ import { generateContent as generateContentClaude } from '../ai-service/anthropi
 import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
-import { DEBUG_CURRENT_PROMPT } from './data/current-prompt';
+import { DEBUG_CURRENT_PROMPT } from './current-prompt';
 import { PromptItem } from '../ai-service/common';
 import { updateServiceConfig } from '../ai-service/service-configurations';
 

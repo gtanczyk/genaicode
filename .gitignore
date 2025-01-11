@@ -14,7 +14,7 @@ dist-ssr
 .husky
 coverage
 
-src/eval/data/current-prompt.js
+src/prompt-debug/current-prompt.js
 
 # Editor directories and files
 .vscode
