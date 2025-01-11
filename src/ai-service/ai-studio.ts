@@ -123,7 +123,7 @@ export async function generateContent(
   }
 
   const functionCalls = result.response.candidates
-    .map((candidate) => candidate.content.parts?.map((part) => part.functionCall))
+    .map((candidate) => candidate.content?.parts?.map((part) => part.functionCall))
     .flat()
     .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
     .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
@@ -132,7 +132,7 @@ export async function generateContent(
   if (functionCalls.length === 0) {
     const textResponse =
       result.response.candidates
-        .map((candidate) => candidate.content.parts?.map((part) => part.text))
+        .map((candidate) => candidate.content?.parts?.map((part) => part.text))
         .flat()
         .filter((text): text is string => !!text)[0] ??
       result.response.candidates.map((candidate) =>
