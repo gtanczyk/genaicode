@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { processFileUpdates } from './step-process-file-updates.js';
 import { FunctionCall, PromptItem, FunctionDef } from '../../ai-service/common.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
+import { CodegenOptions, CodegenSummaryArgs } from '../../main/codegen-types.js';
 import { getSourceCode } from '../../files/read-files.js';
 import fs from 'fs';
 import * as diff from 'diff';
@@ -77,7 +77,7 @@ describe('processFileUpdates', () => {
     askQuestion: false,
   };
 
-  const mockCodegenSummary: FunctionCall = {
+  const mockCodegenSummary: FunctionCall<CodegenSummaryArgs> = {
     name: 'codegenSummary',
     args: {
       explanation: 'Test explanation',
@@ -128,7 +128,7 @@ describe('processFileUpdates', () => {
   });
 
   it('should process multiple file updates', async () => {
-    const mockMultipleFilesSummary: FunctionCall = {
+    const mockMultipleFilesSummary: FunctionCall<CodegenSummaryArgs> = {
       name: 'codegenSummary',
       args: {
         explanation: 'Test multiple files',
@@ -166,7 +166,7 @@ describe('processFileUpdates', () => {
   });
 
   it('should handle image generation requests', async () => {
-    const mockImageSummary: FunctionCall = {
+    const mockImageSummary: FunctionCall<CodegenSummaryArgs> = {
       name: 'codegenSummary',
       args: {
         explanation: 'Test image generation',
@@ -210,7 +210,7 @@ describe('processFileUpdates', () => {
   });
 
   it('should handle patch file verification', async () => {
-    const mockPatchSummary: FunctionCall = {
+    const mockPatchSummary: FunctionCall<CodegenSummaryArgs> = {
       name: 'codegenSummary',
       args: {
         explanation: 'Test patch',
@@ -265,7 +265,7 @@ describe('processFileUpdates', () => {
   });
 
   it('should handle patch file verification failure and retry with updateFile', async () => {
-    const mockPatchSummary: FunctionCall = {
+    const mockPatchSummary: FunctionCall<CodegenSummaryArgs> = {
       name: 'codegenSummary',
       args: {
         explanation: 'Test patch',
