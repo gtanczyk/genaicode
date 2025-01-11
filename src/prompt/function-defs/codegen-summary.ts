@@ -6,12 +6,13 @@ import { getRegisteredOperations } from '../../main/plugin-loader.js';
  */
 export const getCodegenSummaryDef = (): FunctionDef => ({
   name: 'codegenSummary',
-  description:
-    'This function is called with a summary of proposed updates.\n' +
-    '- `explanation`: A general explanation of the planned code generation updates or reasoning for no code changes.\n' +
-    '- `fileUpdates`: A list of proposed file updates, including all affected files and dependencies.\n' +
-    '- `contextPaths`: A list of file paths that make sense to use as context for code generation requests.\n' +
-    'It is critically important to adhere to the schema of parameters and include all relevant files.',
+  description: `This function is called with a summary of proposed updates.
+- \`explanation\`: A general explanation of the planned code generation updates or reasoning for no code changes.
+- \`fileUpdates\`: A list of proposed file updates, including all affected files and dependencies.
+- \`contextPaths\`: A list of file paths that make sense to use as context for code generation requests.
+
+It is critically important to adhere to the schema of parameters and include all relevant files.
+When generating the codegen summary, the assitant will make use of preceding \`codegenPlanning\` function call.`,
   parameters: {
     type: 'object',
     properties: {
@@ -36,6 +37,10 @@ export const getCodegenSummaryDef = (): FunctionDef => ({
               type: 'string',
               description:
                 'An absolute path of the project file that will be updated. This must be an absolute file path.',
+            },
+            updateToolReasoning: {
+              type: 'string',
+              description: 'Step by step reasoning for choosing the update tool.',
             },
             updateToolName: {
               type: 'string',

@@ -71,7 +71,16 @@ describe.each([
         type: 'systemPrompt',
         systemPrompt: getSystemPrompt(
           { rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR },
-          { askQuestion: true, ui: true },
+          {
+            askQuestion: true,
+            ui: true,
+            allowFileCreate: true,
+            allowFileDelete: true,
+            allowDirectoryCreate: true,
+            allowFileMove: true,
+            vision: true,
+            imagen: 'vertex-ai',
+          },
         ),
       },
 

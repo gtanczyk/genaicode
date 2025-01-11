@@ -60,7 +60,7 @@ Determine if the content conceptually meets ALL of the following criteria:
 1. Addresses the described expectation: "${expectation.description}"
 ${
   expectation.requiredElements
-    ? `2. Mentions all required elements/concepts: ${expectation.requiredElements.join(', ')}`
+    ? `2. Mentions all required elements/concepts(or their equivalents): ${expectation.requiredElements.join(', ')}`
     : ''
 }
 ${

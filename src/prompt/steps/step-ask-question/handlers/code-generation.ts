@@ -67,7 +67,7 @@ export async function handleCodeGeneration({
 
   const userItem = {
     type: 'user',
-    text: planningConfirmation.answer || 'Accept planning and continue',
+    text: 'Accept planning and continue.' + (planningConfirmation.answer ? `\n\n${planningConfirmation.answer}` : ''),
   } as const;
   putUserMessage(userItem.text, undefined, undefined, undefined, userItem);
   prompt.push(userItem);

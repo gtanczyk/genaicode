@@ -272,7 +272,19 @@ describe.each([
       const prompt: PromptItem[] = [
         {
           type: 'systemPrompt',
-          systemPrompt: getSystemPrompt({ rootDir }, { askQuestion: true, ui: true }),
+          systemPrompt: getSystemPrompt(
+            { rootDir },
+            {
+              askQuestion: true,
+              ui: true,
+              allowFileCreate: true,
+              allowFileDelete: true,
+              allowDirectoryCreate: true,
+              allowFileMove: true,
+              vision: true,
+              imagen: 'vertex-ai',
+            },
+          ),
         },
         { type: 'user', text: INITIAL_GREETING },
         {

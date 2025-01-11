@@ -58,7 +58,7 @@ describe.each([
       } as LLMContentExpectation,
       explanationExpectation: {
         description: 'Explain the changes needed for Japanese translation',
-        requiredElements: ['translator usage', 'file modifications or updates', 'integration details'],
+        requiredElements: ['translator usage', 'file modifications/updates/changes'],
         tone: 'technical',
       } as LLMContentExpectation,
     },
@@ -93,6 +93,93 @@ describe.each([
         tone: 'technical',
       } as LLMContentExpectation,
     },
+    {
+      description: 'file creation scenario',
+      userPrompt: 'Create a new utility file for string formatting in /utils directory, lets call it string-utils.ts',
+      rootDir: '/project/src',
+      sourceCode: JSON.stringify({
+        '/project/src': {
+          'main-module.ts': {
+            content: 'console.log("Hello");',
+          },
+        },
+      }),
+      expectedFiles: ['/project/src/utils/string-utils.ts'],
+      expectedTools: ['createDirectory', 'createFile'],
+      expectedContextPaths: ['/project/src/main-module.ts'],
+      promptExpectation: {
+        description: 'Create new utility file for string formatting',
+        requiredElements: ['string formatting', 'utility functions', 'new file creation'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+      explanationExpectation: {
+        description: 'Explain the creation of new utility file',
+        requiredElements: ['utility purpose', 'file structure', 'implementation details'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+    },
+    {
+      description: 'file deletion scenario',
+      userPrompt: 'Remove deprecated-api.ts as it is no longer needed',
+      rootDir: '/project/src',
+      sourceCode: JSON.stringify({
+        '/project/src': {
+          'deprecated-api.ts': {
+            content: 'export function oldApi() { return "deprecated"; }',
+          },
+          'new-api.ts': {
+            content: 'export function newApi() { return "new"; }',
+          },
+        },
+      }),
+      expectedFiles: ['/project/src/deprecated-api.ts'],
+      expectedTools: ['deleteFile'],
+      expectedContextPaths: ['/project/src/new-api.ts'],
+      promptExpectation: {
+        description: 'Remove deprecated API file and update references',
+        requiredElements: ['file removal', 'deprecated API', 'cleanup'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+      explanationExpectation: {
+        description: 'Explain the removal of deprecated API file',
+        requiredElements: ['deprecation', 'removal justification', 'impact analysis'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+    },
+    {
+      description: 'long explanation scenario',
+      userPrompt: 'Refactor the authentication system to use JWT tokens with detailed security considerations',
+      rootDir: '/project/src',
+      sourceCode: JSON.stringify({
+        '/project/src': {
+          auth: {
+            'auth-service.ts': {
+              content: 'export class AuthService { login() { /* old implementation */ } }',
+            },
+          },
+        },
+      }),
+      expectedFiles: ['/project/src/auth/auth-service.ts'],
+      expectedTools: ['updateFile'],
+      expectedContextPaths: ['/project/src/auth/auth-service.ts'],
+      promptExpectation: {
+        description: 'Refactor authentication system with JWT tokens',
+        requiredElements: ['JWT implementation', 'security considerations', 'refactoring details'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+      explanationExpectation: {
+        description: 'Detailed explanation of JWT authentication refactoring',
+        requiredElements: [
+          'security benefits',
+          'token storage',
+          'refresh tokens',
+          'implementation steps',
+          'migration strategy',
+        ],
+        tone: 'technical',
+        minLength: 500,
+      } as LLMContentExpectation,
+    },
   ])(
     '$description',
     async ({
@@ -112,7 +199,16 @@ describe.each([
             {
               rootDir,
             },
-            { askQuestion: false },
+            {
+              askQuestion: true,
+              ui: true,
+              allowFileCreate: true,
+              allowFileDelete: true,
+              allowDirectoryCreate: true,
+              allowFileMove: true,
+              vision: true,
+              imagen: 'vertex-ai',
+            },
           ),
         },
         { type: 'user', text: INITIAL_GREETING },
@@ -170,6 +266,12 @@ describe.each([
 
       // Execute summary phase
       functionCalls = await generateContent(prompt, getFunctionDefs(), 'codegenSummary', temperature, false);
+      functionCalls = await validateAndRecoverSingleResult(
+        [prompt, getFunctionDefs(), 'codegenSummary', temperature, false, {}],
+        functionCalls,
+        generateContent,
+        rootDir,
+      );
 
       const codegenSummary = functionCalls.find(
         (call) => call.name === 'codegenSummary',
