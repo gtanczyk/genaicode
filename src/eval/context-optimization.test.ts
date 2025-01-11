@@ -272,7 +272,7 @@ describe.each([
       const prompt: PromptItem[] = [
         {
           type: 'systemPrompt',
-          systemPrompt: getSystemPrompt({ rootDir }, { aiService: 'ai-studio', askQuestion: true, ui: true }),
+          systemPrompt: getSystemPrompt({ rootDir }, { askQuestion: true, ui: true }),
         },
         { type: 'user', text: INITIAL_GREETING },
         {

@@ -2,12 +2,12 @@ import { Validator, ValidatorResult, Schema, ValidationError } from 'jsonschema'
 import path from 'path';
 import { FunctionDef, FunctionCall } from '../ai-service/common.js';
 import { getFunctionDefs } from './function-calling.js';
-import { rcConfig } from '../main/config.js';
 
 export function validateFunctionCall(
   call: FunctionCall | undefined,
   requiredFunctionName: string,
   calls: FunctionCall[],
+  rootDir: string,
 ): Omit<ValidatorResult, 'addError'> | undefined {
   const validator = new Validator();
   const functionDef: FunctionDef | undefined = getFunctionDefs().find((def) => def.name === call?.name);
@@ -48,7 +48,7 @@ export function validateFunctionCall(
   }
 
   // Step 4: Validate file paths
-  const filePathValidationError = validateFilePaths(call);
+  const filePathValidationError = validateFilePaths(call, rootDir);
   if (filePathValidationError) {
     return filePathValidationError;
   }
@@ -56,8 +56,8 @@ export function validateFunctionCall(
   return undefined;
 }
 
-function validateFilePaths(call: FunctionCall) {
-  const rootDir = path.normalize(rcConfig.rootDir);
+function validateFilePaths(call: FunctionCall, rootDir: string) {
+  rootDir = path.normalize(rootDir);
 
   function checkPaths(obj: unknown, parentKey: string = ''): ValidationError[] {
     const errors: ValidationError[] = [];

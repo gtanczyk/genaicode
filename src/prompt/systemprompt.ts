@@ -5,7 +5,7 @@ import { RcConfig } from '../main/config-types.js';
 /** Generates a system prompt with the codegen prompt merged */
 export function getSystemPrompt(
   { rootDir, importantContext }: Pick<RcConfig, 'rootDir' | 'importantContext'>,
-  options: CodegenOptions,
+  options: Omit<CodegenOptions, 'aiService'>,
 ) {
   const {
     verbose,
@@ -34,7 +34,7 @@ Please limit any changes to the root directory of my application, which is \`${r
 - **Use Absolute Paths**: Always use absolute file paths exactly as provided.
 - **Return Working Code**: Aim to return fully functional code.
 - **Avoid Incomplete Code Snippets**: Do not include commented-out fragments like \`// ... (keep other existing functions)\`.
-- **Handle Large Files Appropriately**: For large files, prefer to use the \`patchFile\` function.
+- **Handle Large Files Appropriately**: For large files, prefer to use the \`patchFile\` function, otherwise use \`updateFile\` for small files.
 - **Suggest File Splitting When Relevant**: Suggest splitting large files if it improves maintainability.
 - **Verify Permissions**: Ensure you have the necessary permissions before proceeding.
 - **Error Handling**: If instructions are unclear, consider failing the task with an explanation.

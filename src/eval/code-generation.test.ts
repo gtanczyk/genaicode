@@ -71,7 +71,7 @@ describe.each([
         type: 'systemPrompt',
         systemPrompt: getSystemPrompt(
           { rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR },
-          { aiService: 'ai-studio', askQuestion: true, ui: true },
+          { askQuestion: true, ui: true },
         ),
       },
 

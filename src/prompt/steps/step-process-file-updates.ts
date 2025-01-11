@@ -8,7 +8,7 @@ import {
   PromptImageMediaType,
   PromptItem,
 } from '../../ai-service/common.js';
-import { CodegenOptions, FileUpdate } from '../../main/codegen-types.js';
+import { CodegenOptions, CodegenSummaryArgs, FileUpdate } from '../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
@@ -27,7 +27,7 @@ export async function processFileUpdates(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
-  codegenSummaryRequest: FunctionCall,
+  codegenSummaryRequest: FunctionCall<CodegenSummaryArgs>,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
   generateImageFn?: GenerateImageFunction,
 ): Promise<FunctionCall[]> {

@@ -34,7 +34,7 @@ describe('Prompt Limits', () => {
 
     it('should throw for source code exceeding the limit', () => {
       const invalidSourceCode = 'C '.repeat(400001);
-      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow('Token limit exceeded: 260001 > 110000');
+      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow('Token limit exceeded: 260001 > 150000');
     });
   });
 });

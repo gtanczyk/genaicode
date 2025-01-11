@@ -1,5 +1,5 @@
 import { FunctionCall, FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
-import { CodegenOptions } from '../../main/codegen-types.js';
+import { CodegenOptions, CodegenSummaryArgs } from '../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
@@ -17,7 +17,7 @@ export async function generateCodegenSummary(
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<{
-  codegenSummaryRequest: FunctionCall;
+  codegenSummaryRequest: FunctionCall<CodegenSummaryArgs>;
   baseResult: FunctionCall[];
 }> {
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
@@ -31,7 +31,9 @@ export async function generateCodegenSummary(
 
   let baseResult = await generateContentFn(...baseRequest);
   baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
-  const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary');
+  const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary') as
+    | FunctionCall<CodegenSummaryArgs>
+    | undefined;
 
   if (!codegenSummaryRequest) {
     // This is unexpected, if happens probably means no code updates.

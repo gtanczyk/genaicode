@@ -72,6 +72,13 @@ export type CodegenPlanningArgs = {
   }[];
 };
 
+/** Arguments for codegen summary function call */
+export type CodegenSummaryArgs = {
+  explanation: string;
+  contextPaths: string[];
+  fileUpdates: FileUpdate[];
+};
+
 /** Arguments of the codegen execution function call */
 export interface FileUpdate {
   filePath: string;

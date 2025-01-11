@@ -1,11 +1,13 @@
 import assert from 'node:assert';
 import { FunctionCall, GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
+import { rcConfig } from '../../main/config.js';
 
 export async function validateAndRecoverSingleResult(
   [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: GenerateContentArgs,
   result: FunctionCall[],
   generateContentFn: GenerateContentFunction,
+  rootDir: string = rcConfig.rootDir,
 ): Promise<FunctionCall[]> {
   if (!requiredFunctionName) {
     // quite unexpected
@@ -13,7 +15,7 @@ export async function validateAndRecoverSingleResult(
   }
 
   let call: FunctionCall | undefined = result[0];
-  const validatorError = validateFunctionCall(call, requiredFunctionName, result);
+  const validatorError = validateFunctionCall(call, requiredFunctionName, result, rootDir);
   if (validatorError) {
     console.log('Invalid function call', call, validatorError);
     if (!call) {
@@ -49,11 +51,11 @@ export async function validateAndRecoverSingleResult(
     console.log('Recover result:', result);
 
     if (result?.length === 1) {
-      let recoveryError = validateFunctionCall(result[0], requiredFunctionName, result);
+      let recoveryError = validateFunctionCall(result[0], requiredFunctionName, result, rootDir);
       if (recoveryError) {
         console.log("Use more expensive recovery method, because we couldn't recover.");
         result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
-        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName, result);
+        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName, result, rootDir);
         assert(!recoveryError, 'Recovery failed');
       }
       console.log('Recovery was successful');
