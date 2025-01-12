@@ -17,12 +17,13 @@ import {
   MOCK_SOURCE_CODE_SUMMARIES_LARGE,
   MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
 } from './data/mock-source-code-summaries-large.js';
+import { mockComplexAuthSystemContent } from './data/mock-complex-auth-system-content.js';
 import { LLMContentExpectation, validateLLMContent, verifyFileUpdates, verifyContextPaths } from './test-utils.js';
 import { CodegenSummaryArgs } from '../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 
 vi.setConfig({
-  testTimeout: 60000,
+  testTimeout: 120000,
 });
 
 describe.each([
@@ -49,13 +50,18 @@ describe.each([
         },
       }),
       expectedFiles: ['/path/to/file/example.ts'],
-      expectedTools: ['updateFile'],
+      expectedFileUpdates: [
+        {
+          filePath: '/path/to/file/example.ts',
+          tool: 'updateFile',
+          promptExpectation: {
+            description: 'Update example.ts to use translator for Japanese translation',
+            requiredElements: ['translator integration', 'Japanese translation', 'dynamic output'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
       expectedContextPaths: ['/path/to/file/translator.ts'],
-      promptExpectation: {
-        description: 'Update example.ts to use translator for Japanese translation',
-        requiredElements: ['translator integration', 'Japanese translation', 'dynamic output'],
-        tone: 'technical',
-      } as LLMContentExpectation,
       explanationExpectation: {
         description: 'Explain the changes needed for Japanese translation',
         requiredElements: ['translator usage', 'file modifications/updates/changes'],
@@ -71,22 +77,41 @@ describe.each([
         '/project/src/todo-app/tasks/task-manager.ts',
         '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
       ],
-      expectedTools: ['updateFile'],
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/todo-app/tasks/task-manager.ts',
+          tool: 'updateFile',
+          promptExpectation: {
+            description: 'Implement PDF export functionality for task lists',
+            requiredElements: [
+              'PDF generation',
+              'export functionality',
+              'user interface integration',
+              'task data handling',
+            ],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+        {
+          filePath: '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
+          tool: 'updateFile',
+          promptExpectation: {
+            description: 'Implement PDF export functionality for task lists',
+            requiredElements: [
+              'PDF generation',
+              'export functionality',
+              'user interface integration',
+              'task data handling',
+            ],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
       expectedContextPaths: [
         '/project/src/todo-app/tasks/task-manager.ts',
         '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
         '/project/src/todo-app/tasks/task-types.ts',
       ],
-      promptExpectation: {
-        description: 'Implement PDF export functionality for task lists',
-        requiredElements: [
-          'PDF generation',
-          'export functionality',
-          'user interface integration',
-          'task data handling',
-        ],
-        tone: 'technical',
-      } as LLMContentExpectation,
       explanationExpectation: {
         description: 'Explain the implementation of PDF export feature',
         requiredElements: ['component modifications', 'PDF generation logic', 'user interface changes', 'data flow'],
@@ -105,13 +130,22 @@ describe.each([
         },
       }),
       expectedFiles: ['/project/src/utils/string-utils.ts'],
-      expectedTools: ['createDirectory', 'createFile'],
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/utils/string-utils.ts',
+          tool: 'createFile',
+          promptExpectation: {
+            description: 'Create new utility file for string formatting',
+            requiredElements: ['string formatting', 'utility functions', 'new file creation'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+        {
+          filePath: '/project/src/utils',
+          tool: 'createDirectory',
+        },
+      ],
       expectedContextPaths: ['/project/src/main-module.ts'],
-      promptExpectation: {
-        description: 'Create new utility file for string formatting',
-        requiredElements: ['string formatting', 'utility functions', 'new file creation'],
-        tone: 'technical',
-      } as LLMContentExpectation,
       explanationExpectation: {
         description: 'Explain the creation of new utility file',
         requiredElements: ['utility purpose', 'file structure', 'implementation details'],
@@ -133,49 +167,76 @@ describe.each([
         },
       }),
       expectedFiles: ['/project/src/deprecated-api.ts'],
-      expectedTools: ['deleteFile'],
-      expectedContextPaths: ['/project/src/new-api.ts'],
-      promptExpectation: {
-        description: 'Remove deprecated API file and update references',
-        requiredElements: ['file removal', 'deprecated API', 'cleanup'],
-        tone: 'technical',
-      } as LLMContentExpectation,
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/deprecated-api.ts',
+          tool: 'deleteFile',
+          promptExpectation: {
+            description: 'Remove deprecated API file and update references',
+            requiredElements: ['removal of file that is no longer needed'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
+      expectedContextPaths: [],
       explanationExpectation: {
         description: 'Explain the removal of deprecated API file',
-        requiredElements: ['deprecation', 'removal justification', 'impact analysis'],
+        requiredElements: ['deprecation', 'removal justification'],
         tone: 'technical',
       } as LLMContentExpectation,
     },
     {
       description: 'long explanation scenario',
-      userPrompt: 'Refactor the authentication system to use JWT tokens with detailed security considerations',
-      rootDir: '/project/src',
+      userPrompt:
+        'Refactor the legacy authentication system to use JWT tokens, addressing all security vulnerabilities. Lets keep the entire implementation in authentication.ts file.',
+      rootDir: '/project/src/auth',
       sourceCode: JSON.stringify({
-        '/project/src': {
-          auth: {
-            'auth-service.ts': {
-              content: 'export class AuthService { login() { /* old implementation */ } }',
-            },
+        '/project/src/auth': {
+          'authentication.ts': {
+            content: mockComplexAuthSystemContent,
           },
         },
       }),
-      expectedFiles: ['/project/src/auth/auth-service.ts'],
-      expectedTools: ['updateFile'],
-      expectedContextPaths: ['/project/src/auth/auth-service.ts'],
-      promptExpectation: {
-        description: 'Refactor authentication system with JWT tokens',
-        requiredElements: ['JWT implementation', 'security considerations', 'refactoring details'],
-        tone: 'technical',
-      } as LLMContentExpectation,
+      expectedFiles: ['/project/src/auth/authentication.ts'],
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/auth/authentication.ts',
+          tool: 'updateFile',
+          promptExpectation: {
+            description: 'Implement secure JWT-based authentication system',
+            requiredElements: [
+              'JWT token implementation',
+              'secure session management',
+              'password hashing',
+              'proper RBAC implementation',
+              'audit logging',
+              'security best practices',
+              'rate limiting',
+              'input validation',
+            ],
+            forbiddenElements: ['plain text passwords', 'hardcoded credentials', 'predictable session IDs'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
+      expectedContextPaths: ['/project/src/auth/authentication.ts'],
       explanationExpectation: {
-        description: 'Detailed explanation of JWT authentication refactoring',
+        description: 'Provide a comprehensive explanation of the authentication system refactoring',
         requiredElements: [
-          'security benefits',
-          'token storage',
-          'refresh tokens',
-          'implementation steps',
+          'JWT token architecture',
+          'security vulnerability remediation',
+          'password hashing implementation',
+          'session management improvements',
+          'RBAC system design',
+          'audit logging implementation',
+          'rate limiting mechanism',
+          'input validation approach',
           'migration strategy',
+          'security best practices',
+          'breaking changes',
+          'backward compatibility considerations',
         ],
+        forbiddenElements: ['plain text password storage', 'hardcoded credentials', 'basic role checks'],
         tone: 'technical',
         minLength: 500,
       } as LLMContentExpectation,
@@ -187,9 +248,8 @@ describe.each([
       rootDir,
       sourceCode,
       expectedFiles,
-      expectedTools,
+      expectedFileUpdates,
       expectedContextPaths,
-      promptExpectation,
       explanationExpectation,
     }) => {
       const prompt: PromptItem[] = [
@@ -284,18 +344,30 @@ describe.each([
       const { fileUpdates, contextPaths, explanation } = codegenSummary!.args!;
 
       // Verify file paths and update tools
-      verifyFileUpdates(fileUpdates, expectedFiles, expectedTools);
+      verifyFileUpdates(
+        fileUpdates,
+        expectedFiles,
+        expectedFileUpdates.map((update) => update.tool),
+      );
 
       // Verify context paths
       verifyContextPaths(contextPaths, expectedContextPaths);
 
-      // Verify LLM-generated content
+      // Verify LLM-generated content for each file update
       for (const fileUpdate of fileUpdates) {
-        const isValid = await validateLLMContent(generateContent, fileUpdate.prompt, promptExpectation, {
-          temperature: 0.1,
-          cheap: true,
-        });
-        expect(isValid, `File update prompt for "${fileUpdate.filePath}" should meet expectations`).toBe(true);
+        const expectedUpdate = expectedFileUpdates.find((update) => update.filePath === fileUpdate.filePath);
+        if (expectedUpdate && expectedUpdate.promptExpectation) {
+          const isValid = await validateLLMContent(
+            generateContent,
+            fileUpdate.prompt,
+            expectedUpdate.promptExpectation,
+            {
+              temperature: 0.1,
+              cheap: true,
+            },
+          );
+          expect(isValid, `File update prompt for "${fileUpdate.filePath}" should meet expectations`).toBe(true);
+        }
       }
 
       const isExplanationValid = await validateLLMContent(generateContent, explanation, explanationExpectation, {

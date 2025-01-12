@@ -7,7 +7,8 @@ export const createFileDef: FunctionDef = {
   name: 'createFile',
   description: `Create a new file with specified content. The file will be created inside of project folder structure.    
     - This tool should not be used of creation of image files
-    - Use this tool for file paths that are not yet present in the project (not added to any getSourceCode function call in the conversation context)`,
+    - Use this tool for file paths that are not yet present in the project (not added to any getSourceCode function call in the conversation context)
+    - CAUTION: this tool does not create directories, \`createDirectory\` tool should be used for that purpose.`,
   parameters: {
     type: 'object',
     properties: {

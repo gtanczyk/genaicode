@@ -7,7 +7,7 @@ import { getRegisteredOperations } from '../../main/plugin-loader.js';
 export const getCodegenSummaryDef = (): FunctionDef => ({
   name: 'codegenSummary',
   description: `This function is called with a summary of proposed updates.
-- \`explanation\`: A general explanation of the planned code generation updates or reasoning for no code changes.
+- \`explanation\`: A step by step explanation of the planned code generation updates or reasoning for no code changes.
 - \`fileUpdates\`: A list of proposed file updates, including all affected files and dependencies.
 - \`contextPaths\`: A list of file paths that make sense to use as context for code generation requests.
 
@@ -18,11 +18,12 @@ When generating the codegen summary, the assitant will make use of preceding \`c
     properties: {
       explanation: {
         type: 'string',
-        description: 'A brief description of the planned changes or an explanation if no changes are proposed.',
+        description: 'A step by step description of the planned changes or an explanation if no changes are proposed.',
       },
       fileUpdates: {
         type: 'array',
-        description: 'An array of proposed file updates, each update is an object with several properties.',
+        description: `An array of proposed file updates, each update is an object with several properties.
+The file updates are consquence of the code generation planning step.`,
         items: {
           type: 'object',
           description:
@@ -31,7 +32,7 @@ When generating the codegen summary, the assitant will make use of preceding \`c
             prompt: {
               type: 'string',
               description:
-                'A detailed prompt that will be passed to the model request together with the tool request. It summarizes the planned changes for this particular file.',
+                'A detailed prompt that will be passed to the model request together with the tool request. It should be detailed as much as possible.',
             },
             filePath: {
               type: 'string',
@@ -82,10 +83,13 @@ When generating the codegen summary, the assitant will make use of preceding \`c
           required: ['prompt', 'filePath', 'updateToolName'],
         },
       },
+      contextPathsReasoning: {
+        type: 'string',
+        description: 'A step by step explanation of the reasoning behind selecting the context paths.',
+      },
       contextPaths: {
         type: 'array',
-        description:
-          'An array of absolute file paths that should be used to provide context for the following updates. These could be dependencies or files that depend on the files to be updated.',
+        description: 'An array of absolute file paths that should be used to provide context for file updates.',
         items: {
           type: 'string',
         },
