@@ -52,8 +52,8 @@ export type GenerateContentArgs = [
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap: boolean,
-  options: Partial<CodegenOptions>,
+  cheap?: boolean,
+  options?: Partial<CodegenOptions>,
 ];
 
 export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<FunctionCall[]>;

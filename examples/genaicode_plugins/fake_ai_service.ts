@@ -14,7 +14,7 @@ const fakeAiService: Plugin = {
   // Example implementation of generateContent hooks
   generateContentHook: async (args, result): Promise<void> => {
     const [, , , , , options] = args;
-    if (options.aiService === 'plugin:fake-ai-service') {
+    if (options?.aiService === 'plugin:fake-ai-service') {
       console.log('Nonsense Plugin - generateContent hook executed with args:', {
         args,
         result,
