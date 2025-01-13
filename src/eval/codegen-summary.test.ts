@@ -18,7 +18,9 @@ import {
   MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
 } from './data/mock-source-code-summaries-large.js';
 import { mockComplexAuthSystemContent } from './data/mock-complex-auth-system-content.js';
-import { LLMContentExpectation, validateLLMContent, verifyFileUpdates, verifyContextPaths } from './test-utils.js';
+import { LLMContentExpectation, verifyFileUpdates, verifyContextPaths } from './test-utils/file-updates-verify.js';
+import { validateLLMContent } from './test-utils/llm-content-validate.js';
+import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { CodegenSummaryArgs } from '../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 
@@ -32,6 +34,7 @@ describe.each([
   { model: 'GPT-4o', generateContent: generateContentOpenAI },
 ])('codegen-summary: $model', ({ generateContent }) => {
   const temperature = 0.7;
+  generateContent = retryGenerateContent(generateContent);
 
   it.each([
     {

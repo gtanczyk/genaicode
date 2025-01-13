@@ -1,3 +1,5 @@
+import fs from 'fs';
+import mime from 'mime-types';
 import { describe, it, expect, vi } from 'vitest';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
@@ -10,10 +12,12 @@ import {
 } from '../prompt/static-prompts.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { PromptItem } from '../ai-service/common.js';
+import { PromptImageMediaType, PromptItem } from '../ai-service/common.js';
 import { ActionType } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summaries-large.js';
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
+import { retryGenerateContent } from './test-utils/generate-content-retry.js';
+import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -22,8 +26,10 @@ vi.setConfig({
 describe.each([
   { model: 'Gemini Flash', generateContent: generateContentAiStudio, cheap: true },
   { model: 'Claude Haikku', generateContent: generateContentAnthropic, cheap: true },
-  { model: 'GPT-4 Mini', generateContent: generateContentOpenAI, cheap: true },
+  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, cheap: true },
 ])('Ask Question: $model', ({ generateContent, cheap }) => {
+  generateContent = retryGenerateContent(generateContent);
+
   it.each([
     {
       name: 'hello prompt',
@@ -36,7 +42,7 @@ describe.each([
     {
       name: 'good bye prompt',
       userMessage: 'good bye',
-      expectedActionType: 'cancelCodeGeneration' as ActionType,
+      expectedActionType: 'endConversation' as ActionType,
       expectedMessageContent: expect.stringContaining('bye'),
       sourceCodeTree: {},
       promptPrefix: [],
@@ -88,6 +94,49 @@ describe.each([
         },
       ] as PromptItem[],
     },
+    {
+      name: 'generate an image',
+      userMessage:
+        'can you generate a background image for my website? it should blue background with sun and clouds and 1024x1024 dimensions',
+      expectedActionType: 'generateImage' as ActionType,
+      expectedMessageContent: expect.stringContaining('background image'),
+      promptPrefix: [],
+    },
+    {
+      name: 'analyze an image',
+      expectedActionType: 'sendMessage' as ActionType,
+      expectedMessageContent: expect.stringContaining('star'),
+      promptPrefix: [
+        {
+          type: 'user',
+          text: 'what do you see on this image',
+          images: [
+            {
+              base64url: fs.readFileSync('./src/eval/data/testimage.png', 'base64'),
+              mediaType: (mime.lookup('./src/eval/data/testimage.png') || '') as PromptImageMediaType,
+            },
+          ],
+        },
+      ] as PromptItem[],
+    },
+
+    {
+      name: 'count objects on an image',
+      expectedActionType: 'sendMessage' as ActionType,
+      expectedMessageContent: expect.stringContaining('star'),
+      promptPrefix: [
+        {
+          type: 'user',
+          text: 'count stars this image',
+          images: [
+            {
+              base64url: fs.readFileSync('./src/eval/data/testimage.png', 'base64'),
+              mediaType: (mime.lookup('./src/eval/data/testimage.png') || '') as PromptImageMediaType,
+            },
+          ],
+        },
+      ] as PromptItem[],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
@@ -128,19 +177,22 @@ describe.each([
         text: READY_TO_ASSIST,
       },
       ...promptPrefix,
-      {
-        type: 'user',
-        text: userMessage,
-      },
     ];
 
+    if (userMessage) {
+      prompt.push({
+        type: 'user',
+        text: userMessage,
+      });
+    }
+
     // Execute ask question step
-    const [askQuestionCall] = await generateContent(
-      prompt,
-      getFunctionDefs(),
-      'askQuestion',
-      0.2, // Low temperature for consistent results
-      cheap,
+    const temperature = 0.2;
+    const result = await generateContent(prompt, getFunctionDefs(), 'askQuestion', temperature, cheap);
+    const [askQuestionCall] = await validateAndRecoverSingleResult(
+      [prompt, getFunctionDefs(), 'askQuestion', temperature, cheap],
+      result,
+      generateContent,
     );
 
     // Log the askQuestion call for debugging

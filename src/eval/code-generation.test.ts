@@ -18,6 +18,7 @@ import {
   CODEGEN_SUMMARY_GENERATED_MESSAGE,
 } from '../prompt/steps/step-ask-question/handlers/code-generation.js';
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
+import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -28,6 +29,8 @@ describe.each([
   { model: 'Claude Sonnet', generateContent: generateContentAnthropic },
   { model: 'GPT-4o', generateContent: generateContentOpenAI },
 ])('Code Generation: $model', ({ generateContent }) => {
+  generateContent = retryGenerateContent(generateContent);
+
   it.each([
     {
       name: 'simple code change',

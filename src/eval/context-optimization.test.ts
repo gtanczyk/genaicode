@@ -21,6 +21,7 @@ import {
 } from './data/mock-source-code-summaries-large.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
+import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -31,6 +32,8 @@ describe.each([
   { model: 'Claude Haikku', generateContent: generateContentAnthropic, cheap: true },
   { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, cheap: true },
 ])('Context optimization: $model', ({ generateContent, cheap }) => {
+  generateContent = retryGenerateContent(generateContent);
+
   it.each([
     {
       dataset: 'small, math module',
