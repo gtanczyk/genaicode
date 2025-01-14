@@ -1,11 +1,12 @@
 import { askUserForInput } from '../../../../main/common/user-actions.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
-import { ActionHandlerProps, ActionResult, SendMessageWithImageArgs } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult, GenerateImageArgs } from '../step-ask-question-types.js';
 import { executeStepGenerateImage } from '../../step-generate-image.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common.js';
+import { getTempBuffer } from '../../../../files/temp-buffer.js';
 
-export async function handleSendMessageWithImage({
+export async function handleGenerateImage({
   askQuestionCall,
   options,
   generateContentFn,
@@ -20,7 +21,7 @@ export async function handleSendMessageWithImage({
     };
   }
 
-  const [sendMessageWithImageCall] = (await generateContentFn(
+  const [generateImageCall] = (await generateContentFn(
     [
       ...prompt,
       {
@@ -33,13 +34,13 @@ export async function handleSendMessageWithImage({
       },
     ],
     getFunctionDefs(),
-    'sendMessageWithImage',
+    'generateImage',
     0.7,
     true,
     options,
-  )) as [FunctionCall<SendMessageWithImageArgs> | undefined];
+  )) as [FunctionCall<GenerateImageArgs> | undefined];
 
-  if (!sendMessageWithImageCall) {
+  if (!generateImageCall?.args) {
     return {
       breakLoop: true,
       items: [],
@@ -47,8 +48,7 @@ export async function handleSendMessageWithImage({
   }
 
   // Get the image generation request from the args
-  const imageGenerationRequest = sendMessageWithImageCall.args;
-  if (!imageGenerationRequest?.prompt) {
+  if (!generateImageCall.args.prompt) {
     putSystemMessage('Image generation request with prompt is required for sendMessageWithImage action.');
     return {
       breakLoop: true,
@@ -57,21 +57,7 @@ export async function handleSendMessageWithImage({
   }
 
   // Create a temporary file path for the generated image
-  const tempImagePath = `/tmp/question-image-${Date.now()}.png`;
-
-  // Generate the image using generateImage function call
-  const generateImageCall = {
-    id: 'generate_image_' + sendMessageWithImageCall.id,
-    name: 'generateImage',
-    args: {
-      prompt: imageGenerationRequest.prompt,
-      filePath: tempImagePath,
-      width: 1024,
-      height: 1024,
-      explanation: 'Generating image to support the question',
-      ...(imageGenerationRequest.contextImage && { contextImagePath: imageGenerationRequest.contextImage }),
-    },
-  };
+  generateImageCall.args.filePath = `/tmp/question-image-${Date.now()}.png`;
 
   // Execute image generation
   const downloadFileCall = await executeStepGenerateImage(generateImageFn, generateImageCall);
@@ -85,15 +71,31 @@ export async function handleSendMessageWithImage({
     };
   }
 
-  const response = await fetch(downloadFileCall.args?.downloadUrl);
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  let buffer: Buffer | undefined;
+  const downloadUrl = downloadFileCall.args.downloadUrl;
+
+  if (downloadUrl.startsWith('temp://')) {
+    buffer = getTempBuffer(downloadUrl);
+  } else {
+    const response = await fetch(downloadFileCall.args?.downloadUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+  }
+
+  if (!buffer) {
+    putSystemMessage('Failed to generate image for the question.');
+    return {
+      breakLoop: true,
+      items: [],
+    };
+  }
+
   const imageData = {
     base64url: buffer.toString('base64'),
     mediaType: 'image/png',
   } as const;
 
-  putAssistantMessage('Here is the image to support the question:', generateImageCall.args, [], [imageData]);
+  putAssistantMessage('', generateImageCall.args, [], [imageData]);
 
   // Get user's response with the image displayed
   const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '');
