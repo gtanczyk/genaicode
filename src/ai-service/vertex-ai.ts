@@ -274,7 +274,11 @@ async function recoverFunctionCall(
       return false;
     }
     const parsed = JSON.parse(text);
-    functionCalls.push(unescapeFunctionCall({ name: functionDef.name, args: parsed }));
+    functionCalls.push(
+      enableVertexUnescape
+        ? unescapeFunctionCall({ name: functionDef.name, args: parsed })
+        : { name: functionDef.name, args: parsed },
+    );
     return true;
   } catch {
     return false;

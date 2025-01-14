@@ -241,7 +241,11 @@ async function recoverFunctionCall(
 
   try {
     const parsed = JSON.parse(result.response.text());
-    functionCalls.push(unescapeFunctionCall({ name: functionDef.name, args: parsed }));
+    functionCalls.push(
+      enableVertexUnescape
+        ? unescapeFunctionCall({ name: functionDef.name, args: parsed })
+        : { name: functionDef.name, args: parsed },
+    );
     return true;
   } catch {
     return false;
