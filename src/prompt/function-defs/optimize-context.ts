@@ -44,7 +44,7 @@ This means that the file \`something.js\` file is not relevant to the user promp
       reasoning: {
         type: 'string',
         description:
-          'Step-by-step analysis of what is needed for the user prompt and which files are needed to fullfil the prompt.',
+          'Step-by-step analysis of what is needed for the user prompt, but it should not refer to specific files.',
       },
       optimizedContext: {
         type: 'array',
