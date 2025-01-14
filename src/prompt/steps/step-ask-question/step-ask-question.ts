@@ -16,14 +16,15 @@ import { handleContextOptimization } from './handlers/context-optimization.js';
 import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
 import { handleRequestPermissions } from './handlers/request-permissions.js';
 import { handleSendMessage } from './handlers/handle-send-message.js';
-import { handleSendMessageWithImage } from './handlers/handle-send-message-with-image.js';
+import { handleGenerateImage } from './handlers/handle-generate-image.js';
 import { handleConfirmCodeGeneration } from './handlers/confirm-code-generation.js';
-import { handleCancelCodeGeneration } from './handlers/cancel-code-generation.js';
+import { handleEndConversation } from './handlers/handle-end-conversation.js';
 import { handleLint } from './handlers/lint.js';
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handleCodeGeneration } from './handlers/code-generation.js';
 import { handleSearchCode } from './handlers/handle-search-code.js';
 import { handleUpdateFile } from './handlers/handle-update-file.js';
+import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -131,17 +132,18 @@ function getActionHandler(actionType: ActionType): ActionHandler {
   // If no plugin handler is found, use the built-in handlers
   const handlers: Record<ActionType, ActionHandler> = {
     codeGeneration: handleCodeGeneration,
-    cancelCodeGeneration: handleCancelCodeGeneration,
+    endConversation: handleEndConversation,
     confirmCodeGeneration: handleConfirmCodeGeneration,
     requestFilesContent: handleRequestFilesContent,
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,
     sendMessage: handleSendMessage,
-    sendMessageWithImage: handleSendMessageWithImage,
+    generateImage: handleGenerateImage,
     searchCode: handleSearchCode,
     lint: handleLint,
     contextOptimization: handleContextOptimization,
     updateFile: handleUpdateFile,
+    performAnalysis: handlePerformAnalysis,
   };
 
   return handlers[actionType] || handleSendMessage;

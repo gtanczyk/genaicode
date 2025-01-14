@@ -7,7 +7,6 @@ import { explanation } from './function-defs/explanation.js';
 import { generateImage } from './function-defs/generate-image.js';
 import {
   getAskQuestionDef,
-  sendMessageWithImage,
   requestPermissions,
   requestFilesContent,
   removeFilesFromContext,
@@ -21,6 +20,8 @@ import { updateHistory } from './function-defs/update-history.js';
 import { readHistory } from './function-defs/read-history.js';
 import { getOperationDefs } from '../operations/operations-index.js';
 import { getCodegenPlanningDef } from './function-defs/codegen-planning.js';
+import { performAnalysis } from './function-defs/perform-analysis.js';
+import { analysisResult } from './function-defs/analysis-result.js';
 
 /**
  * Function definitions for function calling feature
@@ -34,7 +35,6 @@ export function getFunctionDefs(): FunctionDef[] {
     explanation,
     generateImage,
     getAskQuestionDef(),
-    sendMessageWithImage,
     requestPermissions,
     searchCode,
     lint,
@@ -45,6 +45,8 @@ export function getFunctionDefs(): FunctionDef[] {
     setSummaries,
     updateHistory,
     readHistory,
+    performAnalysis,
+    analysisResult,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

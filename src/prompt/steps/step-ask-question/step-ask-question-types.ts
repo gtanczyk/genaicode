@@ -11,16 +11,17 @@ import { PluginActionType } from '../../../main/codegen-types.js';
 export type ActionType =
   | 'codeGeneration'
   | 'sendMessage'
-  | 'sendMessageWithImage'
+  | 'generateImage'
   | 'requestPermissions'
   | 'requestFilesContent'
   | 'removeFilesFromContext'
   | 'confirmCodeGeneration'
-  | 'cancelCodeGeneration'
+  | 'endConversation'
   | 'contextOptimization'
   | 'searchCode'
   | 'lint'
   | 'updateFile'
+  | 'performAnalysis'
   | PluginActionType;
 
 type AskQuestionArgs = {
@@ -29,9 +30,13 @@ type AskQuestionArgs = {
   decisionMakingProcess?: string;
 };
 
-export type SendMessageWithImageArgs = {
+export type GenerateImageArgs = {
   prompt: string;
-  contextImage?: string;
+  filePath: string;
+  contextImagePath?: string;
+  width: number;
+  height: number;
+  cheap: boolean;
 };
 
 export type RequestPermissionsArgs = Record<
@@ -49,6 +54,26 @@ export type RemoveFilesFromContextArgs = {
 
 export type ContextOptimizationArgs = {
   filePaths: string[];
+};
+
+/**
+ * Arguments for the performAnalysis action
+ */
+export type PerformAnalysisArgs = {
+  /** The type of analysis to perform */
+  analysisType: 'code' | 'image' | 'security' | 'performance' | 'architecture' | 'general';
+  /** The analysis prompt describing what needs to be analyzed */
+  prompt: string;
+};
+
+/**
+ * Results of the analysis operation
+ */
+export type AnalysisResultArgs = {
+  /** Reasoning behind the analysis results */
+  reasoning: string;
+  /** User-friendly message summarizing results */
+  message: string;
 };
 
 /**
@@ -80,6 +105,8 @@ export type LintResult = {
 };
 
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
+export type PerformAnalysisCall = FunctionCall<PerformAnalysisArgs>;
+export type AnalysisResultCall = FunctionCall<AnalysisResultArgs>;
 
 export interface AssistantItem {
   type: 'assistant';

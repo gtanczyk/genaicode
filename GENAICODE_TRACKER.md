@@ -12,6 +12,54 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-032] Add performAnalysis Action Type
+      Added a new 'performAnalysis' action type to enhance analysis capabilities. The implementation includes: - New function definitions for performAnalysis and analysisResult - Dedicated action handler for complex analysis tasks - Support for enhanced context with files and images - Multiple analysis types (code, security, performance, etc.) - Integration with existing message system
+
+      Modified files:
+      - src/prompt/function-defs/perform-analysis.ts: Added performAnalysis function definition
+      - src/prompt/function-defs/analysis-result.ts: Added analysisResult function definition
+      - src/prompt/steps/step-ask-question/step-ask-question-types.ts: Added new types and interfaces
+      - src/prompt/steps/step-ask-question/handlers/handle-perform-analysis.ts: Implemented analysis handler
+      - src/prompt/function-defs/ask-question.ts: Updated with new action type
+      - src/prompt/steps/step-ask-question/step-ask-question.ts: Added handler integration
+      - src/prompt/function-calling.ts: Added new function definitions
+      - src/prompt/steps/step-ask-question/handlers/handle-perform-analysis.test.ts: Added tests
+
+      Benefits:
+      - Enhanced analysis capabilities for complex tasks
+      - Better context handling for analysis operations
+      - Support for multiple analysis types
+      - Improved error handling and validation
+      - Comprehensive test coverage
+      - Clear separation between analysis and code generation
+      Created: 2024-01-13
+      Updated: 2024-01-13
+
+- [x] [GEN-031] Add Retry Mechanism for generateContent in Test Utils
+      Implemented a robust retry mechanism for handling transient failures in AI service calls during tests. The implementation includes: - Configurable retry parameters (max attempts, delays) - Exponential backoff with jitter for better retry distribution - Smart error detection to only retry on specific error types - Proper error preservation and logging
+
+      Modified files:
+      - src/eval/test-utils.ts: Added retry wrapper implementation
+      - src/eval/ask-question.test.ts: Updated to use retry wrapper
+      - src/eval/code-generation.test.ts: Updated to use retry wrapper
+      - src/eval/codegen-summary.test.ts: Updated to use retry wrapper
+      - src/eval/context-optimization.test.ts: Updated to use retry wrapper
+
+      Benefits:
+      - Improved test stability by handling transient AI service failures
+      - Reduced test flakiness through smart retry logic
+      - Better error reporting and debugging through detailed logging
+      - Configurable retry behavior for different test scenarios
+      - Consistent error handling across all test files
+      Created: 2024-01-12
+      Updated: 2024-01-12
+
+- [ ] [GEN-030] Enhanced Long Explanation Test Scenario
+      Enhanced codegen-summary.test.ts with a complex legacy authentication system example to better test AI's ability to explain security improvements. Changes include: - Added mock-complex-auth-system-content.ts with intentional security vulnerabilities - Updated long explanation scenario to use the complex auth system - Enhanced validation criteria for security considerations - Added detailed security-focused test expectations - Increased minimum explanation length requirement
+      Benefits: - More realistic test scenario - Better coverage of security considerations - Improved validation of AI's explanation capabilities - More comprehensive test of refactoring knowledge
+      Created: 2024-01-11
+      Updated: 2024-01-11
+
 - [ ] [GEN-028] Create code-generation.test.ts test suite
       Added a new test suite `code-generation.test.ts` in the `/src/eval/` directory to evaluate the `updateFile` function and how models generate file updates. The test suite includes test cases for different AI models (Gemini Flash, Claude Haikku, GPT-4 Mini) and verifies that the `updateFile` function is called correctly and the file content is updated as expected.
       Created: 2024-01-09

@@ -151,7 +151,7 @@ describe('promptService with askQuestion', () => {
         args: {
           decisionMakingProcess: '',
           message: 'Stopping code generation as requested.',
-          actionType: 'cancelCodeGeneration',
+          actionType: 'endConversation',
         },
       },
     ];

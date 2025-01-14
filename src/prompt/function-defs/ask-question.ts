@@ -10,33 +10,35 @@ function getActionTypeDescription(): string {
   return `This value instructs the program on what should happen next.
 
 Detailed Explanation of actionTypes:
-- sendMessage: Use for general information, clarifications, or when no specific code is needed.
-- sendMessageWithImage: Use when an image is needed to provide context or additional information.
+- sendMessage: Use for general information, clarifications, or when no specific code is needed, or when there is a need to analyze something.
+- generateImage: Use this action only if there is a need to generate an image based on the conversation, and then display it to the user.
 - updateFile: Use to update a single file with new content. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
+- performAnalysis: Use when there's a need to analyze complex problems or data that requires enhanced context or more expensive computation. This action supports both code and image analysis with customizable context and parameters.
 - requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
-- cancelCodeGeneration: Use to stop the session, and the conversation.
+- endConversation: Use to stop the conversation.
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}
 
-This value must be derived from the decision-making process, and must be one of the above values.`;
+This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }
 
 const actionTypeOptions: string[] = [
   'sendMessage',
-  'sendMessageWithImage',
+  'generateImage',
   'updateFile',
+  'performAnalysis',
   'requestPermissions',
   'requestFilesContent',
   'removeFilesFromContext',
   'contextOptimization',
   'searchCode',
   'confirmCodeGeneration',
-  'cancelCodeGeneration',
+  'endConversation',
   ...(rcConfig.lintCommand ? ['lint'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
 ];
@@ -50,19 +52,14 @@ const actionTypeOptions: string[] = [
 export const getAskQuestionDef = (): FunctionDef => ({
   name: 'askQuestion',
   description: `Use this function to interact with the user for various purposes.
-  The \`decisionMakingProcess\` must be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
-  The \`message\` property must align with the chosen \`actionType\`.
-  
-  The desired format of parameters is as follows:
-  \`\`\`
-  {
-    "decisionMakingProcess": "...", // A detailed decision-making framework the assistant followed before selecting an action.",
-    "actionType": "...", // The type of action to perform.
-    "message": "..." // The message to display to the user.
-  }
-  \`\`\`
-  
-  **IMPORTANT**: Mind the order of the parameters, as the decision-making process must be provided first to ensure clarity in decision-making.
+The \`decisionMakingProcess\` must be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
+The \`decisionMakingProcess\` value must contain the following sections: Contextual Analysis, Options Evaluation, Decision Justification, Minimal Action Selection, Evaluation of Action Choice
+The \`actionType\` must be chosen based on the decision-making process, and the desired outcome.
+The \`message\` property must align with the chosen \`actionType\`.
+
+**IMPORTANT**: 
+- Mind the order of the parameters, as the decision-making process must be provided first to ensure clarity in decision-making.
+- All parameters are required for this function to work properly.
   `,
   parameters: {
     type: 'object',
@@ -70,55 +67,48 @@ export const getAskQuestionDef = (): FunctionDef => ({
       decisionMakingProcess: {
         type: 'string',
         description: `A detailed reasoning framework describing how you chose the action.
-  The decisionMakingProcess value must be provided in the following format:
+The decisionMakingProcess value must be provided in the following format:
 
-  \`\`\`
-  1. **Contextual Analysis**:
-      Assess the current information, including available permissions,
-      the current context, and task requirements. Identify any missing elements
-      that are critical to task completion.
-    
-  2. **Options Evaluation**:
-      For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
-      \`\`\`
-${actionTypeOptions
-  .map((actionType) => `      - ${actionType}: <reasoning>`)
-  .join(
-    '\
-',
-  )}
-      \`\`\`
+\`\`\`
+1. **Contextual Analysis**:
+    Assess the current information, including available permissions,
+    the current context, and task requirements. Identify any missing elements
+    that are critical to task completion.
+  
+2. **Options Evaluation**:
+    For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
+    \`\`\`
+${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
+    \`\`\`
 
-  3. **Decision Justification**:
-      State the reasoning for the proposed action, considering whether planning,
-      clarification, or a direct action is required. If there's any ambiguity,
-      prefer a confirmatory action (e.g., "confirmCodeGeneration").
+3. **Decision Justification**:
+    State the reasoning for the proposed action, considering whether planning,
+    clarification, or a direct action is required. If there's any ambiguity,
+    prefer a confirmatory action (e.g., "confirmCodeGeneration").
 
-  4. **Minimal Action Selection**:
-      Determine the minimal action that can make progress toward the task goal.
-      Avoid requesting unnecessary permissions or context that isn't strictly needed.
+4. **Minimal Action Selection**:
+    Determine the minimal action that can make progress toward the task goal.
+    Avoid requesting unnecessary permissions or context that isn't strictly needed.
 
-  5. **Evaluation of Action Choice**:
-      Double-check if the selected action aligns with the task requirements
-      and the user-provided constraints.
-
-  6. **Action type**:
-      Final selection of the action type value based on the above steps.
+5. **Evaluation of Action Choice**:
+    Double-check if the selected action aligns with the task requirements
+    and the user-provided constraints.
   \`\`\``,
       },
       actionType: {
         type: 'string',
         enum: [
           'sendMessage',
-          'sendMessageWithImage',
+          'generateImage',
           'requestPermissions',
           'requestFilesContent',
           'removeFilesFromContext',
           'confirmCodeGeneration',
-          'cancelCodeGeneration',
+          'endConversation',
           'contextOptimization',
           'searchCode',
           'updateFile',
+          'performAnalysis',
           ...(rcConfig.lintCommand ? ['lint'] : []),
           ...Array.from(getRegisteredActionHandlers().keys()),
         ],
@@ -149,27 +139,6 @@ export const requestFilesContent: FunctionDef = {
       },
     },
     required: ['filePaths'],
-  },
-};
-
-// sendMessageWithImage
-export const sendMessageWithImage: FunctionDef = {
-  name: 'sendMessageWithImage',
-  description:
-    'Use this function to send message to the user with accompanying image that will be generated using provided prompt, and optionally using other image as a context.',
-  parameters: {
-    type: 'object',
-    properties: {
-      prompt: {
-        type: 'string',
-        description: 'The prompt used to generate the image.',
-      },
-      contextImage: {
-        type: 'string',
-        description: 'Optional path to an image file used as context for image generation.',
-      },
-    },
-    required: ['prompt'],
   },
 };
 
