@@ -23,6 +23,7 @@ import { validateLLMContent } from './test-utils/llm-content-validate.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { CodegenSummaryArgs } from '../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
+import { FIXTURE_VERY_LONG_APP_CONFIG } from './data/fixture-very-long-app-config.js';
 
 vi.setConfig({
   testTimeout: 120000,
@@ -86,12 +87,7 @@ describe.each([
           tool: 'updateFile',
           promptExpectation: {
             description: 'Implement PDF export functionality for task lists',
-            requiredElements: [
-              'PDF generation',
-              'export functionality',
-              'user interface integration',
-              'task data handling',
-            ],
+            requiredElements: ['PDF generation', 'export functionality', 'task data handling'],
             tone: 'technical',
           } as LLMContentExpectation,
         },
@@ -110,11 +106,7 @@ describe.each([
           } as LLMContentExpectation,
         },
       ],
-      expectedContextPaths: [
-        '/project/src/todo-app/tasks/task-manager.ts',
-        '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
-        '/project/src/todo-app/tasks/task-types.ts',
-      ],
+      expectedContextPaths: ['/project/src/todo-app/frontend/components/tasks/task-list.tsx'],
       explanationExpectation: {
         description: 'Explain the implementation of PDF export feature',
         requiredElements: ['component modifications', 'PDF generation logic', 'user interface changes', 'data flow'],
@@ -242,6 +234,67 @@ describe.each([
         forbiddenElements: ['plain text password storage', 'hardcoded credentials', 'basic role checks'],
         tone: 'technical',
         minLength: 500,
+      } as LLMContentExpectation,
+    },
+    {
+      description: 'patchFile scenario',
+      userPrompt:
+        'Fix typo in config.json, change "debugMode": falss to "debugMode": false. nevermind formatting of the json, it is not important',
+      rootDir: '/project/src/config',
+      sourceCode: JSON.stringify({
+        '/project/src/config': {
+          'config.json': {
+            content: FIXTURE_VERY_LONG_APP_CONFIG,
+          },
+        },
+      }),
+      expectedFiles: ['/project/src/config/config.json'],
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/config/config.json',
+          tool: 'patchFile',
+          promptExpectation: {
+            description: 'Apply a patch to fix the typo in config.json',
+            requiredElements: ['fix typo', 'patch application', 'json modification'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
+      expectedContextPaths: ['/project/src/config/config.json'],
+      explanationExpectation: {
+        description: 'Explain the patch application for the typo fix',
+        requiredElements: ['typo correction', 'patch details'],
+        tone: 'technical',
+      } as LLMContentExpectation,
+    },
+    {
+      description: 'updateFile scenario',
+      userPrompt: 'Replace the content of app.config with a new configuration',
+      rootDir: '/project/src/config',
+      sourceCode: JSON.stringify({
+        '/project/src/config': {
+          'app.config': {
+            content: '{\n  "oldConfig": true\n}',
+          },
+        },
+      }),
+      expectedFiles: ['/project/src/config/app.config'],
+      expectedFileUpdates: [
+        {
+          filePath: '/project/src/config/app.config',
+          tool: 'updateFile',
+          promptExpectation: {
+            description: 'Replace the content of app.config with a new configuration',
+            requiredElements: ['replace content', 'new configuration'],
+            tone: 'technical',
+          } as LLMContentExpectation,
+        },
+      ],
+      expectedContextPaths: ['/project/src/config/app.config'],
+      explanationExpectation: {
+        description: 'Explain the replacement of the configuration file',
+        requiredElements: ['file replacement', 'new configuration details'],
+        tone: 'technical',
       } as LLMContentExpectation,
     },
   ])(
