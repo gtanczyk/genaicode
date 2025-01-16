@@ -6,7 +6,7 @@ import { FunctionDef } from '../../ai-service/common';
 export const patchFileDef: FunctionDef = {
   name: 'patchFile',
   description: `Partially update a file content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.
-It is recommended to use this function only for small changes in large files. For other changes, consider using the \`updateFile\` function instead.`,
+It is recommended to use this function only for simple changes in large files. For other changes, consider using the \`updateFile\` function instead.`,
   parameters: {
     type: 'object',
     properties: {

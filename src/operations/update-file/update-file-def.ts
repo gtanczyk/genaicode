@@ -5,8 +5,8 @@ import { FunctionDef } from '../../ai-service/common';
  */
 export const updateFileDef: FunctionDef = {
   name: 'updateFile',
-  description:
-    'Update a file with new content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.',
+  description: `Update a file with new content. The file must already exists in the application source code. The function should be called only if there is a need to actually change something.
+CAUTION: This function may not work well for large/long files due to output token limit (8000 tokens).`,
   parameters: {
     type: 'object',
     properties: {
