@@ -12,254 +12,64 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [ ] [GEN-032] Add performAnalysis Action Type
-      Added a new 'performAnalysis' action type to enhance analysis capabilities. The implementation includes: - New function definitions for performAnalysis and analysisResult - Dedicated action handler for complex analysis tasks - Support for enhanced context with files and images - Multiple analysis types (code, security, performance, etc.) - Integration with existing message system
+- [ ] [GEN-035] Add Contributing Guidelines: Created comprehensive CONTRIBUTING.md with development setup, code style, testing requirements, PR process, and plugin development guidelines. Created: 2024-01-17 Updated: 2024-01-17
 
-      Modified files:
-      - src/prompt/function-defs/perform-analysis.ts: Added performAnalysis function definition
-      - src/prompt/function-defs/analysis-result.ts: Added analysisResult function definition
-      - src/prompt/steps/step-ask-question/step-ask-question-types.ts: Added new types and interfaces
-      - src/prompt/steps/step-ask-question/handlers/handle-perform-analysis.ts: Implemented analysis handler
-      - src/prompt/function-defs/ask-question.ts: Updated with new action type
-      - src/prompt/steps/step-ask-question/step-ask-question.ts: Added handler integration
-      - src/prompt/function-calling.ts: Added new function definitions
-      - src/prompt/steps/step-ask-question/handlers/handle-perform-analysis.test.ts: Added tests
+- [x] [GEN-034] Add patchFile and updateFile test cases: Added new test cases to codegen-summary.test.ts for patchFile and updateFile scenarios. Created: 2024-01-14 Updated: 2024-01-14
 
-      Benefits:
-      - Enhanced analysis capabilities for complex tasks
-      - Better context handling for analysis operations
-      - Support for multiple analysis types
-      - Improved error handling and validation
-      - Comprehensive test coverage
-      - Clear separation between analysis and code generation
-      Created: 2024-01-13
-      Updated: 2024-01-13
+- [x] [GEN-032] Add performAnalysis Action Type: Enhanced analysis capabilities for complex tasks. Created: 2024-01-13 Updated: 2024-01-13
 
-- [x] [GEN-031] Add Retry Mechanism for generateContent in Test Utils
-      Implemented a robust retry mechanism for handling transient failures in AI service calls during tests. The implementation includes: - Configurable retry parameters (max attempts, delays) - Exponential backoff with jitter for better retry distribution - Smart error detection to only retry on specific error types - Proper error preservation and logging
+- [x] [GEN-031] Add Retry Mechanism for generateContent: Improved test stability by handling transient AI service failures. Created: 2024-01-12 Updated: 2024-01-12
 
-      Modified files:
-      - src/eval/test-utils.ts: Added retry wrapper implementation
-      - src/eval/ask-question.test.ts: Updated to use retry wrapper
-      - src/eval/code-generation.test.ts: Updated to use retry wrapper
-      - src/eval/codegen-summary.test.ts: Updated to use retry wrapper
-      - src/eval/context-optimization.test.ts: Updated to use retry wrapper
+- [ ] [GEN-030] Enhanced Long Explanation Test Scenario: Improved validation of AI's explanation capabilities. Created: 2024-01-11 Updated: 2024-01-11
 
-      Benefits:
-      - Improved test stability by handling transient AI service failures
-      - Reduced test flakiness through smart retry logic
-      - Better error reporting and debugging through detailed logging
-      - Configurable retry behavior for different test scenarios
-      - Consistent error handling across all test files
-      Created: 2024-01-12
-      Updated: 2024-01-12
+- [ ] [GEN-028] Create code-generation.test.ts test suite: Added test suite to evaluate updateFile function. Created: 2024-01-09 Updated: 2024-01-09
 
-- [ ] [GEN-030] Enhanced Long Explanation Test Scenario
-      Enhanced codegen-summary.test.ts with a complex legacy authentication system example to better test AI's ability to explain security improvements. Changes include: - Added mock-complex-auth-system-content.ts with intentional security vulnerabilities - Updated long explanation scenario to use the complex auth system - Enhanced validation criteria for security considerations - Added detailed security-focused test expectations - Increased minimum explanation length requirement
-      Benefits: - More realistic test scenario - Better coverage of security considerations - Improved validation of AI's explanation capabilities - More comprehensive test of refactoring knowledge
-      Created: 2024-01-11
-      Updated: 2024-01-11
+- [ ] [GEN-027] Implement Ask Question Test Suite: Added test suite to test ask-question functionality. Created: 2024-01-06 Updated: 2024-01-06
 
-- [ ] [GEN-028] Create code-generation.test.ts test suite
-      Added a new test suite `code-generation.test.ts` in the `/src/eval/` directory to evaluate the `updateFile` function and how models generate file updates. The test suite includes test cases for different AI models (Gemini Flash, Claude Haikku, GPT-4 Mini) and verifies that the `updateFile` function is called correctly and the file content is updated as expected.
-      Created: 2024-01-09
-      Updated: 2024-01-09
+- [ ] [GEN-026] Generate large variant of mock-source-code-summaries.ts dataset: Created dataset for complex todo app. Created: 2024-01-06 Updated: 2024-01-06
 
-- [ ] [GEN-027] Implement Ask Question Test Suite
-      Added ask-question.test.ts in the /src/eval/ directory to test the ask-question functionality. Initial implementation includes two test cases: - Test handling of 'hello' prompt with sendMessage action type - Test handling of 'good bye' prompt with cancelCodeGeneration action type
-      The test suite follows the structure of context-optimization.test.ts and includes tests across multiple AI models (Gemini Flash, Claude Haikku, GPT-4 Mini).
-      Created: 2024-01-06
-      Updated: 2024-01-06
+- [ ] [GEN-025] Implement Context Optimization Test for AI Module Selection: Added test for context optimization. Created: 2024-01-06 Updated: 2024-01-06
 
-- [ ] [GEN-026] Generate large variant of mock-source-code-summaries.ts dataset
-      Created a new file named `mock-source-code-summaries-large.ts` in the `/Users/gtanczyk/src/codegen/src/eval/data/` directory. This file contains a large dataset of mock source code summaries representing a complex todo app, including components such as user authentication, task management, project organization, settings, and other related functionalities. Each entry in the dataset includes the file path, a brief description of the file's purpose, and a list of its dependencies.
-      Created: 2024-01-06
-      Updated: 2024-01-06
-
-- [ ] [GEN-025] Implement Context Optimization Test for AI Module Selection
-      Added a comprehensive test for context optimization in `/src/eval/context-optimization.test.ts` that: - Uses real AI Studio service - Verifies file selection for math module unit test - Demonstrates context optimization logic - Includes mock source code with diverse module summaries - Validates relevance-based file selection
-      Created: 2024-01-06
-      Updated: 2024-01-06
-
-- [ ] [GEN-024] Add updateFile action type to askQuestion
-      Added a new action type `updateFile` to the `askQuestion` function, allowing the assistant to make single file changes during the conversation without launching the full code generation step. The changes include updates to function definitions, action handlers, frontend components, and operations. The `updateFile` action type is integrated into the `getActionHandler` function, and the frontend components are updated to display the diff for the `updateFile` action and handle user confirmation. The `updateFile` operation is added to the operations index, and a function definition and executor are created for it. The `updateFile` function definition is also included in the list of available functions in `function-calling.ts`. Finally, the `GENAICODE_TRACKER.md` file is updated to reflect the new changes.
-      Created: 2024-01-06
-      Updated: 2024-01-06
+- [ ] [GEN-024] Add updateFile action type to askQuestion: Added new action type for single file changes. Created: 2024-01-06 Updated: 2024-01-06
 
 - [ ] [GEN-021] Decompose backend/service.ts into smaller files
 
-- [x] [GEN-020] Refactor CodegenSummaryView to combine update details into one row
-      Refactored the CodegenSummaryView component to present update type, file path, temperature, and cheap/non-cheap in one row, with temperature and cheap/non-cheap styled as badges similar to UpdateType.
-      Created: 2024-12-29
-      Updated: 2024-12-29
+- [x] [GEN-020] Refactor CodegenSummaryView: Combined update details into one row. Created: 2024-12-29 Updated: 2024-12-29
 
-- [x] [GEN-019] Enhanced FileUpdateView with explanation toggle and advanced diff view
-      Added explanation toggle and advanced diff view with multiple modes (unified, side by side, old content, new content).
-      Created: 2024-12-28
-      Updated: 2024-12-28
+- [x] [GEN-019] Enhanced FileUpdateView: Added explanation toggle and advanced diff view. Created: 2024-12-28 Updated: 2024-12-28
 
-- [x] [GEN-018] Refactor utility-endpoint.ts into separate files
-      Split utility-endpoint.ts into question-endpoint.ts, usage-endpoint.ts, config-endpoint.ts, and iteration-endpoint.ts.
-      Created: 2024-12-28
-      Updated: 2024-12-28
+- [x] [GEN-018] Refactor utility-endpoint.ts: Split into separate files. Created: 2024-12-28 Updated: 2024-12-28
 
-- [x] [GEN-017] Decompose remaining endpoints in api.ts
-      Decompose the remaining endpoints from api.ts into separate files in the backend/endpoints directory.
-      Created: 2024-12-28
+- [x] [GEN-017] Decompose remaining endpoints in api.ts: Split endpoints into separate files. Created: 2024-12-28 Updated: 2024-12-28
 
-      - [x] [GEN-017.1] Create new endpoint files for remaining endpoints
-      - [x] [GEN-017.2] Move endpoint logic from api.ts to new files
-      - [x] [GEN-017.3] Update api.ts to register the new endpoints
+- [ ] [GEN-015] Prompt suggestions feature: Add feature to suggest prompts to users. Created: 2024-12-28
 
-- [ ] [GEN-015] Prompt suggestions feature
-      Add a feature to suggest prompts to users based on their input and context.
-      Created: 2024-12-28
+- [ ] [GEN-016] Input-area autocomplete feature: Implement autocomplete functionality. Created: 2024-12-28
 
-      - [ ] [GEN-015.1] UI Frontend: Add chips component for prompt suggestions
-      - [ ] [GEN-015.2] UI Backend: Implement backend logic for generating prompt suggestions
+- [x] [GEN-014] Add old content handling to file updates: Added functionality to read and store old content in file updates. Created: 2024-12-28 Updated: 2024-12-28
 
-- [ ] [GEN-016] Input-area autocomplete feature
-      Implement autocomplete functionality in the input-area component to enhance user interaction.
-      Created: 2024-12-28
+- [x] [GEN-013] Add FileUpdateView component: Added component to display file updates with collapsible diffs. Created: 2024-12-28 Updated: 2024-12-28
 
-- [x] [GEN-014] Add old content handling to file updates
-      Added functionality to read and store old content in file updates using getSourceCode. The old content is stored in fileUpdateResult.args.oldContent in plain text format.
+- [x] [GEN-012] Convert codegen-options-form to Genaicode Config modal: Converted form into modal component. Created: 2024-12-28 Updated: 2024-12-28
 
-  - Modified processFileUpdate function in step-process-file-updates.ts
-  - Added error handling for file content reading
-    Created: 2024-12-28
-    Updated: 2024-12-28
+- [x] [GEN-011] Plugins in Vite Genaicode: Enhanced plugin system with improved registration and validation. Created: 2024-12-26 Updated: 2024-12-26
 
-- [x] [GEN-013] Add FileUpdateView component
-      Added a new component to display file updates with collapsible diffs, file path, prompt, and explanation. The diff is hidden by default and expandable on click, with syntax highlighting and support for both light and dark themes.
+- [x] [GEN-010] GenAIcode Tracker Enhancement: Added issue tracking improvements with keys and dates. Created: 2024-12-26 Updated: 2024-12-26
 
-  - Created new component file-update-view.tsx
-  - Added styles in file-update-view-styles.ts
-  - Integrated component into SystemMessageContainer
-    Created: 2024-12-28
-    Updated: 2024-12-28
+- [x] [GEN-001] File Updates Processing Enhancement: Enhanced file processing system with improved error handling and type safety. Created: 2024-12-26 Updated: 2024-12-26
 
-- [x] [GEN-012] Convert codegen-options-form to Genaicode Config modal
-      Converted the codegen-options-form into a modal component, following the same pattern as the Service Configuration modal.
+- [x] [GEN-002] Update AI Studio Models Configuration: Configured new Gemini models and enhanced model selection. Created: 2024-12-26 Updated: 2024-12-26
 
-  - Created new modal component genaicode-config-modal.tsx
-  - Added styles in genaicode-config-modal-styles.ts
-  - Added menu item in hamburger-menu.tsx
-  - Updated app-layout.tsx to include the new modal
-  - Removed old codegen-options-form.tsx
-  - Updated app-handlers.tsx to handle modal functionality
-  - Included modal in genaicode-app.tsx
-    Created: 2024-12-28
-    Updated: 2024-12-28
+- [x] [GEN-003] Implement code planning plugin hook: Created: 2024-12-26 Updated: 2024-12-26
 
-- [x] [GEN-011] Plugins in Vite Genaicode
-      Enhanced plugin system with improved registration and validation.
+- [x] [GEN-004] Add .genaicoderc configuration assistance: Enhanced configuration support and documentation. Created: 2024-12-26 Updated: 2024-12-26
 
-  - Implemented idempotent plugin registration
-  - Centralized plugin loading mechanism
-  - Added robust plugin validation
-  - Enhanced error handling and logging
-  - Added plugin registry tracking
-  - Integrated with Vite GenAIcode
-  - Maintained backward compatibility
-  - Added proper type safety
-    Created: 2024-12-26
-    Updated: 2024-12-26
+- [x] [GEN-005] Add JSON Schema Support for .genaicoderc: Comprehensive JSON schema implementation. Created: 2024-12-26 Updated: 2024-12-26
 
-- [x] [GEN-010] GenAIcode Tracker Enhancement
-      Added issue tracking improvements with keys and dates
+- [x] [GEN-006] Add unit test for content generation retry in handleAiServiceFallback: Created: 2024-12-26 Updated: 2024-12-26
 
-  - Added unique identifiers (GEN-XXX format) for each issue
-  - Added creation and update date tracking
-  - Enhanced tracker plugin functionality
-  - Improved issue formatting and structure
-  - Added automatic issue key generation
-    Created: 2024-12-26
-    Updated: 2024-12-26
+- [x] [GEN-007] Enhanced UI for Codegen Data Display: Comprehensive UI improvements for better data visualization. Created: 2024-12-26 Updated: 2024-12-26
 
-- [x] [GEN-001] File Updates Processing Enhancement
-      Enhanced file processing system with improved error handling and type safety
+- [x] [GEN-008] System Message Container Enhancement: Split view implementation and visual improvements. Created: 2024-12-26 Updated: 2024-12-26
 
-  - Completed refactoring of step-process-file-updates.ts
-  - Added proper TypeScript types and interfaces
-  - Improved error handling and recovery
-  - Enhanced file update processing logic
-  - Added detailed system messages
-  - Improved code organization and maintainability
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-002] Update AI Studio Models Configuration
-      Configured new Gemini models and enhanced model selection
-
-  - Added experimental Gemini models support
-  - Configured gemini-exp-1206 as default model
-  - Configured gemini-2.0-flash-exp as cheap model
-  - Enhanced model selection flexibility
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-003] Implement code planning plugin hook
-      Created: 2024-12-26
-      Updated: 2024-12-26
-
-- [x] [GEN-004] Add .genaicoderc configuration assistance
-      Enhanced configuration support and documentation
-
-  - Added .genaicoderc explanation to system prompt
-  - Made .genaicoderc always available in context
-  - Enhanced ability to assist with configuration issues
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-005] Add JSON Schema Support for .genaicoderc
-      Comprehensive JSON schema implementation
-
-  - Created comprehensive JSON schema definition
-  - Implemented virtual files mechanism
-  - Made schema always available in context
-  - Added schema documentation
-  - Enhanced configuration validation support
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-006] Add unit test for content generation retry in handleAiServiceFallback
-      Created: 2024-12-26
-      Updated: 2024-12-26
-
-- [x] [GEN-007] Enhanced UI for Codegen Data Display
-      Comprehensive UI improvements for better data visualization
-
-  - Added specialized components for planning and summary views
-  - Implemented collapsible sections for better organization
-  - Added syntax highlighting and improved readability
-  - Created theme-aware styled components
-  - Enhanced visual hierarchy and user experience
-  - Added type safety and validation
-  - Improved responsive design
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-008] System Message Container Enhancement
-      Split view implementation and visual improvements
-
-  - Implemented split view for codegen planning and summary
-  - Added visual separation between system messages and codegen views
-  - Enhanced styling and spacing for better readability
-  - Maintained existing functionality for collapsing and data visibility
-  - Added smooth transitions for visual changes
-  - Improved TypeScript type safety
-    Created: 2024-12-26
-    Updated: 2024-12-26
-
-- [x] [GEN-009] UI Component Theme Dependency Cleanup
-      Theme system optimization and component enhancement
-
-  - Removed direct theme dependencies from CodegenSummaryView
-  - Aligned implementation with CodegenPlanningView
-  - Enhanced themed styled components
-  - Improved code consistency across components
-  - Added type-safe update type variants
-  - Maintained visual consistency while reducing coupling
-    Created: 2024-12-26
-    Updated: 2024-12-26
+- [x] [GEN-009] UI Component Theme Dependency Cleanup: Theme system optimization and component enhancement. Created: 2024-12-26 Updated: 2024-12-26

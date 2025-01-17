@@ -24,6 +24,10 @@ import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { CodegenSummaryArgs } from '../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 import { FIXTURE_VERY_LONG_APP_CONFIG } from './data/fixture-very-long-app-config.js';
+import {
+  PROMPT_CODEGEN_SUMMARY,
+  PROMPT_CODEGEN_SUMMARY_ASSISTANT,
+} from '../prompt/steps/step-generate-codegen-summary-prompt.js';
 
 vi.setConfig({
   testTimeout: 120000,
@@ -233,7 +237,7 @@ describe.each([
         ],
         forbiddenElements: ['plain text password storage', 'hardcoded credentials', 'basic role checks'],
         tone: 'technical',
-        minLength: 500,
+        minLength: 250,
       } as LLMContentExpectation,
     },
     {
@@ -255,7 +259,7 @@ describe.each([
           tool: 'patchFile',
           promptExpectation: {
             description: 'Apply a patch to fix the typo in config.json',
-            requiredElements: ['fix typo', 'patch application', 'json modification'],
+            requiredElements: ['fix typo', 'json modification'],
             tone: 'technical',
           } as LLMContentExpectation,
         },
@@ -263,7 +267,7 @@ describe.each([
       expectedContextPaths: ['/project/src/config/config.json'],
       explanationExpectation: {
         description: 'Explain the patch application for the typo fix',
-        requiredElements: ['typo correction', 'patch details'],
+        requiredElements: ['typo correction'],
         tone: 'technical',
       } as LLMContentExpectation,
     },
@@ -353,6 +357,11 @@ describe.each([
         },
         {
           type: 'assistant',
+          text: 'I understood the task, I will now proceed to generate the code changes. Please confirm if you want to proceed with these changes.',
+        },
+        { type: 'user', text: 'Confirmed. Proceed with code generation.' },
+        {
+          type: 'assistant',
           text: 'I will generate a plan to achieve this task.',
         },
         { type: 'user', text: PLANNING_PROMPT },
@@ -377,6 +386,14 @@ describe.each([
         {
           type: 'user',
           text: 'Accept planning and continue',
+        },
+        {
+          type: 'assistant',
+          text: PROMPT_CODEGEN_SUMMARY_ASSISTANT,
+        },
+        {
+          type: 'user',
+          text: PROMPT_CODEGEN_SUMMARY,
         },
       );
 

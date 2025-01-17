@@ -12,7 +12,9 @@ export const getCodegenSummaryDef = (): FunctionDef => ({
 - \`contextPaths\`: A list of file paths that make sense to use as context for code generation requests.
 
 It is critically important to adhere to the schema of parameters and include all relevant files.
-When generating the codegen summary, the assitant will make use of preceding \`codegenPlanning\` function call.`,
+When generating the codegen summary, the assistant will make use of preceding \`codegenPlanning\` function call.
+Codegen summary is a derivative of the codegen planning step, the final step before code generation is executed.
+.`,
   parameters: {
     type: 'object',
     properties: {
@@ -23,7 +25,7 @@ When generating the codegen summary, the assitant will make use of preceding \`c
       fileUpdates: {
         type: 'array',
         description: `An array of proposed file updates, each update is an object with several properties.
-The file updates are consquence of the code generation planning step.`,
+The file updates are a consequence of the code generation planning step.`,
         items: {
           type: 'object',
           description:
@@ -39,9 +41,9 @@ The file updates are consquence of the code generation planning step.`,
               description:
                 'An absolute path of the project file that will be updated. This must be an absolute file path.',
             },
-            updateToolReasoning: {
+            updateToolCoT: {
               type: 'string',
-              description: 'Step by step reasoning for choosing the update tool.',
+              description: `Step by step reasoning for choosing the function that will be used to perform the update.`,
             },
             updateToolName: {
               type: 'string',
@@ -59,7 +61,7 @@ The file updates are consquence of the code generation planning step.`,
                 'imglyRemoveBackground',
                 ...getRegisteredOperations().map((operation) => operation.def.name),
               ],
-              description: 'The name of the tool that will be used to perform the update.',
+              description: 'The name of the function that will be used to perform the update.',
             },
             temperature: {
               type: 'number',
@@ -80,12 +82,8 @@ The file updates are consquence of the code generation planning step.`,
               items: { type: 'string' },
             },
           },
-          required: ['prompt', 'filePath', 'updateToolName'],
+          required: ['prompt', 'filePath', 'updateToolCoT', 'updateToolName'],
         },
-      },
-      contextPathsReasoning: {
-        type: 'string',
-        description: 'A step by step explanation of the reasoning behind selecting the context paths.',
       },
       contextPaths: {
         type: 'array',

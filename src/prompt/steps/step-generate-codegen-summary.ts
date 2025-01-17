@@ -5,6 +5,7 @@ import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
 import { StepResult } from './steps-types.js';
 import assert from 'node:assert';
+import { PROMPT_CODEGEN_SUMMARY, PROMPT_CODEGEN_SUMMARY_ASSISTANT } from './step-generate-codegen-summary-prompt.js';
 
 /**
  * Generates and validates the codegen summary.
@@ -21,7 +22,17 @@ export async function generateCodegenSummary(
   baseResult: FunctionCall[];
 }> {
   const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
-    prompt,
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: PROMPT_CODEGEN_SUMMARY_ASSISTANT,
+      },
+      {
+        type: 'user',
+        text: PROMPT_CODEGEN_SUMMARY,
+      },
+    ],
     functionDefs,
     'codegenSummary',
     options.temperature ?? 0.7,

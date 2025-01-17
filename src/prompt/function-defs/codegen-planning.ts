@@ -19,7 +19,7 @@ export const getCodegenPlanningDef = (): FunctionDef => ({
       },
       codeChanges: {
         type: 'string',
-        description: 'A step by step plan of code changes neccessary to solve the problem.',
+        description: 'A step by step plan of code changes necessary to solve the problem.',
       },
       affectedFiles: {
         type: 'array',
@@ -41,6 +41,16 @@ export const getCodegenPlanningDef = (): FunctionDef => ({
               items: {
                 type: 'string',
               },
+            },
+            fileSize: {
+              type: 'string',
+              description: 'The approximate size of the file (in lines of code or tokens)',
+              enum: ['small', 'medium', 'large', 'n/a'],
+            },
+            changeComplexity: {
+              type: 'string',
+              description: 'Describes how complex the required changes to this file will be.',
+              enum: ['trivial', 'simple', 'medium', 'complex', 'refactor', 'n/a'],
             },
           },
           required: ['reason', 'filePath'],
