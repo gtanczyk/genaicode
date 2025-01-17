@@ -150,7 +150,7 @@ describe('promptService - Image Handling', () => {
       await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.visionConfig));
 
       expect(openai.generateContent).toHaveBeenCalledTimes(3);
-      const secondCall = vi.mocked(openai.generateContent).mock.calls[1];
+      const secondCall = vi.mocked(openai.generateContent).mock.calls[2];
       expect(secondCall[0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
