@@ -82,7 +82,7 @@ The file updates are a consequence of the code generation planning step.`,
               items: { type: 'string' },
             },
           },
-          required: ['prompt', 'filePath', 'updateToolCoT', 'updateToolName'],
+          required: ['prompt', 'filePath', 'updateToolName'],
         },
       },
       contextPaths: {
