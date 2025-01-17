@@ -14,6 +14,7 @@ import { MenuItem } from './hamburger-menu/types.js';
 import { dispatchRcConfigModalOpen } from './rc-config-modal.js';
 import { InfoIcon } from './info-icon.js';
 import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaicode-config/genaicode-config-modal.js';
+import { version } from '../../../../../../package.json';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -69,7 +70,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
     <AppContainer>
       <AppHeader>
         <HeaderLeftSection>
-          <AppTitle>GenAIcode</AppTitle>
+          <TitleContainer>
+            <AppTitle>GenAIcode</AppTitle>
+            <VersionText>v{version}</VersionText>
+          </TitleContainer>
         </HeaderLeftSection>
         <HeaderRightSection>
           <UsageDisplayWrapper>
@@ -120,6 +124,10 @@ const HeaderLeftSection = styled.div`
   gap: 10px;
 `;
 
+const TitleContainer = styled.div`
+  position: relative;
+`;
+
 const AppTitle = styled.h1`
   text-transform: uppercase;
   font-family: 'Press Start 2P', system-ui;
@@ -129,6 +137,19 @@ const AppTitle = styled.h1`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`;
+
+const VersionText = styled.span`
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-size: 0.6rem;
+  color: ${({ theme }) => theme.colors.text};
+  background-color: ${({ theme }) => theme.colors.backgroundAlt};
+  padding: 2px 4px;
+  border-radius: 3px;
+  transform: translateY(100%);
+  white-space: nowrap;
 `;
 
 const HeaderRightSection = styled.div`
