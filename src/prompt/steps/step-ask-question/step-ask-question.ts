@@ -25,6 +25,7 @@ import { handleCodeGeneration } from './handlers/code-generation.js';
 import { handleSearchCode } from './handlers/handle-search-code.js';
 import { handleUpdateFile } from './handlers/handle-update-file.js';
 import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
+import { handleCreateFile } from './handlers/handle-create-file.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -143,6 +144,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     lint: handleLint,
     contextOptimization: handleContextOptimization,
     updateFile: handleUpdateFile,
+    createFile: handleCreateFile,
     performAnalysis: handlePerformAnalysis,
   };
 

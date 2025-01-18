@@ -22,6 +22,7 @@ export type ActionType =
   | 'lint'
   | 'updateFile'
   | 'performAnalysis'
+  | 'createFile'
   | PluginActionType;
 
 type AskQuestionArgs = {

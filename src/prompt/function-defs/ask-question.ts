@@ -12,7 +12,8 @@ function getActionTypeDescription(): string {
 Detailed Explanation of actionTypes:
 - sendMessage: Use for general information, clarifications, or when no specific code is needed, or when there is a need to analyze something.
 - generateImage: Use this action only if there is a need to generate an image based on the conversation, and then display it to the user.
-- updateFile: Use to update a single file with new content. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
+- updateFile: Use to update a single file that exists already with a new content. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
+- createFile: Use to create a new file with the provided content. The user will be able to see the new file and approve or reject the change. Then you will be able to continue the conversation.
 - performAnalysis: Use when there's a need to analyze complex problems or data that requires enhanced context or more expensive computation. This action supports both code and image analysis with customizable context and parameters.
 - requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
@@ -31,6 +32,7 @@ const actionTypeOptions: string[] = [
   'sendMessage',
   'generateImage',
   'updateFile',
+  'createFile',
   'performAnalysis',
   'requestPermissions',
   'requestFilesContent',
@@ -97,21 +99,7 @@ ${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).jo
       },
       actionType: {
         type: 'string',
-        enum: [
-          'sendMessage',
-          'generateImage',
-          'requestPermissions',
-          'requestFilesContent',
-          'removeFilesFromContext',
-          'confirmCodeGeneration',
-          'endConversation',
-          'contextOptimization',
-          'searchCode',
-          'updateFile',
-          'performAnalysis',
-          ...(rcConfig.lintCommand ? ['lint'] : []),
-          ...Array.from(getRegisteredActionHandlers().keys()),
-        ],
+        enum: actionTypeOptions,
         description: getActionTypeDescription(),
       },
       message: {

@@ -119,7 +119,6 @@ describe.each([
         },
       ] as PromptItem[],
     },
-
     {
       name: 'count objects on an image',
       expectedActionType: 'performAnalysis' as ActionType,
@@ -136,6 +135,32 @@ describe.each([
           ],
         },
       ] as PromptItem[],
+    },
+    {
+      name: 'updateFile without context',
+      userMessage: 'Please update /project/src/missing-file.ts',
+      expectedActionType: 'requestFilesContent',
+      expectedMessageContent: expect.stringContaining('/project/src/missing-file.ts'),
+      sourceCodeTree: {
+        ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+        '/project/src/missing-file.ts': {
+          summary: 'This file contains important calculations',
+        },
+      },
+      promptPrefix: [],
+    },
+    {
+      name: 'createFile for existing file',
+      userMessage: 'Create a new file at /project/src/existing-file.ts',
+      expectedActionType: 'sendMessage',
+      expectedMessageContent: expect.stringContaining('already exists'),
+      sourceCodeTree: {
+        ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+        '/project/src/existing-file.ts': {
+          content: 'console.log("Hello, World!");',
+        },
+      },
+      promptPrefix: [],
     },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing

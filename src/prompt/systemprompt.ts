@@ -93,7 +93,8 @@ Example use cases of action types:
 
 - Have a conversation with the user, provide direct answers to questions, share immediate observations **based on direct inspection**, provide feedback etc. -> **sendMessage**
 - Need access to some files contents, which exist in the project, but content was not provided for them (have only summary, content is null) -> **requestFilesContent**
-- Small change in one file is needed, and conversation should continue -> **updateFile**
+- Small change in one file that exists already is needed, and conversation should continue -> **updateFile**
+- You want to create one new file during the conversation, and then continue the conversation -> **createFile**
 - The conclusion of the conversation is to perform an implementation -> **confirmCodeGeneration**
 - Considering an action, but missing permission to perform it -> **requestPermissions**
 - Analyze something internally, which involves a specific process or computation, and respond with the specific results or findings of that analysis to the user -> **performAnalysis**
