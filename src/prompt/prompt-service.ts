@@ -141,8 +141,6 @@ async function executePromptService(
     codegenPrompt.options.images,
     initialPromptItem,
   );
-  putSystemMessage('Generating response');
-
   // Initial summary based on first user input
   await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);
 

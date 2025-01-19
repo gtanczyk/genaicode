@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { FunctionCall, GenerateImageFunction } from '../../ai-service/common.js';
+import { putSystemMessage } from '../../main/common/content-bus.js';
 
 export async function executeStepGenerateImage(
   generateImageFn: GenerateImageFunction,
@@ -19,7 +20,7 @@ export async function executeStepGenerateImage(
 > {
   assert(!!generateImageFn, 'Image generation requested, but an image generation service was not provided');
 
-  console.log('Processing image generation request:', generateImageCall.args);
+  putSystemMessage('Processing image generation request:', generateImageCall.args);
 
   try {
     const {

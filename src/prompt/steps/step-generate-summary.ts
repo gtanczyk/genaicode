@@ -10,7 +10,7 @@ export async function executeStepGenerateSummary(
   options: CodegenOptions,
 ): Promise<void> {
   if (!options.conversationSummaryEnabled) {
-    console.log("Not generating conversation summary because it's disabled in options.");
+    putSystemMessage("Not generating conversation summary because it's disabled in options.");
     return;
   }
 

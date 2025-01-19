@@ -38,7 +38,7 @@ export async function executeStepAskQuestion(
   temperature: number,
   options: CodegenOptions,
 ): Promise<FunctionCall[]> {
-  console.log('Allowing the assistant to ask a question...');
+  putSystemMessage('Allowing the assistant to ask a question...');
 
   while (!abortController?.signal.aborted) {
     try {
@@ -94,14 +94,11 @@ export async function executeStepAskQuestion(
         if (result.breakLoop) {
           return result.stepResult ?? [];
         }
-
-        console.log('The question was answered');
       } else {
-        console.error('Invalid action type received');
+        putSystemMessage('Invalid action type received');
         break;
       }
     } catch (error) {
-      console.error('Error in executeStepAskQuestion:', error);
       putSystemMessage(`An error occurred: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
