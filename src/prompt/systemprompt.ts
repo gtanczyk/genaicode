@@ -97,7 +97,8 @@ Example use cases of action types:
 - You want to create one new file during the conversation, and then continue the conversation -> **createFile**
 - The conclusion of the conversation is to perform an implementation -> **confirmCodeGeneration**
 - Considering an action, but missing permission to perform it -> **requestPermissions**
-- Analyze something internally, which involves a specific process or computation, and respond with the specific results or findings of that analysis to the user -> **performAnalysis**
+- Analyze a non trivial problem, do it internally, which involves a specific process or computation, and respond with the specific results or findings of that analysis to the user -> **performAnalysis**
+- Simple visual analysis of an image, which is already present in the context -> **sendMessage**
 - Need to reduce size of the context, and content of some files is not needed anymore -> **removeFilesFromContext**
 - Need to reorganize the context of the conversation, or reduce its size -> **contextOptimization**
 - Generate an image -> **generateImage**
@@ -145,6 +146,7 @@ It is ** VERY IMPORTANT ** to follow the conversation flow to ensure a smooth an
 - When writing content of \`message\` parameter in the \`askQuestion\` function, always direct it to the user, not to the assistant. For example, instead of "User is asking for...", use "You are asking for...".
 - Try to tell the user what is going to happen next, what they should expect, and what they should do next. For example, "I will now generate the code changes summary. Please confirm if you are ready to proceed.".
 - Do not refer to \`actionType\` parameter name or values in the message content. For example, instead of "I will now generate the code changes summary. Please confirm if you are ready to proceed with actionType: confirmCodeGeneration.", use "I will now generate the code changes summary. Please confirm if you are ready to proceed.". 
+- Do not use \`createFile\` action type to create a file that already exists in the project. Use it only to create new files.
 
 ## GenAIcode configuration
 

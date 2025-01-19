@@ -151,12 +151,25 @@ describe.each([
     },
     {
       name: 'createFile for existing file',
-      userMessage: 'Create a new file at /project/src/existing-file.ts',
+      userMessage: 'Create a new file at /project/src/todo-app/existing-file.ts with example console log',
       expectedActionType: 'sendMessage',
       expectedMessageContent: expect.stringContaining('already exists'),
       sourceCodeTree: {
         ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
-        '/project/src/existing-file.ts': {
+        '/project/src/todo-app/existing-file.ts': {
+          content: 'console.log("Hello, World!");',
+        },
+      },
+      promptPrefix: [],
+    },
+    {
+      name: 'createFile for non existing file',
+      userMessage: 'Create a new file at /project/src/todo-app/new-file.ts with example console log',
+      expectedActionType: 'createFile',
+      expectedMessageContent: expect.stringContaining('new-file.ts'),
+      sourceCodeTree: {
+        ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+        '/project/src/todo-app/other-file.ts': {
           content: 'console.log("Hello, World!");',
         },
       },
