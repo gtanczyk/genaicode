@@ -12,6 +12,16 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-041] Help System Implementation: Added in-context documentation and help action support. Created: 2024-01-19 Updated: 2024-01-19
+
+  Key Updates:
+
+  - Added centralized documentation in GENAICODE_HELP.md
+  - Implemented help action type and handler
+  - Added documentation search functionality
+  - Created genaicode help function
+  - Enhanced ask-question system with help support
+
 - [x] [GEN-040] Context Management Implementation: Added centralized context management in content-bus system. Created: 2024-01-18 Updated: 2024-01-18
 
   Key Updates:

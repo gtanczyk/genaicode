@@ -28,6 +28,7 @@ import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
 import { handleCreateFile } from './handlers/handle-create-file.js';
 import { handlePullAppContext } from './handlers/handle-pull-app-context.js';
 import { handlePushAppContext } from './handlers/handle-push-app-context.js';
+import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -146,6 +147,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     createFile: handleCreateFile,
     performAnalysis: handlePerformAnalysis,
     pullAppContext: handlePullAppContext,
+    genaicodeHelp: handleGenaicodeHelp,
     pushAppContext: handlePushAppContext,
   };
 

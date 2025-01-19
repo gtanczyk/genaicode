@@ -24,6 +24,7 @@ export type ActionType =
   | 'performAnalysis'
   | 'createFile'
   | 'pullAppContext'
+  | 'genaicodeHelp'
   | 'pushAppContext'
   | PluginActionType;
 
@@ -31,6 +32,14 @@ type AskQuestionArgs = {
   actionType: ActionType;
   message: string;
   decisionMakingProcess?: string;
+};
+
+/**
+ * Arguments for help action
+ */
+export type GenaicodeHelpArgs = {
+  reasoning: string;
+  message: string;
 };
 
 /**

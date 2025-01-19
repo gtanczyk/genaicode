@@ -162,6 +162,12 @@ describe.each([
       },
       promptPrefix: [],
     },
+    {
+      name: 'genaicode help',
+      userMessage: 'how to generate images in genaicode?',
+      expectedActionType: 'genaicodeHelp',
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
@@ -228,7 +234,9 @@ describe.each([
     expect(askQuestionCall.name).toBe('askQuestion');
     expect(askQuestionCall.args).toBeDefined();
     expect(askQuestionCall.args!.actionType).toBe(expectedActionType);
-    expect(askQuestionCall.args!.message).toEqual(expectedMessageContent);
+    if (expectedMessageContent) {
+      expect(askQuestionCall.args!.message).toEqual(expectedMessageContent);
+    }
 
     // Verify decision making process is present and meaningful
     expect(askQuestionCall.args!.decisionMakingProcess).toBeDefined();
