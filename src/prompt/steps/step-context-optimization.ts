@@ -83,15 +83,13 @@ export async function executeStepContextOptimization(
 
   const sourceCodeResponse = getSourceCodeResponse(prompt);
   if (!sourceCodeResponse || !sourceCodeResponse.content) {
-    console.warn('Could not find source code response, something is wrong, but lets continue anyway.');
+    putSystemMessage('Could not find source code response, something is wrong, but lets continue anyway.');
     return StepResult.CONTINUE;
   }
 
   if (tokensBefore < MAX_TOTAL_TOKENS) {
     putSystemMessage('Context optimization is not needed, because the code base is small.');
-
     sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(fullSourceCode));
-
     return StepResult.CONTINUE;
   }
 
@@ -133,8 +131,6 @@ export async function executeStepContextOptimization(
       putSystemMessage('Context optimization did not generate changes to current context.');
       return StepResult.CONTINUE;
     }
-
-    putSystemMessage('Context optimization in progress.', Array.from(optimizedContext));
 
     const [optimizedSourceCode, contentTokenCount, summaryTokenCount] = optimizeSourceCode(
       sourceCode,
@@ -191,11 +187,11 @@ export async function executeStepContextOptimization(
       contentTokenCount,
       summaryTokenCount,
       percentageReduced: percentageReduced.toFixed(2) + '%',
+      optimizedContext,
     });
     return StepResult.CONTINUE;
   } catch (error) {
     putSystemMessage('Error: Context optimization failed. This is unexpected.');
-    console.error('Context optimization error:', error);
     return StepResult.BREAK;
   }
 }

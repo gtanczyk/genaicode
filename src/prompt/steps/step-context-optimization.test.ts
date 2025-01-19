@@ -98,11 +98,13 @@ describe('executeStepContextOptimization', () => {
 
       expect(result).toBe(StepResult.CONTINUE);
       expect(putSystemMessage).toHaveBeenCalledWith(
-        'Context optimization in progress.',
-        expect.arrayContaining([
-          ['/test/file1.ts', 0.9],
-          ['/test/file2.ts', 0.8],
-        ]),
+        'Context optimization completed successfully.',
+        expect.objectContaining({
+          optimizedContext: expect.arrayContaining([
+            ['/test/file1.ts', 0.9],
+            ['/test/file2.ts', 0.8],
+          ]),
+        }),
       );
     });
 
@@ -410,16 +412,20 @@ describe('executeStepContextOptimization', () => {
 
       expect(result).toBe(StepResult.CONTINUE);
       expect(putSystemMessage).toHaveBeenCalledWith(
-        'Context optimization in progress.',
-        expect.arrayContaining([
-          ['/test/high-relevance.ts', 0.9],
-          ['/test/medium-relevance.ts', 0.6],
-        ]),
+        'Context optimization completed successfully.',
+        expect.objectContaining({
+          optimizedContext: expect.arrayContaining([
+            ['/test/high-relevance.ts', 0.9],
+            ['/test/medium-relevance.ts', 0.6],
+          ]),
+        }),
       );
       // Low relevance file should not be included
       expect(putSystemMessage).not.toHaveBeenCalledWith(
-        'Context optimization in progress.',
-        expect.arrayContaining(['/test/low-relevance.ts', 0.2]),
+        'Context optimization completed successfully.',
+        expect.objectContaining({
+          optimizedContext: expect.arrayContaining(['/test/low-relevance.ts', 0.2]),
+        }),
       );
     });
 
