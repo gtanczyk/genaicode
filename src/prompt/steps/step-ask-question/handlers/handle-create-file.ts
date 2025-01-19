@@ -5,7 +5,7 @@ import { getSourceCode } from '../../../../files/read-files.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
 
 export const handleCreateFile: ActionHandler = async ({
@@ -42,6 +42,10 @@ export const handleCreateFile: ActionHandler = async ({
     };
   }
 
+  if (generateConfirmation.answer) {
+    putUserMessage(generateConfirmation.answer);
+  }
+
   putSystemMessage('Content generation started.', askQuestionCall);
 
   const [createFileCall] = (await generateContentFn(
@@ -53,7 +57,9 @@ export const handleCreateFile: ActionHandler = async ({
       },
       {
         type: 'user',
-        text: 'Ok, please provide the file creation using `createFile` function. Please remember to use absolute file path.',
+        text:
+          'Ok, please provide the file creation using `createFile` function. Please remember to use absolute file path.' +
+          (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
       },
     ],
     getFunctionDefs(),
