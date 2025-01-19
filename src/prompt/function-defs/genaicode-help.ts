@@ -6,7 +6,7 @@ import { FunctionDef } from '../../ai-service/common.js';
  */
 export const genaicodeHelpDef: FunctionDef = {
   name: 'genaicodeHelp',
-  description: `This function provides answers to user queries by searching the GenAIcode documentation.`,
+  description: `This function provides help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.`,
   parameters: {
     type: 'object',
     properties: {

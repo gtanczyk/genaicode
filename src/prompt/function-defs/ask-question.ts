@@ -30,7 +30,7 @@ ${
 }
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}
-- genaicodeHelp: Use to provide help on genaicode commands and features.
+- genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 
 This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }
