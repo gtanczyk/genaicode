@@ -34,6 +34,10 @@
       "types": "./dist/vite-genaicode/vite-genaicode-plugin.d.ts",
       "default": "./dist/vite-genaicode/vite-genaicode-plugin.js"
     },
+    "./vite-context": {
+      "types": "./dist/vite-genaicode/vite-genaicode-context.d.ts",
+      "default": "./dist/vite-genaicode/vite-genaicode-context.js"
+    },
     "./*": "./dist/*"
   },
   "scripts": {

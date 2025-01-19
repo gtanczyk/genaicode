@@ -7,6 +7,7 @@ import { serviceAutoDetect } from '../cli/service-autodetect.js';
 import { stringToAiServiceType } from '../main/codegen-utils.js';
 import { CodegenOptions, Plugin } from '../main/codegen-types.js';
 import { registerPlugin } from '../main/plugin-loader.js';
+import { Service } from '../main/ui/backend/service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,7 +16,14 @@ let started = false;
 
 const GENAICODE_PORT = 1338;
 
-export default function viteGenaicode(options?: Partial<CodegenOptions>, config?: { plugins: Plugin[] }) {
+export default function viteGenaicode(
+  options?: Partial<CodegenOptions>,
+  config?: { plugins: Plugin[]; genaicodePort?: number },
+) {
+  let service: Service;
+  const genaicodePort = config?.genaicodePort ?? GENAICODE_PORT;
+  let appContextEnabled: boolean | undefined;
+
   async function start(port: number) {
     if (started) {
       console.log('GenAIcode UI is already started');
@@ -33,9 +41,9 @@ export default function viteGenaicode(options?: Partial<CodegenOptions>, config?
       started = true;
       console.log('Starting GenAIcode in UI mode...');
 
-      await runCodegenUI({
+      service = await runCodegenUI({
         ui: true,
-        uiPort: GENAICODE_PORT,
+        uiPort: genaicodePort,
         uiFrameAncestors: ['http://localhost:' + port],
         aiService: stringToAiServiceType(serviceAutoDetect()),
         isDev: false,
@@ -55,6 +63,8 @@ export default function viteGenaicode(options?: Partial<CodegenOptions>, config?
 
         ...options,
       });
+
+      appContextEnabled = (await service.getRcConfig()).featuresEnabled?.appContext;
     } catch (error) {
       console.error('Failed to start GenAIcode UI:', error);
       throw error;
@@ -79,7 +89,17 @@ export default function viteGenaicode(options?: Partial<CodegenOptions>, config?
     transformIndexHtml(html: string) {
       return html.replace(
         '</body>',
-        `<script type="module" src="/vite-genaicode.js" data-genaicode-port="${GENAICODE_PORT}"></script>`,
+        `<script type="module" 
+  src="/vite-genaicode.js" 
+  data-genaicode-port="${genaicodePort}" 
+  ${
+    appContextEnabled
+      ? `data-genaicode-token="${service.getToken()}"
+    data-genaicode-app-context-enabled="true"`
+      : ``
+  }          
+>
+</script>`,
       );
     },
 

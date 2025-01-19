@@ -12,6 +12,17 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-040] Context Management Implementation: Added centralized context management in content-bus system. Created: 2024-01-18 Updated: 2024-01-18
+
+  Key Updates:
+
+  - Centralized context management
+  - Type-safe context operations
+  - Integration with message bus
+  - Improved error handling
+
+- [ ] [GEN-039] App Context Integration: Added pullAppContext and pushAppContext actions for managing application context in conversations. Created: 2024-01-18 Updated: 2024-01-18
+
 - [ ] [GEN-035] Add Contributing Guidelines: Created comprehensive CONTRIBUTING.md with development setup, code style, testing requirements, PR process, and plugin development guidelines. Created: 2024-01-17 Updated: 2024-01-17
 
 - [x] [GEN-034] Add patchFile and updateFile test cases: Added new test cases to codegen-summary.test.ts for patchFile and updateFile scenarios. Created: 2024-01-14 Updated: 2024-01-14

@@ -21,7 +21,7 @@ export async function startServer(service: Service, { uiPort, additionalFrameAnc
 
   // CORS configuration
   const corsOptions = {
-    origin: `http://localhost:${uiPort}`,
+    origin: [`http://localhost:${uiPort}`, ...(additionalFrameAncestors ?? [])],
     optionsSuccessStatus: 200,
   };
   app.use(cors(corsOptions));

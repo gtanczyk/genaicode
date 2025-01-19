@@ -35,4 +35,7 @@ export interface RcConfig {
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
   plugins?: string[];
+  featuresEnabled?: {
+    appContext?: boolean;
+  };
 }

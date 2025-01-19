@@ -11,6 +11,7 @@ import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.
 import { getGenerateContentFunctions } from '../../codegen.js';
 import { FunctionCall } from '../../../ai-service/common.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
+import { AppContextProvider } from '../../common/app-context-bus.js';
 
 interface ImageData {
   buffer: Buffer;
@@ -18,7 +19,7 @@ interface ImageData {
   originalname: string;
 }
 
-export class Service {
+export class Service implements AppContextProvider {
   private executionStatus: 'idle' | 'executing' | 'paused' | 'interrupted' = 'idle';
   private currentQuestion: Question | null = null;
   private askQuestionConversation: Array<{
@@ -32,6 +33,9 @@ export class Service {
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
   private securityToken: string;
+
+  // Context storage for managing application context
+  private contextStorage: Map<string, unknown> = new Map();
 
   constructor(codegenOptions: CodegenOptions) {
     this.codegenOptions = codegenOptions;
@@ -325,5 +329,44 @@ export class Service {
         this.pausePromiseResolve = resolve;
       });
     }
+  }
+
+  /**
+   * Get a context value by key
+   * @param key The context key
+   * @returns The stored value, or undefined if not found
+   */
+  async getContextValue<T = unknown>(key: string): Promise<T | undefined> {
+    return this.contextStorage.get(key) as T | undefined;
+  }
+
+  /**
+   * Set a context value
+   * @param key The context key
+   * @param value The value to store
+   */
+  async setContextValue<T = unknown>(key: string, value: T): Promise<void> {
+    if (!key) {
+      throw new Error('Context key is required');
+    }
+    this.contextStorage.set(key, value);
+  }
+
+  /**
+   * Clear a specific context value
+   * @param key The context key to clear
+   */
+  async clearContextValue(key: string): Promise<void> {
+    if (!key) {
+      throw new Error('Context key is required');
+    }
+    this.contextStorage.delete(key);
+  }
+
+  /**
+   * Clear all context values
+   */
+  async clearAllContext(): Promise<void> {
+    this.contextStorage.clear();
   }
 }

@@ -22,6 +22,12 @@ Detailed Explanation of actionTypes:
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - endConversation: Use to stop the conversation.
+${
+  rcConfig.featuresEnabled?.appContext
+    ? `- pullAppContext: Use to retrieve application context values for use in the conversation. This allows accessing shared state between the application and GenAIcode.
+- pushAppContext: Use to update application context values based on conversation outcomes. This enables persisting conversation results back to the application.`
+    : ''
+}
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}
 
@@ -41,6 +47,7 @@ const actionTypeOptions: string[] = [
   'searchCode',
   'confirmCodeGeneration',
   'endConversation',
+  ...(rcConfig.featuresEnabled?.appContext ? ['pullAppContext', 'pushAppContext'] : []),
   ...(rcConfig.lintCommand ? ['lint'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
 ];
@@ -269,5 +276,49 @@ export const lint: FunctionDef = {
       },
     },
     required: [],
+  },
+};
+
+// pullAppContext
+export const pullAppContext: FunctionDef = {
+  name: 'pullAppContext',
+  description: 'Use this function to retrieve application context values for use in the conversation.',
+  parameters: {
+    type: 'object',
+    properties: {
+      key: {
+        type: 'string',
+        description: 'The key of the context value to retrieve.',
+      },
+      reason: {
+        type: 'string',
+        description: 'Optional reason for retrieving this context value.',
+      },
+    },
+    required: ['key'],
+  },
+};
+
+// pushAppContext
+export const pushAppContext: FunctionDef = {
+  name: 'pushAppContext',
+  description: 'Use this function to update application context values based on conversation outcomes.',
+  parameters: {
+    type: 'object',
+    properties: {
+      key: {
+        type: 'string',
+        description: 'The key of the context value to update.',
+      },
+      value: {
+        type: 'string',
+        description: 'The value to store in the context. This must be a valid json string.',
+      },
+      reason: {
+        type: 'string',
+        description: 'Optional reason for updating this context value.',
+      },
+    },
+    required: ['key', 'value'],
   },
 };

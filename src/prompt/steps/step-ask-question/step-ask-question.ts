@@ -26,6 +26,8 @@ import { handleSearchCode } from './handlers/handle-search-code.js';
 import { handleUpdateFile } from './handlers/handle-update-file.js';
 import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
 import { handleCreateFile } from './handlers/handle-create-file.js';
+import { handlePullAppContext } from './handlers/handle-pull-app-context.js';
+import { handlePushAppContext } from './handlers/handle-push-app-context.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -146,6 +148,8 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     updateFile: handleUpdateFile,
     createFile: handleCreateFile,
     performAnalysis: handlePerformAnalysis,
+    pullAppContext: handlePullAppContext,
+    pushAppContext: handlePushAppContext,
   };
 
   return handlers[actionType] || handleSendMessage;

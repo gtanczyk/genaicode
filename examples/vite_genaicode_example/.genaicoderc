@@ -1,3 +1,9 @@
 {
-  "rootDir": "."
+  "rootDir": ".",
+  "ignorePaths": [
+    ".mjs"
+  ],
+  "featuresEnabled": {
+    "appContext": true
+  }
 }

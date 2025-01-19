@@ -128,6 +128,16 @@ Example: ['gpt-4o-mini']`,
       description: `Paths to plugin files that should be loaded by GenAIcode. Plugins can extend functionality by adding custom operations, AI services, or action handlers.
 Example: ['./plugins/custom-plugin.js', './examples/genaicode_plugins/genaicode_tracker.js', './examples/genaicode_plugins/nonsense_operation.js']`,
     },
+    featuresEnabled: {
+      type: 'object',
+      description: 'Configuration for enabling/disabling specific features in the tool.',
+      properties: {
+        appContext: {
+          type: 'boolean',
+          description: 'Enable/disable the app context feature that provides additional context for code generation.',
+        },
+      },
+    },
   },
   required: ['rootDir'],
   additionalProperties: false,

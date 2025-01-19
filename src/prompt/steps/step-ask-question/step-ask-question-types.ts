@@ -23,12 +23,31 @@ export type ActionType =
   | 'updateFile'
   | 'performAnalysis'
   | 'createFile'
+  | 'pullAppContext'
+  | 'pushAppContext'
   | PluginActionType;
 
 type AskQuestionArgs = {
   actionType: ActionType;
   message: string;
   decisionMakingProcess?: string;
+};
+
+/**
+ * Arguments for pullAppContext action
+ */
+export type PullAppContextArgs = {
+  reason: string;
+  key: string;
+};
+
+/**
+ * Arguments for pushAppContext action
+ */
+export type PushAppContextArgs = {
+  reason: string;
+  key: string;
+  value: string;
 };
 
 export type GenerateImageArgs = {

@@ -13,6 +13,8 @@ import {
   contextOptimization,
   searchCode,
   lint,
+  pullAppContext,
+  pushAppContext,
 } from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
@@ -47,6 +49,8 @@ export function getFunctionDefs(): FunctionDef[] {
     readHistory,
     performAnalysis,
     analysisResult,
+    pullAppContext,
+    pushAppContext,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (
