@@ -148,7 +148,6 @@ export async function executeStepContextOptimization(
     prompt.push(
       {
         type: 'assistant',
-        text: 'Requesting content of the following files:\n' + Object.keys(optimizedSourceCode).join('\n'),
         functionCalls: [
           {
             name: 'requestFilesContent',
@@ -166,7 +165,6 @@ export async function executeStepContextOptimization(
       },
       {
         type: 'user',
-        text: 'Providing content of the requested files:\n' + Object.keys(optimizedSourceCode).join('\n'),
         functionResponses: [
           {
             name: 'requestFilesContent',
