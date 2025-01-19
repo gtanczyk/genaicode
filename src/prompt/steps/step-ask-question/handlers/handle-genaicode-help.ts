@@ -3,7 +3,7 @@ import { FunctionCall, PromptItem } from '../../../../ai-service/common.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { putAssistantMessage } from '../../../../main/common/content-bus.js';
 import { askUserForInput } from '../../../../main/common/user-actions.js';
-import { GENAICODE_HELP_DOCUMENT } from './genaicode-help-document.js';
+import { GENAICODE_HELP_DOCUMENT } from '../../../../help-docs/genaicode-help-document.js';
 
 /**
  * Handler for the help action. This handler is responsible for:
