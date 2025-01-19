@@ -12,6 +12,15 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-043] Enhanced File Operation Handlers: Added confirmation before content generation. Created: 2024-01-19 Updated: 2024-01-19
+
+  Key Updates:
+
+  - Modified handle-create-file.ts to add pre-generation confirmation
+  - Modified handle-update-file.ts to add pre-generation confirmation
+  - Improved user interaction flow in file operations
+  - Enhanced error handling in two-step confirmation process
+
 - [ ] [GEN-041] Help System Implementation: Added in-context documentation and help action support. Created: 2024-01-19 Updated: 2024-01-19
 
   Key Updates:

@@ -5,7 +5,7 @@ import { getSourceCode } from '../../../../files/read-files.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
 
 export const handleUpdateFile: ActionHandler = async ({
@@ -14,7 +14,39 @@ export const handleUpdateFile: ActionHandler = async ({
   prompt,
   generateContentFn,
 }): Promise<ActionResult> => {
-  putSystemMessage('File update requested, new content generation started.', askQuestionCall);
+  putSystemMessage('File update requested.', askQuestionCall);
+
+  // First confirmation: Ask user if they want to proceed with content generation
+  const generateConfirmation = await askUserForConfirmationWithAnswer(
+    'The assistant suggests generating new content for the file update. Do you want to proceed with content generation?',
+    'Generate content',
+    'Cancel content generation',
+    false,
+  );
+
+  if (!generateConfirmation.confirmed) {
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+          },
+          user: {
+            type: 'user',
+            text: 'Canceling file update.' + (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
+          },
+        },
+      ],
+    };
+  }
+
+  if (generateConfirmation.answer) {
+    putUserMessage(generateConfirmation.answer);
+  }
+
+  putSystemMessage('Content generation started.', askQuestionCall);
 
   const [updateFileCall] = (await generateContentFn(
     [
@@ -25,7 +57,9 @@ export const handleUpdateFile: ActionHandler = async ({
       },
       {
         type: 'user',
-        text: 'Ok, please provide the update using `updateFile` function. Please remember to use absolute file path.',
+        text:
+          'Ok, please provide the update using `updateFile` function. Please remember to use absolute file path.' +
+          (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
       },
     ],
     getFunctionDefs(),
@@ -48,7 +82,6 @@ export const handleUpdateFile: ActionHandler = async ({
 
   if (!file || !('content' in file) || !file.content) {
     // TODO: In this corner case we should probably retry the operation but prefix it with getSourceCode
-
     return {
       breakLoop: false,
       items: [
@@ -66,7 +99,7 @@ export const handleUpdateFile: ActionHandler = async ({
     };
   }
 
-  putSystemMessage(`The assistant suggests updating the file ${filePath}.`, {
+  putSystemMessage(`The assistant has generated new content for file ${filePath}.`, {
     name: updateFileCall.name,
     args: {
       ...updateFileCall.args,
@@ -74,14 +107,15 @@ export const handleUpdateFile: ActionHandler = async ({
     },
   });
 
-  const userConfirmation = await askUserForConfirmationWithAnswer(
-    'The assistant suggests updating the file. Do you want to proceed?',
-    'Accept file update',
-    'Reject file update',
+  // Second confirmation: Ask user if they want to proceed with file update
+  const applyConfirmation = await askUserForConfirmationWithAnswer(
+    'The assistant has generated the new file content. Do you want to update the file?',
+    'Update file',
+    'Cancel update',
     false,
   );
 
-  if (!userConfirmation.confirmed) {
+  if (!applyConfirmation.confirmed) {
     return {
       breakLoop: false,
       items: [
@@ -93,7 +127,7 @@ export const handleUpdateFile: ActionHandler = async ({
           },
           user: {
             type: 'user',
-            text: 'Rejecting file update.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
+            text: 'Rejecting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
             functionResponses: [
               {
                 name: 'updateFile',
@@ -105,60 +139,60 @@ export const handleUpdateFile: ActionHandler = async ({
         },
       ],
     };
-  } else {
-    try {
-      await executeUpdateFile(updateFileCall.args);
-      refreshFiles();
-      return {
-        breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args!.message,
-              functionCalls: [updateFileCall],
-            },
-            user: {
-              type: 'user',
-              text: 'Accepting file update.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
-              functionResponses: [
-                {
-                  name: 'updateFile',
-                  call_id: updateFileCall.id,
-                  content: '',
-                },
-              ],
-            },
+  }
+
+  try {
+    await executeUpdateFile(updateFileCall.args);
+    refreshFiles();
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+            functionCalls: [updateFileCall],
           },
-        ],
-      };
-    } catch {
-      return {
-        breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args!.message,
-              functionCalls: [updateFileCall],
-            },
-            user: {
-              type: 'user',
-              text:
-                'Accepting file update.' +
-                (userConfirmation.answer ? ` ${userConfirmation.answer}` : '') +
-                ' Unfortunately, the file update failed, the new content was not saved.',
-              functionResponses: [
-                {
-                  name: 'updateFile',
-                  call_id: updateFileCall.id,
-                  content: '',
-                },
-              ],
-            },
+          user: {
+            type: 'user',
+            text: 'Accepting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+            functionResponses: [
+              {
+                name: 'updateFile',
+                call_id: updateFileCall.id,
+                content: '',
+              },
+            ],
           },
-        ],
-      };
-    }
+        },
+      ],
+    };
+  } catch {
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+            functionCalls: [updateFileCall],
+          },
+          user: {
+            type: 'user',
+            text:
+              'Accepting file update.' +
+              (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
+              ' Unfortunately, the file update failed, the new content was not saved.',
+            functionResponses: [
+              {
+                name: 'updateFile',
+                call_id: updateFileCall.id,
+                content: '',
+              },
+            ],
+          },
+        },
+      ],
+    };
   }
 };

@@ -14,7 +14,35 @@ export const handleCreateFile: ActionHandler = async ({
   prompt,
   generateContentFn,
 }): Promise<ActionResult> => {
-  putSystemMessage('File creation requested, new content generation started.', askQuestionCall);
+  putSystemMessage('File creation requested.', askQuestionCall);
+
+  // First confirmation: Ask user if they want to proceed with content generation
+  const generateConfirmation = await askUserForConfirmationWithAnswer(
+    'The assistant suggests generating content for a new file. Do you want to proceed with content generation?',
+    'Generate content',
+    'Cancel content generation',
+    false,
+  );
+
+  if (!generateConfirmation.confirmed) {
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+          },
+          user: {
+            type: 'user',
+            text: 'Canceling file creation.' + (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
+          },
+        },
+      ],
+    };
+  }
+
+  putSystemMessage('Content generation started.', askQuestionCall);
 
   const [createFileCall] = (await generateContentFn(
     [
@@ -64,19 +92,20 @@ export const handleCreateFile: ActionHandler = async ({
     };
   }
 
-  putSystemMessage(`The assistant suggests creating a new file ${filePath}.`, {
+  putSystemMessage(`The assistant has generated content for new file ${filePath}.`, {
     name: createFileCall.name,
     args: createFileCall.args,
   });
 
-  const userConfirmation = await askUserForConfirmationWithAnswer(
-    'The assistant suggests creating a new file. Do you want to proceed?',
-    'Accept file creation',
-    'Reject file creation',
+  // Second confirmation: Ask user if they want to proceed with file creation
+  const applyConfirmation = await askUserForConfirmationWithAnswer(
+    'The assistant has generated the file content. Do you want to create the file?',
+    'Create file',
+    'Cancel file creation',
     false,
   );
 
-  if (!userConfirmation.confirmed) {
+  if (!applyConfirmation.confirmed) {
     return {
       breakLoop: false,
       items: [
@@ -88,7 +117,7 @@ export const handleCreateFile: ActionHandler = async ({
           },
           user: {
             type: 'user',
-            text: 'Rejecting file creation.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
+            text: 'Rejecting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
             functionResponses: [
               {
                 name: 'createFile',
@@ -100,61 +129,61 @@ export const handleCreateFile: ActionHandler = async ({
         },
       ],
     };
-  } else {
-    try {
-      await executeCreateFile(createFileCall.args, options);
-      refreshFiles();
-      return {
-        breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args!.message,
-              functionCalls: [createFileCall],
-            },
-            user: {
-              type: 'user',
-              text: 'Accepting file creation.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
-              functionResponses: [
-                {
-                  name: 'createFile',
-                  call_id: createFileCall.id,
-                  content: '',
-                },
-              ],
-            },
+  }
+
+  try {
+    await executeCreateFile(createFileCall.args, options);
+    refreshFiles();
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+            functionCalls: [createFileCall],
           },
-        ],
-      };
-    } catch (error) {
-      return {
-        breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args!.message,
-              functionCalls: [createFileCall],
-            },
-            user: {
-              type: 'user',
-              text:
-                'Accepting file creation.' +
-                (userConfirmation.answer ? ` ${userConfirmation.answer}` : '') +
-                ' Unfortunately, the file creation failed: ' +
-                (error instanceof Error ? error.message : 'unknown error'),
-              functionResponses: [
-                {
-                  name: 'createFile',
-                  call_id: createFileCall.id,
-                  content: '',
-                },
-              ],
-            },
+          user: {
+            type: 'user',
+            text: 'Accepting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+            functionResponses: [
+              {
+                name: 'createFile',
+                call_id: createFileCall.id,
+                content: '',
+              },
+            ],
           },
-        ],
-      };
-    }
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: askQuestionCall.args!.message,
+            functionCalls: [createFileCall],
+          },
+          user: {
+            type: 'user',
+            text:
+              'Accepting file creation.' +
+              (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
+              ' Unfortunately, the file creation failed: ' +
+              (error instanceof Error ? error.message : 'unknown error'),
+            functionResponses: [
+              {
+                name: 'createFile',
+                call_id: createFileCall.id,
+                content: '',
+              },
+            ],
+          },
+        },
+      ],
+    };
   }
 };
