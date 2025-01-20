@@ -8,5 +8,9 @@ export default defineConfig({
     retry: 1,
     onConsoleLog: () => false,
     watch: false,
+    reporters: ['json', 'default'],
+    outputFile: {
+      json: 'src/eval/results.json',
+    },
   },
 });
