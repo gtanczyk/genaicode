@@ -28,17 +28,32 @@ import {
   PROMPT_CODEGEN_SUMMARY,
   PROMPT_CODEGEN_SUMMARY_ASSISTANT,
 } from '../prompt/steps/step-generate-codegen-summary-prompt.js';
+import { updateServiceConfig } from '../ai-service/service-configurations.js';
 
 vi.setConfig({
-  testTimeout: 120000,
+  testTimeout: 3 * 60000,
 });
 
 describe.each([
-  { model: 'Gemini Pro', generateContent: generateContentAiStudio },
+  {
+    model: 'Gemini Pro',
+    generateContent: generateContentAiStudio,
+    serviceConfigUpdate: [
+      'ai-studio',
+      {
+        modelOverrides: {
+          default: 'gemini-1.5-pro',
+        },
+      },
+    ] as Parameters<typeof updateServiceConfig>,
+  },
   { model: 'Claude Sonnet', generateContent: generateContentAnthropic },
   { model: 'GPT-4o', generateContent: generateContentOpenAI },
-])('codegen-summary: $model', ({ generateContent }) => {
+])('codegen-summary: $model', ({ generateContent, serviceConfigUpdate }) => {
   const temperature = 0.7;
+  if (serviceConfigUpdate) {
+    updateServiceConfig(...serviceConfigUpdate);
+  }
   generateContent = retryGenerateContent(generateContent);
 
   it.each([

@@ -19,8 +19,8 @@ export interface RetryOptions {
  */
 const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
   maxAttempts: 3,
-  initialDelayMs: 1000,
-  maxDelayMs: 10000,
+  initialDelayMs: 10000,
+  maxDelayMs: 20000,
   jitterFactor: 0.1,
 };
 

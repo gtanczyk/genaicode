@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1737358713352,
+  "startTime": 1737368436163,
   "success": false,
   "testResults": [
     {
@@ -34,7 +34,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'hello prompt'",
           "status": "passed",
           "title": "'hello prompt'",
-          "duration": 4589.722662985325,
+          "duration": 4830.986526012421,
           "failureMessages": [],
           "meta": {}
         },
@@ -43,7 +43,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'good bye prompt'",
           "status": "passed",
           "title": "'good bye prompt'",
-          "duration": 3811.1319690048695,
+          "duration": 4132.336961984634,
           "failureMessages": [],
           "meta": {}
         },
@@ -52,7 +52,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'request files content'",
           "status": "passed",
           "title": "'request files content'",
-          "duration": 4953.8593069911,
+          "duration": 3024.127788990736,
           "failureMessages": [],
           "meta": {}
         },
@@ -61,7 +61,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'subsequent request files content'",
           "status": "passed",
           "title": "'subsequent request files content'",
-          "duration": 4965.829724013805,
+          "duration": 5012.5259539783,
           "failureMessages": [],
           "meta": {}
         },
@@ -70,7 +70,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'generate an image'",
           "status": "passed",
           "title": "'generate an image'",
-          "duration": 4200.28561899066,
+          "duration": 4810.622867017984,
           "failureMessages": [],
           "meta": {}
         },
@@ -79,7 +79,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'analyze an image'",
           "status": "passed",
           "title": "'analyze an image'",
-          "duration": 6312.944806993008,
+          "duration": 9027.963173002005,
           "failureMessages": [],
           "meta": {}
         },
@@ -88,7 +88,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'count objects on an image'",
           "status": "passed",
           "title": "'count objects on an image'",
-          "duration": 4702.817662984133,
+          "duration": 5507.456139981747,
           "failureMessages": [],
           "meta": {}
         },
@@ -97,7 +97,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'updateFile without context'",
           "status": "passed",
           "title": "'updateFile without context'",
-          "duration": 4245.938206017017,
+          "duration": 4457.576941013336,
           "failureMessages": [],
           "meta": {}
         },
@@ -106,7 +106,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'createFile for existing file'",
           "status": "passed",
           "title": "'createFile for existing file'",
-          "duration": 4288.507535994053,
+          "duration": 4776.118738979101,
           "failureMessages": [],
           "meta": {}
         },
@@ -115,7 +115,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'createFile for non existing file'",
           "status": "passed",
           "title": "'createFile for non existing file'",
-          "duration": 4547.306039005518,
+          "duration": 4930.462831020355,
           "failureMessages": [],
           "meta": {}
         },
@@ -124,7 +124,7 @@
           "fullName": "Ask Question: 'Gemini Flash' 'genaicode help'",
           "status": "passed",
           "title": "'genaicode help'",
-          "duration": 4042.895221978426,
+          "duration": 4929.030493021011,
           "failureMessages": [],
           "meta": {}
         },
@@ -133,8 +133,10 @@
           "fullName": "Ask Question: 'Claude Haikku' 'hello prompt'",
           "status": "passed",
           "title": "'hello prompt'",
-          "duration": 9780.807954996824,
-          "failureMessages": [],
+          "duration": 19062.65061697364,
+          "failureMessages": [
+            "AssertionError: expected 'Hi there! I\\'m GenAIcode, your code g…' to deeply equal StringContaining \"Hello\"\n    at ./src/eval/ask-question.test.ts:251:45\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         },
         {
@@ -142,7 +144,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'good bye prompt'",
           "status": "passed",
           "title": "'good bye prompt'",
-          "duration": 5497.086454004049,
+          "duration": 6379.1553820073605,
           "failureMessages": [],
           "meta": {}
         },
@@ -151,7 +153,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'request files content'",
           "status": "passed",
           "title": "'request files content'",
-          "duration": 6629.464111983776,
+          "duration": 5896.956805020571,
           "failureMessages": [],
           "meta": {}
         },
@@ -160,7 +162,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'subsequent request files content'",
           "status": "passed",
           "title": "'subsequent request files content'",
-          "duration": 10922.364596992731,
+          "duration": 11517.079048007727,
           "failureMessages": [],
           "meta": {}
         },
@@ -169,7 +171,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'generate an image'",
           "status": "passed",
           "title": "'generate an image'",
-          "duration": 6863.683112978935,
+          "duration": 7240.202324002981,
           "failureMessages": [],
           "meta": {}
         },
@@ -178,7 +180,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'analyze an image'",
           "status": "passed",
           "title": "'analyze an image'",
-          "duration": 14928.607965976,
+          "duration": 17817.58060401678,
           "failureMessages": [],
           "meta": {}
         },
@@ -187,7 +189,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'count objects on an image'",
           "status": "passed",
           "title": "'count objects on an image'",
-          "duration": 12663.855168998241,
+          "duration": 19983.858788996935,
           "failureMessages": [],
           "meta": {}
         },
@@ -196,7 +198,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'updateFile without context'",
           "status": "passed",
           "title": "'updateFile without context'",
-          "duration": 7849.714437007904,
+          "duration": 8399.382473021746,
           "failureMessages": [],
           "meta": {}
         },
@@ -205,7 +207,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'createFile for existing file'",
           "status": "passed",
           "title": "'createFile for existing file'",
-          "duration": 7828.649083018303,
+          "duration": 8372.254378974438,
           "failureMessages": [],
           "meta": {}
         },
@@ -214,7 +216,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'createFile for non existing file'",
           "status": "passed",
           "title": "'createFile for non existing file'",
-          "duration": 6948.210382014513,
+          "duration": 6963.487443983555,
           "failureMessages": [],
           "meta": {}
         },
@@ -223,7 +225,7 @@
           "fullName": "Ask Question: 'Claude Haikku' 'genaicode help'",
           "status": "passed",
           "title": "'genaicode help'",
-          "duration": 5954.017459988594,
+          "duration": 6787.860870987177,
           "failureMessages": [],
           "meta": {}
         },
@@ -232,7 +234,7 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'hello prompt'",
           "status": "passed",
           "title": "'hello prompt'",
-          "duration": 7768.882271975279,
+          "duration": 17248.454757004976,
           "failureMessages": [],
           "meta": {}
         },
@@ -241,7 +243,7 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'good bye prompt'",
           "status": "passed",
           "title": "'good bye prompt'",
-          "duration": 4179.017560988665,
+          "duration": 7143.8878110051155,
           "failureMessages": [],
           "meta": {}
         },
@@ -250,10 +252,8 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'request files content'",
           "status": "passed",
           "title": "'request files content'",
-          "duration": 14896.989563018084,
-          "failureMessages": [
-            "AssertionError: expected '1. **Contextual Analysis**: The user …' to contain 'Decision Justification'\n    at ./src/eval/ask-question.test.ts:258:57\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
-          ],
+          "duration": 8368.487154006958,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -261,8 +261,10 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'subsequent request files content'",
           "status": "passed",
           "title": "'subsequent request files content'",
-          "duration": 8318.043134003878,
-          "failureMessages": [],
+          "duration": 17656.515955001116,
+          "failureMessages": [
+            "AssertionError: expected 'performAnalysis' to be 'sendMessage' // Object.is equality\n    at ./src/eval/ask-question.test.ts:249:46\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         },
         {
@@ -270,8 +272,10 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'generate an image'",
           "status": "passed",
           "title": "'generate an image'",
-          "duration": 4927.12713098526,
-          "failureMessages": [],
+          "duration": 98083.11111500859,
+          "failureMessages": [
+            "SyntaxError: Unexpected end of JSON input\n    at JSON.parse (<anonymous>)\n    at ./src/ai-service/openai.ts:64:23\n    at Array.map (<anonymous>)\n    at internalGenerateContent (./src/ai-service/openai.ts:62:35)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:16)\n    at ./src/eval/ask-question.test.ts:235:20\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)"
+          ],
           "meta": {}
         },
         {
@@ -279,10 +283,10 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'analyze an image'",
           "status": "failed",
           "title": "'analyze an image'",
-          "duration": 30148.39873200655,
+          "duration": 23413.00661700964,
           "failureMessages": [
-            "AssertionError: expected 'I can\\'t interpret or analyze images …' to deeply equal StringContaining \"star\"\n    at ./src/eval/ask-question.test.ts:251:45\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected 'I can\\'t analyze the content of image…' to deeply equal StringContaining \"star\"\n    at ./src/eval/ask-question.test.ts:251:45\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected 'I can\\'t analyze the content of image…' to deeply equal StringContaining \"star\"\n    at ./src/eval/ask-question.test.ts:251:45\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected 'I can\\'t analyze the content of the i…' to deeply equal StringContaining \"star\"\n    at ./src/eval/ask-question.test.ts:251:45\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -291,7 +295,7 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'count objects on an image'",
           "status": "passed",
           "title": "'count objects on an image'",
-          "duration": 16753.887140989304,
+          "duration": 8776.447840988636,
           "failureMessages": [],
           "meta": {}
         },
@@ -300,20 +304,17 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'updateFile without context'",
           "status": "passed",
           "title": "'updateFile without context'",
-          "duration": 6609.1118940114975,
+          "duration": 6758.489912003279,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["Ask Question: 'GPT-4o Mini'"],
           "fullName": "Ask Question: 'GPT-4o Mini' 'createFile for existing file'",
-          "status": "failed",
+          "status": "passed",
           "title": "'createFile for existing file'",
-          "duration": 17365.357614010572,
-          "failureMessages": [
-            "AssertionError: expected 'updateFile' to be 'sendMessage' // Object.is equality\n    at ./src/eval/ask-question.test.ts:249:46\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected 'updateFile' to be 'sendMessage' // Object.is equality\n    at ./src/eval/ask-question.test.ts:249:46\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
-          ],
+          "duration": 8514.666195988655,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -321,22 +322,25 @@
           "fullName": "Ask Question: 'GPT-4o Mini' 'createFile for non existing file'",
           "status": "passed",
           "title": "'createFile for non existing file'",
-          "duration": 7198.631901979446,
+          "duration": 10227.106059998274,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["Ask Question: 'GPT-4o Mini'"],
           "fullName": "Ask Question: 'GPT-4o Mini' 'genaicode help'",
-          "status": "passed",
+          "status": "failed",
           "title": "'genaicode help'",
-          "duration": 7430.266040027142,
-          "failureMessages": [],
+          "duration": 19044.78861901164,
+          "failureMessages": [
+            "AssertionError: expected 'sendMessage' to be 'genaicodeHelp' // Object.is equality\n    at ./src/eval/ask-question.test.ts:249:46\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected 'sendMessage' to be 'genaicodeHelp' // Object.is equality\n    at ./src/eval/ask-question.test.ts:249:46\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         }
       ],
-      "startTime": 1737360337466,
-      "endTime": 1737360609548.266,
+      "startTime": 1737369954492,
+      "endTime": 1737370353586.7886,
       "status": "failed",
       "message": "",
       "name": "./src/eval/ask-question.test.ts"
@@ -348,7 +352,7 @@
           "fullName": "Code Generation: 'Gemini Pro' 'simple code change'",
           "status": "passed",
           "title": "'simple code change'",
-          "duration": 8290.893628001213,
+          "duration": 5300.19770899415,
           "failureMessages": [],
           "meta": {}
         },
@@ -357,7 +361,7 @@
           "fullName": "Code Generation: 'Gemini Pro' 'keep existing code'",
           "status": "passed",
           "title": "'keep existing code'",
-          "duration": 7461.9943100214,
+          "duration": 6243.054843991995,
           "failureMessages": [],
           "meta": {}
         },
@@ -366,7 +370,7 @@
           "fullName": "Code Generation: 'Claude Sonnet' 'simple code change'",
           "status": "passed",
           "title": "'simple code change'",
-          "duration": 4885.186001986265,
+          "duration": 6179.627995997667,
           "failureMessages": [],
           "meta": {}
         },
@@ -375,7 +379,7 @@
           "fullName": "Code Generation: 'Claude Sonnet' 'keep existing code'",
           "status": "passed",
           "title": "'keep existing code'",
-          "duration": 8115.641398012638,
+          "duration": 7334.465637981892,
           "failureMessages": [],
           "meta": {}
         },
@@ -384,7 +388,7 @@
           "fullName": "Code Generation: 'GPT-4o' 'simple code change'",
           "status": "passed",
           "title": "'simple code change'",
-          "duration": 12957.896477997303,
+          "duration": 3729.5990810096264,
           "failureMessages": [],
           "meta": {}
         },
@@ -393,13 +397,13 @@
           "fullName": "Code Generation: 'GPT-4o' 'keep existing code'",
           "status": "passed",
           "title": "'keep existing code'",
-          "duration": 5528.656665027142,
+          "duration": 4536.557640999556,
           "failureMessages": [],
           "meta": {}
         }
       ],
-      "startTime": 1737360610809,
-      "endTime": 1737360658048.6567,
+      "startTime": 1737370355695,
+      "endTime": 1737370389020.5576,
       "status": "passed",
       "message": "",
       "name": "./src/eval/code-generation.test.ts"
@@ -411,7 +415,7 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'simple task'",
           "status": "passed",
           "title": "'simple task'",
-          "duration": 35755.594296991825,
+          "duration": 13563.336831003428,
           "failureMessages": [],
           "meta": {}
         },
@@ -420,21 +424,22 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'complex task'",
           "status": "failed",
           "title": "'complex task'",
-          "duration": 225841.1030369997,
+          "duration": 55703.11978802085,
           "failureMessages": [
-            "Error: Test timed out in 120000ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\".\n    at Timeout.<anonymous> (file://./node_modules/@vitest/runner/dist/index.js:44:18)\n    at listOnTimeout (node:internal/timers:569:17)\n    at processTimers (node:internal/timers:512:7)",
-            "AssertionError: File update prompt for \"/project/src/todo-app/tasks/task-manager.ts\" should meet expectations: expected 'The content does not address the desc…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:442:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n\nActual paths:\n  - /project/src/todo-app/reporting/report-manager.ts\n  - /project/src/todo-app/tasks/task-manager.ts\n  - /project/src/todo-app/utils/report-utils.ts\n  - /project/src/todo-app/api/task-routes.ts\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
+            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n\nActual paths:\n  - /project/src/todo-app/utils/report-utils.ts\n  - /project/src/todo-app/reporting/generate-report.ts\n  - /project/src/todo-app/reporting/report-manager.ts\n  - /project/src/todo-app/tasks/task-manager.ts\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": ["codegen-summary: 'Gemini Pro'"],
           "fullName": "codegen-summary: 'Gemini Pro' 'file creation scenario'",
-          "status": "passed",
+          "status": "failed",
           "title": "'file creation scenario'",
-          "duration": 38706.30807501078,
+          "duration": 32735.140576004982,
           "failureMessages": [
-            "AssertionError: Explanation should meet expectations: expected 'The content explains the creation of …' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:450:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: Missing expected update tools:\n  - createDirectory\n\nActual tools:\n  - createFile\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
+            "AssertionError: Missing expected update tools:\n  - createDirectory\n\nActual tools:\n  - createFile\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
           ],
           "meta": {}
         },
@@ -443,7 +448,7 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'file deletion scenario'",
           "status": "passed",
           "title": "'file deletion scenario'",
-          "duration": 13468.56075501442,
+          "duration": 10379.500792980194,
           "failureMessages": [],
           "meta": {}
         },
@@ -452,10 +457,10 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'long explanation scenario'",
           "status": "failed",
           "title": "'long explanation scenario'",
-          "duration": 130312.46067100763,
+          "duration": 38627.22530299425,
           "failureMessages": [
-            "AssertionError: Explanation should meet expectations: expected 'The content does not meet all the req…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:450:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: Explanation should meet expectations: expected 'The content does not meet the length …' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:450:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: Explanation should meet expectations: expected 'The content does not meet all expecta…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:465:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: Explanation should meet expectations: expected 'The content is invalid because it doe…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:465:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -464,7 +469,7 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'patchFile scenario'",
           "status": "passed",
           "title": "'patchFile scenario'",
-          "duration": 26187.436286985874,
+          "duration": 12021.459077000618,
           "failureMessages": [],
           "meta": {}
         },
@@ -473,7 +478,7 @@
           "fullName": "codegen-summary: 'Gemini Pro' 'updateFile scenario'",
           "status": "passed",
           "title": "'updateFile scenario'",
-          "duration": 10371.807568997145,
+          "duration": 14307.757866978645,
           "failureMessages": [],
           "meta": {}
         },
@@ -482,7 +487,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'simple task'",
           "status": "passed",
           "title": "'simple task'",
-          "duration": 30264.827190995216,
+          "duration": 32346.117395997047,
           "failureMessages": [],
           "meta": {}
         },
@@ -491,10 +496,10 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'complex task'",
           "status": "failed",
           "title": "'complex task'",
-          "duration": 81412.73856499791,
+          "duration": 73271.0261309743,
           "failureMessages": [
-            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/tasks/task-manager.ts\n\nActual paths:\n  - /project/src/todo-app/reporting/export-task.ts\n  - /project/src/todo-app/api/task-routes.ts\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n  - /project/src/todo-app/frontend/utils/api-client.ts\n  - /project/src/todo-app/utils/report-utils.ts\n\n\nMissing expected update tools:\n  - updateFile\n  - updateFile\n\nActual tools:\n  - createFile\n  - patchFile\n  - patchFile\n  - patchFile\n  - patchFile\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:420:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
-            "AssertionError: Missing expected update tools:\n  - updateFile\n  - updateFile\n\nActual tools:\n  - patchFile\n  - patchFile\n  - patchFile\n  - patchFile\n  - patchFile\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:420:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
+            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/tasks/task-manager.ts\n\nActual paths:\n  - /project/src/todo-app/reporting/report-manager.ts\n  - /project/src/todo-app/api/task-routes.ts\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n  - /project/src/todo-app/frontend/utils/api-client.ts\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
+            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/tasks/task-manager.ts\n\nActual paths:\n  - /project/src/todo-app/utils/report-utils.ts\n  - /project/src/todo-app/reporting/report-manager.ts\n  - /project/src/todo-app/api/task-routes.ts\n  - /project/src/todo-app/frontend/utils/api-client.ts\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n\n\nMissing expected update tools:\n  - updateFile\n  - updateFile\n\nActual tools:\n  - patchFile\n  - patchFile\n  - patchFile\n  - patchFile\n  - patchFile\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:435:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
           ],
           "meta": {}
         },
@@ -503,7 +508,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'file creation scenario'",
           "status": "passed",
           "title": "'file creation scenario'",
-          "duration": 27872.567669004202,
+          "duration": 33417.168927013874,
           "failureMessages": [],
           "meta": {}
         },
@@ -512,7 +517,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'file deletion scenario'",
           "status": "passed",
           "title": "'file deletion scenario'",
-          "duration": 26954.46054300666,
+          "duration": 24081.306750983,
           "failureMessages": [],
           "meta": {}
         },
@@ -521,7 +526,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'long explanation scenario'",
           "status": "passed",
           "title": "'long explanation scenario'",
-          "duration": 38759.653676986694,
+          "duration": 49155.489724993706,
           "failureMessages": [],
           "meta": {}
         },
@@ -530,7 +535,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'patchFile scenario'",
           "status": "passed",
           "title": "'patchFile scenario'",
-          "duration": 27986.730583012104,
+          "duration": 25078.40306597948,
           "failureMessages": [],
           "meta": {}
         },
@@ -539,7 +544,7 @@
           "fullName": "codegen-summary: 'Claude Sonnet' 'updateFile scenario'",
           "status": "passed",
           "title": "'updateFile scenario'",
-          "duration": 30761.942350000143,
+          "duration": 30963.939150989056,
           "failureMessages": [],
           "meta": {}
         },
@@ -548,32 +553,26 @@
           "fullName": "codegen-summary: 'GPT-4o' 'simple task'",
           "status": "passed",
           "title": "'simple task'",
-          "duration": 13964.092840999365,
+          "duration": 16737.889298975468,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["codegen-summary: 'GPT-4o'"],
           "fullName": "codegen-summary: 'GPT-4o' 'complex task'",
-          "status": "failed",
+          "status": "passed",
           "title": "'complex task'",
-          "duration": 47762.6926690042,
-          "failureMessages": [
-            "AssertionError: Missing expected file paths:\n  - /project/src/todo-app/tasks/task-manager.ts\n\nActual paths:\n  - /project/src/todo-app/reporting/report-manager.ts\n  - /project/src/todo-app/api/task-routes.ts\n  - /project/src/todo-app/frontend/components/tasks/task-list.tsx\n  - /project/src/todo-app/utils/report-utils.ts\n    at Module.verifyFileUpdates (./src/eval/test-utils/file-updates-verify.ts:66:12)\n    at ./src/eval/codegen-summary.test.ts:420:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
-            "AssertionError: File update prompt for \"/project/src/todo-app/tasks/task-manager.ts\" should meet expectations: expected 'The content addresses the expectation…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:442:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
-          ],
+          "duration": 27932.211171001196,
+          "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["codegen-summary: 'GPT-4o'"],
           "fullName": "codegen-summary: 'GPT-4o' 'file creation scenario'",
-          "status": "failed",
+          "status": "passed",
           "title": "'file creation scenario'",
-          "duration": 16266.608034014702,
-          "failureMessages": [
-            "AssertionError: Missing expected context paths:\n  - /project/src/main-module.ts\n\nActual context paths:\n    at Module.verifyContextPaths (./src/eval/test-utils/file-updates-verify.ts:84:12)\n    at ./src/eval/codegen-summary.test.ts:427:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11",
-            "AssertionError: Missing expected context paths:\n  - /project/src/main-module.ts\n\nActual context paths:\n    at Module.verifyContextPaths (./src/eval/test-utils/file-updates-verify.ts:84:12)\n    at ./src/eval/codegen-summary.test.ts:427:7\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
-          ],
+          "duration": 10657.18865698576,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -581,7 +580,7 @@
           "fullName": "codegen-summary: 'GPT-4o' 'file deletion scenario'",
           "status": "passed",
           "title": "'file deletion scenario'",
-          "duration": 12281.634511977434,
+          "duration": 9696.441525995731,
           "failureMessages": [],
           "meta": {}
         },
@@ -590,10 +589,10 @@
           "fullName": "codegen-summary: 'GPT-4o' 'long explanation scenario'",
           "status": "failed",
           "title": "'long explanation scenario'",
-          "duration": 28768.08479499817,
+          "duration": 25744.765453994274,
           "failureMessages": [
-            "AssertionError: File update prompt for \"/project/src/auth/authentication.ts\" should meet expectations: expected 'The content addresses the expectation…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:442:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: File update prompt for \"/project/src/auth/authentication.ts\" should meet expectations: expected 'The content addresses the expectation…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:442:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: File update prompt for \"/project/src/auth/authentication.ts\" should meet expectations: expected 'The content addresses the expectation…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:457:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: File update prompt for \"/project/src/auth/authentication.ts\" should meet expectations: expected 'The content addresses the expectation…' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:457:103\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -602,22 +601,25 @@
           "fullName": "codegen-summary: 'GPT-4o' 'patchFile scenario'",
           "status": "passed",
           "title": "'patchFile scenario'",
-          "duration": 12603.16972899437,
+          "duration": 14505.941013991833,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["codegen-summary: 'GPT-4o'"],
           "fullName": "codegen-summary: 'GPT-4o' 'updateFile scenario'",
-          "status": "passed",
+          "status": "failed",
           "title": "'updateFile scenario'",
-          "duration": 12240.45030298829,
-          "failureMessages": [],
+          "duration": 21277.969567984343,
+          "failureMessages": [
+            "AssertionError: Explanation should meet expectations: expected 'The content explains the replacement …' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:465:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: Explanation should meet expectations: expected 'The content explains the replacement …' to be true // Object.is equality\n    at ./src/eval/codegen-summary.test.ts:465:74\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         }
       ],
-      "startTime": 1737358715053,
-      "endTime": 1737359603578.4502,
+      "startTime": 1737368438892,
+      "endTime": 1737369011027.9695,
       "status": "failed",
       "message": "",
       "name": "./src/eval/codegen-summary.test.ts"
@@ -629,7 +631,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'small, math module', 'Let\\'s add a unit test for the math m…'",
           "status": "passed",
           "title": "'small, math module', 'Let\\'s add a unit test for the math m…'",
-          "duration": 2743.7432410120964,
+          "duration": 7210.436840027571,
           "failureMessages": [],
           "meta": {}
         },
@@ -638,7 +640,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Lets create unit tests for validation…'",
           "status": "passed",
           "title": "'large', 'Lets create unit tests for validation…'",
-          "duration": 2045.2388280034065,
+          "duration": 2084.4370689988136,
           "failureMessages": [],
           "meta": {}
         },
@@ -647,7 +649,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'hello there!'",
           "status": "passed",
           "title": "'large', 'hello there!'",
-          "duration": 1339.7457419931889,
+          "duration": 2233.6863810122013,
           "failureMessages": [],
           "meta": {}
         },
@@ -656,7 +658,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'need to convert all files to plain ja…'",
           "status": "passed",
           "title": "'large', 'need to convert all files to plain ja…'",
-          "duration": 1248.6146080195904,
+          "duration": 2281.4276369810104,
           "failureMessages": [],
           "meta": {}
         },
@@ -665,7 +667,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'hey, we need to work on the login flo…'",
           "status": "passed",
           "title": "'large', 'hey, we need to work on the login flo…'",
-          "duration": 4956.33846399188,
+          "duration": 5727.232785999775,
           "failureMessages": [],
           "meta": {}
         },
@@ -674,7 +676,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'I want to add a due date field to the…'",
           "status": "passed",
           "title": "'large', 'I want to add a due date field to the…'",
-          "duration": 4547.246755003929,
+          "duration": 8205.355408996344,
           "failureMessages": [],
           "meta": {}
         },
@@ -683,7 +685,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'How does user authentication work in …'",
           "status": "passed",
           "title": "'large', 'How does user authentication work in …'",
-          "duration": 7400.48332798481,
+          "duration": 5919.4781129956245,
           "failureMessages": [],
           "meta": {}
         },
@@ -692,7 +694,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'I need to change the color scheme of …'",
           "status": "passed",
           "title": "'large', 'I need to change the color scheme of …'",
-          "duration": 5790.768904983997,
+          "duration": 5045.652785986662,
           "failureMessages": [],
           "meta": {}
         },
@@ -701,7 +703,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Fix the bug where deleting a project …'",
           "status": "passed",
           "title": "'large', 'Fix the bug where deleting a project …'",
-          "duration": 4148.522195011377,
+          "duration": 5136.920584976673,
           "failureMessages": [],
           "meta": {}
         },
@@ -710,7 +712,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Integrate Google Calendar to allow sy…'",
           "status": "passed",
           "title": "'large', 'Integrate Google Calendar to allow sy…'",
-          "duration": 6143.532332003117,
+          "duration": 9597.568699002266,
           "failureMessages": [],
           "meta": {}
         },
@@ -719,7 +721,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Generate a report of all completed ta…'",
           "status": "passed",
           "title": "'large', 'Generate a report of all completed ta…'",
-          "duration": 4267.03751000762,
+          "duration": 3999.7597649991512,
           "failureMessages": [],
           "meta": {}
         },
@@ -728,10 +730,10 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Optimize the search functionality to …'",
           "status": "failed",
           "title": "'large', 'Optimize the search functionality to …'",
-          "duration": 6686.669984012842,
+          "duration": 9980.82895001769,
           "failureMessages": [
             "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(2) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -740,18 +742,19 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Rewrite the entire codebase to use Ru…'",
           "status": "passed",
           "title": "'large', 'Rewrite the entire codebase to use Ru…'",
-          "duration": 1384.4301259815693,
+          "duration": 2620.1815329790115,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["Context optimization: 'Gemini Flash'"],
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Refactor the code to improve its main…'",
-          "status": "passed",
+          "status": "failed",
           "title": "'large', 'Refactor the code to improve its main…'",
-          "duration": 13163.808391988277,
+          "duration": 26133.78879597783,
           "failureMessages": [
-            "AssertionError: expected [ …(21) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(26) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(26) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -760,7 +763,7 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Apply a consistent coding style to th…'",
           "status": "passed",
           "title": "'large', 'Apply a consistent coding style to th…'",
-          "duration": 1347.8244110047817,
+          "duration": 1284.0507650077343,
           "failureMessages": [],
           "meta": {}
         },
@@ -769,10 +772,10 @@
           "fullName": "Context optimization: 'Gemini Flash' 'large', 'Why does changing my notification pre…'",
           "status": "failed",
           "title": "'large', 'Why does changing my notification pre…'",
-          "duration": 11296.236458986998,
+          "duration": 10971.771787017584,
           "failureMessages": [
             "AssertionError: expected [ …(7) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(9) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(7) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -781,7 +784,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'small, math module', 'Let\\'s add a unit test for the math m…'",
           "status": "passed",
           "title": "'small, math module', 'Let\\'s add a unit test for the math m…'",
-          "duration": 9941.560005992651,
+          "duration": 10202.629815995693,
           "failureMessages": [],
           "meta": {}
         },
@@ -790,7 +793,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Lets create unit tests for validation…'",
           "status": "passed",
           "title": "'large', 'Lets create unit tests for validation…'",
-          "duration": 9337.891393989325,
+          "duration": 8293.18549400568,
           "failureMessages": [],
           "meta": {}
         },
@@ -799,7 +802,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'hello there!'",
           "status": "passed",
           "title": "'large', 'hello there!'",
-          "duration": 5642.90660199523,
+          "duration": 5229.856130987406,
           "failureMessages": [],
           "meta": {}
         },
@@ -808,10 +811,10 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'need to convert all files to plain ja…'",
           "status": "failed",
           "title": "'large', 'need to convert all files to plain ja…'",
-          "duration": 29661.57228899002,
+          "duration": 29387.49817201495,
           "failureMessages": [
-            "AssertionError: expected [ …(3) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(5) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -820,9 +823,9 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'hey, we need to work on the login flo…'",
           "status": "passed",
           "title": "'large', 'hey, we need to work on the login flo…'",
-          "duration": 22259.443191975355,
+          "duration": 21275.78381702304,
           "failureMessages": [
-            "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -831,20 +834,17 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'I want to add a due date field to the…'",
           "status": "passed",
           "title": "'large', 'I want to add a due date field to the…'",
-          "duration": 10177.258688986301,
+          "duration": 11084.809334993362,
           "failureMessages": [],
           "meta": {}
         },
         {
           "ancestorTitles": ["Context optimization: 'Claude Haikku'"],
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'How does user authentication work in …'",
-          "status": "failed",
+          "status": "passed",
           "title": "'large', 'How does user authentication work in …'",
-          "duration": 25724.572632998228,
-          "failureMessages": [
-            "AssertionError: expected [ …(7) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
-          ],
+          "duration": 11270.701783001423,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -852,10 +852,10 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'I need to change the color scheme of …'",
           "status": "failed",
           "title": "'large', 'I need to change the color scheme of …'",
-          "duration": 23492.767425000668,
+          "duration": 20625.631193012,
           "failureMessages": [
-            "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -864,7 +864,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Fix the bug where deleting a project …'",
           "status": "passed",
           "title": "'large', 'Fix the bug where deleting a project …'",
-          "duration": 10451.799183011055,
+          "duration": 10702.572400003672,
           "failureMessages": [],
           "meta": {}
         },
@@ -873,10 +873,10 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Integrate Google Calendar to allow sy…'",
           "status": "failed",
           "title": "'large', 'Integrate Google Calendar to allow sy…'",
-          "duration": 19917.74766999483,
+          "duration": 19594.478766024113,
           "failureMessages": [
-            "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -885,7 +885,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Generate a report of all completed ta…'",
           "status": "failed",
           "title": "'large', 'Generate a report of all completed ta…'",
-          "duration": 21794.96455898881,
+          "duration": 22671.59116998315,
           "failureMessages": [
             "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
             "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
@@ -897,22 +897,21 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Optimize the search functionality to …'",
           "status": "failed",
           "title": "'large', 'Optimize the search functionality to …'",
-          "duration": 22956.065983980894,
+          "duration": 21032.089289993048,
           "failureMessages": [
             "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": ["Context optimization: 'Claude Haikku'"],
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Rewrite the entire codebase to use Ru…'",
-          "status": "failed",
+          "status": "passed",
           "title": "'large', 'Rewrite the entire codebase to use Ru…'",
-          "duration": 31174.867410987616,
+          "duration": 25284.421683996916,
           "failureMessages": [
-            "AssertionError: expected [ …(7) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(6) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(7) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -921,7 +920,7 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Refactor the code to improve its main…'",
           "status": "failed",
           "title": "'large', 'Refactor the code to improve its main…'",
-          "duration": 25453.553330004215,
+          "duration": 26274.09782502055,
           "failureMessages": [
             "AssertionError: expected [ …(5) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
             "AssertionError: expected [ …(6) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
@@ -933,10 +932,10 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Apply a consistent coding style to th…'",
           "status": "failed",
           "title": "'large', 'Apply a consistent coding style to th…'",
-          "duration": 22154.43361699581,
+          "duration": 22544.729093015194,
           "failureMessages": [
-            "AssertionError: expected [ …(3) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(4) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(4) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(3) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -945,10 +944,10 @@
           "fullName": "Context optimization: 'Claude Haikku' 'large', 'Why does changing my notification pre…'",
           "status": "failed",
           "title": "'large', 'Why does changing my notification pre…'",
-          "duration": 18184.206375986338,
+          "duration": 25713.23000499606,
           "failureMessages": [
             "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -957,7 +956,7 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'small, math module', 'Let\\'s add a unit test for the math m…'",
           "status": "passed",
           "title": "'small, math module', 'Let\\'s add a unit test for the math m…'",
-          "duration": 5741.392179995775,
+          "duration": 10838.416406005621,
           "failureMessages": [],
           "meta": {}
         },
@@ -966,7 +965,7 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Lets create unit tests for validation…'",
           "status": "passed",
           "title": "'large', 'Lets create unit tests for validation…'",
-          "duration": 6350.606720000505,
+          "duration": 6631.996993988752,
           "failureMessages": [],
           "meta": {}
         },
@@ -975,20 +974,23 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'hello there!'",
           "status": "failed",
           "title": "'large', 'hello there!'",
-          "duration": 37074.82900899649,
+          "duration": 39166.42084398866,
           "failureMessages": [
-            "AssertionError: expected [ …(7) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(8) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(15) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(19) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": ["Context optimization: 'GPT-4o Mini'"],
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'need to convert all files to plain ja…'",
-          "status": "passed",
+          "status": "failed",
           "title": "'large', 'need to convert all files to plain ja…'",
-          "duration": 12938.764104992151,
-          "failureMessages": [],
+          "duration": 36170.30495598912,
+          "failureMessages": [
+            "AssertionError: expected [ …(7) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(16) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         },
         {
@@ -996,10 +998,10 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'hey, we need to work on the login flo…'",
           "status": "failed",
           "title": "'large', 'hey, we need to work on the login flo…'",
-          "duration": 20403.493037998676,
+          "duration": 21244.860486000776,
           "failureMessages": [
             "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -1008,23 +1010,20 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'I want to add a due date field to the…'",
           "status": "failed",
           "title": "'large', 'I want to add a due date field to the…'",
-          "duration": 19027.48298099637,
+          "duration": 18699.476536005735,
           "failureMessages": [
-            "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(2) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": ["Context optimization: 'GPT-4o Mini'"],
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'How does user authentication work in …'",
-          "status": "failed",
+          "status": "passed",
           "title": "'large', 'How does user authentication work in …'",
-          "duration": 21545.723788022995,
-          "failureMessages": [
-            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
-          ],
+          "duration": 13744.180347979069,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -1032,7 +1031,7 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'I need to change the color scheme of …'",
           "status": "failed",
           "title": "'large', 'I need to change the color scheme of …'",
-          "duration": 29542.877929002047,
+          "duration": 30812.312418997288,
           "failureMessages": [
             "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
             "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
@@ -1042,10 +1041,13 @@
         {
           "ancestorTitles": ["Context optimization: 'GPT-4o Mini'"],
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Fix the bug where deleting a project …'",
-          "status": "passed",
+          "status": "failed",
           "title": "'large', 'Fix the bug where deleting a project …'",
-          "duration": 9076.251217007637,
-          "failureMessages": [],
+          "duration": 33759.73019900918,
+          "failureMessages": [
+            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ Array(1) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+          ],
           "meta": {}
         },
         {
@@ -1053,10 +1055,10 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Integrate Google Calendar to allow sy…'",
           "status": "failed",
           "title": "'large', 'Integrate Google Calendar to allow sy…'",
-          "duration": 23714.891416996717,
+          "duration": 51755.14475402236,
           "failureMessages": [
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(7) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(6) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -1065,10 +1067,10 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Generate a report of all completed ta…'",
           "status": "failed",
           "title": "'large', 'Generate a report of all completed ta…'",
-          "duration": 18632.394306987524,
+          "duration": 70411.39281797409,
           "failureMessages": [
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "Error: Test timed out in 60000ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\".\n    at Timeout.<anonymous> (file://./node_modules/@vitest/runner/dist/index.js:44:18)\n    at listOnTimeout (node:internal/timers:569:17)\n    at processTimers (node:internal/timers:512:7)",
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -1077,7 +1079,7 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Optimize the search functionality to …'",
           "status": "failed",
           "title": "'large', 'Optimize the search functionality to …'",
-          "duration": 30535.047906011343,
+          "duration": 19759.583188027143,
           "failureMessages": [
             "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
             "AssertionError: expected [ …(3) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
@@ -1089,10 +1091,10 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Rewrite the entire codebase to use Ru…'",
           "status": "failed",
           "title": "'large', 'Rewrite the entire codebase to use Ru…'",
-          "duration": 43249.74789300561,
+          "duration": 58073.10108500719,
           "failureMessages": [
-            "AssertionError: expected [ …(13) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(20) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(26) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(13) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         },
@@ -1101,9 +1103,9 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Refactor the code to improve its main…'",
           "status": "failed",
           "title": "'large', 'Refactor the code to improve its main…'",
-          "duration": 24060.243400007486,
+          "duration": 33370.83175599575,
           "failureMessages": [
-            "AssertionError: expected undefined to be defined\n    at ./src/eval/context-optimization.test.ts:339:59\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(9) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
             "AssertionError: expected [ …(8) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
@@ -1113,10 +1115,10 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Apply a consistent coding style to th…'",
           "status": "failed",
           "title": "'large', 'Apply a consistent coding style to th…'",
-          "duration": 22611.096354991198,
+          "duration": 69823.05759501457,
           "failureMessages": [
-            "AssertionError: expected [ …(6) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(5) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(23) ] to deeply equal []\n    at ./src/eval/context-optimization.test.ts:354:9\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "SyntaxError: Unexpected end of JSON input\n    at JSON.parse (<anonymous>)\n    at ./src/ai-service/openai.ts:64:23\n    at Array.map (<anonymous>)\n    at internalGenerateContent (./src/ai-service/openai.ts:62:35)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:16)\n    at ./src/eval/context-optimization.test.ts:327:37\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)"
           ],
           "meta": {}
         },
@@ -1125,16 +1127,16 @@
           "fullName": "Context optimization: 'GPT-4o Mini' 'large', 'Why does changing my notification pre…'",
           "status": "failed",
           "title": "'large', 'Why does changing my notification pre…'",
-          "duration": 20374.81271198392,
+          "duration": 25397.347880005836,
           "failureMessages": [
-            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
-            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
+            "AssertionError: expected [ …(4) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)",
+            "AssertionError: expected [ …(5) ] to deeply equal ArrayContaining{…}\n    at ./src/eval/context-optimization.test.ts:349:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file://./node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file://./node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file://./node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file://./node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11\n    at withEnv (file://./node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)"
           ],
           "meta": {}
         }
       ],
-      "startTime": 1737359604768,
-      "endTime": 1737360336470.8127,
+      "startTime": 1737369013317,
+      "endTime": 1737369952671.348,
       "status": "failed",
       "message": "",
       "name": "./src/eval/context-optimization.test.ts"

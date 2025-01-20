@@ -20,7 +20,7 @@ import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 
 vi.setConfig({
-  testTimeout: 60000,
+  testTimeout: 3 * 60000,
 });
 
 describe.each([

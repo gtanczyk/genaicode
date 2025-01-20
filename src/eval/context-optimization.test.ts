@@ -24,7 +24,7 @@ import { generateContent as generateContentOpenAI } from '../ai-service/openai.j
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 
 vi.setConfig({
-  testTimeout: 60000,
+  testTimeout: 3 * 60000,
 });
 
 describe.each([
