@@ -12,6 +12,14 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-044] Enhanced AI Service Selector: Added model information display. Created: 2024-01-19 Updated: 2024-01-19
+
+  Key Updates:
+
+  - Modified ai-service-selector.tsx to show configured models
+  - Added new useServiceConfigurationsWithModels hook
+  - Enhanced display format to show "service (model1/model2)"
+
 - [ ] [GEN-043] Enhanced File Operation Handlers: Added confirmation before content generation. Created: 2024-01-19 Updated: 2024-01-19
 
   Key Updates:
