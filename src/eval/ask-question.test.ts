@@ -189,6 +189,12 @@ describe.each([
       expectedActionType: 'reasoningInference',
       promptPrefix: [],
     },
+    {
+      name: 'forced reasoning inference',
+      userMessage: 'lets run reasoning inference',
+      expectedActionType: 'sendMessage',
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [

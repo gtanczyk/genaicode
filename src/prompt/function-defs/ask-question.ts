@@ -31,7 +31,7 @@ ${
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
-- reasoningInference: Use to perform an inference on a reasoning model.
+- reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
 
 This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }

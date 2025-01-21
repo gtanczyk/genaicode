@@ -24,7 +24,13 @@ export async function handleReasoningInference({
   try {
     putSystemMessage('Reasoning inference: generating prompt');
     const [reasoningInferenceCall] = (await generateContentFn(
-      prompt,
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args!.message,
+        },
+      ],
       getFunctionDefs(),
       'reasoningInference',
       0.7,
@@ -32,8 +38,18 @@ export async function handleReasoningInference({
       options,
     )) as [FunctionCall<ReasoningInferenceArgs> | undefined];
 
-    if (!reasoningInferenceCall?.args) {
+    if (!reasoningInferenceCall?.args?.prompt) {
       putSystemMessage('Failed to get valid reasoningInference request');
+      prompt.push(
+        {
+          type: 'assistant',
+          text: askQuestionCall.args!.message,
+        },
+        {
+          type: 'user',
+          text: 'Failed to get valid reasoningInference request',
+        },
+      );
       return { breakLoop: false, items: [] };
     }
 
@@ -101,23 +117,20 @@ export async function handleReasoningInference({
     const errorMessage = error instanceof Error ? error.message : String(error);
     putSystemMessage(`Error during reasoning inference: ${errorMessage}`);
 
-    // Create error response items
-    const assistantItem = {
-      type: 'assistant' as const,
-      text: 'An error occurred during reasoning inference.',
-    };
-
-    const userItem = {
-      type: 'user' as const,
-      text: 'Please try again or use a different approach.',
-      data: {
-        error: errorMessage,
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args!.message,
       },
-    };
+      {
+        type: 'user',
+        text: `Error during reasoning inference.`,
+      },
+    );
 
     return {
       breakLoop: true,
-      items: [{ assistant: assistantItem, user: userItem }],
+      items: [],
     };
   }
 }
