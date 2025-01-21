@@ -1,6 +1,9 @@
 import { ActionHandlerProps, ActionResult, AskQuestionCall, SearchCodeArgs } from '../step-ask-question-types.js';
 import { searchSourceCode } from '../../../../files/search-files.js';
-import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../../ai-service/common.js';
+import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { PromptItem } from '../../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
@@ -15,7 +18,7 @@ export async function handleSearchCode({
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
-    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionCall, options, true);
+    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionCall, options);
 
     // Extract search parameters from the call arguments
     const args = searchCodeCall?.args;
@@ -90,7 +93,6 @@ async function generateSearchCodeCall(
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
-  cheap: boolean,
 ) {
   const [searchCodeCall] = await generateContentFn(
     [
@@ -107,7 +109,7 @@ async function generateSearchCodeCall(
     getFunctionDefs(),
     'searchCode',
     0.7,
-    cheap,
+    ModelType.CHEAP,
     options,
   );
 

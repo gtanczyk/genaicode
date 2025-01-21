@@ -1,12 +1,10 @@
-import {
-  FunctionCall,
-  GenerateContentFunction,
-  GenerateImageFunction,
-  PromptItem,
-  PromptItemImage,
-} from '../../../ai-service/common.js';
+import { GenerateImageFunction } from '../../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../../ai-service/common-types.js';
+import { PromptItem } from '../../../ai-service/common-types.js';
+import { PromptItemImage } from '../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
-import { PluginActionType } from '../../../main/codegen-types.js';
+import { PluginActionType } from '../../../ai-service/service-configurations-types.js';
 
 export type ActionType =
   | 'codeGeneration'

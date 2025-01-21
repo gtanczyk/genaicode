@@ -1,4 +1,4 @@
-import { PromptItem } from '../../ai-service/common.js';
+import { PromptItem } from '../../ai-service/common-types.js';
 
 export enum ChatMessageType {
   USER = 'user',

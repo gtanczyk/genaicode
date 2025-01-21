@@ -1,5 +1,5 @@
 import { CodegenOptions } from '../main/codegen-types.js';
-import { FunctionCall } from '../ai-service/common.js';
+import { FunctionCall } from '../ai-service/common-types.js';
 import { getOperationExecutor } from '../operations/operations-index.js';
 
 /**

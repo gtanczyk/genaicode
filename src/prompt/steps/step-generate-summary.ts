@@ -1,4 +1,7 @@
-import { GenerateContentArgs, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getFunctionDefs } from '../function-calling.js';
@@ -26,7 +29,7 @@ export async function executeStepGenerateSummary(
     getFunctionDefs(),
     'explanation',
     0.3, // Use a lower temperature for more focused summaries
-    true, // Use cheap model by default for summaries
+    ModelType.CHEAP,
     options,
   ];
 

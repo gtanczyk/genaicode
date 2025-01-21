@@ -1,4 +1,4 @@
-import { AiServiceType } from './codegen-types';
+import { AiServiceType } from '../ai-service/service-configurations-types';
 import { getRegisteredAiServices } from './plugin-loader.js';
 
 export function getSupportedAiServices(): AiServiceType[] {

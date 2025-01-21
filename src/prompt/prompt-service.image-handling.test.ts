@@ -11,8 +11,11 @@ import { getImageAssets } from '../files/read-files.js';
 import * as dalleService from '../ai-service/dall-e.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { AiServiceType, ImagenType } from '../main/codegen-types.js';
-import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { ImagenType } from '../main/codegen-types.js';
+import { AiServiceType } from '../ai-service/service-configurations-types.js';
+import { GenerateImageFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
@@ -232,7 +235,7 @@ describe('promptService - Image Handling', () => {
         'A test image',
         undefined,
         { width: 256, height: 256 },
-        false,
+        ModelType.DEFAULT,
       );
       expect(result).toEqual(
         expect.arrayContaining(mockResponses.mockDownloadFile(mockData.paths.image, mockData.imageGenerationUrl)),
@@ -265,7 +268,7 @@ describe('promptService - Image Handling', () => {
         'A test image',
         undefined,
         { width: 256, height: 256 },
-        false,
+        ModelType.DEFAULT,
       );
       expect(result).toEqual(
         expect.arrayContaining(mockResponses.mockExplanation('Failed to generate image: Image generation failed')),

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
-import { FunctionCall, ModelType, PromptItem } from '../ai-service/common.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { FunctionCall } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import {
   ReasoningInferenceArgs,

@@ -9,17 +9,13 @@ import {
   ResponseSchema,
 } from '@google/generative-ai';
 import assert from 'node:assert';
-import {
-  FunctionCall,
-  FunctionDef,
-  GenerateContentFunction,
-  ModelType,
-  normalizeModelType,
-  printTokenUsageAndCost,
-  processFunctionCalls,
-  PromptItem,
-} from './common.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { GenerateContentFunction } from './common-types.js';
+import { PromptItem } from './common-types.js';
+import { FunctionCall } from './common-types.js';
+import { FunctionDef } from './common-types.js';
+import { ModelType } from './common-types.js';
+import { abortController } from '../main/common/abort-controller.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
 import { getServiceConfig } from './service-configurations.js';
@@ -32,7 +28,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  modelTypeOrCheap: ModelType | boolean = ModelType.DEFAULT,
+  modelType: ModelType = ModelType.DEFAULT,
   options: { geminiBlockNone?: boolean } = {},
 ): Promise<FunctionCall[]> {
   const messages: Content[] = prompt
@@ -101,7 +97,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   }
 
   const model = getModel(
-    modelTypeOrCheap,
+    modelType,
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     options.geminiBlockNone,
@@ -121,7 +117,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     usage,
     inputCostPerToken: 0.000125 / 1000,
     outputCostPerToken: 0.000375 / 1000,
-    modelType: modelTypeOrCheap,
+    modelType,
   });
 
   if (result.response.promptFeedback) {
@@ -141,7 +137,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
     .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
 
-  if (modelTypeOrCheap === ModelType.REASONING) {
+  if (modelType === ModelType.REASONING) {
     functionCalls.push({
       name: 'reasoningInferenceResponse',
       args: {
@@ -183,7 +179,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 };
 
 function getModel(
-  modelTypeOrCheap: ModelType | boolean,
+  modelType: ModelType,
   temperature: number,
   systemPrompt: string,
   geminiBlockNone: boolean | undefined,
@@ -192,7 +188,6 @@ function getModel(
   assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
   const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
-  const modelType = normalizeModelType(modelTypeOrCheap);
   const model = (() => {
     switch (modelType) {
       case ModelType.CHEAP:

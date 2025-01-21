@@ -1,4 +1,5 @@
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { getContextValue } from '../../../../main/common/app-context-bus.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -22,7 +23,7 @@ export async function handlePullAppContext({
     getFunctionDefs(),
     'pullAppContext',
     0.7,
-    true,
+    ModelType.CHEAP,
     options,
   )) as [FunctionCall<PullAppContextArgs> | undefined];
 

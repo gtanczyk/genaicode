@@ -1,15 +1,21 @@
-import { GenerateContentFunction, PromptItem, FunctionCall, GenerateContentArgs } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
-import { FileContent, getSourceCode, SourceCodeMap } from '../../files/read-files.js';
+import { getSourceCode } from '../../files/read-files.js';
+import { SourceCodeMap } from '../../files/source-code-types.js';
+import { FileContent } from '../../files/source-code-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
-import { getSummary } from './step-summarization.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
 import { importantContext } from '../../main/config.js';
+import { getSummary } from '../../files/summary-cache.js';
 
 export const OPTIMIZATION_PROMPT = `You need to analyze the provided source code files and determine their relevance to the user's prompt. You will then call the \`optimizeContext\` function with the results.
 
@@ -115,7 +121,7 @@ export async function executeStepContextOptimization(
       getFunctionDefs(),
       'optimizeContext',
       CONTEXT_OPTIMIZATION_TEMPERATURE,
-      true,
+      ModelType.CHEAP,
       options,
     ];
     let result = await generateContentFn(...request);

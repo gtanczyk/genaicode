@@ -1,19 +1,13 @@
 import path from 'path';
-import {
-  Operation,
-  Plugin,
-  PluginActionType,
-  PluginAiServiceType,
-  GenerateContentHook,
-  PlanningPreHook,
-  PlanningPostHook,
-} from './codegen-types.js';
-import { GenerateContentFunction } from '../ai-service/common.js';
+import { Operation, Plugin, PlanningPreHook, PlanningPostHook } from './codegen-types.js';
+import { PluginActionType, PluginAiServiceType } from '../ai-service/service-configurations-types.js';
+import { GenerateContentHook } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-types.js';
 import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
 import { registerProfile } from '../project-profiles/index.js';
-import { ServiceConfig } from './ui/common/api-types.js';
+import { ServiceConfig } from '../ai-service/service-configurations-types.js';
 
 // Global storage for registered plugins and their components
 const loadedPlugins: Map<string, Plugin> = new Map();

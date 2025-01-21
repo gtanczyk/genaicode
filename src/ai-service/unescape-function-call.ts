@@ -1,4 +1,4 @@
-import { FunctionCall } from './common.js';
+import { FunctionCall } from './common-types.js';
 
 /**
  * Unescapes a c-escaped string

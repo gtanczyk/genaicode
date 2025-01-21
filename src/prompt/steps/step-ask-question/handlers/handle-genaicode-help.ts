@@ -1,5 +1,7 @@
 import { ActionHandlerProps, ActionResult, GenaicodeHelpArgs } from '../step-ask-question-types.js';
-import { FunctionCall, PromptItem } from '../../../../ai-service/common.js';
+import { PromptItem } from '../../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { putAssistantMessage } from '../../../../main/common/content-bus.js';
 import { askUserForInput } from '../../../../main/common/user-actions.js';
@@ -104,7 +106,7 @@ async function getGenaicodeHelpCall(generateContentFn: ActionHandlerProps['gener
     getFunctionDefs(),
     'genaicodeHelp',
     0.7,
-    true,
+    ModelType.CHEAP,
   )) as [FunctionCall<GenaicodeHelpArgs> | undefined];
 
   return [genaicodeHelpCall];

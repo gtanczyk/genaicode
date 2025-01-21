@@ -1,9 +1,8 @@
-import {
-  FunctionDef,
-  GenerateContentArgs,
-  GenerateContentFunction,
-  PromptItem,
-} from '../../../../ai-service/common.js';
+import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../../../ai-service/common-types.js';
+import { PromptItem } from '../../../../ai-service/common-types.js';
+import { FunctionDef } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -106,7 +105,14 @@ async function getPerformAnalysisCall(
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<PerformAnalysisCall | undefined> {
-  const performAnalysisRequest: GenerateContentArgs = [prompt, functionDefs, 'performAnalysis', 0.7, true, options];
+  const performAnalysisRequest: GenerateContentArgs = [
+    prompt,
+    functionDefs,
+    'performAnalysis',
+    0.7,
+    ModelType.CHEAP,
+    options,
+  ];
   let performAnalysisResult = await generateContentFn(...performAnalysisRequest);
   performAnalysisResult = await validateAndRecoverSingleResult(
     performAnalysisRequest,
@@ -126,7 +132,14 @@ async function executeAnalysis(
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<AnalysisResultCall | undefined> {
-  const analysisRequest: GenerateContentArgs = [prompt, functionDefs, 'analysisResult', 0.7, false, options];
+  const analysisRequest: GenerateContentArgs = [
+    prompt,
+    functionDefs,
+    'analysisResult',
+    0.7,
+    ModelType.DEFAULT,
+    options,
+  ];
   let analysisResult = await generateContentFn(...analysisRequest);
   analysisResult = await validateAndRecoverSingleResult(analysisRequest, analysisResult, generateContentFn);
 

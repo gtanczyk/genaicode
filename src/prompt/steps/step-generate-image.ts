@@ -1,5 +1,7 @@
 import assert from 'node:assert';
-import { FunctionCall, GenerateImageFunction } from '../../ai-service/common.js';
+import { GenerateImageFunction } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 
 export async function executeStepGenerateImage(
@@ -38,7 +40,12 @@ export async function executeStepGenerateImage(
       height: number;
       cheap: boolean;
     };
-    const generatedImageUrl = await generateImageFn(imagePrompt, contextImagePath, { width, height }, cheap === true);
+    const generatedImageUrl = await generateImageFn(
+      imagePrompt,
+      contextImagePath,
+      { width, height },
+      cheap === true ? ModelType.CHEAP : ModelType.DEFAULT,
+    );
 
     // Add a downloadFile call to the result to ensure the generated image is tracked
     return {

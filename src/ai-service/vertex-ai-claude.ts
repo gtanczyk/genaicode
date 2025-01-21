@@ -1,15 +1,13 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import assert from 'node:assert';
-import {
-  printTokenUsageAndCost,
-  processFunctionCalls,
-  FunctionCall,
-  PromptItem,
-  FunctionDef,
-  GenerateContentFunction,
-} from './common.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { GenerateContentFunction } from './common-types.js';
+import { PromptItem } from './common-types.js';
+import { FunctionCall } from './common-types.js';
+import { FunctionDef } from './common-types.js';
+import { ModelType } from './common-types.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { abortController } from '../main/common/abort-controller.js';
 import { getServiceConfig } from './service-configurations.js';
 
 /**
@@ -20,7 +18,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
 ): Promise<FunctionCall[]> {
   const serviceConfig = getServiceConfig('vertex-ai-claude');
   assert(serviceConfig.googleCloudProjectId, 'googleCloudProjectId is not set in the service configuration');
@@ -72,15 +70,16 @@ export const generateContent: GenerateContentFunction = async function generateC
     })
     .filter((message) => !!message);
 
-  const model = cheap
-    ? (serviceConfig.modelOverrides?.cheap ?? 'claude-3-5-haiku@20240620')
-    : (serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620');
+  const model =
+    modelType === ModelType.CHEAP
+      ? (serviceConfig.modelOverrides?.cheap ?? 'claude-3-5-haiku@20240620')
+      : (serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620');
   console.log(`Using Vertex AI Claude model: ${model}`);
 
   const response: Message = await client.messages.create(
     {
       model: model,
-      max_tokens: cheap ? 4096 : 8192,
+      max_tokens: 8192,
       temperature: temperature,
       system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
       messages: messages,
@@ -107,7 +106,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     usage,
     inputCostPerToken: 3 / 1000 / 1000,
     outputCostPerToken: 15 / 1000 / 1000,
-    modelType: cheap,
+    modelType,
   });
 
   const responseMessages = response.content.filter((item) => item.type !== 'tool_use');

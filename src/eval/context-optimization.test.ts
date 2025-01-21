@@ -6,7 +6,8 @@ import {
   OPTIMIZATION_TRIGGER_PROMPT,
 } from '../prompt/steps/step-context-optimization.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { PromptItem } from '../ai-service/common.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import { MOCK_SOURCE_CODE_SUMMARIES, MOCK_SOURCE_CODE_SUMMARIES_ROOT_DIR } from './data/mock-source-code-summaries.js';
 import {
@@ -28,10 +29,10 @@ vi.setConfig({
 });
 
 describe.each([
-  { model: 'Gemini Flash', generateContent: generateContentAiStudio, cheap: true },
-  { model: 'Claude Haikku', generateContent: generateContentAnthropic, cheap: true },
-  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, cheap: true },
-])('Context optimization: $model', ({ generateContent, cheap }) => {
+  { model: 'Gemini Flash', generateContent: generateContentAiStudio, modelType: ModelType.CHEAP },
+  { model: 'Claude Haikku', generateContent: generateContentAnthropic, modelType: ModelType.CHEAP },
+  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, modelType: ModelType.CHEAP },
+])('Context optimization: $model', ({ generateContent, modelType }) => {
   generateContent = retryGenerateContent(generateContent);
 
   it.each([
@@ -329,7 +330,7 @@ describe.each([
         getFunctionDefs(),
         'optimizeContext',
         CONTEXT_OPTIMIZATION_TEMPERATURE,
-        cheap,
+        modelType,
       );
 
       console.log(JSON.stringify(optimizeContextCall.args, null, 2));

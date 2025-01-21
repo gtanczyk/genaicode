@@ -1,4 +1,4 @@
-import { FunctionDef } from '../../ai-service/common.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
 
 /**
  * Function definition for performAnalysis operation.

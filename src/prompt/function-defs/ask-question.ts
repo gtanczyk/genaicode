@@ -1,4 +1,4 @@
-import { FunctionDef } from '../../ai-service/common.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
 import { rcConfig } from '../../main/config.js';
 import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 

@@ -3,7 +3,8 @@ import { generateContent as generateContentAiStudio } from '../ai-service/ai-stu
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { PromptItem } from '../ai-service/common.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import { MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR } from './data/mock-source-code-summaries-large.js';
 import {
@@ -177,7 +178,7 @@ describe.each([
       getFunctionDefs(),
       codegenSummary.fileUpdates[0].updateToolName,
       0.2,
-      false,
+      ModelType.DEFAULT,
     );
 
     // Verify the response

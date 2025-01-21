@@ -1,12 +1,11 @@
 import fs from 'fs';
 import * as diff from 'diff';
-import {
-  PromptItem,
-  FunctionDef,
-  FunctionCall,
-  GenerateContentFunction,
-  GenerateContentArgs,
-} from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 
@@ -34,7 +33,14 @@ export async function executeStepVerifyPatch(
     console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
     // Rerun content generation without patchFile function
-    const partialRequest: GenerateContentArgs = [prompt, functionDefs, 'updateFile', temperature, cheap, options];
+    const partialRequest: GenerateContentArgs = [
+      prompt,
+      functionDefs,
+      'updateFile',
+      temperature,
+      cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+      options,
+    ];
     let partialResult = await generateContentFn(...partialRequest);
 
     partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);

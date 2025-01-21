@@ -1,17 +1,21 @@
-import { GenerateContentFunction, GenerateContentArgs, PromptItem, FunctionCall } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { SourceCodeMap, DependencyInfo } from '../../files/read-files.js';
+import { SourceCodeMap } from '../../files/source-code-types.js';
+import { DependencyInfo } from '../../files/source-code-types.js';
 import { getFunctionDefs } from '../function-calling.js';
-import { SummaryInfo, SummaryCache } from './steps-types.js';
-import { md5, readCache, writeCache } from '../../files/cache-file.js';
+import { md5, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { refreshFiles } from '../../files/find-files.js';
+import { summaryCache, SummaryInfo, CACHE_VERSION } from '../../files/summary-cache.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
-const CACHE_VERSION = 'v6'; // Incremented version for dependency support
 
 const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer while also detecting dependencies. 
 
@@ -45,10 +49,6 @@ Provide your response using the \`setSummaries\` function with the following str
 
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
-
-const summaryCache: SummaryCache = readCache<SummaryCache>('summaries', {
-  _version: CACHE_VERSION,
-} as SummaryCache);
 
 export async function summarizeSourceCode(
   generateContentFn: GenerateContentFunction,
@@ -103,7 +103,14 @@ async function summarizeBatch(
       },
     ];
 
-    const request: GenerateContentArgs = [summarizationPrompt, getFunctionDefs(), 'setSummaries', 0.2, true, options];
+    const request: GenerateContentArgs = [
+      summarizationPrompt,
+      getFunctionDefs(),
+      'setSummaries',
+      0.2,
+      ModelType.CHEAP,
+      options,
+    ];
     let result = await generateContentFn(...request);
     result = await validateAndRecoverSingleResult(request, result, generateContentFn);
     const batchSummaries = parseSummarizationResult(result);
@@ -132,14 +139,4 @@ function parseSummarizationResult(result: FunctionCall[]): (SummaryInfo & { depe
     throw new Error('Invalid summarization result');
   }
   return result[0].args.summaries;
-}
-
-export function getSummary(filePath: string) {
-  const summary = summaryCache[filePath];
-  return summary
-    ? {
-        summary: summary.summary,
-        ...(summary.dependencies && { dependencies: summary.dependencies }),
-      }
-    : undefined;
 }

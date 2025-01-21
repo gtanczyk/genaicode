@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { ModelType } from './common-types.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 
 // Mock cli-params.js
@@ -37,7 +38,13 @@ describe('printTokenUsageAndCost', () => {
     const inputCostPerToken = 0.0001;
     const outputCostPerToken = 0.0002;
 
-    printTokenUsageAndCost({ aiService: 'vertex-ai', usage, inputCostPerToken, outputCostPerToken, modelType: false });
+    printTokenUsageAndCost({
+      aiService: 'vertex-ai',
+      usage,
+      inputCostPerToken,
+      outputCostPerToken,
+      modelType: ModelType.DEFAULT,
+    });
 
     expect(consoleLogSpy).toHaveBeenCalledTimes(5);
     expect(consoleLogSpy).toHaveBeenCalledWith('Token Usage:');
@@ -56,7 +63,13 @@ describe('printTokenUsageAndCost', () => {
     const inputCostPerToken = 0.0001;
     const outputCostPerToken = 0.0002;
 
-    printTokenUsageAndCost({ aiService: 'anthropic', usage, inputCostPerToken, outputCostPerToken, modelType: false });
+    printTokenUsageAndCost({
+      aiService: 'anthropic',
+      usage,
+      inputCostPerToken,
+      outputCostPerToken,
+      modelType: ModelType.DEFAULT,
+    });
 
     expect(consoleLogSpy).toHaveBeenCalledWith('  - Estimated cost: ', '0.000000', ' USD');
   });

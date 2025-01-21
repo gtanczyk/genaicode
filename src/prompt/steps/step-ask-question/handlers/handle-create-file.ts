@@ -3,7 +3,8 @@ import { executor as executeCreateFile } from '../../../../operations/create-fil
 import { CreateFileArgs } from '../../../../operations/create-file/create-file-def.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
@@ -65,7 +66,7 @@ export const handleCreateFile: ActionHandler = async ({
     getFunctionDefs(),
     'createFile',
     options.temperature ?? 0.7,
-    false,
+    ModelType.DEFAULT,
     options,
   )) as [FunctionCall<CreateFileArgs> | undefined];
 

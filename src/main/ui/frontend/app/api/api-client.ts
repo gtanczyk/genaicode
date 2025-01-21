@@ -3,7 +3,7 @@ import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-types.js';
 import { ContentProps } from '../../../../common/content-bus-types.js';
 import { Question, Usage, SanitizedServiceConfigurations, ServiceConfigUpdate } from '../../../common/api-types.js';
-import { FunctionCall } from '../../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../../ai-service/common-types.js';
 
 const API_BASE_URL = '/api';
 

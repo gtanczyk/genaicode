@@ -1,4 +1,7 @@
-import { FunctionCall, GenerateContentFunction, PromptItem } from '../../../../ai-service/common.js';
+import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { PromptItem } from '../../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { getSourceCodeTree } from '../../../../files/source-code-tree.js';
@@ -61,7 +64,7 @@ export async function handleRequestFilesContent({
     prompt,
     askQuestionCall,
     options,
-    true,
+    ModelType.CHEAP,
   );
 
   if (!requestFilesContentCall) {
@@ -118,7 +121,7 @@ export async function handleRequestFilesContent({
       askQuestionCall,
       options,
       // use non cheap mode, as maybe the cheap mode didn't provide correct files
-      false,
+      ModelType.DEFAULT,
     );
 
     if (!requestFilesContentCall) {
@@ -186,7 +189,7 @@ async function generateRequestFilesContentCall(
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
-  cheap: boolean,
+  modelType: ModelType,
 ) {
   const [requestFilesContentCall] = (await generateContentFn(
     [
@@ -203,7 +206,7 @@ async function generateRequestFilesContentCall(
     getFunctionDefs(),
     'requestFilesContent',
     0.7,
-    cheap,
+    modelType,
     options,
   )) as [FunctionCall<RequestFilesContentArgs> | undefined];
 

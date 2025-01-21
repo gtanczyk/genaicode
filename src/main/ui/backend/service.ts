@@ -1,15 +1,18 @@
 import crypto from 'crypto';
 import { rcConfig } from '../../config.js';
-import { AiServiceType, CodegenOptions } from '../../codegen-types.js';
+import { CodegenOptions } from '../../codegen-types.js';
+import { AiServiceType } from '../../../ai-service/service-configurations-types.js';
 import { RcConfig } from '../../config-types.js';
 import { ServiceConfigUpdate, SanitizedServiceConfigurations } from '../common/api-types.js';
-import { runCodegenWorker, abortController } from '../../interactive/codegen-worker.js';
+import { runCodegenWorker } from '../../interactive/codegen-worker.js';
+import { abortController } from '../../common/abort-controller.js';
 import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { editMessage, putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 import { getGenerateContentFunctions } from '../../codegen.js';
-import { FunctionCall } from '../../../ai-service/common.js';
+import { FunctionCall } from '../../../ai-service/common-types.js';
+import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
 
@@ -155,7 +158,7 @@ export class Service implements AppContextProvider {
   async generateContent(
     prompt: string,
     temperature: number,
-    cheap: boolean,
+    modelType: ModelType,
     options: CodegenOptions,
   ): Promise<FunctionCall[]> {
     try {
@@ -184,7 +187,7 @@ export class Service implements AppContextProvider {
         ],
         'printMessage',
         temperature,
-        cheap,
+        modelType,
         options,
       );
 

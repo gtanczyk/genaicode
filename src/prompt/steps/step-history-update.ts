@@ -1,4 +1,7 @@
-import { GenerateContentFunction, GenerateContentArgs, PromptItem } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { readCache, writeCache } from '../../files/cache-file.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -47,7 +50,14 @@ ${currentHistory}
     },
   ];
 
-  const request: GenerateContentArgs = [optimizationPrompt, getFunctionDefs(), 'updateHistory', 1, true, options];
+  const request: GenerateContentArgs = [
+    optimizationPrompt,
+    getFunctionDefs(),
+    'updateHistory',
+    1,
+    ModelType.CHEAP,
+    options,
+  ];
   let result = await generateContentFn(...request);
   result = await validateAndRecoverSingleResult(request, result, generateContentFn);
   const { newHistoryContent, recentConversationSummary } =

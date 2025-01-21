@@ -7,12 +7,12 @@ import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
 import * as cliParams from '../cli/cli-params.js';
 import { rcConfig } from '../main/config.js';
-import { getSummary } from '../prompt/steps/step-summarization.js';
+import { getSummary } from './summary-cache.js';
 
 vi.mock('fs');
 vi.mock('mime-types');
 vi.mock('image-size');
-vi.mock('../prompt/steps/step-summarization.js');
+vi.mock('./summary-cache.js');
 vi.mock('./find-files.js', () => ({
   getImageAssetFiles: vi.fn(),
   getSourceFiles: vi.fn(),

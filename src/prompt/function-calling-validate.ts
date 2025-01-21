@@ -1,6 +1,7 @@
 import { Validator, ValidatorResult, Schema, ValidationError } from 'jsonschema';
 import path from 'path';
-import { FunctionDef, FunctionCall } from '../ai-service/common.js';
+import { FunctionCall } from '../ai-service/common-types.js';
+import { FunctionDef } from '../ai-service/common-types.js';
 import { getFunctionDefs } from './function-calling.js';
 
 export function validateFunctionCall(

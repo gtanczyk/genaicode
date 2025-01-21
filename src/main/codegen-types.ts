@@ -1,20 +1,9 @@
-import { FunctionCall, FunctionDef, GenerateContentArgs, GenerateContentFunction } from '../ai-service/common.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { FunctionCall, GenerateContentHook } from '../ai-service/common-types.js';
+import { FunctionDef } from '../ai-service/common-types.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
-import { ServiceConfig } from './ui/common/api-types.js';
-
-/** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
-export type PluginAiServiceType = `plugin:${string}`;
-
-/** Example: {@link ../../examples/genaicode_plugins/nonsense_action_handlers.ts} */
-export type PluginActionType = `plugin:${string}`;
-
-export type AiServiceType =
-  | 'vertex-ai'
-  | 'ai-studio'
-  | 'vertex-ai-claude'
-  | 'openai'
-  | 'anthropic'
-  | PluginAiServiceType;
+import { AiServiceType, ServiceConfig } from '../ai-service/service-configurations-types.js';
+export { type AiServiceType, type ServiceConfig } from '../ai-service/service-configurations-types.js';
 
 export type ImagenType = 'vertex-ai' | 'dall-e';
 
@@ -57,9 +46,6 @@ export interface CodegenOptions {
   images?: UploadedImage[];
   isDev?: boolean;
 }
-
-/** Hook function type for generateContent hooks */
-export type GenerateContentHook = (args: GenerateContentArgs, result: FunctionCall[]) => Promise<void>;
 
 /** Arguments of the codegen planning function call */
 export type CodegenPlanningArgs = {

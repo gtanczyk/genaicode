@@ -1,14 +1,12 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
-import {
-  printTokenUsageAndCost,
-  processFunctionCalls,
-  FunctionCall,
-  PromptItem,
-  FunctionDef,
-  GenerateContentFunction,
-} from './common.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { GenerateContentFunction } from './common-types.js';
+import { PromptItem } from './common-types.js';
+import { FunctionCall } from './common-types.js';
+import { FunctionDef } from './common-types.js';
+import { ModelType } from './common-types.js';
+import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { getServiceConfig } from './service-configurations.js';
 
@@ -20,7 +18,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
   options: { disableCache?: boolean } = {},
 ): Promise<FunctionCall[]> {
   try {
@@ -123,9 +121,12 @@ export const generateContent: GenerateContentFunction = async function generateC
         }
       });
 
-    const defaultModel = cheap ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
+    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
     const modelOverrides = serviceConfig?.modelOverrides;
-    let model = cheap ? (modelOverrides?.cheap ?? defaultModel) : (modelOverrides?.default ?? defaultModel);
+    let model =
+      modelType === ModelType.CHEAP
+        ? (modelOverrides?.cheap ?? defaultModel)
+        : (modelOverrides?.default ?? defaultModel);
     console.log(`Using Anthropic model: ${model}`);
 
     let retryCount = 0;
@@ -147,7 +148,7 @@ export const generateContent: GenerateContentFunction = async function generateC
               : functionDefs.length > 0
                 ? { type: 'any' as const }
                 : undefined,
-            max_tokens: cheap ? 4096 : 8192,
+            max_tokens: 8192,
             temperature: temperature,
           },
           {
@@ -212,7 +213,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       usage,
       inputCostPerToken: 3 / 1000 / 1000,
       outputCostPerToken: 15 / 1000 / 1000,
-      modelType: cheap,
+      modelType,
     });
 
     const responseMessages = response!.content.filter((item) => item.type !== 'tool_use');

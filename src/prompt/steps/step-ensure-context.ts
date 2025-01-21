@@ -1,4 +1,4 @@
-import { FunctionCall } from '../../ai-service/common.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { importantContext } from '../../main/config.js';
 import { getSourceCode } from '../../files/read-files.js';

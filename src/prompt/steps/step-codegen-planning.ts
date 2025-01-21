@@ -1,4 +1,8 @@
-import { FunctionCall, FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenPlanningArgs } from '../../main/codegen-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -45,12 +49,12 @@ export async function executeStepCodegenPlanning(
     prompt.push({ type: 'user', text: modifiedPlanningPrompt });
   }
 
-  const planningRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
+  const planningRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
     prompt,
     getFunctionDefs(),
     'codegenPlanning',
     options.temperature ?? 0.7,
-    options.cheap ?? true,
+    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
     options,
   ];
 

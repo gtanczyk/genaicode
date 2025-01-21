@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateCodegenSummary } from './step-generate-codegen-summary.js';
-import { FunctionCall, PromptItem, FunctionDef } from '../../ai-service/common.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { getSourceCode } from '../../files/read-files.js';
 

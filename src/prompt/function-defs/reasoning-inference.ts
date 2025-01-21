@@ -1,4 +1,4 @@
-import { FunctionDef } from '../../ai-service/common';
+import { FunctionDef } from '../../ai-service/common-types';
 
 export const reasoningInference: FunctionDef = {
   name: 'reasoningInference',

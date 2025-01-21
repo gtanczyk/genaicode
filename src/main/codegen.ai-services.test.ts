@@ -16,6 +16,7 @@ import {
   createMockFileUpdate,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
+import { ModelType } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -256,7 +257,7 @@ describe('AI Services Integration', () => {
       // Verify cheap parameter in each call
       const calls = vi.mocked(vertexAi.generateContent).mock.calls;
       calls.forEach((call) => {
-        expect(call[4]).toBe(true); // cheap parameter
+        expect(call[4]).toBe(ModelType.CHEAP); // cheap parameter
       });
     });
   });

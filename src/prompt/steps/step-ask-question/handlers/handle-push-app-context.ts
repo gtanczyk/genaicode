@@ -1,4 +1,5 @@
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { setContextValue } from '../../../../main/common/app-context-bus.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -23,7 +24,7 @@ export async function handlePushAppContext({
     getFunctionDefs(),
     'pushAppContext',
     0.7,
-    true,
+    ModelType.CHEAP,
     options,
   )) as [FunctionCall<PushAppContextArgs>];
 

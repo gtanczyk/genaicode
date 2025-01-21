@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepContextOptimization } from './step-context-optimization';
-import { FileContent, getSourceCode } from '../../files/read-files';
+import { getSourceCode } from '../../files/read-files';
+import { FileContent } from '../../files/source-code-types';
 import { SourceCodeTree } from '../../files/source-code-tree';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
 import { putSystemMessage } from '../../main/common/content-bus';
 import '../../main/config.js';
 import '../../files/find-files.js';
-import { PromptItem } from '../../ai-service/common';
+import { PromptItem } from '../../ai-service/common-types';
 
 // Mock dependencies
 vi.mock('../../files/read-files');

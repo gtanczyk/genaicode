@@ -1,5 +1,5 @@
 import { disableExplanations } from '../cli/cli-params.js';
-import { FunctionDef } from '../ai-service/common.js';
+import { FunctionDef } from '../ai-service/common-types.js';
 import { getSourceCode } from './function-defs/get-source-code.js';
 import { getImageAssets } from './function-defs/get-image-assets.js';
 import { getCodegenSummaryDef } from './function-defs/codegen-summary.js';

@@ -1,5 +1,8 @@
 import assert from 'node:assert';
-import { FunctionCall, GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
 import { rcConfig } from '../../main/config.js';
 
@@ -47,14 +50,21 @@ export async function validateAndRecoverSingleResult(
     if (cheap) {
       console.log('Disabling --cheap for recovery.');
     }
-    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, true, options);
+    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, ModelType.CHEAP, options);
     console.log('Recover result:', result);
 
     if (result?.length === 1) {
       let recoveryError = validateFunctionCall(result[0], requiredFunctionName, result, rootDir);
       if (recoveryError) {
         console.log("Use more expensive recovery method, because we couldn't recover.");
-        result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, false, options);
+        result = await generateContentFn(
+          prompt,
+          functionDefs,
+          requiredFunctionName,
+          temperature,
+          ModelType.DEFAULT,
+          options,
+        );
         recoveryError = validateFunctionCall(result?.[0], requiredFunctionName, result, rootDir);
         assert(!recoveryError, 'Recovery failed');
       }

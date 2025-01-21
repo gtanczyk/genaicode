@@ -1,4 +1,8 @@
-import { FunctionCall, FunctionDef, GenerateContentFunction, PromptItem } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenSummaryArgs } from '../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -21,7 +25,7 @@ export async function generateCodegenSummary(
   codegenSummaryRequest: FunctionCall<CodegenSummaryArgs>;
   baseResult: FunctionCall[];
 }> {
-  const baseRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
+  const baseRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
     [
       ...prompt,
       {
@@ -36,7 +40,7 @@ export async function generateCodegenSummary(
     functionDefs,
     'codegenSummary',
     options.temperature ?? 0.7,
-    options.cheap ?? false,
+    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
     options,
   ];
 

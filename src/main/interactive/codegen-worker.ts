@@ -1,8 +1,7 @@
 import { setMaxListeners } from 'events';
 import { CodegenOptions } from '../codegen-types.js';
 import { handleUserInterrupt } from './user-interrupt.js';
-
-export let abortController: AbortController | null = null;
+import { setAbortController } from '../common/abort-controller.js';
 
 // Wrapper function to run codegen in the same process
 export const runCodegenWorker = async (
@@ -12,7 +11,8 @@ export const runCodegenWorker = async (
   console.log('Starting operation...');
   // not a top level import to avoid circular dependency
   const { runCodegenIteration } = await import('../codegen.js');
-  abortController = new AbortController();
+  let abortController: AbortController | null = new AbortController();
+  setAbortController(abortController);
   setMaxListeners(Infinity, abortController.signal);
   const removeInterruptHandler = createInterruptHandler(abortController);
 
@@ -36,7 +36,7 @@ export const runCodegenWorker = async (
     removeInterruptHandler();
     setTimeout(() => {
       // let things finish
-      abortController = null;
+      setAbortController((abortController = null));
       console.log('Cleanup complete.');
     }, 100);
   }

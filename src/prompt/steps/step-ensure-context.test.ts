@@ -5,7 +5,7 @@ import { putSystemMessage } from '../../main/common/content-bus';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
 import '../../files/find-files.js';
-import { PromptItem } from '../../ai-service/common';
+import { PromptItem } from '../../ai-service/common-types';
 
 import { importantContext } from '../../main/config.js';
 

@@ -1,4 +1,4 @@
-import { PromptItem } from '../../ai-service/common.js';
+import { PromptItem } from '../../ai-service/common-types.js';
 
 export function getSourceCodeResponse(prompt: PromptItem[]) {
   const getSourceCodeResponse = prompt.find(

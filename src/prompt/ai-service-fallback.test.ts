@@ -1,6 +1,8 @@
 import { vi, describe, it, expect, Mock, afterEach } from 'vitest';
 import { handleAiServiceFallback } from './ai-service-fallback';
-import { GenerateContentFunction, FunctionCall } from '../ai-service/common';
+import { GenerateContentFunction } from '../ai-service/common-types';
+import { FunctionCall } from '../ai-service/common-types';
+import { ModelType } from '../ai-service/common-types';
 import { CodegenOptions } from '../main/codegen-types';
 import { askUserForConfirmation } from '../main/common/user-actions';
 
@@ -47,7 +49,7 @@ describe('handleAiServiceFallback', () => {
       [],
       null,
       0.5,
-      false,
+      ModelType.DEFAULT,
       mockOptions,
     );
 
@@ -80,7 +82,7 @@ describe('handleAiServiceFallback', () => {
         [],
         null,
         0.5,
-        false,
+        ModelType.DEFAULT,
         options,
       ),
     ).rejects.toThrow('Service failure');

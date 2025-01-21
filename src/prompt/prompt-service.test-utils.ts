@@ -1,4 +1,4 @@
-import { FunctionCall } from '../ai-service/common';
+import { FunctionCall } from '../ai-service/common-types';
 
 /**
  * Common mock function call responses

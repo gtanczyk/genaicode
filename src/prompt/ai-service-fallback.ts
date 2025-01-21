@@ -1,8 +1,9 @@
-import { AiServiceType, CodegenOptions } from '../main/codegen-types.js';
+import { CodegenOptions } from '../main/codegen-types.js';
+import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { askUserForConfirmation } from '../main/common/user-actions.js';
-import { GenerateContentFunction } from '../ai-service/common.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { abortController } from '../main/common/abort-controller.js';
 
 const AI_SERVICES_MAP = [
   [() => process.env.ANTHROPIC_API_KEY, 'anthropic'],

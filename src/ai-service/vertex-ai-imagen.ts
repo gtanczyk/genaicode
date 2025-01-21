@@ -3,26 +3,19 @@ import mime from 'mime-types';
 import { PredictionServiceClient, helpers, protos } from '@google-cloud/aiplatform';
 import { setTempBuffer } from '../files/temp-buffer.js';
 import { resizeImageBuffer } from '../images/resize-image.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { abortController } from '../main/common/abort-controller.js';
+import { ModelType } from './common-types.js';
 
 interface ImageSize {
   width: number;
   height: number;
 }
 
-/**
- * Generate an image using Vertex AI's Imagen model and return the image URL
- * @param {string} prompt - The description of the image to generate
- * @param {string|undefined} contextImagePath - The image to be used as a context
- * @param {ImageSize} size - The size of the image to generate
- * @param {boolean} cheap - Whether to use a cheaper model
- * @returns {Promise<string>} - The url of the generated image
- */
 export async function generateImage(
   prompt: string,
   contextImagePath: string | undefined,
   size: ImageSize,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
 ): Promise<string> {
   // Limitation in @google-cloud/aiplatform
   abortController?.signal.throwIfAborted();
@@ -43,7 +36,7 @@ export async function generateImage(
   // Set the model name based on the cheap parameter
   const modelName = contextImagePath
     ? 'imagegeneration@002'
-    : cheap
+    : modelType === ModelType.CHEAP
       ? 'imagen-3.0-fast-generate-001'
       : 'imagen-3.0-generate-001';
   console.log(`Using Vertex AI Imagen model: ${modelName}`);

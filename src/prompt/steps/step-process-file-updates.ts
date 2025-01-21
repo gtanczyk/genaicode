@@ -1,13 +1,12 @@
 import fs from 'fs';
 import mime from 'mime-types';
-import {
-  FunctionCall,
-  FunctionDef,
-  GenerateContentFunction,
-  GenerateImageFunction,
-  PromptImageMediaType,
-  PromptItem,
-} from '../../ai-service/common.js';
+import { GenerateImageFunction } from '../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { PromptItem } from '../../ai-service/common-types.js';
+import { PromptImageMediaType } from '../../ai-service/common-types.js';
+import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
+import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenSummaryArgs, FileUpdate } from '../../main/codegen-types.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -15,7 +14,7 @@ import { executeStepGenerateImage } from './step-generate-image.js';
 import { executeStepVerifyPatch } from './step-verify-patch.js';
 import { getPartialPromptTemplate } from '../static-prompts.js';
 import { getSourceCode } from '../../files/read-files.js';
-import { abortController } from '../../main/interactive/codegen-worker.js';
+import { abortController } from '../../main/common/abort-controller.js';
 
 /**
  * Processes file updates from the codegen summary.
@@ -110,12 +109,12 @@ async function processFileUpdate(
     }
 
     // Prepare and execute content generation request
-    const partialRequest: [PromptItem[], FunctionDef[], string, number, boolean, CodegenOptions] = [
+    const partialRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
       prompt,
       functionDefs,
       file.updateToolName,
       file.temperature ?? options.temperature!,
-      file.cheap === true,
+      file.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
       options,
     ];
     let partialResult = await generateContentFn(...partialRequest);

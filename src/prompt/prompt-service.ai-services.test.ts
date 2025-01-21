@@ -8,8 +8,10 @@ import * as dalleService from '../ai-service/dall-e.js';
 import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import * as cliParams from '../cli/cli-params.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { AiServiceType, ImagenType } from '../main/codegen-types.js';
-import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { ImagenType } from '../main/codegen-types.js';
+import { AiServiceType } from '../ai-service/service-configurations-types.js';
+import { GenerateImageFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies

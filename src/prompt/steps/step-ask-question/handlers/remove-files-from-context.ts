@@ -1,4 +1,6 @@
-import { FunctionCall, PromptItem } from '../../../../ai-service/common.js';
+import { PromptItem } from '../../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { getSourceCodeTree, parseSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -25,7 +27,7 @@ export async function handleRemoveFilesFromContext({
     getFunctionDefs(),
     'removeFilesFromContext',
     0.7,
-    true,
+    ModelType.CHEAP,
     options,
   )) as [FunctionCall<RemoveFilesFromContextArgs> | undefined];
 

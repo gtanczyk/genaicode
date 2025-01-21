@@ -1,5 +1,5 @@
 import { select } from '@inquirer/prompts';
-import { AiServiceType } from '../codegen-types.js';
+import { AiServiceType } from '../../ai-service/service-configurations-types.js';
 
 const AI_SERVICE_CHOICES = [
   { name: 'Vertex AI (Gemini)', value: 'vertex-ai' },

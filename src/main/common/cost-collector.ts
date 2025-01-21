@@ -1,12 +1,13 @@
+import { ModelType } from '../../ai-service/common-types.js';
 import { writeCache, readCache } from '../../files/cache-file.js';
-import { AiServiceType } from '../codegen-types.js';
+import { AiServiceType } from '../../ai-service/service-configurations-types.js';
 
 export function collectCost(
   cost: number,
   inputTokens: number,
   outputTokens: number,
   aiService: AiServiceType,
-  cheap: boolean = false,
+  modelType: ModelType,
 ) {
   addUsageTuple({
     timestamp: Date.now(),
@@ -14,7 +15,7 @@ export function collectCost(
     inputTokens,
     outputTokens,
     aiService,
-    cheap,
+    modelType,
   });
 }
 
@@ -25,7 +26,7 @@ interface UsageTuple {
   inputTokens: number;
   outputTokens: number;
   aiService: AiServiceType;
-  cheap: boolean;
+  modelType: ModelType;
 }
 
 interface UsageData {
@@ -42,7 +43,7 @@ export interface UsageMetrics {
   ipm: number;
 }
 
-const USAGE_CACHE_KEY = 'usageData';
+const USAGE_CACHE_KEY = 'usageData_v2_model_type';
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const DATA_RETENTION_PERIOD = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
 

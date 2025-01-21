@@ -8,40 +8,9 @@ import { getSourceFiles, getImageAssetFiles } from './find-files.js';
 import { rcConfig, importantContext, rcConfigSchemaFilePath } from '../main/config.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import { verifySourceCodeLimit } from '../prompt/limits.js';
-import { getSummary } from '../prompt/steps/step-summarization.js';
+import { getSummary } from './summary-cache.js';
 import { GENAICODERC_SCHEMA } from '../main/config-schema.js';
-
-/**
- * Represents a dependency in the source code
- */
-export interface DependencyInfo {
-  /** Path of the dependeny */
-  path: string;
-  /** Type of dependency */
-  type: 'local' | 'external';
-}
-
-/**
- * Represents file content with optional dependencies
- */
-export interface FileContent {
-  /** The actual content of the file */
-  content: string | null;
-  /** Optional list of dependencies */
-  dependencies?: DependencyInfo[];
-}
-
-/**
- * Represents a file summary with optional dependencies
- */
-export interface FileSummary {
-  /** Summary of the file content */
-  summary?: string;
-  /** Optional list of dependencies */
-  dependencies?: DependencyInfo[];
-}
-
-export type SourceCodeMap = Record<string, FileContent | FileSummary>;
+import { SourceCodeMap } from './source-code-types.js';
 
 type ImageAssetsMap = Record<
   string,

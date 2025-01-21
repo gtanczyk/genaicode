@@ -12,7 +12,9 @@ import {
 } from '../prompt/static-prompts.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { PromptImageMediaType, PromptItem } from '../ai-service/common.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { PromptImageMediaType } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { ActionType } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summaries-large.js';
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
@@ -24,10 +26,10 @@ vi.setConfig({
 });
 
 describe.each([
-  { model: 'Gemini Flash', generateContent: generateContentAiStudio, cheap: true },
-  { model: 'Claude Haikku', generateContent: generateContentAnthropic, cheap: true },
-  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, cheap: true },
-])('Ask Question: $model', ({ generateContent, cheap }) => {
+  { model: 'Gemini Flash', generateContent: generateContentAiStudio, modelType: ModelType.CHEAP },
+  { model: 'Claude Haikku', generateContent: generateContentAnthropic, modelType: ModelType.CHEAP },
+  { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, modelType: ModelType.CHEAP },
+])('Ask Question: $model', ({ generateContent, modelType }) => {
   generateContent = retryGenerateContent(generateContent);
 
   it.each([
@@ -238,9 +240,9 @@ describe.each([
 
     // Execute ask question step
     const temperature = 0.2;
-    const result = await generateContent(prompt, getFunctionDefs(), 'askQuestion', temperature, cheap);
+    const result = await generateContent(prompt, getFunctionDefs(), 'askQuestion', temperature, modelType);
     const [askQuestionCall] = await validateAndRecoverSingleResult(
-      [prompt, getFunctionDefs(), 'askQuestion', temperature, cheap],
+      [prompt, getFunctionDefs(), 'askQuestion', temperature, modelType],
       result,
       generateContent,
     );

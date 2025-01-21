@@ -1,5 +1,7 @@
 import path from 'path';
-import { SourceCodeMap, FileContent, FileSummary } from '../files/read-files.js';
+import { SourceCodeMap } from './source-code-types.js';
+import { FileSummary } from './source-code-types.js';
+import { FileContent } from './source-code-types.js';
 import { rcConfig } from '../main/config.js';
 
 /**

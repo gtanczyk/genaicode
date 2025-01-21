@@ -1,18 +1,14 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
-import {
-  printTokenUsageAndCost,
-  processFunctionCalls,
-  FunctionCall,
-  PromptItem,
-  FunctionDef,
-  TokenUsage,
-  GenerateContentFunction,
-  ModelType,
-  normalizeModelType,
-} from './common.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { GenerateContentFunction } from './common-types.js';
+import { PromptItem } from './common-types.js';
+import { FunctionCall } from './common-types.js';
+import { FunctionDef } from './common-types.js';
+import { TokenUsage } from './common-types.js';
+import { ModelType } from './common-types.js';
 import { ChatCompletionContentPartText, ChatCompletionMessageParam } from 'openai/resources/index';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { abortController } from '../main/common/abort-controller.js';
 import { getServiceConfig } from './service-configurations.js';
 
 /**
@@ -23,14 +19,13 @@ export const generateContent: GenerateContentFunction = async function generateC
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
 ): Promise<FunctionCall[]> {
   try {
     const serviceConfig = getServiceConfig('openai');
     assert(serviceConfig?.apiKey, 'OpenAI API key not configured, use OPENAI_API_KEY environment variable.');
     const openai = new OpenAI({ apiKey: serviceConfig?.apiKey, baseURL: serviceConfig?.openaiBaseUrl });
 
-    const modelType = normalizeModelType(cheap);
     const model = (() => {
       switch (modelType) {
         case ModelType.CHEAP:
@@ -42,7 +37,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     })();
 
-    return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, model, openai);
+    return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, modelType, model, openai);
   } catch (error) {
     if (error instanceof Error && error.message.includes('API key not configured')) {
       throw new Error('OpenAI API key not configured. Please set up the service configuration.');
@@ -56,7 +51,7 @@ export async function internalGenerateContent(
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap: ModelType | boolean = false,
+  modelType: ModelType = ModelType.DEFAULT,
   model: string,
   openai: OpenAI,
 ): Promise<FunctionCall[]> {
@@ -65,7 +60,7 @@ export async function internalGenerateContent(
     functionDefs,
     requiredFunctionName,
     temperature,
-    cheap,
+    modelType,
     model,
     openai,
   );
@@ -89,7 +84,7 @@ export async function internalGenerateToolCalls(
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap: ModelType | boolean = false,
+  modelType: ModelType = ModelType.DEFAULT,
   model: string,
   openai: OpenAI,
 ) {
@@ -97,7 +92,7 @@ export async function internalGenerateToolCalls(
     .map((item) => {
       if (item.type === 'systemPrompt') {
         return {
-          role: cheap === ModelType.REASONING ? ('developer' as const) : ('system' as const),
+          role: modelType === ModelType.REASONING ? ('developer' as const) : ('system' as const),
           content: item.systemPrompt!,
         };
       } else if (item.type === 'user') {
@@ -194,7 +189,7 @@ export async function internalGenerateToolCalls(
                   : 'required',
               }
             : {}),
-          ...(cheap !== ModelType.REASONING ? { temperature } : {}),
+          ...(modelType !== ModelType.REASONING ? { temperature } : {}),
         },
         { signal: abortController?.signal },
       );
@@ -233,12 +228,12 @@ export async function internalGenerateToolCalls(
     usage,
     inputCostPerToken: 0.000005,
     outputCostPerToken: 0.000015,
-    modelType: cheap,
+    modelType,
   });
 
   const responseMessage = response.choices[0].message;
 
-  if (cheap === ModelType.REASONING) {
+  if (modelType === ModelType.REASONING) {
     return [
       {
         id: 'reasoning_inference_response',

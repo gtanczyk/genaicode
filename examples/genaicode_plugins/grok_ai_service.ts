@@ -1,12 +1,12 @@
 import OpenAI from 'openai';
-import { FunctionCall, FunctionDef, PromptItem, Plugin, GenerateContentFunction } from '../../src/index.js';
+import { FunctionCall, FunctionDef, PromptItem, Plugin, GenerateContentFunction, ModelType } from '../../src/index.js';
 
 const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
 ): Promise<FunctionCall[]> {
   const { getServiceConfig } = await import('../../src/ai-service/service-configurations.js');
   const serviceConfig = getServiceConfig('plugin:grok-ai-service');
@@ -23,8 +23,8 @@ const generateContent: GenerateContentFunction = async function generateContent(
     functionDefs,
     requiredFunctionName,
     temperature,
-    cheap,
-    cheap
+    modelType,
+    modelType === ModelType.CHEAP
       ? (serviceConfig.modelOverrides?.cheap ?? 'grok-beta')
       : (serviceConfig.modelOverrides?.default ?? 'grok-beta'),
     openai,

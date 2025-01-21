@@ -1,4 +1,4 @@
-import { FunctionDef } from '../../ai-service/common.js';
+import { FunctionDef } from '../../ai-service/common-types.js';
 import { getRegisteredOperations } from '../../main/plugin-loader.js';
 
 /**

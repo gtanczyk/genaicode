@@ -3,7 +3,10 @@ import { generateContent as generateContentAiStudio } from '../ai-service/ai-stu
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { FunctionCall, GenerateContentArgs, PromptItem } from '../ai-service/common.js';
+import { GenerateContentArgs } from '../ai-service/common-types.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { FunctionCall } from '../ai-service/common-types.js';
+import { ModelType } from '../ai-service/common-types.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 import {
   INITIAL_GREETING,
@@ -383,7 +386,14 @@ describe.each([
       ];
 
       // Execute planning phase
-      const planningReq = [prompt, getFunctionDefs(), 'codegenPlanning', temperature, false, {}] as GenerateContentArgs;
+      const planningReq = [
+        prompt,
+        getFunctionDefs(),
+        'codegenPlanning',
+        temperature,
+        ModelType.DEFAULT,
+        {},
+      ] as GenerateContentArgs;
       let functionCalls = await generateContent(...planningReq);
       functionCalls = await validateAndRecoverSingleResult(planningReq, functionCalls, generateContent, rootDir);
 
@@ -413,9 +423,15 @@ describe.each([
       );
 
       // Execute summary phase
-      functionCalls = await generateContent(prompt, getFunctionDefs(), 'codegenSummary', temperature, false);
+      functionCalls = await generateContent(
+        prompt,
+        getFunctionDefs(),
+        'codegenSummary',
+        temperature,
+        ModelType.DEFAULT,
+      );
       functionCalls = await validateAndRecoverSingleResult(
-        [prompt, getFunctionDefs(), 'codegenSummary', temperature, false, {}],
+        [prompt, getFunctionDefs(), 'codegenSummary', temperature, ModelType.DEFAULT, {}],
         functionCalls,
         generateContent,
         rootDir,

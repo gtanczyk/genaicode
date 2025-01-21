@@ -3,7 +3,8 @@ import { putAssistantMessage, putSystemMessage } from '../../../../main/common/c
 import { ActionHandlerProps, ActionResult, GenerateImageArgs } from '../step-ask-question-types.js';
 import { executeStepGenerateImage } from '../../step-generate-image.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { getTempBuffer } from '../../../../files/temp-buffer.js';
 
 export async function handleGenerateImage({
@@ -36,7 +37,7 @@ export async function handleGenerateImage({
     getFunctionDefs(),
     'generateImage',
     0.7,
-    true,
+    ModelType.CHEAP,
     options,
   )) as [FunctionCall<GenerateImageArgs> | undefined];
 

@@ -9,9 +9,11 @@ import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
 import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
 import { promptService } from '../prompt/prompt-service.js';
-import { AiServiceType, CodegenOptions, ImagenType } from './codegen-types.js';
+import { CodegenOptions, ImagenType } from './codegen-types.js';
+import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { printHelpMessage } from '../cli/cli-options.js';
-import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { GenerateImageFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { putSystemMessage, setCurrentIterationId, unsetCurrentIterationId } from './common/content-bus.js';

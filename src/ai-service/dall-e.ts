@@ -4,31 +4,24 @@ import assert from 'node:assert';
 import { setTempBuffer } from '../files/temp-buffer.js';
 import { resizeImageBuffer } from '../images/resize-image.js';
 import { ensureAlpha } from '../images/ensure-alpha.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { abortController } from '../main/common/abort-controller.js';
+import { ModelType } from './common-types.js';
 
 interface ImageSize {
   width: number;
   height: number;
 }
 
-/**
- * Generate an image using OpenAI's DALL-E model and save it to a file
- * @param {string} prompt - The description of the image to generate
- * @param {string|undefined} contextImagePath - The image to be used as a context
- * @param {ImageSize} size - The size of the image to generate
- * @param {boolean} cheap - Whether to use a cheaper model
- * @returns {Promise<string>} - The url of the image
- */
 export async function generateImage(
   prompt: string,
   contextImagePath: string | undefined,
   size: ImageSize,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
 ): Promise<string> {
   const openai = new OpenAI();
 
   try {
-    const model = contextImagePath ? 'dall-e-2' : cheap ? 'dall-e-2' : 'dall-e-3';
+    const model = contextImagePath ? 'dall-e-2' : modelType === ModelType.CHEAP ? 'dall-e-2' : 'dall-e-3';
     console.log(`Using DALL-E model: ${model}`);
     assert(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY environment variable is not set');
 

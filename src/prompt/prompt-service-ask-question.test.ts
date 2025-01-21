@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import { FunctionCall, GenerateContentFunction, GenerateImageFunction } from '../ai-service/common.js';
+import { GenerateImageFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { FunctionCall } from '../ai-service/common-types.js';
 import * as prompts from '@inquirer/prompts';
 import { CancelablePromise } from '@inquirer/type';
 import '../cli/cli-params.js';
@@ -9,7 +11,8 @@ import '../files/cache-file.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { AiServiceType, CodegenPlanningArgs, ImagenType } from '../main/codegen-types.js';
+import { CodegenPlanningArgs, ImagenType } from '../main/codegen-types.js';
+import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { registerUserActionHandlers } from '../main/interactive/user-action-handlers.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));

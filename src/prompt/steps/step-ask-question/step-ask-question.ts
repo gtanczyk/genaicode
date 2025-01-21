@@ -1,14 +1,13 @@
-import {
-  FunctionDef,
-  GenerateContentFunction,
-  GenerateContentArgs,
-  PromptItem,
-  GenerateImageFunction,
-  FunctionCall,
-} from '../../../ai-service/common.js';
+import { GenerateImageFunction } from '../../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../../ai-service/common-types.js';
+import { GenerateContentArgs } from '../../../ai-service/common-types.js';
+import { PromptItem } from '../../../ai-service/common-types.js';
+import { FunctionCall } from '../../../ai-service/common-types.js';
+import { FunctionDef } from '../../../ai-service/common-types.js';
+import { ModelType } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
-import { abortController } from '../../../main/interactive/codegen-worker.js';
+import { abortController } from '../../../main/common/abort-controller.js';
 import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
 import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import { handleRequestFilesContent } from './handlers/request-files-content.js';
@@ -117,7 +116,14 @@ async function getAskQuestionCall(
   temperature: number,
   options: CodegenOptions,
 ): Promise<AskQuestionCall | undefined> {
-  const askQuestionRequest: GenerateContentArgs = [prompt, functionDefs, 'askQuestion', temperature, true, options];
+  const askQuestionRequest: GenerateContentArgs = [
+    prompt,
+    functionDefs,
+    'askQuestion',
+    temperature,
+    ModelType.CHEAP,
+    options,
+  ];
   let askQuestionResult = await generateContentFn(...askQuestionRequest);
   askQuestionResult = await validateAndRecoverSingleResult(askQuestionRequest, askQuestionResult, generateContentFn);
 

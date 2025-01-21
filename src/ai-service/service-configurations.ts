@@ -1,13 +1,13 @@
-import { AiServiceType } from '../main/codegen-types.js';
+import { AiServiceType } from './service-configurations-types.js';
 import { modelOverrides } from '../main/config.js';
 import { getRegisteredAiServices } from '../main/plugin-loader.js';
 import {
-  ServiceConfig,
   ServiceConfigurations,
   SanitizedServiceConfig,
   SanitizedServiceConfigurations,
-  ServiceConfigRequirements,
 } from '../main/ui/common/api-types.js';
+import { ServiceConfigRequirements } from './service-configurations-types.js';
+import { ServiceConfig } from './service-configurations-types.js';
 
 const configurations: ServiceConfigurations = {
   'ai-studio': {

@@ -16,6 +16,7 @@ import {
   createMockImageGenerationResponse,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
+import { ModelType } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -132,7 +133,7 @@ describe('Image Generation', () => {
           height: 512,
           width: 512,
         },
-        false,
+        ModelType.DEFAULT,
       );
       expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockGenerate, expect.anything());
     });
@@ -184,7 +185,7 @@ describe('Image Generation', () => {
           height: 256,
           width: 256,
         },
-        false,
+        ModelType.DEFAULT,
       );
     });
   });
@@ -235,7 +236,7 @@ describe('Image Generation', () => {
           width: 1024,
           height: 1024,
         },
-        false,
+        ModelType.DEFAULT,
       );
       expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockGenerate, expect.anything());
     });

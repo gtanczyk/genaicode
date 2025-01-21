@@ -1,4 +1,5 @@
-import { FunctionCall } from '../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -25,7 +26,7 @@ export async function handleRequestPermissions({
     getFunctionDefs(),
     'requestPermissions',
     0.7,
-    true,
+    ModelType.CHEAP,
     options,
   )) as [FunctionCall<RequestPermissionsArgs> | undefined];
 

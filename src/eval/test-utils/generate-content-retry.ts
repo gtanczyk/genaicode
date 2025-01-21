@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../ai-service/common.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
 
 /**
  * Configuration options for retry mechanism

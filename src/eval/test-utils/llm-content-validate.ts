@@ -1,4 +1,7 @@
-import { GenerateContentFunction, PromptItem, FunctionDef } from '../../ai-service/common';
+import { GenerateContentFunction } from '../../ai-service/common-types';
+import { PromptItem } from '../../ai-service/common-types';
+import { FunctionDef } from '../../ai-service/common-types';
+import { ModelType } from '../../ai-service/common-types';
 import { LLMContentExpectation, ValidateLLMContentOptions } from './file-updates-verify';
 
 /**
@@ -80,7 +83,7 @@ Return a JSON object indicating if ALL criteria are met and explain your reasoni
     functionDefs,
     'validateContent',
     options.temperature ?? 0.1,
-    options.cheap ?? true,
+    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
     {},
   );
 

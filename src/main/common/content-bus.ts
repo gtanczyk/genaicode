@@ -1,4 +1,4 @@
-import { PromptItem } from '../../ai-service/common.js';
+import { PromptItem } from '../../ai-service/common-types.js';
 import { ChatMessageFlags, ChatMessageType, ContentProps, ChatMessageImage } from './content-bus-types.js';
 
 type ContentHandler = (content: ContentProps) => void;

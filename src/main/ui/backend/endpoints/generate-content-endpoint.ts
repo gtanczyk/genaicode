@@ -1,3 +1,4 @@
+import { ModelType } from '../../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../codegen-types.js';
 import { registerEndpoint } from '../api-handlers.js';
 
@@ -23,7 +24,12 @@ registerEndpoint((router, service) => {
         return res.status(400).json({ error: 'Invalid cheap parameter: must be a boolean' });
       }
 
-      const result = await service.generateContent(prompt, temperature, cheap, options);
+      const result = await service.generateContent(
+        prompt,
+        temperature,
+        cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+        options,
+      );
       res.json({ result });
     } catch (error) {
       console.error('Error generating content:', error);

@@ -8,16 +8,13 @@ import {
   FunctionDeclaration,
   FunctionCallingMode,
 } from '@google-cloud/vertexai';
-import {
-  printTokenUsageAndCost,
-  processFunctionCalls,
-  FunctionCall,
-  PromptItem,
-  FunctionDef,
-  GenerateContentFunction,
-  ModelType,
-} from './common.js';
-import { abortController } from '../main/interactive/codegen-worker.js';
+import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { GenerateContentFunction } from './common-types.js';
+import { PromptItem } from './common-types.js';
+import { FunctionCall } from './common-types.js';
+import { FunctionDef } from './common-types.js';
+import { ModelType } from './common-types.js';
+import { abortController } from '../main/common/abort-controller.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
 import { getServiceConfig } from './service-configurations.js';
@@ -30,7 +27,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelType = ModelType.DEFAULT,
   options: { geminiBlockNone?: boolean } = {},
 ): Promise<FunctionCall[]> {
   try {
@@ -94,7 +91,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionDefs,
       options.geminiBlockNone,
       requiredFunctionName,
-      cheap,
+      modelType,
     );
 
     const result = await model.generateContent(req);
@@ -111,7 +108,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       usage,
       inputCostPerToken: 0.000125 / 1000,
       outputCostPerToken: 0.000375 / 1000,
-      modelType: cheap,
+      modelType,
     });
 
     if (result.response.promptFeedback) {
