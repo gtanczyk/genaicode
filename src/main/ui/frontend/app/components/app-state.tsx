@@ -11,7 +11,7 @@ import {
 } from '../api/api-client.js';
 import { Question, Usage } from '../../../common/api-types.js';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
-import { RcConfig } from '../../../../config-lib.js';
+import { RcConfig } from '../../../../config-types.js';
 import { CodegenOptions } from '../../../../codegen-types.js';
 
 type ExecutionStatus = 'idle' | 'executing' | 'paused';
