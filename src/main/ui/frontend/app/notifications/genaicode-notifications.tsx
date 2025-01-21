@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
+import { NotificationEventType, NotificationEvent } from '../../../../../vite-genaicode/vite-genaicode-types.js';
 import { soundEngine } from '../sounds/sound-engine.js';
 
 interface GenAIcodeNotificationsProps {
@@ -8,73 +9,143 @@ interface GenAIcodeNotificationsProps {
 }
 
 /**
- * Component that handles both sound and title notifications for new messages
- * when the window is not focused.
- * - Updates browser tab title with unread message count
- * - Plays sound notifications (when unmuted)
- * - Resets notifications when window gains focus
- * - Stops sound when window gains focus
+ * Component that handles notifications for GenAIcode in both first-party and iframe contexts.
+ *
+ * Features:
+ * - First-party context:
+ *   - Updates browser tab title with unread message count
+ *   - Plays sound notifications (when unmuted)
+ *   - Resets notifications when window gains focus
+ *
+ * - Iframe context:
+ *   - Uses postMessage to communicate with parent window
+ *   - Sends notifications about new messages
+ *   - Handles focus state through cross-window communication
  */
-export const GenAIcodeNotifications: React.FC<GenAIcodeNotificationsProps> = ({ 
+export const GenAIcodeNotifications: React.FC<GenAIcodeNotificationsProps> = ({
   messages,
-  muteNotifications = false 
+  muteNotifications = false,
 }) => {
   const lastMessageCountRef = useRef(messages.length);
   const isWindowFocusedRef = useRef(document.hasFocus());
   const originalTitle = useRef(document.title);
   const [unreadCount, setUnreadCount] = useState(0);
+  const isInIframe = window !== window.parent;
 
+  // Save original title on mount
   useEffect(() => {
-    // Save original title on mount
     originalTitle.current = document.title;
-    
     return () => {
-      // Restore original title on unmount
       document.title = originalTitle.current;
     };
   }, []);
 
+  // Send message to parent window
+  const notifyParent = (event: NotificationEvent) => {
+    if (isInIframe && window.parent) {
+      // Ensure the event is marked as coming from GenAIcode
+      const secureEvent: NotificationEvent = {
+        ...event,
+        source: 'genaicode',
+        origin: window.location.origin,
+      };
+      window.parent.postMessage(secureEvent, '*');
+    }
+  };
+
+  // Handle focus changes
   useEffect(() => {
-    // Handle window focus changes
     const handleFocusChange = () => {
-      const isFocused = document.hasFocus();
+      const isFocused = document.hasFocus() && document.visibilityState === 'visible';
       isWindowFocusedRef.current = isFocused;
-      
+
+      if (isInIframe) {
+        // Notify parent window about focus change
+        notifyParent({
+          type: isFocused ? NotificationEventType.FOCUS : NotificationEventType.BLUR,
+          payload: { isFocused, timestamp: Date.now() },
+        });
+      } else {
+        // First-party context: handle focus change locally
+        if (isFocused) {
+          document.title = originalTitle.current;
+        }
+      }
+
       if (isFocused) {
-        // Reset unread count and restore title when window gains focus
         setUnreadCount(0);
         document.title = originalTitle.current;
-        
-        // Stop the bark sound if there were unread messages
-        if (unreadCount > 0) {
-          soundEngine.stop();
-        }
+        soundEngine.stop();
       }
     };
 
+    // Setup focus/blur listeners
     window.addEventListener('focus', handleFocusChange);
     window.addEventListener('blur', handleFocusChange);
+    document.addEventListener('visibilitychange', handleFocusChange, false);
+
+    // Initial focus state notification for iframe context
+    if (isInIframe) {
+      handleFocusChange();
+    }
 
     return () => {
       window.removeEventListener('focus', handleFocusChange);
       window.removeEventListener('blur', handleFocusChange);
+      document.removeEventListener('visibilitychange', handleFocusChange, false);
     };
-  }, [unreadCount]);
+  }, []);
 
+  // Handle incoming messages from parent window
   useEffect(() => {
-    // Check for new messages
+    if (!isInIframe) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      // Verify the message is from our parent window
+      if (event.source !== window.parent) return;
+
+      try {
+        const { type, source } = event.data as NotificationEvent;
+        if (source !== 'genaicode') return;
+
+        switch (type) {
+          case NotificationEventType.RESET_NOTIFICATIONS:
+            setUnreadCount(0);
+            soundEngine.stop();
+            break;
+        }
+      } catch (error) {
+        console.warn('Error handling notification message:', error);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Handle new messages
+  useEffect(() => {
     if (messages.length > lastMessageCountRef.current) {
-      // Only notify if window is not focused
-      if (!isWindowFocusedRef.current) {
-        // Update unread count and title
-        const newUnreadCount = unreadCount + (messages.length - lastMessageCountRef.current);
+      const newMessagesCount = messages.length - lastMessageCountRef.current;
+
+      if (isInIframe) {
+        // Iframe context: notify parent about new messages
+        notifyParent({
+          type: NotificationEventType.NEW_MESSAGES,
+          payload: {
+            count: newMessagesCount,
+            timestamp: Date.now(),
+          },
+        });
+      } else if (!isWindowFocusedRef.current) {
+        // First-party context: update title and play sound
+        const newUnreadCount = unreadCount + newMessagesCount;
         setUnreadCount(newUnreadCount);
         document.title = `(${newUnreadCount}) ${originalTitle.current}`;
+      }
 
-        // Play sound if not muted
-        if (!muteNotifications) {
-          soundEngine.playBark(0.5);
-        }
+      if (!isWindowFocusedRef.current && !muteNotifications) {
+        soundEngine.playBark(0.5);
       }
     }
     lastMessageCountRef.current = messages.length;

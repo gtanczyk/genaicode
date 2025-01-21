@@ -12,6 +12,34 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-048] Enhanced Cross-Context Notifications: Implemented unified notification system for first-party and iframe contexts. Created: 2024-01-21 Updated: 2024-01-21
+
+  Key Updates:
+
+  - Added iframe detection utility function
+  - Enhanced notification system to work in both contexts
+  - Implemented secure postMessage communication
+  - Added shake animation for Vite plugin overlay
+  - Added unread message counter with badge
+  - Enhanced focus state management
+  - Improved error handling and type safety
+
+  Implementation Details:
+
+  - Created utils.ts with isInIframe utility
+  - Updated content-bus-types.ts with new message types
+  - Enhanced GenAIcodeNotifications component
+  - Updated GenAICodeOverlay with notification features
+  - Added shake animation and notification badge
+  - Implemented cross-window focus detection
+
+  Technical Notes:
+
+  - Secure postMessage communication with origin verification
+  - Animation performance optimization with cooldown
+  - Enhanced TypeScript type safety
+  - Backward compatible with existing features
+
 - [x] [GEN-047] Enhanced Notifications System: Improved notification features. Created: 2024-01-21 Updated: 2024-01-21
 
   Key Updates:
