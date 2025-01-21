@@ -12,6 +12,18 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-047] Enhanced Notifications System: Improved notification features. Created: 2024-01-21 Updated: 2024-01-21
+
+  Key Updates:
+
+  - Renamed sound-notifications to genaicode-notifications
+  - Added browser tab title notifications with unread count
+  - Added mute notifications option in config
+  - Implemented Web Audio API for sound playback
+  - Added focus-aware notification management
+  - Enhanced type safety and React best practices
+  - Integrated with existing configuration system
+
 - [-] [GEN-045] Reasoning Model Support: Enhanced model type system and reasoning inference. Created: 2024-01-20 Updated: 2024-01-20
 
   Key Updates:

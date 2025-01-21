@@ -39,6 +39,7 @@ export interface CodegenOptions {
   uiPort?: number;
   uiFrameAncestors?: string[];
   disableCache?: boolean;
+  muteNotifications?: boolean;
   historyEnabled?: boolean;
 
   disableAiServiceFallback?: boolean;

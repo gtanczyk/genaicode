@@ -13,7 +13,7 @@ import { HealthCheckModal } from './components/health-check-modal.js';
 import { ServiceConfigurationModal } from './components/service-configuration/service-configuration-modal.js';
 import { RcConfigModal } from './components/rc-config-modal.js';
 import { GenaicodeConfigModal } from './components/genaicode-config/genaicode-config-modal.js';
-import { SoundNotifications } from './sounds/sound-notifications.js';
+import { GenAIcodeNotifications } from './notifications/genaicode-notifications.js';
 
 const GenAIcodeApp = () => {
   const {
@@ -111,7 +111,7 @@ const GenAIcodeApp = () => {
       <ServiceConfigurationModal />
       <RcConfigModal rcConfig={rcConfig} />
       <GenaicodeConfigModal options={codegenOptions} onOptionsChange={handleOptionsChange} />
-      <SoundNotifications messages={chatMessages} />
+      <GenAIcodeNotifications messages={chatMessages} muteNotifications={codegenOptions.muteNotifications} />
     </ThemeProvider>
   );
 };

@@ -182,6 +182,21 @@ export const GenaicodeConfigModal: React.FC<GenaicodeConfigModalProps> = ({ opti
               Allow File Move
             </Label>
           </FormGroup>
+
+          <FormGroup>
+            <Label>Notification Settings:</Label>
+            <Label htmlFor="muteNotifications">
+              <input
+                type="checkbox"
+                id="muteNotifications"
+                name="muteNotifications"
+                checked={options.muteNotifications === true}
+                onChange={handleChange}
+                disabled={isLoading}
+              />
+              Mute Sound Notifications
+            </Label>
+          </FormGroup>
         </ServicesContainer>
 
         {isLoading && (

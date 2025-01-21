@@ -20,6 +20,7 @@ export class SoundEngine {
   private context: AudioContext;
   private bufferCache: Map<SoundType, AudioBuffer> = new Map();
   private initialized = false;
+  private currentSources: AudioBufferSourceNode[] = [];
 
   constructor() {
     // Initialize AudioContext with browser compatibility
@@ -87,6 +88,8 @@ export class SoundEngine {
 
       // Start playback
       source.start(0);
+
+      this.currentSources.push(source);
     } catch (error) {
       console.error(`Failed to play sound "${sound}":`, error);
     }
@@ -97,6 +100,10 @@ export class SoundEngine {
    */
   async playBark(volume = 0.5) {
     return this.play('bark', volume);
+  }
+
+  stop() {
+    this.currentSources.forEach((source) => source.stop());
   }
 
   /**
