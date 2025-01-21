@@ -99,7 +99,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   const model = getModel(
     modelType,
     temperature,
-    prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
+    prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt,
     options.geminiBlockNone,
   );
 
@@ -181,7 +181,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 function getModel(
   modelType: ModelType,
   temperature: number,
-  systemPrompt: string,
+  systemPrompt: string | undefined,
   geminiBlockNone: boolean | undefined,
 ) {
   const serviceConfig = getServiceConfig('ai-studio');
