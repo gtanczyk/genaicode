@@ -14,9 +14,15 @@ export async function runCodegenUI(options: CodegenOptions) {
   registerContentHandler((content) => service.handleContent(content));
   registerAppContextProvider(service);
 
-  await startServer(service, { uiPort: options.uiPort!, additionalFrameAncestors: options.uiFrameAncestors });
+  const server = await startServer(service, {
+    uiPort: options.uiPort!,
+    additionalFrameAncestors: options.uiFrameAncestors,
+  });
 
   console.log('Genaicode Web UI started');
 
-  return service;
+  return {
+    service,
+    server,
+  };
 }

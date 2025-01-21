@@ -99,4 +99,6 @@ export async function startServer(service: Service, { uiPort, additionalFrameAnc
   httpServer.listen(uiPort, () => {
     console.log(`Server is running on http://localhost:${uiPort}`);
   });
+
+  return httpServer;
 }

@@ -8,11 +8,10 @@ import { stringToAiServiceType } from '../main/codegen-utils.js';
 import { CodegenOptions, Plugin } from '../main/codegen-types.js';
 import { registerPlugin } from '../main/plugin-loader.js';
 import { Service } from '../main/ui/backend/service.js';
+import { Server } from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-let started = false;
 
 const GENAICODE_PORT = 1338;
 
@@ -20,16 +19,12 @@ export default function viteGenaicode(
   options?: Partial<CodegenOptions>,
   config?: { plugins: Plugin[]; genaicodePort?: number },
 ) {
-  let service: Service;
+  let codegenService: Service;
+  let codegenServer: Server;
   const genaicodePort = config?.genaicodePort ?? GENAICODE_PORT;
   let appContextEnabled: boolean | undefined;
 
   async function start(port: number) {
-    if (started) {
-      console.log('GenAIcode UI is already started');
-      return;
-    }
-
     try {
       // Register inline plugins if provided
       for (const plugin of config?.plugins ?? []) {
@@ -38,10 +33,9 @@ export default function viteGenaicode(
 
       const { runCodegenUI } = await import('../main/ui/codegen-ui.js');
 
-      started = true;
       console.log('Starting GenAIcode in UI mode...');
 
-      service = await runCodegenUI({
+      const codegen = await runCodegenUI({
         ui: true,
         uiPort: genaicodePort,
         uiFrameAncestors: ['http://localhost:' + port],
@@ -64,7 +58,10 @@ export default function viteGenaicode(
         ...options,
       });
 
-      appContextEnabled = (await service.getRcConfig()).featuresEnabled?.appContext;
+      codegenService = codegen.service;
+      codegenServer = codegen.server;
+
+      appContextEnabled = (await codegenService.getRcConfig()).featuresEnabled?.appContext;
     } catch (error) {
       console.error('Failed to start GenAIcode UI:', error);
       throw error;
@@ -84,6 +81,11 @@ export default function viteGenaicode(
           server.close();
         });
       });
+
+      server.httpServer?.on('close', () => {
+        console.log('Stopping GenAIcode...');
+        codegenServer.close();
+      });
     },
 
     transformIndexHtml(html: string) {
@@ -94,7 +96,7 @@ export default function viteGenaicode(
   data-genaicode-port="${genaicodePort}" 
   ${
     appContextEnabled
-      ? `data-genaicode-token="${service.getToken()}"
+      ? `data-genaicode-token="${codegenService.getToken()}"
     data-genaicode-app-context-enabled="true"`
       : ``
   }          
