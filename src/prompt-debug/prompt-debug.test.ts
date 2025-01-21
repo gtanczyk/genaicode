@@ -6,7 +6,8 @@ import { generateContent as generateContentVertexClaude } from '../ai-service/ve
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
 import { DEBUG_CURRENT_PROMPT } from './current-prompt';
-import { PromptItem } from '../ai-service/common';
+import { PromptItem } from '../ai-service/common-types';
+import { ModelType } from '../ai-service/common-types';
 import { updateServiceConfig } from '../ai-service/service-configurations';
 
 vi.setConfig({
@@ -15,7 +16,7 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'updateFile';
+  const requiredFunctionName = 'askQuestion';
   const temperature = 0.7;
 
   it('Gemini Flash', async () => {
@@ -26,14 +27,14 @@ describe('prompt-debug', () => {
       apiKey: process.env.API_KEY,
     });
     const geminiArgs = (
-      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, true)
+      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP)
     )[0].args;
 
     console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
   });
 
   it('GPT Mini', async () => {
-    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, true] as const;
+    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP] as const;
     let result = await generateContentGPT(...req);
     result = await validateAndRecoverSingleResult(
       [
@@ -57,7 +58,7 @@ describe('prompt-debug', () => {
       defs,
       requiredFunctionName,
       temperature,
-      true,
+      ModelType.CHEAP,
       {
         aiService: 'anthropic',
         disableCache: false,
@@ -72,7 +73,7 @@ describe('prompt-debug', () => {
 
   it('Claude Haikku (Vertex)', async () => {
     const defs = getFunctionDefs(); //.filter((fd) => fd.name === 'askQuestion');
-    const req = [prompt, defs, requiredFunctionName, temperature, true] as const;
+    const req = [prompt, defs, requiredFunctionName, temperature, ModelType.CHEAP] as const;
     let result = await generateContentVertexClaude(...req);
     result = await validateAndRecoverSingleResult(
       [
@@ -97,16 +98,26 @@ describe('prompt-debug', () => {
       apiKey: process.env.API_KEY,
     });
 
-    const geminiArgs = (
-      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
-    )[0].args;
+    let result = await generateContentGemini(
+      prompt,
+      getFunctionDefs(),
+      requiredFunctionName,
+      temperature,
+      ModelType.DEFAULT,
+    );
+    result = await validateAndRecoverSingleResult(
+      [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT],
+      result,
+      generateContentGemini,
+    );
 
-    console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
+    console.log('GEMINI', JSON.stringify(result[0].args, null, 4));
   });
 
   it('GPT 4o', async () => {
-    const gptArgs = (await generateContentGPT(prompt, getFunctionDefs(), requiredFunctionName, temperature, false))[0]
-      .args;
+    const gptArgs = (
+      await generateContentGPT(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
+    )[0].args;
 
     console.log('GPT', JSON.stringify(gptArgs, null, 4));
   });
@@ -121,7 +132,7 @@ describe('prompt-debug', () => {
       openaiBaseUrl: 'https://api.deepseek.com',
     });
 
-    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, false] as const;
+    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT] as const;
     let result = await generateContentGPT(...req);
     result = await validateAndRecoverSingleResult(
       [
@@ -142,7 +153,7 @@ describe('prompt-debug', () => {
 
   it('Claude Sonnet', async () => {
     const claudeArgs = (
-      await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
+      await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
     )[0].args;
 
     console.log('CLAUDE', JSON.stringify(claudeArgs, null, 4));
@@ -155,7 +166,7 @@ describe('prompt-debug', () => {
     });
 
     const claudeArgs = (
-      await generateContentVertexClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, false)
+      await generateContentVertexClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
     )[0].args;
 
     console.log('CLAUDE VERTEX', JSON.stringify(claudeArgs, null, 4));
