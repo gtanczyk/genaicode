@@ -17,42 +17,6 @@ import {
   UserItem,
 } from '../step-ask-question-types.js';
 
-/**
- * Checks if a file's content is already provided in the conversation history
- * @param filePath The path of the file to check
- * @param prompt The conversation history
- * @returns true if the file content is already available in the history
- */
-function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): boolean {
-  return prompt.some((item) => {
-    if (item.type !== 'user' || !item.functionResponses) {
-      return false;
-    }
-
-    return item.functionResponses.some((response) => {
-      if (response.name !== 'getSourceCode' || !response.content) {
-        return false;
-      }
-
-      try {
-        const sourceCodeTree = JSON.parse(response.content);
-        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
-        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
-
-        return (
-          sourceCodeTree[dirPath] &&
-          sourceCodeTree[dirPath][fileName] &&
-          'content' in sourceCodeTree[dirPath][fileName] &&
-          sourceCodeTree[dirPath][fileName].content !== null
-        );
-      } catch (error) {
-        console.warn('Error parsing getSourceCode response:', error);
-        return false;
-      }
-    });
-  });
-}
-
 export async function handleRequestFilesContent({
   askQuestionCall,
   options,
@@ -83,27 +47,27 @@ export async function handleRequestFilesContent({
 
   if (alreadyProvidedFiles.length === requestedFiles.length) {
     // All requested files are already provided
-    const assistant: AssistantItem = {
-      type: 'assistant',
-      text: askQuestionCall.args?.message ?? '',
-      functionCalls: [requestFilesContentCall],
-    };
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+        functionCalls: [requestFilesContentCall],
+      },
+      {
+        type: 'user',
+        text: 'The requested file contents are already provided in the conversation history.',
+        functionResponses: [
+          {
+            name: 'requestFilesContent',
+            call_id: requestFilesContentCall.id,
+            content: JSON.stringify({ filePaths: requestedFiles }),
+          },
+        ],
+        cache: true,
+      },
+    );
 
-    const user: UserItem = {
-      type: 'user',
-      text: 'The requested file contents are already provided in the conversation history.',
-      data: { requestedFiles },
-      functionResponses: [
-        {
-          name: 'requestFilesContent',
-          call_id: requestFilesContentCall.id,
-          content: JSON.stringify({ filePaths: requestedFiles }),
-        },
-      ],
-      cache: true,
-    };
-
-    return { breakLoop: false, items: [{ assistant, user }] };
+    return { breakLoop: false, items: [] };
   }
 
   // Filter out already provided files
@@ -181,10 +145,12 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
     cache: true,
   };
 
-  return { breakLoop: false, items: [{ assistant, user }] };
+  prompt.push(assistant, user);
+
+  return { breakLoop: false, items: [] };
 }
 
-async function generateRequestFilesContentCall(
+export async function generateRequestFilesContentCall(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
@@ -211,6 +177,42 @@ async function generateRequestFilesContentCall(
   )) as [FunctionCall<RequestFilesContentArgs> | undefined];
 
   return requestFilesContentCall;
+}
+
+/**
+ * Checks if a file's content is already provided in the conversation history
+ * @param filePath The path of the file to check
+ * @param prompt The conversation history
+ * @returns true if the file content is already available in the history
+ */
+function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): boolean {
+  return prompt.some((item) => {
+    if (item.type !== 'user' || !item.functionResponses) {
+      return false;
+    }
+
+    return item.functionResponses.some((response) => {
+      if (response.name !== 'getSourceCode' || !response.content) {
+        return false;
+      }
+
+      try {
+        const sourceCodeTree = JSON.parse(response.content);
+        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+
+        return (
+          sourceCodeTree[dirPath] &&
+          sourceCodeTree[dirPath][fileName] &&
+          'content' in sourceCodeTree[dirPath][fileName] &&
+          sourceCodeTree[dirPath][fileName].content !== null
+        );
+      } catch (error) {
+        console.warn('Error parsing getSourceCode response:', error);
+        return false;
+      }
+    });
+  });
 }
 
 function categorizeLegitimateFiles(requestedFiles: string[]): {

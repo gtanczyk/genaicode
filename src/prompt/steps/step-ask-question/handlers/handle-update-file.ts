@@ -8,6 +8,8 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
+import { generateRequestFilesContentCall } from './request-files-content.js';
+import { executeStepEnsureContext } from '../../step-ensure-context.js';
 
 export const handleUpdateFile: ActionHandler = async ({
   askQuestionCall,
@@ -48,6 +50,19 @@ export const handleUpdateFile: ActionHandler = async ({
   }
 
   putSystemMessage('Content generation started.', askQuestionCall);
+
+  // Ensure file content is available in the context
+  const requestedFilesCall = await generateRequestFilesContentCall(
+    generateContentFn,
+    prompt,
+    askQuestionCall,
+    options,
+    ModelType.CHEAP,
+  );
+
+  if (requestedFilesCall) {
+    await executeStepEnsureContext(prompt, requestedFilesCall, options);
+  }
 
   const [updateFileCall] = (await generateContentFn(
     [

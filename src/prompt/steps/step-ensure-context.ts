@@ -99,6 +99,8 @@ function extractRequiredPaths(functionCall: FunctionCall): string[] {
           ...functionCall.args.affectedFiles.map((file) => [file.filePath, ...(file.dependencies ?? [])]).flat(),
         );
       }
+    } else if (Array.isArray(functionCall.args.filePaths)) {
+      paths.push(...functionCall.args.filePaths.filter((path): path is string => typeof path === 'string'));
     }
   }
 
