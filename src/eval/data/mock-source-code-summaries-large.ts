@@ -4,7 +4,7 @@
  * Each entry in the dataset includes the file path, a brief description of the file's purpose, and a list of its dependencies.
  */
 
-import { SourceCodeTree } from '../../files/source-code-tree';
+import { SourceCodeTree } from '../../files/source-code-tree.js';
 
 export const MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR = '/project/src/todo-app';
 

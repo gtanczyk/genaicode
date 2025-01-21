@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AiServiceType } from '../../../../codegen-types';
-import { getAvailableAiServices, getServiceConfigurations } from '../api/api-client';
-import { SanitizedServiceConfig } from '../../../common/api-types';
+import { AiServiceType } from '../../../../codegen-types.js';
+import { getAvailableAiServices, getServiceConfigurations } from '../api/api-client.js';
+import { SanitizedServiceConfig } from '../../../common/api-types.js';
 
 export interface ServiceWithModels {
   service: AiServiceType;

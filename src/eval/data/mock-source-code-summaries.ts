@@ -2,7 +2,7 @@
  * Mock source code summaries for testing purposes, with a small dataset.
  */
 
-import { SourceCodeTree } from '../../files/source-code-tree';
+import { SourceCodeTree } from '../../files/source-code-tree.js';
 
 export const MOCK_SOURCE_CODE_SUMMARIES_ROOT_DIR = '/project/src';
 

@@ -1,4 +1,4 @@
-import { readCache } from './cache-file';
+import { readCache } from './cache-file.js';
 import { DependencyInfo } from './source-code-types';
 
 export const CACHE_VERSION = 'v6'; // Incremented version for dependency support
