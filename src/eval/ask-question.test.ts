@@ -181,6 +181,12 @@ describe.each([
       expectedActionType: 'genaicodeHelp',
       promptPrefix: [],
     },
+    {
+      name: 'reasoning inference',
+      userMessage: 'Im thinking about proper architecture for genai app, lets perform a reasoning inference about this',
+      expectedActionType: 'reasoningInference',
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [

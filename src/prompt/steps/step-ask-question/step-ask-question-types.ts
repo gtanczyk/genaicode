@@ -26,6 +26,7 @@ export type ActionType =
   | 'pullAppContext'
   | 'genaicodeHelp'
   | 'pushAppContext'
+  | 'reasoningInference'
   | PluginActionType;
 
 type AskQuestionArgs = {
@@ -127,6 +128,26 @@ export type SearchCodeArgs = {
   contextLines?: number;
 };
 
+/**
+ * Arguments for the reasoningInference action
+ */
+export type ReasoningInferenceArgs = {
+  /** The prompt to send to the reasoning model */
+  prompt: string;
+  /** The context paths to provide to the reasoning model */
+  contextPaths: string[];
+};
+
+/**
+ * Results from the reasoning model
+ */
+export type ReasoningInferenceResponseArgs = {
+  /** The generated response text */
+  response: string;
+  /** The reasoning tokens provided by the model */
+  reasoning: string;
+};
+
 export type LintResult = {
   success: boolean;
   stdout?: string;
@@ -136,6 +157,7 @@ export type LintResult = {
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
 export type PerformAnalysisCall = FunctionCall<PerformAnalysisArgs>;
 export type AnalysisResultCall = FunctionCall<AnalysisResultArgs>;
+export type ReasoningInferenceCall = FunctionCall<ReasoningInferenceArgs>;
 
 export interface AssistantItem {
   type: 'assistant';
@@ -147,7 +169,7 @@ export interface AssistantItem {
 
 export interface UserItem {
   type: 'user';
-  text: string;
+  text?: string;
   data?: Record<string, unknown>;
   functionResponses?: Array<{
     name: string;

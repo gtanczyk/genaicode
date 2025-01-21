@@ -1,23 +1,7 @@
 import OpenAI from 'openai';
-import { FunctionCall, FunctionDef, PromptItem, Plugin } from '../../src/index.js';
+import { FunctionCall, FunctionDef, PromptItem, Plugin, GenerateContentFunction } from '../../src/index.js';
 
-const grokAiService: Plugin = {
-  name: 'grok-ai-service',
-  aiServices: {
-    'grok-ai-service': {
-      generateContent,
-      serviceConfig: {
-        apiKey: process.env.GROK_OPENAI_API_KEY,
-        modelOverrides: {
-          default: 'grok-beta',
-          cheap: 'grok-beta',
-        },
-      },
-    },
-  },
-};
-
-async function generateContent(
+const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -45,6 +29,22 @@ async function generateContent(
       : (serviceConfig.modelOverrides?.default ?? 'grok-beta'),
     openai,
   );
-}
+};
+
+const grokAiService: Plugin = {
+  name: 'grok-ai-service',
+  aiServices: {
+    'grok-ai-service': {
+      generateContent,
+      serviceConfig: {
+        apiKey: process.env.GROK_OPENAI_API_KEY,
+        modelOverrides: {
+          default: 'grok-beta',
+          cheap: 'grok-beta',
+        },
+      },
+    },
+  },
+};
 
 export default grokAiService;

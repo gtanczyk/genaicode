@@ -28,6 +28,7 @@ import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
 import { handleCreateFile } from './handlers/handle-create-file.js';
 import { handlePullAppContext } from './handlers/handle-pull-app-context.js';
 import { handlePushAppContext } from './handlers/handle-push-app-context.js';
+import { handleReasoningInference } from './handlers/handle-reasoning-inference.js';
 import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
 
 export async function executeStepAskQuestion(
@@ -68,7 +69,7 @@ export async function executeStepAskQuestion(
 
         // This is important to display the content to the user interface (ui or interactive cli)
         let lastItem = result.items.slice(-1)[0];
-        if (lastItem) {
+        if (lastItem?.user?.text) {
           putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
         }
 
@@ -85,7 +86,7 @@ export async function executeStepAskQuestion(
           });
 
           lastItem = result.items.slice(-1)[0];
-          if (lastItem) {
+          if (lastItem?.user?.text) {
             putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
           }
 
@@ -148,6 +149,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     performAnalysis: handlePerformAnalysis,
     pullAppContext: handlePullAppContext,
     genaicodeHelp: handleGenaicodeHelp,
+    reasoningInference: handleReasoningInference,
     pushAppContext: handlePushAppContext,
   };
 

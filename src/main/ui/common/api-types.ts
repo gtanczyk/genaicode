@@ -71,6 +71,7 @@ export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
   modelOverrides?: {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
+    reasoning?: string; // Model name for reasoning mode
   };
 } & (T extends keyof ServiceConfigRequirements
   ? ServiceConfigRequirements[T]
@@ -93,6 +94,7 @@ export type SanitizedServiceConfig = {
   modelOverrides?: {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
+    reasoning?: string; // Model name for reasoning mode
   };
 } & (
   | {

@@ -1,6 +1,13 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
+import {
+  printTokenUsageAndCost,
+  processFunctionCalls,
+  FunctionCall,
+  PromptItem,
+  FunctionDef,
+  GenerateContentFunction,
+} from './common.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { getServiceConfig } from './service-configurations.js';
@@ -8,7 +15,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
  */
-export async function generateContent(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -100,7 +107,7 @@ export async function generateContent(
     usage,
     inputCostPerToken: 3 / 1000 / 1000,
     outputCostPerToken: 15 / 1000 / 1000,
-    cheap,
+    modelType: cheap,
   });
 
   const responseMessages = response.content.filter((item) => item.type !== 'tool_use');
@@ -117,4 +124,4 @@ export async function generateContent(
     }));
 
   return processFunctionCalls(functionCalls, functionDefs);
-}
+};

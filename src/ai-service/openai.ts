@@ -7,6 +7,9 @@ import {
   PromptItem,
   FunctionDef,
   TokenUsage,
+  GenerateContentFunction,
+  ModelType,
+  normalizeModelType,
 } from './common.js';
 import { ChatCompletionContentPartText, ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/interactive/codegen-worker.js';
@@ -15,7 +18,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the OpenAI chat model.
  */
-export async function generateContent(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -27,9 +30,17 @@ export async function generateContent(
     assert(serviceConfig?.apiKey, 'OpenAI API key not configured, use OPENAI_API_KEY environment variable.');
     const openai = new OpenAI({ apiKey: serviceConfig?.apiKey, baseURL: serviceConfig?.openaiBaseUrl });
 
-    const defaultModel = cheap ? 'gpt-4o-mini' : 'gpt-4o-2024-11-20';
-    const modelOverrides = serviceConfig?.modelOverrides;
-    const model = cheap ? (modelOverrides?.cheap ?? defaultModel) : (modelOverrides?.default ?? defaultModel);
+    const modelType = normalizeModelType(cheap);
+    const model = (() => {
+      switch (modelType) {
+        case ModelType.CHEAP:
+          return serviceConfig.modelOverrides?.cheap ?? 'gpt-4o-mini';
+        case ModelType.REASONING:
+          return serviceConfig.modelOverrides?.reasoning ?? 'o1-mini';
+        default:
+          return serviceConfig.modelOverrides?.default ?? 'gpt-4o-2024-11-20';
+      }
+    })();
 
     return internalGenerateContent(prompt, functionDefs, requiredFunctionName, temperature, cheap, model, openai);
   } catch (error) {
@@ -38,14 +49,14 @@ export async function generateContent(
     }
     throw error;
   }
-}
+};
 
 export async function internalGenerateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  cheap: ModelType | boolean = false,
   model: string,
   openai: OpenAI,
 ): Promise<FunctionCall[]> {
@@ -78,7 +89,7 @@ export async function internalGenerateToolCalls(
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  cheap: ModelType | boolean = false,
   model: string,
   openai: OpenAI,
 ) {
@@ -86,7 +97,7 @@ export async function internalGenerateToolCalls(
     .map((item) => {
       if (item.type === 'systemPrompt') {
         return {
-          role: 'system' as const,
+          role: cheap === ModelType.REASONING ? ('developer' as const) : ('system' as const),
           content: item.systemPrompt!,
         };
       } else if (item.type === 'user') {
@@ -175,11 +186,15 @@ export async function internalGenerateToolCalls(
         {
           model: model,
           messages,
-          tools: functionDefs.map((funDef) => ({ type: 'function' as const, function: funDef })),
-          tool_choice: requiredFunctionName
-            ? { type: 'function' as const, function: { name: requiredFunctionName } }
-            : 'required',
-          temperature: temperature,
+          ...(functionDefs.length > 0
+            ? {
+                tools: functionDefs.map((funDef) => ({ type: 'function' as const, function: funDef })),
+                tool_choice: requiredFunctionName
+                  ? { type: 'function' as const, function: { name: requiredFunctionName } }
+                  : 'required',
+              }
+            : {}),
+          ...(cheap !== ModelType.REASONING ? { temperature } : {}),
         },
         { signal: abortController?.signal },
       );
@@ -218,13 +233,21 @@ export async function internalGenerateToolCalls(
     usage,
     inputCostPerToken: 0.000005,
     outputCostPerToken: 0.000015,
-    cheap,
+    modelType: cheap,
   });
 
   const responseMessage = response.choices[0].message;
 
-  if (responseMessage.content) {
-    console.log('Message', responseMessage.content);
+  if (cheap === ModelType.REASONING) {
+    return [
+      {
+        id: 'reasoning_inference_response',
+        function: {
+          name: 'reasoningInferenceResponse',
+          arguments: JSON.stringify({ response: responseMessage.content }),
+        },
+      },
+    ];
   }
 
   if (responseMessage.tool_calls) {

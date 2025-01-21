@@ -106,6 +106,7 @@ Example use cases of action types:
 - Need to perform a linting of the code -> **lint**
 - End the conversation -> **endConversation**
 - The user needs help with GenAIcode itself, encountered a problem, or needs guidance -> **genaicodeHelp**
+- Perform inference on a AI model with reasoning capabilities -> **reasoningInference**
 
 ### Efficient File Content Requests
 
@@ -147,6 +148,8 @@ It is ** VERY IMPORTANT ** to follow the conversation flow to ensure a smooth an
 - Try to tell the user what is going to happen next, what they should expect, and what they should do next. For example, "I will now generate the code changes summary. Please confirm if you are ready to proceed.".
 - Do not refer to \`actionType\` parameter name or values in the message content. For example, instead of "I will now generate the code changes summary. Please confirm if you are ready to proceed with actionType: confirmCodeGeneration.", use "I will now generate the code changes summary. Please confirm if you are ready to proceed.". 
 - Do not use \`createFile\` action type to create a file that already exists in the project. Use it only to create new files.
+- When using \`reasoningInference\` action type to perform reasoning inference, in first step tell the user what you are going to do, and in the second step provide the results of the reasoning inference.
+- When calling \`reasoningInference\` function, always provide a detailed prompt that includes the problem statement, context, constraints, assumptions, and solution. This will help the reasoning model to provide more accurate predictions. REMEMBER: The reasoning model will only consider the prompt and will not have access to any other context, so if you think something is important, include its full content in the context items.
 
 ## GenAIcode configuration
 

@@ -25,6 +25,7 @@ import { getCodegenPlanningDef } from './function-defs/codegen-planning.js';
 import { performAnalysis } from './function-defs/perform-analysis.js';
 import { analysisResult } from './function-defs/analysis-result.js';
 import { genaicodeHelpDef } from './function-defs/genaicode-help.js';
+import { reasoningInference, reasoningInferenceResponse } from './function-defs/reasoning-inference.js';
 
 /**
  * Function definitions for function calling feature
@@ -53,6 +54,8 @@ export function getFunctionDefs(): FunctionDef[] {
     pullAppContext,
     pushAppContext,
     genaicodeHelpDef,
+    reasoningInference,
+    reasoningInferenceResponse,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

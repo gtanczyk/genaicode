@@ -15,7 +15,7 @@ export async function handleSearchCode({
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
-    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionCall, options, false);
+    const searchCodeCall = await generateSearchCodeCall(generateContentFn, prompt, askQuestionCall, options, true);
 
     // Extract search parameters from the call arguments
     const args = searchCodeCall?.args;
@@ -52,7 +52,6 @@ export async function handleSearchCode({
           },
           user: {
             type: 'user',
-            text: 'Search completed, lets continue the conversation.',
             functionResponses: [
               {
                 name: 'searchCode',

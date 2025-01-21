@@ -8,7 +8,15 @@ import {
   FunctionDeclaration,
   FunctionCallingMode,
 } from '@google-cloud/vertexai';
-import { printTokenUsageAndCost, processFunctionCalls, FunctionCall, PromptItem, FunctionDef } from './common.js';
+import {
+  printTokenUsageAndCost,
+  processFunctionCalls,
+  FunctionCall,
+  PromptItem,
+  FunctionDef,
+  GenerateContentFunction,
+  ModelType,
+} from './common.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
@@ -17,7 +25,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Gemini Pro model.
  */
-export async function generateContent(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -103,7 +111,7 @@ export async function generateContent(
       usage,
       inputCostPerToken: 0.000125 / 1000,
       outputCostPerToken: 0.000375 / 1000,
-      cheap,
+      modelType: cheap,
     });
 
     if (result.response.promptFeedback) {
@@ -155,7 +163,7 @@ export async function generateContent(
     }
     throw error;
   }
-}
+};
 
 // A function to get the generative model
 // Modified to accept temperature parameter and cheap flag
@@ -165,7 +173,7 @@ function getGenModel(
   functionDefs: FunctionDef[] | undefined,
   geminiBlockNone: boolean | undefined,
   requiredFunctionName: string | null,
-  cheap = false,
+  cheap: ModelType | boolean = false,
 ) {
   try {
     console.log('Recovering function call');

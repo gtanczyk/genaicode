@@ -1,24 +1,7 @@
 import OpenAI from 'openai';
-import { FunctionCall, FunctionDef, PromptItem, Plugin } from '../../src/index.js';
+import { FunctionCall, FunctionDef, PromptItem, Plugin, GenerateContentFunction } from '../../src/index.js';
 
-const grokAiService: Plugin = {
-  name: 'deepseek-ai-service',
-  aiServices: {
-    'deepseek-ai-service': {
-      generateContent,
-      serviceConfig: {
-        apiKey: process.env.DEEPSEEK_API_KEY,
-        openaiBaseUrl: 'https://api.deepseek.com',
-        modelOverrides: {
-          default: 'deepseek-chat',
-          cheap: 'deepseek-chat',
-        },
-      },
-    },
-  },
-};
-
-async function generateContent(
+const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -84,6 +67,23 @@ async function generateContent(
   });
 
   return processFunctionCalls(functionCalls, functionDefs);
-}
+};
+
+const grokAiService: Plugin = {
+  name: 'deepseek-ai-service',
+  aiServices: {
+    'deepseek-ai-service': {
+      generateContent,
+      serviceConfig: {
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        openaiBaseUrl: 'https://api.deepseek.com',
+        modelOverrides: {
+          default: 'deepseek-chat',
+          cheap: 'deepseek-chat',
+        },
+      },
+    },
+  },
+};
 
 export default grokAiService;

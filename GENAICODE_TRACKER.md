@@ -12,6 +12,36 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-045] Reasoning Model Support: Enhanced model type system and reasoning inference. Created: 2024-01-20 Updated: 2024-01-20
+
+  Key Updates:
+
+  - Added ModelType enum (default, cheap, reasoning)
+  - Integrated gemini-2.0-flash-thinking-exp-1219 model for reasoning tasks
+  - Updated configuration system for model types
+  - Enhanced reasoning token handling
+  - Added comprehensive test suite
+  - Updated service configurations
+  - Maintained backward compatibility
+  - Added cost calculation for reasoning model type
+  - Enhanced type safety and validation
+  - Improved error handling for reasoning inference
+
+  Implementation Details:
+
+  - Modified GenerateContentArgs to use ModelType
+  - Updated AI Studio implementation
+  - Enhanced model selection logic
+  - Added reasoning-specific test cases
+  - Updated configuration interfaces
+
+  Technical Notes:
+
+  - Backward compatible with existing boolean cheap parameter
+  - Reasoning model pricing set at 2x default cost
+  - Enhanced token parsing for reasoning responses
+  - Added validation for model type configurations
+
 - [ ] [GEN-044] Enhanced AI Service Selector: Added model information display. Created: 2024-01-19 Updated: 2024-01-19
 
   Key Updates:

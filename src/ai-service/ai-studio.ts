@@ -9,7 +9,16 @@ import {
   ResponseSchema,
 } from '@google/generative-ai';
 import assert from 'node:assert';
-import { FunctionCall, FunctionDef, printTokenUsageAndCost, processFunctionCalls, PromptItem } from './common.js';
+import {
+  FunctionCall,
+  FunctionDef,
+  GenerateContentFunction,
+  ModelType,
+  normalizeModelType,
+  printTokenUsageAndCost,
+  processFunctionCalls,
+  PromptItem,
+} from './common.js';
 import { abortController } from '../main/interactive/codegen-worker.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
@@ -18,12 +27,12 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
  */
-export async function generateContent(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
   temperature: number,
-  cheap = false,
+  modelTypeOrCheap: ModelType | boolean = ModelType.DEFAULT,
   options: { geminiBlockNone?: boolean } = {},
 ): Promise<FunctionCall[]> {
   const messages: Content[] = prompt
@@ -75,21 +84,24 @@ export async function generateContent(
 
   const req: GenerateContentRequest = {
     contents: messages,
-    tools: [
+  };
+
+  if (functionDefs.length > 0) {
+    req.tools = [
       {
         functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
       },
-    ],
-    toolConfig: {
+    ];
+    req.toolConfig = {
       functionCallingConfig: {
         mode: FunctionCallingMode.ANY,
         ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
       },
-    },
-  };
+    };
+  }
 
   const model = getModel(
-    cheap,
+    modelTypeOrCheap,
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
     options.geminiBlockNone,
@@ -109,7 +121,7 @@ export async function generateContent(
     usage,
     inputCostPerToken: 0.000125 / 1000,
     outputCostPerToken: 0.000375 / 1000,
-    cheap,
+    modelType: modelTypeOrCheap,
   });
 
   if (result.response.promptFeedback) {
@@ -128,6 +140,19 @@ export async function generateContent(
     .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
     .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
     .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
+
+  if (modelTypeOrCheap === ModelType.REASONING) {
+    functionCalls.push({
+      name: 'reasoningInferenceResponse',
+      args: {
+        reasoning:
+          result.response.candidates[0].content?.parts.length === 2
+            ? result.response.candidates[0].content?.parts.slice(-2)[0].text
+            : undefined,
+        response: result.response.candidates[0].content?.parts.slice(-1)[0].text,
+      },
+    });
+  }
 
   if (functionCalls.length === 0) {
     const textResponse =
@@ -155,16 +180,29 @@ export async function generateContent(
   }
 
   return processFunctionCalls(functionCalls, functionDefs);
-}
+};
 
-function getModel(cheap: boolean, temperature: number, systemPrompt: string, geminiBlockNone: boolean | undefined) {
+function getModel(
+  modelTypeOrCheap: ModelType | boolean,
+  temperature: number,
+  systemPrompt: string,
+  geminiBlockNone: boolean | undefined,
+) {
   const serviceConfig = getServiceConfig('ai-studio');
   assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
   const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
-  const model = cheap
-    ? (serviceConfig.modelOverrides?.cheap ?? 'gemini-1.5-flash-002')
-    : (serviceConfig.modelOverrides?.default ?? 'gemini-1.5-pro-002');
+  const modelType = normalizeModelType(modelTypeOrCheap);
+  const model = (() => {
+    switch (modelType) {
+      case ModelType.CHEAP:
+        return serviceConfig.modelOverrides?.cheap ?? 'gemini-1.5-flash-002';
+      case ModelType.REASONING:
+        return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-1219';
+      default:
+        return serviceConfig.modelOverrides?.default ?? 'gemini-1.5-pro-002';
+    }
+  })();
 
   console.log(`Using AI Studio model: ${model}`);
 
@@ -193,14 +231,18 @@ function getModel(cheap: boolean, temperature: number, systemPrompt: string, gem
         threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
       },
     ],
-    systemInstruction: {
-      role: 'system',
-      parts: [
-        {
-          text: systemPrompt,
-        },
-      ],
-    },
+    ...(systemPrompt
+      ? {
+          systemInstruction: {
+            role: 'system',
+            parts: [
+              {
+                text: systemPrompt,
+              },
+            ],
+          },
+        }
+      : {}),
   });
 }
 
@@ -213,7 +255,7 @@ async function recoverFunctionCall(
   // @ts-expect-error: "object" !== "OBJECT"
   const schema: ResponseSchema = functionDef.parameters;
   const result = await getModel(
-    false,
+    ModelType.DEFAULT, // Always use default model for recovery attempts
     0.2,
     'Your role is read the text below and if possible, return it in the desired format.',
     undefined,
