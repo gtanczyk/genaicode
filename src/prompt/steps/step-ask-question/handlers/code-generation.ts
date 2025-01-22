@@ -32,9 +32,10 @@ export async function handleCodeGeneration({
   // Ask user to confirm the planning result
   const planningConfirmation = await askUserForConfirmationWithAnswer(
     CODEGEN_SUMMARY_PROMPT,
-    'Accept planning and continue',
-    'Reject planning and return to conversation',
+    'Accept plan',
+    'Reject plan',
     true,
+    options,
   );
 
   if (!planningConfirmation.confirmed) {
@@ -84,9 +85,10 @@ export async function handleCodeGeneration({
     // Ask user to confirm the codegen summary
     const codegenSummaryConfirmation = await askUserForConfirmationWithAnswer(
       CODEGEN_SUMMARY_GENERATED_MESSAGE,
-      CODEGEN_SUMMARY_APPROVED,
-      'Reject codegen summary and return to conversation',
+      'Accept codegen summary',
+      'Reject codegen summary',
       true,
+      options,
     );
 
     if (!codegenSummaryConfirmation.confirmed) {
@@ -140,6 +142,7 @@ export async function handleCodeGeneration({
       'Apply code changes',
       'Continue conversation',
       true,
+      options,
     );
 
     putAssistantMessage('Code changes are generated, now what?');

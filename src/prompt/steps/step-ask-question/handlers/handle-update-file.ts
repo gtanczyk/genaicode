@@ -25,6 +25,7 @@ export const handleUpdateFile: ActionHandler = async ({
     'Generate content',
     'Cancel content generation',
     false,
+    options,
   );
 
   if (!generateConfirmation.confirmed) {
@@ -129,6 +130,7 @@ export const handleUpdateFile: ActionHandler = async ({
     'Update file',
     'Cancel update',
     false,
+    options,
   );
 
   if (!applyConfirmation.confirmed) {

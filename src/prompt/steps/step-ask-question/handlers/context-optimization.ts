@@ -13,12 +13,8 @@ export async function handleContextOptimization({
   const userConfirmation = await askUserForConfirmation(
     'The assistant suggests optimizing the context to reduce token usage, cost, and latency. Do you want to proceed?',
     false,
+    options,
   );
-
-  if (userConfirmation.options?.aiService) {
-    options.aiService = userConfirmation.options.aiService;
-    options.cheap = userConfirmation.options.cheap;
-  }
 
   const user: UserItem = {
     type: 'user',

@@ -12,6 +12,33 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-049] AI Service Selection in Confirmation Dialogs: Enhanced dialog system with AI service selection capability. Created: 2024-01-22 Updated: 2024-01-22
+
+  Key Updates:
+
+  - Added AI service selection to confirmation dialogs
+  - Implemented backend support for service selection
+  - Enhanced type system with AI service support
+  - Updated frontend components
+  - Maintained backward compatibility
+
+  Implementation Details:
+
+  - Modified user-actions.ts with AI service types
+  - Updated question-handler.tsx with service selector
+  - Enhanced step-ask-question system
+  - Updated action handlers for confirmations
+  - Added proper error handling
+
+  Technical Notes:
+
+  - Type-safe implementation with TypeScript
+  - Backward compatible with existing code
+  - Enhanced user experience in confirmation flows
+  - Support for dynamic AI service switching
+  - Proper state management and error handling
+  - Integration with existing service configuration system
+
 - [x] [GEN-048] Enhanced Cross-Context Notifications: Implemented unified notification system for first-party and iframe contexts. Created: 2024-01-21 Updated: 2024-01-21
 
   Key Updates:

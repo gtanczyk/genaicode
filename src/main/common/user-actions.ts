@@ -23,18 +23,29 @@ export type ConfirmHandlerProps = {
 
 type ConfirmHandler = (props: ConfirmHandlerProps) => Promise<ConfirmHandlerResponse>;
 
-export async function askUserForInput(prompt: string, message: string): Promise<InputHandlerResponse> {
-  return await inputHandler(prompt, message);
+export async function askUserForInput(
+  prompt: string,
+  message: string,
+  options: CodegenOptions,
+): Promise<InputHandlerResponse> {
+  return handleOptionsUpdate(await inputHandler(prompt, message), options);
 }
 
-export async function askUserForConfirmation(prompt: string, defaultValue: boolean): Promise<ConfirmHandlerResponse> {
-  return await confirmHandler({
-    prompt,
-    confirmLabel: 'Yes',
-    declineLabel: 'No',
-    includeAnswer: false,
-    defaultValue,
-  });
+export async function askUserForConfirmation(
+  prompt: string,
+  defaultValue: boolean,
+  options: CodegenOptions,
+): Promise<ConfirmHandlerResponse> {
+  return handleOptionsUpdate(
+    await confirmHandler({
+      prompt,
+      confirmLabel: 'Yes',
+      declineLabel: 'No',
+      includeAnswer: false,
+      defaultValue,
+    }),
+    options,
+  );
 }
 
 export async function askUserForConfirmationWithAnswer(
@@ -42,14 +53,18 @@ export async function askUserForConfirmationWithAnswer(
   confirmLabel: string,
   declineLabel: string,
   defaultValue: boolean,
+  options: CodegenOptions,
 ): Promise<ConfirmHandlerResponse> {
-  return await confirmHandler({
-    prompt,
-    confirmLabel,
-    declineLabel,
-    includeAnswer: true,
-    defaultValue,
-  });
+  return handleOptionsUpdate(
+    await confirmHandler({
+      prompt,
+      confirmLabel,
+      declineLabel,
+      includeAnswer: true,
+      defaultValue,
+    }),
+    options,
+  );
 }
 
 let inputHandler: InputHandler;
@@ -61,4 +76,15 @@ export function registerInputHandler(handler: InputHandler) {
 
 export function registerConfirmHandler(handler: ConfirmHandler) {
   confirmHandler = handler;
+}
+
+function handleOptionsUpdate<T extends { options?: CodegenOptions }>(response: T, options: CodegenOptions): T {
+  if (response.options?.aiService) {
+    options.aiService = response.options.aiService;
+  }
+  if (response.options?.cheap) {
+    options.cheap = response.options.cheap;
+  }
+
+  return response;
 }

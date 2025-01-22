@@ -19,7 +19,7 @@ const nonsenseActionHandler: Plugin = {
 
         const userItem = {
           type: 'user' as const,
-          text: (await askUserForInput('Your answer', props.askQuestionCall.args?.message ?? '')).answer,
+          text: (await askUserForInput('Your answer', props.askQuestionCall.args?.message ?? '', props.options)).answer,
         };
 
         return {

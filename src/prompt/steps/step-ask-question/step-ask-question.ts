@@ -50,7 +50,6 @@ export async function executeStepAskQuestion(
       }
 
       if (askQuestionCall.args?.message) {
-        // TODO: PromptItem should be included here, but a small refactor is needed to achieve this
         putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);
       }
 

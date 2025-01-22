@@ -43,7 +43,11 @@ export async function handleAiServiceFallback(
 
         if (!options.disableAiServiceFallback && (options.interactive || options.ui)) {
           putSystemMessage(`Content generation failed for ${permanentService}`, { error });
-          const shouldRetry = await askUserForConfirmation(`Content generation failed, do you want to retry?`, true);
+          const shouldRetry = await askUserForConfirmation(
+            `Content generation failed, do you want to retry?`,
+            true,
+            options,
+          );
           if (shouldRetry.confirmed) {
             continue;
           }
@@ -59,6 +63,7 @@ export async function handleAiServiceFallback(
                 const shouldSwitch = await askUserForConfirmation(
                   `Rate limit exceeded for ${permanentService}. Would you like to switch to ${nextService}?`,
                   true,
+                  options,
                 );
                 if (shouldSwitch.confirmed) {
                   putSystemMessage(`Switching to ${nextService} due to rate limiting.`);

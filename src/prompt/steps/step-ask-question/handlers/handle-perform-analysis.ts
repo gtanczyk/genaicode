@@ -68,10 +68,7 @@ export async function handlePerformAnalysis({
       analysisResult: analysisResultCall.args,
     });
 
-    const response = await askUserForInput('Your answer', analysisResultCall.args?.message ?? '');
-    if (response.options?.aiService) {
-      options.aiService = response.options.aiService;
-    }
+    const response = await askUserForInput('Your answer', analysisResultCall.args?.message ?? '', options);
 
     return {
       breakLoop: false,

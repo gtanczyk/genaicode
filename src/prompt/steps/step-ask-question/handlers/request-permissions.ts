@@ -40,6 +40,7 @@ export async function handleRequestPermissions({
   const userConfirmation = await askUserForConfirmation(
     'The assistant is requesting additional permissions. Do you want to grant them?',
     false,
+    options,
   );
 
   const user: UserItem = {

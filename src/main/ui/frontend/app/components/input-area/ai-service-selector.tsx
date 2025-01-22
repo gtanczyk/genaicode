@@ -18,12 +18,7 @@ export const AiServiceSelector: React.FC<AiServiceSelectorProps> = ({ value, onC
 
   return (
     <Container>
-      <Select 
-        id="aiService" 
-        value={value} 
-        onChange={handleChange} 
-        disabled={disabled || isLoading || error !== null}
-      >
+      <Select id="aiService" value={value} onChange={handleChange} disabled={disabled || isLoading || error !== null}>
         <option value="">Select AI Service</option>
         {services.map(({ service, displayName }) => (
           <option key={service} value={service}>
@@ -50,7 +45,7 @@ const Select = styled.select`
   background-color: ${({ theme }) => theme.colors.inputBg};
   color: ${({ theme }) => theme.colors.inputText};
   font-size: 14px;
-  min-width: 200px; /* Ensure enough space for longer options */
+  max-width: 200px; /* Ensure enough space for longer options */
 
   &:disabled {
     background-color: ${({ theme }) => theme.colors.disabled};

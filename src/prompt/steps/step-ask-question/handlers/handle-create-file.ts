@@ -23,6 +23,7 @@ export const handleCreateFile: ActionHandler = async ({
     'Generate content',
     'Cancel content generation',
     false,
+    options,
   );
 
   if (!generateConfirmation.confirmed) {
@@ -110,6 +111,7 @@ export const handleCreateFile: ActionHandler = async ({
     'Create file',
     'Cancel file creation',
     false,
+    options,
   );
 
   if (!applyConfirmation.confirmed) {

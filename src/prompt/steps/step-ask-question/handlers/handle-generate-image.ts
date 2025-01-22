@@ -99,10 +99,7 @@ export async function handleGenerateImage({
   putAssistantMessage('', generateImageCall.args, [], [imageData]);
 
   // Get user's response with the image displayed
-  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '');
-  if (inputResponse.options?.aiService) {
-    options.aiService = inputResponse.options.aiService;
-  }
+  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '', options);
 
   // Return the conversation items with the generated image included in the context
   return {

@@ -85,8 +85,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
                 {question.confirmation.declineLabel}
               </ConfirmButton>
-              {/* TODO: This is not handled on the backend yet */}
-              {/* <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} /> */}
+              <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
           )}
