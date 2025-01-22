@@ -9,6 +9,7 @@ import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { getServiceConfig } from './service-configurations.js';
+import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-inference.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -31,6 +32,18 @@ export const generateContent: GenerateContentFunction = async function generateC
           'max-tokens-3-5-sonnet-2024-07-15' + (!options.disableCache ? ',prompt-caching-2024-07-31' : ''),
       },
     });
+
+    let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+
+    if (modelType === ModelType.REASONING) {
+      // This solution mimics the behavior of a reasoning model by using a function call
+      if (!functionDefs.some((f) => f.name === reasoningInferenceResponse.name)) {
+        functionDefs = [...functionDefs, reasoningInferenceResponse];
+      }
+      requiredFunctionName = reasoningInferenceResponse.name;
+      systemPrompt +=
+        '\nFirst, reason step-by-step. Then, call reasoningInferenceResponse with your reasoning and answer.';
+    }
 
     let cacheControlCount = prompt.filter((item) => item.cache).length;
     const messages: Anthropic.MessageParam[] = prompt
@@ -126,7 +139,9 @@ export const generateContent: GenerateContentFunction = async function generateC
     let model =
       modelType === ModelType.CHEAP
         ? (modelOverrides?.cheap ?? defaultModel)
-        : (modelOverrides?.default ?? defaultModel);
+        : modelType === ModelType.REASONING
+          ? (modelOverrides?.reasoning ?? defaultModel)
+          : (modelOverrides?.default ?? defaultModel);
     console.log(`Using Anthropic model: ${model}`);
 
     let retryCount = 0;
@@ -136,7 +151,7 @@ export const generateContent: GenerateContentFunction = async function generateC
         response = await anthropic.messages.create(
           {
             model: model,
-            system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
+            system: systemPrompt,
             messages: messages,
             tools: functionDefs.map((fd) => ({
               name: fd.name,

@@ -9,6 +9,7 @@ import { ModelType } from './common-types.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/common/abort-controller.js';
 import { getServiceConfig } from './service-configurations.js';
+import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-inference.js';
 
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI.
@@ -28,6 +29,18 @@ export const generateContent: GenerateContentFunction = async function generateC
     projectId: serviceConfig.googleCloudProjectId,
     region: serviceConfig.googleCloudRegion,
   });
+
+  let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+
+  if (modelType === ModelType.REASONING) {
+    // This solution mimics the behavior of a reasoning model by using a function call
+    if (!functionDefs.some((f) => f.name === reasoningInferenceResponse.name)) {
+      functionDefs = [...functionDefs, reasoningInferenceResponse];
+    }
+    requiredFunctionName = reasoningInferenceResponse.name;
+    systemPrompt +=
+      '\nFirst, reason step-by-step. Then, call reasoningInferenceResponse with your reasoning and answer.';
+  }
 
   const messages: MessageParam[] = prompt
     .filter((item) => item.type !== 'systemPrompt')
@@ -73,15 +86,17 @@ export const generateContent: GenerateContentFunction = async function generateC
   const model =
     modelType === ModelType.CHEAP
       ? (serviceConfig.modelOverrides?.cheap ?? 'claude-3-5-haiku@20240620')
-      : (serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620');
+      : modelType === ModelType.REASONING
+        ? (serviceConfig.modelOverrides?.reasoning ?? 'claude-3-5-sonnet@20240620')
+        : (serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620');
   console.log(`Using Vertex AI Claude model: ${model}`);
 
   const response: Message = await client.messages.create(
     {
       model: model,
-      max_tokens: 8192,
+      max_tokens: 4096,
       temperature: temperature,
-      system: prompt.find((item) => item.type === 'systemPrompt')!.systemPrompt!,
+      system: systemPrompt,
       messages: messages,
       tools: functionDefs.map((fd) => ({
         name: fd.name,

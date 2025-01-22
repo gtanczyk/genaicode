@@ -23,7 +23,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.anthropic?.default ?? 'claude-3-5-sonnet-20241022',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
-      reasoning: modelOverrides.anthropic?.reasoning,
+      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-3-5-sonnet-20241022',
     },
   },
   openai: {
@@ -49,6 +49,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: 'claude-3-5-sonnet@20240620',
       cheap: 'claude-3-haiku@20240307',
+      reasoning: 'claude-3-5-sonnet@20240620',
     },
   },
 };
