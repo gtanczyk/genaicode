@@ -10,6 +10,7 @@ import { ModelType } from './common-types.js';
 import { ChatCompletionContentPartText, ChatCompletionMessageParam } from 'openai/resources/index';
 import { abortController } from '../main/common/abort-controller.js';
 import { getServiceConfig } from './service-configurations.js';
+import { AiServiceType } from './service-configurations-types.js';
 
 /**
  * This function generates content using the OpenAI chat model.
@@ -87,12 +88,16 @@ export async function internalGenerateToolCalls(
   modelType: ModelType = ModelType.DEFAULT,
   model: string,
   openai: OpenAI,
+  serviceType: AiServiceType = 'openai',
 ) {
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
       if (item.type === 'systemPrompt') {
         return {
-          role: modelType === ModelType.REASONING ? ('developer' as const) : ('system' as const),
+          role:
+            modelType === ModelType.REASONING && serviceType === 'openai'
+              ? ('developer' as const)
+              : ('system' as const),
           content: item.systemPrompt!,
         };
       } else if (item.type === 'user') {
@@ -239,7 +244,10 @@ export async function internalGenerateToolCalls(
         id: 'reasoning_inference_response',
         function: {
           name: 'reasoningInferenceResponse',
-          arguments: JSON.stringify({ response: responseMessage.content }),
+          arguments: JSON.stringify({
+            ...('reasoning_content' in responseMessage ? { reasoning: responseMessage.reasoning_content } : {}),
+            response: responseMessage.content,
+          }),
         },
       },
     ];

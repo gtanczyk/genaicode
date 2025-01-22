@@ -38,8 +38,11 @@ const generateContent: GenerateContentFunction = async function generateContent(
       modelType,
       modelType === ModelType.CHEAP
         ? (serviceConfig.modelOverrides?.cheap ?? 'deepseek-chat')
-        : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat'),
+        : modelType === ModelType.REASONING
+          ? 'deepseek-reasoner'
+          : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat'),
       openai,
+      'plugin:deepseek-ai-service',
     );
   } finally {
     if (lastText) {
@@ -80,6 +83,7 @@ const grokAiService: Plugin = {
         modelOverrides: {
           default: 'deepseek-chat',
           cheap: 'deepseek-chat',
+          reasoning: 'deepseek-reasoner',
         },
       },
     },

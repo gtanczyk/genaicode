@@ -20,6 +20,8 @@ import {
   MOCK_SOURCE_CODE_SUMMARIES_LARGE,
   MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
 } from './data/mock-source-code-summaries-large.js';
+import { getRegisteredAiServices } from '../main/plugin-loader.js';
+import { PluginAiServiceType } from '../ai-service/service-configurations-types.js';
 
 vi.setConfig({
   testTimeout: 3 * 60000,
@@ -28,6 +30,7 @@ vi.setConfig({
 describe.each([
   { model: 'Gemini Flash Thinking', generateContent: generateContentAiStudio },
   { model: 'O1', generateContent: generateContentOpenAI },
+  { model: 'DeepSeek R1', generateContent: getPluginGenerateContentFn('plugin:deepseek-ai-service') },
 ])('Reasoning inerence: $model', ({ model, generateContent }) => {
   it('should generate prompt', async () => {
     const prompt: PromptItem[] = [
@@ -129,3 +132,7 @@ describe.each([
     expect(response).toBeDefined();
   });
 });
+
+function getPluginGenerateContentFn(pluginKey: PluginAiServiceType) {
+  return getRegisteredAiServices().get(pluginKey)!.generateContent!;
+}
