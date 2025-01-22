@@ -15,7 +15,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.aiStudio?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-1.5-flash-002',
-      reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-1219',
+      reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
     },
   },
   anthropic: {
@@ -32,7 +32,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.openai?.default ?? 'gpt-4o-2024-11-20',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
-      reasoning: modelOverrides.openai?.reasoning,
+      reasoning: modelOverrides.openai?.reasoning ?? 'o1-mini',
     },
   },
   'vertex-ai': {
@@ -40,7 +40,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.vertexAi?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-1.5-flash-002',
-      reasoning: modelOverrides.vertexAi?.reasoning,
+      reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
     },
   },
   'vertex-ai-claude': {

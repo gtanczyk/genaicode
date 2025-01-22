@@ -193,7 +193,7 @@ function getModel(
       case ModelType.CHEAP:
         return serviceConfig.modelOverrides?.cheap ?? 'gemini-1.5-flash-002';
       case ModelType.REASONING:
-        return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-1219';
+        return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21';
       default:
         return serviceConfig.modelOverrides?.default ?? 'gemini-1.5-pro-002';
     }
