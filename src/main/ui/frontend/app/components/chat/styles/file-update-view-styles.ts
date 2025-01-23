@@ -30,7 +30,9 @@ export const UpdateType = styled.div<{ variant: string }>`
       ? props.theme.colors.primary
       : props.variant === 'createFile'
         ? props.theme.colors.success
-        : props.theme.colors.warning};
+        : props.variant === 'patchFile'
+          ? props.theme.colors.warning
+          : props.theme.colors.warning};
 `;
 
 export const ButtonContainer = styled.div`

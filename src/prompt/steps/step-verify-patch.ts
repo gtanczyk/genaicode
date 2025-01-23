@@ -56,6 +56,11 @@ export async function executeStepVerifyPatch(
     return partialResult;
   } else {
     console.log('Patch verified successfully');
-    return [{ name: 'patchFile', args: { filePath, patch, explanation } }];
+    return [
+      {
+        name: 'patchFile',
+        args: { filePath, patch, explanation, oldContent: currentContent, newContent: updatedContent },
+      },
+    ];
   }
 }

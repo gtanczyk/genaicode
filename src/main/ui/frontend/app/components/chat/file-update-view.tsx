@@ -51,12 +51,7 @@ export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
 export function isFileUpdateData(data: unknown): data is { name: string; args: FileUpdate } {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
-  if (
-    obj.name !== 'updateFile' &&
-    obj.name !== 'createFile' &&
-    obj.name !== 'updateFile' // Added to handle the new action type
-  )
-    return false;
+  if (obj.name !== 'updateFile' && obj.name !== 'createFile' && obj.name !== 'patchFile') return false;
   const args = obj.args as Record<string, unknown>;
 
   return typeof args.filePath === 'string' && typeof args.newContent === 'string';

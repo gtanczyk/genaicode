@@ -261,7 +261,8 @@ describe('processFileUpdates', () => {
     );
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(mockPatchResult);
+    expect(result[0].name).toEqual(mockPatchResult.name);
+    expect(result[0].args).toEqual(expect.objectContaining(mockPatchResult.args));
     expect(fs.readFileSync).toHaveBeenCalledWith('/test/file.ts', 'utf-8');
     expect(diff.applyPatch).toHaveBeenCalledWith(originalContent, patchContent);
   });

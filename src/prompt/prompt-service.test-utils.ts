@@ -73,12 +73,13 @@ export const mockResponses = {
   ],
 
   // Mock response for patchFile function
-  mockPatchFile: (filePath: string, patch: string): FunctionCall[] => [
+  mockPatchFile: (filePath: string, patch: string, injectArgs?: object): FunctionCall[] => [
     {
       name: 'patchFile',
       args: {
         filePath,
         patch,
+        ...injectArgs,
       },
     },
   ],

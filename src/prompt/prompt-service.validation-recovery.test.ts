@@ -325,7 +325,12 @@ describe('promptService - Validation and Recovery', () => {
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
       expect(fs.readFileSync).toHaveBeenCalledWith(mockData.paths.test, 'utf-8');
       expect(diff.applyPatch).toHaveBeenCalledWith(mockData.fileContent, validPatch);
-      expect(result).toEqual(mockResponses.mockPatchFile(mockData.paths.test, validPatch));
+      expect(result).toEqual(
+        mockResponses.mockPatchFile(mockData.paths.test, validPatch, {
+          oldContent: mockData.fileContent,
+          newContent: 'New content',
+        }),
+      );
     });
   });
 });

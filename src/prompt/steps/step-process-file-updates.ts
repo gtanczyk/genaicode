@@ -121,6 +121,22 @@ async function processFileUpdate(
 
     // Validate function call compliance
     partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
+
+    // Verify patch file operations
+    const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
+    if (patchFileCall) {
+      partialResult = await executeStepVerifyPatch(
+        patchFileCall.args as { filePath: string; patch: string; explanation: string },
+        generateContentFn,
+        prompt,
+        functionDefs,
+        file.temperature ?? options.temperature!,
+        file.cheap === true,
+        options,
+      );
+    }
+
+    // Add current content
     const fileUpdateResult = partialResult[0];
     if (fileUpdateResult.args) {
       const fileSource = getSourceCode({ filterPaths: [file.filePath], forceAll: true }, options)[file.filePath];
@@ -137,20 +153,6 @@ async function processFileUpdate(
       partialResult.push(await executeStepGenerateImage(generateImageFn, generateImageCall));
     } else if (generateImageCall) {
       console.warn('Image generation requested but generateImageFn not provided');
-    }
-
-    // Verify patch file operations
-    const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
-    if (patchFileCall) {
-      partialResult = await executeStepVerifyPatch(
-        patchFileCall.args as { filePath: string; patch: string; explanation: string },
-        generateContentFn,
-        prompt,
-        functionDefs,
-        file.temperature ?? options.temperature!,
-        file.cheap === true,
-        options,
-      );
     }
 
     // Update prompt with results
