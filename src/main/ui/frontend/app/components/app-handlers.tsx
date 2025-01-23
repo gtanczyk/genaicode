@@ -60,6 +60,7 @@ export const AppHandlers = ({
     if (currentQuestion) {
       try {
         setCurrentQuestion(null);
+        setCodegenOptions({ ...codegenOptions, aiService: aiService ?? codegenOptions.aiService });
         await answerQuestion(currentQuestion.id, answer, confirmed, {
           ...codegenOptions,
           aiService: aiService ?? codegenOptions.aiService,

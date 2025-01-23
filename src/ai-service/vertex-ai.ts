@@ -170,7 +170,7 @@ function getGenModel(
   functionDefs: FunctionDef[] | undefined,
   geminiBlockNone: boolean | undefined,
   requiredFunctionName: string | null,
-  cheap: ModelType | boolean = false,
+  modelType: ModelType = ModelType.DEFAULT,
 ) {
   try {
     console.log('Recovering function call');
@@ -178,9 +178,12 @@ function getGenModel(
     // Initialize Vertex with your Cloud project and location
     const vertex_ai = new VertexAI({ project: serviceConfig?.googleCloudProjectId });
 
-    const defaultModel = cheap ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002';
+    const defaultModel = modelType === ModelType.CHEAP ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002';
     const modelOverrides = serviceConfig?.modelOverrides;
-    const model = cheap ? (modelOverrides?.cheap ?? defaultModel) : (modelOverrides?.default ?? defaultModel);
+    const model =
+      modelType === ModelType.CHEAP
+        ? (modelOverrides?.cheap ?? defaultModel)
+        : (modelOverrides?.default ?? defaultModel);
 
     console.log(`Using Vertex AI model: ${model}`);
 
@@ -255,7 +258,7 @@ async function recoverFunctionCall(
     undefined,
     undefined,
     null,
-    false,
+    ModelType.DEFAULT,
   ).generateContent({
     contents: [
       {

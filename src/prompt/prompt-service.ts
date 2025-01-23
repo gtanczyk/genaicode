@@ -35,12 +35,7 @@ export async function promptService(
 ): Promise<FunctionCall[]> {
   const generateContentFn: GenerateContentFunction = async (...args) => {
     // Get the base result from the AI service
-    const result = await handleAiServiceFallback(
-      generateContentFns,
-      codegenPrompt.options.aiService,
-      codegenPrompt.options,
-      ...args,
-    );
+    const result = await handleAiServiceFallback(generateContentFns, codegenPrompt.options, ...args);
 
     // Get registered hooks for the current AI service
     for (const hook of getRegisteredGenerateContentHooks()) {
