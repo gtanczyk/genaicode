@@ -160,6 +160,9 @@ describe('promptService with askQuestion', () => {
     ];
 
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockAskQuestionCall);
+    vi.mocked(prompts.confirm).mockImplementationOnce(
+      () => CancelablePromise.resolve(true) as CancelablePromise<boolean>,
+    );
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
