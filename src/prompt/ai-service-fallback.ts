@@ -34,6 +34,8 @@ export async function handleAiServiceFallback(
             `Content generation failed, do you want to retry?`,
             true,
             options,
+            'Retry',
+            'Exit',
           );
           if (shouldRetry.confirmed) {
             continue;

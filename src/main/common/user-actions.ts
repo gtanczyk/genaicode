@@ -35,12 +35,14 @@ export async function askUserForConfirmation(
   prompt: string,
   defaultValue: boolean,
   options: CodegenOptions,
+  confirmLabel = 'Yes',
+  declineLabel = 'No',
 ): Promise<ConfirmHandlerResponse> {
   return handleOptionsUpdate(
     await confirmHandler({
       prompt,
-      confirmLabel: 'Yes',
-      declineLabel: 'No',
+      confirmLabel,
+      declineLabel,
       includeAnswer: false,
       defaultValue,
     }),
