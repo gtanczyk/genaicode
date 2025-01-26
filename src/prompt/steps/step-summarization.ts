@@ -50,6 +50,23 @@ Provide your response using the \`setSummaries\` function with the following str
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
+export function getSummarizationPrefix(items: { path: string; content: string | null }[]): PromptItem[] {
+  return [
+    { type: 'systemPrompt', systemPrompt: SUMMARIZATION_PROMPT },
+    { type: 'user', text: 'Hello, I would like to ask you to summarize my codebase' },
+    {
+      type: 'assistant',
+      text: 'Sure, could you please provide the source code? Once you provide it, I will be able to perform the analysis, and provide you with the summaries using `setSummaries` function call.',
+      functionCalls: [{ name: 'getSourceCode', id: 'get_source_code' }],
+    },
+    {
+      type: 'user',
+      text: 'Ok, this is the source code, and now please summarize the source code.',
+      functionResponses: [{ name: 'getSourceCode', call_id: 'get_source_code', content: JSON.stringify(items) }],
+    },
+  ];
+}
+
 export async function summarizeSourceCode(
   generateContentFn: GenerateContentFunction,
   sourceCode: SourceCodeMap,
@@ -88,20 +105,7 @@ async function summarizeBatch(
   for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
 
-    const summarizationPrompt: PromptItem[] = [
-      { type: 'systemPrompt', systemPrompt: SUMMARIZATION_PROMPT },
-      { type: 'user', text: 'Hello, I would like to ask you to summarize my codebase' },
-      {
-        type: 'assistant',
-        text: 'Sure, could you please provide the source code? Once you provide it, I will be able to perform the analysis, and provide you with the summaries using `setSummaries` function call.',
-        functionCalls: [{ name: 'getSourceCode', id: 'get_source_code' }],
-      },
-      {
-        type: 'user',
-        text: 'Ok, this is the source code, and now please summarize the source code.',
-        functionResponses: [{ name: 'getSourceCode', call_id: 'get_source_code', content: JSON.stringify(batch) }],
-      },
-    ];
+    const summarizationPrompt: PromptItem[] = getSummarizationPrefix(batch);
 
     const request: GenerateContentArgs = [
       summarizationPrompt,
