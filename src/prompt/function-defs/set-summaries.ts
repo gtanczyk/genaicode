@@ -1,4 +1,4 @@
-import { FunctionDef } from '../../ai-service/common-types';
+import { FunctionDef } from '../../ai-service/common-types.js';
 
 /**
  * Function definition for setSummaries
