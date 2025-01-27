@@ -50,19 +50,62 @@ Provide your response using the \`setSummaries\` function with the following str
 The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
-export function getSummarizationPrefix(items: { path: string; content: string | null }[]): PromptItem[] {
+export function getSummarizationPrefix(
+  items: { path: string; content: string | null }[],
+  allFilePaths: string[],
+): PromptItem[] {
   return [
     { type: 'systemPrompt', systemPrompt: SUMMARIZATION_PROMPT },
     { type: 'user', text: 'Hello, I would like to ask you to summarize my codebase' },
     {
       type: 'assistant',
-      text: 'Sure, could you please provide the source code? Once you provide it, I will be able to perform the analysis, and provide you with the summaries using `setSummaries` function call.',
-      functionCalls: [{ name: 'getSourceCode', id: 'get_source_code' }],
+      text: 'Sure, I can help with that. Please first provide me with a list of files in the codebase.',
+      functionCalls: [
+        {
+          name: 'getSourceCode',
+        },
+      ],
     },
     {
       type: 'user',
-      text: 'Ok, this is the source code, and now please summarize the source code.',
-      functionResponses: [{ name: 'getSourceCode', call_id: 'get_source_code', content: JSON.stringify(items) }],
+      text: 'Ok, this is the list of files in the codebase',
+      functionResponses: [
+        {
+          name: 'getSourceCode',
+          content: JSON.stringify(Object.fromEntries(allFilePaths.map((path) => [path, { content: null }]))),
+        },
+      ],
+      cache: true,
+    },
+    {
+      type: 'assistant',
+      text: "Thank you for providing the list of files. Now I'm ready to summarize the content of files once you provide them.",
+    },
+    {
+      type: 'user',
+      text: 'please summarize the following files:\n' + items.map((item) => `\n- ${item.path}`).join(''),
+    },
+    {
+      type: 'assistant',
+      text: 'Please provide me with the content of the files so that I can summarize them.',
+      functionCalls: [
+        {
+          name: 'getSourceCode',
+          args: {
+            filePaths: items.map((item) => item.path),
+          },
+        },
+      ],
+    },
+    {
+      type: 'user',
+      text: 'Here is the content of the files:',
+      functionResponses: [
+        {
+          name: 'getSourceCode',
+          content: JSON.stringify(Object.fromEntries(items.map((item) => [item.path, { content: item.content }]))),
+        },
+      ],
     },
   ];
 }
@@ -78,7 +121,7 @@ export async function summarizeSourceCode(
     dependencies: 'dependencies' in file ? file.dependencies : undefined,
   }));
 
-  await summarizeBatch(generateContentFn, items, options);
+  await summarizeBatch(generateContentFn, items, sourceCode, options);
 
   refreshFiles();
 }
@@ -86,6 +129,7 @@ export async function summarizeSourceCode(
 async function summarizeBatch(
   generateContentFn: GenerateContentFunction,
   items: { path: string; content: string | null; dependencies?: DependencyInfo[] }[],
+  allSourceCodeMap: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {
   const uncachedItems = items.filter(
@@ -105,20 +149,12 @@ async function summarizeBatch(
   for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
 
-    const summarizationPrompt: PromptItem[] = getSummarizationPrefix(batch);
-
-    const request: GenerateContentArgs = [
-      summarizationPrompt,
-      getFunctionDefs(),
-      'setSummaries',
-      0.2,
-      ModelType.CHEAP,
-      options,
-    ];
+    const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
+    const request: GenerateContentArgs = [prompt, getFunctionDefs(), 'setSummaries', 0.2, ModelType.CHEAP, options];
     let result = await generateContentFn(...request);
     result = await validateAndRecoverSingleResult(request, result, generateContentFn);
-    const batchSummaries = parseSummarizationResult(result);
 
+    const batchSummaries = parseSummarizationResult(result);
     batchSummaries.forEach((file) => {
       const item = items.find((item) => item.path === file.filePath);
       const content = item?.content ?? '';
@@ -126,7 +162,10 @@ async function summarizeBatch(
         tokenCount: estimateTokenCount(content),
         summary: file.summary,
         checksum: md5(content),
-        dependencies: file.dependencies ?? item?.dependencies ?? [],
+        dependencies: (file.dependencies ?? item?.dependencies ?? []).map((dep) => ({
+          path: dep.projectFilePath ?? dep.path,
+          type: dep.type,
+        })),
       };
     });
   }

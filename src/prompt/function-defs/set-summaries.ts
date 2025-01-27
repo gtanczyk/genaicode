@@ -40,6 +40,10 @@ export const setSummaries: FunctionDef = {
                     enum: ['local', 'external'],
                     description: 'Type of dependency - local (file in project) or external (package/library/module).',
                   },
+                  projectFilePath: {
+                    type: 'string',
+                    description: 'Absolute file path (only for local dependencies).',
+                  },
                 },
                 required: ['path', 'type'],
               },

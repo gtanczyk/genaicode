@@ -6,7 +6,11 @@ export interface DependencyInfo {
   path: string;
   /** Type of dependency */
   type: 'local' | 'external';
-} /**
+  /** Project file path (only for local) */
+  projectFilePath?: string;
+}
+
+/**
  * Represents file content with optional dependencies
  */
 
