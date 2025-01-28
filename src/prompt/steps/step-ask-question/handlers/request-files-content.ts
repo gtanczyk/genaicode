@@ -4,6 +4,7 @@ import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
+import { getExpandedContextPaths } from '../../../../files/source-code-utils.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -37,9 +38,12 @@ export async function handleRequestFilesContent({
     };
   }
 
-  let requestedFiles = requestFilesContentCall.args?.filePaths ?? [];
+  let requestedFiles = getExpandedContextPaths(requestFilesContentCall.args?.filePaths ?? [], options);
 
-  putSystemMessage('Requesting files content', requestFilesContentCall.args);
+  putSystemMessage('Requesting files content', {
+    requestedFiles,
+    expandedRequestedFiles: requestedFiles.filter((file) => !requestFilesContentCall?.args?.filePaths?.includes(file)),
+  });
 
   // Check which files are already provided in the conversation history
   const alreadyProvidedFiles = requestedFiles.filter((file) => isFileContentAlreadyProvided(file, prompt));

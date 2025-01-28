@@ -45,27 +45,28 @@ export async function handleRemoveFilesFromContext({
     putSystemMessage('Context reduction applied', filesToRemove);
     userText = 'Context reduction applied';
   } else {
+    putSystemMessage('No specific files were provided for context reduction. The context remains unchanged.');
     userText = 'No specific files were provided for context reduction. The context remains unchanged.';
   }
 
+  prompt.push(
+    {
+      type: 'assistant',
+      text: askQuestionCall.args?.message ?? '',
+      functionCalls: [removeFilesFromContextCall],
+    },
+    {
+      type: 'user',
+      text: userText,
+      functionResponses: [
+        { name: 'removeFilesFromContext', call_id: removeFilesFromContextCall.id, content: undefined },
+      ],
+    },
+  );
+
   return {
     breakLoop: false,
-    items: [
-      {
-        assistant: {
-          type: 'assistant',
-          text: askQuestionCall.args?.message ?? '',
-          functionCalls: [removeFilesFromContextCall],
-        },
-        user: {
-          type: 'user',
-          text: userText,
-          functionResponses: [
-            { name: 'removeFilesFromContext', call_id: removeFilesFromContextCall.id, content: undefined },
-          ],
-        },
-      },
-    ],
+    items: [],
   };
 }
 
