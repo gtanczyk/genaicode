@@ -5,10 +5,10 @@ import { registerEndpoint } from '../api-handlers.js';
 registerEndpoint((router, service) => {
   router.post('/generate-content', async (req, res) => {
     try {
-      const { prompt, temperature, cheap, options } = req.body as {
+      const { prompt, temperature, modelType, options } = req.body as {
         prompt: string;
         temperature: number;
-        cheap: boolean;
+        modelType: 'default' | 'cheap' | 'reasoning';
         options: CodegenOptions;
       };
 
@@ -20,16 +20,13 @@ registerEndpoint((router, service) => {
         return res.status(400).json({ error: 'Invalid temperature: must be a number between 0 and 2' });
       }
 
-      if (typeof cheap !== 'boolean') {
-        return res.status(400).json({ error: 'Invalid cheap parameter: must be a boolean' });
+      if (!['default', 'cheap', 'reasoning'].includes(modelType)) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid modelType parameter: must be one of: default, cheap, reasoning' });
       }
 
-      const result = await service.generateContent(
-        prompt,
-        temperature,
-        cheap ? ModelType.CHEAP : ModelType.DEFAULT,
-        options,
-      );
+      const result = await service.generateContent(prompt, temperature, modelType as ModelType, options);
       res.json({ result });
     } catch (error) {
       console.error('Error generating content:', error);

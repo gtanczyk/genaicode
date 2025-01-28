@@ -172,20 +172,21 @@ export class Service implements AppContextProvider {
       // Use the AI service fallback mechanism for better reliability
       const result = await generateContenFn(
         [
-          { type: 'systemPrompt', systemPrompt: '' },
           {
             type: 'user',
             text: prompt,
           },
         ],
-        [
-          {
-            name: 'printMessage',
-            description: 'Print a message',
-            parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] },
-          },
-        ],
-        'printMessage',
+        modelType === ModelType.REASONING
+          ? []
+          : [
+              {
+                name: 'printMessage',
+                description: 'Print a message',
+                parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] },
+              },
+            ],
+        modelType === ModelType.REASONING ? 'reasoningInferenceResponse' : 'printMessage',
         temperature,
         modelType,
         options,

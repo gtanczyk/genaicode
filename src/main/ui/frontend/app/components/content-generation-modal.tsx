@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { AiServiceType } from '../../../../codegen-types.js';
 import { generateContent } from '../api/api-client.js';
-import { FunctionCall } from '../../../../../ai-service/common.js';
+import { FunctionCall } from '../../../../../ai-service/common-types.js';
 import { dispatchCustomEvent, useCustomEvent } from '../hooks/custom-events.js';
-import { useAvailableServices } from '../hooks/available-service.js';
+import { useAvailableServices, useServiceConfigurationsWithModels } from '../hooks/available-service.js';
 import { ToggleButton } from './toggle-button.js';
 
 interface ContentGenerationModalProps {
   currentService: AiServiceType;
 }
+
+type ModelType = 'default' | 'cheap' | 'reasoning';
 
 export function dispatchContentGenerationModelOpen() {
   dispatchCustomEvent('openContentGenerationModel');
@@ -27,15 +29,27 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
   const [prompt, setPrompt] = useState('');
   const [service, setService] = useState<AiServiceType>(currentService);
   const [temperature, setTemperature] = useState(0.7);
-  const [cheap, setCheap] = useState(false);
+  const [modelType, setModelType] = useState<ModelType>('default');
+  const [currentModel, setCurrentModel] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FunctionCall[] | null>(null);
   const [isOpen, setOpen] = useState(false);
   const onClose = () => setOpen(false);
   const [availableServices] = useAvailableServices();
+  const { services, isLoading: isLoadingServices } = useServiceConfigurationsWithModels();
 
   useCustomEvent('openContentGenerationModel', () => setOpen(true));
+
+  // Update current model name when service or model type changes
+  useEffect(() => {
+    const serviceConfig = services.find((s) => s.service === service)?.config;
+    if (serviceConfig?.modelOverrides) {
+      setCurrentModel(serviceConfig.modelOverrides[modelType]);
+    } else {
+      setCurrentModel(undefined);
+    }
+  }, [service, modelType, services]);
 
   if (!isOpen) return null;
 
@@ -46,7 +60,7 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
     setResult(null);
 
     try {
-      const response = await generateContent(prompt, temperature, cheap, {
+      const response = await generateContent(prompt, temperature, modelType, {
         aiService: service,
         askQuestion: false,
       });
@@ -76,7 +90,11 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
 
           <Label>
             AI Service
-            <Select value={service} onChange={(e) => setService(e.target.value as AiServiceType)}>
+            <Select
+              value={service}
+              onChange={(e) => setService(e.target.value as AiServiceType)}
+              disabled={isLoadingServices}
+            >
               {availableServices.map((service) => (
                 <option key={service} value={service}>
                   {service}
@@ -101,8 +119,12 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
           </Label>
 
           <Label>
-            <input type="checkbox" checked={cheap} onChange={(e) => setCheap(e.target.checked)} />
-            Use cheap mode
+            Model Type {currentModel ? `(${currentModel})` : ''}
+            <Select value={modelType} onChange={(e) => setModelType(e.target.value as ModelType)}>
+              <option value="default">Default</option>
+              <option value="cheap">Cheap</option>
+              <option value="reasoning">Reasoning</option>
+            </Select>
           </Label>
 
           <Button type="submit" disabled={isLoading || !prompt}>
@@ -235,6 +257,10 @@ const ResultContainer = styled.div`
   border-radius: 4px;
   background: ${({ theme }) => theme.colors.backgroundSecondary};
   white-space: pre-wrap;
+
+  pre {
+    white-space: pre-wrap;
+  }
 `;
 
 const ErrorMessage = styled.div`

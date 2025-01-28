@@ -145,7 +145,7 @@ export const executeCodegen = async (prompt: string, options: CodegenOptions, im
 export const generateContent = async (
   prompt: string,
   temperature: number,
-  cheap: boolean,
+  modelType: 'default' | 'cheap' | 'reasoning',
   options: CodegenOptions,
 ): Promise<FunctionCall[]> => {
   try {
@@ -156,14 +156,14 @@ export const generateContent = async (
     if (typeof temperature !== 'number' || temperature < 0 || temperature > 2) {
       throw new Error('Temperature must be a number between 0 and 2');
     }
-    if (typeof cheap !== 'boolean') {
-      throw new Error('Cheap parameter must be a boolean');
+    if (!['default', 'cheap', 'reasoning'].includes(modelType)) {
+      throw new Error('Model type must be one of: default, cheap, reasoning');
     }
 
     const response = await api.post('/generate-content', {
       prompt,
       temperature,
-      cheap,
+      modelType,
       options,
     });
 
