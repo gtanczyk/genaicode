@@ -52,8 +52,8 @@ describe('executeStepContextOptimization', () => {
     it('should correctly transform source code between flat and tree structures', async () => {
       // Mock source code data
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
-        '/test/file2.ts': { content: 'content2' },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file2.ts': { fileId: 'id1', content: 'content2' },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -148,7 +148,7 @@ describe('executeStepContextOptimization', () => {
     // 3. The overall structure of the conversation remains intact
     it('should clear previous getSourceCode responses while preserving structure', async () => {
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -213,8 +213,8 @@ describe('executeStepContextOptimization', () => {
     // 3. The latest response remains unchanged
     it('should handle multiple responses with different content', async () => {
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
-        '/test/file2.ts': { content: 'content2' },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file2.ts': { fileId: 'id1', content: 'content2' },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -282,7 +282,7 @@ describe('executeStepContextOptimization', () => {
 
     it('should handle edge case with no getSourceCode responses', async () => {
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -311,7 +311,7 @@ describe('executeStepContextOptimization', () => {
 
     it('should handle edge case with empty functionResponses', async () => {
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -342,9 +342,12 @@ describe('executeStepContextOptimization', () => {
   describe('Context optimization process', () => {
     it('should optimize context based on relevance scores', async () => {
       const mockSourceCode = {
-        '/test/high-relevance.ts': { content: 'important content' + Array.from(Array(10000).keys()).join(',') },
-        '/test/medium-relevance.ts': { content: 'somewhat important' },
-        '/test/low-relevance.ts': { content: 'not important' },
+        '/test/high-relevance.ts': {
+          fileId: 'id1',
+          content: 'important content' + Array.from(Array(10000).keys()).join(','),
+        },
+        '/test/medium-relevance.ts': { fileId: 'id1', content: 'somewhat important' },
+        '/test/low-relevance.ts': { fileId: 'id1', content: 'not important' },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -401,7 +404,7 @@ describe('executeStepContextOptimization', () => {
 
     it('should handle optimization failure gracefully', async () => {
       const mockSourceCode = {
-        '/test/file.ts': { content: 'test content'.repeat(1000) }, // Make it large enough to trigger optimization
+        '/test/file.ts': { fileId: 'id1', content: 'test content'.repeat(1000) }, // Make it large enough to trigger optimization
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -443,7 +446,7 @@ describe('executeStepContextOptimization', () => {
   describe('Edge cases and error handling', () => {
     beforeEach(() => {
       const mockSourceCode = {
-        '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file1.ts': { fileId: 'id1', content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -512,8 +515,8 @@ describe('executeStepContextOptimization', () => {
       const smallContent = 'b'.repeat(3000);
 
       const mockSourceCode = {
-        '/test/large-file.ts': { content: largeContent },
-        '/test/small-file.ts': { content: smallContent },
+        '/test/large-file.ts': { fileId: 'id1', content: largeContent },
+        '/test/small-file.ts': { fileId: 'id1', content: smallContent },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
