@@ -160,6 +160,7 @@ async function processFileUpdate(
       { type: 'assistant', functionCalls: partialResult },
       {
         type: 'user',
+        // TODO: Not always true
         text: 'Update applied.',
         functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
       },

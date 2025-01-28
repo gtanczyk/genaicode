@@ -52,8 +52,14 @@ describe('read-files', () => {
       const result = getSourceCode({ taskFile: undefined }, { aiService: 'vertex-ai', askQuestion: false });
 
       expect(result).toEqual({
-        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
-        '/home/project/file2.js': { summary: 'Summary of /home/project/file2.js' },
+        '/home/project/file1.js': {
+          fileId: '1c2be0004e4a4209c8832890b953831c',
+          summary: 'Summary of /home/project/file1.js',
+        },
+        '/home/project/file2.js': {
+          fileId: 'e8fd099c060a73b9fcd679a5ae2535d8',
+          summary: 'Summary of /home/project/file2.js',
+        },
       });
       expect(verifySourceCodeLimit).toHaveBeenCalled();
     });
@@ -71,8 +77,14 @@ describe('read-files', () => {
       );
 
       expect(result).toEqual({
-        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
-        '/home/project/subfolder/file2.js': { summary: 'Summary of /home/project/subfolder/file2.js' },
+        '/home/project/file1.js': {
+          fileId: '1c2be0004e4a4209c8832890b953831c',
+          summary: 'Summary of /home/project/file1.js',
+        },
+        '/home/project/subfolder/file2.js': {
+          fileId: 'cf14990e8f742d3ad6535b2415ccac4f',
+          summary: 'Summary of /home/project/subfolder/file2.js',
+        },
       });
     });
 
@@ -89,8 +101,14 @@ describe('read-files', () => {
       );
 
       expect(result).toEqual({
-        '/home/project/file1.js': { summary: 'Summary of /home/project/file1.js' },
-        '/home/project/task.md': { content: 'Content of /home/project/task.md' },
+        '/home/project/file1.js': {
+          fileId: '1c2be0004e4a4209c8832890b953831c',
+          summary: 'Summary of /home/project/file1.js',
+        },
+        '/home/project/task.md': {
+          content: 'Content of /home/project/task.md',
+          fileId: 'c7c3a8e1984f685d7d8a25ffbead9df9',
+        },
       });
     });
   });

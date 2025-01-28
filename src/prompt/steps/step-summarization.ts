@@ -29,25 +29,12 @@ For the summary:
 
 For dependencies:
 - Identify all import and require statements in the code
-- Detect both local (relative) and external (package) dependencies
+- Detect both local (file) and external (package) dependencies
 - For local dependencies, include the full resolved path
 - For external dependencies, include the package name
-- Mark dependencies as either 'local' or 'external'
-- Include the original import path as provided in the code
-
-Provide your response using the \`setSummaries\` function with the following structure:
-{
-  "filePath": "absolute/path/to/file",
-  "summary": "concise summary",
-  "dependencies": [
-    {
-      "path": "resolved/path/or/package",
-      "type": "local|external",
-    }
-  ]
-}
-
-The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
+- Classify dependencies as either 'local' or 'external'
+- Provide your response using the \`setSummaries\` function.
+- The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 `;
 
 export function getSummarizationPrefix(
@@ -56,10 +43,10 @@ export function getSummarizationPrefix(
 ): PromptItem[] {
   return [
     { type: 'systemPrompt', systemPrompt: SUMMARIZATION_PROMPT },
-    { type: 'user', text: 'Hello, I would like to ask you to summarize my codebase' },
+    { type: 'user', text: 'Hello, I want you to summarize the content of files, and detect dependencies.' },
     {
       type: 'assistant',
-      text: 'Sure, I can help with that. Please first provide me with a list of files in the codebase.',
+      text: "Sure, I can help with that. Please first provide me with a list of files in the codebase. I don't need their contents, just the file paths.",
       functionCalls: [
         {
           name: 'getSourceCode',
@@ -72,18 +59,20 @@ export function getSummarizationPrefix(
       functionResponses: [
         {
           name: 'getSourceCode',
-          content: JSON.stringify(Object.fromEntries(allFilePaths.map((path) => [path, { content: null }]))),
+          content: JSON.stringify(
+            Object.fromEntries(allFilePaths.map((path) => [path, { fileId: md5(path), content: null }])),
+          ),
         },
       ],
       cache: true,
     },
     {
       type: 'assistant',
-      text: "Thank you for providing the list of files. Now I'm ready to summarize the content of files once you provide them.",
+      text: "Thank you for providing the list of files. Now I'm ready to analyze the content of files once you provide them.",
     },
     {
       type: 'user',
-      text: 'please summarize the following files:\n' + items.map((item) => `\n- ${item.path}`).join(''),
+      text: 'Please summarize the following files:\n' + items.map((item) => `\n- ${item.path}`).join(''),
     },
     {
       type: 'assistant',
@@ -103,7 +92,9 @@ export function getSummarizationPrefix(
       functionResponses: [
         {
           name: 'getSourceCode',
-          content: JSON.stringify(Object.fromEntries(items.map((item) => [item.path, { content: item.content }]))),
+          content: JSON.stringify(
+            Object.fromEntries(items.map((item) => [item.path, { fileId: md5(item.path), content: item.content }])),
+          ),
         },
       ],
     },
@@ -163,8 +154,9 @@ async function summarizeBatch(
         summary: file.summary,
         checksum: md5(content),
         dependencies: (file.dependencies ?? item?.dependencies ?? []).map((dep) => ({
-          path: dep.projectFilePath ?? dep.path,
+          path: dep.type === 'local' ? parseLocalPath(dep, allSourceCodeMap) : dep.path,
           type: dep.type,
+          fileId: dep.fileId,
         })),
       };
     });
@@ -182,4 +174,14 @@ function parseSummarizationResult(result: FunctionCall[]): (SummaryInfo & { depe
     throw new Error('Invalid summarization result');
   }
   return result[0].args.summaries;
+}
+
+function parseLocalPath(file: DependencyInfo, allSourceCodeMap: SourceCodeMap): string {
+  if (allSourceCodeMap[file.path]) {
+    return file.path;
+  } else {
+    return (
+      Object.entries(allSourceCodeMap).find(([, sourceFile]) => sourceFile.fileId === file.fileId)?.[0] ?? file.path
+    );
+  }
 }

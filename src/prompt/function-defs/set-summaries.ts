@@ -31,21 +31,24 @@ export const setSummaries: FunctionDef = {
               items: {
                 type: 'object',
                 properties: {
-                  path: {
-                    type: 'string',
-                    description: 'Path to the dependent file or package/library name for external dependencies.',
-                  },
                   type: {
                     type: 'string',
                     enum: ['local', 'external'],
-                    description: 'Type of dependency - local (file in project) or external (package/library/module).',
+                    description:
+                      'Type of dependency - local (belongs to the project) or external (not belongs to the project, package/library/module).',
                   },
-                  projectFilePath: {
+                  fileId: {
                     type: 'string',
-                    description: 'Absolute file path (only for local dependencies).',
+                    description:
+                      'Unique identifier for the dependent file. For local dependencies, use the value for the fileId field in the getSourceCode function response. Use empty string for external dependencies.',
+                  },
+                  path: {
+                    type: 'string',
+                    description:
+                      'Absolute path to the dependent file or package/library name for external dependencies.',
                   },
                 },
-                required: ['path', 'type'],
+                required: ['type', 'fileId', 'path'],
               },
             },
           },

@@ -13,9 +13,9 @@ import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
-import { getSourceCodeTree, parseSourceCodeTree, SourceCodeTree } from '../../files/source-code-tree.js';
 import { importantContext } from '../../main/config.js';
 import { getSummary } from '../../files/summary-cache.js';
+import { md5 } from '../../files/cache-file.js';
 
 export const OPTIMIZATION_PROMPT = `You need to analyze the provided source code files and determine their relevance to the user's prompt. You will then call the \`optimizeContext\` function with the results.
 
@@ -95,11 +95,11 @@ export async function executeStepContextOptimization(
 
   if (tokensBefore < MAX_TOTAL_TOKENS) {
     putSystemMessage('Context optimization is not needed, because the code base is small.');
-    sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(fullSourceCode));
+    sourceCodeResponse.content = JSON.stringify(fullSourceCode);
     return StepResult.CONTINUE;
   }
 
-  const sourceCode = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content) as SourceCodeTree);
+  const sourceCode = JSON.parse(sourceCodeResponse.content);
 
   try {
     putSystemMessage('Context optimization is starting for large codebase');
@@ -178,7 +178,7 @@ export async function executeStepContextOptimization(
           },
           {
             name: 'getSourceCode',
-            content: JSON.stringify(getSourceCodeTree(optimizedSourceCode)),
+            content: JSON.stringify(optimizedSourceCode),
           },
         ],
         cache: true,
@@ -308,12 +308,14 @@ function optimizeSourceCode(
     ) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
+        fileId: md5(path),
         content,
         ...(dependencies && !isIrrelevant && { dependencies }),
       };
     } else if (summary && !isIrrelevant) {
       summaryTokenCount += estimateTokenCount(summary.summary);
       optimizedSourceCode[path] = {
+        fileId: md5(path),
         ...summary,
         ...(dependencies && { dependencies }),
       };
@@ -332,7 +334,7 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[], irrelevantFiles:
       for (const response of item.functionResponses) {
         if (response.name === 'getSourceCode' && response.content) {
           // Zero out the contents but keep the structure
-          const sourceCode = parseSourceCodeTree(JSON.parse(response.content));
+          const sourceCode = JSON.parse(response.content);
           for (const path in sourceCode) {
             if (importantContext.files?.includes(path)) {
               continue; // Preserve important files
@@ -353,7 +355,7 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[], irrelevantFiles:
               delete sourceCode[path].dependencies;
             }
           }
-          response.content = JSON.stringify(getSourceCodeTree(sourceCode));
+          response.content = JSON.stringify(sourceCode);
         }
       }
     }

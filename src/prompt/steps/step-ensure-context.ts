@@ -4,7 +4,6 @@ import { importantContext } from '../../main/config.js';
 import { getSourceCode } from '../../files/read-files.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { StepResult } from './steps-types.js';
-import { getSourceCodeTree } from '../../files/source-code-tree.js';
 
 /**
  * Executes the context completeness check step.
@@ -58,7 +57,7 @@ export async function executeStepEnsureContext(
         functionResponses: [
           {
             name: 'getSourceCode',
-            content: JSON.stringify(getSourceCodeTree(sourceCode)),
+            content: JSON.stringify(sourceCode),
           },
         ],
       },

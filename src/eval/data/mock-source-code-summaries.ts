@@ -2,11 +2,12 @@
  * Mock source code summaries for testing purposes, with a small dataset.
  */
 
-import { SourceCodeTree } from '../../files/source-code-tree.js';
+import { parseSourceCodeTree } from '../../files/source-code-tree';
+import { SourceCodeMap } from '../../files/source-code-types';
 
 export const MOCK_SOURCE_CODE_SUMMARIES_ROOT_DIR = '/project/src';
 
-export const MOCK_SOURCE_CODE_SUMMARIES: SourceCodeTree = {
+export const MOCK_SOURCE_CODE_SUMMARIES: SourceCodeMap = parseSourceCodeTree({
   '/project/src/math': {
     'math.ts': {
       summary: 'Core mathematical operations module with basic arithmetic and advanced mathematical functions.',
@@ -29,4 +30,4 @@ export const MOCK_SOURCE_CODE_SUMMARIES: SourceCodeTree = {
       dependencies: [],
     },
   },
-};
+});

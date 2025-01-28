@@ -1,7 +1,6 @@
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { getSourceCodeTree, parseSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ActionHandlerProps, ActionResult, RemoveFilesFromContextArgs } from '../step-ask-question-types.js';
@@ -90,7 +89,7 @@ function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: strin
     }
 
     try {
-      const contentObj = parseSourceCodeTree(JSON.parse(sourceCodeResponse.content));
+      const contentObj = JSON.parse(sourceCodeResponse.content);
 
       let modifiedFiles = 0;
       filesToRemove.forEach((file) => {
@@ -102,7 +101,7 @@ function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: strin
 
       // Only update if files were actually modified
       if (modifiedFiles > 0) {
-        sourceCodeResponse.content = JSON.stringify(getSourceCodeTree(contentObj));
+        sourceCodeResponse.content = JSON.stringify(contentObj);
         console.log(`Removed content from ${modifiedFiles} files in source code response`);
       }
     } catch (error) {

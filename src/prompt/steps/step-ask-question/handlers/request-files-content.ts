@@ -4,7 +4,6 @@ import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
-import { getSourceCodeTree } from '../../../../files/source-code-tree.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -111,14 +110,16 @@ export async function handleRequestFilesContent({
     ],
   };
 
-  const sourceCode = getSourceCodeTree(
-    getSourceCode({ filterPaths: legitimateFiles, forceAll: true, ignoreImportantFiles: true }, options),
+  const sourceCode = getSourceCode(
+    { filterPaths: legitimateFiles, forceAll: true, ignoreImportantFiles: true },
+    options,
   );
   const user: UserItem = {
     type: 'user',
     text:
       (alreadyProvidedFiles.length > 0
-        ? `Some files were already provided in the conversation history:
+        ? // TODO: Maybe reference to some specific getSourceCode call id
+          `Some files were already provided in the conversation history:
 ${alreadyProvidedFiles.map((path) => `- ${path}`).join('\n')}
 
 Providing content for the remaining files:
@@ -221,6 +222,7 @@ function categorizeLegitimateFiles(requestedFiles: string[]): {
 } {
   const legitimateFiles: string[] = [];
   const illegitimateFiles: string[] = [];
+  // TODO: allow some small mistakes in the path, fix them to correct paths
 
   requestedFiles.forEach((filePath) => {
     if (isFilePathLegitimate(filePath)) {

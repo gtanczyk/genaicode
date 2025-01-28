@@ -1,14 +1,15 @@
-import { FunctionCall } from '../../../../ai-service/common-types.js';
+import { FunctionCall, GenerateContentArgs } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { getSourceCode } from '../../../../files/read-files.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { validateAndRecoverSingleResult } from '../../step-validate-recover.js';
 import {
   ActionResult,
   ActionHandlerProps,
-  ReasoningInferenceArgs,
   ReasoningInferenceResponseArgs,
+  ReasoningInferenceCall,
 } from '../step-ask-question-types.js';
+import { getContextSourceCode } from '../../../../files/source-code-utils.js';
 
 /**
  * Handler for the reasoningInference action.
@@ -23,7 +24,8 @@ export async function handleReasoningInference({
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
     putSystemMessage('Reasoning inference: generating prompt');
-    const [reasoningInferenceCall] = (await generateContentFn(
+
+    const request: GenerateContentArgs = [
       [
         ...prompt,
         {
@@ -36,7 +38,12 @@ export async function handleReasoningInference({
       0.7,
       ModelType.CHEAP,
       options,
-    )) as [FunctionCall<ReasoningInferenceArgs> | undefined];
+    ];
+
+    const result = await generateContentFn(...request);
+    const [reasoningInferenceCall] = (await validateAndRecoverSingleResult(request, result, generateContentFn)) as [
+      ReasoningInferenceCall | undefined,
+    ];
 
     if (!reasoningInferenceCall?.args?.prompt) {
       putSystemMessage('Failed to get valid reasoningInference request');
@@ -54,6 +61,11 @@ export async function handleReasoningInference({
     }
 
     putSystemMessage('Reasoning inference: calling reasoning model', reasoningInferenceCall.args);
+
+    // Get expanded context using getContextSourceCode
+    const contextPaths = reasoningInferenceCall.args.contextPaths || [];
+    const expandedContextSourceCodeMap = getContextSourceCode(contextPaths, options);
+
     // Call the reasoning model with appropriate settings
     const [reasoningInferenceResponseCall] = (await generateContentFn(
       [
@@ -61,18 +73,9 @@ export async function handleReasoningInference({
           type: 'user',
           text:
             reasoningInferenceCall.args.prompt +
-            (reasoningInferenceCall.args.contextPaths?.length > 0
+            (Object.keys(expandedContextSourceCodeMap).length > 0
               ? '\n\nContents of relevant files:\n' +
-                Object.entries(
-                  getSourceCode(
-                    {
-                      filterPaths: reasoningInferenceCall.args.contextPaths,
-                      forceAll: true,
-                      ignoreImportantFiles: true,
-                    },
-                    options,
-                  ),
-                )
+                Object.entries(expandedContextSourceCodeMap)
                   .map(([path, file]) =>
                     'content' in file && file.content ? `File: ${path}\n\`\`\`${file.content}\`\`\`` : '',
                   )
@@ -129,6 +132,7 @@ export async function handleReasoningInference({
     );
 
     return {
+      // TODO: rather do a retry here?
       breakLoop: true,
       items: [],
     };

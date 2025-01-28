@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepContextOptimization } from './step-context-optimization';
 import { getSourceCode } from '../../files/read-files';
 import { FileContent } from '../../files/source-code-types';
-import { SourceCodeTree } from '../../files/source-code-tree';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
 import { putSystemMessage } from '../../main/common/content-bus';
@@ -57,13 +56,6 @@ describe('executeStepContextOptimization', () => {
         '/test/file2.ts': { content: 'content2' },
       };
 
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
-          'file2.ts': { content: 'content2' },
-        },
-      };
-
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
       // Mock optimization response with high relevance scores
@@ -89,7 +81,7 @@ describe('executeStepContextOptimization', () => {
             functionResponses: [
               {
                 name: 'getSourceCode',
-                content: JSON.stringify(mockSourceCodeTree),
+                content: JSON.stringify(mockSourceCode),
               },
             ],
           },
@@ -111,7 +103,7 @@ describe('executeStepContextOptimization', () => {
 
     it('should handle empty source code tree', async () => {
       const emptySourceCode = {};
-      const emptySourceCodeTree = {};
+      const emptySourceCodeMap = {};
 
       vi.mocked(getSourceCode).mockReturnValue(emptySourceCode);
 
@@ -134,7 +126,7 @@ describe('executeStepContextOptimization', () => {
             functionResponses: [
               {
                 name: 'getSourceCode',
-                content: JSON.stringify(emptySourceCodeTree),
+                content: JSON.stringify(emptySourceCodeMap),
               },
             ],
           },
@@ -159,12 +151,6 @@ describe('executeStepContextOptimization', () => {
         '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
 
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
-        },
-      };
-
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
@@ -184,7 +170,7 @@ describe('executeStepContextOptimization', () => {
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify({ '/test': { 'old-file.ts': { content: 'old content' } } }),
+              content: JSON.stringify({ '/test/old-file.ts': { content: 'old content' } }),
             },
           ],
         },
@@ -197,7 +183,7 @@ describe('executeStepContextOptimization', () => {
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify(mockSourceCodeTree),
+              content: JSON.stringify(mockSourceCode),
             },
           ],
         },
@@ -209,9 +195,7 @@ describe('executeStepContextOptimization', () => {
 
       // Verify that previous responses maintain structure but clear content
       const expectedStructure = {
-        '/test': {
-          'old-file.ts': { content: null },
-        },
+        '/test/old-file.ts': { content: null },
       };
       expect(JSON.parse(prompt[0].functionResponses![0].content!)).toEqual(expectedStructure);
 
@@ -231,13 +215,6 @@ describe('executeStepContextOptimization', () => {
       const mockSourceCode = {
         '/test/file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
         '/test/file2.ts': { content: 'content2' },
-      };
-
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'file1.ts': { content: 'content1' + Array.from(Array(10000).keys()).join(',') },
-          'file2.ts': { content: 'content2' },
-        },
       };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
@@ -262,7 +239,7 @@ describe('executeStepContextOptimization', () => {
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify({ '/test': { 'file1.ts': { content: 'old content 1' } } }),
+              content: JSON.stringify({ '/test/file1.ts': { content: 'old content 1' } }),
             },
           ],
         },
@@ -271,7 +248,7 @@ describe('executeStepContextOptimization', () => {
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify({ '/test': { 'file2.ts': { content: 'old content 2' } } }),
+              content: JSON.stringify({ '/test/file2.ts': { content: 'old content 2' } }),
             },
           ],
         },
@@ -280,7 +257,7 @@ describe('executeStepContextOptimization', () => {
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify(mockSourceCodeTree),
+              content: JSON.stringify(mockSourceCode),
             },
           ],
         },
@@ -295,8 +272,8 @@ describe('executeStepContextOptimization', () => {
           const response = item.functionResponses.find((r) => r.name === 'getSourceCode');
           const parsedContent = JSON.parse(response!.content!);
           // Check that structure is preserved but content is null
-          expect(parsedContent).toHaveProperty('/test');
-          Object.values(parsedContent['/test']).forEach((file) => {
+          expect(Object.keys(parsedContent)[0]).toEqual(expect.stringContaining('/test/file'));
+          Object.values(parsedContent).forEach((file) => {
             expect((file as FileContent).content).toBe(null);
           });
         }
@@ -370,14 +347,6 @@ describe('executeStepContextOptimization', () => {
         '/test/low-relevance.ts': { content: 'not important' },
       };
 
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'high-relevance.ts': { content: 'important content' },
-          'medium-relevance.ts': { content: 'somewhat important' },
-          'low-relevance.ts': { content: 'not important' },
-        },
-      };
-
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
@@ -403,7 +372,7 @@ describe('executeStepContextOptimization', () => {
             functionResponses: [
               {
                 name: 'getSourceCode',
-                content: JSON.stringify(mockSourceCodeTree),
+                content: JSON.stringify(mockSourceCode),
               },
             ],
           },
@@ -435,12 +404,6 @@ describe('executeStepContextOptimization', () => {
         '/test/file.ts': { content: 'test content'.repeat(1000) }, // Make it large enough to trigger optimization
       };
 
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'file.ts': { content: 'test content'.repeat(1000) },
-        },
-      };
-
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
@@ -462,7 +425,7 @@ describe('executeStepContextOptimization', () => {
             functionResponses: [
               {
                 name: 'getSourceCode',
-                content: JSON.stringify(mockSourceCodeTree),
+                content: JSON.stringify(mockSourceCode),
               },
             ],
           },
@@ -553,13 +516,6 @@ describe('executeStepContextOptimization', () => {
         '/test/small-file.ts': { content: smallContent },
       };
 
-      const mockSourceCodeTree: SourceCodeTree = {
-        '/test': {
-          'large-file.ts': { content: largeContent },
-          'small-file.ts': { content: smallContent },
-        },
-      };
-
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
       mockGenerateContentFn.mockResolvedValueOnce([
@@ -584,7 +540,7 @@ describe('executeStepContextOptimization', () => {
             functionResponses: [
               {
                 name: 'getSourceCode',
-                content: JSON.stringify(mockSourceCodeTree),
+                content: JSON.stringify(mockSourceCode),
               },
             ],
           },

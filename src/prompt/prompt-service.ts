@@ -17,7 +17,6 @@ import { handleAiServiceFallback } from './ai-service-fallback.js';
 import { summarizeSourceCode } from './steps/step-summarization.js';
 import { executeStepHistoryUpdate, getCurrentHistory } from './steps/step-history-update.js';
 import { executeStepGenerateSummary } from './steps/step-generate-summary.js';
-import { getSourceCodeTree } from '../files/source-code-tree.js';
 import { INITIAL_GREETING, REQUEST_SOURCE_CODE, SOURCE_CODE_RESPONSE, READY_TO_ASSIST } from './static-prompts.js';
 import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
@@ -214,20 +213,13 @@ async function executePromptService(
  */
 function prepareMessages(codegen: CodegenPrompt) {
   return {
-    sourceCode: JSON.stringify(
-      getSourceCodeTree(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
-    ),
+    sourceCode: JSON.stringify(getSourceCode({ taskFile: codegen.options.taskFile }, codegen.options)),
     contextSourceCode: (paths: string[], pathsOnly: boolean = false) =>
       JSON.stringify(
-        getSourceCodeTree(
-          Object.fromEntries(
-            Object.entries(
-              getSourceCode(
-                { filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true },
-                codegen.options,
-              ),
-            ).filter(([path]) => !pathsOnly || paths.includes(path)),
-          ),
+        Object.fromEntries(
+          Object.entries(
+            getSourceCode({ filterPaths: paths, taskFile: codegen.options.taskFile, forceAll: true }, codegen.options),
+          ).filter(([path]) => !pathsOnly || paths.includes(path)),
         ),
       ),
     imageAssets: JSON.stringify(getImageAssets()),

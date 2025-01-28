@@ -4,11 +4,12 @@
  * Each entry in the dataset includes the file path, a brief description of the file's purpose, and a list of its dependencies.
  */
 
-import { SourceCodeTree } from '../../files/source-code-tree.js';
+import { parseSourceCodeTree } from '../../files/source-code-tree';
+import { SourceCodeMap } from '../../files/source-code-types';
 
 export const MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR = '/project/src/todo-app';
 
-export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeTree = {
+export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeMap = parseSourceCodeTree({
   '/project/src/todo-app/auth': {
     'user-auth.ts': {
       summary: 'Handles user authentication logic, including user registration, login, and session management.',
@@ -728,4 +729,4 @@ export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeTree = {
       dependencies: [],
     },
   },
-};
+});

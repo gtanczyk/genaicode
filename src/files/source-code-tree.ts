@@ -1,8 +1,7 @@
-import path from 'path';
+import { md5 } from './cache-file.js';
 import { SourceCodeMap } from './source-code-types.js';
 import { FileSummary } from './source-code-types.js';
 import { FileContent } from './source-code-types.js';
-import { rcConfig } from '../main/config.js';
 
 /**
  * Type guard to check if an object is a FileContent with dependencies
@@ -21,45 +20,11 @@ function hasSummary(obj: FileContent | FileSummary): obj is FileSummary {
 /**
  * Directory structure representing source code files with their content or summaries and dependencies
  */
-export type SourceCodeTree = {
+type SourceCodeTree = {
   [directoryPath: string]: {
     [filePath: string]: FileContent | FileSummary;
   };
 };
-
-/**
- * Converts flat SourceCodeMap into a directory tree structure
- */
-export function getSourceCodeTree(sourceCode: SourceCodeMap): SourceCodeTree {
-  const result: SourceCodeTree = {};
-
-  for (const [filePath, fileData] of Object.entries(sourceCode)) {
-    if (!filePath.startsWith(rcConfig.rootDir)) {
-      continue;
-    }
-
-    const dirPath = path.dirname(filePath);
-    const fileName = path.basename(filePath);
-    if (!result[dirPath]) {
-      result[dirPath] = {};
-    }
-
-    // Handle both content and summary cases while preserving dependencies
-    if (hasContent(fileData)) {
-      result[dirPath][fileName] = {
-        content: fileData.content,
-        ...(fileData.dependencies && { dependencies: fileData.dependencies }),
-      };
-    } else if (hasSummary(fileData)) {
-      result[dirPath][fileName] = {
-        summary: fileData.summary,
-        ...(fileData.dependencies && { dependencies: fileData.dependencies }),
-      };
-    }
-  }
-
-  return result;
-}
 
 /**
  * Converts directory tree structure back into flat SourceCodeMap
@@ -74,11 +39,13 @@ export function parseSourceCodeTree(sourceCodeTree: SourceCodeTree): SourceCodeM
       // Handle both content and summary cases while preserving dependencies
       if (hasContent(fileData)) {
         result[fullPath] = {
+          fileId: md5(fullPath),
           content: fileData.content,
           ...(fileData.dependencies && { dependencies: fileData.dependencies }),
         };
       } else if (hasSummary(fileData)) {
         result[fullPath] = {
+          fileId: md5(fullPath),
           summary: fileData.summary,
           ...(fileData.dependencies && { dependencies: fileData.dependencies }),
         };

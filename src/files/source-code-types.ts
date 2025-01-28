@@ -6,8 +6,8 @@ export interface DependencyInfo {
   path: string;
   /** Type of dependency */
   type: 'local' | 'external';
-  /** Project file path (only for local) */
-  projectFilePath?: string;
+  /** Unique identifier for the dependent file */
+  fileId?: string;
 }
 
 /**
@@ -29,4 +29,4 @@ export interface FileSummary {
   /** Optional list of dependencies */
   dependencies?: DependencyInfo[];
 }
-export type SourceCodeMap = Record<string, FileContent | FileSummary>;
+export type SourceCodeMap = Record<string, { fileId: string } & (FileContent | FileSummary)>;

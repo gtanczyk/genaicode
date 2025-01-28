@@ -174,8 +174,8 @@ describe('executeStepEnsureContext', () => {
       // Verify the source code response is properly formatted
       expect(prompt[1].functionResponses?.[0].name).toBe('getSourceCode');
       const responseContent = JSON.parse(prompt[1].functionResponses?.[0].content ?? '');
-      expect(responseContent['/test']).toBeDefined();
-      expect(Object.keys(responseContent['/test'])).toHaveLength(6); // All files should be included
+      expect(responseContent['/test/main.ts']).toBeDefined();
+      expect(Object.keys(responseContent)).toHaveLength(6); // All files should be included
     });
 
     it('should handle empty affectedFiles in codegenPlanning', async () => {
@@ -324,11 +324,9 @@ describe('executeStepEnsureContext', () => {
       expect(prompt[1].type).toBe('user');
       expect(prompt[1].functionResponses?.[0].name).toBe('getSourceCode');
       expect(JSON.parse(prompt[1].functionResponses?.[0].content ?? '')).toEqual({
-        '/test': {
-          'new1.ts': { content: 'new1' },
-          'new2.ts': { content: 'new2' },
-          'important.ts': { content: 'important' },
-        },
+        '/test/new1.ts': { content: 'new1' },
+        '/test/new2.ts': { content: 'new2' },
+        '/test/important.ts': { content: 'important' },
       });
     });
   });
