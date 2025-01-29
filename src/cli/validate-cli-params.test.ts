@@ -22,9 +22,17 @@ describe('validateCliParams', () => {
     expect(() => validateCliParams()).toThrow();
   });
 
-  it('should throw for parameters without --', () => {
-    process.argv.push('invalid-param');
-    expect(() => validateCliParams()).toThrow();
+  it('should not throw for valid positional argument', () => {
+    process.argv.push('my-prompt');
+    expect(() => validateCliParams()).not.toThrow();
+  });
+
+  it('should throw for multiple positional arguments', () => {
+    process.argv.push('first-arg');
+    process.argv.push('second-arg');
+    expect(() => validateCliParams()).toThrow(
+      'Only one positional argument is allowed. Use named parameters (--option=value) for additional options.',
+    );
   });
 
   it('should not throw for valid --temperature parameter', () => {

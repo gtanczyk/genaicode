@@ -4,6 +4,28 @@ import { serviceAutoDetect } from './service-autodetect.js';
 
 const params = process.argv.slice(2);
 
+// Handle positional arguments first
+const positionalArgs = params.filter((param) => !param.startsWith('--'));
+const namedArgs = params.filter((param) => param.startsWith('--'));
+
+// Process first positional argument as either explicit prompt or task file
+if (positionalArgs.length > 0) {
+  const firstArg = positionalArgs[0];
+  const hasExplicitPrompt = namedArgs.some((arg) => arg.startsWith('--explicit-prompt='));
+  const hasTaskFile = namedArgs.some((arg) => arg.startsWith('--task-file='));
+
+  // Only process if neither explicit prompt nor task file is provided via named arguments
+  if (!hasExplicitPrompt && !hasTaskFile) {
+    // Check if the argument is a file that exists
+    const possibleFilePath = path.isAbsolute(firstArg) ? firstArg : path.join(process.cwd(), firstArg);
+    if (fs.existsSync(possibleFilePath)) {
+      params.push(`--task-file=${firstArg}`);
+    } else {
+      params.push(`--explicit-prompt=${firstArg}`);
+    }
+  }
+}
+
 export const dryRun = params.includes('--dry-run');
 export const allowFileCreate = !params.includes('--disallow-file-create');
 export const allowFileDelete = !params.includes('--disallow-file-delete');
@@ -48,6 +70,7 @@ export const disableAiServiceFallback = params.includes('--disable-ai-service-fa
 export const enableVertexUnescape = params.includes('--enable-vertex-unescape');
 export const disableHistory = params.includes('--disable-history');
 
+// Validate task file and explicitPrompt exclusivity
 // New variable to store the ui-port value
 export const uiPort = parseInt(params.find((param) => param.startsWith('--ui-port='))?.split('=')[1] || '1337', 10);
 

@@ -47,24 +47,41 @@ export function validateCliParams(): void {
 
   // Check if --help is present
   const helpRequested: boolean = providedParameters.includes('--help');
+  const positionalArgs = providedParameters.filter((param) => !param.startsWith('--'));
+  const namedArgs = providedParameters.filter((param) => param.startsWith('--'));
 
   if (helpRequested) {
     // If --help is present, no other parameters should be allowed
     if (providedParameters.length > 1) {
-      console.error('The --help option cannot be used with other parameters.');
-      process.exit(1);
+      throw new Error('Error: The --help option must be used alone.');
     }
     return; // Exit the function early as no further validation is needed
   }
 
-  providedParameters.forEach((param: string) => {
-    if (!param.startsWith('--')) {
-      console.error(`Invalid parameter: ${param}, all parameters must start with --`);
-      process.exit(1);
+  // Validate positional arguments
+  if (positionalArgs.length > 1) {
+    throw new Error(
+      'Error: Only one positional argument is allowed. Use named parameters (--option=value) for additional options.',
+    );
+  }
+
+  // Check for conflicts between positional and named arguments
+  if (positionalArgs.length > 0) {
+    const hasExplicitPrompt = namedArgs.some((arg) => arg.startsWith('--explicit-prompt='));
+    const hasTaskFile = namedArgs.some((arg) => arg.startsWith('--task-file='));
+    if (hasExplicitPrompt || hasTaskFile) {
+      throw new Error(
+        'Error: Cannot use positional argument with --explicit-prompt or --task-file. Choose either positional or named parameter style.',
+      );
     }
+  }
+
+  // Validate named parameters
+  namedArgs.forEach((param: string) => {
     if (!allowedParameters.some((p) => (p.endsWith('=') && param.startsWith(p)) || param === p)) {
-      console.error(`Invalid parameter: ${param}, allowed parameters are: ${allowedParameters.join(', ')}`);
-      process.exit(1);
+      throw new Error(
+        `Error: Invalid parameter "${param}". Allowed parameters are:\n  ${allowedParameters.join('\n  ')}`,
+      );
     }
   });
 
@@ -76,7 +93,7 @@ export function validateCliParams(): void {
       !['vertex-ai', 'openai', 'anthropic', 'ai-studio', 'vertex-ai-claude'].includes(aiServiceValue) &&
       !aiServiceValue.startsWith('plugin:')
     ) {
-      throw new Error('Invalid --ai-service value');
+      throw new Error(`Invalid --ai-service value "${aiServiceValue}"`);
     }
   }
 
@@ -85,8 +102,7 @@ export function validateCliParams(): void {
   if (temperatureParam) {
     const temperatureValue: number = parseFloat(temperatureParam.split('=')[1]);
     if (isNaN(temperatureValue) || temperatureValue < 0.0 || temperatureValue > 2.0) {
-      console.error('Invalid temperature value. It must be a number between 0.0 and 2.0.');
-      process.exit(1);
+      throw new Error('Invalid temperature value. It must be a number between 0.0 and 2.0.');
     }
   }
 

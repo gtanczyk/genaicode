@@ -12,6 +12,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-055] Enhanced CLI Parameter Handling: Added support for positional arguments. Created: 2024-01-29 Updated: 2024-01-29
+
 - [x] [GEN-054] Enhanced Model Type Selection: Added model type dropdown in content generation modal. Created: 2024-01-28 Updated: 2024-01-29
 
 - [-] [GEN-050] Enhanced Diff View for PatchFile Operations: Added comprehensive diff view support for patch operations. Created: 2024-01-22 Updated: 2024-01-22
