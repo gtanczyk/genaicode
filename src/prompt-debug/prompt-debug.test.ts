@@ -16,8 +16,8 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'askQuestion';
-  const temperature = 0.7;
+  const requiredFunctionName = 'setSummaries';
+  const temperature = 0.2;
 
   it('Gemini Flash', async () => {
     updateServiceConfig('ai-studio', {
@@ -148,7 +148,42 @@ describe('prompt-debug', () => {
 
     const gptArgs = result[0].args;
 
-    console.log('GPT', JSON.stringify(gptArgs, null, 4));
+    console.log('DeepSeek', JSON.stringify(gptArgs, null, 4));
+  });
+
+  it('Grok', async () => {
+    updateServiceConfig('openai', {
+      modelOverrides: {
+        default: 'grok-beta',
+        cheap: 'grok-beta',
+      },
+      apiKey: process.env.GROK_OPENAI_API_KEY,
+      openaiBaseUrl: 'https://api.x.ai/v1',
+    });
+
+    const req = [
+      prompt.map((item) => ({ ...item, text: item.text ?? ' ' })),
+      getFunctionDefs(),
+      requiredFunctionName,
+      temperature,
+      ModelType.DEFAULT,
+    ] as const;
+    let result = await generateContentGPT(...req);
+    result = await validateAndRecoverSingleResult(
+      [
+        ...req,
+        {
+          disableCache: false,
+          askQuestion: false,
+        },
+      ],
+      result,
+      generateContentGPT,
+    );
+
+    const gptArgs = result[0].args;
+
+    console.log('Grok', JSON.stringify(gptArgs, null, 4));
   });
 
   it('Claude Sonnet', async () => {

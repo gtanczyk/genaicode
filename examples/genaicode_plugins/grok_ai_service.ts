@@ -19,7 +19,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
   const { internalGenerateContent } = await import('../../src/ai-service/openai.js');
 
   return internalGenerateContent(
-    prompt,
+    prompt.map((item) => ({ ...item, text: item.text ?? ' ' })),
     functionDefs,
     requiredFunctionName,
     temperature,
