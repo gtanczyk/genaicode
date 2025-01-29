@@ -71,6 +71,7 @@ export async function handlePushAppContext({
           },
           user: {
             type: 'user',
+            // TODO: Convert to system message
             text: 'Context updated successfully.',
             data: {
               contextKey: key,

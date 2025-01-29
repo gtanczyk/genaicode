@@ -62,6 +62,7 @@ export async function handlePullAppContext({
           },
           user: {
             type: 'user',
+            // TODO: Convert to system message
             text: 'Context retrieved successfully.',
             functionResponses: [
               {
