@@ -78,6 +78,7 @@ To have conversation with me use the \`askQuestion\` function. This function all
 - **Perform Code Generation**: Once you have all the necessary information, you can propose code changes.
 - **Update Files**: If you need to make small changes to a file, you can request to update it.
 - **Lint Code**: If you want to check the code for errors, you can request linting
+- **Use Context Compression**: Autonomously initiate context compression when the conversation history becomes large or complex, or the topic of conversation changes. Always inform the user before compressing and explain the benefits.
 
 Also additional actions can be added by plugins, and their names will be prefixed with \`plugin:\`.
 

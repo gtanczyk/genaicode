@@ -41,6 +41,7 @@ This document provides a detailed comparison between documented features and the
 | Conversation Continuation | ✅ Documented        | ✅ Implemented        | prompt/prompt-service.ts                  | Context preservation      |
 | History Cache             | ✅ Documented        | ✅ Implemented        | files/cache-file.ts                       | Persistent storage        |
 | Context Optimization      | ✅ Documented        | ✅ Implemented        | prompt/steps/step-context-optimization.ts | Smart context management  |
+| Autonomous Compression    | ✅ Documented        | ✅ Implemented        | prompt/steps/step-context-compression.ts  | Auto context management   |
 
 ### Plugin System
 
