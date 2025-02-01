@@ -10,7 +10,6 @@ import { executeStepEnsureContext } from './step-ensure-context.js';
 import { StepResult } from './steps-types.js';
 import assert from 'node:assert';
 import { PROMPT_CODEGEN_SUMMARY, PROMPT_CODEGEN_SUMMARY_ASSISTANT } from './step-generate-codegen-summary-prompt.js';
-import { getExpandedContextPaths } from '../../files/source-code-utils.js';
 
 /**
  * Generates and validates the codegen summary.
@@ -62,9 +61,6 @@ export async function generateCodegenSummary(
   // Sometimes the result happens to be a string
   assert(Array.isArray(codegenSummaryRequest?.args?.fileUpdates), 'fileUpdates is not an array');
   assert(Array.isArray(codegenSummaryRequest?.args.contextPaths), 'contextPaths is not an array');
-
-  // Expand context paths
-  codegenSummaryRequest.args.contextPaths = getExpandedContextPaths(codegenSummaryRequest.args.contextPaths, options);
 
   // Ensure all necessary files are in context
   const contextResult = await executeStepEnsureContext(prompt, codegenSummaryRequest, options);
