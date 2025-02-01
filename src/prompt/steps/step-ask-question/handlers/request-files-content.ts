@@ -207,15 +207,13 @@ function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): b
       }
 
       try {
-        const sourceCodeTree = JSON.parse(response.content);
-        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
-        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+        const sourceCodeMap = JSON.parse(response.content);
 
         return (
-          sourceCodeTree[dirPath] &&
-          sourceCodeTree[dirPath][fileName] &&
-          'content' in sourceCodeTree[dirPath][fileName] &&
-          sourceCodeTree[dirPath][fileName].content !== null
+          sourceCodeMap[filePath] &&
+          sourceCodeMap[filePath] &&
+          'content' in sourceCodeMap[filePath] &&
+          sourceCodeMap[filePath].content !== null
         );
       } catch (error) {
         console.warn('Error parsing getSourceCode response:', error);

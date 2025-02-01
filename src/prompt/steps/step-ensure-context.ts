@@ -125,12 +125,9 @@ function getExistingContextPaths(prompt: { functionResponses?: { name: string; c
 
     try {
       const sourceCode = JSON.parse(sourceCodeResponse.content);
-      for (const [dirPath, files] of Object.entries(sourceCode)) {
-        for (const [fileName, fileInfo] of Object.entries(files as Record<string, unknown>)) {
-          const fullPath = `${dirPath}/${fileName}`;
-          if (fileInfo && typeof fileInfo === 'object' && 'content' in fileInfo && fileInfo.content !== null) {
-            existingPaths.add(fullPath);
-          }
+      for (const [fullPath, fileInfo] of Object.entries(sourceCode)) {
+        if (fileInfo && typeof fileInfo === 'object' && 'content' in fileInfo && fileInfo.content !== null) {
+          existingPaths.add(fullPath);
         }
       }
     } catch (error) {
