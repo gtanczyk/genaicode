@@ -90,6 +90,7 @@ export async function executeStepContextCompression(
       type: 'user',
       functionResponses: [
         {
+          call_id: compressContextCall.id,
           name: 'compressContext',
           content: '',
         },
