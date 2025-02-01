@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateContentFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -8,6 +8,7 @@ import { getExpandedContextPaths } from '../../../../files/source-code-utils.js'
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { validateAndRecoverSingleResult } from '../../step-validate-recover.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -162,7 +163,7 @@ export async function generateRequestFilesContentCall(
   options: CodegenOptions,
   modelType: ModelType,
 ) {
-  const [requestFilesContentCall] = (await generateContentFn(
+  const req = [
     [
       ...prompt,
       {
@@ -179,7 +180,11 @@ export async function generateRequestFilesContentCall(
     0.7,
     modelType,
     options,
-  )) as [FunctionCall<RequestFilesContentArgs> | undefined];
+  ] as GenerateContentArgs;
+  const result = await generateContentFn(...req);
+  const [requestFilesContentCall] = (await validateAndRecoverSingleResult(req, result, generateContentFn)) as [
+    FunctionCall<RequestFilesContentArgs> | undefined,
+  ];
 
   return requestFilesContentCall;
 }

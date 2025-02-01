@@ -74,5 +74,6 @@ export function getContextSourceCode(contextPaths: string[], options: CodegenOpt
  */
 export function getExpandedContextPaths(contextPaths: string[], options: CodegenOptions): string[] {
   const sourceCodeMap = getContextSourceCode(contextPaths, options);
-  return Object.keys(sourceCodeMap);
+  // need to make sure original contextPaths values are included in the result
+  return [...new Set([...contextPaths, ...Object.keys(sourceCodeMap)])];
 }

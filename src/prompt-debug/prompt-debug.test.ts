@@ -16,7 +16,7 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'setSummaries';
+  const requiredFunctionName = 'requestFilesContent';
   const temperature = 0.2;
 
   it('Gemini Flash', async () => {
@@ -26,9 +26,21 @@ describe('prompt-debug', () => {
       },
       apiKey: process.env.API_KEY,
     });
-    const geminiArgs = (
-      await generateContentGemini(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP)
-    )[0].args;
+    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP] as const;
+    let result = await generateContentGemini(...req);
+    result = await validateAndRecoverSingleResult(
+      [
+        ...req,
+        {
+          disableCache: false,
+          askQuestion: false,
+        },
+      ],
+      result,
+      generateContentGemini,
+    );
+
+    const geminiArgs = result[0].args;
 
     console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
   });

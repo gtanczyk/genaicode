@@ -134,6 +134,7 @@ export const requestFilesContent: FunctionDef = {
         items: {
           type: 'string',
         },
+        minLength: 1,
         description: 'An array of absolute file paths for which you need the content.',
       },
     },
@@ -153,6 +154,7 @@ export const removeFilesFromContext: FunctionDef = {
         items: {
           type: 'string',
         },
+        minLength: 1,
         description: 'An array of absolute file paths to remove from the context.',
       },
     },
