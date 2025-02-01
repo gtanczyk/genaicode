@@ -32,7 +32,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.openai?.default ?? 'gpt-4o-2024-11-20',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
-      reasoning: modelOverrides.openai?.reasoning ?? 'o1-mini',
+      reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
     },
   },
   'vertex-ai': {

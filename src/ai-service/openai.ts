@@ -32,7 +32,7 @@ export const generateContent: GenerateContentFunction = async function generateC
         case ModelType.CHEAP:
           return serviceConfig.modelOverrides?.cheap ?? 'gpt-4o-mini';
         case ModelType.REASONING:
-          return serviceConfig.modelOverrides?.reasoning ?? 'o1-mini';
+          return serviceConfig.modelOverrides?.reasoning ?? 'o3-mini';
         default:
           return serviceConfig.modelOverrides?.default ?? 'gpt-4o-2024-11-20';
       }

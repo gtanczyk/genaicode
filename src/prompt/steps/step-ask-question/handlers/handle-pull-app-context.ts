@@ -50,62 +50,60 @@ export async function handlePullAppContext({
 
     const reasonInfo = reason ? `\nReason for retrieval: ${reason}` : '';
 
+    putSystemMessage('Context retrieved successfully', {
+      contextKey: key,
+      contextValue: contextValue,
+      reason,
+      operation: 'get',
+    });
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: `${contextInfo}${reasonInfo}`,
+        functionCalls: [pullAppContextCall],
+      },
+      {
+        type: 'user',
+        functionResponses: [
+          {
+            name: 'pullAppContext',
+            call_id: pullAppContextCall.id,
+            content: JSON.stringify({ contextKey: key, contextValue, reason, operation: 'get' }),
+          },
+        ],
+      },
+    );
+
     // Return the action result with context information
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: `${contextInfo}${reasonInfo}`,
-            functionCalls: [pullAppContextCall],
-          },
-          user: {
-            type: 'user',
-            // TODO: Convert to system message
-            text: 'Context retrieved successfully.',
-            functionResponses: [
-              {
-                name: 'pullAppContext',
-                call_id: pullAppContextCall.id,
-                content: JSON.stringify({ contextKey: key, contextValue, reason, operation: 'get' }),
-              },
-            ],
-            data: {
-              contextKey: key,
-              contextValue: contextValue,
-              reason,
-              operation: 'get',
-            },
-          },
-        },
-      ],
+      items: [],
     };
   } catch (error) {
     // Handle any errors that occur during context retrieval
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    putSystemMessage(`Error retrieving context: ${errorMessage}`);
+    putSystemMessage(`Error retrieving context`, {
+      contextKey: key,
+      error: errorMessage,
+      reason,
+      operation: 'get',
+    });
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: `Failed to retrieve context for key "${key}": ${errorMessage}`,
+      },
+      {
+        type: 'user',
+        text: 'Context retrieval failed.',
+      },
+    );
 
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: `Failed to retrieve context for key "${key}": ${errorMessage}`,
-          },
-          user: {
-            type: 'user',
-            text: 'Context retrieval failed.',
-            data: {
-              contextKey: key,
-              error: errorMessage,
-              reason,
-              operation: 'get',
-            },
-          },
-        },
-      ],
+      items: [],
     };
   }
 }

@@ -57,57 +57,64 @@ export async function handlePushAppContext({
     await setContextValue(key, value);
 
     // Format success message
-    const updateInfo = `Successfully updated context key "${key}" with value: ${JSON.stringify(value, null, 2)}`;
+    const updateInfo = `Successfully updated context key "${key}"`;
     const reasonInfo = reason ? `\nReason for update: ${reason}` : '';
+
+    putSystemMessage('Context updated successfully.', {
+      contextKey: key,
+      contextValue: value,
+      reason,
+      operation: 'set',
+    });
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: `${updateInfo}${reasonInfo}`,
+        functionCalls: [pushAppContextCall],
+      },
+      {
+        type: 'user',
+        functionResponses: [{ name: 'pushAppContext', call_id: pushAppContextCall.id, content: '' }],
+      },
+    );
 
     // Return the action result with update confirmation
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: `${updateInfo}${reasonInfo}`,
-          },
-          user: {
-            type: 'user',
-            // TODO: Convert to system message
-            text: 'Context updated successfully.',
-            data: {
-              contextKey: key,
-              contextValue: value,
-              reason,
-              operation: 'set',
-            },
-          },
-        },
-      ],
+      items: [],
     };
   } catch (error) {
     // Handle any errors that occur during context update
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     putSystemMessage(`Error updating context: ${errorMessage}`);
 
-    return {
-      breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: `Failed to update context for key "${key}": ${errorMessage}`,
-          },
-          user: {
-            type: 'user',
-            text: 'Context update failed.',
-            data: {
+    prompt.push(
+      {
+        type: 'assistant',
+        functionCalls: [pushAppContextCall],
+      },
+      {
+        type: 'user',
+        text: 'Context update failed.',
+        functionResponses: [
+          {
+            name: 'pushAppContext',
+            call_id: pushAppContextCall.id,
+            content: JSON.stringify({
               contextKey: key,
               error: errorMessage,
               reason,
               operation: 'set',
-            },
+            }),
           },
-        },
-      ],
+        ],
+      },
+    );
+
+    return {
+      breakLoop: false,
+      items: [],
     };
   }
 }
