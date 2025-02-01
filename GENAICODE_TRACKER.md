@@ -12,6 +12,72 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-060] Enhanced Context Compression: Improved context compression with advanced file dependency tracking and token management. Created: 2024-02-04 Updated: 2024-02-04
+
+  Key Updates:
+
+  - Added new parameters to ContextCompressionArgs type:
+    - filePaths: List of essential file paths
+    - tokenLimit: Maximum token count control
+    - retainedItems: Fine-grained conversation item retention
+  - Enhanced context compression prompt for better structured output
+  - Implemented intelligent prompt item retention logic
+  - Added comprehensive error handling and validation
+  - Improved logging and operation monitoring
+
+  Implementation Details:
+
+  - Modified `src/prompt/function-defs/context-compression.ts`:
+    - Expanded type definitions with new parameters
+    - Added comprehensive documentation and examples
+    - Enhanced error handling specifications
+  - Updated `src/prompt/steps/step-context-compression.ts`:
+    - Added prompt item retention management
+    - Implemented validation and error recovery
+    - Enhanced logging and monitoring
+
+  Technical Notes:
+
+  - Type-safe implementation with proper TypeScript types
+  - Backward compatible with existing code
+  - Improved error recovery mechanisms
+
+- [-] [GEN-058] Context Compression Feature: Added new action type for compressing conversation context. Created: 2024-02-01 Updated: 2024-02-01
+
+  Key Updates:
+
+  - Added new contextCompression action type
+  - Implemented context compression step
+  - Added handler for compression requests
+  - Enhanced context management system
+  - Maintained separation from existing optimization
+  - Added comprehensive documentation
+  - Integrated with ask-question system
+  - Added proper error handling
+
+- [-] [GEN-059] Improved Context Compression: Enhanced context compression to include conversation history analysis and source code dependency tracking. Created: 2024-02-03 Updated: 2024-02-03
+
+  Key Updates:
+
+  - Modified compressContext function to include conversation history analysis.
+  - Implemented source code dependency analysis in compressContext function.
+  - Updated function definition for compressContext with new parameters.
+  - Updated context compression handler to use new compressContext function.
+
+  Implementation Details:
+
+  - Modified `src/prompt/function-defs/context-compression.ts` to include new parameters and return types.
+  - Modified `src/prompt/steps/step-context-compression.ts` to include conversation analysis and source code dependency tracking.
+  - Modified `src/prompt/steps/step-ask-question/handlers/handle-context-compression.ts` to use updated function.
+  - Modified `src/prompt/steps/step-ask-question/step-ask-question-types.ts` to add new action type.
+
+  Technical Notes:
+
+  - Added LLM based conversation history summarization.
+  - Implemented deterministic source code dependency analysis.
+  - Maintained token limits and efficient context management.
+  - Added error handling and logging.
+
 - [x] [GEN-055] Enhanced CLI Parameter Handling: Added support for positional arguments. Created: 2024-01-29 Updated: 2024-01-29
 
 - [x] [GEN-054] Enhanced Model Type Selection: Added model type dropdown in content generation modal. Created: 2024-01-28 Updated: 2024-01-29

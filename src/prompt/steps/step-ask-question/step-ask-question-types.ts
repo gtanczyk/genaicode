@@ -16,6 +16,7 @@ export type ActionType =
   | 'confirmCodeGeneration'
   | 'endConversation'
   | 'contextOptimization'
+  | 'contextCompression'
   | 'searchCode'
   | 'lint'
   | 'updateFile'

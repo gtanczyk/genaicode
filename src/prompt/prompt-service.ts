@@ -116,6 +116,7 @@ async function executePromptService(
   });
 
   const initialPromptItem: PromptItem = {
+    itemId: 'INITIAL_PROMPT', // this is used by context compression
     type: 'user',
     text: codegenPrompt.prompt,
   };

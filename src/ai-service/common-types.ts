@@ -39,6 +39,7 @@ export type PromptItemImage = {
 };
 
 export interface PromptItem {
+  itemId?: 'INITIAL_PROMPT';
   type: 'systemPrompt' | 'user' | 'assistant';
   systemPrompt?: string;
   text?: string;

@@ -29,6 +29,7 @@ import { handlePullAppContext } from './handlers/handle-pull-app-context.js';
 import { handlePushAppContext } from './handlers/handle-push-app-context.js';
 import { handleReasoningInference } from './handlers/handle-reasoning-inference.js';
 import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
+import { handleContextCompression } from './handlers/handle-context-compression.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -156,6 +157,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     genaicodeHelp: handleGenaicodeHelp,
     reasoningInference: handleReasoningInference,
     pushAppContext: handlePushAppContext,
+    contextCompression: handleContextCompression,
   };
 
   return handlers[actionType] || handleSendMessage;

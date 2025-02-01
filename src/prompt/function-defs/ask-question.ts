@@ -19,6 +19,7 @@ Detailed Explanation of actionTypes:
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
+- contextCompression: Use to compress the context by removing unnecessary tokens and optimizing the context size while maintaining essential information.
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - endConversation: Use to stop the conversation.
@@ -46,6 +47,7 @@ const actionTypeOptions: string[] = [
   'requestFilesContent',
   'removeFilesFromContext',
   'contextOptimization',
+  'contextCompression',
   'searchCode',
   'confirmCodeGeneration',
   'endConversation',

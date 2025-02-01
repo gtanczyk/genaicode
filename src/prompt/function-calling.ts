@@ -26,6 +26,7 @@ import { performAnalysis } from './function-defs/perform-analysis.js';
 import { analysisResult } from './function-defs/analysis-result.js';
 import { genaicodeHelpDef } from './function-defs/genaicode-help.js';
 import { reasoningInference, reasoningInferenceResponse } from './function-defs/reasoning-inference.js';
+import { compressContext } from './function-defs/context-compression.js';
 
 /**
  * Function definitions for function calling feature
@@ -55,6 +56,7 @@ export function getFunctionDefs(): FunctionDef[] {
     pushAppContext,
     genaicodeHelpDef,
     reasoningInference,
+    compressContext,
     reasoningInferenceResponse,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
