@@ -62,8 +62,6 @@ export async function executeStepEnsureContext(
         ],
       },
     );
-
-    putSystemMessage('Context completeness check completed successfully.');
     return StepResult.CONTINUE;
   } catch (error) {
     putSystemMessage('Error: Context completeness check failed. This is unexpected.');
