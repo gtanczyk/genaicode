@@ -4,7 +4,7 @@ import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js'
 
 export async function handleEndConversation({ askQuestionCall, options }: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmationWithAnswer(
-    askQuestionCall.args?.message ?? 'Do you want to end the conversation?',
+    'Do you want to end the conversation?',
     'End conversation',
     'Continue conversation',
     true,
