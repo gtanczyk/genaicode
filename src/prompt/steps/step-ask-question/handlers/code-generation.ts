@@ -1,5 +1,5 @@
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
-import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
+import { askUserForConfirmation, askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { CODEGEN_SUMMARY_PROMPT } from '../../../static-prompts.js';
 import { executeStepCodegenPlanning } from '../../step-codegen-planning.js';
@@ -8,6 +8,7 @@ import { processFileUpdates } from '../../step-process-file-updates.js';
 import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { updateFiles } from '../../../../files/update-files.js';
+import { executeStepContextCompression } from '../../step-context-compression.js';
 
 export const CODEGEN_SUMMARY_GENERATED_MESSAGE =
   'Codegen summary is generated. Would you like to proceed with the code changes?';
@@ -176,11 +177,44 @@ export async function handleCodeGeneration({
       }
     }
 
-    return {
-      breakLoop: confirmed.confirmed ?? true,
-      stepResult: functionCalls,
-      items: [],
-    };
+    if (
+      confirmed.confirmed &&
+      (
+        await askUserForConfirmation(
+          'Code generation completed, do you want to continue conversation?',
+          false,
+          options,
+          'Continue conversation',
+          'End conversation',
+        )
+      ).confirmed
+    ) {
+      putSystemMessage('Continuing conversation...');
+      const compressionResult = await executeStepContextCompression(generateContentFn, prompt, options);
+
+      prompt.push(
+        {
+          type: 'assistant',
+          text: 'Code generation completed, changes applied successfully. Should we continue the conversation?',
+        },
+        {
+          type: 'user',
+          text: 'Thank you for doing the code generation, now lets continue the conversation.',
+        },
+      );
+
+      return {
+        breakLoop: compressionResult !== StepResult.CONTINUE,
+        stepResult: functionCalls,
+        items: [],
+      };
+    } else {
+      return {
+        breakLoop: true,
+        stepResult: functionCalls,
+        items: [],
+      };
+    }
   } catch (error) {
     putSystemMessage(`Error during code generation: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return {
