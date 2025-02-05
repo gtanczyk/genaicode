@@ -138,29 +138,30 @@ export async function handleCodeGeneration({
 
     const functionCalls = [...baseResult, ...updateResults];
 
-    const confirmed = await askUserForConfirmationWithAnswer(
+    const confirmApply = await askUserForConfirmationWithAnswer(
       'Code changes are generated, now what?',
       'Apply code changes',
-      'Continue conversation',
+      'Reject code changes',
       true,
       options,
     );
 
     putAssistantMessage('Code changes are generated, now what?');
-    putUserMessage(confirmed.answer || 'Apply code changes.');
 
-    prompt.push(
-      {
-        type: 'assistant',
-        text: 'Code changes are generated, now what?',
-      },
-      {
-        type: 'user',
-        text: confirmed.answer || 'Apply code changes.',
-      },
-    );
+    if (confirmApply.confirmed) {
+      putUserMessage(confirmApply.answer || 'Apply code changes.');
 
-    if (confirmed.confirmed) {
+      prompt.push(
+        {
+          type: 'assistant',
+          text: 'Code changes are generated, now what?',
+        },
+        {
+          type: 'user',
+          text: 'Apply code changes. ' + confirmApply.answer,
+        },
+      );
+
       putSystemMessage('Applying code changes...');
 
       if (options.dryRun) {
@@ -175,11 +176,23 @@ export async function handleCodeGeneration({
         );
         putSystemMessage('Code changes applied successfully');
       }
+    } else {
+      putUserMessage(confirmApply.answer || 'Reject code changes.');
+
+      prompt.push(
+        {
+          type: 'assistant',
+          text: 'Code changes are generated, now what?',
+        },
+        {
+          type: 'user',
+          text: 'Reject code changes. ' + confirmApply.answer,
+        },
+      );
     }
 
     if (
-      confirmed.confirmed &&
-      (
+      !(
         await askUserForConfirmation(
           'Code generation completed, do you want to continue conversation?',
           false,
@@ -189,36 +202,45 @@ export async function handleCodeGeneration({
         )
       ).confirmed
     ) {
-      putSystemMessage('Continuing conversation...');
-      const compressionResult = await executeStepContextCompression(generateContentFn, prompt, options);
-
-      prompt.push(
-        {
-          type: 'assistant',
-          text: 'Code generation completed, changes applied successfully. Should we continue the conversation?',
-        },
-        {
-          type: 'user',
-          text: 'Thank you for doing the code generation, now lets continue the conversation.',
-        },
-      );
-
-      return {
-        breakLoop: compressionResult !== StepResult.CONTINUE,
-        stepResult: functionCalls,
-        items: [],
-      };
-    } else {
       return {
         breakLoop: true,
         stepResult: functionCalls,
         items: [],
       };
     }
+
+    putSystemMessage('Continuing conversation...');
+    const compressionResult = await executeStepContextCompression(generateContentFn, prompt, options);
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: `Code generation completed, changes ${confirmApply.confirmed ? 'were accepted and applied' : 'changes were rejected and not applied'}. Should we continue the conversation?`,
+      },
+      {
+        type: 'user',
+        text: 'Thank you for doing the code generation, now lets continue the conversation.',
+      },
+    );
+
+    return {
+      breakLoop: compressionResult !== StepResult.CONTINUE,
+      stepResult: functionCalls,
+      items: [],
+    };
   } catch (error) {
     putSystemMessage(`Error during code generation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    const tryAgainConfirm = await askUserForConfirmation(
+      'An error occurred during code generation. Would you like to try again or continue the conversation?',
+      false,
+      options,
+      'Try again',
+      'Continue conversation',
+    );
+
     return {
-      breakLoop: true,
+      breakLoop: !tryAgainConfirm.confirmed,
       items: [
         {
           assistant: {
@@ -228,7 +250,9 @@ export async function handleCodeGeneration({
           },
           user: {
             type: 'user',
-            text: 'Error occurred during code generation.',
+            text: tryAgainConfirm.confirmed
+              ? 'Lets continue the conversation'
+              : 'Error occurred during code generation.',
           },
         },
       ],
