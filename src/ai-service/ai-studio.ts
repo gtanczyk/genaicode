@@ -191,7 +191,7 @@ function getModel(
   const model = (() => {
     switch (modelType) {
       case ModelType.CHEAP:
-        return serviceConfig.modelOverrides?.cheap ?? 'gemini-1.5-flash-002';
+        return serviceConfig.modelOverrides?.cheap ?? 'gemini-2.0-flash';
       case ModelType.REASONING:
         return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21';
       default:

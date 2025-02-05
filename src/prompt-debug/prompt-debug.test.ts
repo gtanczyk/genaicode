@@ -16,13 +16,13 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'requestFilesContent';
+  const requiredFunctionName = 'compressContext';
   const temperature = 0.2;
 
   it('Gemini Flash', async () => {
     updateServiceConfig('ai-studio', {
       modelOverrides: {
-        cheap: 'gemini-2.0-flash-exp',
+        cheap: 'gemini-2.0-flash',
       },
       apiKey: process.env.API_KEY,
     });

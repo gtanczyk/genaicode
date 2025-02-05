@@ -178,7 +178,7 @@ function getGenModel(
     // Initialize Vertex with your Cloud project and location
     const vertex_ai = new VertexAI({ project: serviceConfig?.googleCloudProjectId });
 
-    const defaultModel = modelType === ModelType.CHEAP ? 'gemini-1.5-flash-002' : 'gemini-1.5-pro-002';
+    const defaultModel = modelType === ModelType.CHEAP ? 'gemini-2.0-flash' : 'gemini-1.5-pro-002';
     const modelOverrides = serviceConfig?.modelOverrides;
     const model =
       modelType === ModelType.CHEAP
