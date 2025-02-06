@@ -81,21 +81,18 @@ export async function executeStepContextCompression(
       return StepResult.BREAK;
     }
 
-    // Remove all items after the initial prompt
-    prompt.splice(initialPromptIndex + 1, prompt.length - initialPromptIndex - 1);
+    // Replace the initial prompt with the context compression call response
+    prompt.splice(initialPromptIndex, prompt.length - initialPromptIndex);
 
     // Add compression result to prompt
-    prompt.push({ type: 'assistant', functionCalls: [compressContextCall] });
     prompt.push({
       type: 'user',
-      functionResponses: [
-        {
-          call_id: compressContextCall.id,
-          name: 'compressContext',
-          content: '',
-        },
-      ],
-      cache: true,
+      itemId: 'INITIAL_PROMPT',
+      text:
+        'Here is summary of our conversation:\n' +
+        compressContextCall.args!.codegenIntent +
+        '\n\n' +
+        compressContextCall.args!.conversationSummary,
     });
 
     // Ensure context
