@@ -41,13 +41,11 @@ Required Information to Preserve:
 
 Format your response as a structured JSON object with:
 - conversationSummary: Detailed summary preserving rich context of the conversation's progression and key decisions
-- codegenIntent: Comprehensive description of the primary goal, constraints, and special requirements
 - filePaths: Array of file paths that are critical for the task (no file contents, just paths)
 
 Example of good summary structure:
 {
   "conversationSummary": "Started: User requested CONTEXT_COMPRESSION_PROMPT improvement. Analysis: Current compression too aggressive (100k->100 tokens). Key Decision: Allow larger summaries (5k tokens ok). Reasoning inference revealed importance of preserving expensive operation results. Implementation: Updating compression logic in step-context-compression.ts. Requirements: 1) Less aggressive compression, 2) Rich conversation preservation, 3) No file contents in summary.",
-  "codegenIntent": "Enhance context compression to preserve more information (up to 5k tokens) while maintaining efficiency. Focus on rich conversation details, especially expensive operations like reasoning inference. Exclude file contents from summary/intent, using filePaths instead. Goal: Better balance between compression and information preservation.",
   "filePaths": ["/path/to/relevant/files"]
 }
 
@@ -74,7 +72,11 @@ export async function executeStepContextCompression(
 
   try {
     putSystemMessage('Context compression is starting...');
-    const compressContextCall = await compressConversationHistory(generateContentFn, prompt, options);
+    const compressContextCall = await compressConversationHistory(
+      generateContentFn,
+      prompt.slice(initialPromptIndex, prompt.length),
+      options,
+    );
 
     if (!compressContextCall) {
       putSystemMessage('Context compression did not return a result');
@@ -88,11 +90,7 @@ export async function executeStepContextCompression(
     prompt.push({
       type: 'user',
       itemId: 'INITIAL_PROMPT',
-      text:
-        'Here is summary of our conversation:\n' +
-        compressContextCall.args!.codegenIntent +
-        '\n\n' +
-        compressContextCall.args!.conversationSummary,
+      text: 'This is summary of our conversation:\n\n' + compressContextCall.args!.conversationSummary,
     });
 
     // Ensure context
@@ -116,11 +114,11 @@ async function compressConversationHistory(
   options: CodegenOptions,
 ): Promise<ContextCompressionCall | undefined> {
   const summaryPrompt: PromptItem[] = [
-    ...prompt,
     {
-      type: 'user',
-      text: CONTEXT_COMPRESSION_PROMPT,
+      type: 'systemPrompt',
+      systemPrompt: CONTEXT_COMPRESSION_PROMPT,
     },
+    ...prompt,
   ];
 
   const request: GenerateContentArgs = [

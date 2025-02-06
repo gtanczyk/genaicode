@@ -6,17 +6,13 @@ import { CONTEXT_COMPRESSION_PROMPT } from '../prompt/steps/step-context-compres
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
-import { getSystemPrompt } from '../prompt/systemprompt.js';
 import {
   INITIAL_GREETING,
   READY_TO_ASSIST,
   REQUEST_SOURCE_CODE,
   SOURCE_CODE_RESPONSE,
 } from '../prompt/static-prompts.js';
-import {
-  MOCK_SOURCE_CODE_SUMMARIES_LARGE,
-  MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-} from './data/mock-source-code-summaries-large.js';
+import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summaries-large.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { ContextCompressionCall } from '../prompt/function-defs/context-compression.js';
 import { validateLLMContent } from './test-utils/llm-content-validate.js';
@@ -28,16 +24,9 @@ async function validateCompressedContext(
   result: ContextCompressionCall,
   {
     summaryExpectation,
-    intentExpectation,
     expectedFiles = [],
   }: {
     summaryExpectation: {
-      description: string;
-      requiredElements: string[];
-      forbiddenElements?: string[];
-      tone?: string;
-    };
-    intentExpectation: {
       description: string;
       requiredElements: string[];
       forbiddenElements?: string[];
@@ -53,14 +42,8 @@ async function validateCompressedContext(
     cheap: true,
   });
 
-  // Validate codegen intent
-  const intentValid = await validateLLMContent(generateContent, result.args!.codegenIntent, intentExpectation, {
-    cheap: true,
-  });
-
   // Assert the result
   expect.soft(summaryValid).toBe(true);
-  expect.soft(intentValid).toBe(true);
   expect.soft(result.args!.filePaths).toEqual(expectedFiles.length > 0 ? expect.arrayContaining(expectedFiles) : []);
 }
 
@@ -94,12 +77,6 @@ describe.each([
             description: 'A concise summary of a greeting conversation',
             requiredElements: ['greeting', 'initial interaction'],
             forbiddenElements: ['code', 'implementation', 'file'],
-            tone: 'neutral',
-          },
-          intentExpectation: {
-            description: 'The primary goal identified from the conversation',
-            requiredElements: ['initial contact', 'no specific task'],
-            forbiddenElements: ['implementation', 'code changes'],
             tone: 'neutral',
           },
         }),
@@ -138,11 +115,6 @@ describe.each([
           summaryExpectation: {
             description: 'A summary of a conversation about updating validation logic',
             requiredElements: ['validation', 'update', 'implementation'],
-            tone: 'technical',
-          },
-          intentExpectation: {
-            description: 'The identified goal to update validation logic',
-            requiredElements: ['update', 'validation', 'implementation'],
             tone: 'technical',
           },
           expectedFiles: [
@@ -186,11 +158,6 @@ describe.each([
           summaryExpectation: {
             description: 'A summary of a conversation about improving error handling',
             requiredElements: ['error handling', 'API', 'improvement'],
-            tone: 'technical',
-          },
-          intentExpectation: {
-            description: 'The goal to improve API error handling',
-            requiredElements: ['improve', 'error handling', 'API'],
             tone: 'technical',
           },
           expectedFiles: ['/project/src/todo-app/api/api-manager.ts'],
@@ -237,11 +204,6 @@ describe.each([
             requiredElements: ['authentication', 'security', 'review', 'issues'],
             tone: 'technical',
           },
-          intentExpectation: {
-            description: 'The goal to fix authentication security issues',
-            requiredElements: ['fix', 'authentication', 'security'],
-            tone: 'technical',
-          },
           expectedFiles: ['/project/src/auth/authentication.ts'],
         }),
     },
@@ -278,31 +240,13 @@ describe.each([
             requiredElements: ['task categories', 'implementation', 'feature'],
             tone: 'technical',
           },
-          intentExpectation: {
-            description: 'The goal to add task categories support',
-            requiredElements: ['add', 'task categories', 'implementation'],
-            tone: 'technical',
-          },
           expectedFiles: ['/project/src/todo-app/tasks/task-manager.ts'],
         }),
     },
   ])('$name', async ({ prompt, validate }) => {
     // Prepare the test prompt
     const testPrompt: PromptItem[] = [
-      {
-        type: 'systemPrompt',
-        systemPrompt: getSystemPrompt(
-          { rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR },
-          {
-            askQuestion: true,
-            ui: true,
-            allowFileCreate: true,
-            allowFileDelete: true,
-            allowDirectoryCreate: true,
-            allowFileMove: true,
-          },
-        ),
-      },
+      { type: 'systemPrompt', systemPrompt: CONTEXT_COMPRESSION_PROMPT },
       { type: 'user', text: INITIAL_GREETING },
       {
         type: 'assistant',
@@ -324,10 +268,6 @@ describe.each([
         text: READY_TO_ASSIST,
       },
       ...prompt,
-      {
-        type: 'user',
-        text: CONTEXT_COMPRESSION_PROMPT,
-      },
     ];
 
     // Execute context compression

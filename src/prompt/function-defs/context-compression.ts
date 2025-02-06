@@ -19,10 +19,6 @@ export const compressContext: FunctionDef = {
         type: 'string',
         description: 'A concise summary of the key points from the conversation history.',
       },
-      codegenIntent: {
-        type: 'string',
-        description: 'The identified primary intent or goal of the code generation task.',
-      },
       filePaths: {
         type: 'array',
         items: {
@@ -31,7 +27,7 @@ export const compressContext: FunctionDef = {
         description: 'List of file paths that are essential for the code generation task.',
       },
     },
-    required: ['conversationSummary', 'codegenIntent', 'filePaths'],
+    required: ['conversationSummary', 'filePaths'],
   },
 };
 
@@ -43,9 +39,6 @@ export const compressContext: FunctionDef = {
 export type ContextCompressionArgs = {
   /** A concise summary of the key points from the conversation history */
   conversationSummary: string;
-
-  /** The identified primary intent or goal of the code generation task */
-  codegenIntent: string;
 
   /**
    * Optional list of file paths that are essential for the code generation task.
