@@ -8,7 +8,6 @@ import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenSummaryArgs, FileUpdate } from '../../main/codegen-types.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepGenerateImage } from './step-generate-image.js';
 import { executeStepVerifyPatch } from './step-verify-patch.js';
@@ -118,9 +117,6 @@ async function processFileUpdate(
       options,
     ];
     let partialResult = await generateContentFn(...partialRequest);
-
-    // Validate function call compliance
-    partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
 
     // Verify patch file operations
     const patchFileCall = partialResult.find((call) => call.name === 'patchFile');

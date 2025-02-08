@@ -6,7 +6,6 @@ import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepVerifyPatch(
@@ -41,9 +40,7 @@ export async function executeStepVerifyPatch(
       cheap ? ModelType.CHEAP : ModelType.DEFAULT,
       options,
     ];
-    let partialResult = await generateContentFn(...partialRequest);
-
-    partialResult = await validateAndRecoverSingleResult(partialRequest, partialResult, generateContentFn);
+    const partialResult = await generateContentFn(...partialRequest);
 
     const getSourceCodeCall = partialResult.find((call) => call.name === 'getSourceCode');
     if (getSourceCodeCall) {

@@ -10,7 +10,6 @@ import { getFunctionDefs } from '../function-calling.js';
 import { md5, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { estimateTokenCount } from '../token-estimator.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { refreshFiles } from '../../files/find-files.js';
 import { summaryCache, SummaryInfo, CACHE_VERSION } from '../../files/summary-cache.js';
 
@@ -142,8 +141,7 @@ async function summarizeBatch(
 
     const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
     const request: GenerateContentArgs = [prompt, getFunctionDefs(), 'setSummaries', 0.2, ModelType.CHEAP, options];
-    let result = await generateContentFn(...request);
-    result = await validateAndRecoverSingleResult(request, result, generateContentFn);
+    const result = await generateContentFn(...request);
 
     const batchSummaries = parseSummarizationResult(result);
     batchSummaries.forEach((file) => {

@@ -8,7 +8,6 @@ import { getExpandedContextPaths } from '../../../../files/source-code-utils.js'
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { validateAndRecoverSingleResult } from '../../step-validate-recover.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -181,8 +180,7 @@ export async function generateRequestFilesContentCall(
     modelType,
     options,
   ] as GenerateContentArgs;
-  const result = await generateContentFn(...req);
-  const [requestFilesContentCall] = (await validateAndRecoverSingleResult(req, result, generateContentFn)) as [
+  const [requestFilesContentCall] = (await generateContentFn(...req)) as [
     FunctionCall<RequestFilesContentArgs> | undefined,
   ];
 

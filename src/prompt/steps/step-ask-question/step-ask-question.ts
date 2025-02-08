@@ -8,7 +8,6 @@ import { ModelType } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
 import { abortController } from '../../../main/common/abort-controller.js';
-import { validateAndRecoverSingleResult } from '../step-validate-recover.js';
 import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import { handleRequestFilesContent } from './handlers/request-files-content.js';
 import { handleContextOptimization } from './handlers/context-optimization.js';
@@ -124,9 +123,7 @@ async function getAskQuestionCall(
     ModelType.CHEAP,
     options,
   ];
-  let askQuestionResult = await generateContentFn(...askQuestionRequest);
-  askQuestionResult = await validateAndRecoverSingleResult(askQuestionRequest, askQuestionResult, generateContentFn);
-
+  const askQuestionResult = await generateContentFn(...askQuestionRequest);
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }
 

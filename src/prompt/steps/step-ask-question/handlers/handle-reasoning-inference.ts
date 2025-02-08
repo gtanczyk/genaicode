@@ -2,7 +2,6 @@ import { FunctionCall, GenerateContentArgs } from '../../../../ai-service/common
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { validateAndRecoverSingleResult } from '../../step-validate-recover.js';
 import {
   ActionResult,
   ActionHandlerProps,
@@ -40,10 +39,7 @@ export async function handleReasoningInference({
       options,
     ];
 
-    const result = await generateContentFn(...request);
-    const [reasoningInferenceCall] = (await validateAndRecoverSingleResult(request, result, generateContentFn)) as [
-      ReasoningInferenceCall | undefined,
-    ];
+    const [reasoningInferenceCall] = (await generateContentFn(...request)) as [ReasoningInferenceCall | undefined];
 
     if (!reasoningInferenceCall?.args?.prompt) {
       putSystemMessage('Failed to get valid reasoningInference request');

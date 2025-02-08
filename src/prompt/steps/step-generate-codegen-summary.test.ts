@@ -78,63 +78,12 @@ describe('generateCodegenSummary', () => {
     expect(mockGenerateContentFn).toHaveBeenCalledTimes(1);
   });
 
-  it('should handle validation and recovery of invalid codegen summary', async () => {
-    const invalidCodegenSummary: FunctionCall = {
-      name: 'codegenSummary',
-      args: {
-        // Missing required fields
-      },
-    };
-
-    const validCodegenSummary: FunctionCall = {
-      name: 'codegenSummary',
-      args: {
-        explanation: 'Recovered explanation',
-        fileUpdates: [],
-        contextPaths: [],
-      },
-    };
-
-    mockGenerateContentFn.mockResolvedValueOnce([invalidCodegenSummary]).mockResolvedValueOnce([validCodegenSummary]);
-
-    const result = await generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions);
-
-    expect(result.codegenSummaryRequest).toEqual(validCodegenSummary);
-    expect(mockGenerateContentFn).toHaveBeenCalledTimes(2);
-  });
-
   it('should handle errors in generate content function', async () => {
     mockGenerateContentFn.mockRejectedValueOnce(new Error('Test error'));
 
     await expect(
       generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions),
     ).rejects.toThrow('Test error');
-  });
-
-  it('should handle no codegen summary in response', async () => {
-    mockGenerateContentFn
-      .mockResolvedValueOnce([
-        {
-          name: 'explanation',
-          args: { text: 'No changes needed' },
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          name: 'explanation',
-          args: { text: 'No changes needed' },
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          name: 'explanation',
-          args: { text: 'No changes needed' },
-        },
-      ]);
-
-    await expect(
-      generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions),
-    ).rejects.toThrow('Recovery failed');
   });
 
   it('should add response to prompt history', async () => {

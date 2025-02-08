@@ -3,7 +3,6 @@ import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { ContextCompressionCall } from '../function-defs/context-compression.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
 
@@ -237,7 +236,6 @@ async function compressConversationHistory(
     options,
   ];
 
-  let result = (await generateContentFn(...request)) as [ContextCompressionCall];
-  result = (await validateAndRecoverSingleResult(request, result, generateContentFn)) as [ContextCompressionCall];
+  const result = (await generateContentFn(...request)) as [ContextCompressionCall];
   return result[0];
 }

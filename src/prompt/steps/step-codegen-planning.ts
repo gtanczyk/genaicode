@@ -6,7 +6,6 @@ import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenPlanningArgs } from '../../main/codegen-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { StepResult } from './steps-types.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
 import { getRegisteredPlanningPreHooks, getRegisteredPlanningPostHooks } from '../../main/plugin-loader.js';
@@ -59,8 +58,7 @@ export async function executeStepCodegenPlanning(
   ];
 
   try {
-    let planningResult = await generateContentFn(...planningRequest);
-    planningResult = await validateAndRecoverSingleResult(planningRequest, planningResult, generateContentFn);
+    const planningResult = await generateContentFn(...planningRequest);
 
     let codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
 

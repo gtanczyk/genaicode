@@ -11,7 +11,6 @@ import { FileContent } from '../../files/source-code-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 import { importantContext } from '../../main/config.js';
 import { getSummary } from '../../files/summary-cache.js';
@@ -124,8 +123,7 @@ export async function executeStepContextOptimization(
       ModelType.CHEAP,
       options,
     ];
-    let result = await generateContentFn(...request);
-    result = await validateAndRecoverSingleResult(request, result, generateContentFn);
+    const result = await generateContentFn(...request);
 
     const [optimizedContext, irrelevantFiles] = parseOptimizationResult(fullSourceCode, result);
     if (!optimizedContext) {

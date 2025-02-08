@@ -4,7 +4,6 @@ import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenSummaryArgs } from '../../main/codegen-types.js';
-import { validateAndRecoverSingleResult } from './step-validate-recover.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { executeStepEnsureContext } from './step-ensure-context.js';
 import { StepResult } from './steps-types.js';
@@ -44,8 +43,7 @@ export async function generateCodegenSummary(
     options,
   ];
 
-  let baseResult = await generateContentFn(...baseRequest);
-  baseResult = await validateAndRecoverSingleResult(baseRequest, baseResult, generateContentFn);
+  const baseResult = await generateContentFn(...baseRequest);
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary') as
     | FunctionCall<CodegenSummaryArgs>
     | undefined;

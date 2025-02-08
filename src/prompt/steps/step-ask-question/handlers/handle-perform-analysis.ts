@@ -12,7 +12,6 @@ import {
 import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
 import { performAnalysis } from '../../../function-defs/perform-analysis.js';
 import { analysisResult } from '../../../function-defs/analysis-result.js';
-import { validateAndRecoverSingleResult } from '../../step-validate-recover.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForInput } from '../../../../main/common/user-actions.js';
 
@@ -110,13 +109,7 @@ async function getPerformAnalysisCall(
     ModelType.CHEAP,
     options,
   ];
-  let performAnalysisResult = await generateContentFn(...performAnalysisRequest);
-  performAnalysisResult = await validateAndRecoverSingleResult(
-    performAnalysisRequest,
-    performAnalysisResult,
-    generateContentFn,
-  );
-
+  const performAnalysisResult = await generateContentFn(...performAnalysisRequest);
   return performAnalysisResult.find((call) => call.name === 'performAnalysis') as PerformAnalysisCall | undefined;
 }
 
@@ -137,8 +130,6 @@ async function executeAnalysis(
     ModelType.DEFAULT,
     options,
   ];
-  let analysisResult = await generateContentFn(...analysisRequest);
-  analysisResult = await validateAndRecoverSingleResult(analysisRequest, analysisResult, generateContentFn);
-
+  const analysisResult = await generateContentFn(...analysisRequest);
   return analysisResult.find((call) => call.name === 'analysisResult') as AnalysisResultCall | undefined;
 }
