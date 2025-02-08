@@ -179,6 +179,8 @@ export async function handleCodeGeneration({
     } else {
       putUserMessage(confirmApply.answer || 'Reject code changes.');
 
+      putSystemMessage('Rejecting code changes...');
+
       prompt.push(
         {
           type: 'assistant',
