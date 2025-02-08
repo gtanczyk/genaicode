@@ -4,6 +4,7 @@ import { putSystemMessage } from '../main/common/content-bus.js';
 import { askUserForConfirmation } from '../main/common/user-actions.js';
 import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
+import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
 
 export async function handleAiServiceFallback(
   generateContentFns: Record<AiServiceType, GenerateContentFunction>,
@@ -19,7 +20,11 @@ export async function handleAiServiceFallback(
 
     try {
       const result = await generateContentFns[options.aiService](...args);
-      return result;
+
+      // Attempt to validate and recover the result if necessary
+      // If validation/recovery fails we'll handle it in the outer catch
+      const validatedResult = await validateAndRecoverSingleResult(args, result, generateContentFns[options.aiService]);
+      return validatedResult;
     } catch (error) {
       if (error instanceof Error) {
         // Check if the error is due to an interruption

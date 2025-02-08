@@ -5,9 +5,14 @@ import { FunctionCall } from '../ai-service/common-types';
 import { ModelType } from '../ai-service/common-types';
 import { CodegenOptions } from '../main/codegen-types';
 import { askUserForConfirmation } from '../main/common/user-actions';
+import { validateAndRecoverSingleResult } from './steps/step-validate-recover';
 
 vi.mock('../main/common/user-actions', () => ({
   askUserForConfirmation: vi.fn(),
+}));
+
+vi.mock('./steps/step-validate-recover', () => ({
+  validateAndRecoverSingleResult: vi.fn(),
 }));
 
 describe('handleAiServiceFallback', () => {
@@ -32,6 +37,9 @@ describe('handleAiServiceFallback', () => {
     const expectedFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
     (mockGenerateContent as Mock).mockResolvedValueOnce(expectedFunctionCalls);
 
+    // Mock validation to succeed
+    vi.mocked(validateAndRecoverSingleResult).mockResolvedValue(expectedFunctionCalls);
+
     // Mock user confirmation to always return true
     vi.mocked(askUserForConfirmation).mockResolvedValue({ confirmed: true });
 
@@ -54,6 +62,11 @@ describe('handleAiServiceFallback', () => {
 
     expect(result).toEqual(expectedFunctionCalls);
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(validateAndRecoverSingleResult).toHaveBeenCalledWith(
+      [[], [], null, 0.5, ModelType.DEFAULT, mockOptions],
+      expectedFunctionCalls,
+      mockGenerateContent,
+    );
   });
 
   it('does not retry if disableAiServiceFallback is true', async () => {
@@ -87,5 +100,80 @@ describe('handleAiServiceFallback', () => {
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
     expect(options.aiService).toEqual('openai');
+  });
+
+  it('handles validation failure and retries with user confirmation', async () => {
+    // Mock the first AI service call to succeed but with invalid result
+    const invalidFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidFunctionCalls);
+
+    // Mock validation to fail first time
+    vi.mocked(validateAndRecoverSingleResult).mockRejectedValueOnce(new Error('Validation failed'));
+
+    // Mock user confirmation to retry
+    vi.mocked(askUserForConfirmation).mockResolvedValue({ confirmed: true });
+
+    // Mock the second AI service call to succeed with valid result
+    const validFunctionCalls: FunctionCall[] = [{ name: 'test', args: { valid: true } }];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(validFunctionCalls);
+
+    // Mock validation to succeed second time
+    vi.mocked(validateAndRecoverSingleResult).mockResolvedValueOnce(validFunctionCalls);
+
+    const result = await handleAiServiceFallback(
+      {
+        openai: mockGenerateContent,
+        anthropic: mockGenerateContent,
+        'vertex-ai': mockGenerateContent,
+        'ai-studio': mockGenerateContent,
+        'vertex-ai-claude': mockGenerateContent,
+      },
+      mockOptions,
+      [],
+      [],
+      null,
+      0.5,
+      ModelType.DEFAULT,
+      mockOptions,
+    );
+
+    expect(result).toEqual(validFunctionCalls);
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(validateAndRecoverSingleResult).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws error when validation fails and user declines retry', async () => {
+    // Mock the AI service call to succeed but with invalid result
+    const invalidFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidFunctionCalls);
+
+    // Mock validation to fail
+    const validationError = new Error('Validation failed');
+    vi.mocked(validateAndRecoverSingleResult).mockRejectedValueOnce(validationError);
+
+    // Mock user confirmation to decline retry
+    vi.mocked(askUserForConfirmation).mockResolvedValue({ confirmed: false });
+
+    await expect(
+      handleAiServiceFallback(
+        {
+          openai: mockGenerateContent,
+          anthropic: mockGenerateContent,
+          'vertex-ai': mockGenerateContent,
+          'ai-studio': mockGenerateContent,
+          'vertex-ai-claude': mockGenerateContent,
+        },
+        mockOptions,
+        [],
+        [],
+        null,
+        0.5,
+        ModelType.DEFAULT,
+        mockOptions,
+      ),
+    ).rejects.toThrow('Validation failed');
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    expect(validateAndRecoverSingleResult).toHaveBeenCalledTimes(1);
   });
 });
