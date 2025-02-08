@@ -11,33 +11,140 @@ export const CONTEXT_COMPRESSION_PROMPT = `Analyze the conversation history and 
 
 Key Principles:
 1. Preserve Rich Context: Maintain detailed information about the conversation, especially for expensive operations like reasoning inference, code analysis, or complex decision-making.
-2. Token Efficiency: Aim for a meaningful compression (e.g., 5k tokens for a 100k token conversation) without being overly aggressive.
+2. Token Efficiency: Target a 50-80% reduction in tokens while preserving critical information. For example:
+   - Long conversations (>50k tokens): Aim for 75-80% reduction
+   - Medium conversations (10k-50k tokens): Aim for 60-75% reduction
+   - Short conversations (<10k tokens): Aim for 50-60% reduction
 3. File Handling: Do not include file contents in the summary - use filePaths array for this purpose.
 4. Temporal Context: Preserve chronological progression of important decisions and changes.
 
 Required Information to Preserve:
+
 1. Conversation Flow:
-   - Initial problem statement or task
-   - Key questions asked and answers received
-   - Important decisions made and their rationale
+   **High Priority:**
+   - Initial problem statement and core requirements
    - Results of expensive operations (reasoning inference, analysis)
-   - Critical user preferences or constraints
-   - Any errors or issues encountered
+   - Key architectural and design decisions with rationale
+   - Critical constraints or requirements
+   - Major changes in direction or approach
+
+   **Medium Priority:**
+   - Important clarifying questions and answers
+   - User preferences affecting implementation
+   - Significant technical discussions
+   - Error handling requirements
+
+   **Optional:**
+   - General feedback or observations
+   - Minor clarifications
+   - Non-critical issues encountered
+   - Routine confirmations
 
 2. Technical Details:
-   - Code changes proposed or implemented
-   - Architecture decisions
-   - Performance considerations
-   - Security implications
-   - Dependencies identified
+   **High Priority:**
+   - Specific code changes proposed or implemented
+   - Critical architectural decisions
+   - Security considerations
+   - Performance requirements
+   - Core dependencies and their relationships
+
+   **Medium Priority:**
    - Testing requirements
+   - Code organization decisions
+   - Implementation patterns chosen
+   - File structure changes
+
+   **Optional:**
+   - Alternative approaches considered
+   - Code style preferences
+   - Non-critical optimizations
+   - Documentation suggestions
 
 3. Implementation Status:
-   - Current stage of development
+   **High Priority:**
+   - Current development stage
+   - Blocking issues or challenges
+   - Critical validation results
+   - Required next steps
+
+   **Medium Priority:**
    - Completed steps
    - Pending tasks
-   - Known issues or challenges
-   - Validation results
+   - Test results
+
+   **Optional:**
+   - Nice-to-have features
+   - Non-blocking improvements
+   - Future considerations
+
+Priority Conflict Resolution:
+1. When multiple items compete for inclusion:
+   - Always preserve items marked as "High Priority"
+   - Include "Medium Priority" items if they directly relate to "High Priority" items
+   - Include "Optional" items only if they provide crucial context for "High Priority" items
+2. When facing token limits:
+   - First, compress or remove "Optional" items
+   - Then, selectively compress "Medium Priority" items
+   - Finally, if necessary, compress (but never remove) "High Priority" items
+3. When items span multiple categories:
+   - Preserve items that appear in multiple "High Priority" sections
+   - Combine related items to reduce redundancy while maintaining context
+
+Deduplication Guidance:
+1. Identify and remove redundant information:
+   Example - Before:
+   "User asked about error handling. Assistant explained error handling approach. User requested clarification about error handling. Assistant provided more details about error handling."
+   After:
+   "Discussion of error handling approach: Initial explanation followed by clarification of specific details."
+
+2. Merge related technical decisions:
+   Example - Before:
+   "Decided to use async/await. Later discussed error handling with try/catch. Then added discussion about Promise rejection handling."
+   After:
+   "Implemented asynchronous operations using async/await pattern, incorporating comprehensive error handling (try/catch and Promise rejections)."
+
+3. Combine similar requirements:
+   Example - Before:
+   "Need to handle network errors. Should retry failed requests. Must implement timeout for requests. Should handle offline mode."
+   After:
+   "Network handling requirements: Error recovery with retries, request timeouts, and offline mode support."
+
+File Path Inclusion Criteria:
+1. Always Include:
+   - Files directly targeted for modification
+   - Files containing code being analyzed or referenced
+   - Critical dependencies of modified files
+   - Configuration files affecting the changes
+
+2. Include Based on Context:
+   - Files containing relevant examples or patterns
+   - Test files for affected components
+   - Related documentation files
+
+3. Do Not Include:
+   - Files only mentioned in passing
+   - Deprecated or unused files
+   - Files from rejected approaches
+   - Files outside the current task scope
+
+Handling Complex Technical Discussions:
+1. For Code Analysis:
+   - Preserve detailed reasoning about algorithmic choices
+   - Keep performance considerations and trade-offs
+   - Maintain security-related discussions
+   - Retain architectural decisions and their rationale
+
+2. For Multi-File Dependencies:
+   - Document relationships between files
+   - Preserve dependency chain reasoning
+   - Keep critical implementation order requirements
+   - Maintain context about shared components
+
+3. For Technical Decisions:
+   - Preserve core decision points and rationale
+   - Keep relevant constraints and requirements
+   - Maintain important trade-off discussions
+   - Retain technical debt considerations
 
 Format your response as a structured JSON object with:
 - conversationSummary: Detailed summary preserving rich context of the conversation's progression and key decisions

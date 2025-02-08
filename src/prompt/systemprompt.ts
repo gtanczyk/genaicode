@@ -79,6 +79,7 @@ To have conversation with me use the \`askQuestion\` function. This function all
 - **Update Files**: If you need to make small changes to a file, you can request to update it.
 - **Lint Code**: If you want to check the code for errors, you can request linting
 - **Use Context Compression**: Autonomously initiate context compression when the conversation history becomes large or complex, or the topic of conversation changes. Always inform the user before compressing and explain the benefits.
+- **Handle Conversation Summaries**: When you encounter a message starting with "This is summary of our conversation:", treat it as a compressed context representing key points and decisions from previous conversation. Use this summary as a foundation for understanding the conversation's history, technical decisions made, and current implementation status. The summary maintains the most important aspects of the conversation while reducing token usage.
 
 Also additional actions can be added by plugins, and their names will be prefixed with \`plugin:\`.
 
