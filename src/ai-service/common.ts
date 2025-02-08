@@ -50,7 +50,13 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
 
   console.log('  - Estimated cost: ', totalCost.toFixed(6), ' USD');
 
-  collectCost(totalCost, usage.inputTokens ?? 0, usage.outputTokens ?? 0, costInfo.aiService, modelType);
+  collectCost(
+    totalCost,
+    (usage.totalTokens ?? 0) - (usage.outputTokens ?? 0),
+    usage.outputTokens ?? 0,
+    costInfo.aiService,
+    modelType,
+  );
 }
 
 /**

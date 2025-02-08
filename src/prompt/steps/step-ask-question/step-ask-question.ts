@@ -29,6 +29,7 @@ import { handlePushAppContext } from './handlers/handle-push-app-context.js';
 import { handleReasoningInference } from './handlers/handle-reasoning-inference.js';
 import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
 import { handleContextCompression } from './handlers/handle-context-compression.js';
+import { getUsageMetrics } from '../../../main/common/cost-collector.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -43,14 +44,17 @@ export async function executeStepAskQuestion(
 
   while (!abortController?.signal.aborted) {
     try {
+      // Calculate context size using the total tokens per day (this is not a perfect metric, but it's a good approximation)
+      const lastTokenCount = getUsageMetrics().total.tpd;
       const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
+      const totalTokens = getUsageMetrics().total.tpd - lastTokenCount;
 
       if (!askQuestionCall) {
         break;
       }
 
       if (askQuestionCall.args?.message) {
-        putAssistantMessage(askQuestionCall.args.message, askQuestionCall.args);
+        putAssistantMessage(askQuestionCall.args.message, { ...askQuestionCall.args, contextSize: totalTokens });
       }
 
       const actionType = askQuestionCall.args?.actionType;

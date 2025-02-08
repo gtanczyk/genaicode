@@ -221,7 +221,11 @@ export const generateContent: GenerateContentFunction = async function generateC
       cacheReadTokens: response!.usage.cache_read_input_tokens,
       inputTokens: response!.usage.input_tokens,
       outputTokens: response!.usage.output_tokens,
-      totalTokens: response!.usage.input_tokens + response!.usage.output_tokens,
+      totalTokens:
+        response!.usage.input_tokens +
+        response!.usage.output_tokens +
+        (response!.usage.cache_creation_input_tokens ?? 0) +
+        (response!.usage.cache_read_input_tokens ?? 0),
     };
     printTokenUsageAndCost({
       aiService: 'anthropic',

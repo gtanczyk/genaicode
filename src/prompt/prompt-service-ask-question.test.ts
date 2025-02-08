@@ -14,6 +14,7 @@ import { getCodeGenPrompt } from './prompt-codegen.js';
 import { CodegenPlanningArgs, ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { registerUserActionHandlers } from '../main/interactive/user-action-handlers.js';
+import '../main/common/cost-collector.js';
 
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({
@@ -55,6 +56,10 @@ vi.mock('../main/config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+}));
+
+vi.mock('../main/common/cost-collector.js', () => ({
+  getUsageMetrics: () => ({ total: { tpd: 0 } }),
 }));
 
 const GENERATE_CONTENT_FNS = { 'vertex-ai': vertexAi.generateContent } as Record<
