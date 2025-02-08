@@ -49,6 +49,7 @@ export async function handleRequestFilesContent({
   const alreadyProvidedFiles = requestedFiles.filter((file) => isFileContentAlreadyProvided(file, prompt));
 
   if (alreadyProvidedFiles.length === requestedFiles.length) {
+    putSystemMessage('All requested files are already provided');
     // All requested files are already provided
     prompt.push(
       {
@@ -149,6 +150,12 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
     ],
     cache: true,
   };
+
+  putSystemMessage('Providing files content', {
+    requestedFiles,
+    legitimateFiles,
+    illegitimateFiles,
+  });
 
   prompt.push(assistant, user);
 
