@@ -11,7 +11,7 @@ import { verifySourceCodeLimit } from '../prompt/limits.js';
 import { getSummary } from './summary-cache.js';
 import { GENAICODERC_SCHEMA } from '../main/config-schema.js';
 import { SourceCodeMap } from './source-code-types.js';
-import { md5 } from './cache-file.js';
+import { generateFileId } from './file-id-utils.js';
 
 type ImageAssetsMap = Record<
   string,
@@ -46,7 +46,7 @@ function readSourceFiles(
       if (importantFiles.has(file)) {
         const content = readFileContent(file);
         sourceCode[file] = {
-          fileId: md5(file),
+          fileId: generateFileId(file),
           content,
           dependencies: summary?.dependencies,
         };
@@ -59,11 +59,11 @@ function readSourceFiles(
         if (!relativePath.startsWith(contentMask)) {
           sourceCode[file] = summary
             ? {
-                fileId: md5(file),
+                fileId: generateFileId(file),
                 summary: summary.summary,
                 ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
               }
-            : { fileId: md5(file), content: null };
+            : { fileId: generateFileId(file), content: null };
 
           continue;
         }
@@ -73,15 +73,15 @@ function readSourceFiles(
         sourceCode[file] =
           !ignorePatterns?.some((pattern) => globRegex(pattern).test(file)) && summary
             ? {
-                fileId: md5(file),
+                fileId: generateFileId(file),
                 summary: summary.summary,
                 ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
               }
-            : { fileId: md5(file), content: null };
+            : { fileId: generateFileId(file), content: null };
       } else {
         const content = readFileContent(file);
         sourceCode[file] = {
-          fileId: md5(file),
+          fileId: generateFileId(file),
           content,
           dependencies: summary?.dependencies,
         };
@@ -118,7 +118,7 @@ export function getSourceCode(
 
   if (taskFile && !sourceCode[taskFile]) {
     sourceCode[taskFile] = {
-      fileId: md5(taskFile),
+      fileId: generateFileId(taskFile),
       content: readFileContent(taskFile),
     };
   }

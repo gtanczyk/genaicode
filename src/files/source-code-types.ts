@@ -29,4 +29,7 @@ export interface FileSummary {
   /** Optional list of dependencies */
   dependencies?: DependencyInfo[];
 }
-export type SourceCodeMap = Record<string, { fileId: string } & (FileContent | FileSummary)>;
+
+export type FileId = string & { readonly __fileId: true };
+
+export type SourceCodeMap = Record<string, { fileId: FileId } & (FileContent | FileSummary)>;

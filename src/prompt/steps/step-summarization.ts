@@ -4,7 +4,7 @@ import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { SourceCodeMap } from '../../files/source-code-types.js';
+import { FileId, SourceCodeMap } from '../../files/source-code-types.js';
 import { DependencyInfo } from '../../files/source-code-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { md5, writeCache } from '../../files/cache-file.js';
@@ -12,6 +12,7 @@ import { putSystemMessage } from '../../main/common/content-bus.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { refreshFiles } from '../../files/find-files.js';
 import { summaryCache, SummaryInfo, CACHE_VERSION } from '../../files/summary-cache.js';
+import { generateFileId } from '../../files/file-id-utils.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
@@ -34,10 +35,11 @@ For dependencies:
 - Classify dependencies as either 'local' or 'external'
 - Provide your response using the \`setSummaries\` function.
 - The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
+- Deduplicate dependencies if they are repeated in the code
 `;
 
 export function getSummarizationPrefix(
-  items: { path: string; content: string | null }[],
+  items: { path: string; content: string | null; fileId: FileId }[],
   allFilePaths: string[],
 ): PromptItem[] {
   return [
@@ -59,7 +61,7 @@ export function getSummarizationPrefix(
         {
           name: 'getSourceCode',
           content: JSON.stringify(
-            Object.fromEntries(allFilePaths.map((path) => [path, { fileId: md5(path), content: null }])),
+            Object.fromEntries(allFilePaths.map((path) => [path, { fileId: generateFileId(path), content: null }])),
           ),
         },
       ],
@@ -92,7 +94,9 @@ export function getSummarizationPrefix(
         {
           name: 'getSourceCode',
           content: JSON.stringify(
-            Object.fromEntries(items.map((item) => [item.path, { fileId: md5(item.path), content: item.content }])),
+            Object.fromEntries(
+              items.map((item) => [item.path, { fileId: generateFileId(item.path), content: item.content }]),
+            ),
           ),
         },
       ],
@@ -109,6 +113,7 @@ export async function summarizeSourceCode(
     path,
     content: 'content' in file ? file.content : null,
     dependencies: 'dependencies' in file ? file.dependencies : undefined,
+    fileId: file.fileId,
   }));
 
   await summarizeBatch(generateContentFn, items, sourceCode, options);
@@ -118,7 +123,7 @@ export async function summarizeSourceCode(
 
 async function summarizeBatch(
   generateContentFn: GenerateContentFunction,
-  items: { path: string; content: string | null; dependencies?: DependencyInfo[] }[],
+  items: { path: string; content: string | null; dependencies?: DependencyInfo[]; fileId: FileId }[],
   allSourceCodeMap: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {

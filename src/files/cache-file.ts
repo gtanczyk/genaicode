@@ -36,6 +36,8 @@ function writeCacheFile(content: Record<string, unknown>): void {
   fs.writeFileSync(path.join(cacheDirectory, getCacheFileName()), JSON.stringify(content), 'utf-8');
 }
 
-export function md5(content: string): string {
-  return crypto.createHash('md5').update(content).digest('hex');
+export type CacheChecksum = string & { readonly __cacheChecksum: true };
+
+export function md5(content: string): CacheChecksum {
+  return crypto.createHash('md5').update(content).digest('hex') as CacheChecksum;
 }

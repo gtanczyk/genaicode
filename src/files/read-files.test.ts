@@ -8,6 +8,7 @@ import { verifySourceCodeLimit } from '../prompt/limits.js';
 import * as cliParams from '../cli/cli-params.js';
 import { rcConfig } from '../main/config.js';
 import { getSummary } from './summary-cache.js';
+import { generateFileId } from './file-id-utils.js';
 
 vi.mock('fs');
 vi.mock('mime-types');
@@ -53,11 +54,11 @@ describe('read-files', () => {
 
       expect(result).toEqual({
         '/home/project/file1.js': {
-          fileId: '1c2be0004e4a4209c8832890b953831c',
+          fileId: '000001',
           summary: 'Summary of /home/project/file1.js',
         },
         '/home/project/file2.js': {
-          fileId: 'e8fd099c060a73b9fcd679a5ae2535d8',
+          fileId: '000002',
           summary: 'Summary of /home/project/file2.js',
         },
       });
@@ -78,11 +79,11 @@ describe('read-files', () => {
 
       expect(result).toEqual({
         '/home/project/file1.js': {
-          fileId: '1c2be0004e4a4209c8832890b953831c',
+          fileId: generateFileId('/home/project/file1.js'),
           summary: 'Summary of /home/project/file1.js',
         },
         '/home/project/subfolder/file2.js': {
-          fileId: 'cf14990e8f742d3ad6535b2415ccac4f',
+          fileId: generateFileId('/home/project/subfolder/file2.js'),
           summary: 'Summary of /home/project/subfolder/file2.js',
         },
       });
@@ -102,12 +103,12 @@ describe('read-files', () => {
 
       expect(result).toEqual({
         '/home/project/file1.js': {
-          fileId: '1c2be0004e4a4209c8832890b953831c',
+          fileId: generateFileId('/home/project/file1.js'),
           summary: 'Summary of /home/project/file1.js',
         },
         '/home/project/task.md': {
           content: 'Content of /home/project/task.md',
-          fileId: 'c7c3a8e1984f685d7d8a25ffbead9df9',
+          fileId: generateFileId('/home/project/task.md'),
         },
       });
     });

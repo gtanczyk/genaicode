@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-063] 2024-02-09: Token Usage Optimization - Replace MD5 with numeric file IDs
 - [-] [GEN-062] 2024-02-09: Context Size Display - iteration header shows token count
 - [x] [GEN-061] 2024-02-05: Enhanced Context Compression - autonomous compression, user confirmation
 - [-] [GEN-060] 2024-02-04: Enhanced Context Compression - file dependencies, token management

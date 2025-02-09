@@ -1,4 +1,4 @@
-import { md5 } from './cache-file.js';
+import { generateFileId } from './file-id-utils.js';
 import { SourceCodeMap } from './source-code-types.js';
 import { FileSummary } from './source-code-types.js';
 import { FileContent } from './source-code-types.js';
@@ -39,13 +39,13 @@ export function parseSourceCodeTree(sourceCodeTree: SourceCodeTree): SourceCodeM
       // Handle both content and summary cases while preserving dependencies
       if (hasContent(fileData)) {
         result[fullPath] = {
-          fileId: md5(fullPath),
+          fileId: generateFileId(fullPath),
           content: fileData.content,
           ...(fileData.dependencies && { dependencies: fileData.dependencies }),
         };
       } else if (hasSummary(fileData)) {
         result[fullPath] = {
-          fileId: md5(fullPath),
+          fileId: generateFileId(fullPath),
           summary: fileData.summary,
           ...(fileData.dependencies && { dependencies: fileData.dependencies }),
         };

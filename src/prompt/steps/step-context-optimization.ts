@@ -14,7 +14,7 @@ import { estimateTokenCount } from '../token-estimator.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 import { importantContext } from '../../main/config.js';
 import { getSummary } from '../../files/summary-cache.js';
-import { md5 } from '../../files/cache-file.js';
+import { generateFileId } from '../../files/file-id-utils.js';
 
 export const OPTIMIZATION_PROMPT = `You need to analyze the provided source code files and determine their relevance to the user's prompt. You will then call the \`optimizeContext\` function with the results.
 
@@ -306,14 +306,14 @@ function optimizeSourceCode(
     ) {
       contentTokenCount += estimateTokenCount(content);
       optimizedSourceCode[path] = {
-        fileId: md5(path),
+        fileId: generateFileId(path),
         content,
         ...(dependencies && !isIrrelevant && { dependencies }),
       };
     } else if (summary && !isIrrelevant) {
       summaryTokenCount += estimateTokenCount(summary.summary);
       optimizedSourceCode[path] = {
-        fileId: md5(path),
+        fileId: generateFileId(path),
         ...summary,
         ...(dependencies && { dependencies }),
       };

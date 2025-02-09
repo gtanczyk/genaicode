@@ -8,6 +8,7 @@ import '../../files/find-files.js';
 import { PromptItem } from '../../ai-service/common-types';
 
 import { importantContext } from '../../main/config.js';
+import { FileId } from '../../files/source-code-types';
 
 // Mock dependencies
 vi.mock('../../files/read-files');
@@ -27,6 +28,8 @@ vi.mock('../../main/config.js', () => ({
     files: ['/test/important.ts'],
   },
 }));
+
+const FILE_ID = 'id1' as FileId;
 
 describe('executeStepEnsureContext', () => {
   const mockOptions: CodegenOptions = {
@@ -51,11 +54,11 @@ describe('executeStepEnsureContext', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/file1.ts': { fileId: 'id1', content: 'content1' },
-        '/test/file2.ts': { fileId: 'id1', content: 'content2' },
-        '/test/context1.ts': { fileId: 'id1', content: 'context1' },
-        '/test/context2.ts': { fileId: 'id1', content: 'context2' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/file1.ts': { fileId: FILE_ID, content: 'content1' },
+        '/test/file2.ts': { fileId: FILE_ID, content: 'content2' },
+        '/test/context1.ts': { fileId: FILE_ID, content: 'context1' },
+        '/test/context2.ts': { fileId: FILE_ID, content: 'context2' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
 
       const prompt: PromptItem[] = [];
@@ -133,12 +136,12 @@ describe('executeStepEnsureContext', () => {
       };
 
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/main.ts': { fileId: 'id1', content: 'main content' },
-        '/test/util1.ts': { fileId: 'id1', content: 'util1 content' },
-        '/test/util2.ts': { fileId: 'id1', content: 'util2 content' },
-        '/test/component.ts': { fileId: 'id1', content: 'component content' },
-        '/test/shared.ts': { fileId: 'id1', content: 'shared content' },
-        '/test/important.ts': { fileId: 'id1', content: 'important content' },
+        '/test/main.ts': { fileId: FILE_ID, content: 'main content' },
+        '/test/util1.ts': { fileId: FILE_ID, content: 'util1 content' },
+        '/test/util2.ts': { fileId: FILE_ID, content: 'util2 content' },
+        '/test/component.ts': { fileId: FILE_ID, content: 'component content' },
+        '/test/shared.ts': { fileId: FILE_ID, content: 'shared content' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important content' },
       });
 
       const prompt: PromptItem[] = [];
@@ -239,8 +242,8 @@ describe('executeStepEnsureContext', () => {
       ];
 
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/context1.ts': { fileId: 'id1', content: 'context1' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/context1.ts': { fileId: FILE_ID, content: 'context1' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
 
       const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
@@ -282,8 +285,8 @@ describe('executeStepEnsureContext', () => {
       ];
 
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/context1.ts': { fileId: 'id1', content: 'context1' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/context1.ts': { fileId: FILE_ID, content: 'context1' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
 
       const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
@@ -311,9 +314,9 @@ describe('executeStepEnsureContext', () => {
 
       const prompt: PromptItem[] = [];
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/new1.ts': { fileId: 'id1', content: 'new1' },
-        '/test/new2.ts': { fileId: 'id1', content: 'new2' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/new1.ts': { fileId: FILE_ID, content: 'new1' },
+        '/test/new2.ts': { fileId: FILE_ID, content: 'new2' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
 
       await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);
@@ -324,9 +327,9 @@ describe('executeStepEnsureContext', () => {
       expect(prompt[1].type).toBe('user');
       expect(prompt[1].functionResponses?.[0].name).toBe('getSourceCode');
       expect(JSON.parse(prompt[1].functionResponses?.[0].content ?? '')).toEqual({
-        '/test/new1.ts': { fileId: 'id1', content: 'new1' },
-        '/test/new2.ts': { fileId: 'id1', content: 'new2' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/new1.ts': { fileId: FILE_ID, content: 'new1' },
+        '/test/new2.ts': { fileId: FILE_ID, content: 'new2' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
     });
   });
@@ -357,8 +360,8 @@ describe('executeStepEnsureContext', () => {
       ];
 
       vi.mocked(getSourceCode).mockReturnValue({
-        '/test/file1.ts': { fileId: 'id1', content: 'content1' },
-        '/test/important.ts': { fileId: 'id1', content: 'important' },
+        '/test/file1.ts': { fileId: FILE_ID, content: 'content1' },
+        '/test/important.ts': { fileId: FILE_ID, content: 'important' },
       });
 
       const result = await executeStepEnsureContext(prompt, mockCodegenSummary, mockOptions);

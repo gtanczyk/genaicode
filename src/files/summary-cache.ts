@@ -1,7 +1,7 @@
-import { readCache } from './cache-file.js';
+import { CacheChecksum, readCache } from './cache-file.js';
 import { DependencyInfo } from './source-code-types';
 
-export const CACHE_VERSION = 'v7'; // Incremented version for dependency support
+export const CACHE_VERSION = 'v8'; // Incremented version for dependency improvements
 
 export interface SummaryInfo {
   filePath: string;
@@ -14,7 +14,7 @@ export type SummaryCache = Record<
   {
     tokenCount: number;
     summary: string;
-    checksum: string;
+    checksum: CacheChecksum;
     dependencies: DependencyInfo[];
   }
 > & { _version: string };

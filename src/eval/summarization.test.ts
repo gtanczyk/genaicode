@@ -16,6 +16,7 @@ import { updateServiceConfig } from '../ai-service/service-configurations.js';
 import { SummaryInfo } from '../files/summary-cache.js';
 import { DependencyInfo } from '../files/source-code-types.js';
 import { getSummarizationPrefix } from '../prompt/steps/step-summarization.js';
+import { generateFileId } from '../files/file-id-utils.js';
 
 // Set longer timeout for LLM operations
 vi.setConfig({
@@ -47,7 +48,10 @@ describe.each([
 
   describe('Dependency Extraction', () => {
     it.each(DEPENDENCY_EXTRACTION_TEST_CASES)('$name', async ({ key, description }) => {
-      const mockSource = MOCK_SOURCE_CODE_DEPENDENCIES[key];
+      const mockSource = MOCK_SOURCE_CODE_DEPENDENCIES[key].map((item) => ({
+        ...item,
+        fileId: generateFileId(item.path),
+      }));
       // Prepare prompt items for testing
       const prompt: PromptItem[] = getSummarizationPrefix(
         mockSource.filter((item) => item.content !== null),
