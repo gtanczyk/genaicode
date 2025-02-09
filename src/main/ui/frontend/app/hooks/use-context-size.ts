@@ -7,9 +7,9 @@ import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-typ
  */
 export const formatContextSize = (tokens: number): string => {
   if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K tokens`;
+    return `Context size: ${(tokens / 1000).toFixed(1)}K tokens`;
   }
-  return `${tokens} tokens`;
+  return `Context size: ${tokens} tokens`;
 };
 
 /**
