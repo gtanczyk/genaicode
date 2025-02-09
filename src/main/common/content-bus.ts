@@ -54,7 +54,7 @@ function putMessage(
       type: type,
       flags,
       timestamp: new Date(),
-      data,
+      data: data as Record<string, unknown>,
       images,
     },
     data,
