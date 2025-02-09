@@ -10,11 +10,15 @@ const ContextSizeContainer = styled.span`
 `;
 
 interface ContextSizeDisplayProps {
-  messages: ChatMessage[];
+  messages?: ChatMessage[];
   className?: string;
 }
 
 export const ContextSizeDisplay: React.FC<ContextSizeDisplayProps> = ({ messages, className }) => {
+  if (!messages || messages.length === 0) {
+    return null;
+  }
+
   const { formattedSize } = useContextSize(messages);
 
   return <ContextSizeContainer className={className}>{formattedSize}</ContextSizeContainer>;

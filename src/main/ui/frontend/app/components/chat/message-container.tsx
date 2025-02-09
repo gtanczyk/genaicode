@@ -16,6 +16,7 @@ import {
   CancelButton,
   LoadingSpinner,
 } from './styles/message-container-styles.js';
+import { ContextSizeDisplay } from './context-size-display.js';
 import styled from 'styled-components';
 import { editMessage } from '../../api/api-client.js';
 import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
@@ -174,12 +175,19 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
         )}
 
         <MessageFooter>
-          {message.data ? (
-            <ShowDataLink onClick={() => toggleDataVisibility(message.id)}>
-              {visibleDataIds.has(message.id) ? 'Hide data' : 'Show data'}
-            </ShowDataLink>
-          ) : null}
-          <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
+          <div>
+            {message.data ? (
+              <ShowDataLink onClick={() => toggleDataVisibility(message.id)}>
+                {visibleDataIds.has(message.id) ? 'Hide data' : 'Show data'}
+              </ShowDataLink>
+            ) : null}
+          </div>
+          <div>
+            {message.timestamp && message.type === 'assistant' && message.data && 'contextSize' in message.data && (
+              <ContextSizeDisplay messages={[message]} />
+            )}
+            <MessageTimestamp>{message.timestamp.toLocaleString()}</MessageTimestamp>
+          </div>
         </MessageFooter>
         {visibleDataIds.has(message.id) && message.data ? (
           <>

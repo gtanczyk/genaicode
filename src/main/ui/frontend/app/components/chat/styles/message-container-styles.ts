@@ -78,6 +78,13 @@ export const MessageFooter = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-top: 4px;
+  gap: 8px;
+
+  > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 `;
 
 export const MessageTimestamp = styled.div`
