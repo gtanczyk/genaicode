@@ -14,6 +14,7 @@ import {
   DeleteButton,
 } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
+import { ContextSizeDisplay } from './chat/context-size-display.js';
 import { UnreadMessagesNotification } from './unread-messages-notification.js';
 import { QuestionHandler } from './question-handler.js';
 import { ProgressIndicator } from './progress-indicator.js';
@@ -163,6 +164,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
               <span className="meta">
                 {iteration.timestampStart.toLocaleString()} - {iteration.timestampEnd.toLocaleString()}
+                <ContextSizeDisplay messages={iteration.messages} />
                 {iteration.iterationId !== currentIterationId && (
                   <DeleteButton
                     onClick={() => handleDeleteIteration(iteration.iterationId)}

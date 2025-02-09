@@ -59,6 +59,9 @@ export const IterationHeader = styled.div`
     flex-direction: row;
     align-items: center;
     gap: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
@@ -73,6 +76,7 @@ export const DeleteButton = styled.button`
   font-size: 16px;
   padding: 4px;
   border-radius: 4px;
+  margin-left: 8px;
 
   &:hover {
     background-color: ${(props) => props.theme.colors.backgroundSecondary};
@@ -117,7 +121,6 @@ export const ExpandIcon = styled.span`
   }
 `;
 
-// You may need to update or remove this style if it's no longer needed
 export const ShowDataLink = styled.span`
   color: ${(props) => props.theme.colors.primary};
   cursor: pointer;

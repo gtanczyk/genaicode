@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-062] 2024-02-09: Context Size Display - iteration header shows token count
 - [x] [GEN-061] 2024-02-05: Enhanced Context Compression - autonomous compression, user confirmation
 - [-] [GEN-060] 2024-02-04: Enhanced Context Compression - file dependencies, token management
 - [-] [GEN-058] 2024-02-01: Context Compression Feature - conversation context compression

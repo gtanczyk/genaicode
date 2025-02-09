@@ -24,7 +24,7 @@ export interface ChatMessage {
   flags?: ChatMessageFlags[];
   content: string;
   timestamp: Date;
-  data?: unknown;
+  data?: Record<string, unknown>;
   images?: ChatMessageImage[];
 }
 
