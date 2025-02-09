@@ -241,29 +241,16 @@ function parseOptimizationResult(
       continue;
     }
 
-    // Calculate dependency weight (0-0.3) and add to base relevance
-    const depWeight = calculateDependencyWeight(filePath, fullSourceCode, relevantFiles);
-    const finalRelevance = Math.min(1, relevance + depWeight);
-
     const content =
       (fullSourceCode[filePath] && 'content' in fullSourceCode[filePath]
         ? fullSourceCode[filePath]?.content
         : undefined) ?? '';
+    totalTokens += estimateTokenCount(content);
 
-    // Get all dependencies for token counting
-    const allDeps = getAllDependencies(filePath, fullSourceCode);
-    const depsContent = Array.from(allDeps)
-      .map(
-        (dep) =>
-          (fullSourceCode[dep] && 'content' in fullSourceCode[dep] ? fullSourceCode[dep]?.content : undefined) ?? '',
-      )
-      .join('');
-
-    totalTokens += estimateTokenCount(content + depsContent);
-    result.push([item.filePath, finalRelevance]);
+    result.push([item.filePath, relevance]);
 
     // Break if we exceed token limit and the file isn't highly relevant
-    if (totalTokens > MAX_TOTAL_TOKENS && finalRelevance < 0.7) {
+    if (totalTokens > MAX_TOTAL_TOKENS && relevance < 0.7) {
       break;
     }
   }
@@ -285,9 +272,6 @@ function optimizeSourceCode(
   const requiredFiles = new Set<string>();
   for (const [path] of optimizedContext) {
     requiredFiles.add(path);
-    // Add all dependencies
-    const deps = getAllDependencies(path, fullSourceCode);
-    deps.forEach((dep) => requiredFiles.add(dep));
   }
 
   for (const [path] of Object.entries(fullSourceCode)) {
@@ -358,65 +342,4 @@ function clearPreviousSourceCodeResponses(prompt: PromptItem[], irrelevantFiles:
       }
     }
   }
-}
-
-/**
- * Calculate dependency chain weight for a file
- * Returns a value between 0 and 0.3 based on dependency importance
- */
-function calculateDependencyWeight(
-  filePath: string,
-  sourceCode: SourceCodeMap,
-  relevantFiles: Set<string>,
-  visited = new Set<string>(),
-): number {
-  if (visited.has(filePath)) {
-    return 0; // Prevent circular dependency loops
-  }
-  visited.add(filePath);
-
-  const fileData = sourceCode[filePath];
-  if (!fileData || !('dependencies' in fileData) || !fileData.dependencies) {
-    return 0;
-  }
-
-  let weight = 0;
-  for (const dep of fileData.dependencies) {
-    if (dep.type === 'local' && relevantFiles.has(dep.path)) {
-      // Direct dependency of a relevant file gets higher weight
-      weight = Math.max(weight, 0.2);
-      // Recursively check dependencies with diminishing weight
-      const depWeight = calculateDependencyWeight(dep.path, sourceCode, relevantFiles, visited) * 0.7;
-      weight = Math.max(weight, depWeight);
-    }
-  }
-
-  return weight;
-}
-
-/**
- * Get all dependencies for a file, including transitive ones
- */
-function getAllDependencies(filePath: string, sourceCode: SourceCodeMap, visited = new Set<string>()): Set<string> {
-  if (visited.has(filePath)) {
-    return new Set(); // Prevent circular dependency loops
-  }
-  visited.add(filePath);
-
-  const deps = new Set<string>();
-  const fileData = sourceCode[filePath];
-  if (!fileData || !('dependencies' in fileData) || !fileData.dependencies) {
-    return deps;
-  }
-
-  for (const dep of fileData.dependencies) {
-    if (dep.type === 'local') {
-      deps.add(dep.path);
-      // Add transitive dependencies
-      const transitiveDeps = getAllDependencies(dep.path, sourceCode, visited);
-      transitiveDeps.forEach((d) => deps.add(d));
-    }
-  }
-
-  return deps;
 }
