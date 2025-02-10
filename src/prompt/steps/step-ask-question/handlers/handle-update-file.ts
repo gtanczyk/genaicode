@@ -50,7 +50,7 @@ export const handleUpdateFile: ActionHandler = async ({
     putUserMessage(generateConfirmation.answer);
   }
 
-  putSystemMessage('Content generation started.', askQuestionCall);
+  putSystemMessage('Content generation started.');
 
   // Ensure file content is available in the context
   const requestedFilesCall = await generateRequestFilesContentCall(

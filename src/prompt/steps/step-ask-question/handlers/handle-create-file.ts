@@ -48,7 +48,7 @@ export const handleCreateFile: ActionHandler = async ({
     putUserMessage(generateConfirmation.answer);
   }
 
-  putSystemMessage('Content generation started.', askQuestionCall);
+  putSystemMessage('Content generation started.');
 
   const [createFileCall] = (await generateContentFn(
     [
