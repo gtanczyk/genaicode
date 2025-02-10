@@ -11,6 +11,7 @@ import { abortController } from '../../../main/common/abort-controller.js';
 import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
 import { handleRequestFilesContent } from './handlers/request-files-content.js';
 import { handleContextOptimization } from './handlers/context-optimization.js';
+import { handleRequestFilesFragments } from './handlers/handle-request-files-fragments.js';
 import { handleRemoveFilesFromContext } from './handlers/remove-files-from-context.js';
 import { handleRequestPermissions } from './handlers/request-permissions.js';
 import { handleSendMessage } from './handlers/handle-send-message.js';
@@ -144,6 +145,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     endConversation: handleEndConversation,
     confirmCodeGeneration: handleConfirmCodeGeneration,
     requestFilesContent: handleRequestFilesContent,
+    requestFilesFragments: handleRequestFilesFragments,
     requestPermissions: handleRequestPermissions,
     removeFilesFromContext: handleRemoveFilesFromContext,
     sendMessage: handleSendMessage,

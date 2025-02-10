@@ -26,6 +26,7 @@ export type ActionType =
   | 'genaicodeHelp'
   | 'pushAppContext'
   | 'reasoningInference'
+  | 'requestFilesFragments'
   | PluginActionType;
 
 type AskQuestionArgs = {
@@ -75,6 +76,13 @@ export type RequestPermissionsArgs = Record<
 
 export type RequestFilesContentArgs = {
   filePaths: string[];
+};
+
+export type RequestFilesFragmentsArgs = {
+  /** Array of file paths to extract fragments from */
+  filePaths: string[];
+  /** Prompt describing what information should be extracted from the files */
+  fragmentPrompt: string;
 };
 
 export type RemoveFilesFromContextArgs = {

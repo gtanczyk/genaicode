@@ -23,6 +23,7 @@ Detailed Explanation of actionTypes:
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
 - confirmCodeGeneration: Use to confirm with the user before starting code generation tasks.
 - endConversation: Use to stop the conversation.
+- requestFilesFragments: Use to request fragments (specific parts) of files based on a given prompt. This is useful when you need only certain sections of files, not their entire content.
 ${
   rcConfig.featuresEnabled?.appContext
     ? `- pullAppContext: Use to retrieve application context values for use in the conversation. This allows accessing shared state between the application and GenAIcode.
@@ -51,6 +52,7 @@ const actionTypeOptions: string[] = [
   'searchCode',
   'confirmCodeGeneration',
   'endConversation',
+  'requestFilesFragments',
   ...(rcConfig.featuresEnabled?.appContext ? ['pullAppContext', 'pushAppContext'] : []),
   ...(rcConfig.lintCommand ? ['lint'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
@@ -141,6 +143,31 @@ export const requestFilesContent: FunctionDef = {
       },
     },
     required: ['filePaths'],
+  },
+};
+
+// requestFilesFragments
+export const requestFilesFragments: FunctionDef = {
+  name: 'requestFilesFragments',
+  description:
+    'Use this function to request fragments of files based on a given prompt. The prompt will be used to extract relevant information from the files.',
+  parameters: {
+    type: 'object',
+    properties: {
+      filePaths: {
+        type: 'array',
+        items: {
+          type: 'string',
+        },
+        minLength: 1,
+        description: 'An array of absolute file paths for which you need to extract fragments.',
+      },
+      fragmentPrompt: {
+        type: 'string',
+        description: 'A prompt describing what information should be extracted from the files.',
+      },
+    },
+    required: ['filePaths', 'fragmentPrompt'],
   },
 };
 
