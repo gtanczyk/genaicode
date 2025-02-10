@@ -46,11 +46,30 @@ export const IterationHeader = styled.div`
   top: -22px;
   z-index: 10;
 
-  > .title {
+  /* Wrap title in a div to control its layout */
+  > .title-wrapper {
     display: flex;
     align-items: start;
     flex-grow: 1;
+    overflow: hidden; /* Ensure long text doesn't overflow */
   }
+
+  > .title {
+    display: flex;
+    align-items: start;
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden; /* Hide overflowing text */
+    text-overflow: ellipsis; /* Add ellipsis for overflow */
+  }
+
+  /* Wrap meta in a div for consistent layout */
+  > .meta-wrapper {
+    display: flex;
+    align-items: center; /* Align meta content vertically */
+    flex-shrink: 0; /* Prevent meta from shrinking */
+    margin-left: auto; /* Push meta to the right */
+  }
+
   > .meta {
     font-size: 12px;
     font-weight: normal;
@@ -60,7 +79,7 @@ export const IterationHeader = styled.div`
     align-items: center;
     gap: 10px;
     white-space: nowrap;
-    overflow: hidden;
+    overflow: visible;
     text-overflow: ellipsis;
   }
 `;
@@ -74,12 +93,17 @@ export const DeleteButton = styled.button`
   color: ${(props) => props.theme.colors.textSecondary};
   cursor: pointer;
   font-size: 16px;
-  padding: 4px;
+  padding: 4px 8px;
   border-radius: 4px;
   margin-left: 8px;
+  z-index: 11;
+  position: relative;
+  min-width: 24px;
+  flex-shrink: 0; /* Prevent the button from shrinking */
 
   &:hover {
     background-color: ${(props) => props.theme.colors.backgroundSecondary};
+    color: ${(props) => props.theme.colors.error};
   }
 `;
 
