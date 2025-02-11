@@ -8,7 +8,7 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
-import { generateRequestFilesContentCall } from './request-files-content.js';
+import { generateRequestFilesContentCall } from './handle-request-files-content.js';
 import { executeStepEnsureContext } from '../../step-ensure-context.js';
 
 export const handleUpdateFile: ActionHandler = async ({
