@@ -2,7 +2,7 @@ import { GenerateContentFunction } from '../../../../ai-service/common-types.js'
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { getSourceFiles, refreshFiles } from '../../../../files/find-files.js';
+import { refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { SourceCodeMap } from '../../../../files/source-code-types.js';
 import { getExpandedContextPaths } from '../../../../files/source-code-utils.js';
@@ -18,6 +18,7 @@ import {
   RequestFilesFragmentsArgs,
   UserItem,
 } from '../step-ask-question-types.js';
+import { isFileContentAlreadyProvided, categorizeLegitimateFiles } from './file-request-utils.js';
 
 export async function handleRequestFilesFragments({
   askQuestionCall,
@@ -275,53 +276,4 @@ Extraction prompt: ${fragmentPrompt}`,
   }
 
   return fragmentsMap;
-}
-
-/**
- * Checks if a file's content is already provided in the conversation history
- */
-function isFileContentAlreadyProvided(filePath: string, prompt: PromptItem[]): boolean {
-  return prompt.some((item) => {
-    if (item.type !== 'user' || !item.functionResponses) {
-      return false;
-    }
-
-    return item.functionResponses.some((response) => {
-      if (response.name !== 'getSourceCode' || !response.content) {
-        return false;
-      }
-
-      try {
-        const sourceCodeMap = JSON.parse(response.content);
-        return (
-          sourceCodeMap[filePath] && ('content' in sourceCodeMap[filePath] || 'fragment' in sourceCodeMap[filePath])
-        );
-      } catch (error) {
-        console.warn('Error parsing getSourceCode response:', error);
-        return false;
-      }
-    });
-  });
-}
-
-function categorizeLegitimateFiles(requestedFiles: string[]): {
-  legitimateFiles: string[];
-  illegitimateFiles: string[];
-} {
-  const legitimateFiles: string[] = [];
-  const illegitimateFiles: string[] = [];
-
-  requestedFiles.forEach((filePath) => {
-    if (isFilePathLegitimate(filePath)) {
-      legitimateFiles.push(filePath);
-    } else {
-      illegitimateFiles.push(filePath);
-    }
-  });
-
-  return { legitimateFiles, illegitimateFiles };
-}
-
-function isFilePathLegitimate(filePath: string): boolean {
-  return getSourceFiles().includes(filePath);
 }

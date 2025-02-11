@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-066] 2024-02-12: Refactored File Request Handlers - extracted common functions into file-request-utils.ts to reduce code duplication and improve maintainability
 - [x] [GEN-065] 2024-02-09: Request Files Fragments - Enhanced implementation with structured fragment extraction, improved documentation, and better type safety
 - [x] [GEN-063] 2024-02-09: Token Usage Optimization - Replace MD5 with numeric file IDs
 - [-] [GEN-064] 2024-02-09: Context Size Display - add token count next to timestamp in assistant messages
