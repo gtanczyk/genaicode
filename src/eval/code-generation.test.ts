@@ -17,7 +17,7 @@ import {
 import {
   CODEGEN_SUMMARY_APPROVED,
   CODEGEN_SUMMARY_GENERATED_MESSAGE,
-} from '../prompt/steps/step-ask-question/handlers/code-generation.js';
+} from '../prompt/steps/step-ask-question/handlers/handle-code-generation.js';
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { updateServiceConfig } from '../ai-service/service-configurations.js';
