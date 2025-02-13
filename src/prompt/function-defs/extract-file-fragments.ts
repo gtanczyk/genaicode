@@ -9,41 +9,30 @@ export const extractFileFragments: FunctionDef = {
   parameters: {
     type: 'object',
     properties: {
-      filePaths: {
-        type: 'array',
-        items: {
-          type: 'string',
-        },
-        description: 'Array of file paths that were processed.',
-      },
       fragments: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
-            content: {
-              type: 'string',
-              description: 'The extracted fragment content.',
-            },
             reason: {
               type: 'string',
               description: 'Explanation of why this fragment was selected.',
+            },
+            content: {
+              type: 'string',
+              description: 'The extracted fragment content.',
             },
             filePath: {
               type: 'string',
               description: 'The path of the file this fragment was extracted from.',
             },
           },
-          required: ['content', 'reason', 'filePath'],
+          required: ['reason', 'content', 'filePath'],
         },
         description: 'Array of extracted fragments with their locations and explanations.',
       },
-      reasoning: {
-        type: 'string',
-        description: 'Explanation of how the fragments were selected and why they are relevant.',
-      },
     },
-    required: ['filePaths', 'fragments', 'reasoning'],
+    required: ['fragments'],
   },
 };
 

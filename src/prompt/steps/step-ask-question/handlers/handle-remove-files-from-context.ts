@@ -97,6 +97,9 @@ function removeFileContentsFromPrompt(prompt: PromptItem[], filesToRemove: strin
         if (contentObj[file] && 'content' in contentObj[file]) {
           contentObj[file].content = null;
           modifiedFiles++;
+        } else if (contentObj[file] && 'fragments' in contentObj[file]) {
+          delete contentObj[file].fragments;
+          modifiedFiles++;
         }
       });
 

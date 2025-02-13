@@ -2,6 +2,7 @@ import { GenerateContentFunction } from '../../../../ai-service/common-types.js'
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
+import { generateFileId } from '../../../../files/file-id-utils.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { SourceCodeMap } from '../../../../files/source-code-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
@@ -123,6 +124,14 @@ export async function handleRequestFilesFragments({
     ],
   };
 
+  const fragmentsSourceCode: SourceCodeMap = {};
+  for (const fragment of extractedFragments.fragments) {
+    fragmentsSourceCode[fragment.filePath] = {
+      fileId: generateFileId(fragment.filePath),
+      fragments: [fragment.content],
+    };
+  }
+
   const user: UserItem = {
     type: 'user',
     text: generateFilesContentPrompt(
@@ -142,10 +151,7 @@ export async function handleRequestFilesFragments({
       {
         name: 'getSourceCode',
         call_id: sourceCallId,
-        content: JSON.stringify({
-          fragments: extractedFragments.fragments.map((fragment) => fragment.content),
-          filePaths: extractedFragments.filePaths,
-        }),
+        content: JSON.stringify(fragmentsSourceCode),
       },
     ],
     cache: true,
