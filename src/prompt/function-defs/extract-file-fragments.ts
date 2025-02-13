@@ -5,13 +5,16 @@ import { FunctionDef } from '../../ai-service/common-types';
  */
 export const extractFileFragments: FunctionDef = {
   name: 'extractFileFragments',
-  description: 'Response containing extracted fragments from a file.',
+  description: 'Response containing extracted fragments from one or more files.',
   parameters: {
     type: 'object',
     properties: {
-      filePath: {
-        type: 'string',
-        description: 'The path of the file that was processed.',
+      filePaths: {
+        type: 'array',
+        items: {
+          type: 'string',
+        },
+        description: 'Array of file paths that were processed.',
       },
       fragments: {
         type: 'array',
@@ -26,8 +29,12 @@ export const extractFileFragments: FunctionDef = {
               type: 'string',
               description: 'Explanation of why this fragment was selected.',
             },
+            filePath: {
+              type: 'string',
+              description: 'The path of the file this fragment was extracted from.',
+            },
           },
-          required: ['content', 'reason'],
+          required: ['content', 'reason', 'filePath'],
         },
         description: 'Array of extracted fragments with their locations and explanations.',
       },
@@ -36,7 +43,7 @@ export const extractFileFragments: FunctionDef = {
         description: 'Explanation of how the fragments were selected and why they are relevant.',
       },
     },
-    required: ['filePath', 'fragments', 'reasoning'],
+    required: ['filePaths', 'fragments', 'reasoning'],
   },
 };
 
@@ -48,14 +55,16 @@ export type FileFragment = {
   content: string;
   /** Explanation of why this fragment was selected */
   reason: string;
+  /** The path of the file this fragment was extracted from */
+  filePath: string;
 };
 
 /**
  * Response from extractFileFragments function
  */
 export type ExtractFileFragmentsArgs = {
-  /** The path of the file that was processed */
-  filePath: string;
+  /** Array of file paths that were processed */
+  filePaths: string[];
   /** Array of extracted fragments with their locations and explanations */
   fragments: FileFragment[];
   /** Explanation of how the fragments were selected and why they are relevant */

@@ -2,10 +2,8 @@ import { GenerateContentFunction } from '../../../../ai-service/common-types.js'
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { refreshFiles } from '../../../../files/find-files.js';
 import { getSourceCode } from '../../../../files/read-files.js';
 import { SourceCodeMap } from '../../../../files/source-code-types.js';
-import { getExpandedContextPaths } from '../../../../files/source-code-utils.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -18,7 +16,7 @@ import {
   RequestFilesFragmentsArgs,
   UserItem,
 } from '../step-ask-question-types.js';
-import { isFileContentAlreadyProvided, categorizeLegitimateFiles } from './file-request-utils.js';
+import { processFileRequests, generateFilesContentPrompt } from './file-request-utils.js';
 
 export async function handleRequestFilesFragments({
   askQuestionCall,
@@ -41,7 +39,6 @@ export async function handleRequestFilesFragments({
     };
   }
 
-  let requestedFiles = getExpandedContextPaths(requestFilesFragmentsCall.args?.filePaths ?? [], options);
   const fragmentPrompt = requestFilesFragmentsCall.args?.fragmentPrompt;
   if (!fragmentPrompt) {
     putSystemMessage('No fragment prompt provided');
@@ -51,22 +48,15 @@ export async function handleRequestFilesFragments({
     };
   }
 
-  // TODO: Some code duplication with handleRequestFilesContent, need to fix it
-
-  putSystemMessage('Requesting files fragments', {
-    requestedFiles,
-    expandedRequestedFiles: requestedFiles.filter(
-      (file) => !requestFilesFragmentsCall?.args?.filePaths?.includes(file),
-    ),
-    fragmentPrompt,
-  });
-
-  // Check which files are already provided in the conversation history
-  const alreadyProvidedFiles = requestedFiles.filter((file) => isFileContentAlreadyProvided(file, prompt));
+  // Process file requests using the utility function
+  let { requestedFiles, alreadyProvidedFiles, legitimateFiles, illegitimateFiles } = processFileRequests(
+    requestFilesFragmentsCall.args?.filePaths ?? [],
+    prompt,
+    options,
+  );
 
   if (alreadyProvidedFiles.length === requestedFiles.length) {
     putSystemMessage('All requested files are already provided');
-    // All requested files are already provided
     prompt.push(
       {
         type: 'assistant',
@@ -90,21 +80,13 @@ export async function handleRequestFilesFragments({
     return { breakLoop: false, items: [] };
   }
 
-  // Filter out already provided files
-  requestedFiles = requestedFiles.filter((file) => !isFileContentAlreadyProvided(file, prompt));
-
-  // the request may be caused be an appearance of a new file, so lets refresh
-  refreshFiles();
-
-  let { legitimateFiles, illegitimateFiles } = categorizeLegitimateFiles(requestedFiles);
-
+  // If there are illegitimate files, try again with non-cheap mode
   if (illegitimateFiles.length > 0) {
     requestFilesFragmentsCall = await generateRequestFilesFragmentsCall(
       generateContentFn,
       prompt,
       askQuestionCall,
       options,
-      // use non cheap mode, as maybe the cheap mode didn't provide correct files
       ModelType.DEFAULT,
     );
 
@@ -115,10 +97,11 @@ export async function handleRequestFilesFragments({
       };
     }
 
-    requestedFiles = requestFilesFragmentsCall.args?.filePaths ?? [];
-    const categorized = categorizeLegitimateFiles(requestedFiles);
-    legitimateFiles = categorized.legitimateFiles;
-    illegitimateFiles = categorized.illegitimateFiles;
+    const processed = processFileRequests(requestFilesFragmentsCall.args?.filePaths ?? [], prompt, options);
+    requestedFiles = processed.requestedFiles;
+    alreadyProvidedFiles = processed.alreadyProvidedFiles;
+    legitimateFiles = processed.legitimateFiles;
+    illegitimateFiles = processed.illegitimateFiles;
   }
 
   // Get the content of legitimate files
@@ -128,7 +111,7 @@ export async function handleRequestFilesFragments({
   );
 
   // Extract fragments from files using LLM
-  const fragmentsMap = await extractFragments(sourceCodeMap, fragmentPrompt, generateContentFn, options);
+  const extractedFragments = await extractFragments(sourceCodeMap, fragmentPrompt, generateContentFn, options);
 
   const sourceCallId = (askQuestionCall.id ?? askQuestionCall.name) + '_source';
   const assistant: AssistantItem = {
@@ -142,19 +125,13 @@ export async function handleRequestFilesFragments({
 
   const user: UserItem = {
     type: 'user',
-    text:
-      (alreadyProvidedFiles.length > 0
-        ? `Some files were already provided in the conversation history:
-${alreadyProvidedFiles.map((path) => `- ${path}`).join('\n')}
-
-Providing fragments for the remaining files:
-${requestedFiles.map((path) => `- ${path}`).join('\n')}`
-        : `All requested file fragments have been provided:
-${legitimateFiles.map((path) => `- ${path}`).join('\n')}`) +
-      (illegitimateFiles.length > 0
-        ? `\n\nSome files are not legitimate and their content cannot be provided:
-${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
-        : ''),
+    text: generateFilesContentPrompt(
+      alreadyProvidedFiles,
+      requestedFiles,
+      legitimateFiles,
+      illegitimateFiles,
+      'fragments',
+    ),
     data: { legitimateFiles, illegitimateFiles },
     functionResponses: [
       {
@@ -165,7 +142,10 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
       {
         name: 'getSourceCode',
         call_id: sourceCallId,
-        content: JSON.stringify(fragmentsMap),
+        content: JSON.stringify({
+          fragments: extractedFragments.fragments.map((fragment) => fragment.content),
+          filePaths: extractedFragments.filePaths,
+        }),
       },
     ],
     cache: true,
@@ -175,6 +155,7 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
     requestedFiles,
     legitimateFiles,
     illegitimateFiles,
+    fragmentCount: extractedFragments.fragments.length,
   });
 
   prompt.push(assistant, user);
@@ -212,34 +193,35 @@ export async function generateRequestFilesFragmentsCall(
 }
 
 /**
- * Extract fragments from files using LLM with the new function definition
+ * Extract fragments from files using LLM with multi-file support
  */
 async function extractFragments(
   sourceCodeMap: SourceCodeMap,
   fragmentPrompt: string,
   generateContentFn: GenerateContentFunction,
   options: CodegenOptions,
-): Promise<Record<string, { fragments: string[] }>> {
-  const fragmentsMap: Record<string, { fragments: string[] }> = {};
+): Promise<ExtractFileFragmentsArgs> {
+  const filePaths = Object.keys(sourceCodeMap);
 
   try {
-    // First, call extractFileFragments to get the AI's analysis
-    const extractFragmentsCalls = (await generateContentFn(
+    // Process all files in a single LLM call
+    const [extractFragmentsCall] = (await generateContentFn(
       [
         {
           type: 'systemPrompt',
           systemPrompt:
-            'You are tasked with extracting relevant fragments from a file based on a given prompt. Consider the context, identify meaningful sections, and provide clear explanations for your selections.',
+            'You are tasked with extracting relevant fragments from multiple source code files based on a given prompt. ' +
+            'Analyze each file thoroughly, identify meaningful sections that match the prompt criteria, and provide clear ' +
+            'explanations for your selections. Each fragment must be attributed to its source file for proper tracking.',
         },
         {
           type: 'assistant',
-          text: 'What are the files you would like to extract fragments from?',
-          functionCalls: [{ name: 'getSourceCode', args: { filePaths: Object.keys(sourceCodeMap) } }],
+          text: 'I will analyze the provided files and extract relevant fragments based on your prompt.',
+          functionCalls: [{ name: 'getSourceCode', args: { filePaths } }],
         },
         {
           type: 'user',
-          text: `I would like to extract fragments from the files.
-Extraction prompt: ${fragmentPrompt}`,
+          text: `Please extract relevant fragments from the provided files.\nExtraction prompt: ${fragmentPrompt}`,
           functionResponses: [
             {
               name: 'getSourceCode',
@@ -249,31 +231,31 @@ Extraction prompt: ${fragmentPrompt}`,
         },
       ],
       getFunctionDefs(),
-      // TODO: This will probably fail if more than one file is provided, need to fix it
       'extractFileFragments',
       0.2,
       ModelType.CHEAP,
       options,
-    )) as [FunctionCall<ExtractFileFragmentsArgs>];
+    )) as [FunctionCall<ExtractFileFragmentsArgs> | undefined];
 
-    if (!extractFragmentsCalls.length) {
-      putSystemMessage(`Failed to extract fragments.`);
-      return fragmentsMap;
-    }
-
-    for (const extractFragmentsCall of extractFragmentsCalls) {
-      const filePath = extractFragmentsCall.args!.filePath;
-      const fragments = extractFragmentsCall.args!.fragments;
-
-      fragmentsMap[filePath] = {
-        fragments: fragments.map((fragment) => fragment.content),
+    if (!extractFragmentsCall?.args) {
+      putSystemMessage('Failed to extract fragments');
+      return {
+        filePaths,
+        fragments: [],
+        reasoning: 'Fragment extraction failed',
       };
     }
 
-    putSystemMessage(`Successfully extracted fragments`);
+    putSystemMessage(
+      `Successfully extracted ${extractFragmentsCall.args.fragments.length} fragments from ${filePaths.length} files`,
+    );
+    return extractFragmentsCall.args;
   } catch (error) {
-    putSystemMessage(`Error during fragment extraction`, { error });
+    putSystemMessage('Error during fragment extraction', { error });
+    return {
+      filePaths,
+      fragments: [],
+      reasoning: `Error during fragment extraction: ${error}`,
+    };
   }
-
-  return fragmentsMap;
 }
