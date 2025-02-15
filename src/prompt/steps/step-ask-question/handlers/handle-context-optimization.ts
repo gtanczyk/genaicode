@@ -18,7 +18,7 @@ export async function handleContextOptimization({
 
   const user: UserItem = {
     type: 'user',
-    text: userConfirmation ? 'Context optimization applied.' : 'Context optimization not applied.',
+    text: userConfirmation.confirmed ? 'Context optimization applied.' : 'Context optimization not applied.',
   };
 
   const assistant: AssistantItem = {
