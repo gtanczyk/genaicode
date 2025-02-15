@@ -30,7 +30,7 @@ const configurations: ServiceConfigurations = {
     apiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL,
     modelOverrides: {
-      default: modelOverrides.openai?.default ?? 'gpt-4o-2024-11-20',
+      default: modelOverrides.openai?.default ?? 'gpt-4o',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
       reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
     },
