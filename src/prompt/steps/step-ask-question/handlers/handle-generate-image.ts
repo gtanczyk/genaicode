@@ -6,6 +6,9 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getTempBuffer } from '../../../../files/temp-buffer.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+
+registerActionHandler('generateImage', handleGenerateImage);
 
 export async function handleGenerateImage({
   askQuestionCall,

@@ -3,7 +3,10 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionHandlerProps, ActionResult, RequestPermissionsArgs, UserItem } from '../step-ask-question-types.js';
+
+registerActionHandler('requestPermissions', handleRequestPermissions);
 
 export async function handleRequestPermissions({
   askQuestionCall,

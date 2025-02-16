@@ -8,6 +8,7 @@ import { getExpandedContextPaths } from '../../../../files/source-code-utils.js'
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -17,6 +18,8 @@ import {
   UserItem,
 } from '../step-ask-question-types.js';
 import { isFileContentAlreadyProvided, categorizeLegitimateFiles } from './file-request-utils.js';
+
+registerActionHandler('requestFilesContent', handleRequestFilesContent);
 
 export async function handleRequestFilesContent({
   askQuestionCall,

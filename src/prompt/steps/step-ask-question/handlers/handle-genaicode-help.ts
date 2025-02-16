@@ -6,6 +6,9 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { putAssistantMessage } from '../../../../main/common/content-bus.js';
 import { askUserForInput } from '../../../../main/common/user-actions.js';
 import { GENAICODE_HELP_DOCUMENT } from '../../../../help-docs/genaicode-help-document.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+
+registerActionHandler('genaicodeHelp', handleGenaicodeHelp);
 
 /**
  * Handler for the help action. This handler is responsible for:

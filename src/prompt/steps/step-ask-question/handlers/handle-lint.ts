@@ -3,8 +3,11 @@ import { promisify } from 'util';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { rcConfig } from '../../../../main/config.js';
 import { ActionHandlerProps, ActionResult, LintResult } from '../step-ask-question-types.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
 const execPromise = promisify(exec);
+
+registerActionHandler('lint', handleLint);
 
 /**
  * Handles the lint action by executing the lint command and processing its results.

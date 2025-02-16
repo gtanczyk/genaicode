@@ -1,6 +1,9 @@
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
+
+registerActionHandler('confirmCodeGeneration', handleConfirmCodeGeneration);
 
 export async function handleConfirmCodeGeneration({
   askQuestionCall,

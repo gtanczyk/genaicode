@@ -9,6 +9,9 @@ import {
   ReasoningInferenceCall,
 } from '../step-ask-question-types.js';
 import { getContextSourceCode } from '../../../../files/source-code-utils.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+
+registerActionHandler('reasoningInference', handleReasoningInference);
 
 /**
  * Handler for the reasoningInference action.

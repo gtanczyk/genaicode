@@ -1,6 +1,9 @@
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
+
+registerActionHandler('endConversation', handleEndConversation);
 
 export async function handleEndConversation({ askQuestionCall, options }: ActionHandlerProps): Promise<ActionResult> {
   const userConfirmation = await askUserForConfirmationWithAnswer(

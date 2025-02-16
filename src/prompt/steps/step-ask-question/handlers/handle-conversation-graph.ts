@@ -3,7 +3,8 @@ import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../
 import { FunctionCall, ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ConversationEdge, ConversationGraphCall } from '../../../function-defs/conversation-graph.js';
-import { getActionHandler } from '../step-ask-question-handlers.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+import { getActionHandler } from '../ask-question-handler.js';
 
 export const CONVERSATION_GRAPH_DOCS = `# Task Planning and Execution Guide
 
@@ -84,6 +85,8 @@ Edges define the flow between nodes. Each edge needs:
 4. **Progressive Implementation**: Start with core requirements, then add enhancements
 5. **Comprehensive Coverage**: Account for various scenarios and edge cases
 6. **Quality Assurance**: Validate results at key points`;
+
+registerActionHandler('conversationGraph', handleConversationGraph);
 
 /**
  * Handles the conversationGraph action by:

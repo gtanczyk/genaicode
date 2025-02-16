@@ -3,7 +3,10 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { setContextValue } from '../../../../main/common/app-context-bus.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionResult, ActionHandlerProps, PushAppContextArgs } from '../step-ask-question-types.js';
+
+registerActionHandler('pushAppContext', handlePushAppContext);
 
 /**
  * Handler for pushAppContext action

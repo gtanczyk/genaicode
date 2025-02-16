@@ -14,6 +14,9 @@ import { performAnalysis } from '../../../function-defs/perform-analysis.js';
 import { analysisResult } from '../../../function-defs/analysis-result.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { askUserForInput } from '../../../../main/common/user-actions.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+
+registerActionHandler('performAnalysis', handlePerformAnalysis);
 
 /**
  * Handles the performAnalysis action by executing analysis with enhanced context

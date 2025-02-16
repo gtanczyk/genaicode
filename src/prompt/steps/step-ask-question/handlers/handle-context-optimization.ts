@@ -2,7 +2,10 @@ import { refreshFiles } from '../../../../files/find-files.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { executeStepContextOptimization } from '../../step-context-optimization.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionHandlerProps, ActionResult, UserItem, AssistantItem } from '../step-ask-question-types.js';
+
+registerActionHandler('contextOptimization', handleContextOptimization);
 
 export async function handleContextOptimization({
   askQuestionCall,

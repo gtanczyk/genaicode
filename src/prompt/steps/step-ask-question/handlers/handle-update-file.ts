@@ -1,4 +1,4 @@
-import { ActionHandler, ActionResult } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { executor as executeUpdateFile } from '../../../../operations/update-file/update-file-executor.js';
 import { UpdateFileArgs as UpdateFileDefArgs } from '../../../../operations/update-file/update-file-def.js';
 import { getSourceCode } from '../../../../files/read-files.js';
@@ -10,13 +10,16 @@ import { putSystemMessage, putUserMessage } from '../../../../main/common/conten
 import { refreshFiles } from '../../../../files/find-files.js';
 import { generateRequestFilesContentCall } from './handle-request-files-content.js';
 import { executeStepEnsureContext } from '../../step-ensure-context.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
-export const handleUpdateFile: ActionHandler = async ({
+registerActionHandler('updateFile', handleUpdateFile);
+
+export async function handleUpdateFile({
   askQuestionCall,
   options,
   prompt,
   generateContentFn,
-}): Promise<ActionResult> => {
+}: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('File update requested.', askQuestionCall);
 
   // First confirmation: Ask user if they want to proceed with content generation
@@ -213,4 +216,4 @@ export const handleUpdateFile: ActionHandler = async ({
       ],
     };
   }
-};
+}

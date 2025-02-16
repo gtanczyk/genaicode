@@ -1,4 +1,4 @@
-import { ActionHandler, ActionResult } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { executor as executeCreateFile } from '../../../../operations/create-file/create-file-executor.js';
 import { CreateFileArgs } from '../../../../operations/create-file/create-file-def.js';
 import { getSourceCode } from '../../../../files/read-files.js';
@@ -8,13 +8,16 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
-export const handleCreateFile: ActionHandler = async ({
+registerActionHandler('createFile', handleCreateFile);
+
+export async function handleCreateFile({
   askQuestionCall,
   options,
   prompt,
   generateContentFn,
-}): Promise<ActionResult> => {
+}: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('File creation requested.', askQuestionCall);
 
   // First confirmation: Ask user if they want to proceed with content generation
@@ -195,4 +198,4 @@ export const handleCreateFile: ActionHandler = async ({
       ],
     };
   }
-};
+}

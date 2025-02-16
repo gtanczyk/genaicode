@@ -3,7 +3,10 @@ import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { ActionHandlerProps, ActionResult, RemoveFilesFromContextArgs } from '../step-ask-question-types.js';
+
+registerActionHandler('removeFilesFromContext', handleRemoveFilesFromContext);
 
 export async function handleRemoveFilesFromContext({
   askQuestionCall,

@@ -10,7 +10,29 @@ import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../
 import { abortController } from '../../../main/common/abort-controller.js';
 import { AskQuestionCall } from './step-ask-question-types.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
-import { getActionHandler } from './step-ask-question-handlers.js';
+import { getActionHandler } from './ask-question-handler.js';
+
+import './handlers/handle-code-generation.js';
+import './handlers/handle-confirm-code-generation.js';
+import './handlers/handle-context-compression.js';
+import './handlers/handle-context-optimization.js';
+import './handlers/handle-conversation-graph.js';
+import './handlers/handle-create-file.js';
+import './handlers/handle-end-conversation.js';
+import './handlers/handle-genaicode-help.js';
+import './handlers/handle-generate-image.js';
+import './handlers/handle-lint.js';
+import './handlers/handle-perform-analysis.js';
+import './handlers/handle-pull-app-context.js';
+import './handlers/handle-push-app-context.js';
+import './handlers/handle-reasoning-inference.js';
+import './handlers/handle-remove-files-from-context.js';
+import './handlers/handle-request-files-content.js';
+import './handlers/handle-request-files-fragments.js';
+import './handlers/handle-request-permissions.js';
+import './handlers/handle-search-code.js';
+import './handlers/handle-send-message.js';
+import './handlers/handle-update-file.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,

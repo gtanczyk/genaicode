@@ -9,11 +9,14 @@ import { StepResult } from '../../steps-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { updateFiles } from '../../../../files/update-files.js';
 import { executeStepContextCompression } from '../../step-context-compression.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
 export const CODEGEN_SUMMARY_GENERATED_MESSAGE =
   'Codegen summary is generated. Would you like to proceed with the code changes?';
 
 export const CODEGEN_SUMMARY_APPROVED = 'Accept codegen summary and continue';
+
+registerActionHandler('codeGeneration', handleCodeGeneration);
 
 export async function handleCodeGeneration({
   generateContentFn,

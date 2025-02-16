@@ -9,6 +9,7 @@ import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ExtractFileFragmentsArgs } from '../../../function-defs/extract-file-fragments.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 import {
   ActionHandlerProps,
   ActionResult,
@@ -18,6 +19,8 @@ import {
   UserItem,
 } from '../step-ask-question-types.js';
 import { processFileRequests, generateFilesContentPrompt } from './file-request-utils.js';
+
+registerActionHandler('requestFilesFragments', handleRequestFilesFragments);
 
 export async function handleRequestFilesFragments({
   askQuestionCall,

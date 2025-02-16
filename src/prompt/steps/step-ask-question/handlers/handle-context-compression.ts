@@ -3,6 +3,9 @@ import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js'
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { StepResult } from '../../steps-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
+
+registerActionHandler('contextCompression', handleContextCompression);
 
 export async function handleContextCompression({
   askQuestionCall,

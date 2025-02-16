@@ -7,10 +7,10 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
-/**
- * Handler for the searchCode action
- */
+registerActionHandler('searchCode', handleSearchCode);
+
 export async function handleSearchCode({
   askQuestionCall,
   generateContentFn,
