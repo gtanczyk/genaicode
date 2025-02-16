@@ -8,30 +8,9 @@ import { ModelType } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
 import { abortController } from '../../../main/common/abort-controller.js';
-import { AskQuestionCall, ActionType, ActionHandler } from './step-ask-question-types.js';
-import { handleRequestFilesContent } from './handlers/handle-request-files-content.js';
-import { handleContextOptimization } from './handlers/handle-context-optimization.js';
-import { handleRequestFilesFragments } from './handlers/handle-request-files-fragments.js';
-import { handleRemoveFilesFromContext } from './handlers/handle-remove-files-from-context.js';
-import { handleRequestPermissions } from './handlers/handle-request-permissions.js';
-import { handleSendMessage } from './handlers/handle-send-message.js';
-import { handleGenerateImage } from './handlers/handle-generate-image.js';
-import { handleConfirmCodeGeneration } from './handlers/handle-confirm-code-generation.js';
-import { handleEndConversation } from './handlers/handle-end-conversation.js';
-import { handleLint } from './handlers/handle-lint.js';
-import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
-import { handleCodeGeneration } from './handlers/handle-code-generation.js';
-import { handleSearchCode } from './handlers/handle-search-code.js';
-import { handleUpdateFile } from './handlers/handle-update-file.js';
-import { handlePerformAnalysis } from './handlers/handle-perform-analysis.js';
-import { handleCreateFile } from './handlers/handle-create-file.js';
-import { handlePullAppContext } from './handlers/handle-pull-app-context.js';
-import { handlePushAppContext } from './handlers/handle-push-app-context.js';
-import { handleReasoningInference } from './handlers/handle-reasoning-inference.js';
-import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
-import { handleContextCompression } from './handlers/handle-context-compression.js';
+import { AskQuestionCall } from './step-ask-question-types.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
-import { handleConversationGraph } from './handlers/handle-conversation-graph.js';
+import { getActionHandler } from './step-ask-question-handlers.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -132,39 +111,4 @@ async function getAskQuestionCall(
   ];
   const askQuestionResult = await generateContentFn(...askQuestionRequest);
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
-}
-
-export function getActionHandler(actionType: ActionType): ActionHandler {
-  // First, check if there's a plugin-provided handler for this action type
-  const pluginHandler = getRegisteredActionHandlers().get(actionType as `plugin:${string}`);
-  if (pluginHandler) {
-    return pluginHandler;
-  }
-
-  // If no plugin handler is found, use the built-in handlers
-  const handlers: Record<ActionType, ActionHandler> = {
-    codeGeneration: handleCodeGeneration,
-    endConversation: handleEndConversation,
-    confirmCodeGeneration: handleConfirmCodeGeneration,
-    requestFilesContent: handleRequestFilesContent,
-    requestFilesFragments: handleRequestFilesFragments,
-    requestPermissions: handleRequestPermissions,
-    removeFilesFromContext: handleRemoveFilesFromContext,
-    sendMessage: handleSendMessage,
-    generateImage: handleGenerateImage,
-    searchCode: handleSearchCode,
-    lint: handleLint,
-    contextOptimization: handleContextOptimization,
-    updateFile: handleUpdateFile,
-    createFile: handleCreateFile,
-    performAnalysis: handlePerformAnalysis,
-    pullAppContext: handlePullAppContext,
-    genaicodeHelp: handleGenaicodeHelp,
-    reasoningInference: handleReasoningInference,
-    pushAppContext: handlePushAppContext,
-    contextCompression: handleContextCompression,
-    conversationGraph: handleConversationGraph,
-  };
-
-  return handlers[actionType] || handleSendMessage;
 }

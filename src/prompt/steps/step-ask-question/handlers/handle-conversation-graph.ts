@@ -3,7 +3,7 @@ import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../
 import { FunctionCall, ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ConversationEdge, ConversationGraphCall } from '../../../function-defs/conversation-graph.js';
-import { getActionHandler } from '../step-ask-question.js';
+import { getActionHandler } from '../step-ask-question-handlers.js';
 
 export const CONVERSATION_GRAPH_DOCS = `# Task Planning and Execution Guide
 
