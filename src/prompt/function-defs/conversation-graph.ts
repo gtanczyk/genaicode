@@ -1,6 +1,6 @@
-import { FunctionCall, FunctionDef } from '../../ai-service/common-types';
-import { ActionType } from '../steps/step-ask-question/step-ask-question-types';
-import { actionTypeOptions } from './ask-question';
+import { FunctionCall, FunctionDef } from '../../ai-service/common-types.js';
+import { ActionType } from '../steps/step-ask-question/step-ask-question-types.js';
+import { actionTypeOptions } from './ask-question.js';
 
 // Function definitions for conversation graph
 

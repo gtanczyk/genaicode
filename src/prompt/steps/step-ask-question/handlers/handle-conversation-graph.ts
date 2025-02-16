@@ -1,9 +1,9 @@
-import { ActionHandlerProps, ActionResult, SendMessageArgs } from '../step-ask-question-types';
+import { ActionHandlerProps, ActionResult, SendMessageArgs } from '../step-ask-question-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { FunctionCall, ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ConversationEdge, ConversationGraphCall } from '../../../function-defs/conversation-graph.js';
-import { getActionHandler } from '../step-ask-question';
+import { getActionHandler } from '../step-ask-question.js';
 
 export const CONVERSATION_GRAPH_DOCS = `# Task Planning and Execution Guide
 
@@ -101,6 +101,8 @@ export async function handleConversationGraph({
   waitIfPaused,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
+    // TODO: Prompt user if they want conversation graph to be generated
+
     putSystemMessage('Generating conversation graph...');
 
     // Generate the conversationGraph function call
