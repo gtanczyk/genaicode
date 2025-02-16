@@ -195,7 +195,6 @@ export interface UserItem {
 
 export interface ActionResult {
   breakLoop: boolean;
-  executeCodegen?: boolean;
   stepResult?: FunctionCall[];
   items: Array<{
     assistant: AssistantItem;

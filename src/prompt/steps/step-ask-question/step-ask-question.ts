@@ -63,7 +63,7 @@ export async function executeStepAskQuestion(
       const actionType = askQuestionCall.args?.actionType;
       if (actionType) {
         const actionHandler = getActionHandler(actionType);
-        let result = await actionHandler({
+        const result = await actionHandler({
           askQuestionCall,
           prompt,
           options,
@@ -73,31 +73,12 @@ export async function executeStepAskQuestion(
         });
 
         // This is important to display the content to the user interface (ui or interactive cli)
-        let lastItem = result.items.slice(-1)[0];
+        const lastItem = result.items.slice(-1)[0];
         if (lastItem?.user?.text) {
           putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
         }
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
-
-        if (result.executeCodegen) {
-          // TODO: Why we have this, why cannot do that in the next iteration like other actions?
-          result = await getActionHandler('codeGeneration')({
-            askQuestionCall,
-            prompt,
-            options,
-            generateContentFn,
-            generateImageFn,
-            waitIfPaused,
-          });
-
-          lastItem = result.items.slice(-1)[0];
-          if (lastItem?.user?.text) {
-            putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
-          }
-
-          prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
-        }
 
         if (result.breakLoop) {
           return result.stepResult ?? [];
