@@ -195,6 +195,22 @@ describe.each([
       expectedActionType: 'sendMessage',
       promptPrefix: [],
     },
+    {
+      name: 'complex feature implementation',
+      userMessage: `Let's implement a new authentication feature for the project. We need to:
+1. Add user authentication with email/password
+2. Implement secure password hashing
+3. Create login/logout endpoints
+4. Add session management
+5. Integrate with the existing user interface
+6. Add proper error handling
+7. Include security best practices
+8. Write tests for all components`,
+      expectedActionType: 'conversationGraph' as ActionType,
+      expectedMessageContent: expect.stringContaining('authentication feature'),
+      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [

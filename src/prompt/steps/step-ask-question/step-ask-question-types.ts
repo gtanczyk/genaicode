@@ -27,6 +27,7 @@ export type ActionType =
   | 'pushAppContext'
   | 'reasoningInference'
   | 'requestFilesFragments'
+  | 'conversationGraph'
   | PluginActionType;
 
 type AskQuestionArgs = {
@@ -34,6 +35,11 @@ type AskQuestionArgs = {
   message: string;
   decisionMakingProcess?: string;
 };
+
+/**
+ * Arguments for sendMessage action
+ */
+export type SendMessageArgs = { message: string };
 
 /**
  * Arguments for help action

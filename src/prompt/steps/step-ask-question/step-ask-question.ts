@@ -31,6 +31,7 @@ import { handleReasoningInference } from './handlers/handle-reasoning-inference.
 import { handleGenaicodeHelp } from './handlers/handle-genaicode-help.js';
 import { handleContextCompression } from './handlers/handle-context-compression.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
+import { handleConversationGraph } from './handlers/handle-conversation-graph.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
@@ -79,6 +80,7 @@ export async function executeStepAskQuestion(
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
 
         if (result.executeCodegen) {
+          // TODO: Why we have this, why cannot do that in the next iteration like other actions?
           result = await getActionHandler('codeGeneration')({
             askQuestionCall,
             prompt,
@@ -132,7 +134,7 @@ async function getAskQuestionCall(
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }
 
-function getActionHandler(actionType: ActionType): ActionHandler {
+export function getActionHandler(actionType: ActionType): ActionHandler {
   // First, check if there's a plugin-provided handler for this action type
   const pluginHandler = getRegisteredActionHandlers().get(actionType as `plugin:${string}`);
   if (pluginHandler) {
@@ -161,6 +163,7 @@ function getActionHandler(actionType: ActionType): ActionHandler {
     reasoningInference: handleReasoningInference,
     pushAppContext: handlePushAppContext,
     contextCompression: handleContextCompression,
+    conversationGraph: handleConversationGraph,
   };
 
   return handlers[actionType] || handleSendMessage;

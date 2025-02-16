@@ -16,6 +16,7 @@ import {
   pullAppContext,
   pushAppContext,
   requestFilesFragments,
+  sendMessage,
 } from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
@@ -29,6 +30,7 @@ import { genaicodeHelpDef } from './function-defs/genaicode-help.js';
 import { reasoningInference, reasoningInferenceResponse } from './function-defs/reasoning-inference.js';
 import { compressContext } from './function-defs/context-compression.js';
 import { extractFileFragments } from './function-defs/extract-file-fragments.js';
+import { conversationGraph } from './function-defs/conversation-graph.js';
 
 /**
  * Function definitions for function calling feature
@@ -62,6 +64,8 @@ export function getFunctionDefs(): FunctionDef[] {
     reasoningInferenceResponse,
     extractFileFragments,
     requestFilesFragments,
+    conversationGraph,
+    sendMessage,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

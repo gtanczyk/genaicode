@@ -30,6 +30,7 @@ ${
 - pushAppContext: Use to update application context values based on conversation outcomes. This enables persisting conversation results back to the application.`
     : ''
 }
+- conversationGraph: Use for complex conversations needing multiple steps and decisions.
 ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
@@ -38,7 +39,7 @@ ${pluginDescriptions}
 This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }
 
-const actionTypeOptions: string[] = [
+export const actionTypeOptions: string[] = [
   'sendMessage',
   'generateImage',
   'updateFile',
@@ -58,6 +59,7 @@ const actionTypeOptions: string[] = [
   ...Array.from(getRegisteredActionHandlers().keys()),
   'genaicodeHelp',
   'reasoningInference',
+  'conversationGraph',
 ];
 
 /**
@@ -125,6 +127,22 @@ ${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).jo
     required: ['decisionMakingProcess', 'actionType', 'message'],
   },
 });
+
+// sendMessage
+export const sendMessage: FunctionDef = {
+  name: 'sendMessage',
+  description: 'Use this function to send a message to the user.',
+  parameters: {
+    type: 'object',
+    properties: {
+      message: {
+        type: 'string',
+        description: 'The message to display to the user.',
+      },
+    },
+    required: ['message'],
+  },
+};
 
 // requestFilesContent
 export const requestFilesContent: FunctionDef = {
