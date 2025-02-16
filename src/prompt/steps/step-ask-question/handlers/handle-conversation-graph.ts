@@ -2,11 +2,17 @@ import { ActionHandlerProps, ActionResult, SendMessageArgs } from '../step-ask-q
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { FunctionCall, ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { ConversationEdge, ConversationGraphCall } from '../../../function-defs/conversation-graph.js';
+import {
+  ConversationEdge,
+  ConversationGraphCall,
+  ConversationNode,
+  EvaluateEdgeArgs,
+} from '../../../function-defs/conversation-graph.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { getActionHandler } from '../ask-question-handler.js';
+import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 
-export const CONVERSATION_GRAPH_DOCS = `# Task Planning and Execution Guide
+export const CONVERSATION_GRAPH_PROMPT = `# Task Planning and Execution Guide
 
 To effectively help users with their tasks, follow these guidelines to create a structured approach:
 
@@ -86,6 +92,14 @@ Edges define the flow between nodes. Each edge needs:
 5. **Comprehensive Coverage**: Account for various scenarios and edge cases
 6. **Quality Assurance**: Validate results at key points`;
 
+export const getEdgeEvaluationPrompt = (currentNode: ConversationNode, outgoingEdges: ConversationEdge[]) => {
+  return `We are evaluating the outgoing edges from the current node(${currentNode.id}):
+
+${outgoingEdges.map((edge) => `- ${edge.targetNode}: ${edge.instruction}`).join('\n')}
+  
+Select the correct edge, or terminate if the conversation should stop.`;
+};
+
 registerActionHandler('conversationGraph', handleConversationGraph);
 
 /**
@@ -104,7 +118,33 @@ export async function handleConversationGraph({
   waitIfPaused,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
-    // TODO: Prompt user if they want conversation graph to be generated
+    const userConfirmation = await askUserForConfirmationWithAnswer(
+      'The assistant wants to perform a conversation graph. Do you want to proceed?',
+      'Run conversation graph',
+      'Decline',
+      true,
+      options,
+    );
+
+    if (!userConfirmation.confirmed) {
+      putSystemMessage('Conversation graph declined.');
+
+      return {
+        breakLoop: false,
+        items: [
+          {
+            assistant: {
+              type: 'assistant',
+              text: askQuestionCall.args?.message ?? '',
+            },
+            user: {
+              type: 'user',
+              text: 'Declined conversation graph. ' + userConfirmation.answer,
+            },
+          },
+        ],
+      };
+    }
 
     putSystemMessage('Generating conversation graph...');
 
@@ -118,7 +158,7 @@ export async function handleConversationGraph({
         },
         {
           type: 'user',
-          text: CONVERSATION_GRAPH_DOCS,
+          text: CONVERSATION_GRAPH_PROMPT,
         },
       ],
       getFunctionDefs(),
@@ -227,18 +267,30 @@ export async function handleConversationGraph({
       // Move to the next node
 
       const outgoingEdges = edges.filter((edge) => edge.sourceNode === currentNode.id);
-      let outgoingEdge: ConversationEdge | undefined;
 
-      // TODO: Need to use LLM to pick the right edge based on the instruction, no matter if 1 or multiple edges
-      //       Some edges may have conditions, so need to evaluate them, and even stop traversal if needed
-      //       Also the last user message should be used to evaluate the conditions
-      //       Because the user may want to stop the traversal or go to a specific node
-      if (outgoingEdges.length === 1) {
-        // TODO: Temporary solution to pick the first edge if only one is available
-        outgoingEdge = outgoingEdges[0];
-      } else if (outgoingEdges.length > 1) {
-        // Find valid outgoing edge
+      const [evaluateEdge] = (await generateContentFn(
+        [
+          ...prompt,
+          {
+            type: 'user',
+            text: getEdgeEvaluationPrompt(currentNode, outgoingEdges),
+          },
+        ],
+        getFunctionDefs(),
+        'evaluateEdge',
+        0.7,
+        ModelType.CHEAP,
+        options,
+      )) as [FunctionCall<EvaluateEdgeArgs>];
+
+      if (!evaluateEdge.args?.shouldTerminate) {
+        putSystemMessage('Conversation graph traversal terminated.');
+        break;
       }
+
+      const outgoingEdge = outgoingEdges.find(
+        (edge) => edge.targetNode === evaluateEdge.args?.selectedEdge?.targetNode,
+      );
 
       if (!outgoingEdge) {
         putSystemMessage(`No valid outgoing edge found from node ${currentNode.id}.`);

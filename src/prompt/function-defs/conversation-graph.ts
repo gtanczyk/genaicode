@@ -74,7 +74,7 @@ export const conversationGraph: FunctionDef = {
 
 // Types for conversation graph
 
-type ConverationNodeId = string & { __type: 'ConverationNodeId' };
+export type ConverationNodeId = string & { __type: 'ConverationNodeId' };
 
 export type ConversationEdge = {
   sourceNode: ConverationNodeId;
@@ -95,3 +95,52 @@ export type ConversationGraphArgs = {
 };
 
 export type ConversationGraphCall = FunctionCall<ConversationGraphArgs>;
+
+// Function definitions for edge evaluation
+
+export const evaluateEdge: FunctionDef = {
+  name: 'evaluateEdge',
+  description:
+    'Evaluate a conversation edge to determine whether to take the edge, terminate the conversation, or continue evaluating other edges.',
+  parameters: {
+    type: 'object',
+    properties: {
+      reasoning: {
+        type: 'string',
+        description: 'Explanation of why this edge was selected or why no edge was selected',
+      },
+      selectedEdge: {
+        type: 'object',
+        description: 'The selected edge to take, or null if no edge should be taken',
+        properties: {
+          sourceNode: {
+            type: 'string',
+            description: 'The ID of the node where this transition originates.',
+          },
+          targetNode: {
+            type: 'string',
+            description: 'The ID of the node where this transition goes.',
+          },
+        },
+        required: ['sourceNode', 'targetNode'],
+      },
+      shouldTerminate: {
+        type: 'boolean',
+        description: 'Whether the conversation should be terminated',
+      },
+    },
+    required: ['reasoning', 'shouldTerminate'],
+  },
+};
+
+export type EvaluateEdgeArgs = {
+  /** Explanation of why this edge was selected or why no edge was selected */
+  reasoning: string;
+  /** The selected edge to take, or null if no edge should be taken */
+  selectedEdge: ConversationEdge | null;
+  /** Whether the conversation should be terminated */
+  shouldTerminate: boolean;
+};
+
+/** Type for function calls with edge evaluation arguments */
+export type EvaluateEdgeCall = FunctionCall<EvaluateEdgeArgs>;

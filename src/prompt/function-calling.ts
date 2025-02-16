@@ -30,7 +30,7 @@ import { genaicodeHelpDef } from './function-defs/genaicode-help.js';
 import { reasoningInference, reasoningInferenceResponse } from './function-defs/reasoning-inference.js';
 import { compressContext } from './function-defs/context-compression.js';
 import { extractFileFragments } from './function-defs/extract-file-fragments.js';
-import { conversationGraph } from './function-defs/conversation-graph.js';
+import { conversationGraph, evaluateEdge } from './function-defs/conversation-graph.js';
 
 /**
  * Function definitions for function calling feature
@@ -65,6 +65,7 @@ export function getFunctionDefs(): FunctionDef[] {
     extractFileFragments,
     requestFilesFragments,
     conversationGraph,
+    evaluateEdge,
     sendMessage,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
