@@ -28,7 +28,7 @@ Examples: 'npm run lint', 'eslint .', 'npm run type-check && npm run lint'`,
       type: 'array',
       items: {
         type: 'string',
-        pattern: '^\\.[a-z0-9]+$',
+        pattern: '^\\.[a-z0-9\\.]+$',
       },
       description: `File extensions that the tool should consider for code generation and analysis.
 Examples: ['.js', '.ts', '.tsx', '.md'], ['.py', '.go', '.java'], ['.c', '.h', '.cpp']`,
