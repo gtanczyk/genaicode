@@ -11,6 +11,14 @@ export const conversationGraph: FunctionDef = {
   parameters: {
     type: 'object',
     properties: {
+      contextAnalysis: {
+        type: 'string',
+        description: 'A brief summary of the context analysis that led to this conversation graph.',
+      },
+      bigPicture: {
+        type: 'string',
+        description: 'A step by step guide to the conversation flow and the desired outcome.',
+      },
       entryNode: {
         type: 'string',
         description:
@@ -21,6 +29,10 @@ export const conversationGraph: FunctionDef = {
         items: {
           type: 'object',
           properties: {
+            reasoning: {
+              type: 'string',
+              description: 'Explanation of what this node is trying to achieve.',
+            },
             id: {
               type: 'string',
               description: 'A unique identifier for this conversation step. Use short, descriptive names',
@@ -36,7 +48,7 @@ export const conversationGraph: FunctionDef = {
                 'Instructions for the LLM on what to achieve at this step. Focus on the desired outcome, not the specific action.',
             },
           },
-          required: ['id', 'actionType', 'instruction'],
+          required: ['reasoning', 'id', 'actionType', 'instruction'],
         },
         minLength: 1,
         description:
@@ -68,7 +80,7 @@ export const conversationGraph: FunctionDef = {
           'An array of transitions (edges) that define the flow between conversation steps. Each edge specifies when to move from one node to another.',
       },
     },
-    required: ['entryNode', 'nodes', 'edges'],
+    required: ['contextAnalysis', 'bigPicture', 'entryNode', 'nodes', 'edges'],
   },
 };
 

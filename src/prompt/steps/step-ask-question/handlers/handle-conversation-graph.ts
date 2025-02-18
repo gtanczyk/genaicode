@@ -12,85 +12,59 @@ import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { getActionHandler } from '../ask-question-handler.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 
-export const CONVERSATION_GRAPH_PROMPT = `# Task Planning and Execution Guide
+export const CONVERSATION_GRAPH_PROMPT = `# Conversation Graph Guide
 
-To effectively help users with their tasks, follow these guidelines to create a structured approach:
+A conversation graph is a flexible structure for managing complex interactions. It consists of nodes (conversation states) connected by edges (transitions).
 
-## Understanding and Planning
+## Core Components
 
-1. **Initial Assessment**:
-   - Understand the user's primary goal
-   - Identify key requirements and constraints
-   - Consider potential challenges
-   - Plan necessary steps for completion
+1. **Nodes (States)**
+   - Each node represents a distinct state in the conversation
+   - Contains:
+     - id: Unique identifier
+     - actionType: The action to perform
+     - instruction: Internal guidance for execution
 
-2. **Structure**:
-   - Break down the task into clear, manageable steps
-   - Identify points where decisions or user input are needed
-   - Plan alternative approaches based on different scenarios
-   - Consider error handling and edge cases
+2. **Edges (Transitions)**
+   - Connect nodes to define possible conversation flows
+   - Contains:
+     - sourceNode: Starting point
+     - targetNode: Destination
+     - instruction: Condition for transition
 
-## Steps and Actions
+## Key Concepts
 
-Each step in the process should have:
+- **State Management**: Nodes capture the current state and required action
+- **Flow Control**: Edges determine how the conversation can progress
+- **Flexibility**: Support for various conversation patterns and flows
+- **Context Awareness**: Each node operates with awareness of the conversation state
 
-1. **Clear Purpose**: What this step aims to achieve
+## Implementation Notes
 
-2. **Appropriate Action**: Choose the right type of action based on the step's purpose:
-   - Gathering information
-   - Analyzing requirements
-   - Confirming decisions
-   - Implementing changes
-   - Validating results
+- Nodes should be self-contained and focused
+- Edges should have clear, evaluatable conditions
+- Any node can connect to any other node if logically appropriate
+- Nodes and edges must formulate a direct acyclic graph (DAG)
 
-3. **Clear Instructions**: Internal guidance for executing the action:
-   - What information to gather
-   - What aspects to analyze
-   - What to validate or confirm
-   - How to proceed based on different outcomes
+## Technical Details
 
-## Transitions and Flow
+Nodes require:
+- Unique ID for reference
+- Valid action type
+- Clear execution instructions
 
-Define clear conditions for moving between steps:
+Edges require:
+- Valid source and target node IDs
+- Clear transition conditions
 
-1. **When to proceed**: Clear criteria for moving forward
-2. **Alternative paths**: How to handle different scenarios
-3. **Error handling**: What to do when things don't go as planned
-4. **Validation**: Ensuring each step is completed successfully
+# Let's get started!
 
-## Nodes and Instructions
-
-Each node in the conversation graph must have three key components:
-
-1. **id**: A unique identifier for the node
-
-2. **actionType**: The specific action to perform at this step. Choose carefully based on the node's purpose.
-
-3. **instruction**: This is critical - it's your internal guidance for executing the node's action. 
-   - This is NOT shown to the user
-   - Write clear instructions to yourself (the LLM) about HOW to execute the actionType
-   - Be specific about what information to gather or provide
-
-## Edges and Conditions
-
-Edges define the flow between nodes. Each edge needs:
-
-1. **sourceNode**: The starting node's id
-2. **targetNode**: The destination node's id
-3. **instruction**: When to follow this edge. Be specific:
-   - This is NOT shown to the user
-   - Use "always" or "true" for unconditional transitions
-   - For conditional transitions, clearly describe the condition
-   - Base conditions on user responses or action outcomes
-
-## Best Practices
-
-1. **User-Focused**: Keep the user's goal in mind at all times
-2. **Clear Communication**: Ensure each interaction has a clear purpose
-3. **Flexible Approach**: Be ready to adapt based on user responses
-4. **Progressive Implementation**: Start with core requirements, then add enhancements
-5. **Comprehensive Coverage**: Account for various scenarios and edge cases
-6. **Quality Assurance**: Validate results at key points`;
+0. Read and understand the conersation we had so far (context).
+1. Think about the big picture of the upcoming conversation flow and the desired outcome.
+2. Define the entry node to start the upcoming conversation.
+3. Create nodes with reasoning, action type, and instructions.
+4. Connect nodes with edges to define the conversation flow.
+`;
 
 export const getEdgeEvaluationPrompt = (currentNode: ConversationNode, outgoingEdges: ConversationEdge[]) => {
   return `We are evaluating the outgoing edges from the current node(${currentNode.id}):
