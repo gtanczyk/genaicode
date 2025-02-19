@@ -1,4 +1,4 @@
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { getActionHandler } from '../ask-question-handler.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
@@ -41,17 +41,24 @@ export async function handleConfirmCodeGeneration({
     });
   } else {
     putSystemMessage('Declined. Continuing the conversation.');
+
+    if (userConfirmation.answer) {
+      putUserMessage(userConfirmation.answer);
+    }
+
+    prompt.push(
+      { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
+      {
+        type: 'user',
+        text:
+          'Declined. Please continue the conversation.' +
+          (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
+      },
+    );
+
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
-          user: {
-            type: 'user',
-            text: userConfirmation.answer || 'Declined. Please continue the conversation.',
-          },
-        },
-      ],
+      items: [],
     };
   }
 }
