@@ -19,6 +19,11 @@ export async function handleConfirmCodeGeneration({
     true,
     options,
   );
+
+  if (userConfirmation.answer) {
+    putUserMessage(userConfirmation.answer);
+  }
+
   if (userConfirmation.confirmed) {
     putSystemMessage('Proceeding with code generation.');
 
@@ -29,7 +34,8 @@ export async function handleConfirmCodeGeneration({
       },
       {
         type: 'user',
-        text: userConfirmation.answer ?? 'Confirmed. Proceed with code generation.',
+        text:
+          'Confirmed. Proceed with code generation.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
       },
     );
 
@@ -41,11 +47,6 @@ export async function handleConfirmCodeGeneration({
     });
   } else {
     putSystemMessage('Declined. Continuing the conversation.');
-
-    if (userConfirmation.answer) {
-      putUserMessage(userConfirmation.answer);
-    }
-
     prompt.push(
       { type: 'assistant', text: askQuestionCall.args?.message ?? '' },
       {
