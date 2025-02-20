@@ -42,40 +42,43 @@ export async function handleCodeGeneration({
     options,
   );
 
+  putAssistantMessage(CODEGEN_SUMMARY_PROMPT);
+  prompt.push({
+    type: 'assistant',
+    text: CODEGEN_SUMMARY_PROMPT,
+  });
+
   if (!planningConfirmation.confirmed) {
     // User rejected the planning, return to conversation
+    if (planningConfirmation.answer) {
+      putUserMessage(planningConfirmation.answer);
+    }
+    putSystemMessage('Planning rejected. Returning to conversation.');
+
+    prompt.push({
+      type: 'user',
+      text:
+        'Planning rejected. Returning to conversation.' +
+        (planningConfirmation.answer ? `\n\n${planningConfirmation.answer}` : ''),
+    });
+
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: CODEGEN_SUMMARY_PROMPT,
-            functionCalls: [],
-          },
-          user: {
-            type: 'user',
-            text: planningConfirmation.answer || 'Planning rejected. Returning to conversation.',
-          },
-        },
-      ],
+      items: [],
     };
   }
 
-  // Add user's planning confirmation answer to prompt history
-  const assistantItem = {
-    type: 'assistant',
-    text: CODEGEN_SUMMARY_PROMPT,
-  } as const;
-  putAssistantMessage(assistantItem.text, undefined, undefined, undefined, assistantItem);
-  prompt.push(assistantItem);
+  if (planningConfirmation.answer) {
+    putUserMessage(planningConfirmation.answer);
+  }
 
-  const userItem = {
+  putSystemMessage('Planning accepted. Proceeding with code generation.');
+
+  // Add user's planning confirmation answer to prompt history
+  prompt.push({
     type: 'user',
     text: 'Accept planning and continue.' + (planningConfirmation.answer ? `\n\n${planningConfirmation.answer}` : ''),
-  } as const;
-  putUserMessage(userItem.text, undefined, undefined, undefined, userItem);
-  prompt.push(userItem);
+  });
 
   try {
     // First step: Generate and validate codegen summary
