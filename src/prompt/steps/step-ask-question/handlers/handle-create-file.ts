@@ -29,26 +29,28 @@ export async function handleCreateFile({
     options,
   );
 
-  if (!generateConfirmation.confirmed) {
-    return {
-      breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-          },
-          user: {
-            type: 'user',
-            text: 'Canceling file creation.' + (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
-          },
-        },
-      ],
-    };
-  }
-
   if (generateConfirmation.answer) {
     putUserMessage(generateConfirmation.answer);
+  }
+
+  if (!generateConfirmation.confirmed) {
+    putSystemMessage('Content generation canceled.');
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'Canceling file creation.' + (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
+      },
+    );
+
+    return {
+      breakLoop: false,
+      items: [],
+    };
   }
 
   putSystemMessage('Content generation started.');
