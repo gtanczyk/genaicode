@@ -9,12 +9,11 @@
 - askquestioncall in lint does not make sense?
 - diff view with file browser on the left instead of linear
 - make the prompt from codegensummary more exhaustive
-- button to copy content from diff
 - button to manually apply old/new from diff
 - [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-exp-1206:generateContent: [400 Bad Request] Invalid JSON payload received. Unknown name "args" at 'contents[17].parts[0].function_call': Proto field is not repeating, cannot start list. [{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"contents[17].parts[0].function_call","description":"Invalid JSON payload received. Unknown name \"args\" at 'contents[17].parts[0].function_call': Proto field is not repeating, cannot start list."}]}]
 - codegen summary sorted by dependencies
-- when not applying changes, mark that in the history, because model assumes changes were applied
 - no idea what permissions are requested
 - asset file type
 - optimize context not working, returning all files on gemini
 - lint assistant response is a copy of success message
+- static answers as system message (Accepting plan if not custom)

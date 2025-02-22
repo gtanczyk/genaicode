@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { diffLines } from 'diff';
+import { CopyButton, CopyToClipboard } from './copy-to-clipboard';
 
 interface DiffViewProps {
   oldContent?: string;
@@ -9,10 +10,12 @@ interface DiffViewProps {
 
 export const DiffView: React.FC<DiffViewProps> = ({ oldContent, newContent }) => {
   const [viewMode, setViewMode] = useState<'unified' | 'sideBySide' | 'old' | 'new'>('unified');
+
   const diff = diffLines(oldContent ?? '', newContent);
 
   const renderUnifiedDiff = () => (
     <DiffContainer>
+      <CopyToClipboard content={newContent} />
       {diff.map((part, index) => (
         <DiffLine key={index} added={part.added} removed={part.removed}>
           {part.value}
@@ -24,7 +27,7 @@ export const DiffView: React.FC<DiffViewProps> = ({ oldContent, newContent }) =>
   const renderSideBySideDiff = () => (
     <SideBySideContainer>
       <DiffColumn>
-        <DiffHeader>Old Content</DiffHeader>
+        {oldContent && <CopyToClipboard content={oldContent} />}
         {diff
           .filter((part) => !part.added)
           .map((part, index) => (
@@ -34,7 +37,7 @@ export const DiffView: React.FC<DiffViewProps> = ({ oldContent, newContent }) =>
           ))}
       </DiffColumn>
       <DiffColumn>
-        <DiffHeader>New Content</DiffHeader>
+        <CopyToClipboard content={newContent} />
         {diff
           .filter((part) => !part.removed)
           .map((part, index) => (
@@ -48,14 +51,14 @@ export const DiffView: React.FC<DiffViewProps> = ({ oldContent, newContent }) =>
 
   const renderOldContent = () => (
     <ContentContainer>
-      <DiffHeader>Old Content</DiffHeader>
+      {oldContent && <CopyToClipboard content={oldContent} />}
       <Content>{oldContent}</Content>
     </ContentContainer>
   );
 
   const renderNewContent = () => (
     <ContentContainer>
-      <DiffHeader>New Content</DiffHeader>
+      <CopyToClipboard content={newContent} />
       <Content>{newContent}</Content>
     </ContentContainer>
   );
@@ -87,6 +90,12 @@ export const DiffView: React.FC<DiffViewProps> = ({ oldContent, newContent }) =>
 
 const Container = styled.div`
   margin: 16px 0;
+  position: relative;
+
+  ${CopyButton} {
+    position: absolute;
+    right: 20px;
+  }
 `;
 
 const ViewModeSelector = styled.div`
@@ -95,7 +104,7 @@ const ViewModeSelector = styled.div`
   margin-bottom: 16px;
 `;
 
-const ViewModeButton = styled.button<{ active: boolean }>`
+const ViewModeButton = styled.button<{ active?: boolean }>`
   padding: 4px 8px;
   border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 4px;
@@ -127,6 +136,7 @@ const SideBySideContainer = styled.div`
 `;
 
 const DiffColumn = styled.div`
+  position: relative;
   padding: 8px;
   border: 1px solid ${(props) => props.theme.colors.border};
   border-radius: 4px;
@@ -143,11 +153,6 @@ const ContentContainer = styled.div`
   background-color: ${(props) => props.theme.colors.background};
   max-height: 400px;
   overflow-y: auto;
-`;
-
-const DiffHeader = styled.div`
-  font-weight: bold;
-  margin-bottom: 8px;
 `;
 
 const Content = styled.div`
