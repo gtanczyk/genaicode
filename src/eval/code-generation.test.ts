@@ -40,6 +40,18 @@ describe.each([
     ] as Parameters<typeof updateServiceConfig>,
   },
   { model: 'Claude Sonnet', generateContent: generateContentAnthropic },
+  {
+    model: 'Claude Sonnet 3.7',
+    generateContent: generateContentAnthropic,
+    serviceConfigUpdate: [
+      'anthropic',
+      {
+        modelOverrides: {
+          default: 'claude-3-7-sonnet-20250219',
+        },
+      },
+    ] as Parameters<typeof updateServiceConfig>,
+  },
   { model: 'GPT-4o', generateContent: generateContentOpenAI },
 ])('Code Generation: $model', ({ generateContent, serviceConfigUpdate }) => {
   if (serviceConfigUpdate) {
