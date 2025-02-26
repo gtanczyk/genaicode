@@ -33,16 +33,11 @@ export const generateContent: GenerateContentFunction = async function generateC
       },
     });
 
-    let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+    const systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
 
     if (modelType === ModelType.REASONING) {
-      // This solution mimics the behavior of a reasoning model by using a function call
-      if (!functionDefs.some((f) => f.name === reasoningInferenceResponse.name)) {
-        functionDefs = [...functionDefs, reasoningInferenceResponse];
-      }
-      requiredFunctionName = reasoningInferenceResponse.name;
-      systemPrompt +=
-        '\nFirst, reason step-by-step. Then, call reasoningInferenceResponse with your reasoning and answer.';
+      functionDefs = [];
+      requiredFunctionName = null;
     }
 
     let cacheControlCount = prompt.filter((item) => item.cache).length;
@@ -158,13 +153,21 @@ export const generateContent: GenerateContentFunction = async function generateC
               description: fd.description,
               input_schema: fd.parameters,
             })),
-            tool_choice: requiredFunctionName
-              ? { type: 'tool' as const, name: requiredFunctionName }
-              : functionDefs.length > 0
-                ? { type: 'any' as const }
+            tool_choice:
+              requiredFunctionName && modelType !== ModelType.REASONING
+                ? { type: 'tool' as const, name: requiredFunctionName }
+                : functionDefs.length > 0 && modelType !== ModelType.REASONING
+                  ? { type: 'any' as const }
+                  : undefined,
+            max_tokens: modelType === ModelType.REASONING ? 8192 * 2 : 8192,
+            temperature: modelType !== ModelType.REASONING ? temperature : 1,
+            thinking:
+              modelType === ModelType.REASONING
+                ? {
+                    type: 'enabled',
+                    budget_tokens: 8192,
+                  }
                 : undefined,
-            max_tokens: 8192,
-            temperature: temperature,
           },
           {
             signal: abortController?.signal,
@@ -236,6 +239,23 @@ export const generateContent: GenerateContentFunction = async function generateC
     });
 
     const responseMessages = response!.content.filter((item) => item.type !== 'tool_use');
+
+    if (modelType === ModelType.REASONING) {
+      const thinking = responseMessages.find((item) => item.type === 'thinking')?.thinking;
+      const responseMessage = responseMessages.find((item) => item.type === 'text')?.text;
+
+      return [
+        {
+          id: 'reasoning_inference_response',
+          name: 'reasoningInferenceResponse',
+          args: {
+            ...(thinking ? { reasoning: thinking } : {}),
+            response: responseMessage,
+          },
+        },
+      ];
+    }
+
     if (responseMessages.length > 0) {
       console.log('Response messages', responseMessages);
     }

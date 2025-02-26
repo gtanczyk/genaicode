@@ -33,7 +33,7 @@ describe.each([
   { model: 'Gemini Flash Thinking', generateContent: generateContentAiStudio },
   { model: 'O1', generateContent: generateContentOpenAI },
   { model: 'DeepSeek R1', generateContent: getPluginGenerateContentFn('plugin:deepseek-ai-service') },
-  { model: 'Claude (emulated)', generateContent: generateContentAnthropic },
+  { model: 'Claude', generateContent: generateContentAnthropic },
   { model: 'Claude Vertex (emulated)', generateContent: generateContentVertexAiClaude },
 ])('Reasoning inerence: $model', ({ model, generateContent }) => {
   it('should generate prompt', async () => {

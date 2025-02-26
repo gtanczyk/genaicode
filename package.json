@@ -88,7 +88,7 @@
     "vitest": "^2.1.9"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.33.1",
+    "@anthropic-ai/sdk": "^0.37.0",
     "@anthropic-ai/vertex-sdk": "^0.4.3",
     "@fontsource/press-start-2p": "^5.1.0",
     "@google-cloud/aiplatform": "^3.34.0",
