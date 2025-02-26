@@ -21,9 +21,9 @@ const configurations: ServiceConfigurations = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
     modelOverrides: {
-      default: modelOverrides.anthropic?.default ?? 'claude-3-5-sonnet-20241022',
+      default: modelOverrides.anthropic?.default ?? 'claude-3-7-sonnet-20250219',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
-      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-3-5-sonnet-20241022',
+      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-3-7-sonnet-20250219',
     },
   },
   openai: {
