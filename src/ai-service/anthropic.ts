@@ -9,7 +9,6 @@ import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { getServiceConfig } from './service-configurations.js';
-import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-inference.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
