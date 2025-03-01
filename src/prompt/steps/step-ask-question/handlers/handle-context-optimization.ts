@@ -3,7 +3,7 @@ import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { executeStepContextOptimization } from '../../step-context-optimization.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
-import { ActionHandlerProps, ActionResult, UserItem, AssistantItem } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 
 registerActionHandler('contextOptimization', handleContextOptimization);
 
@@ -19,15 +19,17 @@ export async function handleContextOptimization({
     options,
   );
 
-  const user: UserItem = {
-    type: 'user',
-    text: userConfirmation.confirmed ? 'Context optimization applied.' : 'Context optimization not applied.',
-  };
-
-  const assistant: AssistantItem = {
+  prompt.push({
     type: 'assistant',
     text: askQuestionCall.args?.message ?? '',
-  };
+  });
+
+  prompt.push({
+    type: 'user',
+    text: userConfirmation.confirmed
+      ? 'Context optimization proposal accepted.'
+      : 'Context optimization proposal rejected.',
+  });
 
   if (userConfirmation.confirmed) {
     // the request may be caused be an appearance of a new file, so lets refresh
@@ -35,16 +37,13 @@ export async function handleContextOptimization({
 
     // Execute context optimization step
     putSystemMessage('Executing context optimization step.');
-    await executeStepContextOptimization(generateContentFn, [...prompt, assistant, user], options);
+    await executeStepContextOptimization(generateContentFn, prompt, options);
+  } else {
+    putSystemMessage('Context optimization rejected.');
   }
 
   return {
     breakLoop: false,
-    items: [
-      {
-        assistant,
-        user,
-      },
-    ],
+    items: [],
   };
 }
