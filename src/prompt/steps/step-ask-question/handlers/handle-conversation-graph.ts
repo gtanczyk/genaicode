@@ -103,20 +103,24 @@ export async function handleConversationGraph({
     if (!userConfirmation.confirmed) {
       putSystemMessage('Conversation graph declined.');
 
+      if (userConfirmation.answer) {
+        putUserMessage(userConfirmation.answer);
+      }
+
+      prompt.push(
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Declined conversation graph. ' + userConfirmation.answer,
+        },
+      );
+
       return {
         breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args?.message ?? '',
-            },
-            user: {
-              type: 'user',
-              text: 'Declined conversation graph. ' + userConfirmation.answer,
-            },
-          },
-        ],
+        items: [],
       };
     }
 
@@ -172,20 +176,22 @@ export async function handleConversationGraph({
     let currentNode = nodes.find((node) => node.id === entryNode)!;
 
     if (!currentNode) {
+      putSystemMessage('Error occurred during conversation graph execution.');
+
+      prompt.push(
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Error occurred during conversation graph execution.',
+        },
+      );
+
       return {
         breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: askQuestionCall.args?.message ?? '',
-            },
-            user: {
-              type: 'user',
-              text: 'Error occurred during conversation graph execution.',
-            },
-          },
-        ],
+        items: [],
       };
     }
 
