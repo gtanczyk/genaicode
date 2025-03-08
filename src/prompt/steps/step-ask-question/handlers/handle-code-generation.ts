@@ -155,7 +155,9 @@ export async function handleCodeGeneration({
     putAssistantMessage('Code changes are generated, now what?');
 
     if (confirmApply.confirmed) {
-      putUserMessage(confirmApply.answer || 'Apply code changes.');
+      if (confirmApply.answer) {
+        putUserMessage(confirmApply.answer);
+      }
 
       prompt.push(
         {
@@ -183,7 +185,9 @@ export async function handleCodeGeneration({
         putSystemMessage('Code changes applied successfully');
       }
     } else {
-      putUserMessage(confirmApply.answer || 'Reject code changes.');
+      if (confirmApply.answer) {
+        putUserMessage(confirmApply.answer);
+      }
 
       putSystemMessage('Rejecting code changes...');
 
