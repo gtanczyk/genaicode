@@ -98,27 +98,33 @@ export async function handleCodeGeneration({
       options,
     );
 
+    putAssistantMessage(CODEGEN_SUMMARY_GENERATED_MESSAGE);
+    if (codegenSummaryConfirmation.answer) {
+      putUserMessage(codegenSummaryConfirmation.answer);
+    }
+
     if (!codegenSummaryConfirmation.confirmed) {
-      // User rejected the codegen summary, return to conversation
+      putSystemMessage('Codegen summary rejected. Returning to conversation.');
+
+      prompt.push(
+        {
+          type: 'assistant',
+          text: CODEGEN_SUMMARY_GENERATED_MESSAGE,
+        },
+        {
+          type: 'user',
+          text:
+            'Codegen summary rejected. Returning to conversation.' +
+            (codegenSummaryConfirmation.answer ? `\n\n${codegenSummaryConfirmation.answer}` : ''),
+        },
+      );
       return {
         breakLoop: false,
-        items: [
-          {
-            assistant: {
-              type: 'assistant',
-              text: CODEGEN_SUMMARY_GENERATED_MESSAGE,
-            },
-            user: {
-              type: 'user',
-              text: codegenSummaryConfirmation.answer || 'Codegen summary rejected. Returning to conversation.',
-            },
-          },
-        ],
+        items: [],
       };
     }
 
-    putAssistantMessage(CODEGEN_SUMMARY_GENERATED_MESSAGE);
-    putUserMessage(codegenSummaryConfirmation.answer || CODEGEN_SUMMARY_APPROVED);
+    putSystemMessage('Codegen summary accepted. Proceeding with code generation.');
 
     prompt.push(
       {
@@ -127,7 +133,9 @@ export async function handleCodeGeneration({
       },
       {
         type: 'user',
-        text: codegenSummaryConfirmation.answer || CODEGEN_SUMMARY_APPROVED,
+        text:
+          CODEGEN_SUMMARY_APPROVED +
+          (codegenSummaryConfirmation.answer ? `\n\n${codegenSummaryConfirmation.answer}` : ''),
       },
     );
 
