@@ -6,7 +6,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
-import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
 import { generateRequestFilesContentCall } from './handle-request-files-content.js';
 import { executeStepEnsureContext } from '../../step-ensure-context.js';
@@ -138,84 +138,76 @@ export async function handleUpdateFile({
     options,
   );
 
+  prompt.push({
+    type: 'assistant',
+    text: askQuestionCall.args!.message,
+    functionCalls: [updateFileCall],
+  });
+
+  putAssistantMessage(askQuestionCall.args!.message);
+
+  if (applyConfirmation.answer) {
+    putUserMessage(applyConfirmation.answer);
+  }
+
   if (!applyConfirmation.confirmed) {
-    return {
-      breakLoop: false,
-      items: [
+    putSystemMessage('File update rejected.');
+    prompt.push({
+      type: 'user',
+      text: 'Rejecting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+      functionResponses: [
         {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [updateFileCall],
-          },
-          user: {
-            type: 'user',
-            text: 'Rejecting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
-            functionResponses: [
-              {
-                name: 'updateFile',
-                call_id: updateFileCall.id,
-                content: '',
-              },
-            ],
-          },
+          name: 'updateFile',
+          call_id: updateFileCall.id,
+          content: '',
         },
       ],
+    });
+
+    return {
+      breakLoop: false,
+      items: [],
     };
   }
 
   try {
+    putSystemMessage('Applying file update');
     await executeUpdateFile(updateFileCall.args);
     refreshFiles();
-    return {
-      breakLoop: false,
-      items: [
+    prompt.push({
+      type: 'user',
+      text: 'Accepting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+      functionResponses: [
         {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [updateFileCall],
-          },
-          user: {
-            type: 'user',
-            text: 'Accepting file update.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
-            functionResponses: [
-              {
-                name: 'updateFile',
-                call_id: updateFileCall.id,
-                content: '',
-              },
-            ],
-          },
+          name: 'updateFile',
+          call_id: updateFileCall.id,
+          content: '',
         },
       ],
+    });
+    return {
+      breakLoop: false,
+      items: [],
     };
   } catch {
-    return {
-      breakLoop: false,
-      items: [
+    putSystemMessage('File update failed.');
+    prompt.push({
+      type: 'user',
+      text:
+        'Accepting file update.' +
+        (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
+        ' Unfortunately, the file update failed, the new content was not saved.',
+      functionResponses: [
         {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [updateFileCall],
-          },
-          user: {
-            type: 'user',
-            text:
-              'Accepting file update.' +
-              (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
-              ' Unfortunately, the file update failed, the new content was not saved.',
-            functionResponses: [
-              {
-                name: 'updateFile',
-                call_id: updateFileCall.id,
-                content: '',
-              },
-            ],
-          },
+          name: 'updateFile',
+          call_id: updateFileCall.id,
+          content: '',
         },
       ],
+    });
+    return {
+      breakLoop: false,
+      items: [],
     };
   }
 }
