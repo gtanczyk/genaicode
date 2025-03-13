@@ -88,20 +88,20 @@ export async function handleCreateFile({
   const file = getSourceCode({ filterPaths: [filePath], forceAll: true }, options)[filePath];
 
   if (file && 'content' in file && file.content) {
+    putSystemMessage('File not created. File already exists.', createFileCall);
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'The file already exists. Please use updateFile function to modify existing files.',
+      },
+    );
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-          },
-          user: {
-            type: 'user',
-            text: 'The file already exists. Please use updateFile function to modify existing files.',
-          },
-        },
-      ],
+      items: [],
     };
   }
 
@@ -119,85 +119,89 @@ export async function handleCreateFile({
     options,
   );
 
+  if (applyConfirmation.answer) {
+    putUserMessage(applyConfirmation.answer);
+  }
+
   if (!applyConfirmation.confirmed) {
+    putSystemMessage('File creation rejected.');
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args!.message,
+        functionCalls: [createFileCall],
+      },
+      {
+        type: 'user',
+        text: 'Rejecting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+        functionResponses: [
+          {
+            name: 'createFile',
+            call_id: createFileCall.id,
+            content: '',
+          },
+        ],
+      },
+    );
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [createFileCall],
-          },
-          user: {
-            type: 'user',
-            text: 'Rejecting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
-            functionResponses: [
-              {
-                name: 'createFile',
-                call_id: createFileCall.id,
-                content: '',
-              },
-            ],
-          },
-        },
-      ],
+      items: [],
     };
   }
 
   try {
+    putSystemMessage('Applying file creation');
     await executeCreateFile(createFileCall.args, options);
     refreshFiles();
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args!.message,
+        functionCalls: [createFileCall],
+      },
+      {
+        type: 'user',
+        text: 'Accepting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
+        functionResponses: [
+          {
+            name: 'createFile',
+            call_id: createFileCall.id,
+            content: '',
+          },
+        ],
+      },
+    );
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [createFileCall],
-          },
-          user: {
-            type: 'user',
-            text: 'Accepting file creation.' + (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : ''),
-            functionResponses: [
-              {
-                name: 'createFile',
-                call_id: createFileCall.id,
-                content: '',
-              },
-            ],
-          },
-        },
-      ],
+      items: [],
     };
   } catch (error) {
+    putSystemMessage('File creation failed.');
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args!.message,
+        functionCalls: [createFileCall],
+      },
+      {
+        type: 'user',
+        text:
+          'Accepting file creation.' +
+          (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
+          ' Unfortunately, the file creation failed: ' +
+          (error instanceof Error ? error.message : 'unknown error'),
+        functionResponses: [
+          {
+            name: 'createFile',
+            call_id: createFileCall.id,
+            content: '',
+          },
+        ],
+      },
+    );
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-            functionCalls: [createFileCall],
-          },
-          user: {
-            type: 'user',
-            text:
-              'Accepting file creation.' +
-              (applyConfirmation.answer ? ` ${applyConfirmation.answer}` : '') +
-              ' Unfortunately, the file creation failed: ' +
-              (error instanceof Error ? error.message : 'unknown error'),
-            functionResponses: [
-              {
-                name: 'createFile',
-                call_id: createFileCall.id,
-                content: '',
-              },
-            ],
-          },
-        },
-      ],
+      items: [],
     };
   }
 }
