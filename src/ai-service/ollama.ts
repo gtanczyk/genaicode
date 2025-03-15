@@ -47,6 +47,14 @@ export const generateContent: GenerateContentFunction = async function generateC
 
     console.log(`Using Ollama model: ${model}`);
 
+    // additional nudge to the model to call the required function
+    if (requiredFunctionName) {
+      prompt.push({
+        type: 'user',
+        text: `Call the \`${requiredFunctionName}\` function`,
+      });
+    }
+
     return internalGenerateContent(
       prompt.map((item) => ({ ...item, text: item.text ?? ' ' })),
       functionDefs,

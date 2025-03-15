@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
+import { generateContent as generateContentOllama } from '../ai-service/ollama.js';
 import {
   INITIAL_GREETING,
   READY_TO_ASSIST,
@@ -29,6 +30,7 @@ describe.each([
   { model: 'Gemini Flash', generateContent: generateContentAiStudio, modelType: ModelType.CHEAP },
   { model: 'Claude Haikku', generateContent: generateContentAnthropic, modelType: ModelType.CHEAP },
   { model: 'GPT-4o Mini', generateContent: generateContentOpenAI, modelType: ModelType.CHEAP },
+  { model: 'Gemma3', generateContent: generateContentOllama, modelType: ModelType.CHEAP },
 ])('Ask Question: $model', ({ generateContent, modelType }) => {
   generateContent = retryGenerateContent(generateContent);
 
