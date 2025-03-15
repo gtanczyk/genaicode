@@ -42,6 +42,12 @@ export type ServiceConfigRequirements = {
     googleCloudProjectId?: never;
     googleCloudRegion?: never;
   };
+  ollama: {
+    apiKey?: string | undefined;
+    openaiBaseUrl?: string | undefined;
+    googleCloudProjectId?: never;
+    googleCloudRegion?: never;
+  };
   'ai-studio': {
     apiKey: string | undefined;
     googleCloudProjectId?: never;
@@ -64,5 +70,6 @@ export type AiServiceType =
   | 'ai-studio'
   | 'vertex-ai-claude'
   | 'openai'
+  | 'ollama'
   | 'anthropic'
   | PluginAiServiceType;

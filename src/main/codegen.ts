@@ -5,6 +5,7 @@ import { generateContent as generateContentGPT } from '../ai-service/openai.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
+import { generateContent as generateContentOllama } from '../ai-service/ollama.js';
 import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
 import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
@@ -136,6 +137,7 @@ export function getGenerateContentFunctions(): Record<AiServiceType, GenerateCon
     'ai-studio': generateContentAiStudio,
     anthropic: generateContentAnthropic,
     openai: generateContentGPT,
+    ollama: generateContentOllama,
     ...Object.fromEntries([...getRegisteredAiServices().entries()].map(([key, value]) => [key, value.generateContent])),
   };
 }

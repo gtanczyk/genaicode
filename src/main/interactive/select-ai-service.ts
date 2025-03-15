@@ -7,6 +7,7 @@ const AI_SERVICE_CHOICES = [
   { name: 'OpenAI', value: 'openai' },
   { name: 'Anthropic Claude', value: 'anthropic' },
   { name: 'Claude via Vertex AI', value: 'vertex-ai-claude' },
+  { name: 'Ollama', value: 'ollama' },
 ] as const;
 
 export const selectAiService = async (defaultAiService: AiServiceType | undefined): Promise<AiServiceType> => {
