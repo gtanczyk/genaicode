@@ -20,6 +20,7 @@ vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
+vi.mock('../ai-service/local-llm.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/dall-e.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-imagen.js', () => ({ generateImage: vi.fn() }));
 vi.mock('../cli/cli-params.js', () => ({
