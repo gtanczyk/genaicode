@@ -16,7 +16,7 @@ This document provides a detailed comparison between documented features and the
 | Plugin AI Services     | ✅ Documented        | ✅ Implemented        | main/plugin-loader.ts                | Extensible service integration      |
 | Model Overrides        | ✅ Documented        | ✅ Implemented        | ai-service/service-configurations.ts | Per-service model configuration     |
 | Service Auto-detection | ✅ Documented        | ✅ Implemented        | cli/service-autodetect.ts            | Environment-based detection         |
-| Ollama Integration     | ❌ Not Documented    | 🚧 Planned            | N/A                                  | Feature requested in feedback       |
+| Ollama Integration     | ❌ Not Documented    | ✅ Implemented        | ai-service/local-llm.ts              | Feature requested in feedback       |
 
 ### UI and Interaction
 

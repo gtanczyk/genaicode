@@ -11,7 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [-] [GEN-071] 2024-07-20: Ollama AI Service Integration - Added Ollama as a new AI service with OpenAI-compatible API support, custom base URL configuration, and model overrides for different model types.
+- [-] [GEN-071] 2024-07-20: Local LLM AI Service Integration - Added Local LLM as a new AI service with OpenAI-compatible API support, custom base URL configuration, and model overrides for different model types.
 - [x] [GEN-070] 2024-02-21: Enhanced Diff View - Extracted CopyToClipboard component with individual state management. Improved UI with icon button in top-right corner. Fixed shared state issue in side-by-side view. Includes success/failure states, styled consistently with existing UI.
 - [-] [GEN-069] 2024-02-17: Enhanced Conversation Graph Edge Evaluation - Implemented LLM-based edge evaluation with condition handling, user input consideration, and traversal control.
 - [-] [GEN-068] 2024-02-14: Conversation Graph Implementation - Added conversation graph functionality with directed graph traversal, node action execution, and edge condition handling. Includes cycle detection and error handling.

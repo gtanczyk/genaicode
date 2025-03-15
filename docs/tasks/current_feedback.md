@@ -3,7 +3,6 @@
 - fix programmatic usage problems
 - an option to compress/summarize current history of conversation
 - option to regenerate an assistant message (with different model)
-- ollama (openai api?)
 - prompt for api key on failure
 - schema corner case -> proper virtual files
 - askquestioncall in lint does not make sense?

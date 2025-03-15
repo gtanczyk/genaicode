@@ -8,7 +8,7 @@ export function getSupportedAiServices(): AiServiceType[] {
     'vertex-ai-claude',
     'openai',
     'anthropic',
-    'ollama',
+    'local-llm',
     ...getRegisteredAiServices().keys(),
   ];
 }

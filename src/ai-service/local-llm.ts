@@ -9,8 +9,8 @@ import { getServiceConfig } from './service-configurations.js';
 import { internalGenerateContent } from './openai.js';
 
 /**
- * This function generates content using the Ollama service.
- * Ollama provides an OpenAI-compatible API, so we can reuse the OpenAI implementation.
+ * This function generates content using the local llm service.
+ * Local llm provides an OpenAI-compatible API, so we can reuse the OpenAI implementation.
  */
 export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
@@ -20,14 +20,12 @@ export const generateContent: GenerateContentFunction = async function generateC
   modelType = ModelType.DEFAULT,
 ): Promise<FunctionCall[]> {
   try {
-    const serviceConfig = getServiceConfig('ollama');
+    const serviceConfig = getServiceConfig('local-llm');
 
-    // Ollama requires an API key in the OpenAI client, but doesn't actually use it
-    // We set a dummy value and use the baseURL to connect to Ollama
-    const apiKey = serviceConfig?.apiKey || 'ollama';
+    const apiKey = serviceConfig?.apiKey || 'local-llm';
     const baseURL = serviceConfig?.openaiBaseUrl || 'http://localhost:11434/v1/';
 
-    assert(baseURL, 'Ollama base URL not configured, use OLLAMA_BASE_URL environment variable.');
+    assert(baseURL, 'Local llm base URL not configured, use LOCAL_LLM_BASE_URL environment variable.');
 
     const openai = new OpenAI({
       apiKey,
@@ -45,7 +43,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     })();
 
-    console.log(`Using Ollama model: ${model}`);
+    console.log(`Using local model: ${model}`);
 
     // additional nudge to the model to call the required function
     if (requiredFunctionName) {
@@ -66,7 +64,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     );
   } catch (error) {
     if (error instanceof Error && error.message.includes('base URL not configured')) {
-      throw new Error('Ollama base URL not configured. Please set up the service configuration.');
+      throw new Error('Local base URL not configured. Please set up the service configuration.');
     }
     throw error;
   }

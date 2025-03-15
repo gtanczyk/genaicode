@@ -35,13 +35,13 @@ const configurations: ServiceConfigurations = {
       reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
     },
   },
-  ollama: {
-    apiKey: process.env.OLLAMA_API_KEY ?? 'ollama',
-    openaiBaseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1/',
+  'local-llm': {
+    apiKey: process.env.LOCAL_LLM_API_KEY ?? 'local-llm',
+    openaiBaseUrl: process.env.LOCAL_LLM_BASE_URL ?? 'http://localhost:11434/v1/',
     modelOverrides: {
-      default: modelOverrides.ollama?.default ?? 'gemma3:12b',
-      cheap: modelOverrides.ollama?.cheap ?? 'gemma3:12b',
-      reasoning: modelOverrides.ollama?.reasoning ?? 'gemma3:12b',
+      default: modelOverrides.localLlm?.default ?? 'gemma3:12b',
+      cheap: modelOverrides.localLlm?.cheap ?? 'gemma3:12b',
+      reasoning: modelOverrides.localLlm?.reasoning ?? 'gemma3:12b',
     },
   },
   'vertex-ai': {

@@ -24,7 +24,7 @@ export interface ModelOverrides {
   anthropic?: ServiceModelConfig;
   vertexAi?: ServiceModelConfig;
   aiStudio?: ServiceModelConfig;
-  ollama?: ServiceModelConfig;
+  localLlm?: ServiceModelConfig;
 }
 
 /**

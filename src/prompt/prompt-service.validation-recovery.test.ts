@@ -4,6 +4,7 @@ import * as vertexAi from '../ai-service/vertex-ai.js';
 import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
+import * as localLlm from '../ai-service/local-llm.js';
 import * as cliParams from '../cli/cli-params.js';
 import fs from 'fs';
 import * as diff from 'diff';
@@ -64,6 +65,7 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'ai-studio': vertexAi.generateContent,
   anthropic: anthropic.generateContent,
   openai: openai.generateContent,
+  'local-llm': localLlm.generateContent,
 } as const;
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {

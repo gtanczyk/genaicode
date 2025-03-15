@@ -90,7 +90,7 @@ export function validateCliParams(): void {
   if (aiServiceParam) {
     const aiServiceValue: string = aiServiceParam.split('=')[1];
     if (
-      !['vertex-ai', 'openai', 'anthropic', 'ai-studio', 'vertex-ai-claude', 'ollama'].includes(aiServiceValue) &&
+      !['vertex-ai', 'openai', 'anthropic', 'ai-studio', 'vertex-ai-claude', 'local-llm'].includes(aiServiceValue) &&
       !aiServiceValue.startsWith('plugin:')
     ) {
       throw new Error(`Invalid --ai-service value "${aiServiceValue}"`);
