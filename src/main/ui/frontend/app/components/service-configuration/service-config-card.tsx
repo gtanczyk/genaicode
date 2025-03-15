@@ -33,8 +33,8 @@ const isVertexClaudeService = (serviceType: AiServiceType): boolean => {
   return serviceType === 'vertex-ai-claude';
 };
 
-const isOpenAIService = (serviceType: AiServiceType): boolean => {
-  return serviceType === 'openai';
+const isOpenAIApiService = (serviceType: AiServiceType): boolean => {
+  return serviceType === 'openai' || serviceType === 'local-llm';
 };
 
 export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
@@ -159,7 +159,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
             </FormGroup>
           )}
 
-          {isOpenAIService(serviceType) && (
+          {isOpenAIApiService(serviceType) && (
             // baseUrl input for OpenAI service
             <FormGroup>
               <Label htmlFor={`baseUrl-${serviceType}`}>Base URL</Label>
