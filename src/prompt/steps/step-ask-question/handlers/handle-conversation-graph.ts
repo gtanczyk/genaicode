@@ -100,12 +100,12 @@ export async function handleConversationGraph({
       options,
     );
 
+    if (userConfirmation.answer) {
+      putUserMessage(userConfirmation.answer);
+    }
+
     if (!userConfirmation.confirmed) {
       putSystemMessage('Conversation graph declined.');
-
-      if (userConfirmation.answer) {
-        putUserMessage(userConfirmation.answer);
-      }
 
       prompt.push(
         {
@@ -114,7 +114,7 @@ export async function handleConversationGraph({
         },
         {
           type: 'user',
-          text: 'Declined conversation graph. ' + userConfirmation.answer,
+          text: 'Declined conversation graph. ' + (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
         },
       );
 
@@ -136,7 +136,7 @@ export async function handleConversationGraph({
         },
         {
           type: 'user',
-          text: CONVERSATION_GRAPH_PROMPT,
+          text: CONVERSATION_GRAPH_PROMPT + (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
         },
       ],
       getFunctionDefs(),
