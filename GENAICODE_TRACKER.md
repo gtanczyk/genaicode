@@ -11,6 +11,9 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-080] 2024-08-05: Enhanced UI - Replaced 'Upload Images' text with icon in button components
+- [-] [GEN-079] 2024-08-04: Implement image pasting in Question Handler
+- [ ] [GEN-078] 2024-08-04: Implement image upload for question answers
 - [-] [GEN-077] 2024-08-03: Fixed type error and polling issue in ChatStateContext
 - [-] [GEN-076] 2024-08-03: Refactored AppState - Migrated state management logic to ChatStateContext to centralize state and remove prop drilling.
 - [-] [GEN-075] 2024-08-03: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling

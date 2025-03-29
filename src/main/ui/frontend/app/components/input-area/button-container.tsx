@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { AiServiceSelector } from './ai-service-selector';
 import { AiServiceType, CodegenOptions } from '../../../../../codegen-types';
+import { UploadIcon } from '../icons';
 
 interface ButtonContainerProps {
   onSubmit: () => void;
@@ -23,7 +24,9 @@ export const ButtonContainer: React.FC<ButtonContainerProps> = ({
       <SubmitButton onClick={onSubmit} disabled={disabled}>
         Submit
       </SubmitButton>
-      <Button onClick={onUploadClick}>Upload Images</Button>
+      <Button onClick={onUploadClick} title="Upload Images">
+        <UploadIcon />
+      </Button>
       <AiServiceSelector value={options.aiService} onChange={onAiServiceChange} />
     </ButtonContainerWrapper>
   );

@@ -26,11 +26,10 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
   currentQuestion: Question | null;
   codegenOptions: CodegenOptions;
-  onQuestionSubmit: (answer: string, confirmed?: boolean, aiService?: AiServiceType) => void;
+  onQuestionSubmit: (answer: string, images?: File[], confirmed?: boolean, aiService?: AiServiceType) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   executionStatus: 'idle' | 'executing' | 'paused';
-  // Removed suggestions and onSuggestionsGenerated props
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -41,7 +40,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onInterrupt,
   onPauseResume,
   executionStatus,
-  // Removed suggestions and onSuggestionsGenerated from destructuring
 }) => {
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(() => new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(() => new Set());
@@ -96,8 +94,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const initialCollapsed = new Set(iterations.slice(0, -1).map((iteration) => iteration.iterationId));
     setCollapsedIterations(initialCollapsed);
   }, [iterations.length]); // Only run when the number of iterations changes
-
-  // Removed the effect for generating suggestions
 
   const toggleDataVisibility = (id: string) => {
     setVisibleDataIds((prevIds) => {
@@ -240,7 +236,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               question={currentQuestion}
               codegenOptions={codegenOptions}
               executionStatus={executionStatus}
-              // Removed suggestions prop
             />
           )}
         <div ref={messagesEndRef} />

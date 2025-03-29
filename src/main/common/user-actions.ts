@@ -1,7 +1,9 @@
+import { PromptItemImage } from '../../ai-service/common-types';
 import { CodegenOptions } from '../codegen-types';
 
 export type InputHandlerResponse = {
   answer: string;
+  images?: PromptItemImage[];
   options?: CodegenOptions;
 };
 

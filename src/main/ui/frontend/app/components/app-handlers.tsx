@@ -56,7 +56,12 @@ export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
     // Removed finally block that set status to idle, polling handles final state
   };
 
-  const handleQuestionSubmit = async (answer: string, confirmed?: boolean, aiService?: AiServiceType) => {
+  const handleQuestionSubmit = async (
+    answer: string,
+    images?: File[],
+    confirmed?: boolean,
+    aiService?: AiServiceType,
+  ) => {
     // Fetch current question directly if needed, though context might already have it
     const currentQuestionFromContext = await getCurrentQuestion(); // Or use context.currentQuestion
     if (currentQuestionFromContext) {
@@ -66,7 +71,7 @@ export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
         if (codegenOptions) {
           const updatedOptions = { ...codegenOptions, aiService: aiService ?? codegenOptions.aiService };
           setCodegenOptions(updatedOptions);
-          await answerQuestion(currentQuestionFromContext.id, answer, confirmed, updatedOptions);
+          await answerQuestion(currentQuestionFromContext.id, answer, confirmed, updatedOptions, images);
         } else {
           console.error('Codegen options not available for submitting answer');
         }

@@ -14,6 +14,7 @@ export async function handleSendMessage({ askQuestionCall, options }: ActionHand
         user: {
           type: 'user',
           text: response.answer,
+          images: response.images,
         },
       },
     ],

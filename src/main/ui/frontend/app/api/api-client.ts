@@ -214,9 +214,31 @@ export const answerQuestion = async (
   questionId: string,
   answer: string,
   confirmed: boolean | undefined,
-  options: CodegenOptions,
+  options?: CodegenOptions, // Made options optional to match service
+  images?: File[], // Add images parameter
 ): Promise<void> => {
-  await api.post('/answer-question', { questionId, answer, confirmed, options });
+  const formData = new FormData();
+  formData.append('questionId', questionId);
+  formData.append('answer', answer);
+  // FormData expects string values, convert boolean/undefined
+  if (confirmed !== undefined) {
+    formData.append('confirmed', String(confirmed));
+  }
+  if (options) {
+    formData.append('options', JSON.stringify(options));
+  }
+  if (images && images.length > 0) {
+    images.forEach((image) => {
+      // Use the same field name ('images') as expected by multer on the backend
+      formData.append('images', image);
+    });
+  }
+
+  await api.post('/answer-question', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
 };
 
 export const getUsage = async (): Promise<Usage> => {

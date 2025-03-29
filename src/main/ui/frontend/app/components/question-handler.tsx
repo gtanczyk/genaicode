@@ -5,9 +5,11 @@ import { StyledTextarea } from './styled-textarea';
 import { Question } from '../../../common/api-types';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { AiServiceSelector } from './input-area/ai-service-selector';
+import { ImageUpload } from './input-area/image-upload'; // Import ImageUpload
+import { UploadIcon } from './icons';
 
 interface QuestionHandlerProps {
-  onSubmit: (answer: string, confirmed?: boolean, aiService?: AiServiceType) => void;
+  onSubmit: (answer: string, images?: File[], confirmed?: boolean, aiService?: AiServiceType) => void; // Updated prop type
   onInterrupt: () => void;
   onPauseResume: () => void;
   question: Question | null;
@@ -24,12 +26,14 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   executionStatus,
 }) => {
   const [answer, setAnswer] = useState('');
-  // Get suggestions from context instead of props
-  const { suggestions } = useContext(ChatStateContext) ?? { suggestions: [] }; // Default to empty array
+  const [images, setImages] = useState<File[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const { suggestions } = useContext(ChatStateContext) ?? { suggestions: [] };
   const [error, setError] = useState<string | null>(null);
   const [aiService, setAiService] = useState<AiServiceType>(codegenOptions.aiService);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update aiService when codegenOptions.aiService changes
   useEffect(() => {
@@ -49,14 +53,26 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     };
   }, [dropdownRef]);
 
+  // Function to handle pasting images into the textarea
+  const handleImagePaste = (file: File) => {
+    // Add the pasted file to the images state
+    // Ensure not to exceed maximum image count if needed (add validation if required)
+    setImages((prevImages) => [...prevImages, file]);
+    setImageError(null); // Clear any previous image errors
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (answer.trim() && question) {
+    if ((answer.trim() || images.length > 0) && question) {
+      // Allow submit if answer OR images exist
       try {
-        await onSubmit(answer, undefined, aiService);
+        await onSubmit(answer, images, undefined, aiService); // Pass images
         setAnswer('');
+        setImages([]); // Clear images after submit
         setError(null);
+        setImageError(null);
       } catch (err) {
+        // Use err instead of error
         console.error('Error submitting answer:', err);
         setError('Failed to submit the answer. Please try again.');
       }
@@ -65,22 +81,29 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
 
   const handleConfirmation = async (isYes: boolean) => {
     try {
-      await onSubmit(answer, isYes, aiService);
+      await onSubmit(answer, images, isYes, aiService); // Pass images
+      setAnswer(''); // Clear answer as well on confirmation
+      setImages([]); // Clear images after confirmation
       setError(null);
+      setImageError(null);
     } catch (err) {
+      // Use err instead of error
       console.error('Error submitting confirmation:', err);
       setError('Failed to submit the confirmation. Please try again.');
     }
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    // Replace the current answer with the selected suggestion
     setAnswer(suggestion);
-    setIsDropdownOpen(false); // Close dropdown after selection
+    setIsDropdownOpen(false);
   };
 
   const toggleDropdown = () => {
     setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const isPaused = executionStatus === 'paused';
@@ -96,18 +119,32 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               onChange={setAnswer}
               placeholder="Enter your answer here or select a suggestion"
               maxViewportHeight={0.3}
+              onImagePaste={handleImagePaste} // Pass the image paste handler here
+            />
+          )}
+          {question.confirmation?.includeAnswer !== false && (
+            <ImageUpload
+              images={images}
+              onImagesChange={setImages} // Use setImages to handle changes from ImageUpload (e.g., removing images)
+              error={imageError}
+              setError={setImageError}
+              fileInputRef={fileInputRef}
             />
           )}
           {!question.confirmation && (
             <ButtonGroup>
-              <SubmitButton type="submit">Submit Answer</SubmitButton>
+              <SubmitButton type="submit" disabled={!answer.trim() && images.length === 0}>
+                Submit Answer
+              </SubmitButton>
+              <UploadButton type="button" onClick={handleUploadClick} title="Upload Images">
+                <UploadIcon />
+              </UploadButton>
               <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
-              {/* Render suggestion dropdown if available and not a confirmation dialog */}
-              {suggestions && suggestions.length > 0 && !question.confirmation && (
+              {suggestions && suggestions.length > 0 && (
                 <DropdownWrapper ref={dropdownRef}>
                   <DropdownButton type="button" onClick={toggleDropdown}>
-                    {suggestions[0]} {/* Display the first suggestion */}
-                    {suggestions.length > 1 && <Arrow> ▼</Arrow>} {/* Show arrow if more than one */}
+                    {suggestions[0]}
+                    {suggestions.length > 1 && <Arrow> ▼</Arrow>}
                   </DropdownButton>
                   {isDropdownOpen && (
                     <DropdownContainer>
@@ -184,12 +221,12 @@ const DropdownButton = styled.button`
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
-  display: flex; /* Use flexbox for alignment */
-  align-items: center; /* Center items vertically */
-  white-space: nowrap; /* Prevent text wrapping */
-  overflow: hidden; /* Hide overflow */
-  text-overflow: ellipsis; /* Add ellipsis for long suggestions */
-  max-width: 200px; /* Limit button width */
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 
   &:hover {
     background-color: ${(props) => props.theme.colors.primary + '22'};
@@ -197,23 +234,23 @@ const DropdownButton = styled.button`
 `;
 
 const Arrow = styled.span`
-  margin-left: 5px; /* Space between text and arrow */
-  font-size: 0.8em; /* Smaller arrow */
+  margin-left: 5px;
+  font-size: 0.8em;
 `;
 
 const DropdownContainer = styled.div`
   position: absolute;
-  bottom: 100%; /* Position above the button */
+  bottom: 100%;
   left: 0;
   background-color: ${({ theme }) => theme.colors.inputBg};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  max-width: 300px; /* Set max width for the dropdown */
-  max-height: 200px; /* Add max height for scrollability */
-  overflow-y: auto; /* Enable vertical scrolling */
-  margin-bottom: 5px; /* Space between button and dropdown */
+  max-width: 300px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 5px;
 `;
 
 const DropdownItem = styled.div`
@@ -231,11 +268,11 @@ const DropdownItem = styled.div`
 
 const ButtonGroup = styled.div`
   display: flex;
-  align-items: center; /* Align items vertically */
+  align-items: center;
   justify-content: flex-start;
   gap: 10px;
   margin-top: 10px;
-  flex-wrap: wrap; /* Allow wrapping if needed */
+  flex-wrap: wrap;
 `;
 
 const Button = styled.button`
@@ -246,13 +283,26 @@ const Button = styled.button`
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+
+  &:disabled {
+    background-color: ${({ theme }) => theme.colors.disabled};
+    cursor: not-allowed;
+  }
 `;
 
 const SubmitButton = styled(Button)`
   background-color: ${({ theme }) => theme.colors.primary};
 
-  &:hover {
+  &:hover:not(:disabled) {
     background-color: ${({ theme }) => theme.colors.primary}dd;
+  }
+`;
+
+const UploadButton = styled(Button)`
+  background-color: ${({ theme }) => theme.colors.buttonBg}; /* Or choose another appropriate color */
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.buttonHoverBg}dd;
   }
 `;
 
@@ -272,7 +322,7 @@ const ConfirmButton = styled(Button)`
 
 const InterruptButton = styled(Button)`
   background-color: ${({ theme }) => theme.colors.error};
-  margin-left: auto; /* Pushes interrupt button to the right */
+  margin-left: auto;
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.error}dd;

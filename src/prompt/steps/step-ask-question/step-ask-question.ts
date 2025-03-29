@@ -74,8 +74,8 @@ export async function executeStepAskQuestion(
 
         // This is important to display the content to the user interface (ui or interactive cli)
         const lastItem = result.items.slice(-1)[0];
-        if (lastItem?.user?.text) {
-          putUserMessage(lastItem.user.text, lastItem.user.data, undefined, undefined, lastItem.user);
+        if (lastItem?.user?.text || lastItem?.user?.images) {
+          putUserMessage(lastItem.user.text ?? '', lastItem.user.data, undefined, lastItem.user.images, lastItem.user);
         }
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());

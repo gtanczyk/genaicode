@@ -11,27 +11,30 @@ import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { editMessage, putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 import { getGenerateContentFunctions } from '../../codegen.js';
-import { FunctionCall } from '../../../ai-service/common-types.js';
+import { FunctionCall, PromptImageMediaType, PromptItemImage } from '../../../ai-service/common-types.js';
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
 
-interface ImageData {
+export interface ImageData {
   buffer: Buffer;
-  mimetype: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  mimetype: PromptImageMediaType;
   originalname: string;
+}
+
+interface AskQuestionConversationItem {
+  id: string;
+  question: string;
+  answer: string;
+  confirmed: boolean | undefined;
+  confirmation: ConfirmationProps;
+  images?: PromptItemImage[];
 }
 
 export class Service implements AppContextProvider {
   private executionStatus: 'idle' | 'executing' | 'paused' | 'interrupted' = 'idle';
   private currentQuestion: Question | null = null;
-  private askQuestionConversation: Array<{
-    id: string;
-    question: string;
-    answer: string;
-    confirmed: boolean | undefined;
-    confirmation: ConfirmationProps;
-  }> = [];
+  private askQuestionConversation: AskQuestionConversationItem[] = [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
@@ -142,7 +145,10 @@ export class Service implements AppContextProvider {
       this.executionStatus = 'idle';
       if (error instanceof Error) {
         if (error.name === 'AbortError' || error.message.includes('interrupted')) {
-          return { success: false, message: 'Codegen execution was interrupted' };
+          return {
+            success: false,
+            message: 'Codegen execution was interrupted',
+          };
         } else if (error.message.includes('Rate limit exceeded')) {
           return {
             success: false,
@@ -183,7 +189,11 @@ export class Service implements AppContextProvider {
               {
                 name: 'printMessage',
                 description: 'Print a message',
-                parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] },
+                parameters: {
+                  type: 'object',
+                  properties: { message: { type: 'string' } },
+                  required: ['message'],
+                },
               },
             ],
         modelType === ModelType.REASONING ? 'reasoningInferenceResponse' : 'printMessage',
@@ -237,7 +247,12 @@ export class Service implements AppContextProvider {
   async askQuestion(
     question: string,
     confirmation: ConfirmationProps,
-  ): Promise<{ answer: string; confirmed: boolean | undefined; options: CodegenOptions }> {
+  ): Promise<{
+    answer: string;
+    confirmed: boolean | undefined;
+    options: CodegenOptions;
+    images?: PromptItemImage[];
+  }> {
     const questionId = Date.now().toString();
     this.currentQuestion = {
       id: questionId,
@@ -248,17 +263,22 @@ export class Service implements AppContextProvider {
     await this.waitForQuestionAnswer();
 
     console.log('Question answer wait finished.');
-    const { answer, confirmed } = this.askQuestionConversation.find((q) => q.id === questionId) ?? {
-      answer: '',
-      confirmed: undefined,
-    };
-    return { answer, confirmed, options: this.codegenOptions };
+    const conversationItem = this.askQuestionConversation.find((q) => q.id === questionId);
+
+    if (!conversationItem) {
+      // Should ideally not happen if waitForQuestionAnswer resolved correctly
+      throw new Error(`Conversation item not found for question ID: ${questionId}`);
+    }
+
+    const { answer, confirmed, images } = conversationItem;
+    return { answer, confirmed, images, options: this.codegenOptions };
   }
 
   async answerQuestion(
     questionId: string,
     answer: string,
     confirmed: boolean | undefined,
+    images?: ImageData[], // Accept raw image data from the endpoint
     options?: CodegenOptions,
   ): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
@@ -267,14 +287,28 @@ export class Service implements AppContextProvider {
         this.codegenOptions = { ...this.codegenOptions, ...options };
       }
 
+      // Process images into the format needed for storage/AI service (PromptItemImage)
+      const processedImages: PromptItemImage[] | undefined = images?.map((image) => ({
+        base64url: image.buffer.toString('base64'),
+        mediaType: image.mimetype,
+      }));
+
+      // Store the answer and processed images in the conversation history
       this.askQuestionConversation.push({
         id: this.currentQuestion.id,
         question: this.currentQuestion.text,
         answer: answer,
         confirmed,
         confirmation: this.currentQuestion.confirmation,
+        images: processedImages, // Store the processed images
       });
+
+      // Clear the current question now that it's answered
       this.currentQuestion = null;
+    } else {
+      // Handle cases where the question ID doesn't match or no question is active
+      console.warn(`Attempted to answer question ${questionId}, but no matching active question found.`);
+      // Consider throwing an error or returning a specific status if needed
     }
   }
 
@@ -316,10 +350,14 @@ export class Service implements AppContextProvider {
     return new Promise((resolve, reject) => {
       const checkQuestion = () => {
         if (abortController?.signal.aborted || this.executionStatus === 'interrupted') {
+          // Reject if aborted before the question is answered
+          this.currentQuestion = null; // Clear potentially dangling question
           reject(new Error('Codegen execution was interrupted'));
         } else if (this.currentQuestion === null) {
+          // Resolve once the question is cleared (answered)
           resolve();
         } else {
+          // Check again shortly
           setTimeout(checkQuestion, 100);
         }
       };
