@@ -16,7 +16,7 @@ interface BrowserAIModel {
  * Caches the model instance to avoid re-creation.
  * @returns The initialized model instance or null if initialization fails.
  */
-export async function initializeBrowserModel(context: PromptItem[]): Promise<BrowserAIModel | null> {
+async function initializeBrowserModel(context: PromptItem[]): Promise<BrowserAIModel | null> {
   try {
     // Check if the API exists
     // Use a more specific type for window to satisfy the linter
@@ -50,7 +50,8 @@ export async function initializeBrowserModel(context: PromptItem[]): Promise<Bro
  * @returns A promise that resolves to an array of suggestion strings, or an empty array on failure.
  */
 export async function generateSuggestions(conversationContext: ChatMessage[]): Promise<string[]> {
-  if (!conversationContext || conversationContext.length === 0) {
+  // This feature is only available in genaicode development mode
+  if (!import.meta.env.DEV || !conversationContext || conversationContext.length === 0) {
     return [];
   }
 
