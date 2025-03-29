@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
+import { useContext } from 'react';
 import { ThemeProvider } from 'styled-components';
 import { lightTheme, darkTheme } from './theme/theme.js';
 import { AppLayout } from './components/app-layout.js';
-import { AppState } from './components/app-state.js';
 import { AppHandlers } from './components/app-handlers.js';
 import { ChatInterface } from './components/chat-interface.js';
 import { InputArea } from './components/input-area/input-area.js';
@@ -14,50 +13,29 @@ import { ServiceConfigurationModal } from './components/service-configuration/se
 import { RcConfigModal } from './components/rc-config-modal.js';
 import { GenaicodeConfigModal } from './components/genaicode-config/genaicode-config-modal.js';
 import { GenAIcodeNotifications } from './notifications/genaicode-notifications.js';
+import { ChatStateProvider, ChatStateContext } from './contexts/chat-state-context.js';
+import { SuggestionGenerator } from './components/suggestion-generator.js';
 
-const GenAIcodeApp = () => {
+const GenAIcodeAppContent = () => {
+  // Consume the context to get state and actions
   const {
-    currentPrompt,
-    setCurrentPrompt,
-    isExecuting,
-    setIsExecuting,
+    messages,
     executionStatus,
-    setExecutionStatus,
-    chatMessages,
-    setChatMessages,
     currentQuestion,
-    setCurrentQuestion,
     theme,
     usage,
     codegenOptions,
     rcConfig,
     toggleTheme,
-    startPolling,
-    stopPolling,
+    setCodegenOptions, // Get setter for options
     handlePauseExecution,
     handleResumeExecution,
-    setCodegenOptions,
-  } = AppState();
+  } = useContext(ChatStateContext);
 
-  const { handleExecute, handleQuestionSubmit, handleInterrupt, handleOptionsChange } = AppHandlers({
-    currentPrompt,
-    setCurrentPrompt,
-    isExecuting,
-    setIsExecuting,
-    setExecutionStatus,
-    chatMessages,
-    setChatMessages,
-    setCurrentQuestion,
-    codegenOptions,
-    setCodegenOptions,
-  });
+  // Instantiate AppHandlers - It now gets setters from context, only needs codegenOptions
+  const { handleExecute, handleQuestionSubmit, handleInterrupt } = AppHandlers({ codegenOptions });
 
-  useEffect(() => {
-    startPolling();
-    return () => {
-      stopPolling();
-    };
-  }, [startPolling, stopPolling]);
+  // Polling is handled within the context provider
 
   const handlePauseResume = () => {
     if (executionStatus === 'paused') {
@@ -67,26 +45,30 @@ const GenAIcodeApp = () => {
     }
   };
 
-  // Loading
-  if (!usage) {
+  // Loading state check (ensure options and usage are loaded)
+  if (!usage || !codegenOptions) {
     return (
       <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
         <GlobalStyle />
+        <div>Loading...</div> {/* Basic loading indicator */}
       </ThemeProvider>
     );
   }
 
+  const isExecuting = executionStatus !== 'idle';
+
   return (
     <ThemeProvider theme={theme === 'light' ? lightTheme : darkTheme}>
       <GlobalStyle />
+      {/* SuggestionGenerator is already inside the provider in App component */}
       <AppLayout
         themeToggle={<ThemeToggle theme={theme} toggleTheme={toggleTheme} />}
-        toggleTheme={toggleTheme}
+        toggleTheme={toggleTheme} // Pass toggleTheme if AppLayout needs it
         chatInterface={
           <ChatInterface
-            messages={chatMessages}
+            messages={messages}
             currentQuestion={currentQuestion}
-            codegenOptions={codegenOptions}
+            codegenOptions={codegenOptions} // Pass options from context
             onQuestionSubmit={handleQuestionSubmit}
             onInterrupt={handleInterrupt}
             onPauseResume={handlePauseResume}
@@ -97,25 +79,33 @@ const GenAIcodeApp = () => {
           !isExecuting && (
             <InputArea
               onSubmit={handleExecute}
-              isExecuting={isExecuting}
+              isExecuting={isExecuting} // Derived from executionStatus
               onInterrupt={handleInterrupt}
-              codegenOptions={codegenOptions}
-              onOptionsChange={handleOptionsChange}
+              codegenOptions={codegenOptions} // Pass options from context
+              onOptionsChange={setCodegenOptions} // Pass the setter directly
             />
           )
         }
-        usage={usage}
+        usage={usage} // Pass usage from context
       />
       <ContentGenerationModal currentService={codegenOptions.aiService} />
       <HealthCheckModal />
       <ServiceConfigurationModal />
       <RcConfigModal rcConfig={rcConfig} />
-      <GenaicodeConfigModal options={codegenOptions} onOptionsChange={handleOptionsChange} />
-      <GenAIcodeNotifications messages={chatMessages} muteNotifications={codegenOptions.muteNotifications} />
+      {/* Pass setCodegenOptions directly if GenaicodeConfigModal modifies options */}
+      <GenaicodeConfigModal options={codegenOptions} onOptionsChange={setCodegenOptions} />
+      <GenAIcodeNotifications messages={messages} muteNotifications={codegenOptions.muteNotifications} />
     </ThemeProvider>
   );
 };
 
 export function App() {
-  return <GenAIcodeApp />;
+  return (
+    // Wrap the application content with the ChatStateProvider
+    // This ensures context is available to all components
+    <ChatStateProvider>
+      <SuggestionGenerator /> {/* Render SuggestionGenerator within the provider */}
+      <GenAIcodeAppContent /> {/* Render the main app content */}
+    </ChatStateProvider>
+  );
 }

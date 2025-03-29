@@ -13,7 +13,8 @@ interface InputAreaProps {
   onOptionsChange: (newOptions: CodegenOptions) => void;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, codegenOptions, onOptionsChange }) => {
+export const InputArea: React.FC<InputAreaProps> = (props) => {
+  const { onSubmit, isExecuting, codegenOptions, onOptionsChange } = props;
   const [input, setInput] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSubmit, isExecuting, cod
           onImagePaste={handleImagePaste}
         />
       </TextareaContainer>
+
       <ImageUpload
         images={images}
         onImagesChange={handleImageUpload}

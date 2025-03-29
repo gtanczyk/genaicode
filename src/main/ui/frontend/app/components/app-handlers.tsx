@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useContext } from 'react';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import {
   executeCodegen,
@@ -6,108 +6,107 @@ import {
   getCurrentQuestion,
   answerQuestion,
   interruptExecution,
-  pauseExecution,
-  resumeExecution,
 } from '../api/api-client.js';
-import { ChatMessage } from '../../../../common/content-bus-types.js';
-import { Question } from '../../../common/api-types.js';
+import { ChatStateContext } from '../contexts/chat-state-context.js'; // Import the context
 
+// Remove props related to state setters, they will come from context
 interface AppHandlersProps {
-  currentPrompt: string;
-  setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>;
-  isExecuting: boolean;
-  setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>;
-  setExecutionStatus: React.Dispatch<React.SetStateAction<'executing' | 'idle' | 'paused'>>;
-  chatMessages: ChatMessage[];
-  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setCurrentQuestion: React.Dispatch<React.SetStateAction<Question | null>>;
-  codegenOptions: CodegenOptions;
-  setCodegenOptions: (options: CodegenOptions) => void;
+  codegenOptions: CodegenOptions | undefined; // Receive options directly
 }
 
-export const AppHandlers = ({
-  setCurrentPrompt,
-  setIsExecuting,
-  setExecutionStatus,
-  setCurrentQuestion,
-  codegenOptions,
-  setCodegenOptions,
-}: AppHandlersProps) => {
+export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
+  // Consume the context to get state and setters
+  const {
+    setCurrentPrompt,
+    setExecutionStatus,
+    setCurrentQuestion,
+    setCodegenOptions,
+    handlePauseExecution: contextHandlePause,
+    handleResumeExecution: contextHandleResume,
+  } = useContext(ChatStateContext);
+
   const handleExecute = async (prompt: string, images: File[]) => {
+    // Use setters from context
     setCurrentPrompt(prompt);
-    setIsExecuting(true);
+    setExecutionStatus('executing');
 
     try {
-      setIsExecuting(true);
-      setExecutionStatus('executing');
-
       if ((await getExecutionStatus()) === 'executing') {
         console.warn('Execution is already executing');
+        // Even if executing, update status for consistency if needed, though API call might handle this
+        setExecutionStatus('executing');
         return;
       }
 
-      executeCodegen(prompt, codegenOptions, images.length > 0 ? images : undefined);
+      // Ensure codegenOptions is defined before using
+      if (!codegenOptions) {
+        console.error('Codegen options not available');
+        setExecutionStatus('idle');
+        return;
+      }
+
+      // Execute codegen API call
+      await executeCodegen(prompt, codegenOptions, images.length > 0 ? images : undefined);
+      // Polling in ChatStateContext should update the status, but set to executing optimistically
+      setExecutionStatus('executing');
     } catch (error) {
       console.error('Failed to execute codegen:', error);
-    } finally {
-      setIsExecuting(false);
-      setExecutionStatus('idle');
+      setExecutionStatus('idle'); // Reset status on error
     }
+    // Removed finally block that set status to idle, polling handles final state
   };
 
   const handleQuestionSubmit = async (answer: string, confirmed?: boolean, aiService?: AiServiceType) => {
-    const currentQuestion = await getCurrentQuestion();
-    if (currentQuestion) {
+    // Fetch current question directly if needed, though context might already have it
+    const currentQuestionFromContext = await getCurrentQuestion(); // Or use context.currentQuestion
+    if (currentQuestionFromContext) {
       try {
+        // Use setters from context
         setCurrentQuestion(null);
-        setCodegenOptions({ ...codegenOptions, aiService: aiService ?? codegenOptions.aiService });
-        await answerQuestion(currentQuestion.id, answer, confirmed, {
-          ...codegenOptions,
-          aiService: aiService ?? codegenOptions.aiService,
-        });
+        if (codegenOptions) {
+          const updatedOptions = { ...codegenOptions, aiService: aiService ?? codegenOptions.aiService };
+          setCodegenOptions(updatedOptions);
+          await answerQuestion(currentQuestionFromContext.id, answer, confirmed, updatedOptions);
+        } else {
+          console.error('Codegen options not available for submitting answer');
+        }
       } catch (error) {
         console.error('Failed to submit answer:', error);
+        // Restore question if submission fails? Or let polling handle it?
+        setCurrentQuestion(currentQuestionFromContext);
       }
     }
   };
 
   const handleInterrupt = async () => {
     try {
+      // Use setter from context
       setCurrentQuestion(null);
       await interruptExecution();
+      // Polling will update status to idle
     } catch (error) {
       console.error('Failed to interrupt execution:', error);
     }
   };
 
+  // Options change is handled directly by setCodegenOptions from context where needed (e.g., modals)
+  // This specific handler might become redundant if options are only changed via modals/context setters
   const handleOptionsChange = useCallback(
     (newOptions: CodegenOptions) => {
       setCodegenOptions(newOptions);
     },
-    [setCodegenOptions],
+    [setCodegenOptions], // Dependency on the setter from context
   );
 
-  const handlePauseExecution = useCallback(async () => {
-    try {
-      await pauseExecution();
-    } catch (error) {
-      console.error('Failed to pause execution:', error);
-    }
-  }, [setExecutionStatus]);
-
-  const handleResumeExecution = useCallback(async () => {
-    try {
-      await resumeExecution();
-    } catch (error) {
-      console.error('Failed to resume execution:', error);
-    }
-  }, [setExecutionStatus]);
+  // Use the pause/resume handlers directly from context
+  const handlePauseExecution = contextHandlePause;
+  const handleResumeExecution = contextHandleResume;
 
   return {
     handleExecute,
     handleQuestionSubmit,
     handleInterrupt,
-    handleOptionsChange,
+    handleOptionsChange, // Keep if still needed externally
     handlePauseExecution,
     handleResumeExecution,
   };

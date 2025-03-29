@@ -11,6 +11,12 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-077] 2024-08-03: Fixed type error and polling issue in ChatStateContext
+- [-] [GEN-076] 2024-08-03: Refactored AppState - Migrated state management logic to ChatStateContext to centralize state and remove prop drilling.
+- [-] [GEN-075] 2024-08-03: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling
+- [-] [GEN-074] 2024-08-02: Enhanced Suggestion Generation - Suggestions now utilize more conversational context for improved relevance instead of only the last message
+- [x] [GEN-073] 2024-08-01: Fixed suggestion generation hook in ChatInterface.tsx - Optimized dependency array to prevent continuous execution by depending on specific message properties instead of the entire messages array
+- [-] [GEN-072] 2024-07-29 (Updated 2024-07-30): Implement suggestion chips using browser-side AI (Moved chips to QuestionHandler to fix bug)
 - [-] [GEN-071] 2024-07-20: Local LLM AI Service Integration - Added Local LLM as a new AI service with OpenAI-compatible API support, custom base URL configuration, and model overrides for different model types.
 - [x] [GEN-070] 2024-02-21: Enhanced Diff View - Extracted CopyToClipboard component with individual state management. Improved UI with icon button in top-right corner. Fixed shared state issue in side-by-side view. Includes success/failure states, styled consistently with existing UI.
 - [-] [GEN-069] 2024-02-17: Enhanced Conversation Graph Edge Evaluation - Implemented LLM-based edge evaluation with condition handling, user input consideration, and traversal control.

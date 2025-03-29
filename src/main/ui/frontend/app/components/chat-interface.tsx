@@ -30,6 +30,7 @@ interface ChatInterfaceProps {
   onInterrupt: () => void;
   onPauseResume: () => void;
   executionStatus: 'idle' | 'executing' | 'paused';
+  // Removed suggestions and onSuggestionsGenerated props
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -40,6 +41,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onInterrupt,
   onPauseResume,
   executionStatus,
+  // Removed suggestions and onSuggestionsGenerated from destructuring
 }) => {
   const [visibleDataIds, setVisibleDataIds] = useState<Set<string>>(() => new Set());
   const [collapsedExecutions, setCollapsedExecutions] = useState<Set<string>>(() => new Set());
@@ -57,7 +59,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const isAtBottom = useCallback(() => {
     if (!messagesContainerRef.current) return true;
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    return Math.abs(scrollHeight - clientHeight - scrollTop) < 1 || scrollHeight <= clientHeight;
+    // Increased tolerance for scroll comparison
+    return Math.abs(scrollHeight - clientHeight - scrollTop) < 5 || scrollHeight <= clientHeight;
   }, []);
 
   useEffect(() => {
@@ -80,15 +83,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (isScrolledToBottom) {
       scrollToBottom();
     } else {
-      setHasUnreadMessages(true);
+      // Only set unread if the update wasn't triggered by this user scrolling up
+      if (messages.length > 0) {
+        // Check if there are messages
+        setHasUnreadMessages(true);
+      }
     }
-  }, [iterations, isScrolledToBottom]);
+  }, [iterations, isScrolledToBottom, messages.length]);
 
   useEffect(() => {
-    // Collapse all iterations except the latest one
-    const newCollapsedIterations = new Set(iterations.slice(0, -1).map((iteration) => iteration.iterationId));
-    setCollapsedIterations(newCollapsedIterations);
-  }, []);
+    // Collapse all iterations except the latest one initially
+    const initialCollapsed = new Set(iterations.slice(0, -1).map((iteration) => iteration.iterationId));
+    setCollapsedIterations(initialCollapsed);
+  }, [iterations.length]); // Only run when the number of iterations changes
+
+  // Removed the effect for generating suggestions
 
   const toggleDataVisibility = (id: string) => {
     setVisibleDataIds((prevIds) => {
@@ -132,9 +141,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const scrollToBottom = () => {
-    messagesContainerRef.current?.scrollTo({
-      top: messagesContainerRef.current.scrollHeight,
-      behavior: 'smooth',
+    // Use requestAnimationFrame to ensure scroll happens after render
+    requestAnimationFrame(() => {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
     });
     setHasUnreadMessages(false);
   };
@@ -196,6 +208,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       toggleDataVisibility={toggleDataVisibility}
                     />
                   )}
+                  {/* Render QuestionHandler below the last message of the current iteration if needed */}
                   {executionStatus !== 'idle' &&
                     currentQuestion &&
                     iterationIndex === iterations.length - 1 &&
@@ -207,6 +220,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         question={currentQuestion}
                         codegenOptions={codegenOptions}
                         executionStatus={executionStatus}
+                        // Removed suggestions prop
                       />
                     )}
                 </React.Fragment>
@@ -214,6 +228,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </IterationContent>
           </IterationContainer>
         ))}
+        {/* Render QuestionHandler outside the loop if there's a question but no messages yet or after the last message */}
+        {executionStatus !== 'idle' &&
+          currentQuestion &&
+          iterations.length > 0 &&
+          iterations[iterations.length - 1].messages.length === 0 && (
+            <QuestionHandler
+              onSubmit={onQuestionSubmit}
+              onInterrupt={onInterrupt}
+              onPauseResume={onPauseResume}
+              question={currentQuestion}
+              codegenOptions={codegenOptions}
+              executionStatus={executionStatus}
+              // Removed suggestions prop
+            />
+          )}
         <div ref={messagesEndRef} />
       </MessagesContainer>
       {hasUnreadMessages && !isScrolledToBottom && <UnreadMessagesNotification onClick={scrollToBottom} />}
