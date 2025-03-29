@@ -29,8 +29,7 @@ export async function handleEndConversation({
     },
     {
       type: 'user',
-      text:
-        'Declined. Please continue the conversation.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
+      text: 'Lets continue the conversation.' + (userConfirmation.answer ? ` ${userConfirmation.answer}` : ''),
     },
   );
 
