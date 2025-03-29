@@ -24,7 +24,8 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   executionStatus,
 }) => {
   const [answer, setAnswer] = useState('');
-  const { suggestions } = useContext(ChatStateContext) ?? {};
+  // Get suggestions from context instead of props
+  const { suggestions } = useContext(ChatStateContext) ?? { suggestions: [] }; // Default to empty array
   const [error, setError] = useState<string | null>(null);
   const [aiService, setAiService] = useState<AiServiceType>(codegenOptions.aiService);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -105,7 +106,8 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               {suggestions && suggestions.length > 0 && !question.confirmation && (
                 <DropdownWrapper ref={dropdownRef}>
                   <DropdownButton type="button" onClick={toggleDropdown}>
-                    Suggestions
+                    {suggestions[0]} {/* Display the first suggestion */}
+                    {suggestions.length > 1 && <Arrow> ▼</Arrow>} {/* Show arrow if more than one */}
                   </DropdownButton>
                   {isDropdownOpen && (
                     <DropdownContainer>
@@ -182,10 +184,21 @@ const DropdownButton = styled.button`
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+  display: flex; /* Use flexbox for alignment */
+  align-items: center; /* Center items vertically */
+  white-space: nowrap; /* Prevent text wrapping */
+  overflow: hidden; /* Hide overflow */
+  text-overflow: ellipsis; /* Add ellipsis for long suggestions */
+  max-width: 200px; /* Limit button width */
 
   &:hover {
     background-color: ${(props) => props.theme.colors.primary + '22'};
   }
+`;
+
+const Arrow = styled.span`
+  margin-left: 5px; /* Space between text and arrow */
+  font-size: 0.8em; /* Smaller arrow */
 `;
 
 const DropdownContainer = styled.div`
