@@ -6,7 +6,7 @@ import { getFunctionDefs } from '../../../function-calling.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
-import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { refreshFiles } from '../../../../files/find-files.js';
 import { generateRequestFilesContentCall } from './handle-request-files-content.js';
 import { executeStepEnsureContext } from '../../step-ensure-context.js';
@@ -143,8 +143,6 @@ export async function handleUpdateFile({
     text: askQuestionCall.args!.message,
     functionCalls: [updateFileCall],
   });
-
-  putAssistantMessage(askQuestionCall.args!.message);
 
   if (applyConfirmation.answer) {
     putUserMessage(applyConfirmation.answer);
