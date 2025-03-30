@@ -186,7 +186,7 @@ function getGenModel(
         : (modelOverrides?.default ?? defaultModel);
 
     if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-      systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+      systemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
     }
 
     console.log(`Using Vertex AI model: ${model}`);

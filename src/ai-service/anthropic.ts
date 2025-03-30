@@ -36,7 +36,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 
     // Add service-specific system instructions from modelOverrides
     if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-      systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+      systemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
     }
 
     if (modelType === ModelType.REASONING) {
