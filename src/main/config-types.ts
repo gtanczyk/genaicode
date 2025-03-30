@@ -17,7 +17,7 @@ export interface ServiceModelConfig {
   default?: string;
   /** Model ID for reasoning-specific tasks */
   reasoning?: string;
-  /** Additional system instructions to inject for this service */
+  /** System instructions for the model */
   systemInstruction?: string[];
 }
 

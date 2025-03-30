@@ -90,15 +90,22 @@ export async function internalGenerateToolCalls(
   openai: OpenAI,
   serviceType: AiServiceType = 'openai',
 ) {
+  const serviceConfig = getServiceConfig('openai');
+
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
       if (item.type === 'systemPrompt') {
+        let systemPrompt = item.systemPrompt!;
+        // Add service-specific system instructions from modelOverrides
+        if (serviceConfig.modelOverrides?.systemInstruction?.length) {
+          systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+        }
         return {
           role:
             modelType === ModelType.REASONING && serviceType === 'openai'
               ? ('developer' as const)
               : ('system' as const),
-          content: item.systemPrompt!,
+          content: systemPrompt,
         };
       } else if (item.type === 'user') {
         const messages: ChatCompletionMessageParam[] = [];

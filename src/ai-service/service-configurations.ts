@@ -16,6 +16,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.aiStudio?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.0-flash',
       reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
+      systemInstruction: modelOverrides.aiStudio?.systemInstruction ?? [],
     },
   },
   anthropic: {
@@ -24,6 +25,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.anthropic?.default ?? 'claude-3-7-sonnet-20250219',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
       reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-3-7-sonnet-20250219',
+      systemInstruction: modelOverrides.anthropic?.systemInstruction ?? [],
     },
   },
   openai: {
@@ -33,6 +35,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.openai?.default ?? 'gpt-4o',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
       reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
+      systemInstruction: modelOverrides.openai?.systemInstruction ?? [],
     },
   },
   'local-llm': {
@@ -42,6 +45,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.localLlm?.default ?? 'gemma3:12b',
       cheap: modelOverrides.localLlm?.cheap ?? 'gemma3:12b',
       reasoning: modelOverrides.localLlm?.reasoning ?? 'gemma3:12b',
+      systemInstruction: modelOverrides.localLlm?.systemInstruction ?? [],
     },
   },
   'vertex-ai': {
@@ -50,6 +54,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.vertexAi?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.0-flash',
       reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
+      systemInstruction: modelOverrides.vertexAi?.systemInstruction ?? [],
     },
   },
   'vertex-ai-claude': {

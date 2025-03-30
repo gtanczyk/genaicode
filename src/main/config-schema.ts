@@ -77,11 +77,6 @@ Example: ['gpt-4o-mini']`,
               type: 'string',
               description: `Default model to use for OpenAI compatible service. Example: ['gpt-4o']`,
             },
-            systemInstruction: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Additional system instructions to inject for this service.',
-            },
           },
         },
         anthropic: {
@@ -94,11 +89,6 @@ Example: ['gpt-4o-mini']`,
             default: {
               type: 'string',
               description: `Default model to use for Anthropic service. Example: ['claude-3-5-sonnet-20240620']`,
-            },
-            systemInstruction: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Additional system instructions to inject for this service.',
             },
           },
         },
@@ -113,11 +103,6 @@ Example: ['gpt-4o-mini']`,
               type: 'string',
               description: `Default model to use for Vertex AI service. Example: ['gemini-1.5-pro-001']`,
             },
-            systemInstruction: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Additional system instructions to inject for this service.',
-            },
           },
         },
         aiStudio: {
@@ -130,29 +115,6 @@ Example: ['gpt-4o-mini']`,
             default: {
               type: 'string',
               description: `Default model to use for AI Studio service. Example: ['gemini-1.5-pro-001']`,
-            },
-            systemInstruction: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Additional system instructions to inject for this service.',
-            },
-          },
-        },
-        localLlm: {
-          type: 'object',
-          properties: {
-            cheap: {
-              type: 'string',
-              description: `Model to use when cheap flag is enabled for Local LLM service. Example: ['gemma3:12b']`,
-            },
-            default: {
-              type: 'string',
-              description: `Default model to use for Local LLM service. Example: ['gemma3:12b']`,
-            },
-            systemInstruction: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Additional system instructions to inject for this service.',
             },
           },
         },

@@ -32,7 +32,12 @@ export const generateContent: GenerateContentFunction = async function generateC
       },
     });
 
-    const systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+    let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+
+    // Add service-specific system instructions from modelOverrides
+    if (serviceConfig.modelOverrides?.systemInstruction?.length) {
+      systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+    }
 
     if (modelType === ModelType.REASONING) {
       functionDefs = [];

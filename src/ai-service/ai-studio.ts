@@ -188,6 +188,11 @@ function getModel(
   assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
   const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
+  // Add service-specific system instructions from modelOverrides
+  if (serviceConfig.modelOverrides?.systemInstruction?.length) {
+    systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+  }
+
   const model = (() => {
     switch (modelType) {
       case ModelType.CHEAP:

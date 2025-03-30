@@ -30,10 +30,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('generates correct system prompt', () => {
-    const systemPrompt = getSystemPrompt(
-      { rootDir: '/mocked/root/dir' },
-      { askQuestion: false, aiService: 'vertex-ai' },
-    );
+    const systemPrompt = getSystemPrompt({ rootDir: '/mocked/root/dir' }, { askQuestion: false });
 
     expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
     expect(systemPrompt).toContain('You should parse my application source code');
@@ -46,7 +43,7 @@ describe('getSystemPrompt', () => {
   it('verifies system prompt limit', () => {
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    getSystemPrompt({ rootDir: '/mocked/root/dir' }, { verbose: true, askQuestion: false, aiService: 'vertex-ai' });
+    getSystemPrompt({ rootDir: '/mocked/root/dir' }, { verbose: true, askQuestion: false });
 
     expect(consoleSpy).toHaveBeenCalledWith('System prompt:');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('You are GenAIcode, a code generation assistant'));
