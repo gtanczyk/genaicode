@@ -37,7 +37,10 @@
   "modelOverrides": {
     "aiStudio": {
       "default": "gemini-2.5-pro-exp-03-25",
-      "cheap": "gemini-2.0-flash"
+      "cheap": "gemini-2.0-flash",
+      "systemInstruction": [
+        "Please do not generate excessive amount of comments in the code."
+      ]
     }
   }
 }

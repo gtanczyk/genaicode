@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-081] 2024-08-05: Add systemInstruction override - Allow injecting service-specific system instructions via .genaicoderc modelOverrides.
 - [x] [GEN-080] 2024-08-05: Enhanced UI - Replaced 'Upload Images' text with icon in button components
 - [-] [GEN-079] 2024-08-04: Implement image pasting in Question Handler
 - [ ] [GEN-078] 2024-08-04: Implement image upload for question answers

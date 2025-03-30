@@ -1,11 +1,11 @@
 import { verifySystemPromptLimit } from './limits.js';
 import { CodegenOptions } from '../main/codegen-types.js';
-import { RcConfig } from '../main/config-types.js';
+import { RcConfig, ModelOverrides } from '../main/config-types.js';
 
 /** Generates a system prompt with the codegen prompt merged */
 export function getSystemPrompt(
-  { rootDir, importantContext }: Pick<RcConfig, 'rootDir' | 'importantContext'>,
-  options: Omit<CodegenOptions, 'aiService'>,
+  { rootDir, importantContext, modelOverrides }: Pick<RcConfig, 'rootDir' | 'importantContext' | 'modelOverrides'>,
+  options: CodegenOptions,
 ) {
   const {
     verbose,
@@ -162,6 +162,14 @@ GenAIcode can be configured by using the \`.genaicoderc\` file in the root direc
 
   if (importantContext?.systemPrompt && importantContext.systemPrompt.length > 0) {
     systemPrompt += `\n# ADDITIONAL INSTRUCTIONS\n\n${importantContext.systemPrompt.join('\n')}`;
+  }
+
+  // Add service-specific system instructions from modelOverrides
+  if (options.aiService && modelOverrides?.[options.aiService as keyof ModelOverrides]) {
+    const serviceConfig = modelOverrides[options.aiService as keyof ModelOverrides];
+    if (serviceConfig?.systemInstruction && serviceConfig.systemInstruction.length > 0) {
+      systemPrompt += `\n## ADDITIONAL INSTRUCTIONS\n\n${serviceConfig.systemInstruction.join('\n')}`;
+    }
   }
 
   if (verbose) {
