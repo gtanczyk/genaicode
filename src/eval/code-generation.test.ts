@@ -111,7 +111,6 @@ describe.each([
             allowFileMove: true,
             vision: true,
             imagen: 'vertex-ai',
-            aiService: 'vertex-ai',
           },
         ),
       },
