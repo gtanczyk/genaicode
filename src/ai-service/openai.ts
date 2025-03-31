@@ -148,7 +148,7 @@ export async function internalGenerateContent(
   return result;
 }
 
-async function internalGenerateToolCalls(
+export async function internalGenerateToolCalls(
   prompt: PromptItem[],
   config: GenerateContentArgs[1],
   model: string,

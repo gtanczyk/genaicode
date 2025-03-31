@@ -4,17 +4,15 @@ import {
   FunctionDef,
   PromptItem,
   Plugin,
-  GenerateContentFunction,
   ModelType,
-  GenerateContentNewFunction,
+  GenerateContentFunction,
   GenerateContentResult,
-  GenerateContentArgsNew,
 } from '../../src/index.js';
 
 /**
  * This function generates content using the Deepseek models with the new interface.
  */
-const generateContentNew: GenerateContentNewFunction = async function generateContentNew(
+const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -79,7 +77,6 @@ const generateContentNew: GenerateContentNewFunction = async function generateCo
     const toolCalls = await internalGenerateToolCalls(
       modifiedPrompt,
       config,
-      options,
       model,
       openai,
       'plugin:deepseek-ai-service',
@@ -129,48 +126,11 @@ const generateContentNew: GenerateContentNewFunction = async function generateCo
   }
 };
 
-/**
- * This function generates content using the Deepseek models.
- * It uses the new generateContentNew function internally.
- */
-const generateContent: GenerateContentFunction = async function generateContent(
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType = ModelType.DEFAULT,
-): Promise<FunctionCall[]> {
-  // Call the new function with mapped parameters
-  const result = await generateContentNew(
-    prompt,
-    {
-      modelType,
-      temperature,
-      functionDefs,
-      requiredFunctionName,
-      expectedResponseType: {
-        text: false,
-        functionCall: true,
-        media: false,
-      },
-    },
-    {
-      aiService: 'plugin:deepseek-ai-service',
-    },
-  );
-
-  // Extract only the function calls from the result
-  return result
-    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
-    .map((part) => part.functionCall);
-};
-
 const deepseekAiService: Plugin = {
   name: 'deepseek-ai-service',
   aiServices: {
     'deepseek-ai-service': {
       generateContent,
-      generateContentNew,
       serviceConfig: {
         apiKey: process.env.DEEPSEEK_API_KEY,
         openaiBaseUrl: 'https://api.deepseek.com',

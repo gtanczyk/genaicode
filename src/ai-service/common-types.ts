@@ -73,7 +73,7 @@ export type GenerateContentResultPart =
 
 export type GenerateContentResult = GenerateContentResultPart[];
 
-export type GenerateContentHook = (args: GenerateFunctionCallsArgs, result: FunctionCall[]) => Promise<void>;
+export type GenerateContentHook = (args: GenerateContentArgs, result: GenerateContentResult) => Promise<void>;
 
 export type GenerateFunctionCallsArgs = [
   prompt: PromptItem[],
