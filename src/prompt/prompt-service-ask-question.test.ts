@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import * as prompts from '@inquirer/prompts';
 import { CancelablePromise } from '@inquirer/type';
@@ -64,7 +64,7 @@ vi.mock('../main/common/cost-collector.js', () => ({
 
 const GENERATE_CONTENT_FNS = { 'vertex-ai': vertexAi.generateContent } as Record<
   AiServiceType,
-  GenerateContentFunction
+  GenerateFunctionCallsFunction
 >;
 const GENERATE_IMAGE_FNS = {} as Record<ImagenType, GenerateImageFunction>;
 

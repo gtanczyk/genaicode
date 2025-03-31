@@ -1,6 +1,6 @@
 import { ActionHandlerProps, ActionResult, AskQuestionCall, SearchCodeArgs } from '../step-ask-question-types.js';
 import { searchSourceCode } from '../../../../files/search-files.js';
-import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -89,7 +89,7 @@ export async function handleSearchCode({
 }
 
 async function generateSearchCodeCall(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,

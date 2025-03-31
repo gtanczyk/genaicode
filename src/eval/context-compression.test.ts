@@ -16,11 +16,11 @@ import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summar
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { ContextCompressionCall } from '../prompt/function-defs/context-compression.js';
 import { validateLLMContent } from './test-utils/llm-content-validate.js';
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
 
 // Helper function to validate compressed context
 async function validateCompressedContext(
-  generateContent: GenerateContentFunction,
+  generateContent: GenerateFunctionCallsFunction,
   result: ContextCompressionCall,
   {
     summaryExpectation,

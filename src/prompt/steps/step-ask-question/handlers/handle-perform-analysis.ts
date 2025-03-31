@@ -1,5 +1,5 @@
-import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionDef } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -99,12 +99,12 @@ export async function handlePerformAnalysis({
  * Gets the performAnalysis call from the assistant
  */
 async function getPerformAnalysisCall(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<PerformAnalysisCall | undefined> {
-  const performAnalysisRequest: GenerateContentArgs = [
+  const performAnalysisRequest: GenerateFunctionCallsArgs = [
     prompt,
     functionDefs,
     'performAnalysis',
@@ -120,12 +120,12 @@ async function getPerformAnalysisCall(
  * Executes the analysis with the enhanced context
  */
 async function executeAnalysis(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<AnalysisResultCall | undefined> {
-  const analysisRequest: GenerateContentArgs = [
+  const analysisRequest: GenerateFunctionCallsArgs = [
     prompt,
     functionDefs,
     'analysisResult',

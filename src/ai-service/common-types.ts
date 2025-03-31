@@ -73,9 +73,9 @@ export type GenerateContentResultPart =
 
 export type GenerateContentResult = GenerateContentResultPart[];
 
-export type GenerateContentHook = (args: GenerateContentArgs, result: FunctionCall[]) => Promise<void>;
+export type GenerateContentHook = (args: GenerateFunctionCallsArgs, result: FunctionCall[]) => Promise<void>;
 
-export type GenerateContentArgs = [
+export type GenerateFunctionCallsArgs = [
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,
@@ -89,7 +89,7 @@ export type GenerateContentArgs = [
   },
 ];
 
-export type GenerateContentArgsNew = [
+export type GenerateContentArgs = [
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -110,9 +110,9 @@ export type GenerateContentArgsNew = [
   },
 ];
 
-export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<FunctionCall[]>;
+export type GenerateFunctionCallsFunction = (...args: GenerateFunctionCallsArgs) => Promise<FunctionCall[]>;
 
-export type GenerateContentNewFunction = (...args: GenerateContentArgsNew) => Promise<GenerateContentResult>;
+export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<GenerateContentResult>;
 
 export type GenerateImageFunction = (
   prompt: string,

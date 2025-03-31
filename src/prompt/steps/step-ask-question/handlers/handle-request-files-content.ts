@@ -1,4 +1,4 @@
-import { GenerateContentArgs, GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs, GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -167,7 +167,7 @@ ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
 }
 
 export async function generateRequestFilesContentCall(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
@@ -190,7 +190,7 @@ export async function generateRequestFilesContentCall(
     0.7,
     modelType,
     options,
-  ] as GenerateContentArgs;
+  ] as GenerateFunctionCallsArgs;
   const [requestFilesContentCall] = (await generateContentFn(...req)) as [
     FunctionCall<RequestFilesContentArgs> | undefined,
   ];

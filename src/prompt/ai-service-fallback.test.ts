@@ -1,6 +1,6 @@
 import { vi, describe, it, expect, Mock, afterEach } from 'vitest';
 import { handleAiServiceFallback } from './ai-service-fallback';
-import { GenerateContentFunction } from '../ai-service/common-types';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types';
 import { FunctionCall } from '../ai-service/common-types';
 import { ModelType } from '../ai-service/common-types';
 import { CodegenOptions } from '../main/codegen-types';
@@ -16,7 +16,7 @@ vi.mock('./steps/step-validate-recover', () => ({
 }));
 
 describe('handleAiServiceFallback', () => {
-  const mockGenerateContent: GenerateContentFunction = vi.fn();
+  const mockGenerateContent: GenerateFunctionCallsFunction = vi.fn();
   const mockOptions: CodegenOptions = {
     askQuestion: false,
     aiService: 'openai',

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import * as diff from 'diff';
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
@@ -10,7 +10,7 @@ import { CodegenOptions } from '../../main/codegen-types.js';
 
 export async function executeStepVerifyPatch(
   { filePath, patch, explanation }: { filePath: string; patch: string; explanation: string },
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
@@ -32,7 +32,7 @@ export async function executeStepVerifyPatch(
     console.log(`Patch could not be applied for ${filePath}. Retrying without patchFile function.`);
 
     // Rerun content generation without patchFile function
-    const partialRequest: GenerateContentArgs = [
+    const partialRequest: GenerateFunctionCallsArgs = [
       prompt,
       functionDefs,
       'updateFile',

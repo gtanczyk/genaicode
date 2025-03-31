@@ -1,5 +1,5 @@
 import { GenerateImageFunction } from '../../../ai-service/common-types.js';
-import { GenerateContentFunction } from '../../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../../ai-service/common-types.js';
 import { PromptItem } from '../../../ai-service/common-types.js';
 import { PromptItemImage } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
@@ -207,7 +207,7 @@ export type ActionHandlerProps = {
   askQuestionCall: AskQuestionCall;
   prompt: PromptItem[];
   options: CodegenOptions;
-  generateContentFn: GenerateContentFunction;
+  generateContentFn: GenerateFunctionCallsFunction;
   generateImageFn: GenerateImageFunction;
   waitIfPaused: () => Promise<void>;
 };

@@ -1,6 +1,6 @@
 import { GenerateImageFunction } from '../../../ai-service/common-types.js';
-import { GenerateContentFunction } from '../../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../../ai-service/common-types.js';
 import { PromptItem } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
 import { FunctionDef } from '../../../ai-service/common-types.js';
@@ -35,7 +35,7 @@ import './handlers/handle-send-message.js';
 import './handlers/handle-update-file.js';
 
 export async function executeStepAskQuestion(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   generateImageFn: GenerateImageFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
@@ -98,13 +98,13 @@ export async function executeStepAskQuestion(
 }
 
 async function getAskQuestionCall(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
   options: CodegenOptions,
 ): Promise<AskQuestionCall | undefined> {
-  const askQuestionRequest: GenerateContentArgs = [
+  const askQuestionRequest: GenerateFunctionCallsArgs = [
     prompt,
     functionDefs,
     'askQuestion',

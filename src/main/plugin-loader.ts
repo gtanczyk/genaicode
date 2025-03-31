@@ -2,7 +2,7 @@ import path from 'path';
 import { Operation, Plugin, PlanningPreHook, PlanningPostHook } from './codegen-types.js';
 import { PluginActionType, PluginAiServiceType } from '../ai-service/service-configurations-types.js';
 import { GenerateContentHook } from '../ai-service/common-types.js';
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { RcConfig } from './config-types.js';
 import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
@@ -13,7 +13,7 @@ import { ServiceConfig } from '../ai-service/service-configurations-types.js';
 const loadedPlugins: Map<string, Plugin> = new Map();
 const registeredAiServices: Map<
   PluginAiServiceType,
-  { generateContent: GenerateContentFunction; serviceConfig: ServiceConfig }
+  { generateContent: GenerateFunctionCallsFunction; serviceConfig: ServiceConfig }
 > = new Map();
 const registeredOperations: Record<string, Operation> = {};
 const registeredActionHandlerDescriptions: Map<PluginActionType, string> = new Map();
@@ -214,7 +214,7 @@ function validateProfile(profile: ProjectProfile): void {
 
 export function getRegisteredAiServices(): Map<
   PluginAiServiceType,
-  { generateContent: GenerateContentFunction; serviceConfig: ServiceConfig }
+  { generateContent: GenerateFunctionCallsFunction; serviceConfig: ServiceConfig }
 > {
   return registeredAiServices;
 }

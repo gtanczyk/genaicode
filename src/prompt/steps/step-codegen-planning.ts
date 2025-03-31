@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
@@ -32,7 +32,7 @@ Output the plan using \`codegenPlanning\` function provding all the required fie
  * before proceeding with actual code generation
  */
 export async function executeStepCodegenPlanning(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {

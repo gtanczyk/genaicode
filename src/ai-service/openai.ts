@@ -2,10 +2,10 @@ import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 import {
+  GenerateFunctionCallsArgs,
   GenerateContentArgs,
-  GenerateContentArgsNew,
+  GenerateFunctionCallsFunction,
   GenerateContentFunction,
-  GenerateContentNewFunction,
   GenerateContentResult,
 } from './common-types.js';
 import { PromptItem } from './common-types.js';
@@ -26,19 +26,19 @@ import { AiServiceType } from './service-configurations-types.js';
  * This function generates content using the OpenAI chat model.
  * @deprecated Use generateContentNew instead.
  */
-export const generateContent: GenerateContentFunction = async function generateContent(
-  ...args: GenerateContentArgs
+export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
+  ...args: GenerateFunctionCallsArgs
 ): Promise<FunctionCall[]> {
   const [prompt, functionDefs, requiredFunctionName, temperature, modelType = ModelType.DEFAULT, options] = args;
 
-  const config: GenerateContentArgsNew[1] = {
+  const config: GenerateContentArgs[1] = {
     modelType,
     temperature,
     functionDefs,
     requiredFunctionName,
     expectedResponseType: { functionCall: true, text: false, media: false }, // Assuming old usage expects function calls
   };
-  const opts: GenerateContentArgsNew[2] = {
+  const opts: GenerateContentArgs[2] = {
     ...(options ?? {}),
     aiService: 'openai',
   };
@@ -54,8 +54,8 @@ export const generateContent: GenerateContentFunction = async function generateC
 /**
  * New function to generate content using the OpenAI chat model with a new signature.
  */
-export const generateContentNew: GenerateContentNewFunction = async function generateContentNew(
-  ...args: GenerateContentArgsNew
+export const generateContentNew: GenerateContentFunction = async function generateContentNew(
+  ...args: GenerateContentArgs
 ): Promise<GenerateContentResult> {
   const [prompt, config] = args;
   try {
@@ -86,7 +86,7 @@ export const generateContentNew: GenerateContentNewFunction = async function gen
 
 export async function internalGenerateContent(
   prompt: PromptItem[],
-  config: GenerateContentArgsNew[1],
+  config: GenerateContentArgs[1],
   model: string,
   openai: OpenAI,
 ): Promise<GenerateContentResult> {
@@ -150,7 +150,7 @@ export async function internalGenerateContent(
 
 async function internalGenerateToolCalls(
   prompt: PromptItem[],
-  config: GenerateContentArgsNew[1],
+  config: GenerateContentArgs[1],
   model: string,
   openai: OpenAI,
   serviceType: AiServiceType = 'openai',

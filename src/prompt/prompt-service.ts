@@ -4,7 +4,7 @@ import { getSystemPrompt } from './systemprompt.js';
 import { getFunctionDefs } from './function-calling.js';
 import { getSourceCode, getImageAssets } from '../files/read-files.js';
 import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import { ImagenType } from '../main/codegen-types.js';
@@ -27,12 +27,12 @@ import { rcConfig } from '../main/config.js';
 
 /** A function that communicates with model using */
 export async function promptService(
-  generateContentFns: Record<AiServiceType, GenerateContentFunction>,
+  generateContentFns: Record<AiServiceType, GenerateFunctionCallsFunction>,
   generateImageFns: Record<ImagenType, GenerateImageFunction>,
   codegenPrompt: CodegenPrompt,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<FunctionCall[]> {
-  const generateContentFn: GenerateContentFunction = async (...args) => {
+  const generateContentFn: GenerateFunctionCallsFunction = async (...args) => {
     // Get the base result from the AI service
     const result = await handleAiServiceFallback(generateContentFns, codegenPrompt.options, ...args);
 
@@ -64,7 +64,7 @@ export async function promptService(
 }
 
 async function executePromptService(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   generateImageFn: GenerateImageFunction,
   codegenPrompt: CodegenPrompt,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),

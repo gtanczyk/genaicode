@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -173,7 +173,7 @@ export async function handleRequestFilesFragments({
 }
 
 export async function generateRequestFilesFragmentsCall(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
@@ -207,7 +207,7 @@ export async function generateRequestFilesFragmentsCall(
 async function extractFragments(
   sourceCodeMap: SourceCodeMap,
   fragmentPrompt: string,
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   options: CodegenOptions,
 ): Promise<ExtractFileFragmentsArgs> {
   const filePaths = Object.keys(sourceCodeMap);

@@ -2,8 +2,8 @@ import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
 import {
+  GenerateFunctionCallsFunction,
   GenerateContentFunction,
-  GenerateContentNewFunction,
   GenerateContentResult,
   GenerateContentResultPart,
   PromptItem,
@@ -19,7 +19,7 @@ import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-in
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI with the new interface.
  */
-export const generateContentNew: GenerateContentNewFunction = async function generateContentNew(
+export const generateContentNew: GenerateContentFunction = async function generateContentNew(
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -195,7 +195,7 @@ export const generateContentNew: GenerateContentNewFunction = async function gen
  * This function generates content using the Anthropic Claude model via Vertex AI.
  * It uses the new generateContentNew function internally for backward compatibility.
  */
-export const generateContent: GenerateContentFunction = async function generateContent(
+export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,

@@ -1,9 +1,9 @@
 import OpenAI from 'openai';
 import assert from 'node:assert';
 import {
+  GenerateFunctionCallsArgs,
   GenerateContentArgs,
-  GenerateContentArgsNew,
-  GenerateContentFunction,
+  GenerateFunctionCallsFunction,
   GenerateContentResult,
 } from './common-types.js';
 import { FunctionCall } from './common-types.js';
@@ -15,8 +15,8 @@ import { internalGenerateContent } from './openai.js'; // Import the exported fu
  * This function generates content using the local llm service.
  * Local llm provides an OpenAI-compatible API, so we can reuse the OpenAI implementation.
  */
-export const generateContent: GenerateContentFunction = async function generateContent(
-  ...args: GenerateContentArgs
+export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
+  ...args: GenerateFunctionCallsArgs
 ): Promise<FunctionCall[]> {
   const [prompt, functionDefs, requiredFunctionName, temperature, modelType = ModelType.DEFAULT] = args;
 
@@ -51,7 +51,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     console.log(`Using local model: ${model}`);
 
     // Map arguments from GenerateContentArgs to GenerateContentArgsNew
-    const config: GenerateContentArgsNew[1] = {
+    const config: GenerateContentArgs[1] = {
       modelType,
       temperature,
       functionDefs,

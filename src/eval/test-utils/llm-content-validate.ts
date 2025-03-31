@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../ai-service/common-types';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types';
 import { PromptItem } from '../../ai-service/common-types';
 import { FunctionDef } from '../../ai-service/common-types';
 import { ModelType } from '../../ai-service/common-types';
@@ -9,7 +9,7 @@ import { LLMContentExpectation, ValidateLLMContentOptions } from './file-updates
  */
 
 export async function validateLLMContent(
-  generateContent: GenerateContentFunction,
+  generateContent: GenerateFunctionCallsFunction,
   content: string,
   expectation: LLMContentExpectation,
   options: ValidateLLMContentOptions = {},

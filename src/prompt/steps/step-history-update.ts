@@ -1,5 +1,5 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { readCache, writeCache } from '../../files/cache-file.js';
@@ -9,7 +9,7 @@ import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 
 export async function executeStepHistoryUpdate(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -49,7 +49,7 @@ ${currentHistory}
     },
   ];
 
-  const request: GenerateContentArgs = [
+  const request: GenerateFunctionCallsArgs = [
     optimizationPrompt,
     getFunctionDefs(),
     'updateHistory',

@@ -1,5 +1,5 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
@@ -105,7 +105,7 @@ export function getSummarizationPrefix(
 }
 
 export async function summarizeSourceCode(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   sourceCode: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {
@@ -122,7 +122,7 @@ export async function summarizeSourceCode(
 }
 
 async function summarizeBatch(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   items: { path: string; content: string | null; dependencies?: DependencyInfo[]; fileId: FileId }[],
   allSourceCodeMap: SourceCodeMap,
   options: CodegenOptions,
@@ -145,7 +145,14 @@ async function summarizeBatch(
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
 
     const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
-    const request: GenerateContentArgs = [prompt, getFunctionDefs(), 'setSummaries', 0.2, ModelType.CHEAP, options];
+    const request: GenerateFunctionCallsArgs = [
+      prompt,
+      getFunctionDefs(),
+      'setSummaries',
+      0.2,
+      ModelType.CHEAP,
+      options,
+    ];
     const result = await generateContentFn(...request);
 
     const batchSummaries = parseSummarizationResult(result);

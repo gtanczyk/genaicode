@@ -1,4 +1,9 @@
-import { GenerateContentFunction, GenerateContentArgs, PromptItem, ModelType } from '../../ai-service/common-types.js';
+import {
+  GenerateFunctionCallsFunction,
+  GenerateFunctionCallsArgs,
+  PromptItem,
+  ModelType,
+} from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getFunctionDefs } from '../function-calling.js';
@@ -166,7 +171,7 @@ Focus on creating a summary that:
  * Executes the context compression step
  */
 export async function executeStepContextCompression(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -215,7 +220,7 @@ export async function executeStepContextCompression(
  * Compresses the conversation history using the AI model
  */
 async function compressConversationHistory(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<ContextCompressionCall | undefined> {
@@ -227,7 +232,7 @@ async function compressConversationHistory(
     ...prompt,
   ];
 
-  const request: GenerateContentArgs = [
+  const request: GenerateFunctionCallsArgs = [
     summaryPrompt,
     getFunctionDefs(),
     'compressContext',

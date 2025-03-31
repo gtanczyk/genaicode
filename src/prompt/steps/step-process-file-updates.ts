@@ -1,7 +1,7 @@
 import fs from 'fs';
 import mime from 'mime-types';
 import { GenerateImageFunction } from '../../ai-service/common-types.js';
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { PromptImageMediaType } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
@@ -21,7 +21,7 @@ import { abortController } from '../../main/common/abort-controller.js';
  * It handles processing individual file updates, image generation, and patch verification.
  */
 export async function processFileUpdates(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
@@ -78,7 +78,7 @@ interface ProcessFileUpdateResult {
  */
 async function processFileUpdate(
   file: FileUpdate,
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   generateImageFn: GenerateImageFunction | undefined,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],

@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
@@ -16,7 +16,7 @@ import { PROMPT_CODEGEN_SUMMARY, PROMPT_CODEGEN_SUMMARY_ASSISTANT } from './step
  * It handles generating the initial summary, validating it, and ensuring context is available.
  */
 export async function generateCodegenSummary(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,

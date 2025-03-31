@@ -1,5 +1,5 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
@@ -8,7 +8,7 @@ import { getFunctionDefs } from '../function-calling.js';
 import { ChatMessageFlags } from '../../main/common/content-bus-types.js';
 
 export async function executeStepGenerateSummary(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<void> {
@@ -17,7 +17,7 @@ export async function executeStepGenerateSummary(
     return;
   }
 
-  const summaryRequest: GenerateContentArgs = [
+  const summaryRequest: GenerateFunctionCallsArgs = [
     [
       ...prompt,
       { type: 'assistant', text: 'Thank you for explaining the task.' },

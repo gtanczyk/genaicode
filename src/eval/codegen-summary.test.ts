@@ -3,7 +3,7 @@ import { generateContent as generateContentAiStudio } from '../ai-service/ai-stu
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { GenerateContentArgs } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../ai-service/common-types.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
@@ -393,7 +393,7 @@ describe.each([
         temperature,
         ModelType.DEFAULT,
         {},
-      ] as GenerateContentArgs;
+      ] as GenerateFunctionCallsArgs;
       let functionCalls = await generateContent(...planningReq);
       functionCalls = await validateAndRecoverSingleResult(planningReq, functionCalls, generateContent, rootDir);
 

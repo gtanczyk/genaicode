@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
 
 /**
  * Configuration options for retry mechanism
@@ -56,9 +56,9 @@ function calculateBackoff(attempt: number, options: Required<RetryOptions>): num
  * Wrapper for generateContent with retry mechanism
  */
 export function retryGenerateContent(
-  generateContent: GenerateContentFunction,
+  generateContent: GenerateFunctionCallsFunction,
   retryOptions: RetryOptions = {},
-): GenerateContentFunction {
+): GenerateFunctionCallsFunction {
   const options: Required<RetryOptions> = { ...DEFAULT_RETRY_OPTIONS, ...retryOptions };
 
   return async function wrappedGenerateContent(...args) {

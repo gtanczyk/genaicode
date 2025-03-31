@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import { GenerateContentFunction } from './common-types.js';
+import { GenerateFunctionCallsFunction } from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { FunctionCall } from './common-types.js';
 import { FunctionDef } from './common-types.js';
@@ -13,7 +13,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Anthropic Claude model.
  */
-export const generateContent: GenerateContentFunction = async function generateContent(
+export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   requiredFunctionName: string | null,

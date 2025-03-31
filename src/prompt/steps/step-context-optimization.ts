@@ -1,5 +1,5 @@
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
@@ -79,7 +79,7 @@ export const CONTEXT_OPTIMIZATION_TEMPERATURE = 0.2;
 const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -115,7 +115,7 @@ export async function executeStepContextOptimization(
       },
     ];
 
-    const request: GenerateContentArgs = [
+    const request: GenerateFunctionCallsArgs = [
       optimizationPrompt,
       getFunctionDefs(),
       'optimizeContext',

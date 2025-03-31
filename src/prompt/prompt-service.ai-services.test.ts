@@ -12,7 +12,7 @@ import { getCodeGenPrompt } from './prompt-codegen.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
@@ -56,7 +56,7 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateFunctionCallsFunction> = {
   'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,

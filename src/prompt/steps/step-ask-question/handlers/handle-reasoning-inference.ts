@@ -1,4 +1,4 @@
-import { FunctionCall, GenerateContentArgs } from '../../../../ai-service/common-types.js';
+import { FunctionCall, GenerateFunctionCallsArgs } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -27,7 +27,7 @@ export async function handleReasoningInference({
   try {
     putSystemMessage('Reasoning inference: generating prompt');
 
-    const request: GenerateContentArgs = [
+    const request: GenerateFunctionCallsArgs = [
       [
         ...prompt,
         {

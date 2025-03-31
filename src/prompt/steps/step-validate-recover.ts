@@ -1,15 +1,15 @@
 import assert from 'node:assert';
-import { GenerateContentFunction } from '../../ai-service/common-types.js';
-import { GenerateContentArgs } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
 import { rcConfig } from '../../main/config.js';
 
 export async function validateAndRecoverSingleResult(
-  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: GenerateContentArgs,
+  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: GenerateFunctionCallsArgs,
   result: FunctionCall[],
-  generateContentFn: GenerateContentFunction,
+  generateContentFn: GenerateFunctionCallsFunction,
   rootDir: string = rcConfig.rootDir,
 ): Promise<FunctionCall[]> {
   if (!requiredFunctionName) {
