@@ -127,24 +127,35 @@ export async function handleConversationGraph({
     putSystemMessage('Generating conversation graph...');
 
     // Generate the conversationGraph function call
-    const [conversationGraphCall] = (await generateContentFn(
-      [
-        ...prompt,
+    const [conversationGraphCall] = (
+      await generateContentFn(
+        [
+          ...prompt,
+          {
+            type: 'assistant',
+            text: askQuestionCall.args?.message ?? '',
+          },
+          {
+            type: 'user',
+            text: CONVERSATION_GRAPH_PROMPT + (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
+          },
+        ],
         {
-          type: 'assistant',
-          text: askQuestionCall.args?.message ?? '',
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'conversationGraph',
+          temperature: 0.7,
+          modelType: ModelType.DEFAULT,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
         },
-        {
-          type: 'user',
-          text: CONVERSATION_GRAPH_PROMPT + (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
-        },
-      ],
-      getFunctionDefs(),
-      'conversationGraph',
-      0.7,
-      ModelType.DEFAULT,
-      options,
-    )) as [ConversationGraphCall];
+        options,
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [ConversationGraphCall];
 
     prompt.push(
       {
@@ -208,14 +219,25 @@ export async function handleConversationGraph({
 
       putSystemMessage(`Executing node ${currentNode.id}`, currentNode);
 
-      const [sendMessage] = (await generateContentFn(
-        prompt,
-        getFunctionDefs(),
-        'sendMessage',
-        0.7,
-        ModelType.CHEAP,
-        options,
-      )) as [FunctionCall<SendMessageArgs>];
+      const [sendMessage] = (
+        await generateContentFn(
+          prompt,
+          {
+            functionDefs: getFunctionDefs(),
+            requiredFunctionName: 'sendMessage',
+            temperature: 0.7,
+            modelType: ModelType.CHEAP,
+            expectedResponseType: {
+              text: false,
+              functionCall: true,
+              media: false,
+            },
+          },
+          options,
+        )
+      )
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall) as [FunctionCall<SendMessageArgs>];
 
       if (sendMessage.args?.message) {
         putAssistantMessage(sendMessage.args.message, sendMessage.args);
@@ -248,20 +270,31 @@ export async function handleConversationGraph({
 
       const outgoingEdges = edges.filter((edge) => edge.sourceNode === currentNode.id);
 
-      const [evaluateEdge] = (await generateContentFn(
-        [
-          ...prompt,
+      const [evaluateEdge] = (
+        await generateContentFn(
+          [
+            ...prompt,
+            {
+              type: 'user',
+              text: getEdgeEvaluationPrompt(currentNode, outgoingEdges),
+            },
+          ],
           {
-            type: 'user',
-            text: getEdgeEvaluationPrompt(currentNode, outgoingEdges),
+            functionDefs: getFunctionDefs(),
+            requiredFunctionName: 'evaluateEdge',
+            temperature: 0.7,
+            modelType: ModelType.CHEAP,
+            expectedResponseType: {
+              text: false,
+              functionCall: true,
+              media: false,
+            },
           },
-        ],
-        getFunctionDefs(),
-        'evaluateEdge',
-        0.7,
-        ModelType.CHEAP,
-        options,
-      )) as [FunctionCall<EvaluateEdgeArgs>];
+          options,
+        )
+      )
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall) as [FunctionCall<EvaluateEdgeArgs>];
 
       if (!evaluateEdge.args?.shouldTerminate) {
         putSystemMessage('Conversation graph traversal terminated.');

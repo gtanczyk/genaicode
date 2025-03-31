@@ -1,4 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -173,30 +173,41 @@ export async function handleRequestFilesFragments({
 }
 
 export async function generateRequestFilesFragmentsCall(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
   modelType: ModelType,
 ) {
-  const [requestFilesFragmentsCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [requestFilesFragmentsCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Yes, you can request the file fragments.',
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'requestFilesFragments',
+        temperature: 0.7,
+        modelType,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text: 'Yes, you can request the file fragments.',
-      },
-    ],
-    getFunctionDefs(),
-    'requestFilesFragments',
-    0.7,
-    modelType,
-    options,
-  )) as [FunctionCall<RequestFilesFragmentsArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<RequestFilesFragmentsArgs> | undefined];
 
   return requestFilesFragmentsCall;
 }
@@ -207,44 +218,55 @@ export async function generateRequestFilesFragmentsCall(
 async function extractFragments(
   sourceCodeMap: SourceCodeMap,
   fragmentPrompt: string,
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   options: CodegenOptions,
 ): Promise<ExtractFileFragmentsArgs> {
   const filePaths = Object.keys(sourceCodeMap);
 
   try {
     // Process all files in a single LLM call
-    const [extractFragmentsCall] = (await generateContentFn(
-      [
+    const [extractFragmentsCall] = (
+      await generateContentFn(
+        [
+          {
+            type: 'systemPrompt',
+            systemPrompt:
+              'You are tasked with extracting relevant fragments from multiple source code files based on a given prompt. ' +
+              'Analyze each file thoroughly, identify meaningful sections that match the prompt criteria, and provide clear ' +
+              'explanations for your selections. Each fragment must be attributed to its source file for proper tracking.',
+          },
+          {
+            type: 'assistant',
+            text: 'I will analyze the provided files and extract relevant fragments based on your prompt.',
+            functionCalls: [{ name: 'getSourceCode', args: { filePaths } }],
+          },
+          {
+            type: 'user',
+            text: `Please extract relevant fragments from the provided files.\nExtraction prompt: ${fragmentPrompt}`,
+            functionResponses: [
+              {
+                name: 'getSourceCode',
+                content: JSON.stringify(sourceCodeMap),
+              },
+            ],
+          },
+        ],
         {
-          type: 'systemPrompt',
-          systemPrompt:
-            'You are tasked with extracting relevant fragments from multiple source code files based on a given prompt. ' +
-            'Analyze each file thoroughly, identify meaningful sections that match the prompt criteria, and provide clear ' +
-            'explanations for your selections. Each fragment must be attributed to its source file for proper tracking.',
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'extractFileFragments',
+          temperature: 0.2,
+          modelType: ModelType.CHEAP,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
         },
-        {
-          type: 'assistant',
-          text: 'I will analyze the provided files and extract relevant fragments based on your prompt.',
-          functionCalls: [{ name: 'getSourceCode', args: { filePaths } }],
-        },
-        {
-          type: 'user',
-          text: `Please extract relevant fragments from the provided files.\nExtraction prompt: ${fragmentPrompt}`,
-          functionResponses: [
-            {
-              name: 'getSourceCode',
-              content: JSON.stringify(sourceCodeMap),
-            },
-          ],
-        },
-      ],
-      getFunctionDefs(),
-      'extractFileFragments',
-      0.2,
-      ModelType.CHEAP,
-      options,
-    )) as [FunctionCall<ExtractFileFragmentsArgs> | undefined];
+        options,
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<ExtractFileFragmentsArgs> | undefined];
 
     if (!extractFragmentsCall?.args) {
       putSystemMessage('Failed to extract fragments');

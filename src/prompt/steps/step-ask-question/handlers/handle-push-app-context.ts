@@ -22,14 +22,25 @@ export async function handlePushAppContext({
 }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Updating context...');
 
-  const [pushAppContextCall] = (await generateContentFn(
-    prompt,
-    getFunctionDefs(),
-    'pushAppContext',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  )) as [FunctionCall<PushAppContextArgs>];
+  const [pushAppContextCall] = (
+    await generateContentFn(
+      prompt,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'pushAppContext',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<PushAppContextArgs>];
 
   if (!pushAppContextCall?.args) {
     putSystemMessage('Failed to get valid pushAppContext request');

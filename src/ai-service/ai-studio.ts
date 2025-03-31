@@ -9,13 +9,8 @@ import {
   ResponseSchema,
 } from '@google/generative-ai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import {
-  GenerateFunctionCallsFunction,
-  GenerateContentFunction,
-  GenerateContentResult,
-  GenerateContentResultPart,
-} from './common-types.js';
+import { printTokenUsageAndCost } from './common.js';
+import { GenerateContentFunction, GenerateContentResult, GenerateContentResultPart } from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { FunctionCall } from './common-types.js';
 import { FunctionDef } from './common-types.js';
@@ -28,7 +23,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Google AI Studio models with the new interface.
  */
-export const generateContentNew: GenerateContentFunction = async function generateContentNew(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -256,44 +251,6 @@ export const generateContentNew: GenerateContentFunction = async function genera
   }
 
   return resultParts;
-};
-
-/**
- * This function generates content using the Google AI Studio models.
- * It uses the new generateContentNew function internally.
- */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType: ModelType = ModelType.DEFAULT,
-  options: { geminiBlockNone?: boolean } = {},
-): Promise<FunctionCall[]> {
-  // Call the new function with mapped parameters
-  const result = await generateContentNew(
-    prompt,
-    {
-      modelType,
-      temperature,
-      functionDefs,
-      requiredFunctionName,
-      expectedResponseType: {
-        text: false,
-        functionCall: true,
-        media: false,
-      },
-    },
-    options,
-  );
-
-  // Extract only the function calls from the result
-  const functionCalls: FunctionCall[] = result
-    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
-    .map((part) => part.functionCall);
-
-  // Process the function calls using the existing utility
-  return processFunctionCalls(functionCalls, functionDefs);
 };
 
 function getModel(

@@ -1,4 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateContentFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { FunctionDef } from '../../ai-service/common-types.js';
@@ -16,7 +16,7 @@ import { PROMPT_CODEGEN_SUMMARY, PROMPT_CODEGEN_SUMMARY_ASSISTANT } from './step
  * It handles generating the initial summary, validating it, and ensuring context is available.
  */
 export async function generateCodegenSummary(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
@@ -24,7 +24,7 @@ export async function generateCodegenSummary(
   codegenSummaryRequest: FunctionCall<CodegenSummaryArgs>;
   baseResult: FunctionCall[];
 }> {
-  const baseRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
+  const baseRequest: GenerateContentArgs = [
     [
       ...prompt,
       {
@@ -36,14 +36,23 @@ export async function generateCodegenSummary(
         text: PROMPT_CODEGEN_SUMMARY,
       },
     ],
-    functionDefs,
-    'codegenSummary',
-    options.temperature ?? 0.7,
-    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+    {
+      functionDefs,
+      requiredFunctionName: 'codegenSummary',
+      temperature: options.temperature ?? 0.7,
+      modelType: options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
     options,
   ];
 
-  const baseResult = await generateContentFn(...baseRequest);
+  const baseResult = (await generateContentFn(...baseRequest))
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall);
   const codegenSummaryRequest = baseResult.find((call) => call.name === 'codegenSummary') as
     | FunctionCall<CodegenSummaryArgs>
     | undefined;

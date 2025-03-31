@@ -13,8 +13,7 @@ import { promptService } from '../prompt/prompt-service.js';
 import { CodegenOptions, ImagenType } from './codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { printHelpMessage } from '../cli/cli-options.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { putSystemMessage, setCurrentIterationId, unsetCurrentIterationId } from './common/content-bus.js';
@@ -130,7 +129,7 @@ export async function runCodegenIteration(
 
 // helper functions and consts
 
-export function getGenerateContentFunctions(): Record<AiServiceType, GenerateFunctionCallsFunction> {
+export function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
   return {
     'vertex-ai-claude': generateContentVertexAiClaude,
     'vertex-ai': generateContentVertexAi,

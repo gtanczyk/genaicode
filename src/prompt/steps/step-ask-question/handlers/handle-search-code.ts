@@ -1,6 +1,6 @@
 import { ActionHandlerProps, ActionResult, AskQuestionCall, SearchCodeArgs } from '../step-ask-question-types.js';
 import { searchSourceCode } from '../../../../files/search-files.js';
-import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -89,29 +89,40 @@ export async function handleSearchCode({
 }
 
 async function generateSearchCodeCall(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   askQuestionCall: AskQuestionCall,
   options: CodegenOptions,
 ) {
-  const [searchCodeCall] = await generateContentFn(
-    [
-      ...prompt,
+  const [searchCodeCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Yes, you can search the code.',
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'searchCode',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text: 'Yes, you can search the code.',
-      },
-    ],
-    getFunctionDefs(),
-    'searchCode',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  );
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall);
 
   return searchCodeCall as FunctionCall<SearchCodeArgs> | undefined;
 }

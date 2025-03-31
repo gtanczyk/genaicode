@@ -1,11 +1,6 @@
 import OpenAI from 'openai';
 import assert from 'node:assert';
-import {
-  GenerateFunctionCallsArgs,
-  GenerateContentArgs,
-  GenerateFunctionCallsFunction,
-  GenerateContentResult,
-} from './common-types.js';
+import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from './common-types.js';
 import { FunctionCall } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { getServiceConfig } from './service-configurations.js';
@@ -15,10 +10,10 @@ import { internalGenerateContent } from './openai.js'; // Import the exported fu
  * This function generates content using the local llm service.
  * Local llm provides an OpenAI-compatible API, so we can reuse the OpenAI implementation.
  */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
-  ...args: GenerateFunctionCallsArgs
-): Promise<FunctionCall[]> {
-  const [prompt, functionDefs, requiredFunctionName, temperature, modelType = ModelType.DEFAULT] = args;
+export const generateContent: GenerateContentFunction = async function generateContent(
+  ...args: GenerateContentArgs
+): Promise<GenerateContentResult> {
+  const [prompt, { modelType, temperature, functionDefs, requiredFunctionName }] = args;
 
   try {
     const serviceConfig = getServiceConfig('local-llm');
@@ -81,7 +76,10 @@ export const generateContent: GenerateFunctionCallsFunction = async function gen
       .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
       .map((part) => part.functionCall);
 
-    return functionCalls;
+    return functionCalls.map((call) => ({
+      type: 'functionCall',
+      functionCall: call,
+    }));
   } catch (error) {
     if (error instanceof Error && error.message.includes('base URL not configured')) {
       throw new Error('Local base URL not configured. Please set up the service configuration.');

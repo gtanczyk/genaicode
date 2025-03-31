@@ -25,24 +25,35 @@ export async function handleGenerateImage({
     };
   }
 
-  const [generateImageCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [generateImageCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Yes, you can generate an image.',
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'generateImage',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text: 'Yes, you can generate an image.',
-      },
-    ],
-    getFunctionDefs(),
-    'generateImage',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  )) as [FunctionCall<GenerateImageArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<GenerateImageArgs> | undefined];
 
   if (!generateImageCall?.args) {
     return {

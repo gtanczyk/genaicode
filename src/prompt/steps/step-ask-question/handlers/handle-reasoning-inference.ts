@@ -1,4 +1,4 @@
-import { FunctionCall, GenerateFunctionCallsArgs } from '../../../../ai-service/common-types.js';
+import { FunctionCall, GenerateContentArgs } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
@@ -27,7 +27,7 @@ export async function handleReasoningInference({
   try {
     putSystemMessage('Reasoning inference: generating prompt');
 
-    const request: GenerateFunctionCallsArgs = [
+    const request: GenerateContentArgs = [
       [
         ...prompt,
         {
@@ -35,14 +35,23 @@ export async function handleReasoningInference({
           text: askQuestionCall.args!.message,
         },
       ],
-      getFunctionDefs(),
-      'reasoningInference',
-      0.7,
-      ModelType.CHEAP,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'reasoningInference',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
       options,
     ];
 
-    const [reasoningInferenceCall] = (await generateContentFn(...request)) as [ReasoningInferenceCall | undefined];
+    const [reasoningInferenceCall] = (await generateContentFn(...request))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [ReasoningInferenceCall | undefined];
 
     if (!reasoningInferenceCall?.args?.prompt) {
       putSystemMessage('Failed to get valid reasoningInference request');
@@ -66,29 +75,40 @@ export async function handleReasoningInference({
     const expandedContextSourceCodeMap = getContextSourceCode(contextPaths, options);
 
     // Call the reasoning model with appropriate settings
-    const [reasoningInferenceResponseCall] = (await generateContentFn(
-      [
+    const [reasoningInferenceResponseCall] = (
+      await generateContentFn(
+        [
+          {
+            type: 'user',
+            text:
+              reasoningInferenceCall.args.prompt +
+              (Object.keys(expandedContextSourceCodeMap).length > 0
+                ? '\n\nContents of relevant files:\n' +
+                  Object.entries(expandedContextSourceCodeMap)
+                    .map(([path, file]) =>
+                      'content' in file && file.content ? `File: ${path}\n\`\`\`${file.content}\`\`\`` : '',
+                    )
+                    .filter(Boolean)
+                    .join('\n\n')
+                : ''),
+          },
+        ],
         {
-          type: 'user',
-          text:
-            reasoningInferenceCall.args.prompt +
-            (Object.keys(expandedContextSourceCodeMap).length > 0
-              ? '\n\nContents of relevant files:\n' +
-                Object.entries(expandedContextSourceCodeMap)
-                  .map(([path, file]) =>
-                    'content' in file && file.content ? `File: ${path}\n\`\`\`${file.content}\`\`\`` : '',
-                  )
-                  .filter(Boolean)
-                  .join('\n\n')
-              : ''),
+          functionDefs: [],
+          requiredFunctionName: 'reasoningInferenceResponse',
+          temperature: 0.7,
+          modelType: ModelType.REASONING,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
         },
-      ],
-      [],
-      'reasoningInferenceResponse',
-      0.7,
-      ModelType.REASONING,
-      options,
-    )) as [FunctionCall<ReasoningInferenceResponseArgs>];
+        options,
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<ReasoningInferenceResponseArgs>];
 
     putSystemMessage('Reasoning inference: received response', reasoningInferenceResponseCall.args);
 

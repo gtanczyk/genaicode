@@ -1,13 +1,7 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import {
-  GenerateFunctionCallsArgs,
-  GenerateContentArgs,
-  GenerateFunctionCallsFunction,
-  GenerateContentFunction,
-  GenerateContentResult,
-} from './common-types.js';
+import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { FunctionCall } from './common-types.js';
 import { TokenUsage } from './common-types.js';
@@ -23,38 +17,9 @@ import { getServiceConfig } from './service-configurations.js';
 import { AiServiceType } from './service-configurations-types.js';
 
 /**
- * This function generates content using the OpenAI chat model.
- * @deprecated Use generateContentNew instead.
- */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
-  ...args: GenerateFunctionCallsArgs
-): Promise<FunctionCall[]> {
-  const [prompt, functionDefs, requiredFunctionName, temperature, modelType = ModelType.DEFAULT, options] = args;
-
-  const config: GenerateContentArgs[1] = {
-    modelType,
-    temperature,
-    functionDefs,
-    requiredFunctionName,
-    expectedResponseType: { functionCall: true, text: false, media: false }, // Assuming old usage expects function calls
-  };
-  const opts: GenerateContentArgs[2] = {
-    ...(options ?? {}),
-    aiService: 'openai',
-  };
-
-  const result = await generateContentNew(prompt, config, opts);
-
-  // Adapt the result back to FunctionCall[] for backward compatibility
-  return result
-    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
-    .map((part) => part.functionCall);
-};
-
-/**
  * New function to generate content using the OpenAI chat model with a new signature.
  */
-export const generateContentNew: GenerateContentFunction = async function generateContentNew(
+export const generateContent: GenerateContentFunction = async function generateContent(
   ...args: GenerateContentArgs
 ): Promise<GenerateContentResult> {
   const [prompt, config] = args;

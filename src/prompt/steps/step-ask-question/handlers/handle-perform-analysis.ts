@@ -1,5 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs } from '../../../../ai-service/common-types.js';
 import { PromptItem } from '../../../../ai-service/common-types.js';
 import { FunctionDef } from '../../../../ai-service/common-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
@@ -99,40 +98,52 @@ export async function handlePerformAnalysis({
  * Gets the performAnalysis call from the assistant
  */
 async function getPerformAnalysisCall(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<PerformAnalysisCall | undefined> {
-  const performAnalysisRequest: GenerateFunctionCallsArgs = [
+  const performAnalysisRequest: GenerateContentArgs = [
     prompt,
-    functionDefs,
-    'performAnalysis',
-    0.7,
-    ModelType.CHEAP,
+    {
+      functionDefs,
+      requiredFunctionName: 'performAnalysis',
+      modelType: ModelType.CHEAP,
+      temperature: 0.7,
+      expectedResponseType: { text: false, functionCall: true, media: false },
+    },
     options,
   ];
   const performAnalysisResult = await generateContentFn(...performAnalysisRequest);
-  return performAnalysisResult.find((call) => call.name === 'performAnalysis') as PerformAnalysisCall | undefined;
+  return performAnalysisResult
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall)
+    .find((call) => call.name === 'performAnalysis') as PerformAnalysisCall | undefined;
 }
 
 /**
  * Executes the analysis with the enhanced context
  */
 async function executeAnalysis(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
 ): Promise<AnalysisResultCall | undefined> {
-  const analysisRequest: GenerateFunctionCallsArgs = [
+  const analysisRequest: GenerateContentArgs = [
     prompt,
-    functionDefs,
-    'analysisResult',
-    0.7,
-    ModelType.DEFAULT,
+    {
+      functionDefs,
+      requiredFunctionName: 'analysisResult',
+      modelType: ModelType.DEFAULT,
+      temperature: 0.7,
+      expectedResponseType: { text: false, functionCall: true, media: false },
+    },
     options,
   ];
   const analysisResult = await generateContentFn(...analysisRequest);
-  return analysisResult.find((call) => call.name === 'analysisResult') as AnalysisResultCall | undefined;
+  return analysisResult
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall)
+    .find((call) => call.name === 'analysisResult') as AnalysisResultCall | undefined;
 }

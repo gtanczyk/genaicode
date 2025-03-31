@@ -183,26 +183,34 @@ export class Service implements AppContextProvider {
             text: prompt,
           },
         ],
-        modelType === ModelType.REASONING
-          ? []
-          : [
-              {
-                name: 'printMessage',
-                description: 'Print a message',
-                parameters: {
-                  type: 'object',
-                  properties: { message: { type: 'string' } },
-                  required: ['message'],
-                },
-              },
-            ],
-        modelType === ModelType.REASONING ? 'reasoningInferenceResponse' : 'printMessage',
-        temperature,
-        modelType,
+        {
+          functionDefs:
+            modelType === ModelType.REASONING
+              ? []
+              : [
+                  {
+                    name: 'printMessage',
+                    description: 'Print a message',
+                    parameters: {
+                      type: 'object',
+                      properties: { message: { type: 'string' } },
+                      required: ['message'],
+                    },
+                  },
+                ],
+          requiredFunctionName: modelType === ModelType.REASONING ? 'reasoningInferenceResponse' : 'printMessage',
+          temperature,
+          modelType,
+          expectedResponseType: {
+            functionCall: true,
+            text: false,
+            media: false,
+          },
+        },
         options,
       );
 
-      return result;
+      return result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
     } catch (error) {
       console.error('Error in generateContent:', error);
       throw error;

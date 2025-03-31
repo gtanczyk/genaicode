@@ -1,9 +1,7 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
-import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import { GenerateFunctionCallsFunction } from './common-types.js';
-import { PromptItem } from './common-types.js';
-import { FunctionCall } from './common-types.js';
+import { printTokenUsageAndCost } from './common.js';
+import { GenerateContentFunction, GenerateContentResult, PromptItem } from './common-types.js';
 import { FunctionDef } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
@@ -13,14 +11,32 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Anthropic Claude model.
  */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType = ModelType.DEFAULT,
-  options: { disableCache?: boolean } = {},
-): Promise<FunctionCall[]> {
+  config: {
+    modelType?: ModelType;
+    temperature?: number;
+    functionDefs?: FunctionDef[];
+    requiredFunctionName?: string | null;
+    expectedResponseType?: {
+      text: boolean;
+      functionCall: boolean;
+      media: boolean;
+    };
+  },
+  options: {
+    geminiBlockNone?: boolean;
+    disableCache?: boolean;
+    aiService?: string;
+    askQuestion?: boolean;
+  } = {},
+): Promise<GenerateContentResult> {
+  const modelType = config.modelType ?? ModelType.DEFAULT;
+  const temperature = config.temperature ?? 0.7;
+  let functionDefs = config.functionDefs ?? [];
+  let requiredFunctionName = config.requiredFunctionName ?? null;
+  const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: true };
+
   try {
     const serviceConfig = getServiceConfig('anthropic');
     assert(serviceConfig?.apiKey, 'Anthropic API key not configured, use ANTHROPIC_API_KEY environment variable.');
@@ -250,18 +266,17 @@ export const generateContent: GenerateFunctionCallsFunction = async function gen
 
       return [
         {
-          id: 'reasoning_inference_response',
-          name: 'reasoningInferenceResponse',
-          args: {
-            ...(thinking ? { reasoning: thinking } : {}),
-            response: responseMessage,
+          type: 'functionCall',
+          functionCall: {
+            id: 'reasoning_inference_response',
+            name: 'reasoningInferenceResponse',
+            args: {
+              ...(thinking ? { reasoning: thinking } : {}),
+              response: responseMessage,
+            },
           },
         },
       ];
-    }
-
-    if (responseMessages.length > 0) {
-      console.log('Response messages', responseMessages);
     }
 
     const functionCalls = response!.content
@@ -272,7 +287,32 @@ export const generateContent: GenerateFunctionCallsFunction = async function gen
         args: item.input as Record<string, unknown>,
       }));
 
-    return processFunctionCalls(functionCalls, functionDefs);
+    if (!expectedResponseType.functionCall) {
+      functionCalls.length = 0;
+    }
+
+    if (!expectedResponseType.text) {
+      responseMessages.length = 0;
+    }
+
+    return [
+      ...functionCalls.map(
+        (fc) =>
+          ({
+            type: 'functionCall',
+            functionCall: fc,
+          }) as const,
+      ),
+      ...responseMessages
+        .filter((item) => item.type === 'text')
+        .map(
+          (item) =>
+            ({
+              type: 'text',
+              text: item.text,
+            }) as const,
+        ),
+    ];
   } catch (error) {
     if (error instanceof Error && error.message.includes('API key not configured')) {
       throw new Error('Anthropic API key not configured. Please set up the service configuration.');

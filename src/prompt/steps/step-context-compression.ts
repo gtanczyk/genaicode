@@ -1,9 +1,4 @@
-import {
-  GenerateFunctionCallsFunction,
-  GenerateFunctionCallsArgs,
-  PromptItem,
-  ModelType,
-} from '../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs, PromptItem, ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getFunctionDefs } from '../function-calling.js';
@@ -171,7 +166,7 @@ Focus on creating a summary that:
  * Executes the context compression step
  */
 export async function executeStepContextCompression(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -220,7 +215,7 @@ export async function executeStepContextCompression(
  * Compresses the conversation history using the AI model
  */
 async function compressConversationHistory(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<ContextCompressionCall | undefined> {
@@ -232,15 +227,24 @@ async function compressConversationHistory(
     ...prompt,
   ];
 
-  const request: GenerateFunctionCallsArgs = [
+  const request: GenerateContentArgs = [
     summaryPrompt,
-    getFunctionDefs(),
-    'compressContext',
-    0.3, // Use a lower temperature for more focused summaries
-    ModelType.CHEAP,
+    {
+      functionDefs: getFunctionDefs(),
+      requiredFunctionName: 'compressContext',
+      temperature: 0.3, // Use a lower temperature for more focused summaries
+      modelType: ModelType.CHEAP,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
     options,
   ];
 
-  const result = (await generateContentFn(...request)) as [ContextCompressionCall];
+  const result = (await generateContentFn(...request))
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [ContextCompressionCall];
   return result[0];
 }

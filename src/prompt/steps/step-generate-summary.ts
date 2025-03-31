@@ -1,5 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
@@ -8,7 +7,7 @@ import { getFunctionDefs } from '../function-calling.js';
 import { ChatMessageFlags } from '../../main/common/content-bus-types.js';
 
 export async function executeStepGenerateSummary(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<void> {
@@ -17,7 +16,7 @@ export async function executeStepGenerateSummary(
     return;
   }
 
-  const summaryRequest: GenerateFunctionCallsArgs = [
+  const summaryRequest: GenerateContentArgs = [
     [
       ...prompt,
       { type: 'assistant', text: 'Thank you for explaining the task.' },
@@ -26,15 +25,24 @@ export async function executeStepGenerateSummary(
         text: `Now please summarize our conversation, I want maximum 1 sentence of maximum 10 words explaning the conversation.`,
       },
     ],
-    getFunctionDefs(),
-    'explanation',
-    0.3, // Use a lower temperature for more focused summaries
-    ModelType.CHEAP,
+    {
+      functionDefs: getFunctionDefs(),
+      requiredFunctionName: 'explanation',
+      temperature: 0.3, // Use a lower temperature for more focused summaries
+      modelType: ModelType.CHEAP,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
     options,
   ];
 
   try {
-    const summaryResult = await generateContentFn(...summaryRequest);
+    const summaryResult = (await generateContentFn(...summaryRequest))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
     const summaryExplanation = summaryResult.find((call) => call.name === 'explanation');
 
     if (summaryExplanation && summaryExplanation.args && typeof summaryExplanation.args.text === 'string') {

@@ -1,5 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
@@ -105,7 +104,7 @@ export function getSummarizationPrefix(
 }
 
 export async function summarizeSourceCode(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   sourceCode: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {
@@ -122,7 +121,7 @@ export async function summarizeSourceCode(
 }
 
 async function summarizeBatch(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   items: { path: string; content: string | null; dependencies?: DependencyInfo[]; fileId: FileId }[],
   allSourceCodeMap: SourceCodeMap,
   options: CodegenOptions,
@@ -145,15 +144,20 @@ async function summarizeBatch(
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
 
     const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
-    const request: GenerateFunctionCallsArgs = [
+    const request: GenerateContentArgs = [
       prompt,
-      getFunctionDefs(),
-      'setSummaries',
-      0.2,
-      ModelType.CHEAP,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'setSummaries',
+        temperature: 0.2,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
       options,
     ];
-    const result = await generateContentFn(...request);
+    const result = (await generateContentFn(...request))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     const batchSummaries = parseSummarizationResult(result);
     batchSummaries.forEach((file) => {

@@ -16,9 +16,8 @@ import {
   SchemaType,
   Schema,
 } from '@google-cloud/vertexai';
-import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost } from './common.js';
 import {
-  GenerateFunctionCallsFunction,
   GenerateContentFunction,
   GenerateContentResult,
   GenerateContentResultPart,
@@ -35,7 +34,7 @@ import { getServiceConfig } from './service-configurations.js';
 /**
  * This function generates content using the Vertex AI Gemini models with the new interface.
  */
-export const generateContentNew: GenerateContentFunction = async function generateContentNew(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -240,44 +239,6 @@ export const generateContentNew: GenerateContentFunction = async function genera
     }
     throw error;
   }
-};
-
-/**
- * This function generates content using the Vertex AI Gemini models.
- * It uses the new generateContentNew function internally for backward compatibility.
- */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType = ModelType.DEFAULT,
-  options: { geminiBlockNone?: boolean } = {},
-): Promise<FunctionCall[]> {
-  // Call the new function with mapped parameters
-  const result = await generateContentNew(
-    prompt,
-    {
-      modelType,
-      temperature,
-      functionDefs,
-      requiredFunctionName,
-      expectedResponseType: {
-        text: false, // Old interface only expected function calls
-        functionCall: true,
-        media: false,
-      },
-    },
-    options,
-  );
-
-  // Extract only the function calls from the result
-  const functionCalls: FunctionCall[] = result
-    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
-    .map((part) => part.functionCall);
-
-  // Process the function calls using the existing utility (optional, could be removed if generateContentNew handles all processing)
-  return processFunctionCalls(functionCalls, functionDefs);
 };
 
 interface GetGenModelParams {

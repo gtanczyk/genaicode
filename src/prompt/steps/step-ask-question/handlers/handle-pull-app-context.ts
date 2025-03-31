@@ -21,14 +21,25 @@ export async function handlePullAppContext({
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   putSystemMessage('Retrieving context...');
-  const [pullAppContextCall] = (await generateContentFn(
-    prompt,
-    getFunctionDefs(),
-    'pullAppContext',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  )) as [FunctionCall<PullAppContextArgs> | undefined];
+  const [pullAppContextCall] = (
+    await generateContentFn(
+      prompt,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'pullAppContext',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<PullAppContextArgs> | undefined];
 
   if (!pullAppContextCall?.args) {
     putSystemMessage('Failed to get valid pullAppContext request');

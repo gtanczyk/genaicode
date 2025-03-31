@@ -1,5 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
@@ -79,7 +78,7 @@ export const CONTEXT_OPTIMIZATION_TEMPERATURE = 0.2;
 const MAX_TOTAL_TOKENS = 10000;
 
 export async function executeStepContextOptimization(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -115,15 +114,20 @@ export async function executeStepContextOptimization(
       },
     ];
 
-    const request: GenerateFunctionCallsArgs = [
+    const request: GenerateContentArgs = [
       optimizationPrompt,
-      getFunctionDefs(),
-      'optimizeContext',
-      CONTEXT_OPTIMIZATION_TEMPERATURE,
-      ModelType.CHEAP,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'optimizeContext',
+        temperature: CONTEXT_OPTIMIZATION_TEMPERATURE,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
       options,
     ];
-    const result = await generateContentFn(...request);
+    const result = (await generateContentFn(...request))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     const [optimizedContext, irrelevantFiles] = parseOptimizationResult(fullSourceCode, result);
     if (!optimizedContext) {

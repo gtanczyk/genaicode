@@ -1,7 +1,6 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateContentFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
-import { FunctionDef } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions, CodegenPlanningArgs } from '../../main/codegen-types.js';
 import { getFunctionDefs } from '../function-calling.js';
@@ -32,7 +31,7 @@ Output the plan using \`codegenPlanning\` function provding all the required fie
  * before proceeding with actual code generation
  */
 export async function executeStepCodegenPlanning(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -48,17 +47,26 @@ export async function executeStepCodegenPlanning(
     prompt.push({ type: 'user', text: modifiedPlanningPrompt });
   }
 
-  const planningRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
+  const planningRequest: GenerateContentArgs = [
     prompt,
-    getFunctionDefs(),
-    'codegenPlanning',
-    options.temperature ?? 0.7,
-    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+    {
+      functionDefs: getFunctionDefs(),
+      requiredFunctionName: 'codegenPlanning',
+      temperature: options.temperature ?? 0.7,
+      modelType: options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
     options,
   ];
 
   try {
-    const planningResult = await generateContentFn(...planningRequest);
+    const planningResult = (await generateContentFn(...planningRequest))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     let codegenPlanningRequest = planningResult.find((call) => call.name === 'codegenPlanning');
 

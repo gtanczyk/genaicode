@@ -1,6 +1,5 @@
 import { GenerateImageFunction } from '../../../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentArgs } from '../../../ai-service/common-types.js';
 import { PromptItem } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
 import { FunctionDef } from '../../../ai-service/common-types.js';
@@ -35,7 +34,7 @@ import './handlers/handle-send-message.js';
 import './handlers/handle-update-file.js';
 
 export async function executeStepAskQuestion(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   generateImageFn: GenerateImageFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
@@ -98,20 +97,25 @@ export async function executeStepAskQuestion(
 }
 
 async function getAskQuestionCall(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   temperature: number,
   options: CodegenOptions,
 ): Promise<AskQuestionCall | undefined> {
-  const askQuestionRequest: GenerateFunctionCallsArgs = [
+  const askQuestionRequest: GenerateContentArgs = [
     prompt,
-    functionDefs,
-    'askQuestion',
-    temperature,
-    ModelType.CHEAP,
+    {
+      functionDefs,
+      requiredFunctionName: 'askQuestion',
+      temperature,
+      modelType: ModelType.CHEAP,
+      expectedResponseType: { text: false, functionCall: true, media: false },
+    },
     options,
   ];
-  const askQuestionResult = await generateContentFn(...askQuestionRequest);
+  const askQuestionResult = (await generateContentFn(...askQuestionRequest))
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall);
   return askQuestionResult.find((call) => call.name === 'askQuestion') as AskQuestionCall | undefined;
 }

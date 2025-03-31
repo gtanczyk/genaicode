@@ -14,24 +14,35 @@ export async function handleRemoveFilesFromContext({
   prompt,
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
-  const [removeFilesFromContextCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [removeFilesFromContextCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Yes, you can request the removal of files from context.',
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'removeFilesFromContext',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text: 'Yes, you can request the removal of files from context.',
-      },
-    ],
-    getFunctionDefs(),
-    'removeFilesFromContext',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  )) as [FunctionCall<RemoveFilesFromContextArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<RemoveFilesFromContextArgs> | undefined];
 
   if (!removeFilesFromContextCall) {
     return {

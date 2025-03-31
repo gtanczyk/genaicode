@@ -1,13 +1,11 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost } from './common.js';
 import {
-  GenerateFunctionCallsFunction,
   GenerateContentFunction,
   GenerateContentResult,
   GenerateContentResultPart,
   PromptItem,
-  FunctionCall,
   FunctionDef,
   ModelType,
 } from './common-types.js';
@@ -19,7 +17,7 @@ import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-in
 /**
  * This function generates content using the Anthropic Claude model via Vertex AI with the new interface.
  */
-export const generateContentNew: GenerateContentFunction = async function generateContentNew(
+export const generateContent: GenerateContentFunction = async function generateContent(
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -189,41 +187,4 @@ export const generateContentNew: GenerateContentFunction = async function genera
   }
 
   return resultParts;
-};
-
-/**
- * This function generates content using the Anthropic Claude model via Vertex AI.
- * It uses the new generateContentNew function internally for backward compatibility.
- */
-export const generateContent: GenerateFunctionCallsFunction = async function generateContent(
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType = ModelType.DEFAULT,
-  options: { geminiBlockNone?: boolean } = {},
-): Promise<FunctionCall[]> {
-  const result = await generateContentNew(
-    prompt,
-    {
-      modelType,
-      temperature,
-      functionDefs,
-      requiredFunctionName,
-      expectedResponseType: {
-        text: false, // Old interface only expected function calls
-        functionCall: true,
-        media: false,
-      },
-    },
-    options,
-  );
-
-  // Extract only the function calls from the result
-  const functionCalls: FunctionCall[] = result
-    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
-    .map((part) => part.functionCall);
-
-  // Process function calls (e.g., check against functionDefs)
-  return processFunctionCalls(functionCalls, functionDefs);
 };

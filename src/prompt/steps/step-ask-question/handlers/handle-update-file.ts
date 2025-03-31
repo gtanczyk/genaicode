@@ -70,26 +70,37 @@ export async function handleUpdateFile({
     await executeStepEnsureContext(prompt, requestedFilesCall, options);
   }
 
-  const [updateFileCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [updateFileCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text:
+            'Ok, please provide the update using `updateFile` function. Please remember to use absolute file path.' +
+            (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'updateFile',
+        temperature: options.temperature ?? 0.7,
+        modelType: ModelType.DEFAULT,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text:
-          'Ok, please provide the update using `updateFile` function. Please remember to use absolute file path.' +
-          (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
-      },
-    ],
-    getFunctionDefs(),
-    'updateFile',
-    options.temperature ?? 0.7,
-    ModelType.DEFAULT,
-    options,
-  )) as [FunctionCall<UpdateFileDefArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<UpdateFileDefArgs> | undefined];
 
   if (!updateFileCall || !updateFileCall.args) {
     return {

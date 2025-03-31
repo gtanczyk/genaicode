@@ -14,24 +14,35 @@ export async function handleRequestPermissions({
   prompt,
   generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> {
-  const [requestPermissionsCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [requestPermissionsCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text: 'Yes, you can request the permissions.',
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'requestPermissions',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text: 'Yes, you can request the permissions.',
-      },
-    ],
-    getFunctionDefs(),
-    'requestPermissions',
-    0.7,
-    ModelType.CHEAP,
-    options,
-  )) as [FunctionCall<RequestPermissionsArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<RequestPermissionsArgs> | undefined];
 
   if (!requestPermissionsCall) {
     return {

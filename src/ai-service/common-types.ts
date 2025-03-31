@@ -75,20 +75,6 @@ export type GenerateContentResult = GenerateContentResultPart[];
 
 export type GenerateContentHook = (args: GenerateContentArgs, result: GenerateContentResult) => Promise<void>;
 
-export type GenerateFunctionCallsArgs = [
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType?: ModelType,
-  options?: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  },
-];
-
 export type GenerateContentArgs = [
   prompt: PromptItem[],
   config: {
@@ -109,8 +95,6 @@ export type GenerateContentArgs = [
     askQuestion?: boolean;
   },
 ];
-
-export type GenerateFunctionCallsFunction = (...args: GenerateFunctionCallsArgs) => Promise<FunctionCall[]>;
 
 export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<GenerateContentResult>;
 

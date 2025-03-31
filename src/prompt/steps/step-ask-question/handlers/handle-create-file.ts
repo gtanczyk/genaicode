@@ -55,26 +55,37 @@ export async function handleCreateFile({
 
   putSystemMessage('Content generation started.');
 
-  const [createFileCall] = (await generateContentFn(
-    [
-      ...prompt,
+  const [createFileCall] = (
+    await generateContentFn(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
+        },
+        {
+          type: 'user',
+          text:
+            'Ok, please provide the file creation using `createFile` function. Please remember to use absolute file path.' +
+            (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
+        },
+      ],
       {
-        type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'createFile',
+        temperature: options.temperature ?? 0.7,
+        modelType: ModelType.DEFAULT,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      {
-        type: 'user',
-        text:
-          'Ok, please provide the file creation using `createFile` function. Please remember to use absolute file path.' +
-          (generateConfirmation.answer ? ` ${generateConfirmation.answer}` : ''),
-      },
-    ],
-    getFunctionDefs(),
-    'createFile',
-    options.temperature ?? 0.7,
-    ModelType.DEFAULT,
-    options,
-  )) as [FunctionCall<CreateFileArgs> | undefined];
+      options,
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<CreateFileArgs> | undefined];
 
   if (!createFileCall || !createFileCall.args) {
     return {

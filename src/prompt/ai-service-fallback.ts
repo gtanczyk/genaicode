@@ -2,15 +2,15 @@ import { CodegenOptions } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { askUserForConfirmation } from '../main/common/user-actions.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { validateAndRecoverSingleResult } from './steps/step-validate-recover.js';
 
 export async function handleAiServiceFallback(
-  generateContentFns: Record<AiServiceType, GenerateFunctionCallsFunction>,
+  generateContentFns: Record<AiServiceType, GenerateContentFunction>,
   options: CodegenOptions,
-  ...args: Parameters<GenerateFunctionCallsFunction>
-): Promise<ReturnType<GenerateFunctionCallsFunction>> {
+  ...args: Parameters<GenerateContentFunction>
+): Promise<ReturnType<GenerateContentFunction>> {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     if (abortController?.signal.aborted) {

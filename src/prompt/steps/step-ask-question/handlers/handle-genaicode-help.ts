@@ -86,28 +86,40 @@ export async function handleGenaicodeHelp({
 }
 
 async function getGenaicodeHelpCall(generateContentFn: ActionHandlerProps['generateContentFn'], prompt: PromptItem[]) {
-  const [genaicodeHelpCall] = (await generateContentFn(
-    [
-      {
-        type: 'assistant',
-        text: 'I can help you with questions about GenAIcode, but first I need access to genaicode documentation, could you please provide it?',
-      },
-      {
-        type: 'user',
-        text: `Of course, here is the documentation:
+  const [genaicodeHelpCall] = (
+    await generateContentFn(
+      [
+        {
+          type: 'assistant',
+          text: 'I can help you with questions about GenAIcode, but first I need access to genaicode documentation, could you please provide it?',
+        },
+        {
+          type: 'user',
+          text: `Of course, here is the documentation:
 
       \`\`\`
       ${GENAICODE_HELP_DOCUMENT}
       \`\`\`
 `,
+        },
+        ...prompt,
+      ],
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'genaicodeHelp',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
       },
-      ...prompt,
-    ],
-    getFunctionDefs(),
-    'genaicodeHelp',
-    0.7,
-    ModelType.CHEAP,
-  )) as [FunctionCall<GenaicodeHelpArgs> | undefined];
+      {},
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall) as [FunctionCall<GenaicodeHelpArgs> | undefined];
 
   return [genaicodeHelpCall];
 }

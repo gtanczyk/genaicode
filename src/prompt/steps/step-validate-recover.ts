@@ -1,24 +1,25 @@
 import assert from 'node:assert';
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { validateFunctionCall } from '../function-calling-validate.js';
 import { rcConfig } from '../../main/config.js';
 
 export async function validateAndRecoverSingleResult(
-  [prompt, functionDefs, requiredFunctionName, temperature, cheap, options]: GenerateFunctionCallsArgs,
-  result: FunctionCall[],
-  generateContentFn: GenerateFunctionCallsFunction,
+  [prompt, { functionDefs, requiredFunctionName, temperature, modelType }, options]: GenerateContentArgs,
+  result: GenerateContentResult,
+  generateContentFn: GenerateContentFunction,
   rootDir: string = rcConfig.rootDir,
-): Promise<FunctionCall[]> {
+): Promise<GenerateContentResult> {
   if (!requiredFunctionName) {
     // quite unexpected
     return result;
   }
 
-  let call: FunctionCall | undefined = result[0];
-  const validatorError = validateFunctionCall(call, requiredFunctionName, result, rootDir);
+  let calls = result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
+
+  let call: FunctionCall | undefined = calls[0];
+  const validatorError = validateFunctionCall(call, requiredFunctionName, calls, rootDir);
   if (validatorError) {
     console.log('Invalid function call', call, validatorError);
     if (!call) {
@@ -47,25 +48,36 @@ export async function validateAndRecoverSingleResult(
     ];
 
     console.log('Trying to recover...');
-    if (cheap) {
+    if (modelType === ModelType.CHEAP) {
       console.log('Disabling --cheap for recovery.');
     }
-    result = await generateContentFn(prompt, functionDefs, requiredFunctionName, temperature, ModelType.CHEAP, options);
+    calls = (
+      await generateContentFn(
+        prompt,
+        {
+          functionDefs,
+          requiredFunctionName,
+          temperature,
+          modelType: ModelType.CHEAP,
+          expectedResponseType: { text: false, functionCall: true, media: false },
+        },
+        options,
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
     console.log('Recover result:', result);
 
-    if (result?.length === 1) {
-      let recoveryError = validateFunctionCall(result[0], requiredFunctionName, result, rootDir);
+    if (calls?.length === 1) {
+      let recoveryError = validateFunctionCall(calls[0], requiredFunctionName, calls, rootDir);
       if (recoveryError) {
         console.log("Use more expensive recovery method, because we couldn't recover.");
         result = await generateContentFn(
           prompt,
-          functionDefs,
-          requiredFunctionName,
-          temperature,
-          ModelType.DEFAULT,
+          { functionDefs, requiredFunctionName, temperature, modelType: ModelType.DEFAULT },
           options,
         );
-        recoveryError = validateFunctionCall(result?.[0], requiredFunctionName, result, rootDir);
+        recoveryError = validateFunctionCall(calls?.[0], requiredFunctionName, calls, rootDir);
         assert(!recoveryError, 'Recovery failed');
       }
       console.log('Recovery was successful');

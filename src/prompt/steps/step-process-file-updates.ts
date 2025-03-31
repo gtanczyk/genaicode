@@ -1,7 +1,7 @@
 import fs from 'fs';
 import mime from 'mime-types';
-import { GenerateImageFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateImageFunction } from '../../ai-service/common-types.js';
+import { GenerateContentFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { PromptImageMediaType } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
@@ -21,7 +21,7 @@ import { abortController } from '../../main/common/abort-controller.js';
  * It handles processing individual file updates, image generation, and patch verification.
  */
 export async function processFileUpdates(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
   options: CodegenOptions,
@@ -78,7 +78,7 @@ interface ProcessFileUpdateResult {
  */
 async function processFileUpdate(
   file: FileUpdate,
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   generateImageFn: GenerateImageFunction | undefined,
   prompt: PromptItem[],
   functionDefs: FunctionDef[],
@@ -108,15 +108,20 @@ async function processFileUpdate(
     }
 
     // Prepare and execute content generation request
-    const partialRequest: [PromptItem[], FunctionDef[], string, number, ModelType, CodegenOptions] = [
+    const partialRequest: GenerateContentArgs = [
       prompt,
-      functionDefs,
-      file.updateToolName,
-      file.temperature ?? options.temperature!,
-      file.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+      {
+        functionDefs,
+        requiredFunctionName: file.updateToolName,
+        temperature: file.temperature ?? options.temperature!,
+        modelType: file.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
       options,
     ];
-    let partialResult = await generateContentFn(...partialRequest);
+    let partialResult = (await generateContentFn(...partialRequest))
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     // Verify patch file operations
     const patchFileCall = partialResult.find((call) => call.name === 'patchFile');

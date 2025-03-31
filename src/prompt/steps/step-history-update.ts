@@ -1,5 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types.js';
-import { GenerateFunctionCallsArgs } from '../../ai-service/common-types.js';
+import { GenerateContentArgs, GenerateContentFunction } from '../../ai-service/common-types.js';
 import { PromptItem } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { readCache, writeCache } from '../../files/cache-file.js';
@@ -9,7 +8,7 @@ import { getFunctionDefs } from '../function-calling.js';
 import { StepResult } from './steps-types.js';
 
 export async function executeStepHistoryUpdate(
-  generateContentFn: GenerateFunctionCallsFunction,
+  generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
   options: CodegenOptions,
 ): Promise<StepResult> {
@@ -49,15 +48,24 @@ ${currentHistory}
     },
   ];
 
-  const request: GenerateFunctionCallsArgs = [
+  const request: GenerateContentArgs = [
     optimizationPrompt,
-    getFunctionDefs(),
-    'updateHistory',
-    1,
-    ModelType.CHEAP,
+    {
+      functionDefs: getFunctionDefs(),
+      requiredFunctionName: 'updateHistory',
+      temperature: 1,
+      modelType: ModelType.CHEAP,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
     options,
   ];
-  const result = await generateContentFn(...request);
+  const result = (await generateContentFn(...request))
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall);
   const { newHistoryContent, recentConversationSummary } =
     result.find((call) => call.name === 'updateHistory')?.args ?? {};
   if (newHistoryContent) {
