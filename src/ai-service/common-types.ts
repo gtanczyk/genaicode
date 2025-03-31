@@ -54,6 +54,25 @@ export interface PromptItem {
   cache?: boolean;
 } /** Hook function type for generateContent hooks */
 
+export type GenerateContentResultPart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'functionCall';
+      functionCall: FunctionCall;
+    }
+  | {
+      type: 'media';
+      media: {
+        mediaType: PromptImageMediaType;
+        base64url: string;
+      };
+    };
+
+export type GenerateContentResult = GenerateContentResultPart[];
+
 export type GenerateContentHook = (args: GenerateContentArgs, result: FunctionCall[]) => Promise<void>;
 
 export type GenerateContentArgs = [
@@ -70,7 +89,30 @@ export type GenerateContentArgs = [
   },
 ];
 
+export type GenerateContentArgsNew = [
+  prompt: PromptItem[],
+  config: {
+    modelType?: ModelType;
+    temperature?: number;
+    functionDefs?: FunctionDef[];
+    requiredFunctionName?: string | null;
+    expectedResponseType?: {
+      text: boolean;
+      functionCall: boolean;
+      media: boolean;
+    };
+  },
+  options: {
+    geminiBlockNone?: boolean;
+    disableCache?: boolean;
+    aiService?: string;
+    askQuestion?: boolean;
+  },
+];
+
 export type GenerateContentFunction = (...args: GenerateContentArgs) => Promise<FunctionCall[]>;
+
+export type GenerateContentNewFunction = (...args: GenerateContentArgsNew) => Promise<GenerateContentResult>;
 
 export type GenerateImageFunction = (
   prompt: string,

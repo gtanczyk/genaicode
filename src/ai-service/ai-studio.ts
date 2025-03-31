@@ -10,7 +10,12 @@ import {
 } from '@google/generative-ai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
-import { GenerateContentFunction } from './common-types.js';
+import {
+  GenerateContentFunction,
+  GenerateContentNewFunction,
+  GenerateContentResult,
+  GenerateContentResultPart,
+} from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { FunctionCall } from './common-types.js';
 import { FunctionDef } from './common-types.js';
@@ -21,16 +26,34 @@ import { enableVertexUnescape } from '../cli/cli-params.js';
 import { getServiceConfig } from './service-configurations.js';
 
 /**
- * This function generates content using the Anthropic Claude model via Vertex AI.
+ * This function generates content using the Google AI Studio models with the new interface.
  */
-export const generateContent: GenerateContentFunction = async function generateContent(
+export const generateContentNew: GenerateContentNewFunction = async function generateContentNew(
   prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | null,
-  temperature: number,
-  modelType: ModelType = ModelType.DEFAULT,
-  options: { geminiBlockNone?: boolean } = {},
-): Promise<FunctionCall[]> {
+  config: {
+    modelType?: ModelType;
+    temperature?: number;
+    functionDefs?: FunctionDef[];
+    requiredFunctionName?: string | null;
+    expectedResponseType?: {
+      text: boolean;
+      functionCall: boolean;
+      media: boolean;
+    };
+  },
+  options: {
+    geminiBlockNone?: boolean;
+    disableCache?: boolean;
+    aiService?: string;
+    askQuestion?: boolean;
+  } = {},
+): Promise<GenerateContentResult> {
+  const modelType = config.modelType ?? ModelType.DEFAULT;
+  const temperature = config.temperature ?? 0.7;
+  const functionDefs = config.functionDefs ?? [];
+  const requiredFunctionName = config.requiredFunctionName ?? null;
+  const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: true };
+
   const messages: Content[] = prompt
     .filter((item) => item.type === 'user' || item.type === 'assistant')
     .map((item) => {
@@ -88,10 +111,18 @@ export const generateContent: GenerateContentFunction = async function generateC
         functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
       },
     ];
+  }
+  if (expectedResponseType.functionCall !== false) {
     req.toolConfig = {
       functionCallingConfig: {
         mode: FunctionCallingMode.ANY,
         ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
+      },
+    };
+  } else {
+    req.toolConfig = {
+      functionCallingConfig: {
+        mode: FunctionCallingMode.NONE,
       },
     };
   }
@@ -137,19 +168,52 @@ export const generateContent: GenerateContentFunction = async function generateC
     .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
     .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
 
+  // Prepare the result parts array
+  const resultParts: GenerateContentResultPart[] = [];
+
+  // Add function calls to result parts if they exist
+  if (functionCalls.length > 0) {
+    functionCalls.forEach((call) => {
+      resultParts.push({
+        type: 'functionCall',
+        functionCall: call,
+      });
+    });
+  }
+
+  // Handle reasoning model special case
   if (modelType === ModelType.REASONING) {
-    functionCalls.push({
-      name: 'reasoningInferenceResponse',
-      args: {
-        reasoning:
-          result.response.candidates[0].content?.parts.length === 2
-            ? result.response.candidates[0].content?.parts.slice(-2)[0].text
-            : undefined,
-        response: result.response.candidates[0].content?.parts.slice(-1)[0].text,
+    // Add the reasoning text if available
+    if (result.response.candidates[0].content?.parts.length === 2) {
+      resultParts.push({
+        type: 'text',
+        text: result.response.candidates[0].content?.parts.slice(-2)[0].text ?? '',
+      });
+    }
+
+    // Add the response text
+    resultParts.push({
+      type: 'text',
+      text: result.response.candidates[0].content?.parts.slice(-1)[0].text ?? '',
+    });
+
+    // Add the special function call for reasoning inference response
+    resultParts.push({
+      type: 'functionCall',
+      functionCall: {
+        name: 'reasoningInferenceResponse',
+        args: {
+          reasoning:
+            result.response.candidates[0].content?.parts.length === 2
+              ? result.response.candidates[0].content?.parts.slice(-2)[0].text
+              : undefined,
+          response: result.response.candidates[0].content?.parts.slice(-1)[0].text,
+        },
       },
     });
   }
 
+  // Handle text response if no function calls were returned
   if (functionCalls.length === 0) {
     const textResponse =
       result.response.candidates
@@ -161,20 +225,74 @@ export const generateContent: GenerateContentFunction = async function generateC
         candidate.finishReason === 'MALFORMED_FUNCTION_CALL' ? candidate.finishMessage : '',
       )[0];
 
-    const recoveredFunctionCall =
-      textResponse &&
-      (await recoverFunctionCall(
-        textResponse,
-        functionCalls,
-        functionDefs.find((def) => def.name === requiredFunctionName)!,
-      ));
-    if (!recoveredFunctionCall) {
-      console.log('No function calls, output text response if it exists:', textResponse);
-    } else {
-      console.log('Recovered function call.');
+    if (textResponse) {
+      resultParts.push({
+        type: 'text',
+        text: textResponse,
+      });
+
+      // Try to recover function call from text if required function name is provided
+      const functionDef = functionDefs.find((def) => def.name === requiredFunctionName);
+      if (functionDef) {
+        try {
+          const recoveredCall = await recoverFunctionCall(textResponse, [], functionDef);
+          if (recoveredCall) {
+            console.log('Recovered function call.');
+            // The recovered call will be added to the functionCalls array by the recoverFunctionCall function
+            // We need to add it to resultParts as well
+            resultParts.push({
+              type: 'functionCall',
+              functionCall: {
+                name: functionDef.name,
+                args: recoveredCall,
+              },
+            });
+          }
+        } catch (error) {
+          console.log('Failed to recover function call:', error);
+        }
+      }
     }
   }
 
+  return resultParts;
+};
+
+/**
+ * This function generates content using the Google AI Studio models.
+ * It uses the new generateContentNew function internally.
+ */
+export const generateContent: GenerateContentFunction = async function generateContent(
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[],
+  requiredFunctionName: string | null,
+  temperature: number,
+  modelType: ModelType = ModelType.DEFAULT,
+  options: { geminiBlockNone?: boolean } = {},
+): Promise<FunctionCall[]> {
+  // Call the new function with mapped parameters
+  const result = await generateContentNew(
+    prompt,
+    {
+      modelType,
+      temperature,
+      functionDefs,
+      requiredFunctionName,
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+        media: false,
+      },
+    },
+    options,
+  );
+
+  // Extract only the function calls from the result
+  const functionCalls: FunctionCall[] = result
+    .filter((part): part is { type: 'functionCall'; functionCall: FunctionCall } => part.type === 'functionCall')
+    .map((part) => part.functionCall);
+
+  // Process the function calls using the existing utility
   return processFunctionCalls(functionCalls, functionDefs);
 };
 
@@ -250,7 +368,7 @@ async function recoverFunctionCall(
   textResponse: string,
   functionCalls: FunctionCall[],
   functionDef: FunctionDef,
-): Promise<boolean> {
+): Promise<Record<string, unknown> | false> {
   console.log('Recovering function call');
   // @ts-expect-error: "object" !== "OBJECT"
   const schema: ResponseSchema = functionDef.parameters;
@@ -283,12 +401,12 @@ async function recoverFunctionCall(
 
   try {
     const parsed = JSON.parse(result.response.text());
-    functionCalls.push(
-      enableVertexUnescape
-        ? unescapeFunctionCall({ name: functionDef.name, args: parsed })
-        : { name: functionDef.name, args: parsed },
-    );
-    return true;
+    const functionCall = enableVertexUnescape
+      ? unescapeFunctionCall({ name: functionDef.name, args: parsed })
+      : { name: functionDef.name, args: parsed };
+
+    functionCalls.push(functionCall);
+    return parsed;
   } catch {
     return false;
   }

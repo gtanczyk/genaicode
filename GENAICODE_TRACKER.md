@@ -11,6 +11,12 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-087] 2024-08-07: Refactor Plugin AI Services (Grok, Deepseek, Fake) to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent` to use the new interface.
+- [-] [GEN-086] 2024-08-07: Refactor Local LLM service to align with updated `internalGenerateContent` signature from `openai.ts`.
+- [-] [GEN-085] 2024-08-07: Refactor OpenAI service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`, `internalGenerateContent`, and `internalGenerateToolCalls`.
+- [-] [GEN-084] 2024-08-07: Refactor Vertex AI Claude service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`.
+- [-] [GEN-083] 2024-08-07: Refactor Vertex AI service to support GenerateContentNewFunction signature. Implemented `generateContentNew`, refactored `generateContent`, `getGenModel`, and `recoverFunctionCall`.
+- [x] [GEN-082] 2024-08-07 (Updated 2024-08-07): Refactor AI Studio service to support GenerateContentNewFunction signature. Implemented `expectedResponseType` handling for `functionCall: false` in `ai-studio.ts`.
 - [-] [GEN-081] 2024-08-05: Add systemInstruction override - Allow injecting service-specific system instructions via .genaicoderc modelOverrides.
 - [x] [GEN-080] 2024-08-05: Enhanced UI - Replaced 'Upload Images' text with icon in button components
 - [-] [GEN-079] 2024-08-04: Implement image pasting in Question Handler

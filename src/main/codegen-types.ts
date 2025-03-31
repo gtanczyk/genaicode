@@ -1,4 +1,4 @@
-import { GenerateContentFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateContentNewFunction } from '../ai-service/common-types.js';
 import { FunctionCall, GenerateContentHook } from '../ai-service/common-types.js';
 import { FunctionDef } from '../ai-service/common-types.js';
 import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
@@ -117,6 +117,7 @@ export interface Plugin {
     string,
     {
       generateContent: GenerateContentFunction;
+      generateContentNew?: GenerateContentNewFunction;
       serviceConfig: ServiceConfig;
     }
   >;
