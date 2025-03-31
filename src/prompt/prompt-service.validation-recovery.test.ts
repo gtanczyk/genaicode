@@ -13,8 +13,7 @@ import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
@@ -60,7 +59,7 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateFunctionCallsFunction> = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
@@ -88,6 +87,8 @@ describe('promptService - Validation and Recovery', () => {
     it('should successfully recover from an invalid function call', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      // Invalid: 'files' instead of 'fileUpdates'
       const mockInvalidCall = [
         {
           name: 'codegenSummary',
@@ -99,6 +100,7 @@ describe('promptService - Validation and Recovery', () => {
         },
       ];
 
+      // Valid call for recovery
       const mockValidCall = [
         {
           name: 'codegenSummary',
@@ -109,17 +111,14 @@ describe('promptService - Validation and Recovery', () => {
           },
         },
       ];
+      const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Recovered response");');
 
       // Setup mocks
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for invalid codegenSummary
-        .mockResolvedValueOnce(mockInvalidCall)
-        // Third mock for valid codegenSummary
-        .mockResolvedValueOnce(mockValidCall)
-        // Fourth mock for the actual update
-        .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Recovered response");'));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockValidCall.map((fc) => ({ type: 'functionCall', functionCall: fc }))) // Recovery call
+        .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       const result = await promptService(
         GENERATE_CONTENT_FNS,
@@ -127,13 +126,16 @@ describe('promptService - Validation and Recovery', () => {
         getCodeGenPrompt(testConfigs.baseConfig),
       );
 
+      // Planning, Invalid Summary, Valid Summary (recovery), Update
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
-      expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Recovered response");'));
+      expect(result).toEqual(updateResponse);
     });
 
     it('should handle unsuccessful recovery', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test);
       // Mock an invalid response that will trigger validation failure
       const mockInvalidCall = [
         {
@@ -141,7 +143,6 @@ describe('promptService - Validation and Recovery', () => {
           args: {}, // Missing all required fields
         },
       ];
-
       // Mock responses for repeated invalid attempts
       const mockRepeatedInvalidCall = [
         {
@@ -152,69 +153,57 @@ describe('promptService - Validation and Recovery', () => {
 
       // Setup mocks with consistently invalid responses
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce([
-          {
-            name: 'codegenSummary',
-            args: {
-              fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
-              contextPaths: [],
-              explanation: 'Mock summary',
-            },
-          },
-        ])
-        // Third, fourth, and fifth mocks for failed recovery attempts
-        .mockResolvedValueOnce(mockInvalidCall)
-        .mockResolvedValueOnce(mockRepeatedInvalidCall)
-        .mockResolvedValueOnce(mockInvalidCall); // Last attempt also fails
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockRepeatedInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc }))); // Last attempt also fails
 
-      // The promise should reject after multiple failed recovery attempts
-      expect(
-        await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.baseConfig)),
-      ).toEqual([]);
+      const result = await promptService(
+        GENERATE_CONTENT_FNS,
+        GENERATE_IMAGE_FNS,
+        getCodeGenPrompt(testConfigs.baseConfig),
+      );
+      expect(result).toEqual([]); // Expect empty result after failed recovery
 
-      // Verify that the recovery was attempted multiple times
+      // Planning, Summary, UpdateAttempt1, UpdateAttempt2, UpdateAttempt3
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(5);
     });
 
     it('should not attempt recovery for multiple valid function calls', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const mockCodegenSummaryResult = [
+        {
+          name: 'codegenSummary',
+          args: {
+            fileUpdates: [
+              {
+                filePath: `${mockData.paths.root}/test1.js`,
+                updateToolName: 'updateFile',
+                prompt: 'Generate file 1',
+              },
+              {
+                filePath: `${mockData.paths.root}/test2.js`,
+                updateToolName: 'updateFile',
+                prompt: 'Generate file 2',
+              },
+            ],
+            contextPaths: [],
+            explanation: 'Mock summary',
+          },
+        },
+      ];
+      const update1Response = mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");');
+      const update2Response = mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");');
+
       // Setup mocks
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary with multiple files
-        .mockResolvedValueOnce([
-          {
-            name: 'codegenSummary',
-            args: {
-              fileUpdates: [
-                {
-                  filePath: `${mockData.paths.root}/test1.js`,
-                  updateToolName: 'updateFile',
-                  prompt: 'Generate file 1',
-                },
-                {
-                  filePath: `${mockData.paths.root}/test2.js`,
-                  updateToolName: 'updateFile',
-                  prompt: 'Generate file 2',
-                },
-              ],
-              contextPaths: [],
-              explanation: 'Mock summary',
-            },
-          },
-        ])
-        // Third and fourth mocks for the actual updates
-        .mockResolvedValueOnce(
-          mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");'),
-        )
-        .mockResolvedValueOnce(
-          mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");'),
-        );
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(update1Response.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(update2Response.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       const result = await promptService(
         GENERATE_CONTENT_FNS,
@@ -222,11 +211,9 @@ describe('promptService - Validation and Recovery', () => {
         getCodeGenPrompt(testConfigs.baseConfig),
       );
 
+      // Planning, Summary, Update1, Update2
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
-      expect(result).toEqual([
-        ...mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");'),
-        ...mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");'),
-      ]);
+      expect(result).toEqual([...update1Response, ...update2Response]);
     });
   });
 
@@ -234,37 +221,21 @@ describe('promptService - Validation and Recovery', () => {
     it('should handle invalid patchFile call and retry without patchFile function', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test, 'patchFile');
+      const invalidPatchResponse = mockResponses.mockPatchFile(mockData.paths.test, 'invalid patch');
+      // Recovery response using updateFile
+      const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated content");');
+
       // Setup mocks
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce([
-          {
-            name: 'codegenSummary',
-            args: {
-              fileUpdates: [
-                {
-                  filePath: mockData.paths.test,
-                  updateToolName: 'patchFile',
-                  prompt: 'Generate file',
-                },
-              ],
-              contextPaths: [],
-              explanation: 'Mock summary',
-            },
-          },
-        ])
-        // Third mock for invalid patch
-        .mockResolvedValueOnce(mockResponses.mockPatchFile(mockData.paths.test, 'invalid patch'))
-        // Fourth mock for recovery with updateFile
-        .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated content");'));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(invalidPatchResponse.map((fc) => ({ type: 'functionCall', functionCall: fc }))) // Invalid patch attempt
+        .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc }))); // Recovery with updateFile
 
-      // Mock fs.readFileSync to return some content
       vi.mocked(fs.readFileSync).mockReturnValue(mockData.fileContent);
-
-      // Mock diff.applyPatch to fail for the invalid patch
-      vi.mocked(diff.applyPatch).mockReturnValue(false);
+      vi.mocked(diff.applyPatch).mockReturnValue(false); // Simulate patch failure
 
       const result = await promptService(
         GENERATE_CONTENT_FNS,
@@ -272,10 +243,11 @@ describe('promptService - Validation and Recovery', () => {
         getCodeGenPrompt(testConfigs.baseConfig),
       );
 
+      // Planning, Summary, Invalid Patch, Recovery Update
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
       expect(fs.readFileSync).toHaveBeenCalledWith(mockData.paths.test, 'utf-8');
       expect(diff.applyPatch).toHaveBeenCalledWith(mockData.fileContent, 'invalid patch');
-      expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated content");'));
+      expect(result).toEqual(updateResponse);
     });
 
     it('should handle successful patch application', async () => {
@@ -288,36 +260,18 @@ describe('promptService - Validation and Recovery', () => {
 @@ -1,1 +1,1 @@
 -Original content
 +New content`;
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test, 'patchFile');
+      const patchResponse = mockResponses.mockPatchFile(mockData.paths.test, validPatch);
 
       // Setup mocks
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce([
-          {
-            name: 'codegenSummary',
-            args: {
-              fileUpdates: [
-                {
-                  filePath: mockData.paths.test,
-                  updateToolName: 'patchFile',
-                  prompt: 'Generate file',
-                },
-              ],
-              contextPaths: [],
-              explanation: 'Mock summary',
-            },
-          },
-        ])
-        // Third mock for valid patch
-        .mockResolvedValueOnce(mockResponses.mockPatchFile(mockData.paths.test, validPatch));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(patchResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
-      // Mock fs.readFileSync to return some content
       vi.mocked(fs.readFileSync).mockReturnValue(mockData.fileContent);
-
-      // Mock diff.applyPatch to succeed with the valid patch
-      vi.mocked(diff.applyPatch).mockReturnValue('New content');
+      vi.mocked(diff.applyPatch).mockReturnValue('New content'); // Simulate successful patch
 
       const result = await promptService(
         GENERATE_CONTENT_FNS,
@@ -325,9 +279,11 @@ describe('promptService - Validation and Recovery', () => {
         getCodeGenPrompt(testConfigs.baseConfig),
       );
 
+      // Planning, Summary, Patch
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
       expect(fs.readFileSync).toHaveBeenCalledWith(mockData.paths.test, 'utf-8');
       expect(diff.applyPatch).toHaveBeenCalledWith(mockData.fileContent, validPatch);
+      // Expect the result to be the patchFile call, but with oldContent and newContent added by the validation step
       expect(result).toEqual(
         mockResponses.mockPatchFile(mockData.paths.test, validPatch, {
           oldContent: mockData.fileContent,

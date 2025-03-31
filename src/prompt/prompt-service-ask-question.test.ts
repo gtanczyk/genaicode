@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
-import { FunctionCall } from '../ai-service/common-types.js';
+import { GenerateImageFunction, GenerateContentResult, GenerateContentFunction } from '../ai-service/common-types.js';
 import * as prompts from '@inquirer/prompts';
 import { CancelablePromise } from '@inquirer/type';
 import '../cli/cli-params.js';
@@ -11,7 +9,7 @@ import '../files/cache-file.js';
 import '../files/read-files.js';
 import '../files/find-files.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
-import { CodegenPlanningArgs, ImagenType } from '../main/codegen-types.js';
+import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { registerUserActionHandlers } from '../main/interactive/user-action-handlers.js';
 import '../main/common/cost-collector.js';
@@ -64,7 +62,7 @@ vi.mock('../main/common/cost-collector.js', () => ({
 
 const GENERATE_CONTENT_FNS = { 'vertex-ai': vertexAi.generateContent } as Record<
   AiServiceType,
-  GenerateFunctionCallsFunction
+  GenerateContentFunction
 >;
 const GENERATE_IMAGE_FNS = {} as Record<ImagenType, GenerateImageFunction>;
 
@@ -80,43 +78,55 @@ describe('promptService with askQuestion', () => {
   });
 
   it('should handle askQuestion when enabled', async () => {
-    const mockAskQuestionCall = [
+    const mockAskQuestionCall: GenerateContentResult = [
       {
-        name: 'askQuestion',
-        args: {
-          decisionMakingProcess: '',
-          message: 'Do you want to proceed with code generation?',
-          actionType: 'confirmCodeGeneration',
+        type: 'functionCall',
+        functionCall: {
+          name: 'askQuestion',
+          args: {
+            decisionMakingProcess: '',
+            message: 'Do you want to proceed with code generation?',
+            actionType: 'confirmCodeGeneration',
+          },
         },
       },
     ];
-    const mockAskQuestionCall2 = [
+    const mockAskQuestionCall2: GenerateContentResult = [
       {
-        name: 'askQuestion',
-        args: {
-          decisionMakingProcess: '',
-          message: 'Ok lets go',
-          actionType: 'confirmCodeGeneration',
+        type: 'functionCall',
+        functionCall: {
+          name: 'askQuestion',
+          args: {
+            decisionMakingProcess: '',
+            message: 'Ok lets go',
+            actionType: 'confirmCodeGeneration',
+          },
         },
       },
     ];
-    const mockCodegenPlanning: FunctionCall<CodegenPlanningArgs>[] = [
+    const mockCodegenPlanning: GenerateContentResult = [
       {
-        name: 'codegenPlanning',
-        args: {
-          problemAnalysis: '',
-          codeChanges: '',
-          affectedFiles: [],
+        type: 'functionCall',
+        functionCall: {
+          name: 'codegenPlanning',
+          args: {
+            problemAnalysis: '',
+            codeChanges: '',
+            affectedFiles: [],
+          },
         },
       },
     ];
-    const mockCodegenSummary = [
+    const mockCodegenSummary: GenerateContentResult = [
       {
-        name: 'codegenSummary',
-        args: {
-          fileUpdates: [],
-          contextPaths: [],
-          explanation: 'No updates needed',
+        type: 'functionCall',
+        functionCall: {
+          name: 'codegenSummary',
+          args: {
+            fileUpdates: [],
+            contextPaths: [],
+            explanation: 'No updates needed',
+          },
         },
       },
     ];
@@ -127,8 +137,12 @@ describe('promptService with askQuestion', () => {
       .mockResolvedValueOnce(mockCodegenPlanning)
       .mockResolvedValueOnce(mockCodegenSummary);
 
+    // Ensure the mock returns a CancelablePromise<boolean>
     vi.mocked(prompts.confirm).mockImplementationOnce(
-      () => CancelablePromise.resolve(true) as CancelablePromise<boolean>,
+      () =>
+        new CancelablePromise<boolean>((resolve) => {
+          resolve(true);
+        }),
     );
 
     await promptService(
@@ -153,20 +167,27 @@ describe('promptService with askQuestion', () => {
   });
 
   it('should stop code generation when askQuestion returns stopCodegen: true', async () => {
-    const mockAskQuestionCall = [
+    const mockAskQuestionCall: GenerateContentResult = [
       {
-        name: 'askQuestion',
-        args: {
-          decisionMakingProcess: '',
-          message: 'Stopping code generation as requested.',
-          actionType: 'endConversation',
+        type: 'functionCall',
+        functionCall: {
+          name: 'askQuestion',
+          args: {
+            decisionMakingProcess: '',
+            message: 'Stopping code generation as requested.',
+            actionType: 'endConversation',
+          },
         },
       },
     ];
 
     vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(mockAskQuestionCall);
+    // Ensure the mock returns a CancelablePromise<boolean>
     vi.mocked(prompts.confirm).mockImplementationOnce(
-      () => CancelablePromise.resolve(true) as CancelablePromise<boolean>,
+      () =>
+        new CancelablePromise<boolean>((resolve) => {
+          resolve(true);
+        }),
     );
 
     const result = await promptService(
@@ -187,14 +208,17 @@ describe('promptService with askQuestion', () => {
   });
 
   it('should not proceed with code generation when no askQuestion requests', async () => {
-    const mockAskQuestionCall: FunctionCall[] = [];
-    const mockCodegenSummary = [
+    const mockAskQuestionCall: GenerateContentResult = [];
+    const mockCodegenSummary: GenerateContentResult = [
       {
-        name: 'codegenSummary',
-        args: {
-          fileUpdates: [],
-          contextPaths: [],
-          explanation: 'No updates needed',
+        type: 'functionCall',
+        functionCall: {
+          name: 'codegenSummary',
+          args: {
+            fileUpdates: [],
+            contextPaths: [],
+            explanation: 'No updates needed',
+          },
         },
       },
     ];

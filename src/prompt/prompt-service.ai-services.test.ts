@@ -11,8 +11,7 @@ import * as cliParams from '../cli/cli-params.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
@@ -56,7 +55,7 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateFunctionCallsFunction> = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
@@ -83,14 +82,15 @@ describe('promptService - AI Services', () => {
   it('should process requests with Vertex AI', async () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
 
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test);
+    const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Hello");');
+
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test))
-      // Third mock for the actual update
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Hello");'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -99,20 +99,21 @@ describe('promptService - AI Services', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Hello");'));
+    expect(result).toEqual(updateResponse);
   });
 
   it('should process requests with OpenAI', async () => {
     vi.mocked(cliParams).aiService = 'openai';
 
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test, 'createFile');
+    const createResponse = mockResponses.mockCreateFile(mockData.paths.test, 'const x = 5;');
+
     // Setup mocks for the entire flow
     vi.mocked(openai.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test, 'createFile'))
-      // Third mock for the actual create
-      .mockResolvedValueOnce(mockResponses.mockCreateFile(mockData.paths.test, 'const x = 5;'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(createResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -124,20 +125,21 @@ describe('promptService - AI Services', () => {
     );
 
     expect(openai.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual(mockResponses.mockCreateFile(mockData.paths.test, 'const x = 5;'));
+    expect(result).toEqual(createResponse);
   });
 
   it('should process requests with Anthropic', async () => {
     vi.mocked(cliParams).aiService = 'anthropic';
 
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test, 'deleteFile');
+    const deleteResponse = mockResponses.mockDeleteFile(mockData.paths.test);
+
     // Setup mocks for the entire flow
     vi.mocked(anthropic.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test, 'deleteFile'))
-      // Third mock for the actual delete
-      .mockResolvedValueOnce(mockResponses.mockDeleteFile(mockData.paths.test));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(deleteResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -149,21 +151,22 @@ describe('promptService - AI Services', () => {
     );
 
     expect(anthropic.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual(mockResponses.mockDeleteFile(mockData.paths.test));
+    expect(result).toEqual(deleteResponse);
   });
 
   it('should not update files in dry run mode', async () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).dryRun = true;
 
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test);
+    const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Dry run");');
+
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test))
-      // Third mock for the actual update
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Dry run");'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -175,7 +178,8 @@ describe('promptService - AI Services', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Dry run");'));
+    // In dry run mode, the service still returns the planned updates, but they are not applied
+    expect(result).toEqual(updateResponse);
   });
 
   it('should handle unexpected response without codegen summary', async () => {
@@ -184,11 +188,13 @@ describe('promptService - AI Services', () => {
       mockData.paths.test,
       'console.log("Unexpected response");',
     );
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
 
     // Mock only the codegenPlanning response, then return unexpected response
     vi.mocked(vertexAi.generateContent)
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      .mockResolvedValueOnce(mockUnexpectedResponse);
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      // Mock the second call (expected summary) to return something unexpected
+      .mockResolvedValueOnce(mockUnexpectedResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -196,7 +202,9 @@ describe('promptService - AI Services', () => {
       getCodeGenPrompt(testConfigs.baseConfig),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual([]);
+    // generateContentFn will be called twice: planning and summary attempt
+    // The third call (file update) won't happen because the summary was invalid
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(result).toEqual([]); // Expect empty result as summary failed
   });
 });

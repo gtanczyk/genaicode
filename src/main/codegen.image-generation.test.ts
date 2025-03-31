@@ -16,7 +16,7 @@ import {
   createMockImageGenerationResponse,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
-import { ModelType } from '../ai-service/common-types.js';
+import { ModelType, GenerateContentResultPart } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -118,7 +118,11 @@ describe('Image Generation', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       vi.mocked(vertexAiImagen.generateImage).mockResolvedValueOnce('mocked-image-data');
@@ -171,7 +175,11 @@ describe('Image Generation', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       vi.mocked(vertexAiImagen.generateImage).mockResolvedValueOnce('mocked-cheap-image-data');
@@ -185,7 +193,7 @@ describe('Image Generation', () => {
           height: 256,
           width: 256,
         },
-        ModelType.DEFAULT,
+        ModelType.DEFAULT, // Note: The 'cheap' flag for codegen doesn't directly map to Imagen's cheap model
       );
     });
   });
@@ -221,7 +229,11 @@ describe('Image Generation', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
-        vi.mocked(openai.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(openai.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       vi.mocked(dallE.generateImage).mockResolvedValueOnce('mocked-image-data');
@@ -271,7 +283,11 @@ describe('Image Generation', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       vi.mocked(vertexAiImagen.generateImage).mockRejectedValueOnce(new Error('Generation failed'));
@@ -280,6 +296,18 @@ describe('Image Generation', () => {
 
       expect(vertexAiImagen.generateImage).toHaveBeenCalled();
       // The error should be caught and handled without breaking the test
+      // Check if updateFiles was called with an explanation about the failure
+      expect(updateFiles.updateFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'explanation',
+            args: expect.objectContaining({
+              text: expect.stringContaining('Failed to generate image: Generation failed'),
+            }),
+          }),
+        ]),
+        expect.anything(),
+      );
     });
   });
 });

@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-088] 2024-08-08: Fixed TypeScript errors in multiple test files
 - [-] [GEN-087] 2024-08-07: Refactor Plugin AI Services (Grok, Deepseek, Fake) to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent` to use the new interface.
 - [-] [GEN-086] 2024-08-07: Refactor Local LLM service to align with updated `internalGenerateContent` signature from `openai.ts`.
 - [-] [GEN-085] 2024-08-07: Refactor OpenAI service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`, `internalGenerateContent`, and `internalGenerateToolCalls`.

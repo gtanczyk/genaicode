@@ -15,6 +15,7 @@ import {
   createMockResponseSequence,
 } from './codegen.test-utils.js';
 import { rcConfig } from './config.js';
+import { GenerateContentResultPart } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -118,7 +119,11 @@ describe('CLI Options', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -156,14 +161,19 @@ describe('CLI Options', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
 
       const calls = vi.mocked(vertexAi.generateContent).mock.calls;
       calls.forEach((call) => {
-        expect(call[3]).toBe(0.3); // Check temperature parameter
+        // Access temperature from the config object (second argument)
+        expect(call[1].temperature).toBe(0.3);
       });
     });
   });
@@ -193,7 +203,11 @@ describe('CLI Options', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -201,7 +215,8 @@ describe('CLI Options', () => {
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
       // Check if context paths were included in the call
       const calls = vi.mocked(vertexAi.generateContent).mock.calls;
-      expect(calls[1][0]).toEqual(
+      // The first call (planning) should contain the initial getSourceCode response
+      expect(calls[0][0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             type: 'user',

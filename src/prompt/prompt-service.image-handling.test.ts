@@ -14,8 +14,7 @@ import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
@@ -62,7 +61,7 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateFunctionCallsFunction> = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
@@ -91,20 +90,22 @@ describe('promptService - Image Handling', () => {
       vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = true;
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test);
+      const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Vision test");');
+
       // Setup mocks
       vi.mocked(getImageAssets).mockReturnValue(mockData.imageAssets);
       vi.mocked(openai.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test))
-        // Third mock for the actual update
-        .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Vision test");'));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.visionConfig));
 
       expect(openai.generateContent).toHaveBeenCalledTimes(3);
       const calls = vi.mocked(openai.generateContent).mock.calls[0];
+      // Check the first call (planning) includes getImageAssets response
       expect(calls[0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -121,7 +122,8 @@ describe('promptService - Image Handling', () => {
       vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = true;
 
-      const mockCodegenSummary = [
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const mockCodegenSummaryResult = [
         {
           name: 'codegenSummary',
           args: {
@@ -138,17 +140,13 @@ describe('promptService - Image Handling', () => {
           },
         },
       ];
+      const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated with vision");');
 
       // Setup mocks
       vi.mocked(openai.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce(mockCodegenSummary)
-        // Third mock for the actual update
-        .mockResolvedValueOnce(
-          mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated with vision");'),
-        );
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       vi.mocked(fs.readFileSync).mockImplementation((path) => `mock-base64-data-for-${path}`);
       vi.mocked(mime.lookup).mockImplementation((path) => (path.endsWith('.png') ? 'image/png' : 'image/jpeg'));
@@ -156,8 +154,9 @@ describe('promptService - Image Handling', () => {
       await promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.visionConfig));
 
       expect(openai.generateContent).toHaveBeenCalledTimes(3);
-      const secondCall = vi.mocked(openai.generateContent).mock.calls[2];
-      expect(secondCall[0]).toEqual(
+      // Check the third call (file update) includes image data
+      const thirdCall = vi.mocked(openai.generateContent).mock.calls[2];
+      expect(thirdCall[0]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             type: 'user',
@@ -183,14 +182,15 @@ describe('promptService - Image Handling', () => {
       vi.mocked(cliParams).aiService = 'openai';
       vi.mocked(cliParams).vision = false;
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test);
+      const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("No vision test");');
+
       // Setup mocks
       vi.mocked(openai.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.test))
-        // Third mock for the actual update
-        .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("No vision test");'));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       await promptService(
         GENERATE_CONTENT_FNS,
@@ -199,12 +199,22 @@ describe('promptService - Image Handling', () => {
       );
 
       expect(openai.generateContent).toHaveBeenCalledTimes(3);
-      const calls = vi.mocked(openai.generateContent).mock.calls[0];
-      expect(calls[0]).not.toEqual(
+      // Check the first call doesn't mention image assets
+      const firstCall = vi.mocked(openai.generateContent).mock.calls[0];
+      expect(firstCall[0]).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             type: 'user',
             text: expect.stringContaining('I should also provide you with a summary of application image assets'),
+          }),
+        ]),
+      );
+      // Check the first call doesn't include getImageAssets function response
+      expect(firstCall[0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'user',
+            functionResponses: expect.not.arrayContaining([expect.objectContaining({ name: 'getImageAssets' })]),
           }),
         ]),
       );
@@ -214,16 +224,18 @@ describe('promptService - Image Handling', () => {
   describe('Image Generation', () => {
     it('should handle successful image generation', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
-      vi.mocked(cliParams).imagen = 'dall-e';
+      vi.mocked(cliParams).imagen = 'dall-e'; // Using DALL-E via imagen flag
+
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.image);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.image, 'generateImage');
+      const generateImageResponse = mockResponses.mockGenerateImage(mockData.paths.image);
+      const downloadFileResponse = mockResponses.mockDownloadFile(mockData.paths.image, mockData.imageGenerationUrl);
 
       // Setup mocks
-      vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.image))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.image, 'generateImage'))
-        // Third mock for the actual image generation
-        .mockResolvedValueOnce(mockResponses.mockGenerateImage(mockData.paths.image));
+      vi.mocked(vertexAi.generateContent) // Main AI service is Vertex AI
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(generateImageResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       vi.mocked(dalleService.generateImage).mockResolvedValue(mockData.imageGenerationUrl);
 
@@ -240,23 +252,24 @@ describe('promptService - Image Handling', () => {
         { width: 256, height: 256 },
         ModelType.DEFAULT,
       );
-      expect(result).toEqual(
-        expect.arrayContaining(mockResponses.mockDownloadFile(mockData.paths.image, mockData.imageGenerationUrl)),
-      );
+      // The result should contain the downloadFile call
+      expect(result).toEqual(downloadFileResponse);
     });
 
     it('should handle image generation failure', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
       vi.mocked(cliParams).imagen = 'dall-e';
 
+      const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.image);
+      const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.image, 'generateImage');
+      const generateImageResponse = mockResponses.mockGenerateImage(mockData.paths.image);
+      const explanationResponse = mockResponses.mockExplanation('Failed to generate image: Image generation failed');
+
       // Setup mocks
       vi.mocked(vertexAi.generateContent)
-        // First mock for codegenPlanning
-        .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.image))
-        // Second mock for codegenSummary
-        .mockResolvedValueOnce(mockResponses.mockCodegenSummary(mockData.paths.image, 'generateImage'))
-        // Third mock for the actual image generation
-        .mockResolvedValueOnce(mockResponses.mockGenerateImage(mockData.paths.image));
+        .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(summaryResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+        .mockResolvedValueOnce(generateImageResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
       vi.mocked(dalleService.generateImage).mockRejectedValue(new Error('Image generation failed'));
 
@@ -273,9 +286,8 @@ describe('promptService - Image Handling', () => {
         { width: 256, height: 256 },
         ModelType.DEFAULT,
       );
-      expect(result).toEqual(
-        expect.arrayContaining(mockResponses.mockExplanation('Failed to generate image: Image generation failed')),
-      );
+      // The result should contain the explanation about the failure
+      expect(result).toEqual(explanationResponse);
     });
   });
 });

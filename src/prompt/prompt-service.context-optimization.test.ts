@@ -11,8 +11,7 @@ import * as vertexAiImagen from '../ai-service/vertex-ai-imagen.js';
 import { getCodeGenPrompt } from './prompt-codegen.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
-import { GenerateImageFunction } from '../ai-service/common-types.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
@@ -57,7 +56,7 @@ vi.mock('../main/config.js', () => ({
   importantContext: {},
 }));
 
-const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateFunctionCallsFunction> = {
+const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
@@ -84,7 +83,8 @@ describe('promptService - Context Optimization', () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).disableContextOptimization = false;
 
-    const mockCodegenSummary = [
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const mockCodegenSummaryResult = [
       {
         name: 'codegenSummary',
         args: {
@@ -94,15 +94,13 @@ describe('promptService - Context Optimization', () => {
         },
       },
     ];
+    const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated with context");');
 
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockCodegenSummary)
-      // Third mock for the actual update
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated with context");'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     await promptService(
       GENERATE_CONTENT_FNS,
@@ -114,6 +112,7 @@ describe('promptService - Context Optimization', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
+    // Check the first call (planning) includes getSourceCode response
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
     expect(firstCall[0]).toEqual(
       expect.arrayContaining([
@@ -128,33 +127,42 @@ describe('promptService - Context Optimization', () => {
         }),
       ]),
     );
+    // Ensure the second call (summary generation) uses the planning result
+    const secondCall = vi.mocked(vertexAi.generateContent).mock.calls[1];
+    expect(secondCall[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'assistant', functionCalls: planningResponse }),
+        expect.objectContaining({ type: 'user', functionResponses: expect.anything() }), // Response to planning call
+        expect.objectContaining({ type: 'user', text: expect.stringContaining('PROMPT_CODEGEN_SUMMARY') }), // Summary prompt
+      ]),
+    );
   });
 
   it('should not include context paths when context optimization is disabled', async () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).disableContextOptimization = true;
 
-    const mockCodegenSummary = [
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const mockCodegenSummaryResult = [
       {
         name: 'codegenSummary',
         args: {
           fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
-          contextPaths: [mockData.paths.context1, mockData.paths.context2],
+          contextPaths: [mockData.paths.context1, mockData.paths.context2], // Still provided by mock, but should be ignored
           explanation: 'Mock summary without context optimization',
         },
       },
     ];
+    const updateResponse = mockResponses.mockUpdateFile(
+      mockData.paths.test,
+      'console.log("Updated without context optimization");',
+    );
 
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockCodegenSummary)
-      // Third mock for the actual update
-      .mockResolvedValueOnce(
-        mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("Updated without context optimization");'),
-      );
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     await promptService(
       GENERATE_CONTENT_FNS,
@@ -166,27 +174,21 @@ describe('promptService - Context Optimization', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
+    // Check that the getSourceCode call in the initial prompt doesn't include context1.js or context2.js
     const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
-    expect(firstCall[0]).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'user',
-          functionResponses: [
-            expect.objectContaining({
-              name: 'getSourceCode',
-              content: expect.stringContaining('context1.js'),
-            }),
-          ],
-        }),
-      ]),
+    const sourceCodeResponse = firstCall[0].find(
+      (item) => item.type === 'user' && item.functionResponses?.[0]?.name === 'getSourceCode',
     );
+    expect(sourceCodeResponse?.functionResponses?.[0].content).not.toContain('context1.js');
+    expect(sourceCodeResponse?.functionResponses?.[0].content).not.toContain('context2.js');
   });
 
   it('should handle context optimization with multiple file updates', async () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).disableContextOptimization = false;
 
-    const mockCodegenSummary = [
+    const planningResponse = mockResponses.mockPlanningResponse(`${mockData.paths.root}/test1.js`);
+    const mockCodegenSummaryResult = [
       {
         name: 'codegenSummary',
         args: {
@@ -199,16 +201,15 @@ describe('promptService - Context Optimization', () => {
         },
       },
     ];
+    const update1Response = mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");');
+    const update2Response = mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");');
 
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(`${mockData.paths.root}/test1.js`))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockCodegenSummary)
-      // Third and fourth mocks for the actual updates
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");'))
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(update1Response.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(update2Response.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -219,18 +220,16 @@ describe('promptService - Context Optimization', () => {
       }),
     );
 
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(4);
-    expect(result).toEqual([
-      ...mockResponses.mockUpdateFile(`${mockData.paths.root}/test1.js`, 'console.log("File 1");'),
-      ...mockResponses.mockUpdateFile(`${mockData.paths.root}/test2.js`, 'console.log("File 2");'),
-    ]);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(4); // Planning, Summary, Update1, Update2
+    expect(result).toEqual([...update1Response, ...update2Response]);
   });
 
   it('should handle empty context paths array', async () => {
     vi.mocked(cliParams).aiService = 'vertex-ai';
     vi.mocked(cliParams).disableContextOptimization = false;
 
-    const mockCodegenSummary = [
+    const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
+    const mockCodegenSummaryResult = [
       {
         name: 'codegenSummary',
         args: {
@@ -240,15 +239,13 @@ describe('promptService - Context Optimization', () => {
         },
       },
     ];
+    const updateResponse = mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("No context needed");');
 
     // Setup mocks for the entire flow
     vi.mocked(vertexAi.generateContent)
-      // First mock for codegenPlanning
-      .mockResolvedValueOnce(mockResponses.mockPlanningResponse(mockData.paths.test))
-      // Second mock for codegenSummary
-      .mockResolvedValueOnce(mockCodegenSummary)
-      // Third mock for the actual update
-      .mockResolvedValueOnce(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("No context needed");'));
+      .mockResolvedValueOnce(planningResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(mockCodegenSummaryResult.map((fc) => ({ type: 'functionCall', functionCall: fc })))
+      .mockResolvedValueOnce(updateResponse.map((fc) => ({ type: 'functionCall', functionCall: fc })));
 
     const result = await promptService(
       GENERATE_CONTENT_FNS,
@@ -260,6 +257,13 @@ describe('promptService - Context Optimization', () => {
     );
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
-    expect(result).toEqual(mockResponses.mockUpdateFile(mockData.paths.test, 'console.log("No context needed");'));
+    expect(result).toEqual(updateResponse);
+    // Check that no extra context files were requested beyond the initial source code
+    const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
+    const sourceCodeResponse = firstCall[0].find(
+      (item) => item.type === 'user' && item.functionResponses?.[0]?.name === 'getSourceCode',
+    );
+    const sourceCode = JSON.parse(sourceCodeResponse?.functionResponses?.[0].content ?? '{}');
+    expect(Object.keys(sourceCode)).not.toContain(mockData.paths.context1);
   });
 });

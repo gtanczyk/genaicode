@@ -1,8 +1,11 @@
 import { vi, describe, it, expect, Mock, afterEach } from 'vitest';
 import { handleAiServiceFallback } from './ai-service-fallback';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types';
-import { FunctionCall } from '../ai-service/common-types';
-import { ModelType } from '../ai-service/common-types';
+import {
+  GenerateContentFunction,
+  GenerateContentResult,
+  PromptItem,
+  GenerateContentArgs,
+} from '../ai-service/common-types';
 import { CodegenOptions } from '../main/codegen-types';
 import { askUserForConfirmation } from '../main/common/user-actions';
 import { validateAndRecoverSingleResult } from './steps/step-validate-recover';
@@ -16,7 +19,7 @@ vi.mock('./steps/step-validate-recover', () => ({
 }));
 
 describe('handleAiServiceFallback', () => {
-  const mockGenerateContent: GenerateFunctionCallsFunction = vi.fn();
+  const mockGenerateContent: GenerateContentFunction = vi.fn();
   const mockOptions: CodegenOptions = {
     askQuestion: false,
     aiService: 'openai',
@@ -24,6 +27,9 @@ describe('handleAiServiceFallback', () => {
     interactive: true,
     ui: false,
   };
+  const mockPrompt: PromptItem[] = [];
+  const mockConfig: GenerateContentArgs[1] = {};
+  const mockInternalOptions: GenerateContentArgs[2] = {};
 
   afterEach(() => {
     vi.resetAllMocks();
@@ -34,7 +40,9 @@ describe('handleAiServiceFallback', () => {
     (mockGenerateContent as Mock).mockRejectedValueOnce(new Error('Rate limit exceeded'));
 
     // Mock the second AI service call to succeed
-    const expectedFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
+    const expectedFunctionCalls: GenerateContentResult = [
+      { type: 'functionCall', functionCall: { name: 'test', args: {} } },
+    ];
     (mockGenerateContent as Mock).mockResolvedValueOnce(expectedFunctionCalls);
 
     // Mock validation to succeed
@@ -53,18 +61,16 @@ describe('handleAiServiceFallback', () => {
         'local-llm': mockGenerateContent,
       },
       mockOptions,
-      [],
-      [],
-      null,
-      0.5,
-      ModelType.DEFAULT,
-      mockOptions,
+      mockPrompt,
+      mockConfig,
+      mockInternalOptions,
     );
 
     expect(result).toEqual(expectedFunctionCalls);
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    // Ensure validateAndRecoverSingleResult is called with the correct arguments
     expect(validateAndRecoverSingleResult).toHaveBeenCalledWith(
-      [[], [], null, 0.5, ModelType.DEFAULT, mockOptions],
+      [mockPrompt, mockConfig, mockInternalOptions],
       expectedFunctionCalls,
       mockGenerateContent,
     );
@@ -91,12 +97,9 @@ describe('handleAiServiceFallback', () => {
           'local-llm': mockGenerateContent,
         },
         options,
-        [],
-        [],
-        null,
-        0.5,
-        ModelType.DEFAULT,
-        options,
+        mockPrompt,
+        mockConfig,
+        mockInternalOptions,
       ),
     ).rejects.toThrow('Service failure');
 
@@ -106,8 +109,8 @@ describe('handleAiServiceFallback', () => {
 
   it('handles validation failure and retries with user confirmation', async () => {
     // Mock the first AI service call to succeed but with invalid result
-    const invalidFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
-    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidFunctionCalls);
+    const invalidResult: GenerateContentResult = [{ type: 'functionCall', functionCall: { name: 'test', args: {} } }];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidResult);
 
     // Mock validation to fail first time
     vi.mocked(validateAndRecoverSingleResult).mockRejectedValueOnce(new Error('Validation failed'));
@@ -116,11 +119,13 @@ describe('handleAiServiceFallback', () => {
     vi.mocked(askUserForConfirmation).mockResolvedValue({ confirmed: true });
 
     // Mock the second AI service call to succeed with valid result
-    const validFunctionCalls: FunctionCall[] = [{ name: 'test', args: { valid: true } }];
-    (mockGenerateContent as Mock).mockResolvedValueOnce(validFunctionCalls);
+    const validResult: GenerateContentResult = [
+      { type: 'functionCall', functionCall: { name: 'test', args: { valid: true } } },
+    ];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(validResult);
 
     // Mock validation to succeed second time
-    vi.mocked(validateAndRecoverSingleResult).mockResolvedValueOnce(validFunctionCalls);
+    vi.mocked(validateAndRecoverSingleResult).mockResolvedValueOnce(validResult);
 
     const result = await handleAiServiceFallback(
       {
@@ -132,23 +137,20 @@ describe('handleAiServiceFallback', () => {
         'local-llm': mockGenerateContent,
       },
       mockOptions,
-      [],
-      [],
-      null,
-      0.5,
-      ModelType.DEFAULT,
-      mockOptions,
+      mockPrompt,
+      mockConfig,
+      mockInternalOptions,
     );
 
-    expect(result).toEqual(validFunctionCalls);
+    expect(result).toEqual(validResult);
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(validateAndRecoverSingleResult).toHaveBeenCalledTimes(2);
   });
 
   it('throws error when validation fails and user declines retry', async () => {
     // Mock the AI service call to succeed but with invalid result
-    const invalidFunctionCalls: FunctionCall[] = [{ name: 'test', args: {} }];
-    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidFunctionCalls);
+    const invalidResult: GenerateContentResult = [{ type: 'functionCall', functionCall: { name: 'test', args: {} } }];
+    (mockGenerateContent as Mock).mockResolvedValueOnce(invalidResult);
 
     // Mock validation to fail
     const validationError = new Error('Validation failed');
@@ -168,12 +170,9 @@ describe('handleAiServiceFallback', () => {
           'local-llm': mockGenerateContent,
         },
         mockOptions,
-        [],
-        [],
-        null,
-        0.5,
-        ModelType.DEFAULT,
-        mockOptions,
+        mockPrompt,
+        mockConfig,
+        mockInternalOptions,
       ),
     ).rejects.toThrow('Validation failed');
 

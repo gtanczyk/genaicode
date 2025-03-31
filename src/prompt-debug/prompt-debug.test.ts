@@ -1,14 +1,14 @@
 import { describe, it, vi } from 'vitest';
-import { generateContent as generateContentGemini } from '../ai-service/ai-studio';
-import { generateContent as generateContentGPT } from '../ai-service/openai';
-import { generateContent as generateContentClaude } from '../ai-service/anthropic';
-import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude';
+import { generateContent as generateContentGemini } from '../ai-service/ai-studio.js';
+import { generateContent as generateContentGPT } from '../ai-service/openai.js';
+import { generateContent as generateContentClaude } from '../ai-service/anthropic.js';
+import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover';
-import { DEBUG_CURRENT_PROMPT } from './current-prompt';
-import { PromptItem } from '../ai-service/common-types';
-import { ModelType } from '../ai-service/common-types';
-import { updateServiceConfig } from '../ai-service/service-configurations';
+import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
+import { DEBUG_CURRENT_PROMPT } from './current-prompt.js';
+import { PromptItem } from '../ai-service/common-types.js';
+import { ModelType, GenerateContentArgs, GenerateContentResult } from '../ai-service/common-types.js';
+import { updateServiceConfig } from '../ai-service/service-configurations.js';
 
 vi.setConfig({
   testTimeout: 60000,
@@ -18,6 +18,11 @@ describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
   const requiredFunctionName = 'compressContext';
   const temperature = 0.2;
+  const functionDefs = getFunctionDefs();
+  const baseOptions = {
+    disableCache: false,
+    askQuestion: false,
+  };
 
   it('Gemini Flash', async () => {
     updateServiceConfig('ai-studio', {
@@ -26,80 +31,70 @@ describe('prompt-debug', () => {
       },
       apiKey: process.env.API_KEY,
     });
-    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP] as const;
-    let result = await generateContentGemini(...req);
-    result = await validateAndRecoverSingleResult(
-      [
-        ...req,
-        {
-          disableCache: false,
-          askQuestion: false,
-        },
-      ],
-      result,
-      generateContentGemini,
-    );
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.CHEAP,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    let result: GenerateContentResult = await generateContentGemini(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentGemini);
 
-    const geminiArgs = result[0].args;
+    const geminiArgs = result.filter((item) => item.type === 'functionCall')[0].functionCall.args;
 
     console.log('GEMINI', JSON.stringify(geminiArgs, null, 4));
   });
 
   it('GPT Mini', async () => {
-    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.CHEAP] as const;
-    let result = await generateContentGPT(...req);
-    result = await validateAndRecoverSingleResult(
-      [
-        ...req,
-        {
-          disableCache: false,
-          askQuestion: false,
-        },
-      ],
-      result,
-      generateContentGPT,
-    );
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.CHEAP,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    let result: GenerateContentResult = await generateContentGPT(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentGPT);
 
     console.log('GPT', JSON.stringify(result, null, 4));
   });
 
   it('Claude Haikku', async () => {
-    const defs = getFunctionDefs(); //.filter((fd) => fd.name === 'askQuestion');
-    const req = [
-      prompt,
-      defs,
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
       requiredFunctionName,
       temperature,
-      ModelType.CHEAP,
-      {
-        aiService: 'anthropic',
-        disableCache: false,
-        askQuestion: false,
-      },
-    ] as const;
-    let result = await generateContentClaude(...req);
-    result = await validateAndRecoverSingleResult([...req], result, generateContentClaude);
+      modelType: ModelType.CHEAP,
+    };
+    const options: GenerateContentArgs[2] = {
+      ...baseOptions,
+      aiService: 'anthropic',
+    };
+    let result: GenerateContentResult = await generateContentClaude(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentClaude);
 
-    console.log('CLAUDE', JSON.stringify(result[0].args, null, 4));
+    console.log(
+      'CLAUDE',
+      JSON.stringify(result.filter((item) => item.type === 'functionCall')[0].functionCall.args, null, 4),
+    );
   });
 
   it('Claude Haikku (Vertex)', async () => {
-    const defs = getFunctionDefs(); //.filter((fd) => fd.name === 'askQuestion');
-    const req = [prompt, defs, requiredFunctionName, temperature, ModelType.CHEAP] as const;
-    let result = await generateContentVertexClaude(...req);
-    result = await validateAndRecoverSingleResult(
-      [
-        ...req,
-        {
-          disableCache: false,
-          askQuestion: false,
-        },
-      ],
-      result,
-      generateContentVertexClaude,
-    );
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.CHEAP,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    let result: GenerateContentResult = await generateContentVertexClaude(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentVertexClaude);
 
-    console.log('CLAUDE VERTEX', JSON.stringify(result[0].args, null, 4));
+    console.log(
+      'CLAUDE VERTEX',
+      JSON.stringify(result.filter((item) => item.type === 'functionCall')[0].functionCall.args, null, 4),
+    );
   });
 
   it('Gemini Pro', async () => {
@@ -109,27 +104,33 @@ describe('prompt-debug', () => {
       },
       apiKey: process.env.API_KEY,
     });
-
-    let result = await generateContentGemini(
-      prompt,
-      getFunctionDefs(),
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
       requiredFunctionName,
       temperature,
-      ModelType.DEFAULT,
-    );
-    result = await validateAndRecoverSingleResult(
-      [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT],
-      result,
-      generateContentGemini,
-    );
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
 
-    console.log('GEMINI', JSON.stringify(result[0].args, null, 4));
+    let result: GenerateContentResult = await generateContentGemini(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentGemini);
+
+    console.log(
+      'GEMINI',
+      JSON.stringify(result.filter((item) => item.type === 'functionCall')[0].functionCall.args, null, 4),
+    );
   });
 
   it('GPT 4o', async () => {
-    const gptArgs = (
-      await generateContentGPT(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
-    )[0].args;
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    const result = await generateContentGPT(prompt, config, options);
+    const gptArgs = result.filter((item) => item.type === 'functionCall')[0].functionCall.args;
 
     console.log('GPT', JSON.stringify(gptArgs, null, 4));
   });
@@ -144,21 +145,17 @@ describe('prompt-debug', () => {
       openaiBaseUrl: 'https://api.deepseek.com',
     });
 
-    const req = [prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT] as const;
-    let result = await generateContentGPT(...req);
-    result = await validateAndRecoverSingleResult(
-      [
-        ...req,
-        {
-          disableCache: false,
-          askQuestion: false,
-        },
-      ],
-      result,
-      generateContentGPT,
-    );
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    let result: GenerateContentResult = await generateContentGPT(prompt, config, options);
+    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentGPT);
 
-    const gptArgs = result[0].args;
+    const gptArgs = result.filter((item) => item.type === 'functionCall')[0].functionCall.args;
 
     console.log('DeepSeek', JSON.stringify(gptArgs, null, 4));
   });
@@ -173,27 +170,18 @@ describe('prompt-debug', () => {
       openaiBaseUrl: 'https://api.x.ai/v1',
     });
 
-    const req = [
-      prompt.map((item) => ({ ...item, text: item.text ?? ' ' })),
-      getFunctionDefs(),
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
       requiredFunctionName,
       temperature,
-      ModelType.DEFAULT,
-    ] as const;
-    let result = await generateContentGPT(...req);
-    result = await validateAndRecoverSingleResult(
-      [
-        ...req,
-        {
-          disableCache: false,
-          askQuestion: false,
-        },
-      ],
-      result,
-      generateContentGPT,
-    );
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
+    const grokPrompt = prompt.map((item) => ({ ...item, text: item.text ?? ' ' }));
+    let result: GenerateContentResult = await generateContentGPT(grokPrompt, config, options);
+    result = await validateAndRecoverSingleResult([grokPrompt, config, options], result, generateContentGPT);
 
-    const gptArgs = result[0].args;
+    const gptArgs = result.filter((item) => item.type === 'functionCall')[0].functionCall.args;
 
     console.log('Grok', JSON.stringify(gptArgs, null, 4));
   });
@@ -205,10 +193,18 @@ describe('prompt-debug', () => {
       },
       apiKey: process.env.ANHROPIC_API_KEY,
     });
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
 
-    const claudeArgs = (
-      await generateContentClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
-    )[0].args;
+    const result = (await generateContentClaude(prompt, config, options)).filter(
+      (item) => item.type === 'functionCall',
+    );
+    const claudeArgs = result[0].functionCall.args;
 
     console.log('CLAUDE', JSON.stringify(claudeArgs, null, 4));
   });
@@ -218,10 +214,18 @@ describe('prompt-debug', () => {
       googleCloudRegion: 'europe-west1',
       googleCloudProjectId: 'gamedevpl',
     });
+    const config: GenerateContentArgs[1] = {
+      functionDefs,
+      requiredFunctionName,
+      temperature,
+      modelType: ModelType.DEFAULT,
+    };
+    const options: GenerateContentArgs[2] = { ...baseOptions };
 
-    const claudeArgs = (
-      await generateContentVertexClaude(prompt, getFunctionDefs(), requiredFunctionName, temperature, ModelType.DEFAULT)
-    )[0].args;
+    const result = (await generateContentVertexClaude(prompt, config, options)).filter(
+      (item) => item.type === 'functionCall',
+    );
+    const claudeArgs = result[0].functionCall.args;
 
     console.log('CLAUDE VERTEX', JSON.stringify(claudeArgs, null, 4));
   });

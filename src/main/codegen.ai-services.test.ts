@@ -16,7 +16,7 @@ import {
   createMockFileUpdate,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
-import { ModelType } from '../ai-service/common-types.js';
+import { ModelType, GenerateContentResultPart } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -105,7 +105,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -137,7 +141,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockCreate]);
       mockSequence.forEach((response) => {
-        vi.mocked(openai.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(openai.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -167,7 +175,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockDelete]);
       mockSequence.forEach((response) => {
-        vi.mocked(anthropic.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(anthropic.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -200,7 +212,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAiClaude.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAiClaude.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -224,7 +240,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -232,7 +252,8 @@ describe('AI Services Integration', () => {
       // Verify temperature parameter in each call
       const calls = vi.mocked(vertexAi.generateContent).mock.calls;
       calls.forEach((call) => {
-        expect(call[3]).toBe(0.5); // temperature parameter
+        // Access temperature from the config object (second argument)
+        expect(call[1].temperature).toBe(0.5);
       });
     });
 
@@ -249,7 +270,11 @@ describe('AI Services Integration', () => {
 
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
       mockSequence.forEach((response) => {
-        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(response);
+        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
+          type: 'functionCall',
+          functionCall: fc,
+        }));
+        vi.mocked(vertexAi.generateContent).mockResolvedValueOnce(resultParts);
       });
 
       await runCodegen();
@@ -257,7 +282,8 @@ describe('AI Services Integration', () => {
       // Verify cheap parameter in each call
       const calls = vi.mocked(vertexAi.generateContent).mock.calls;
       calls.forEach((call) => {
-        expect(call[4]).toBe(ModelType.CHEAP); // cheap parameter
+        // Access modelType from the config object (second argument)
+        expect(call[1].modelType).toBe(ModelType.CHEAP);
       });
     });
   });
