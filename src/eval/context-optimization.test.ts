@@ -325,13 +325,20 @@ describe.each([
       ];
 
       // Execute context optimization
-      const [optimizeContextCall] = await generateContent(
-        prompt,
-        getFunctionDefs(),
-        'optimizeContext',
-        CONTEXT_OPTIMIZATION_TEMPERATURE,
-        modelType,
-      );
+      const [optimizeContextCall] = (
+        await generateContent(
+          prompt,
+          {
+            functionDefs: getFunctionDefs(),
+            requiredFunctionName: 'optimizeContext',
+            temperature: CONTEXT_OPTIMIZATION_TEMPERATURE,
+            modelType,
+          },
+          {},
+        )
+      )
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall);
 
       console.log(JSON.stringify(optimizeContextCall.args, null, 2));
 

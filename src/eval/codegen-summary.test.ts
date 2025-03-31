@@ -3,7 +3,7 @@ import { generateContent as generateContentAiStudio } from '../ai-service/ai-stu
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
-import { GenerateFunctionCallsArgs } from '../ai-service/common-types.js';
+import { GenerateContentArgs } from '../ai-service/common-types.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
@@ -386,16 +386,25 @@ describe.each([
       ];
 
       // Execute planning phase
-      const planningReq = [
+      const planningReq: GenerateContentArgs = [
         prompt,
-        getFunctionDefs(),
-        'codegenPlanning',
-        temperature,
-        ModelType.DEFAULT,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'codegenPlanning',
+          temperature,
+          modelType: ModelType.DEFAULT,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
+        },
         {},
-      ] as GenerateFunctionCallsArgs;
-      let functionCalls = await generateContent(...planningReq);
-      functionCalls = await validateAndRecoverSingleResult(planningReq, functionCalls, generateContent, rootDir);
+      ];
+      let result = await generateContent(...planningReq);
+      let functionCalls = (await validateAndRecoverSingleResult(planningReq, result, generateContent, rootDir))
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall);
 
       const codegenPlanning = functionCalls.find((call) => call.name === 'codegenPlanning');
       console.log('Codegen Planning:', JSON.stringify(codegenPlanning?.args, null, 2));
@@ -423,19 +432,35 @@ describe.each([
       );
 
       // Execute summary phase
-      functionCalls = await generateContent(
+      result = await generateContent(
         prompt,
-        getFunctionDefs(),
-        'codegenSummary',
-        temperature,
-        ModelType.DEFAULT,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'codegenSummary',
+          temperature,
+          modelType: ModelType.DEFAULT,
+        },
+        {},
       );
-      functionCalls = await validateAndRecoverSingleResult(
-        [prompt, getFunctionDefs(), 'codegenSummary', temperature, ModelType.DEFAULT, {}],
-        functionCalls,
-        generateContent,
-        rootDir,
-      );
+      functionCalls = (
+        await validateAndRecoverSingleResult(
+          [
+            prompt,
+            {
+              functionDefs: getFunctionDefs(),
+              requiredFunctionName: 'codegenSummary',
+              temperature,
+              modelType: ModelType.DEFAULT,
+            },
+            {},
+          ],
+          result,
+          generateContent,
+          rootDir,
+        )
+      )
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall);
 
       const codegenSummary = functionCalls.find(
         (call) => call.name === 'codegenSummary',

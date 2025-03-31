@@ -16,11 +16,11 @@ import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summar
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { ContextCompressionCall } from '../prompt/function-defs/context-compression.js';
 import { validateLLMContent } from './test-utils/llm-content-validate.js';
-import { GenerateFunctionCallsFunction } from '../ai-service/common-types.js';
+import { GenerateContentFunction } from '../ai-service/common-types.js';
 
 // Helper function to validate compressed context
 async function validateCompressedContext(
-  generateContent: GenerateFunctionCallsFunction,
+  generateContent: GenerateContentFunction,
   result: ContextCompressionCall,
   {
     summaryExpectation,
@@ -271,13 +271,15 @@ describe.each([
     ];
 
     // Execute context compression
-    const [compressContextCall] = (await generateContent(
-      testPrompt,
-      getFunctionDefs(),
-      'compressContext',
-      0.3,
-      modelType,
-    )) as [ContextCompressionCall | undefined];
+    const [compressContextCall] = (
+      await generateContent(
+        testPrompt,
+        { functionDefs: getFunctionDefs(), requiredFunctionName: 'compressContext', temperature: 0.3, modelType },
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [ContextCompressionCall | undefined];
 
     // Log the result for debugging
     console.log(JSON.stringify(compressContextCall, null, 2));

@@ -92,9 +92,20 @@ describe.each([
     ];
 
     // Execute conversation graph generation
-    const result = (await generateContent(prompt, getFunctionDefs(), 'conversationGraph', 0.7, ModelType.DEFAULT)) as [
-      FunctionCall<ConversationGraphArgs>,
-    ];
+    const result = (
+      await generateContent(
+        prompt,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'conversationGraph',
+          temperature: 0.7,
+          modelType: ModelType.DEFAULT,
+        },
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<ConversationGraphArgs>];
 
     // Verify the response structure
     expect(result).toBeDefined();
@@ -222,22 +233,29 @@ describe.each([
     ];
 
     // Execute edge evaluation
-    const [result] = (await generateContent(
-      [
-        ...prompt,
+    const [result] = (
+      await generateContent(
+        [
+          ...prompt,
+          {
+            type: 'user',
+            text: getEdgeEvaluationPrompt(
+              conversationGraph.nodes[0],
+              conversationGraph.edges.filter((edge) => edge.sourceNode === 'start'),
+            ),
+          },
+        ],
         {
-          type: 'user',
-          text: getEdgeEvaluationPrompt(
-            conversationGraph.nodes[0],
-            conversationGraph.edges.filter((edge) => edge.sourceNode === 'start'),
-          ),
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'evaluateEdge',
+          temperature: 0.7,
+          modelType: ModelType.CHEAP,
         },
-      ],
-      getFunctionDefs(),
-      'evaluateEdge',
-      0.7,
-      ModelType.CHEAP,
-    )) as [FunctionCall<EvaluateEdgeArgs>];
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<EvaluateEdgeArgs>];
 
     console.log('Edge Evaluation Result:', JSON.stringify(result, null, 2));
 

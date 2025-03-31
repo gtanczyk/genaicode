@@ -88,13 +88,20 @@ describe.each([
 
     // Execute ask question step with reasoning model type
     const temperature = 0.2;
-    const [inference] = (await generateContent(
-      prompt,
-      getFunctionDefs(),
-      'reasoningInference',
-      temperature,
-      ModelType.CHEAP,
-    )) as [FunctionCall<ReasoningInferenceArgs>];
+    const [inference] = (
+      await generateContent(
+        prompt,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'reasoningInference',
+          temperature,
+          modelType: ModelType.CHEAP,
+        },
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<ReasoningInferenceArgs>];
 
     console.log(JSON.stringify(inference, null, 2));
 
@@ -125,9 +132,15 @@ describe.each([
 
     // Execute ask question step with reasoning model type
     const temperature = 0.2;
-    const [response] = (await generateContent(prompt, [], null, temperature, ModelType.REASONING)) as [
-      FunctionCall<ReasoningInferenceResponseArgs>,
-    ];
+    const [response] = (
+      await generateContent(
+        prompt,
+        { functionDefs: [], requiredFunctionName: null, temperature, modelType: ModelType.REASONING },
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall) as [FunctionCall<ReasoningInferenceResponseArgs>];
 
     // Log the askQuestion call for debugging
     console.log(JSON.stringify(response, null, 2));

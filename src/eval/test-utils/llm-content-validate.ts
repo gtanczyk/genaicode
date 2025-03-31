@@ -1,4 +1,4 @@
-import { GenerateFunctionCallsFunction } from '../../ai-service/common-types';
+import { GenerateContentFunction } from '../../ai-service/common-types';
 import { PromptItem } from '../../ai-service/common-types';
 import { FunctionDef } from '../../ai-service/common-types';
 import { ModelType } from '../../ai-service/common-types';
@@ -9,7 +9,7 @@ import { LLMContentExpectation, ValidateLLMContentOptions } from './file-updates
  */
 
 export async function validateLLMContent(
-  generateContent: GenerateFunctionCallsFunction,
+  generateContent: GenerateContentFunction,
   content: string,
   expectation: LLMContentExpectation,
   options: ValidateLLMContentOptions = {},
@@ -78,14 +78,25 @@ Return a JSON object indicating if ALL criteria are met and explain your reasoni
     },
   ];
 
-  const result = await generateContent(
-    prompt,
-    functionDefs,
-    'validateContent',
-    options.temperature ?? 0.1,
-    options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
-    {},
-  );
+  const result = (
+    await generateContent(
+      prompt,
+      {
+        functionDefs,
+        requiredFunctionName: 'validateContent',
+        temperature: options.temperature ?? 0.1,
+        modelType: options.cheap ? ModelType.CHEAP : ModelType.DEFAULT,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
+      {},
+    )
+  )
+    .filter((item) => item.type === 'functionCall')
+    .map((item) => item.functionCall);
 
   const validation = result[0]?.args as { valid: boolean; reason: string } | undefined;
 

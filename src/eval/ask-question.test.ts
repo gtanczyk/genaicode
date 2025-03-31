@@ -264,12 +264,44 @@ describe.each([
 
     // Execute ask question step
     const temperature = 0.2;
-    const result = await generateContent(prompt, getFunctionDefs(), 'askQuestion', temperature, modelType);
-    const [askQuestionCall] = await validateAndRecoverSingleResult(
-      [prompt, getFunctionDefs(), 'askQuestion', temperature, modelType],
-      result,
-      generateContent,
+    const result = await generateContent(
+      prompt,
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'askQuestion',
+        temperature,
+        modelType,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
+      {},
     );
+    const [askQuestionCall] = (
+      await validateAndRecoverSingleResult(
+        [
+          prompt,
+          {
+            functionDefs: getFunctionDefs(),
+            requiredFunctionName: 'askQuestion',
+            temperature,
+            modelType,
+            expectedResponseType: {
+              text: false,
+              functionCall: true,
+              media: false,
+            },
+          },
+          {},
+        ],
+        result,
+        generateContent,
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     // Log the askQuestion call for debugging
     console.log(JSON.stringify(askQuestionCall.args, null, 2));

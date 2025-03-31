@@ -185,13 +185,25 @@ describe.each([
     ];
 
     // Execute processFileUpdates
-    const functionCalls = await generateContent(
-      prompt,
-      getFunctionDefs(),
-      codegenSummary.fileUpdates[0].updateToolName,
-      0.2,
-      ModelType.DEFAULT,
-    );
+    const functionCalls = (
+      await generateContent(
+        prompt,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: codegenSummary.fileUpdates[0].updateToolName,
+          temperature: 0.2,
+          modelType: ModelType.DEFAULT,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
+        },
+        {},
+      )
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     // Verify the response
     expect(functionCalls).toBeDefined();

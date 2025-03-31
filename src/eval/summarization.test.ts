@@ -59,13 +59,27 @@ describe.each([
       );
 
       // Execute summarization
-      const [setSummariesCall] = (await generateContent(
-        prompt,
-        getFunctionDefs(),
-        'setSummaries',
-        0.2,
-        ModelType.CHEAP,
-      )) as [FunctionCall<{ summaries: (SummaryInfo & { dependencies?: DependencyInfo[] })[] }>];
+      const [setSummariesCall] = (
+        await generateContent(
+          prompt,
+          {
+            functionDefs: getFunctionDefs(),
+            requiredFunctionName: 'setSummaries',
+            temperature: 0.2,
+            modelType: ModelType.CHEAP,
+            expectedResponseType: {
+              text: false,
+              functionCall: true,
+              media: false,
+            },
+          },
+          {},
+        )
+      )
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall) as [
+        FunctionCall<{ summaries: (SummaryInfo & { dependencies?: DependencyInfo[] })[] }>,
+      ];
 
       console.log('setSummariesCall', JSON.stringify(setSummariesCall.args, null, 2));
 
