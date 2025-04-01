@@ -1,9 +1,8 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost, processFunctionCalls } from './common.js';
+import { printTokenUsageAndCost } from './common.js';
 import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from './common-types.js';
 import { PromptItem } from './common-types.js';
-import { FunctionCall } from './common-types.js';
 import { TokenUsage } from './common-types.js';
 import { ModelType } from './common-types.js';
 import {
@@ -40,7 +39,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     })();
 
-    return internalGenerateContent(prompt, config, model, openai);
+    return internalGenerateContent(prompt, config, model, openai, 'openai');
   } catch (error) {
     if (error instanceof Error && error.message.includes('API key not configured')) {
       throw new Error('OpenAI API key not configured. Please set up the service configuration.');
@@ -54,78 +53,19 @@ export async function internalGenerateContent(
   config: GenerateContentArgs[1],
   model: string,
   openai: OpenAI,
-): Promise<GenerateContentResult> {
-  const toolCalls = await internalGenerateToolCalls(prompt, config, model, openai);
-
-  const modelType = config.modelType ?? ModelType.DEFAULT;
-
-  if (modelType === ModelType.REASONING) {
-    // Reasoning models return content differently
-    const reasoningResponse = toolCalls[0]; // Assuming the reasoning response is the first/only tool call
-    const args = JSON.parse(reasoningResponse.function.arguments);
-    const result: GenerateContentResult = [
-      {
-        type: 'functionCall',
-        functionCall: {
-          name: 'reasoningInferenceResponse',
-          args: args,
-        },
-      },
-    ];
-    // If there's text content alongside reasoning, add it.
-    // Note: OpenAI's current reasoning models might structure this differently.
-    // This assumes the text is part of the arguments for now.
-    if (args.response) {
-      result.push({ type: 'text', text: args.response });
-    }
-    return result;
-  }
-
-  // For standard models, process tool calls
-  const functionCalls = toolCalls.map((call): FunctionCall => {
-    const name = call.function.name;
-    let parsedArgs: Record<string, unknown> | undefined;
-    try {
-      parsedArgs = JSON.parse(call.function.arguments);
-    } catch (e) {
-      console.warn(`Failed to parse arguments for function call ${name}: ${call.function.arguments}`);
-      parsedArgs = { _raw_args: call.function.arguments }; // Keep raw args if parsing fails
-    }
-    return {
-      id: call.id,
-      name,
-      args: parsedArgs,
-    };
-  });
-
-  // Process function calls (e.g., check for unknown functions)
-  const processedCalls = processFunctionCalls(functionCalls, config.functionDefs ?? []);
-
-  const result: GenerateContentResult = processedCalls.map((fc) => ({
-    type: 'functionCall',
-    functionCall: fc,
-  }));
-
-  // TODO: Handle potential text responses if expectedResponseType.text is true
-  // Currently, OpenAI tool usage primarily returns tool calls, not mixed content.
-  // If a text response is needed alongside function calls, the prompt/API call structure might need adjustment.
-
-  return result;
-}
-
-export async function internalGenerateToolCalls(
-  prompt: PromptItem[],
-  config: GenerateContentArgs[1],
-  model: string,
-  openai: OpenAI,
   serviceType: AiServiceType = 'openai',
-): Promise<OpenAI.Chat.Completions.ChatCompletionMessageToolCall[]> {
+): Promise<GenerateContentResult> {
   const serviceConfig = getServiceConfig('openai');
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7; // Default temperature
   const functionDefs = config.functionDefs ?? [];
   const requiredFunctionName = config.requiredFunctionName;
   const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+  const expectedResponseType = config.expectedResponseType ?? {
+    text: false,
+    functionCall: true,
+    media: false,
+  };
 
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
@@ -234,9 +174,9 @@ export async function internalGenerateToolCalls(
   let tools: ChatCompletionTool[] | undefined = undefined;
   if (functionDefs.length > 0) {
     tools = functionDefs.map((funDef) => ({ type: 'function' as const, function: funDef }));
-    if (requiredFunctionName) {
+    if (requiredFunctionName && expectedResponseType.functionCall !== false) {
       toolChoice = { type: 'function' as const, function: { name: requiredFunctionName } };
-    } else if (config.expectedResponseType?.functionCall !== false) {
+    } else if (expectedResponseType.functionCall !== false) {
       // Require tool use unless explicitly text-only is expected
       toolChoice = 'required';
     }
@@ -305,33 +245,51 @@ export async function internalGenerateToolCalls(
     // Assuming the reasoning result is packed into a specific function call format
     return [
       {
-        id: 'reasoning_inference_response',
-        type: 'function' as const,
-        function: {
+        type: 'functionCall',
+        functionCall: {
+          id: 'reasoning_inference_response',
           name: 'reasoningInferenceResponse',
-          arguments: JSON.stringify({
+          args: {
             // Adapt based on actual reasoning model output structure
             ...('reasoning_content' in responseMessage ? { reasoning: responseMessage.reasoning_content } : {}),
             response: responseMessage.content,
-          }),
+          },
         },
       },
     ];
   }
 
-  if (responseMessage.tool_calls) {
-    return responseMessage.tool_calls;
-  } else if (config.expectedResponseType?.functionCall === false && responseMessage.content) {
-    // If only text was expected and received, return empty tool calls
-    // The text part will be handled in internalGenerateContent (if needed)
-    return [];
-  } else if (toolChoice === 'required') {
-    // If tools were required but none were returned, it's an error
-    console.error('Error: Tool use was required, but no tool calls were found in the response.', responseMessage);
-    throw new Error('Model failed to use required tools.');
-  } else {
-    // No tool calls found, and they weren't strictly required
-    console.warn('No tool calls found in response, though functions were provided.');
-    return [];
+  const result: GenerateContentResult = [];
+
+  if (responseMessage.tool_calls && expectedResponseType.functionCall) {
+    result.push(
+      ...responseMessage.tool_calls.map((call) => {
+        const name = call.function.name;
+        let parsedArgs: Record<string, unknown> | undefined;
+        try {
+          parsedArgs = JSON.parse(call.function.arguments);
+        } catch (e) {
+          console.warn(`Failed to parse arguments for function call ${name}: ${call.function.arguments}`);
+          parsedArgs = { _raw_args: call.function.arguments }; // Keep raw args if parsing fails
+        }
+        return {
+          type: 'functionCall' as const,
+          functionCall: {
+            id: call.id,
+            name,
+            args: parsedArgs,
+          },
+        };
+      }),
+    );
   }
+
+  if (responseMessage.content && expectedResponseType.text) {
+    result.push({
+      type: 'text',
+      text: responseMessage.content,
+    });
+  }
+
+  return result;
 }

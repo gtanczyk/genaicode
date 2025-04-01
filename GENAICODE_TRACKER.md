@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-091] 2024-08-14: Enhanced OpenAI service to fully support `expectedResponseType` parameter, allowing callers to specify whether they expect text, function calls, or both in responses.
 - [-] [GEN-090] 2024-08-13: Add `outputTokenLimit` to `modelOverrides` in `.genaicoderc` to allow customizing max output tokens per service.
 - [-] [GEN-089] 2024-08-09: Fix multiple failing unit tests across various test suites.
 - [-] [GEN-088] 2024-08-08: Fixed TypeScript errors in multiple test files

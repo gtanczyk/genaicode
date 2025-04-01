@@ -7,6 +7,7 @@ import {
   GenerateContentFunction,
   GenerateContentResult,
 } from '../../src/index.js';
+import { internalGenerateContent } from '../../src/ai-service/openai.js';
 
 /**
  * This function generates content using the Deepseek models with the new interface.
@@ -33,7 +34,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
     baseURL: 'https://api.deepseek.com',
   });
 
-  const { internalGenerateToolCalls } = await import('../../src/ai-service/openai.js');
+  const { internalGenerateContent } = await import('../../src/ai-service/openai.js');
   const { processFunctionCalls } = await import('../../src/ai-service/common.js');
 
   const modelType = config.modelType ?? ModelType.DEFAULT;
@@ -65,40 +66,30 @@ const generateContent: GenerateContentFunction = async function generateContent(
           ? 'deepseek-reasoner'
           : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat');
 
-    // Call internalGenerateToolCalls from openai.ts
-    const toolCalls = await internalGenerateToolCalls(
-      modifiedPrompt,
-      config,
-      model,
-      openai,
-      'plugin:deepseek-ai-service',
-    );
+    const toolCalls = (
+      await internalGenerateContent(modifiedPrompt, config, model, openai, 'plugin:deepseek-ai-service')
+    )
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
     // Include Deepseek-specific logic to filter multiple identical function calls
     let filteredToolCalls = toolCalls;
     if (requiredFunctionName && toolCalls.length > 1) {
       /* sometimes it is broken :( */
       console.log('Multiple function calls, but all are the same, so keeping only one.');
-      filteredToolCalls = toolCalls.filter((call) => call.function.name === requiredFunctionName).slice(0, 1);
+      filteredToolCalls = toolCalls.filter((call) => call.name === requiredFunctionName).slice(0, 1);
     }
 
     // Map the result to GenerateContentResult (function call parts)
     const functionCalls = filteredToolCalls.map((call) => {
       const name =
-        call.function.name /* sometimes it is broken :( */
-          .match(/\w+/)?.[0] ?? call.function.name;
-      let args;
-      try {
-        args = JSON.parse(call.function.arguments);
-      } catch (e) {
-        console.warn(`Failed to parse arguments for function call ${name}: ${call.function.arguments}`);
-        args = { _raw_args: call.function.arguments };
-      }
+        call.name /* sometimes it is broken :( */
+          .match(/\w+/)?.[0] ?? call.name;
 
       return {
         id: call.id,
         name,
-        args,
+        args: call.args,
       };
     });
 
