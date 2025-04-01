@@ -18,7 +18,7 @@ import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
-import { getServiceConfig } from './service-configurations.js';
+import { getServiceConfig, getModelSettings } from './service-configurations.js';
 
 /**
  * This function generates content using the Google AI Studio models with the new interface.
@@ -272,11 +272,7 @@ function getModel(
   assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
   const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
 
-  // Add service-specific system instructions from modelOverrides
-  if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-    systemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
-  }
-
+  // Determine the model name based on model type
   const model = (() => {
     switch (modelType) {
       case ModelType.CHEAP:
@@ -290,16 +286,20 @@ function getModel(
 
   console.log(`Using AI Studio model: ${model}`);
 
+  // Get model-specific settings
+  const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('ai-studio', model);
+
+  // Combine base system prompt with model-specific instructions if available
+  let effectiveSystemPrompt = systemPrompt || '';
+  if (modelSystemInstruction?.length) {
+    effectiveSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
+  }
+
   const generationConfig = {
-    maxOutputTokens: 8192,
+    maxOutputTokens: outputTokenLimit,
     temperature,
     topP: 0.95,
   };
-
-  const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
-  if (outputTokenLimit) {
-    generationConfig.maxOutputTokens = outputTokenLimit;
-  }
 
   return genAI.getGenerativeModel({
     model,
@@ -322,13 +322,13 @@ function getModel(
         threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
       },
     ],
-    ...(systemPrompt
+    ...(effectiveSystemPrompt
       ? {
           systemInstruction: {
             role: 'system',
             parts: [
               {
-                text: systemPrompt,
+                text: effectiveSystemPrompt,
               },
             ],
           },

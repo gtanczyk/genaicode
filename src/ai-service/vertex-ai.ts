@@ -29,7 +29,7 @@ import {
 import { abortController } from '../main/common/abort-controller.js';
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
-import { getServiceConfig } from './service-configurations.js';
+import { getServiceConfig, getModelSettings } from './service-configurations.js';
 
 /**
  * This function generates content using the Vertex AI Gemini models with the new interface.
@@ -127,8 +127,8 @@ export const generateContent: GenerateContentFunction = async function generateC
       contents: messages,
     };
 
-    const model = await getGenModel({
-      systemPrompt: prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt,
+    const modelInstance = await getGenModel({
+      systemPromptText: prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt,
       temperature,
       functionDefs,
       geminiBlockNone: options.geminiBlockNone,
@@ -137,7 +137,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       expectedResponseType,
     });
 
-    const result = await model.generateContent(req);
+    const result = await modelInstance.generateContent(req);
 
     // Print token usage
     const usageMetadata = result.response.usageMetadata;
@@ -242,7 +242,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 };
 
 interface GetGenModelParams {
-  systemPrompt: string | undefined;
+  systemPromptText: string | undefined;
   temperature: number;
   functionDefs: FunctionDef[];
   geminiBlockNone: boolean | undefined;
@@ -258,7 +258,7 @@ interface GetGenModelParams {
 // A function to get the generative model instance
 async function getGenModel(params: GetGenModelParams) {
   const {
-    systemPrompt,
+    systemPromptText,
     temperature,
     functionDefs,
     geminiBlockNone,
@@ -284,24 +284,23 @@ async function getGenModel(params: GetGenModelParams) {
           ? modelOverrides?.reasoning // Use reasoning override if specified
           : modelOverrides?.default) ?? defaultModelName;
 
-    let effectiveSystemPrompt = systemPrompt ?? '';
-    if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-      effectiveSystemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
-    }
-
     console.log(`Using Vertex AI model: ${modelName}`);
+
+    // Get model-specific settings
+    const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('vertex-ai', modelName);
+
+    // Combine base system prompt with model-specific instructions
+    let effectiveSystemPrompt = systemPromptText ?? '';
+    if (modelSystemInstruction?.length) {
+      effectiveSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
+    }
 
     // Configure generation
     const generationConfig: GenerationConfig = {
-      maxOutputTokens: 8192,
+      maxOutputTokens: outputTokenLimit, // Use the potentially model-specific limit
       temperature: temperature,
       topP: 0.95,
     };
-
-    const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
-    if (outputTokenLimit) {
-      generationConfig.maxOutputTokens = outputTokenLimit;
-    }
 
     // Configure safety settings
     const safetySettings: SafetySetting[] = [
@@ -355,7 +354,7 @@ async function getGenModel(params: GetGenModelParams) {
       ...(effectiveSystemPrompt
         ? {
             systemInstruction: {
-              role: 'system', // Role should be 'system' but SDK might expect 'user' for system instructions
+              role: 'system', // Role should be 'system'
               parts: [{ text: effectiveSystemPrompt }],
             },
           }
@@ -378,16 +377,21 @@ async function recoverFunctionCall(textResponse: string, functionDef: FunctionDe
     // @ts-expect-error: functionDef.parameters might not be typed correctly in SDK
     const schema: Schema = { ...functionDef.parameters, type: SchemaType.OBJECT };
 
+    // Use a cheap model for recovery
     const recoveryModel = await getGenModel({
-      systemPrompt:
+      systemPromptText:
         'Your role is read the text below and extract the parameters for the function call based on the provided schema. Output ONLY the JSON object representing the arguments.',
       temperature: 0.1, // Low temperature for deterministic extraction
       functionDefs: [], // No function calling needed for recovery itself
       geminiBlockNone: undefined,
       requiredFunctionName: null,
-      modelType: ModelType.CHEAP, // Use a cheaper model for recovery
+      modelType: ModelType.CHEAP, // Always use cheap model for recovery
       expectedResponseType: { text: true, functionCall: false, media: false }, // Expect only text
     });
+
+    // Get specific settings for the recovery model
+    const recoveryModelName = getServiceConfig('vertex-ai').modelOverrides?.cheap ?? 'gemini-2.0-flash';
+    const { outputTokenLimit: recoveryOutputLimit } = getModelSettings('vertex-ai', recoveryModelName);
 
     const recoveryReq: GenerateContentRequest = {
       contents: [
@@ -405,6 +409,7 @@ async function recoverFunctionCall(textResponse: string, functionDef: FunctionDe
         responseMimeType: 'application/json',
         responseSchema: schema,
         temperature: 0.1,
+        maxOutputTokens: recoveryOutputLimit, // Use limit for the recovery model
       },
     };
 

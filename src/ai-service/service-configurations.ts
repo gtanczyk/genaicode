@@ -9,6 +9,9 @@ import {
 import { ServiceConfigRequirements } from './service-configurations-types.js';
 import { ServiceConfig } from './service-configurations-types.js';
 
+// Default token limits (can be overridden per model)
+const DEFAULT_TOKEN_LIMIT = 8192;
+
 const configurations: ServiceConfigurations = {
   'ai-studio': {
     apiKey: process.env.API_KEY,
@@ -16,8 +19,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.aiStudio?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.0-flash',
       reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
-      systemInstruction: modelOverrides.aiStudio?.systemInstruction ?? [],
-      outputTokenLimit: modelOverrides.aiStudio?.outputTokenLimit ?? 8192,
+      modelSpecificSettings: modelOverrides.aiStudio?.modelSpecificSettings ?? {},
     },
   },
   anthropic: {
@@ -26,8 +28,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.anthropic?.default ?? 'claude-3-7-sonnet-20250219',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
       reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-3-7-sonnet-20250219',
-      systemInstruction: modelOverrides.anthropic?.systemInstruction ?? [],
-      outputTokenLimit: modelOverrides.anthropic?.outputTokenLimit ?? 8192,
+      modelSpecificSettings: modelOverrides.anthropic?.modelSpecificSettings ?? {},
     },
   },
   openai: {
@@ -37,8 +38,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.openai?.default ?? 'gpt-4o',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
       reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
-      systemInstruction: modelOverrides.openai?.systemInstruction ?? [],
-      outputTokenLimit: modelOverrides.openai?.outputTokenLimit ?? 8192,
+      modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {},
     },
   },
   'local-llm': {
@@ -48,8 +48,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.localLlm?.default ?? 'gemma3:12b',
       cheap: modelOverrides.localLlm?.cheap ?? 'gemma3:12b',
       reasoning: modelOverrides.localLlm?.reasoning ?? 'gemma3:12b',
-      systemInstruction: modelOverrides.localLlm?.systemInstruction ?? [],
-      outputTokenLimit: modelOverrides.localLlm?.outputTokenLimit ?? 8192,
+      modelSpecificSettings: modelOverrides.localLlm?.modelSpecificSettings ?? {},
     },
   },
   'vertex-ai': {
@@ -58,8 +57,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.vertexAi?.default ?? 'gemini-1.5-pro-002',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.0-flash',
       reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
-      systemInstruction: modelOverrides.vertexAi?.systemInstruction ?? [],
-      outputTokenLimit: modelOverrides.vertexAi?.outputTokenLimit ?? 8192,
+      modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },
   },
   'vertex-ai-claude': {
@@ -69,22 +67,48 @@ const configurations: ServiceConfigurations = {
       default: 'claude-3-5-sonnet@20240620',
       cheap: 'claude-3-haiku@20240307',
       reasoning: 'claude-3-5-sonnet@20240620',
-      outputTokenLimit: 8192, // No direct override from .genaicoderc for this specific service yet
     },
   },
 };
 
+// Merge plugin configurations
 [...getRegisteredAiServices().entries()].forEach(([serviceType, service]) => {
-  // Ensure modelOverrides exist before assigning
-  const existingOverrides = configurations[serviceType]?.modelOverrides ?? {};
+  const existingConfig = configurations[serviceType] ?? {};
+  const pluginConfig = service.serviceConfig ?? {};
+
   configurations[serviceType] = {
-    ...(service.serviceConfig ?? {}),
+    ...existingConfig,
+    ...pluginConfig,
     modelOverrides: {
-      ...existingOverrides, // Keep existing defaults
-      ...(service.serviceConfig?.modelOverrides ?? {}), // Apply plugin overrides
+      // Keep existing model type defaults (cheap, default, reasoning)
+      ...existingConfig.modelOverrides,
+      // Apply plugin model type defaults
+      ...pluginConfig.modelOverrides,
+      // Merge modelSpecificSettings deeply
+      modelSpecificSettings: {
+        ...(existingConfig.modelOverrides?.modelSpecificSettings ?? {}),
+        ...(pluginConfig.modelOverrides?.modelSpecificSettings ?? {}),
+      },
     },
   };
 });
+
+/**
+ * Get settings for a specific model within a service.
+ * Returns systemInstruction and outputTokenLimit, falling back to defaults if not specified.
+ */
+export function getModelSettings(
+  serviceType: AiServiceType,
+  modelName: string,
+): { systemInstruction?: string[]; outputTokenLimit: number } {
+  const serviceConfig = configurations[serviceType];
+  const modelSpecificSettings = serviceConfig?.modelOverrides?.modelSpecificSettings?.[modelName];
+
+  return {
+    systemInstruction: modelSpecificSettings?.systemInstruction,
+    outputTokenLimit: modelSpecificSettings?.outputTokenLimit ?? DEFAULT_TOKEN_LIMIT,
+  };
+}
 
 /**
  * Get all service configurations.
@@ -92,7 +116,7 @@ const configurations: ServiceConfigurations = {
  * For external use, prefer getSanitizedConfigurations().
  * @internal
  */
-export function getServiceConfigurations() {
+export function getServiceConfigurations(): ServiceConfigurations {
   return configurations;
 }
 
@@ -103,6 +127,7 @@ export function getServiceConfigurations() {
  * @internal
  */
 export function getServiceConfig<T extends AiServiceType>(serviceType: T): ServiceConfig<T> {
+  // Ensure the returned config conforms to the ServiceConfig type
   return configurations[serviceType] as ServiceConfig<T>;
 }
 
@@ -144,21 +169,54 @@ export function updateServiceConfig<T extends AiServiceType>(serviceType: T, con
     modelOverrides: {
       ...(currentConfig.modelOverrides ?? {}),
       ...(config.modelOverrides ?? {}),
+      // Deep merge modelSpecificSettings
+      modelSpecificSettings: {
+        ...(currentConfig.modelOverrides?.modelSpecificSettings ?? {}),
+        ...(config.modelOverrides?.modelSpecificSettings ?? {}),
+      },
     },
   } as ServiceConfig<T>;
 
-  // For services that use API key, preserve the existing one if not provided
-  if (serviceType !== 'vertex-ai' && serviceType !== 'vertex-ai-claude') {
-    updatedConfig.apiKey = config.apiKey || currentConfig.apiKey;
+  // Preserve sensitive fields if not provided in the update
+  if (
+    serviceType !== 'vertex-ai' &&
+    serviceType !== 'vertex-ai-claude' &&
+    !('apiKey' in config) && // Check if apiKey is explicitly in the partial update
+    'apiKey' in currentConfig // Check if apiKey exists in the current config
+  ) {
+    updatedConfig.apiKey = currentConfig.apiKey;
   }
 
-  if (serviceType === 'openai' || serviceType === 'local-llm') {
-    const openAiConfig = updatedConfig as ServiceConfigRequirements['openai'];
-    const incomingOpenAiConfig = config as Partial<ServiceConfigRequirements['openai']>;
-    openAiConfig.openaiBaseUrl =
-      incomingOpenAiConfig.openaiBaseUrl !== undefined
-        ? incomingOpenAiConfig.openaiBaseUrl
-        : (currentConfig as ServiceConfigRequirements['openai'])?.openaiBaseUrl;
+  if ((serviceType === 'openai' || serviceType === 'local-llm') && !('openaiBaseUrl' in config)) {
+    const currentOpenAiConfig = currentConfig as ServiceConfigRequirements['openai'];
+    if (currentOpenAiConfig?.openaiBaseUrl) {
+      (updatedConfig as ServiceConfigRequirements['openai']).openaiBaseUrl = currentOpenAiConfig.openaiBaseUrl;
+    }
+  }
+
+  if (serviceType === 'vertex-ai' && !('googleCloudProjectId' in config)) {
+    const currentVertexConfig = currentConfig as ServiceConfigRequirements['vertex-ai'];
+    if (currentVertexConfig?.googleCloudProjectId) {
+      (updatedConfig as ServiceConfigRequirements['vertex-ai']).googleCloudProjectId =
+        currentVertexConfig.googleCloudProjectId;
+    }
+  }
+
+  if (serviceType === 'vertex-ai-claude') {
+    if (!('googleCloudProjectId' in config)) {
+      const currentVertexClaudeConfig = currentConfig as ServiceConfigRequirements['vertex-ai-claude'];
+      if (currentVertexClaudeConfig?.googleCloudProjectId) {
+        (updatedConfig as ServiceConfigRequirements['vertex-ai-claude']).googleCloudProjectId =
+          currentVertexClaudeConfig.googleCloudProjectId;
+      }
+    }
+    if (!('googleCloudRegion' in config)) {
+      const currentVertexClaudeConfig = currentConfig as ServiceConfigRequirements['vertex-ai-claude'];
+      if (currentVertexClaudeConfig?.googleCloudRegion) {
+        (updatedConfig as ServiceConfigRequirements['vertex-ai-claude']).googleCloudRegion =
+          currentVertexClaudeConfig.googleCloudRegion;
+      }
+    }
   }
 
   configurations[serviceType] = updatedConfig as ServiceConfigurations[T];
@@ -171,12 +229,17 @@ function sanitizeServiceConfig<T extends AiServiceType>(
   serviceType: T,
   config: ServiceConfig<T>,
 ): SanitizedServiceConfig {
+  const hasModelSpecificSettings =
+    !!config.modelOverrides?.modelSpecificSettings &&
+    Object.keys(config.modelOverrides.modelSpecificSettings).length > 0;
+
   const sanitizedBase = {
     modelOverrides: {
       default: config.modelOverrides?.default,
       cheap: config.modelOverrides?.cheap,
       reasoning: config.modelOverrides?.reasoning,
-      outputTokenLimit: config.modelOverrides?.outputTokenLimit,
+      // Indicate if any model-specific settings exist, but don't expose them
+      hasModelSpecificSettings,
     },
   };
 
@@ -185,7 +248,7 @@ function sanitizeServiceConfig<T extends AiServiceType>(
       ...sanitizedBase,
       googleCloudProjectId: config.googleCloudProjectId,
       googleCloudRegion: serviceType === 'vertex-ai-claude' ? config.googleCloudRegion : undefined,
-      hasApiKey: false,
+      hasApiKey: false, // Vertex services don't use API keys directly in this context
     };
   } else {
     const openAiBaseUrl =

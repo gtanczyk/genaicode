@@ -40,6 +40,7 @@ export type SanitizedServiceConfig = {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
     reasoning?: string; // Model name for reasoning mode
+    hasModelSpecificSettings?: boolean; // Indicates if model-specific settings exist
   };
 } & (
   | {

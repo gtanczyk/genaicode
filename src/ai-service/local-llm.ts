@@ -63,12 +63,13 @@ export const generateContent: GenerateContentFunction = async function generateC
       });
     }
 
-    // Call the imported internalGenerateContent function
+    // Call the imported internalGenerateContent function with 'local-llm' as serviceType
     const result: GenerateContentResult = await internalGenerateContent(
       adjustedPrompt.map((item) => ({ ...item, text: item.text ?? ' ' })), // Ensure text isn't undefined
       config,
       model,
-      openai, // Pass the configured OpenAI client
+      openai,
+      'local-llm', // Pass the correct service type to ensure proper model settings lookup
     );
 
     // Adapt the GenerateContentResult back to FunctionCall[] for backward compatibility

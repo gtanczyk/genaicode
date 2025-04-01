@@ -12,7 +12,7 @@ import {
   ChatCompletionToolChoiceOption,
 } from 'openai/resources/index';
 import { abortController } from '../main/common/abort-controller.js';
-import { getServiceConfig } from './service-configurations.js';
+import { getServiceConfig, getModelSettings } from './service-configurations.js';
 import { AiServiceType } from './service-configurations-types.js';
 
 /**
@@ -55,12 +55,14 @@ export async function internalGenerateContent(
   openai: OpenAI,
   serviceType: AiServiceType = 'openai',
 ): Promise<GenerateContentResult> {
-  const serviceConfig = getServiceConfig('openai');
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7; // Default temperature
   const functionDefs = config.functionDefs ?? [];
   const requiredFunctionName = config.requiredFunctionName;
-  const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+
+  // Get model-specific settings
+  const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings(serviceType, model);
+
   const expectedResponseType = config.expectedResponseType ?? {
     text: false,
     functionCall: true,
@@ -71,10 +73,12 @@ export async function internalGenerateContent(
     .map((item) => {
       if (item.type === 'systemPrompt') {
         let systemPrompt = item.systemPrompt!;
-        // Add service-specific system instructions from modelOverrides
-        if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-          systemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+
+        // Add model-specific system instructions if available
+        if (modelSystemInstruction?.length) {
+          systemPrompt += `\n${modelSystemInstruction.join('\n')}`;
         }
+
         return {
           role:
             modelType === ModelType.REASONING && serviceType === 'openai'
@@ -231,7 +235,7 @@ export async function internalGenerateContent(
     cacheReadTokens: response.usage?.prompt_tokens_details?.cached_tokens,
   };
   printTokenUsageAndCost({
-    aiService: 'openai',
+    aiService: serviceType,
     usage,
     inputCostPerToken: 0.000005, // Example cost for gpt-4o
     outputCostPerToken: 0.000015, // Example cost for gpt-4o

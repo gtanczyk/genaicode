@@ -6,7 +6,7 @@ import { FunctionDef } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
-import { getServiceConfig } from './service-configurations.js';
+import { getServiceConfig, getModelSettings } from './service-configurations.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -48,11 +48,25 @@ export const generateContent: GenerateContentFunction = async function generateC
       },
     });
 
-    let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+    // Get base system prompt
+    let baseSystemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
 
-    // Add service-specific system instructions from modelOverrides
-    if (serviceConfig.modelOverrides?.systemInstruction?.length) {
-      systemPrompt += `\n${serviceConfig.modelOverrides.systemInstruction.join('\n')}`;
+    // Determine which model to use
+    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-3-7-sonnet-20250219';
+    const modelOverrides = serviceConfig?.modelOverrides;
+    let model =
+      modelType === ModelType.CHEAP
+        ? (modelOverrides?.cheap ?? defaultModel)
+        : modelType === ModelType.REASONING
+          ? (modelOverrides?.reasoning ?? defaultModel)
+          : (modelOverrides?.default ?? defaultModel);
+
+    // Get model-specific settings
+    const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('anthropic', model);
+
+    // Combine base system prompt with model-specific instructions if available
+    if (modelSystemInstruction?.length) {
+      baseSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
     }
 
     if (modelType === ModelType.REASONING) {
@@ -149,26 +163,20 @@ export const generateContent: GenerateContentFunction = async function generateC
         }
       });
 
-    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-3-7-sonnet-20250219';
-    const modelOverrides = serviceConfig?.modelOverrides;
-    let model =
-      modelType === ModelType.CHEAP
-        ? (modelOverrides?.cheap ?? defaultModel)
-        : modelType === ModelType.REASONING
-          ? (modelOverrides?.reasoning ?? defaultModel)
-          : (modelOverrides?.default ?? defaultModel);
     console.log(`Using Anthropic model: ${model}`);
 
     let retryCount = 0;
     let response;
-    const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+
+    // Set max_tokens based on model-specific setting or defaults
+    const maxTokens = outputTokenLimit ?? (modelType === ModelType.REASONING ? 8192 * 2 : 8192);
 
     while (retryCount < 3) {
       try {
         response = await anthropic.messages.create(
           {
             model: model,
-            system: systemPrompt,
+            system: baseSystemPrompt,
             messages: messages,
             tools: functionDefs.map((fd) => ({
               name: fd.name,
@@ -181,7 +189,7 @@ export const generateContent: GenerateContentFunction = async function generateC
                 : functionDefs.length > 0 && modelType !== ModelType.REASONING
                   ? { type: 'any' as const }
                   : undefined,
-            max_tokens: outputTokenLimit ?? (modelType === ModelType.REASONING ? 8192 * 2 : 8192),
+            max_tokens: maxTokens,
             temperature: modelType !== ModelType.REASONING ? temperature : 1,
             thinking:
               modelType === ModelType.REASONING

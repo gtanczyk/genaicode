@@ -38,9 +38,18 @@
     "aiStudio": {
       "default": "gemini-2.5-pro-exp-03-25",
       "cheap": "gemini-2.0-flash",
-      "systemInstruction": [
-        "Please do not generate excessive amount of comments in the code."
-      ]
+      "modelSpecificSettings": {
+        "gemini-2.5-pro-exp-03-25": {
+          "systemInstruction": [
+            "Please do not generate excessive amount of comments in the code.",
+            "Modify only the necessary parts of the code accordingly to the users intention."
+          ],
+          "outputTokenLimit": 16384
+        },
+        "gemini-2.0-flash": {
+          "outputTokenLimit": 8192
+        }
+      }
     }
   }
 }

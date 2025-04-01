@@ -11,7 +11,7 @@ import {
 } from './common-types.js';
 import { Message, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { abortController } from '../main/common/abort-controller.js';
-import { getServiceConfig } from './service-configurations.js';
+import { getServiceConfig, getModelSettings } from './service-configurations.js';
 import { reasoningInferenceResponse } from '../prompt/function-defs/reasoning-inference.js';
 
 /**
@@ -46,7 +46,30 @@ export const generateContent: GenerateContentFunction = async function generateC
     region: serviceConfig.googleCloudRegion,
   });
 
-  let systemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+  // Get base system prompt
+  let baseSystemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
+
+  // Determine the model name based on model type
+  const model = (() => {
+    switch (modelType) {
+      case ModelType.CHEAP:
+        return serviceConfig.modelOverrides?.cheap ?? 'claude-3-haiku@20240307';
+      case ModelType.REASONING:
+        return serviceConfig.modelOverrides?.reasoning ?? 'claude-3-5-sonnet@20240620';
+      default:
+        return serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620';
+    }
+  })();
+
+  console.log(`Using Vertex AI Claude model: ${model}`);
+
+  // Get model-specific settings
+  const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('vertex-ai-claude', model);
+
+  // Add model-specific system instructions if available
+  if (modelSystemInstruction?.length) {
+    baseSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
+  }
 
   // Reasoning model emulation via function calling
   if (modelType === ModelType.REASONING) {
@@ -54,7 +77,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionDefs = [...functionDefs, reasoningInferenceResponse];
     }
     requiredFunctionName = reasoningInferenceResponse.name;
-    systemPrompt +=
+    baseSystemPrompt +=
       '\nFirst, reason step-by-step. Then, call reasoningInferenceResponse with your reasoning and answer.';
   }
 
@@ -99,19 +122,6 @@ export const generateContent: GenerateContentFunction = async function generateC
     })
     .filter((message) => !!message);
 
-  const model = (() => {
-    switch (modelType) {
-      case ModelType.CHEAP:
-        return serviceConfig.modelOverrides?.cheap ?? 'claude-3-haiku@20240307';
-      case ModelType.REASONING:
-        return serviceConfig.modelOverrides?.reasoning ?? 'claude-3-5-sonnet@20240620';
-      default:
-        return serviceConfig.modelOverrides?.default ?? 'claude-3-5-sonnet@20240620';
-    }
-  })();
-
-  console.log(`Using Vertex AI Claude model: ${model}`);
-
   const tools = functionDefs.map((fd) => ({
     name: fd.name,
     description: fd.description,
@@ -130,12 +140,15 @@ export const generateContent: GenerateContentFunction = async function generateC
     return { type: 'any' as const }; // Allow any tool if function calls expected but none specific required
   })();
 
+  // Use the model-specific outputTokenLimit or fall back to default (4096)
+  const maxTokens = outputTokenLimit ?? 4096;
+
   const response: Message = await client.messages.create(
     {
       model: model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       temperature: temperature,
-      system: systemPrompt,
+      system: baseSystemPrompt,
       messages: messages,
       ...(tools.length > 0 ? { tools } : {}), // Only include tools if defined
       ...(tools.length > 0 ? { tool_choice: toolChoice } : {}), // Only include tool_choice if tools are defined

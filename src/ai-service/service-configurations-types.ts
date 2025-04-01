@@ -1,3 +1,5 @@
+import { ModelSpecificSettings } from '../main/config-types.js';
+
 /**
  * Full service configuration interface.
  * This interface includes sensitive data and should only be used internally.
@@ -6,18 +8,21 @@
 export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
   /**
    * Model overrides for the service.
-   * Allows customizing model names for different modes.
+   * Allows customizing model names for different modes and settings per model.
    */
   modelOverrides?: {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
     reasoning?: string; // Model name for reasoning mode
-    systemInstruction?: string[]; // System instructions for the model
-    outputTokenLimit?: number; // Maximum number of output tokens
+    /** Specific settings for individual models within this service */
+    modelSpecificSettings?: {
+      [modelName: string]: ModelSpecificSettings;
+    };
   };
 } & (T extends keyof ServiceConfigRequirements
   ? ServiceConfigRequirements[T]
   : {
+      // Default structure for services not in ServiceConfigRequirements (e.g., plugins)
       apiKey?: string;
       openaiBaseUrl?: string;
       googleCloudProjectId?: string;
@@ -62,8 +67,8 @@ export type ServiceConfigRequirements = {
   };
 }; /** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
 
-export type PluginAiServiceType = `plugin:${string}`;
-/** Example: {@link ../../examples/genaicode_plugins/nonsense_action_handlers.ts} */
+export type PluginAiServiceType =
+  `plugin:${string}`; /** Example: {@link ../../examples/genaicode_plugins/nonsense_action_handlers.ts} */
 
 export type PluginActionType = `plugin:${string}`;
 

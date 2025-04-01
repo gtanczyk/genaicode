@@ -4,11 +4,22 @@ export interface ImportantContext {
 }
 
 /**
+ * Configuration for specific model settings within a service.
+ */
+export interface ModelSpecificSettings {
+  /** System instructions specific to this model */
+  systemInstruction?: string[];
+  /** Maximum number of tokens to generate in the output specific to this model */
+  outputTokenLimit?: number;
+}
+
+/**
  * Model configuration for each supported AI service
  * Each service can have different model types:
  * - default: Standard model, typically most capable but expensive
  * - cheap: Cost-effective model with potentially lower quality
  * - reasoning: Specialized model for reasoning tasks
+ * Specific settings like system instructions or token limits can be defined per model.
  */
 export interface ServiceModelConfig {
   /** Model ID for cost-effective operations */
@@ -17,10 +28,10 @@ export interface ServiceModelConfig {
   default?: string;
   /** Model ID for reasoning-specific tasks */
   reasoning?: string;
-  /** System instructions for the model */
-  systemInstruction?: string[];
-  /** Maximum number of tokens to generate in the output */
-  outputTokenLimit?: number;
+  /** Specific settings for individual models within this service */
+  modelSpecificSettings?: {
+    [modelName: string]: ModelSpecificSettings;
+  };
 }
 
 export interface ModelOverrides {

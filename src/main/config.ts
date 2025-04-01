@@ -22,6 +22,7 @@ export const ignorePaths: string[] = rcConfig.ignorePaths ?? [...DEFAULT_IGNORE_
 
 export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext);
 
+// modelOverrides is directly assigned. Downstream code in service-configurations.ts handles the structure.
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
 
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {
