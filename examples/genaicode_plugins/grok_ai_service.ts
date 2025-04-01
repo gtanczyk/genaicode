@@ -1,13 +1,11 @@
 import OpenAI from 'openai';
 import {
-  FunctionCall,
   FunctionDef,
   PromptItem,
   Plugin,
   GenerateContentFunction,
   ModelType,
   GenerateContentResult,
-  GenerateContentArgs,
 } from '../../src/index.js';
 
 /**
@@ -26,12 +24,6 @@ const generateContent: GenerateContentFunction = async function generateContent(
       media: boolean;
     };
   },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
 ): Promise<GenerateContentResult> {
   const { getServiceConfig } = await import('../../src/ai-service/service-configurations.js');
   const serviceConfig = getServiceConfig('plugin:grok-ai-service');
@@ -44,9 +36,6 @@ const generateContent: GenerateContentFunction = async function generateContent(
   const { internalGenerateContent } = await import('../../src/ai-service/openai.js');
 
   const modelType = config.modelType ?? ModelType.DEFAULT;
-  const temperature = config.temperature ?? 0.7;
-  const functionDefs = config.functionDefs ?? [];
-  const requiredFunctionName = config.requiredFunctionName ?? null;
 
   // Determine the model to use based on modelType and service config
   const model =

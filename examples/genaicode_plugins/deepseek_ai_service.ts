@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import {
-  FunctionCall,
   FunctionDef,
   PromptItem,
   Plugin,
@@ -25,12 +24,6 @@ const generateContent: GenerateContentFunction = async function generateContent(
       media: boolean;
     };
   },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
 ): Promise<GenerateContentResult> {
   const { getServiceConfig } = await import('../../src/ai-service/service-configurations.js');
   const serviceConfig = getServiceConfig('plugin:deepseek-ai-service');
@@ -44,7 +37,6 @@ const generateContent: GenerateContentFunction = async function generateContent(
   const { processFunctionCalls } = await import('../../src/ai-service/common.js');
 
   const modelType = config.modelType ?? ModelType.DEFAULT;
-  const temperature = config.temperature ?? 0.7;
   const functionDefs = config.functionDefs ?? [];
   const requiredFunctionName = config.requiredFunctionName ?? null;
 
