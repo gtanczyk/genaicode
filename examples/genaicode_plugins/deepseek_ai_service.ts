@@ -7,7 +7,6 @@ import {
   GenerateContentFunction,
   GenerateContentResult,
 } from '../../src/index.js';
-import { internalGenerateContent } from '../../src/ai-service/openai.js';
 
 /**
  * This function generates content using the Deepseek models with the new interface.
