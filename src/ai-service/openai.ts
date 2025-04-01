@@ -125,6 +125,7 @@ export async function internalGenerateToolCalls(
   const temperature = config.temperature ?? 0.7; // Default temperature
   const functionDefs = config.functionDefs ?? [];
   const requiredFunctionName = config.requiredFunctionName;
+  const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
 
   const messages: Array<ChatCompletionMessageParam> = prompt
     .map((item) => {
@@ -250,6 +251,7 @@ export async function internalGenerateToolCalls(
           ...(tools ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
           ...(modelType !== ModelType.REASONING ? { temperature } : {}),
+          ...(outputTokenLimit ? { max_tokens: outputTokenLimit } : {}),
         },
         { signal: abortController?.signal },
       );

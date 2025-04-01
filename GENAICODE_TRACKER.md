@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-090] 2024-08-13: Add `outputTokenLimit` to `modelOverrides` in `.genaicoderc` to allow customizing max output tokens per service.
 - [-] [GEN-089] 2024-08-09: Fix multiple failing unit tests across various test suites.
 - [-] [GEN-088] 2024-08-08: Fixed TypeScript errors in multiple test files
 - [-] [GEN-087] 2024-08-07: Refactor Plugin AI Services (Grok, Deepseek, Fake) to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent` to use the new interface.

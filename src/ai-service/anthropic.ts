@@ -35,7 +35,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   const temperature = config.temperature ?? 0.7;
   let functionDefs = config.functionDefs ?? [];
   let requiredFunctionName = config.requiredFunctionName ?? null;
-  const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: true };
+  const expectedResponseType = config.expectedResponseType ?? { text: false, functionCall: true, media: false };
 
   try {
     const serviceConfig = getServiceConfig('anthropic');
@@ -161,6 +161,8 @@ export const generateContent: GenerateContentFunction = async function generateC
 
     let retryCount = 0;
     let response;
+    const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+
     while (retryCount < 3) {
       try {
         response = await anthropic.messages.create(
@@ -179,7 +181,7 @@ export const generateContent: GenerateContentFunction = async function generateC
                 : functionDefs.length > 0 && modelType !== ModelType.REASONING
                   ? { type: 'any' as const }
                   : undefined,
-            max_tokens: modelType === ModelType.REASONING ? 8192 * 2 : 8192,
+            max_tokens: outputTokenLimit ?? (modelType === ModelType.REASONING ? 8192 * 2 : 8192),
             temperature: modelType !== ModelType.REASONING ? temperature : 1,
             thinking:
               modelType === ModelType.REASONING

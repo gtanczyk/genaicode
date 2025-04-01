@@ -19,6 +19,8 @@ export interface ServiceModelConfig {
   reasoning?: string;
   /** System instructions for the model */
   systemInstruction?: string[];
+  /** Maximum number of tokens to generate in the output */
+  outputTokenLimit?: number;
 }
 
 export interface ModelOverrides {

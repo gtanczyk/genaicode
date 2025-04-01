@@ -77,6 +77,10 @@ Example: ['gpt-4o-mini']`,
               type: 'string',
               description: `Default model to use for OpenAI compatible service. Example: ['gpt-4o']`,
             },
+            outputTokenLimit: {
+              type: 'number',
+              description: `Maximum number of tokens to generate in the output for OpenAI compatible service.\nDefaults vary by service (e.g., 8192).`,
+            },
           },
         },
         anthropic: {
@@ -89,6 +93,10 @@ Example: ['gpt-4o-mini']`,
             default: {
               type: 'string',
               description: `Default model to use for Anthropic service. Example: ['claude-3-5-sonnet-20240620']`,
+            },
+            outputTokenLimit: {
+              type: 'number',
+              description: `Maximum number of tokens to generate in the output for Anthropic service.\nDefaults vary by service (e.g., 8192).`,
             },
           },
         },
@@ -105,6 +113,10 @@ Example: ['gpt-4o-mini']`,
             },
           },
         },
+        outputTokenLimit: {
+          type: 'number',
+          description: `Maximum number of tokens to generate in the output for Vertex AI service.\nDefaults vary by service (e.g., 8192).`,
+        },
         aiStudio: {
           type: 'object',
           properties: {
@@ -115,6 +127,10 @@ Example: ['gpt-4o-mini']`,
             default: {
               type: 'string',
               description: `Default model to use for AI Studio service. Example: ['gemini-1.5-pro-001']`,
+            },
+            outputTokenLimit: {
+              type: 'number',
+              description: `Maximum number of tokens to generate in the output for AI Studio service.\nDefaults vary by service (e.g., 8192).`,
             },
           },
         },

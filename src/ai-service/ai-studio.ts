@@ -47,7 +47,11 @@ export const generateContent: GenerateContentFunction = async function generateC
   const temperature = config.temperature ?? 0.7;
   const functionDefs = config.functionDefs ?? [];
   const requiredFunctionName = config.requiredFunctionName ?? null;
-  const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: true };
+  const expectedResponseType = config.expectedResponseType ?? {
+    text: false,
+    functionCall: true,
+    media: false,
+  };
 
   const messages: Content[] = prompt
     .filter((item) => item.type === 'user' || item.type === 'assistant')
@@ -129,7 +133,9 @@ export const generateContent: GenerateContentFunction = async function generateC
     options.geminiBlockNone,
   );
 
-  const result = await model.generateContent(req, { signal: abortController?.signal });
+  const result = await model.generateContent(req, {
+    signal: abortController?.signal,
+  });
 
   // Print token usage
   const usageMetadata = result.response.usageMetadata!;
@@ -160,7 +166,10 @@ export const generateContent: GenerateContentFunction = async function generateC
     .map((candidate) => candidate.content?.parts?.map((part) => part.functionCall))
     .flat()
     .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
-    .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
+    .map((call) => ({
+      name: call.name,
+      args: call.args as Record<string, unknown>,
+    }))
     .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
 
   // Prepare the result parts array
@@ -281,13 +290,20 @@ function getModel(
 
   console.log(`Using AI Studio model: ${model}`);
 
+  const generationConfig = {
+    maxOutputTokens: 8192,
+    temperature,
+    topP: 0.95,
+  };
+
+  const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+  if (outputTokenLimit) {
+    generationConfig.maxOutputTokens = outputTokenLimit;
+  }
+
   return genAI.getGenerativeModel({
     model,
-    generationConfig: {
-      maxOutputTokens: 8192,
-      temperature,
-      topP: 0.95,
-    },
+    generationConfig,
     safetySettings: [
       {
         category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,

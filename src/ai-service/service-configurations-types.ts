@@ -13,6 +13,7 @@ export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
     cheap?: string; // Model name for cheap/fast mode
     reasoning?: string; // Model name for reasoning mode
     systemInstruction?: string[]; // System instructions for the model
+    outputTokenLimit?: number; // Maximum number of output tokens
   };
 } & (T extends keyof ServiceConfigRequirements
   ? ServiceConfigRequirements[T]

@@ -62,7 +62,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     const temperature = config.temperature ?? 0.7;
     const functionDefs = config.functionDefs ?? [];
     const requiredFunctionName = config.requiredFunctionName ?? null;
-    const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: true };
+    const expectedResponseType = config.expectedResponseType ?? { text: false, functionCall: true, media: false };
 
     const messages: Content[] = prompt
       .filter((item) => item.type === 'user' || item.type === 'assistant')
@@ -297,6 +297,11 @@ async function getGenModel(params: GetGenModelParams) {
       temperature: temperature,
       topP: 0.95,
     };
+
+    const outputTokenLimit = serviceConfig.modelOverrides?.outputTokenLimit;
+    if (outputTokenLimit) {
+      generationConfig.maxOutputTokens = outputTokenLimit;
+    }
 
     // Configure safety settings
     const safetySettings: SafetySetting[] = [
