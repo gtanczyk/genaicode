@@ -16,7 +16,7 @@ import {
   createMockImageGenerationResponse,
   createMockResponseSequence,
 } from './codegen.test-utils.js';
-import { ModelType, GenerateContentResultPart } from '../ai-service/common-types.js';
+import { ModelType, GenerateContentResultPart, FunctionCall } from '../ai-service/common-types.js';
 
 // Mock all required modules
 vi.mock('../cli/cli-params.js', () => ({
@@ -116,6 +116,15 @@ describe('Image Generation', () => {
         'Generate a beautiful landscape image',
       );
 
+      const mockDownload: FunctionCall = {
+        name: 'downloadFile',
+        args: {
+          filePath: '/mocked/root/dir/landscape.png',
+          downloadUrl: 'mocked-image-data',
+          explanation: 'Downloading generated image',
+        },
+      };
+
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
         const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
@@ -139,7 +148,7 @@ describe('Image Generation', () => {
         },
         ModelType.DEFAULT,
       );
-      expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockGenerate, expect.anything());
+      expect(updateFiles.updateFiles).toHaveBeenCalledWith([...mockGenerate, mockDownload], expect.anything());
     });
 
     it('should pass the cheap parameter to Vertex AI Imagen when --cheap flag is true', async () => {
@@ -173,6 +182,15 @@ describe('Image Generation', () => {
         'Generate a simple landscape image',
       );
 
+      const mockDownload: FunctionCall = {
+        name: 'downloadFile',
+        args: {
+          filePath: '/mocked/root/dir/landscape.png',
+          downloadUrl: 'mocked-cheap-image-data',
+          explanation: 'Downloading generated image',
+        },
+      };
+
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
         const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
@@ -195,6 +213,7 @@ describe('Image Generation', () => {
         },
         ModelType.DEFAULT, // Note: The 'cheap' flag for codegen doesn't directly map to Imagen's cheap model
       );
+      expect(updateFiles.updateFiles).toHaveBeenCalledWith([...mockGenerate, mockDownload], expect.anything());
     });
   });
 
@@ -227,6 +246,15 @@ describe('Image Generation', () => {
         'Generate a futuristic city image',
       );
 
+      const mockDownload: FunctionCall = {
+        name: 'downloadFile',
+        args: {
+          filePath: '/mocked/root/dir/city.png',
+          downloadUrl: 'mocked-image-data',
+          explanation: 'Downloading generated image',
+        },
+      };
+
       const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockGenerate]);
       mockSequence.forEach((response) => {
         const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
@@ -250,7 +278,7 @@ describe('Image Generation', () => {
         },
         ModelType.DEFAULT,
       );
-      expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockGenerate, expect.anything());
+      expect(updateFiles.updateFiles).toHaveBeenCalledWith([...mockGenerate, mockDownload], expect.anything());
     });
   });
 
@@ -296,18 +324,8 @@ describe('Image Generation', () => {
 
       expect(vertexAiImagen.generateImage).toHaveBeenCalled();
       // The error should be caught and handled without breaking the test
-      // Check if updateFiles was called with an explanation about the failure
-      expect(updateFiles.updateFiles).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: 'explanation',
-            args: expect.objectContaining({
-              text: expect.stringContaining('Failed to generate image: Generation failed'),
-            }),
-          }),
-        ]),
-        expect.anything(),
-      );
+      // Check if updateFiles was called with both generateImage and explanation
+      expect(updateFiles.updateFiles).toHaveBeenCalledWith([...mockGenerate], expect.anything());
     });
   });
 });

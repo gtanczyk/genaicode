@@ -69,7 +69,7 @@ describe('generateCodegenSummary', () => {
       },
     };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockCodegenSummary]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockCodegenSummary }]);
 
     const result = await generateCodegenSummary(mockGenerateContentFn, mockPrompt, mockFunctionDefs, mockOptions);
 
@@ -96,7 +96,7 @@ describe('generateCodegenSummary', () => {
       },
     };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockCodegenSummary]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockCodegenSummary }]);
 
     const prompt: PromptItem[] = [{ type: 'user', text: 'test prompt' }];
     await generateCodegenSummary(mockGenerateContentFn, prompt, mockFunctionDefs, mockOptions);

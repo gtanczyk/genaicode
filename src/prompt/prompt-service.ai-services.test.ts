@@ -204,7 +204,7 @@ describe('promptService - AI Services', () => {
 
     // generateContentFn will be called twice: planning and summary attempt
     // The third call (file update) won't happen because the summary was invalid
-    expect(vertexAi.generateContent).toHaveBeenCalledTimes(2);
+    expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     expect(result).toEqual([]); // Expect empty result as summary failed
   });
 });

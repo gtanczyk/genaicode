@@ -51,21 +51,18 @@ export async function validateAndRecoverSingleResult(
     if (modelType === ModelType.CHEAP) {
       console.log('Disabling --cheap for recovery.');
     }
-    calls = (
-      await generateContentFn(
-        prompt,
-        {
-          functionDefs,
-          requiredFunctionName,
-          temperature,
-          modelType: ModelType.CHEAP,
-          expectedResponseType: { text: false, functionCall: true, media: false },
-        },
-        options,
-      )
-    )
-      .filter((item) => item.type === 'functionCall')
-      .map((item) => item.functionCall);
+    result = await generateContentFn(
+      prompt,
+      {
+        functionDefs,
+        requiredFunctionName,
+        temperature,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
+      options,
+    );
+    calls = result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
     console.log('Recover result:', result);
 
     if (calls?.length === 1) {

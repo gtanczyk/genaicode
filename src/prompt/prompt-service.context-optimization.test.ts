@@ -13,6 +13,7 @@ import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
+import { PROMPT_CODEGEN_SUMMARY } from './steps/step-generate-codegen-summary-prompt.js';
 
 // Mock all external dependencies
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
@@ -113,17 +114,14 @@ describe('promptService - Context Optimization', () => {
 
     expect(vertexAi.generateContent).toHaveBeenCalledTimes(3);
     // Check the first call (planning) includes getSourceCode response
-    const firstCall = vi.mocked(vertexAi.generateContent).mock.calls[0];
-    expect(firstCall[0]).toEqual(
+    const firstCallArgs = vi.mocked(vertexAi.generateContent).mock.calls[0];
+    expect(firstCallArgs[0]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'user',
-          functionResponses: [
-            expect.objectContaining({
-              name: 'getSourceCode',
-              content: expect.any(String),
-            }),
-          ],
+          functionResponses: expect.arrayContaining([
+            expect.objectContaining({ name: 'getSourceCode', content: expect.any(String) }),
+          ]),
         }),
       ]),
     );
@@ -133,7 +131,7 @@ describe('promptService - Context Optimization', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'assistant', functionCalls: planningResponse }),
         expect.objectContaining({ type: 'user', functionResponses: expect.anything() }), // Response to planning call
-        expect.objectContaining({ type: 'user', text: expect.stringContaining('PROMPT_CODEGEN_SUMMARY') }), // Summary prompt
+        expect.objectContaining({ type: 'user', text: expect.stringContaining(PROMPT_CODEGEN_SUMMARY) }), // Summary prompt
       ]),
     );
   });

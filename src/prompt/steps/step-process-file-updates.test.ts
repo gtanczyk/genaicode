@@ -113,7 +113,7 @@ describe('processFileUpdates', () => {
       },
     };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockUpdateResult]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdateResult }]);
 
     const result = await processFileUpdates(
       mockGenerateContentFn,
@@ -125,7 +125,7 @@ describe('processFileUpdates', () => {
     );
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(mockUpdateResult);
+    expect(result[0]).toEqual(expect.objectContaining(mockUpdateResult));
     expect(mockWaitIfPaused).toHaveBeenCalledTimes(1);
   });
 
@@ -151,7 +151,9 @@ describe('processFileUpdates', () => {
       args: { filePath: '/test/file2.ts', newContent: 'content2', explanation: 'Update 2' },
     };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockUpdate1]).mockResolvedValueOnce([mockUpdate2]);
+    mockGenerateContentFn
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdate1 }])
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdate2 }]);
 
     const result = await processFileUpdates(
       mockGenerateContentFn,
@@ -193,8 +195,17 @@ describe('processFileUpdates', () => {
         explanation: 'Test image',
       },
     };
+    const mockDownloadFileResult: FunctionCall = {
+      // The result of image generation is a download call
+      name: 'downloadFile',
+      args: {
+        downloadUrl: '/test/image.png',
+        explanation: 'Downloading generated image',
+        filePath: '/test/image.png',
+      },
+    };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockGenerateImageResult]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockGenerateImageResult }]);
     mockGenerateImageFn.mockResolvedValueOnce('/test/image.png');
 
     const result = await processFileUpdates(
@@ -207,7 +218,9 @@ describe('processFileUpdates', () => {
       mockGenerateImageFn,
     );
 
-    expect(result).toHaveLength(2); // Original call + generated image result
+    expect(result).toHaveLength(2); // generateImage call + downloadFile call
+    expect(result[0]).toEqual(expect.objectContaining(mockGenerateImageResult));
+    expect(result[1]).toEqual(mockDownloadFileResult);
     expect(mockGenerateImageFn).toHaveBeenCalledTimes(1);
   });
 
@@ -228,13 +241,7 @@ describe('processFileUpdates', () => {
     };
 
     const originalContent = 'original content';
-    const patchContent = `Index: file.ts
-===================================================================
---- file.ts
-+++ file.ts
-@@ -1,1 +1,1 @@
--original content
-+patched content`;
+    const patchContent = `Index: file.ts\n===================================================================\n--- file.ts\n+++ file.ts\n@@ -1,1 +1,1 @@\n-original content\n+patched content`;
 
     const mockPatchResult: FunctionCall = {
       name: 'patchFile',
@@ -249,7 +256,7 @@ describe('processFileUpdates', () => {
     vi.mocked(fs.readFileSync).mockReturnValue(originalContent);
     vi.mocked(diff.applyPatch).mockReturnValue('patched content');
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockPatchResult]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockPatchResult }]);
 
     const result = await processFileUpdates(
       mockGenerateContentFn,
@@ -262,7 +269,14 @@ describe('processFileUpdates', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toEqual(mockPatchResult.name);
-    expect(result[0].args).toEqual(expect.objectContaining(mockPatchResult.args));
+    // Verify that oldContent and newContent were added during verification
+    expect(result[0].args).toEqual(
+      expect.objectContaining({
+        ...mockPatchResult.args,
+        oldContent: originalContent,
+        newContent: 'patched content',
+      }),
+    );
     expect(fs.readFileSync).toHaveBeenCalledWith('/test/file.ts', 'utf-8');
     expect(diff.applyPatch).toHaveBeenCalledWith(originalContent, patchContent);
   });
@@ -308,7 +322,9 @@ describe('processFileUpdates', () => {
     vi.mocked(fs.readFileSync).mockReturnValue(originalContent);
     vi.mocked(diff.applyPatch).mockReturnValue(false); // Simulate patch failure
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockPatchResult]).mockResolvedValueOnce([mockUpdateResult]);
+    mockGenerateContentFn
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockPatchResult }]) // Initial patch attempt
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdateResult }]); // Recovery update attempt
 
     const result = await processFileUpdates(
       mockGenerateContentFn,
@@ -320,10 +336,10 @@ describe('processFileUpdates', () => {
     );
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(mockUpdateResult);
+    expect(result[0]).toEqual(expect.objectContaining(mockUpdateResult));
     expect(fs.readFileSync).toHaveBeenCalledWith('/test/file.ts', 'utf-8');
     expect(diff.applyPatch).toHaveBeenCalledWith(originalContent, invalidPatch);
-    expect(mockGenerateContentFn).toHaveBeenCalledTimes(2);
+    expect(mockGenerateContentFn).toHaveBeenCalledTimes(2); // Patch attempt + Update attempt
   });
 
   it('should update prompt with function calls and responses', async () => {
@@ -336,12 +352,12 @@ describe('processFileUpdates', () => {
       },
     };
 
-    mockGenerateContentFn.mockResolvedValueOnce([mockUpdateResult]);
+    mockGenerateContentFn.mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdateResult }]);
 
     const prompt: PromptItem[] = [{ type: 'user', text: 'test prompt' }];
     await processFileUpdates(
       mockGenerateContentFn,
-      prompt,
+      prompt, // Pass the prompt array to be modified
       mockFunctionDefs,
       mockOptions,
       mockCodegenSummary,
@@ -349,10 +365,10 @@ describe('processFileUpdates', () => {
     );
 
     // Check if prompt was updated with function calls and responses
-    expect(prompt).toHaveLength(3); // original + assistant + user response
+    expect(prompt).toHaveLength(3); // original user + assistant call + user response
     expect(prompt[1].type).toBe('assistant');
-    expect(prompt[1].functionCalls).toBeDefined();
+    expect(prompt[1].functionCalls).toEqual([expect.objectContaining(mockUpdateResult)]); // Check the content of the call
     expect(prompt[2].type).toBe('user');
-    expect(prompt[2].functionResponses).toBeDefined();
+    expect(prompt[2].functionResponses).toEqual([{ name: 'updateFile', call_id: undefined }]); // Check the response
   });
 });

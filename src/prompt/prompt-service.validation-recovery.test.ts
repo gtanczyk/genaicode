@@ -253,13 +253,7 @@ describe('promptService - Validation and Recovery', () => {
     it('should handle successful patch application', async () => {
       vi.mocked(cliParams).aiService = 'vertex-ai';
 
-      const validPatch = `Index: test.js
-===================================================================
---- test.js
-+++ test.js
-@@ -1,1 +1,1 @@
--Original content
-+New content`;
+      const validPatch = `Index: test.js\n===================================================================\n--- test.js\n+++ test.js\n@@ -1,1 +1,1 @@\n-Original content\n+New content`;
       const planningResponse = mockResponses.mockPlanningResponse(mockData.paths.test);
       const summaryResponse = mockResponses.mockCodegenSummary(mockData.paths.test, 'patchFile');
       const patchResponse = mockResponses.mockPatchFile(mockData.paths.test, validPatch);

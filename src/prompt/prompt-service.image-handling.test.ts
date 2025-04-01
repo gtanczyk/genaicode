@@ -252,8 +252,8 @@ describe('promptService - Image Handling', () => {
         { width: 256, height: 256 },
         ModelType.DEFAULT,
       );
-      // The result should contain the downloadFile call
-      expect(result).toEqual(downloadFileResponse);
+      // The result should contain both the generateImage and downloadFile calls
+      expect(result).toEqual([...generateImageResponse, ...downloadFileResponse]);
     });
 
     it('should handle image generation failure', async () => {
@@ -286,8 +286,8 @@ describe('promptService - Image Handling', () => {
         { width: 256, height: 256 },
         ModelType.DEFAULT,
       );
-      // The result should contain the explanation about the failure
-      expect(result).toEqual(explanationResponse);
+      // The result should contain the generateImage call and the explanation about the failure
+      expect(result).toEqual([...generateImageResponse, ...explanationResponse]);
     });
   });
 });
