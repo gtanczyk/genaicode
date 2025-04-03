@@ -47,7 +47,6 @@ export async function executeStepGenerateSummary(
 
     if (summaryExplanation && summaryExplanation.args && typeof summaryExplanation.args.text === 'string') {
       const conversationSummary = summaryExplanation.args.text;
-      // TODO: this should be the final message in the UI
       putSystemMessage('Generated conversation summary', conversationSummary, [ChatMessageFlags.CONVERSATION_SUMMARY]);
     } else {
       throw new Error('Failed to generate summary: unexpected response format');

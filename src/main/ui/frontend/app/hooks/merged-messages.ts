@@ -40,10 +40,9 @@ export function useMergedMessages(messages: ChatMessage[]): IterationGroup[] {
         }
 
         if (message.flags?.includes(ChatMessageFlags.CONVERSATION_SUMMARY) && message.data) {
-          currentIteration.conversationSummaries.push(message.data as string);
-          if (!currentIteration.iterationTitle) {
-            currentIteration.iterationTitle = message.data as string;
-          }
+          currentIteration.conversationSummaries.push(message.data as unknown as string);
+          // Always update iterationTitle with the latest summary found
+          currentIteration.iterationTitle = message.data as unknown as string;
         }
 
         if (message.type === ChatMessageType.SYSTEM) {
