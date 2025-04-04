@@ -118,10 +118,11 @@ export const generateContent: GenerateContentFunction = async function generateC
         ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
       },
     };
-  } else {
+  } else if (expectedResponseType.functionCall === false) {
     req.toolConfig = {
       functionCallingConfig: {
         mode: FunctionCallingMode.NONE,
+        allowedFunctionNames: [],
       },
     };
   }
