@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-093] 2024-08-16: Refactor conversation summary prompt generation - Extracted prompt creation logic from `step-generate-summary.ts` into `prepareSummaryPrompt` and updated evaluation tests (`conversation-summary.test.ts`) to use it for consistency.
 - [-] [GEN-092] 2024-08-15: Refactored modelOverrides to support per-model systemInstruction and outputTokenLimit configuration, allowing different settings for individual models rather than just per service.
 - [-] [GEN-091] 2024-08-14: Enhanced OpenAI service to fully support `expectedResponseType` parameter, allowing callers to specify whether they expect text, function calls, or both in responses.
 - [-] [GEN-090] 2024-08-13: Add `outputTokenLimit` to `modelOverrides` in `.genaicoderc` to allow customizing max output tokens per service.
