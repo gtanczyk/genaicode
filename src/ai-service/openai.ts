@@ -183,6 +183,8 @@ export async function internalGenerateContent(
     } else if (expectedResponseType.functionCall !== false) {
       // Require tool use unless explicitly text-only is expected
       toolChoice = 'required';
+    } else if (expectedResponseType.functionCall === false) {
+      toolChoice = 'none';
     }
   }
 
@@ -195,7 +197,7 @@ export async function internalGenerateContent(
           ...(tools ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
           ...(modelType !== ModelType.REASONING ? { temperature } : {}),
-          ...(outputTokenLimit ? { max_tokens: outputTokenLimit } : {}),
+          ...(outputTokenLimit && modelType !== ModelType.REASONING ? { max_tokens: outputTokenLimit } : {}),
         },
         { signal: abortController?.signal },
       );
