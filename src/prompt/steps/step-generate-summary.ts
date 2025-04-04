@@ -6,6 +6,24 @@ import { putSystemMessage } from '../../main/common/content-bus.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { ChatMessageFlags } from '../../main/common/content-bus-types.js';
 
+/**
+ * Prepares the prompt array for requesting a conversation summary.
+ * @param prompt The current conversation prompt items.
+ * @returns The augmented prompt array including the summarization request.
+ */
+export function prepareSummaryPrompt(prompt: PromptItem[]): PromptItem[] {
+  return [
+    ...prompt,
+    // Add a standard assistant message before the summary request
+    // to provide context that the assistant has processed the preceding user message.
+    { type: 'assistant', text: 'Thank you for explaining the task.' },
+    {
+      type: 'user',
+      text: `Provide a concise 10-word title that summarizes the main topic of this conversation.`,
+    },
+  ];
+}
+
 export async function executeStepGenerateSummary(
   generateContentFn: GenerateContentFunction,
   prompt: PromptItem[],
@@ -16,18 +34,14 @@ export async function executeStepGenerateSummary(
     return;
   }
 
+  // Prepare the prompt using the dedicated function
+  const summaryPrompt = prepareSummaryPrompt(prompt);
+
   const summaryRequest: GenerateContentArgs = [
-    [
-      ...prompt,
-      { type: 'assistant', text: 'Thank you for explaining the task.' },
-      {
-        type: 'user',
-        text: `Summarize the conversation in one sentence, maximum 10 words.`,
-      },
-    ],
+    summaryPrompt,
     {
       functionDefs: getFunctionDefs(),
-      requiredFunctionName: 'explanation',
+      requiredFunctionName: 'conversationSummary',
       temperature: 0.3, // Use a lower temperature for more focused summaries
       modelType: ModelType.CHEAP,
       expectedResponseType: {
@@ -43,10 +57,10 @@ export async function executeStepGenerateSummary(
     const summaryResult = (await generateContentFn(...summaryRequest))
       .filter((item) => item.type === 'functionCall')
       .map((item) => item.functionCall);
-    const summaryExplanation = summaryResult.find((call) => call.name === 'explanation');
+    const summaryExplanation = summaryResult.find((call) => call.name === 'conversationSummary');
 
-    if (summaryExplanation && summaryExplanation.args && typeof summaryExplanation.args.text === 'string') {
-      const conversationSummary = summaryExplanation.args.text;
+    if (summaryExplanation && summaryExplanation.args && typeof summaryExplanation.args.title === 'string') {
+      const conversationSummary = summaryExplanation.args.title;
       putSystemMessage('Generated conversation summary', conversationSummary, [ChatMessageFlags.CONVERSATION_SUMMARY]);
     } else {
       throw new Error('Failed to generate summary: unexpected response format');
