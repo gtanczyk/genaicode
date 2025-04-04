@@ -22,7 +22,7 @@ export async function executeStepGenerateSummary(
       { type: 'assistant', text: 'Thank you for explaining the task.' },
       {
         type: 'user',
-        text: `Now please summarize our conversation, I want maximum 1 sentence of maximum 10 words explaning the conversation.`,
+        text: `Summarize the conversation in one sentence, maximum 10 words.`,
       },
     ],
     {
