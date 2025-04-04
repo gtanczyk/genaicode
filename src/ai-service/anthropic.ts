@@ -178,15 +178,20 @@ export const generateContent: GenerateContentFunction = async function generateC
             model: model,
             system: baseSystemPrompt,
             messages: messages,
-            tools: functionDefs.map((fd) => ({
-              name: fd.name,
-              description: fd.description,
-              input_schema: fd.parameters,
-            })),
+            tools:
+              expectedResponseType.functionCall !== false
+                ? functionDefs.map((fd) => ({
+                    name: fd.name,
+                    description: fd.description,
+                    input_schema: fd.parameters,
+                  }))
+                : undefined,
             tool_choice:
               requiredFunctionName && modelType !== ModelType.REASONING
                 ? { type: 'tool' as const, name: requiredFunctionName }
-                : functionDefs.length > 0 && modelType !== ModelType.REASONING
+                : functionDefs.length > 0 &&
+                    modelType !== ModelType.REASONING &&
+                    expectedResponseType.functionCall !== false
                   ? { type: 'any' as const }
                   : undefined,
             max_tokens: maxTokens,
