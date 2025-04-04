@@ -74,6 +74,7 @@ export async function validateAndRecoverSingleResult(
           { functionDefs, requiredFunctionName, temperature, modelType: ModelType.DEFAULT },
           options,
         );
+        calls = result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
         recoveryError = validateFunctionCall(calls?.[0], requiredFunctionName, calls, rootDir);
         assert(!recoveryError, 'Recovery failed');
       }
