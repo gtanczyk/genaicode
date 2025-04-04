@@ -106,7 +106,7 @@
     "find-cache-dir": "^5.0.0",
     "glob-regex": "^0.3.2",
     "helmet": "^7.1.0",
-    "image-size": "^1.1.1",
+    "image-size": "^1.2.1",
     "inquirer-file-selector": "^0.4.0",
     "jsonschema": "^1.4.1",
     "mime-types": "^2.1.35",
