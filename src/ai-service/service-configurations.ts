@@ -9,9 +9,6 @@ import {
 import { ServiceConfigRequirements } from './service-configurations-types.js';
 import { ServiceConfig } from './service-configurations-types.js';
 
-// Default token limits (can be overridden per model)
-const DEFAULT_TOKEN_LIMIT = 8192;
-
 const configurations: ServiceConfigurations = {
   'ai-studio': {
     apiKey: process.env.API_KEY,
@@ -100,13 +97,13 @@ const configurations: ServiceConfigurations = {
 export function getModelSettings(
   serviceType: AiServiceType,
   modelName: string,
-): { systemInstruction?: string[]; outputTokenLimit: number } {
+): { systemInstruction?: string[]; outputTokenLimit?: number } {
   const serviceConfig = configurations[serviceType];
   const modelSpecificSettings = serviceConfig?.modelOverrides?.modelSpecificSettings?.[modelName];
 
   return {
     systemInstruction: modelSpecificSettings?.systemInstruction,
-    outputTokenLimit: modelSpecificSettings?.outputTokenLimit ?? DEFAULT_TOKEN_LIMIT,
+    outputTokenLimit: modelSpecificSettings?.outputTokenLimit,
   };
 }
 
