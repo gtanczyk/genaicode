@@ -28,6 +28,7 @@ describe('step-ask-question', () => {
       reasoningInference: true,
       requestFilesFragments: true,
       conversationGraph: true,
+      readExternalFiles: true,
     };
 
     // Check if each action type has a registered handler

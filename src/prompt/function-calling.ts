@@ -32,6 +32,7 @@ import { compressContext } from './function-defs/context-compression.js';
 import { extractFileFragments } from './function-defs/extract-file-fragments.js';
 import { conversationGraph, evaluateEdge } from './function-defs/conversation-graph.js';
 import { conversationSummaryDef } from './function-defs/conversation-summary.js';
+import { readExternalFiles } from './function-defs/read-external-files.js';
 
 /**
  * Function definitions for function calling feature
@@ -69,6 +70,7 @@ export function getFunctionDefs(): FunctionDef[] {
     evaluateEdge,
     sendMessage,
     conversationSummaryDef,
+    readExternalFiles,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

@@ -11,6 +11,7 @@ export type ActionType =
   | 'sendMessage'
   | 'generateImage'
   | 'requestPermissions'
+  | 'readExternalFiles'
   | 'requestFilesContent'
   | 'removeFilesFromContext'
   | 'confirmCodeGeneration'
@@ -89,6 +90,11 @@ export type RequestFilesFragmentsArgs = {
   filePaths: string[];
   /** Prompt describing what information should be extracted from the files */
   fragmentPrompt: string;
+};
+
+export type ReadExternalFilesArgs = {
+  externalFilePaths: string[];
+  reason: string;
 };
 
 export type RemoveFilesFromContextArgs = {
