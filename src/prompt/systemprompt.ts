@@ -94,8 +94,8 @@ Also additional actions can be added by plugins, and their names will be prefixe
 Example use cases of action types:
 
 - Have a conversation with the user, provide direct answers to questions, share immediate observations **based on direct inspection**, provide feedback etc. -> **sendMessage**
-- Need access to some files contents, which are inside the project folder, but content was not provided for them (have only summary, content is null) -> **requestFilesContent**
-- Need to access content of files which are outside of the project folder, are external files -> **readExternalFiles**
+- Need access to some files contents, which exist in the project, but content was not provided for them (have only summary, content is null) -> **requestFilesContent**
+- Need to access content of files which do not belong to the project -> **readExternalFiles**
 - Small change in one file that exists already is needed, and conversation should continue -> **updateFile**
 - You want to create one new file during the conversation, and then continue the conversation -> **createFile**
 - The conclusion of the conversation is to perform an implementation -> **confirmCodeGeneration**
