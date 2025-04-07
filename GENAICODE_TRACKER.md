@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-096] 2025-04-04 (Updated 2025-04-05): Implement exploreExternalDirectories action - Allow AI to request exploration of external directories with user confirmation, LLM argument inference, required depth parameter, and synthesis step for large results to reduce token usage.
 - [-] [GEN-095] 2025-04-04 (Updated 2025-04-04): Refactor `handleReadExternalFiles` - Implemented LLM argument inference, batch user confirmation for external files, and refined AI processing prompt based on reason.
 - [x] [GEN-094] 2025-04-03 (Updated 2025-04-04): Implement readExternalFiles action type - Initial implementation allowing external file reading with per-file confirmation.
 - [-] [GEN-093] 2024-08-16: Refactor conversation summary prompt generation - Extracted prompt creation logic from `step-generate-summary.ts` into `prepareSummaryPrompt` and updated evaluation tests (`conversation-summary.test.ts`) to use it for consistency.

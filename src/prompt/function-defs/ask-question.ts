@@ -17,7 +17,8 @@ Detailed Explanation of actionTypes:
 - performAnalysis: Use when there's a need to analyze complex problems or data that requires enhanced context or more expensive computation. This action supports both code and image analysis with customizable context and parameters.
 - requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
-- readExternalFiles: Use to request access to read files located outside the project's root directory. User confirmation is required for each external file. Only processed information (summary or extracted facts) will be returned, not the raw file content.
+- readExternalFiles: Use to request access to read files located outside the project's root directory. User confirmation is required for the batch of external files. Only processed information (summary or extracted facts) will be returned, not the raw file content.
+- exploreExternalDirectories: Use to explore directories located outside the project's root directory to find files matching specific criteria (recursive, depth, search phrases). User confirmation is required. Returns a list of file paths.
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - contextCompression: Use to compress the context by removing unnecessary tokens and optimizing the context size while maintaining essential information.
@@ -49,6 +50,7 @@ export const actionTypeOptions: string[] = [
   'requestPermissions',
   'requestFilesContent',
   'readExternalFiles',
+  'exploreExternalDirectories',
   'removeFilesFromContext',
   'contextOptimization',
   'contextCompression',

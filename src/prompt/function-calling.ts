@@ -33,6 +33,7 @@ import { extractFileFragments } from './function-defs/extract-file-fragments.js'
 import { conversationGraph, evaluateEdge } from './function-defs/conversation-graph.js';
 import { conversationSummaryDef } from './function-defs/conversation-summary.js';
 import { readExternalFiles } from './function-defs/read-external-files.js';
+import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
 
 /**
  * Function definitions for function calling feature
@@ -71,6 +72,7 @@ export function getFunctionDefs(): FunctionDef[] {
     sendMessage,
     conversationSummaryDef,
     readExternalFiles,
+    exploreExternalDirectories, // Added this line
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

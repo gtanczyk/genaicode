@@ -14,6 +14,7 @@ export type ActionType =
   | 'readExternalFiles'
   | 'requestFilesContent'
   | 'removeFilesFromContext'
+  | 'exploreExternalDirectories'
   | 'confirmCodeGeneration'
   | 'endConversation'
   | 'contextOptimization'

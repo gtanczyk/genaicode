@@ -29,6 +29,7 @@ describe('step-ask-question', () => {
       requestFilesFragments: true,
       conversationGraph: true,
       readExternalFiles: true,
+      exploreExternalDirectories: true,
     };
 
     // Check if each action type has a registered handler

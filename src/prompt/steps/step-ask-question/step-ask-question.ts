@@ -33,6 +33,7 @@ import './handlers/handle-search-code.js';
 import './handlers/handle-send-message.js';
 import './handlers/handle-update-file.js';
 import './handlers/handle-read-external-files.js';
+import './handlers/handle-explore-external-directories.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
