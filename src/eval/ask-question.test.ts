@@ -213,6 +213,14 @@ describe.each([
       sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       promptPrefix: [],
     },
+    {
+      name: 'explore external directories request',
+      userMessage: 'Can you list the files in /var/log?',
+      expectedActionType: 'exploreExternalDirectories' as ActionType,
+      expectedMessageContent: expect.stringContaining('/var/log'),
+      sourceCodeTree: {},
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
