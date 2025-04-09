@@ -95,7 +95,8 @@ Example use cases of action types:
 
 - Have a conversation with the user, provide direct answers to questions, share immediate observations **based on direct inspection**, provide feedback etc. -> **sendMessage**
 - Need access to some files contents, which exist in the project, but content was not provided for them (have only summary, content is null) -> **requestFilesContent**
-- Need to access content of files which do not belong to the project -> **readExternalFiles**
+- Need to access the *content* of a specific configuration file outside the project, like \`/etc/hosts\` or a specific log file -> **readExternalFiles**
+- Need to get a *list of files* in an external directory like \`/var/log\` to understand available log files before reading their content, or to find files based on certain criteria within a directory -> **exploreExternalDirectories**
 - Small change in one file that exists already is needed, and conversation should continue -> **updateFile**
 - You want to create one new file during the conversation, and then continue the conversation -> **createFile**
 - The conclusion of the conversation is to perform an implementation -> **confirmCodeGeneration**

@@ -221,6 +221,14 @@ describe.each([
       sourceCodeTree: {},
       promptPrefix: [],
     },
+    {
+      name: 'read external files request',
+      userMessage: 'Can you read the contents of /var/log/syslog?',
+      expectedActionType: 'readExternalFiles' as ActionType,
+      expectedMessageContent: expect.stringContaining('/var/log/syslog'),
+      sourceCodeTree: {},
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
