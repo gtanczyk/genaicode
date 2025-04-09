@@ -1,7 +1,5 @@
-- continue conversation after codegen
 - summary of file changes, option to revert file change
 - fix programmatic usage problems
-- an option to compress/summarize current history of conversation
 - option to regenerate an assistant message (with different model)
 - prompt for api key on failure
 - schema corner case -> proper virtual files
@@ -9,10 +7,7 @@
 - diff view with file browser on the left instead of linear
 - make the prompt from codegensummary more exhaustive
 - button to manually apply old/new from diff
-- [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-exp-1206:generateContent: [400 Bad Request] Invalid JSON payload received. Unknown name "args" at 'contents[17].parts[0].function_call': Proto field is not repeating, cannot start list. [{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"contents[17].parts[0].function_call","description":"Invalid JSON payload received. Unknown name \"args\" at 'contents[17].parts[0].function_call': Proto field is not repeating, cannot start list."}]}]
 - codegen summary sorted by dependencies
 - no idea what permissions are requested
 - asset file type
 - optimize context not working, returning all files on gemini
-- lint assistant response is a copy of success message
-- static answers as system message (Accepting plan if not custom)
