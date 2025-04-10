@@ -194,7 +194,7 @@ describe.each([
     {
       name: 'forced reasoning inference',
       userMessage: 'lets run reasoning inference',
-      expectedActionType: 'sendMessage',
+      expectedActionType: 'reasoningInference',
       promptPrefix: [],
     },
     {

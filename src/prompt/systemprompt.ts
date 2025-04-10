@@ -111,7 +111,7 @@ Example use cases of action types:
 - End the conversation -> **endConversation**
 - The user needs help with GenAIcode itself, encountered a problem, or needs guidance -> **genaicodeHelp**
 - Perform inference on a AI model with reasoning capabilities -> **reasoningInference**
-- Define and execute a structured conversation flow -> **conversationGraph**
+- Complex, multi-step conversations that require **planning** and structured flow, wnen implementing complex features or handling tasks that involve multiple decisions and steps -> **conversationGraph**
 
 ### Efficient File Content Requests
 
