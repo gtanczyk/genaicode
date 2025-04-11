@@ -229,6 +229,14 @@ describe.each([
       sourceCodeTree: {},
       promptPrefix: [],
     },
+    {
+      name: 'ambiguous external file/directory request',
+      userMessage: 'Can you check the logs in /var/log?',
+      expectedActionType: 'exploreExternalDirectories' as ActionType,
+      expectedMessageContent: expect.stringMatching('/var/log'),
+      sourceCodeTree: {},
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
