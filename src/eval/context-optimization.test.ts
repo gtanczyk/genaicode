@@ -39,7 +39,7 @@ describe.each([
     {
       dataset: 'small, math module',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES,
       userMessage: "Let's add a unit test for the math module",
       expectedOptimizedFiles: ['/project/src/math/math.ts', '/project/src/math/math-utils.ts'],
       optionalOptimizedFiles: [],
@@ -47,7 +47,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Lets create unit tests for validation-utils.ts',
       expectedOptimizedFiles: ['/project/src/todo-app/utils/validation-utils.ts'],
       optionalOptimizedFiles: [
@@ -66,7 +66,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'hello there!',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
@@ -74,7 +74,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'need to convert all files to plain javascript',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [
@@ -88,7 +88,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'hey, we need to work on the login flow e2e, can you explain how it works currently?',
       expectedOptimizedFiles: [
         '/project/src/todo-app/auth/user-auth.ts',
@@ -108,7 +108,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'I want to add a due date field to the task creation form.',
       expectedOptimizedFiles: [
         '/project/src/todo-app/frontend/components/tasks/task-list.tsx',
@@ -127,7 +127,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'How does user authentication work in this app?',
       expectedOptimizedFiles: [
         '/project/src/todo-app/auth/user-auth.ts',
@@ -146,7 +146,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'I need to change the color scheme of the app to a dark theme.',
       expectedOptimizedFiles: [
         '/project/src/todo-app/frontend/components/app.tsx',
@@ -163,7 +163,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: "Fix the bug where deleting a project doesn't remove its associated tasks.",
       expectedOptimizedFiles: [
         '/project/src/todo-app/projects/project-manager.ts',
@@ -180,7 +180,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Integrate Google Calendar to allow syncing tasks with deadlines.',
       expectedOptimizedFiles: [
         '/project/src/todo-app/integrations/google-calendar.ts',
@@ -201,7 +201,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Generate a report of all completed tasks in the last month.',
       expectedOptimizedFiles: [
         '/project/src/todo-app/reporting/report-manager.ts',
@@ -215,7 +215,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Optimize the search functionality to provide faster results when searching for tasks.',
       expectedOptimizedFiles: [
         '/project/src/todo-app/api/api-manager.ts',
@@ -229,7 +229,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Rewrite the entire codebase to use Rust instead of TypeScript.',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
@@ -237,7 +237,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Refactor the code to improve its maintainability and readability.',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
@@ -245,7 +245,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: 'Apply a consistent coding style to the entire project',
       expectedOptimizedFiles: [],
       optionalOptimizedFiles: [],
@@ -253,7 +253,7 @@ describe.each([
     {
       dataset: 'large',
       rootDir: MOCK_SOURCE_CODE_SUMMARIES_LARGE_ROOT_DIR,
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       userMessage: "Why does changing my notification preferences sometimes seem to affect the app's responsiveness?",
       expectedOptimizedFiles: [
         '/project/src/todo-app/settings/preferences.ts',
@@ -271,7 +271,7 @@ describe.each([
     },
   ])(
     '$dataset, $userMessage',
-    async ({ rootDir, sourceCodeTree, userMessage, expectedOptimizedFiles, optionalOptimizedFiles }) => {
+    async ({ rootDir, sourceCode, userMessage, expectedOptimizedFiles, optionalOptimizedFiles }) => {
       // Prepare prompt items for optimization
       const prompt: PromptItem[] = [
         {
@@ -302,7 +302,7 @@ describe.each([
           functionResponses: [
             {
               name: 'getSourceCode',
-              content: JSON.stringify(sourceCodeTree),
+              content: JSON.stringify(sourceCode),
             },
           ],
         },

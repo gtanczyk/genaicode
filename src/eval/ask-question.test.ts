@@ -21,6 +21,7 @@ import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summar
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
+import { generateFileId } from '../files/file-id-utils.js';
 
 vi.setConfig({
   testTimeout: 3 * 60000,
@@ -40,7 +41,7 @@ describe.each([
       userMessage: 'hello',
       expectedActionType: 'sendMessage' as ActionType,
       expectedMessageContent: expect.stringContaining('Hello'),
-      sourceCodeTree: {},
+      sourceCode: {},
       promptPrefix: [],
     },
     {
@@ -48,7 +49,7 @@ describe.each([
       userMessage: 'good bye',
       expectedActionType: 'endConversation' as ActionType,
       expectedMessageContent: expect.stringContaining('bye'),
-      sourceCodeTree: {},
+      sourceCode: {},
       promptPrefix: [],
     },
     {
@@ -56,7 +57,7 @@ describe.each([
       userMessage: 'what is the code style used in project-manager.ts file',
       expectedActionType: 'requestFilesContent' as ActionType,
       expectedMessageContent: expect.stringContaining('project-manager.ts'),
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       promptPrefix: [],
     },
     {
@@ -64,7 +65,7 @@ describe.each([
       userMessage: 'what is the code style used in project-manager.ts file',
       expectedActionType: 'sendMessage' as ActionType,
       expectedMessageContent: expect.stringContaining('TypeScript'),
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       promptPrefix: [
         {
           type: 'user',
@@ -141,13 +142,14 @@ describe.each([
       ] as PromptItem[],
     },
     {
-      name: 'updateFile without context',
-      userMessage: 'Please update /project/src/missing-file.ts',
+      name: 'updateFile without content - should requestFilesContent',
+      userMessage: 'Please update /project/src/data-file.ts with copyright notice: Apache 2.0',
       expectedActionType: 'requestFilesContent',
-      expectedMessageContent: expect.stringContaining('/project/src/missing-file.ts'),
-      sourceCodeTree: {
+      expectedMessageContent: expect.stringContaining('/project/src/data-file.ts'),
+      sourceCode: {
         ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
-        '/project/src/missing-file.ts': {
+        '/project/src/data-file.ts': {
+          fileId: generateFileId('/project/src/data-file.ts'),
           summary: 'This file contains important calculations',
         },
       },
@@ -158,9 +160,10 @@ describe.each([
       userMessage: 'Create a new file at /project/src/todo-app/existing-file.ts with example console log',
       expectedActionType: 'sendMessage',
       expectedMessageContent: expect.stringContaining('already exists'),
-      sourceCodeTree: {
+      sourceCode: {
         ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
         '/project/src/todo-app/existing-file.ts': {
+          fileId: generateFileId('/project/src/todo-app/existing-file.ts'),
           content: 'console.log("Hello, World!");',
         },
       },
@@ -171,9 +174,10 @@ describe.each([
       userMessage: 'Create a new file at /project/src/todo-app/new-file.ts with example console log',
       expectedActionType: 'createFile',
       expectedMessageContent: expect.stringContaining('new-file.ts'),
-      sourceCodeTree: {
+      sourceCode: {
         ...MOCK_SOURCE_CODE_SUMMARIES_LARGE,
         '/project/src/todo-app/other-file.ts': {
+          fileId: generateFileId('/project/src/todo-app/other-file.ts'),
           content: 'console.log("Hello, World!");',
         },
       },
@@ -210,7 +214,7 @@ describe.each([
 8. Write tests for all components`,
       expectedActionType: 'conversationGraph' as ActionType,
       expectedMessageContent: expect.stringContaining('authentication feature'),
-      sourceCodeTree: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE,
       promptPrefix: [],
     },
     {
@@ -218,7 +222,7 @@ describe.each([
       userMessage: 'Can you list the files in /var/log?',
       expectedActionType: 'exploreExternalDirectories' as ActionType,
       expectedMessageContent: expect.stringContaining('/var/log'),
-      sourceCodeTree: {},
+      sourceCode: {},
       promptPrefix: [],
     },
     {
@@ -226,7 +230,7 @@ describe.each([
       userMessage: 'Can you read the contents of /var/log/syslog?',
       expectedActionType: 'readExternalFiles' as ActionType,
       expectedMessageContent: expect.stringContaining('/var/log/syslog'),
-      sourceCodeTree: {},
+      sourceCode: {},
       promptPrefix: [],
     },
     {
@@ -234,10 +238,10 @@ describe.each([
       userMessage: 'Can you check the logs in /var/log?',
       expectedActionType: 'exploreExternalDirectories' as ActionType,
       expectedMessageContent: expect.stringMatching('/var/log'),
-      sourceCodeTree: {},
+      sourceCode: {},
       promptPrefix: [],
     },
-  ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCodeTree, promptPrefix }) => {
+  ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCode, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
       {
@@ -268,7 +272,7 @@ describe.each([
         functionResponses: [
           {
             name: 'getSourceCode',
-            content: JSON.stringify(sourceCodeTree),
+            content: JSON.stringify(sourceCode),
           },
         ],
       },
