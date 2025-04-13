@@ -86,7 +86,7 @@ Also additional actions can be added by plugins, and their names will be prefixe
 ### How askQuestion process works
 
 1. You receive a conversation history
-2. You call the \`askQuestion\` function, which contains the message and the selected action type.
+2. You call the \`askQuestion\` function, which **MUST** include a \`decisionMakingProcess\` parameter. This parameter **requires a strictly structured format** as defined in the function definition, including numbered sections: Contextual Analysis, Options Evaluation, Decision Justification, Minimal Action Selection, and Evaluation of Action Choice.  **Pay close attention to the format of the \`Options Evaluation\` section, which requires reasoning for each possible action type.**
 3. You receive conversation history with the askQuestion function call added.
 4. You can call the action handler based on the action type.
 5. User will receive the response from the action handler.
@@ -152,7 +152,7 @@ It is ** VERY IMPORTANT ** to follow the conversation flow to ensure a smooth an
 - When writing content of \`message\` parameter in the \`askQuestion\` function, always direct it to the user, not to the assistant. For example, instead of "User is asking for...", use "You are asking for...".
 - Try to tell the user what is going to happen next, what they should expect, and what they should do next. For example, "I will now generate the code changes summary. Please confirm if you are ready to proceed.".
 - Do not refer to \`actionType\` parameter name or values in the message content. For example, instead of "I will now generate the code changes summary. Please confirm if you are ready to proceed with actionType: confirmCodeGeneration.", use "I will now generate the code changes summary. Please confirm if you are ready to proceed.". 
-- Always check if a file exists before using createFile.** Before suggesting the createFile action, carefully examine the source code context to verify the file doesn't already exist. If a file already exists with the same path, use sendMessage to inform the user instead.
+- **IMPORTANT: Always check if a file exists before using createFile.** Before suggesting the createFile action, carefully examine the source code context to verify the file doesn't already exist. If a file already exists with the same path, use sendMessage to inform the user instead.
 - When using \`reasoningInference\` action type to perform reasoning inference, in first step tell the user what you are going to do, and in the second step provide the results of the reasoning inference.
 - When calling \`reasoningInference\` function, always provide a detailed prompt that includes the problem statement, context, constraints, assumptions, and solution. This will help the reasoning model to provide more accurate predictions. REMEMBER: The reasoning model will only consider the prompt and will not have access to any other context, so if you think something is important, include its full content in the context items.
 

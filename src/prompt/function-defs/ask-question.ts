@@ -12,11 +12,11 @@ function getActionTypeDescription(): string {
 Detailed Explanation of actionTypes:
 - sendMessage: Use for general information, clarifications, or when no specific code is needed, or when there is a need to analyze something.
 - generateImage: Use this action only if there is a need to generate an image based on the conversation, and then display it to the user.
-- updateFile: Use to update a single file that exists already with a new content. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
+- updateFile: Use to update a single file that exists already with a new content, **AFTER you have already obtained the file content using \`requestFilesContent\` if necessary**. This action is suitable for small changes. The user will be able to see the diff and approve or reject the change. Then you will be able to continue the conversation.
 - createFile: Use to create a new file with the provided content. The user will be able to see the new file and approve or reject the change. Then you will be able to continue the conversation.
 - performAnalysis: Use when there's a need to analyze complex problems or data that requires enhanced context or more expensive computation. This action supports both code and image analysis with customizable context and parameters.
 - requestPermissions: Use **only when you lack necessary permissions** for actions like creating, deleting, or moving files, and need to request them from the user.
-- requestFilesContent: Use specifically when needing to access or review the contents of files, and it was not provided yet in any of preceeding \`getSourceCode\` function responses.
+- requestFilesContent: Use specifically when needing to access or review the contents of files, and it is **not already present in the \`sourceCode\`**. Only use this action if the file content is genuinely missing after the \`getSourceCode\` function response.
 - readExternalFiles: Use to request access to **read the content of specific files** located outside the project's root directory. User confirmation is required for the batch of external files. Only processed information (summary or extracted facts) will be returned, not the raw file content. **This function is for getting the *contents* of known external files, not for listing directory contents.**
 - exploreExternalDirectories: Use to **list files and subdirectories within directories** located outside the project's root directory.  You can specify criteria to filter the files (recursive, depth, search phrases). User confirmation is required. **This function returns a list of file paths, allowing you to explore directory structures.**
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
@@ -90,7 +90,7 @@ The \`message\` property must align with the chosen \`actionType\`.
       decisionMakingProcess: {
         type: 'string',
         description: `A detailed reasoning framework describing how you chose the action.
-The decisionMakingProcess value must be provided in the following format:
+The decisionMakingProcess value **MUST** be provided in the following **EXACT** format:
 
 \`\`\`
 1. **Contextual Analysis**:
@@ -151,7 +151,7 @@ export const sendMessage: FunctionDef = {
 // requestFilesContent
 export const requestFilesContent: FunctionDef = {
   name: 'requestFilesContent',
-  description: 'Use this function to request the content of files that are missing from the context.',
+  description: 'Use this function to request the content of files that are missing from the `sourceCode`.',
   parameters: {
     type: 'object',
     properties: {
