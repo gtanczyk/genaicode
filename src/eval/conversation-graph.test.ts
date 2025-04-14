@@ -153,6 +153,21 @@ describe.each([
       userResponse: 'I want to cancel the feature development.',
       expectedEdge: undefined,
     },
+    {
+      userResponse:
+        "Yes, I think I'm ready to implement, but maybe just a quick sanity check on the requirements again before I start planning the details?",
+      expectedEdge: 'modifyRequirements',
+    },
+    {
+      userResponse:
+        "Regarding the context optimization, will it also handle cases where the context exceeds the model's token limit, or is it only for general optimization within the limit?",
+      expectedEdge: 'gatherInfo',
+    },
+    {
+      userResponse:
+        "I said I'm ready to implement, but actually, after thinking about it more, I think we should first refine the requirements a bit. Let's modify the requirements first.",
+      expectedEdge: 'modifyRequirements',
+    },
   ])('should evaluate edges in a conversation graph: $expectedEdge', async ({ userResponse, expectedEdge }) => {
     const conversationGraph: ConversationGraphArgs = {
       entryNode: 'start' as ConverationNodeId,
