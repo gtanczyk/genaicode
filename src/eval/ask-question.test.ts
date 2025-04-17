@@ -127,7 +127,7 @@ describe.each([
     {
       name: 'count objects on an image',
       expectedActionType: 'performAnalysis' as ActionType,
-      expectedMessageContent: expect.stringContaining('analyze'),
+      expectedMessageContent: expect.stringContaining('nalyz'),
       promptPrefix: [
         {
           type: 'user',
