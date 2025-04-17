@@ -2,8 +2,6 @@ import React, { useEffect, useRef, KeyboardEvent } from 'react';
 import { HamburgerMenuProps } from './types';
 import { MenuButton, MenuBackdrop, MenuContainer, MenuItem, MenuWrapper } from './styles';
 
-const GITHUB_ISSUES_URL = 'https://github.com/gtanczyk/genaicode/issues';
-
 export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
   menuItems,
   isOpen,
@@ -106,12 +104,6 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
     buttonRef.current?.focus();
   };
 
-  const handleReportBugClick = () => {
-    window.open(GITHUB_ISSUES_URL, '_blank', 'noopener,noreferrer');
-    onToggle();
-    buttonRef.current?.focus();
-  };
-
   return (
     <MenuWrapper className={className}>
       <MenuButton
@@ -148,15 +140,6 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
             {item.content} {item.ariaLabel}
           </MenuItem>
         ))}
-        <MenuItem
-          key="report-bug"
-          onClick={handleReportBugClick}
-          role="menuitem"
-          tabIndex={isOpen ? 0 : -1}
-          aria-label="Report Bug"
-        >
-          🐛 Report Bug
-        </MenuItem>
       </MenuContainer>
     </MenuWrapper>
   );

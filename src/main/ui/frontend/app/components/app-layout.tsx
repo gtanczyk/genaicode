@@ -15,6 +15,7 @@ import { dispatchRcConfigModalOpen } from './rc-config-modal.js';
 import { InfoIcon } from './info-icon.js';
 import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaicode-config/genaicode-config-modal.js';
 import { version } from '../../../../../../package.json';
+import { ToggleButton } from './toggle-button.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -23,6 +24,8 @@ interface AppLayoutProps {
   usage: Usage;
   toggleTheme: () => void;
 }
+
+const GITHUB_ISSUES_URL = 'https://github.com/gtanczyk/genaicode/issues';
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface, inputArea, usage, toggleTheme }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -63,6 +66,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
       ariaLabel: 'Information',
       key: 'info',
       onClick: dispatchRcConfigModalOpen,
+    },
+    {
+      content: <ToggleButton>🐛</ToggleButton>,
+      ariaLabel: 'Report Bug',
+      key: 'report-bug',
+      onClick: () => window.open(GITHUB_ISSUES_URL, '_blank', 'noopener,noreferrer'),
     },
   ];
 
