@@ -127,6 +127,19 @@ The GenAIcode tool offers a comprehensive set of features designed to enhance co
   - Visual content generation
   - Enhanced development workflow
 
+### Git Context Integration
+
+- **Activation**: Enabled by default when Git is available
+- **Description**: Allows the AI model to request context from the project's Git history.
+- **Features**:
+  - Request recent commit history.
+  - Request commit history for specific files.
+  - Request `git blame` output for specific files (and optionally commits).
+- **Usage**: The AI uses the `requestGitContext` action via the `askQuestion` function.
+- **Benefits**:
+  - Provides the AI with deeper understanding of code evolution.
+  - Improves the AI's ability to reason about changes and maintain consistency.
+
 ## Configuration Features
 
 ### Model Overrides

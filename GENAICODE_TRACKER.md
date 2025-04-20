@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-099] 2025-04-05: Implement requestGitContext action for Git integration (commits, file changes, blame)
 - [ ] [GEN-098] 2025-04-05: Refine action descriptions and examples for `readExternalFiles` and `exploreExternalDirectories` to improve LLM selection accuracy.
 - [-] [GEN-097] 2025-04-05 (Updated 2025-04-05): Refactor explore-external-directories.test.ts to validate inference and synthesis prompts
 - [x] [GEN-096] 2025-04-04 (Updated 2025-04-05): Implement exploreExternalDirectories action - Allow AI to request exploration of external directories with user confirmation, LLM argument inference, required depth parameter, synthesis step, and add evaluation tests.

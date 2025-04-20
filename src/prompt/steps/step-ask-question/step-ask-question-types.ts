@@ -29,6 +29,7 @@ export type ActionType =
   | 'pushAppContext'
   | 'reasoningInference'
   | 'requestFilesFragments'
+  | 'requestGitContext' // Added for Git integration
   | 'conversationGraph'
   | PluginActionType;
 
