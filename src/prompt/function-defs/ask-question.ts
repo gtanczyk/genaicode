@@ -19,6 +19,7 @@ Detailed Explanation of actionTypes:
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it is **not already present in the \`sourceCode\`**. Only use this action if the file content is genuinely missing after the \`getSourceCode\` function response.
 - readExternalFiles: Use to request access to **read the content of specific files** located outside the project's root directory. User confirmation is required for the batch of external files. Only processed information (summary or extracted facts) will be returned, not the raw file content. **This function is for getting the *contents* of known external files, not for listing directory contents.**
 - exploreExternalDirectories: Use to **list files and subdirectories within directories** located outside the project's root directory.  You can specify criteria to filter the files (recursive, depth, search phrases). User confirmation is required. **This function returns a list of file paths, allowing you to explore directory structures.**
+${rcConfig.featuresEnabled?.gitContext !== false ? '- requestGitContext: Use to request Git context information like recent commits, file changes, or blame output for specific files/commits.' : ''}
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - contextCompression: Use to compress the context by removing unnecessary tokens and optimizing the context size while maintaining essential information.
@@ -51,6 +52,7 @@ export const actionTypeOptions: string[] = [
   'requestFilesContent',
   'readExternalFiles',
   'exploreExternalDirectories',
+  ...(rcConfig.featuresEnabled?.gitContext !== false ? ['requestGitContext'] : ''),
   'removeFilesFromContext',
   'contextOptimization',
   'contextCompression',
@@ -377,5 +379,35 @@ export const pushAppContext: FunctionDef = {
       },
     },
     required: ['key', 'value'],
+  },
+};
+
+// requestGitContext
+export const requestGitContextDef: FunctionDef = {
+  name: 'requestGitContext',
+  description:
+    'Use this function to request Git context information like recent commits, file changes, or blame output.',
+  parameters: {
+    type: 'object',
+    properties: {
+      requestType: {
+        type: 'string',
+        enum: ['commits', 'fileChanges', 'blame'],
+        description: 'The type of Git information to request.',
+      },
+      filePath: {
+        type: 'string',
+        description: "The absolute file path required for 'fileChanges' and 'blame' requests.",
+      },
+      commitHash: {
+        type: 'string',
+        description: "The specific commit hash for 'blame' requests.",
+      },
+      count: {
+        type: 'number',
+        description: "The number of recent commits to retrieve for 'commits' requests.",
+      },
+    },
+    required: ['requestType'],
   },
 };

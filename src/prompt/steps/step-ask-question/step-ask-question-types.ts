@@ -29,6 +29,7 @@ export type ActionType =
   | 'pushAppContext'
   | 'reasoningInference'
   | 'requestFilesFragments'
+  | 'requestGitContext' // Added for Git integration
   | 'conversationGraph'
   | PluginActionType;
 
@@ -166,6 +167,13 @@ export type ReasoningInferenceResponseArgs = {
   response: string;
   /** The reasoning tokens provided by the model */
   reasoning: string;
+};
+
+export type RequestGitContextArgs = {
+  requestType: 'commits' | 'fileChanges' | 'blame';
+  filePath?: string;
+  commitHash?: string;
+  count?: number;
 };
 
 export type LintResult = {

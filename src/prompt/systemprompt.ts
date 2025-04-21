@@ -4,7 +4,7 @@ import { RcConfig } from '../main/config-types.js';
 
 /** Generates a system prompt with the codegen prompt merged */
 export function getSystemPrompt(
-  { rootDir, importantContext }: Pick<RcConfig, 'rootDir' | 'importantContext'>,
+  { rootDir, importantContext, featuresEnabled }: Pick<RcConfig, 'rootDir' | 'importantContext' | 'featuresEnabled'>,
   options: Omit<CodegenOptions, 'aiService'>,
 ) {
   const {
@@ -19,6 +19,8 @@ export function getSystemPrompt(
     vision,
     imagen,
   } = options;
+
+  const gitContextEnabled = featuresEnabled?.gitContext !== false;
 
   console.log('Generate system prompt');
 
@@ -59,7 +61,8 @@ Please limit any changes to the root directory of my application, which is \`${r
 - ${allowDirectoryCreate ? 'You are allowed to create new directories.' : `Do not create new directories.`}
 - ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
 - ${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets.'}
-- ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}\n`;
+- ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
+`;
 
   if (askQuestion && (interactive || ui)) {
     systemPrompt += `## Asking Questions And Conversing
@@ -112,6 +115,7 @@ Example use cases of action types:
 - The user needs help with GenAIcode itself, encountered a problem, or needs guidance -> **genaicodeHelp**
 - Perform inference on a AI model with reasoning capabilities -> **reasoningInference**
 - Complex, multi-step conversations that require **planning** and structured flow, wnen implementing complex features or handling tasks that involve multiple decisions and steps -> **conversationGraph**
+${gitContextEnabled ? '- Need to access Git information such as commit history, file changes, or blame data to understand code evolution or authorship -> **requestGitContext**' : ''}
 
 ### Efficient File Content Requests
 

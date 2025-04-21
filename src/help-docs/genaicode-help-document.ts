@@ -128,6 +128,7 @@ GenAIcode is an AI-powered code generation and management tool designed to strea
    - Custom operations
    - User interaction
    - File processing
+   - Git context retrieval (\`requestGitContext\` for commits, file changes, blame)
 
 3. **Operation Extensions**:
    - File operations
