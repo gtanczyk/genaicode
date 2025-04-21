@@ -46,7 +46,7 @@ export const handleRequestGitContext: ActionHandler = async ({
   generateContentFn,
   prompt,
 }: ActionHandlerProps): Promise<ActionResult> => {
-  putSystemMessage('Handling requestGitContext action.');
+  putSystemMessage('Handling git context action.');
 
   // Create a temporary prompt array including the instruction
   const inferencePrompt: PromptItem[] = [
@@ -72,7 +72,7 @@ export const handleRequestGitContext: ActionHandler = async ({
       .map((item) => item.functionCall);
 
   if (!requestGitContextCall?.args) {
-    putSystemMessage('No valid requestGitContext call found after inference.');
+    putSystemMessage('No valid git context call found after inference.');
     // Add the original assistant message back, but indicate failure
     prompt.push(
       {
@@ -90,7 +90,7 @@ export const handleRequestGitContext: ActionHandler = async ({
     };
   }
 
-  putSystemMessage('Inferred requestGitContext call', requestGitContextCall);
+  putSystemMessage('Obtained git context parameters', requestGitContextCall);
 
   // Add the original assistant message and the inferred function call to the main prompt
   prompt.push({
