@@ -169,6 +169,13 @@ export type ReasoningInferenceResponseArgs = {
   reasoning: string;
 };
 
+export type RequestGitContextArgs = {
+  requestType: 'commits' | 'fileChanges' | 'blame';
+  filePath?: string;
+  commitHash?: string;
+  count?: number;
+};
+
 export type LintResult = {
   success: boolean;
   stdout?: string;

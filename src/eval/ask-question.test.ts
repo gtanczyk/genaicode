@@ -241,6 +241,14 @@ describe.each([
       sourceCode: {},
       promptPrefix: [],
     },
+    {
+      name: 'request git context - commits',
+      userMessage: 'Show me the recent commits for this project.',
+      expectedActionType: 'requestGitContext' as ActionType,
+      expectedMessageContent: expect.stringContaining('commits'), // Expect the assistant to mention commits
+      sourceCode: {}, // No specific source code needed for repo-level commits
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCode, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [

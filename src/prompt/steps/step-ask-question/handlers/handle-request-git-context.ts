@@ -1,17 +1,10 @@
 import simpleGit, { SimpleGit, LogResult, DefaultLogFields } from 'simple-git';
-import { ActionHandler, ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
+import { ActionHandler, ActionHandlerProps, ActionResult, RequestGitContextArgs } from '../step-ask-question-types.js';
 import { rcConfig } from '../../../../main/config.js';
 import path from 'node:path';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ModelType, PromptItem } from '../../../../ai-service/common-types.js'; // Import PromptItem
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
-
-type RequestGitContextArgs = {
-  requestType: 'commits' | 'fileChanges' | 'blame';
-  filePath?: string;
-  commitHash?: string;
-  count?: number;
-};
 
 // Helper function to format log output
 function formatLog(log: LogResult<DefaultLogFields>): string {
@@ -34,9 +27,9 @@ export const GIT_CONTEXT_INSTRUCTION_PROMPT = `
       - 'commits': Get recent commit history for the entire repository.
       - 'fileChanges': Get commit history specifically for the given 'filePath'.
       - 'blame': Get line-by-line authorship information (git blame) for the given 'filePath'.
-    - filePath (optional, required for 'fileChanges' and 'blame'): The path to the file within the project. IMPORTANT: Ensure the provided filePath is relative to the project root and exists within the project directory structure.
+    - filePath (optional, absolute, required for 'fileChanges' and 'blame'): The path to the file within the project. IMPORTANT: Ensure the provided filePath is absolute and is inside of the project root and exists within the project directory structure.
     - commitHash (optional): A specific commit hash to focus the request (currently primarily relevant for context, might not alter 'blame' output significantly without further logic).
-    - count (optional): The maximum number of commits to retrieve (applies mainly to 'commits' and 'fileChanges').
+    - count (required for 'commits' and 'fileChanges'): The maximum number of commits to retrieve (applies mainly to 'commits' and 'fileChanges').
 
     Analyze the user's request and provide the arguments accurately.
   `;
