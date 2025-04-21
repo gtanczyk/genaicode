@@ -57,5 +57,6 @@ export interface RcConfig {
   plugins?: string[];
   featuresEnabled?: {
     appContext?: boolean;
+    gitContext?: boolean;
   };
 }

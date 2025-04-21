@@ -17,6 +17,7 @@ import {
   pushAppContext,
   requestFilesFragments,
   sendMessage,
+  requestGitContextDef,
 } from './function-defs/ask-question.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
@@ -72,7 +73,8 @@ export function getFunctionDefs(): FunctionDef[] {
     sendMessage,
     conversationSummaryDef,
     readExternalFiles,
-    exploreExternalDirectories, // Added this line
+    exploreExternalDirectories,
+    requestGitContextDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

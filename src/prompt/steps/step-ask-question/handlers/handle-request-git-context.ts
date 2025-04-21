@@ -3,7 +3,7 @@ import { ActionHandler, ActionHandlerProps, ActionResult } from '../step-ask-que
 import { rcConfig } from '../../../../main/config.js';
 import path from 'node:path';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { ModelType } from '../../../../ai-service/common-types.js';
+import { ModelType, PromptItem } from '../../../../ai-service/common-types.js'; // Import PromptItem
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 
 type RequestGitContextArgs = {
@@ -26,6 +26,21 @@ function formatBlame(blame: string): string {
   return `\nBlame Output:\n${blame}`;
 }
 
+// Define the detailed instruction prompt for the LLM
+export const GIT_CONTEXT_INSTRUCTION_PROMPT = `
+    You need to call the 'requestGitContext' function. Please determine the appropriate arguments based on the user's request.
+    Parameters:
+    - requestType (required): Choose one of 'commits', 'fileChanges', or 'blame'.
+      - 'commits': Get recent commit history for the entire repository.
+      - 'fileChanges': Get commit history specifically for the given 'filePath'.
+      - 'blame': Get line-by-line authorship information (git blame) for the given 'filePath'.
+    - filePath (optional, required for 'fileChanges' and 'blame'): The path to the file within the project. IMPORTANT: Ensure the provided filePath is relative to the project root and exists within the project directory structure.
+    - commitHash (optional): A specific commit hash to focus the request (currently primarily relevant for context, might not alter 'blame' output significantly without further logic).
+    - count (optional): The maximum number of commits to retrieve (applies mainly to 'commits' and 'fileChanges').
+
+    Analyze the user's request and provide the arguments accurately.
+  `;
+
 export const handleRequestGitContext: ActionHandler = async ({
   askQuestionCall,
   options,
@@ -34,24 +49,32 @@ export const handleRequestGitContext: ActionHandler = async ({
 }: ActionHandlerProps): Promise<ActionResult> => {
   putSystemMessage('Handling requestGitContext action.');
 
-  const [requestGitContextCall] = (
-    await generateContentFn(
-      prompt,
-      {
-        functionDefs: getFunctionDefs(),
-        requiredFunctionName: 'requestGitContext',
-        temperature: 0.7,
-        modelType: ModelType.CHEAP,
-        expectedResponseType: { text: false, functionCall: true, media: false },
-      },
-      options,
+  // Create a temporary prompt array including the instruction
+  const inferencePrompt: PromptItem[] = [
+    ...prompt,
+    { type: 'user', text: GIT_CONTEXT_INSTRUCTION_PROMPT }, // Add instruction as a user message
+  ];
+
+  const [requestGitContextCall] = // Use the temporary prompt with instructions for this specific call
+    (
+      await generateContentFn(
+        inferencePrompt, // Use the temporary prompt with the instruction
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'requestGitContext',
+          temperature: 0.7,
+          modelType: ModelType.CHEAP,
+          expectedResponseType: { text: false, functionCall: true, media: false },
+        },
+        options,
+      )
     )
-  )
-    .filter((item) => item.type === 'functionCall')
-    .map((item) => item.functionCall);
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall);
 
   if (!requestGitContextCall?.args) {
-    putSystemMessage('No valid requestGitContext call found.');
+    putSystemMessage('No valid requestGitContext call found after inference.');
+    // Add the original assistant message back, but indicate failure
     prompt.push(
       {
         type: 'assistant',
@@ -59,7 +82,7 @@ export const handleRequestGitContext: ActionHandler = async ({
       },
       {
         type: 'user',
-        text: 'No valid requestGitContext call found.',
+        text: 'Could not determine the correct parameters for the Git request based on your message.',
       },
     );
     return {
@@ -68,6 +91,9 @@ export const handleRequestGitContext: ActionHandler = async ({
     };
   }
 
+  putSystemMessage('Inferred requestGitContext call', requestGitContextCall);
+
+  // Add the original assistant message and the inferred function call to the main prompt
   prompt.push({
     type: 'assistant',
     text: askQuestionCall.args?.message ?? '',
@@ -105,7 +131,11 @@ export const handleRequestGitContext: ActionHandler = async ({
         if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
           throw new Error('Access denied: filePath is outside the project root.');
         }
-        const log = await git.log({ file: absoluteFilePath });
+        const logOptions: Record<string, unknown> = { file: absoluteFilePath };
+        if (args.count && args.count > 0) {
+          logOptions['--max-count'] = args.count;
+        }
+        const log = await git.log(logOptions);
         responseContent = `Changes for ${args.filePath}:\n${formatLog(log)}`;
         break;
       }
@@ -130,7 +160,8 @@ export const handleRequestGitContext: ActionHandler = async ({
         break;
       }
       default: {
-        throw new Error(`Invalid requestType: ${args.requestType}`);
+        // Should be caught by function call validation, but handle defensively
+        throw new Error(`Invalid requestType received: ${args.requestType}`);
       }
     }
   } catch (error: unknown) {
@@ -141,16 +172,20 @@ export const handleRequestGitContext: ActionHandler = async ({
         : 'An unknown error occurred while fetching Git context.';
   }
 
+  putSystemMessage('Git context response', {
+    responseContent,
+    errorMessage,
+  });
+
+  // Add the function response (result or error) to the main prompt
   prompt.push({
     type: 'user',
-    text: responseContent || errorMessage,
     functionResponses: [
       {
-        name: errorMessage
-          ? 'I encountered an error when trying to get the Git information'
-          : 'Here is the Git information you requested',
+        name: 'requestGitContext', // Use the actual function name
         call_id: requestGitContextCall.id,
         content: errorMessage || responseContent,
+        isError: !!errorMessage,
       },
     ],
   });

@@ -1,13 +1,22 @@
+import path from 'path';
+import simpleGit from 'simple-git';
 import { RcConfig, ImportantContext, ModelOverrides } from './config-types.js';
 import { findRcFile, parseRcFile, CODEGENRC_FILENAME } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
-import path from 'path';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
 import { SCHEMA_VIRTUAL_FILE_NAME } from './config-schema.js';
 
 // Read and parse the configuration
 const rcFilePath: string = await findRcFile();
 export const rcConfig: RcConfig = parseRcFile(rcFilePath);
+
+if (typeof rcConfig.featuresEnabled === 'undefined') {
+  rcConfig.featuresEnabled = {};
+}
+
+if (typeof rcConfig.featuresEnabled?.gitContext === 'undefined') {
+  rcConfig.featuresEnabled.gitContext = await simpleGit(rcConfig.rootDir).checkIsRepo();
+}
 
 export const rcConfigSchemaFilePath = path.join(rcConfig.rootDir, SCHEMA_VIRTUAL_FILE_NAME);
 
