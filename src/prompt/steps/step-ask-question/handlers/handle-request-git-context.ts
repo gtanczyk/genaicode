@@ -1,11 +1,10 @@
-import simpleGit, { SimpleGit, LogResult, DefaultLogFields, ListLogLine } from 'simple-git';
+import simpleGit, { SimpleGit, LogResult, DefaultLogFields } from 'simple-git';
 import { ActionHandler, ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
-import { UserItem } from '../step-ask-question-types.js';
-import { AssistantItem } from '../step-ask-question-types.js';
 import { rcConfig } from '../../../../main/config.js';
 import path from 'node:path';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
+import { putSystemMessage } from '../../../../main/common/content-bus.js';
 
 type RequestGitContextArgs = {
   requestType: 'commits' | 'fileChanges' | 'blame';
@@ -17,10 +16,7 @@ type RequestGitContextArgs = {
 // Helper function to format log output
 function formatLog(log: LogResult<DefaultLogFields>): string {
   return log.all
-    .map(
-      (commit: ListLogLine) =>
-        `- ${commit.hash.substring(0, 7)} by ${commit.author_name} on ${commit.date}: ${commit.message}`,
-    )
+    .map((commit) => `- ${commit.hash.substring(0, 7)} by ${commit.author_name} on ${commit.date}: ${commit.message}`)
     .join('\n');
 }
 
@@ -36,6 +32,8 @@ export const handleRequestGitContext: ActionHandler = async ({
   generateContentFn,
   prompt,
 }: ActionHandlerProps): Promise<ActionResult> => {
+  putSystemMessage('Handling requestGitContext action.');
+
   const [requestGitContextCall] = (
     await generateContentFn(
       prompt,
@@ -53,11 +51,28 @@ export const handleRequestGitContext: ActionHandler = async ({
     .map((item) => item.functionCall);
 
   if (!requestGitContextCall?.args) {
+    putSystemMessage('No valid requestGitContext call found.');
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'No valid requestGitContext call found.',
+      },
+    );
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
+
+  prompt.push({
+    type: 'assistant',
+    text: askQuestionCall.args?.message ?? '',
+    functionCalls: [requestGitContextCall],
+  });
 
   const args = requestGitContextCall.args as RequestGitContextArgs;
 
@@ -126,35 +141,22 @@ export const handleRequestGitContext: ActionHandler = async ({
         : 'An unknown error occurred while fetching Git context.';
   }
 
-  const userMessage: UserItem = {
+  prompt.push({
     type: 'user',
+    text: responseContent || errorMessage,
     functionResponses: [
       {
-        name: askQuestionCall.name,
-        call_id: askQuestionCall.id,
+        name: errorMessage
+          ? 'I encountered an error when trying to get the Git information'
+          : 'Here is the Git information you requested',
+        call_id: requestGitContextCall.id,
         content: errorMessage || responseContent,
       },
     ],
-  };
-
-  const assistantMessage: AssistantItem = {
-    type: 'assistant',
-    text: errorMessage
-      ? `I encountered an error trying to get the Git information: ${errorMessage}`
-      : `Here is the Git information you requested:\n\n${responseContent}`,
-  };
+  });
 
   return {
     breakLoop: false,
-    items: [
-      {
-        assistant: askQuestionCall.assistantResponse,
-        user: userMessage,
-      },
-      {
-        assistant: assistantMessage,
-        user: { type: 'user', text: 'Okay, continue.' }, // Placeholder user response
-      },
-    ],
+    items: [],
   };
 };
