@@ -170,10 +170,10 @@ export type ReasoningInferenceResponseArgs = {
 };
 
 export type RequestGitContextArgs = {
-  requestType: 'commits' | 'fileChanges' | 'blame';
-  filePath?: string;
-  commitHash?: string;
-  count?: number;
+  requestType: 'commits' | 'fileChanges' | 'blame' | 'fileDiff'; // Added fileDiff
+  filePath?: string; // Required for 'fileChanges', 'blame', and 'fileDiff'
+  commitHash?: string; // Required for 'blame' and 'fileDiff'
+  count?: number; // Applies mainly to 'commits' and 'fileChanges'
 };
 
 export type LintResult = {

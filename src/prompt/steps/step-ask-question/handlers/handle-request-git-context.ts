@@ -19,16 +19,22 @@ function formatBlame(blame: string): string {
   return `\nBlame Output:\n${blame}`;
 }
 
+// Helper function to format diff output
+function formatDiff(diff: string): string {
+  return `\nDiff Output:\n${diff}`;
+}
+
 // Define the detailed instruction prompt for the LLM
 export const GIT_CONTEXT_INSTRUCTION_PROMPT = `
     You need to call the 'requestGitContext' function. Please determine the appropriate arguments based on the user's request.
     Parameters:
-    - requestType (required): Choose one of 'commits', 'fileChanges', or 'blame'.
+    - requestType (required): Choose one of 'commits', 'fileChanges', 'blame', or 'fileDiff'.
       - 'commits': Get recent commit history for the entire repository.
       - 'fileChanges': Get commit history specifically for the given 'filePath'.
       - 'blame': Get line-by-line authorship information (git blame) for the given 'filePath'.
-    - filePath (absolute, required for 'fileChanges' and 'blame'): The absolute path to the file within the project. IMPORTANT: Ensure the provided filePath is absolute and is inside of the project root and exists within the project directory structure.
-    - commitHash (optional): A specific commit hash to focus the request (e.g., for 'blame').
+      - 'fileDiff': Get the changes made to a specific 'filePath' in a given 'commitHash'.
+    - filePath (absolute, required for 'fileChanges', 'blame', and 'fileDiff'): The absolute path to the file within the project. IMPORTANT: Ensure the provided filePath is absolute and is inside of the project root and exists within the project directory structure.
+    - commitHash (required for 'blame' and 'fileDiff'): A specific commit hash to focus the request.
     - count (required for 'commits' and 'fileChanges'): The maximum number of commits to retrieve (applies mainly to 'commits' and 'fileChanges').
 
     Analyze the user's request and provide the arguments accurately.
@@ -105,6 +111,29 @@ export const handleRequestGitContext: ActionHandler = async ({
       throw new Error('The project directory is not a Git repository.');
     }
 
+    // Common validation for file path
+    const validateFilePath = (requiredFor: string) => {
+      if (!args.filePath) {
+        throw new Error(`filePath is required for ${requiredFor} request.`);
+      }
+      if (!path.isAbsolute(args.filePath)) {
+        throw new Error(`filePath must be an absolute path for ${requiredFor} request.`);
+      }
+      const absoluteFilePath = args.filePath;
+      if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
+        throw new Error(`Access denied: filePath is outside the project root for ${requiredFor} request.`);
+      }
+      return absoluteFilePath;
+    };
+
+    // Common validation for commit hash
+    const validateCommitHash = (requiredFor: string) => {
+      if (!args.commitHash) {
+        throw new Error(`commitHash is required for ${requiredFor} request.`);
+      }
+      return args.commitHash;
+    };
+
     switch (args.requestType) {
       case 'commits': {
         const logOptions: Record<string, unknown> = {};
@@ -116,18 +145,7 @@ export const handleRequestGitContext: ActionHandler = async ({
         break;
       }
       case 'fileChanges': {
-        if (!args.filePath) {
-          throw new Error('filePath is required for fileChanges request.');
-        }
-        // Ensure filePath is absolute
-        if (!path.isAbsolute(args.filePath)) {
-          throw new Error('filePath must be an absolute path for fileChanges request.');
-        }
-        const absoluteFilePath = args.filePath;
-        // Ensure the path is within the project root
-        if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
-          throw new Error('Access denied: filePath is outside the project root.');
-        }
+        const absoluteFilePath = validateFilePath('fileChanges');
         const logOptions: Record<string, unknown> = { file: absoluteFilePath };
         if (args.count && args.count > 0) {
           logOptions['--max-count'] = args.count;
@@ -137,18 +155,7 @@ export const handleRequestGitContext: ActionHandler = async ({
         break;
       }
       case 'blame': {
-        if (!args.filePath) {
-          throw new Error('filePath is required for blame request.');
-        }
-        // Ensure filePath is absolute
-        if (!path.isAbsolute(args.filePath)) {
-          throw new Error('filePath must be an absolute path for blame request.');
-        }
-        const absoluteFilePath = args.filePath;
-        // Ensure the path is within the project root
-        if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
-          throw new Error('Access denied: filePath is outside the project root.');
-        }
+        const absoluteFilePath = validateFilePath('blame');
         const blameCommandArgs: string[] = ['blame'];
         if (args.commitHash) {
           // Include the commit hash in the command arguments before the file path
@@ -159,6 +166,14 @@ export const handleRequestGitContext: ActionHandler = async ({
 
         const blame = await git.raw(...blameCommandArgs);
         responseContent = `Blame for ${args.filePath}${args.commitHash ? ` at commit ${args.commitHash.substring(0, 7)}` : ''}:\n${formatBlame(blame)}`;
+        break;
+      }
+      case 'fileDiff': {
+        const absoluteFilePath = validateFilePath('fileDiff');
+        const commitHash = validateCommitHash('fileDiff');
+        // Use commitHash~1...commitHash to get the diff for that specific commit
+        const diff = await git.diff([`${commitHash}~1..${commitHash}`, '--', absoluteFilePath]);
+        responseContent = `Diff for ${args.filePath} at commit ${commitHash.substring(0, 7)}:\n${formatDiff(diff)}`;
         break;
       }
       default: {

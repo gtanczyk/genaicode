@@ -108,6 +108,28 @@ describe.each([
         commitHash: undefined,
       } as RequestGitContextArgs,
     },
+    {
+      name: 'request file diff',
+      userMessage: 'Show me the diff for src/main.ts in commit abc1234.',
+      assistantResponse: 'I will show you the diff for src/main.ts in commit abc1234.',
+      expectedArgs: {
+        requestType: 'fileDiff',
+        filePath: '/project/src/main.ts',
+        commitHash: 'abc1234',
+        count: undefined, // Count is not applicable here
+      } as RequestGitContextArgs,
+    },
+    {
+      name: 'request file diff with different phrasing',
+      userMessage: 'What were the changes made to path/to/my/file.js in commit 987fed?',
+      assistantResponse: 'Okay, I will retrieve the diff for path/to/my/file.js in commit 987fed.',
+      expectedArgs: {
+        requestType: 'fileDiff',
+        filePath: '/project/src/path/to/my/file.js',
+        commitHash: '987fed',
+        count: undefined,
+      } as RequestGitContextArgs,
+    },
     // Add more test cases for different user requests and combinations of arguments
   ])('$name', async ({ userMessage, assistantResponse, expectedArgs }) => {
     const prompt: PromptItem[] = [
