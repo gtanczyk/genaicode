@@ -88,7 +88,7 @@ describe.each([
     },
     {
       name: 'request file changes with commit hash',
-      userMessage: 'Show changes to package.json since commit a1b2c3d',
+      userMessage: 'Show last 10 changes to package.json since commit a1b2c3d',
       assistantResponse: 'I will show you the changes to package.json since commit a1b2c3d.',
       expectedArgs: {
         requestType: 'fileChanges',

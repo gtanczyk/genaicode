@@ -27,8 +27,8 @@ export const GIT_CONTEXT_INSTRUCTION_PROMPT = `
       - 'commits': Get recent commit history for the entire repository.
       - 'fileChanges': Get commit history specifically for the given 'filePath'.
       - 'blame': Get line-by-line authorship information (git blame) for the given 'filePath'.
-    - filePath (optional, absolute, required for 'fileChanges' and 'blame'): The path to the file within the project. IMPORTANT: Ensure the provided filePath is absolute and is inside of the project root and exists within the project directory structure.
-    - commitHash (optional): A specific commit hash to focus the request (currently primarily relevant for context, might not alter 'blame' output significantly without further logic).
+    - filePath (absolute, required for 'fileChanges' and 'blame'): The absolute path to the file within the project. IMPORTANT: Ensure the provided filePath is absolute and is inside of the project root and exists within the project directory structure.
+    - commitHash (optional): A specific commit hash to focus the request (e.g., for 'blame').
     - count (required for 'commits' and 'fileChanges'): The maximum number of commits to retrieve (applies mainly to 'commits' and 'fileChanges').
 
     Analyze the user's request and provide the arguments accurately.
@@ -119,7 +119,11 @@ export const handleRequestGitContext: ActionHandler = async ({
         if (!args.filePath) {
           throw new Error('filePath is required for fileChanges request.');
         }
-        const absoluteFilePath = path.resolve(rcConfig.rootDir, args.filePath);
+        // Ensure filePath is absolute
+        if (!path.isAbsolute(args.filePath)) {
+          throw new Error('filePath must be an absolute path for fileChanges request.');
+        }
+        const absoluteFilePath = args.filePath;
         // Ensure the path is within the project root
         if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
           throw new Error('Access denied: filePath is outside the project root.');
@@ -136,20 +140,25 @@ export const handleRequestGitContext: ActionHandler = async ({
         if (!args.filePath) {
           throw new Error('filePath is required for blame request.');
         }
-        const absoluteFilePath = path.resolve(rcConfig.rootDir, args.filePath);
+        // Ensure filePath is absolute
+        if (!path.isAbsolute(args.filePath)) {
+          throw new Error('filePath must be an absolute path for blame request.');
+        }
+        const absoluteFilePath = args.filePath;
         // Ensure the path is within the project root
         if (!absoluteFilePath.startsWith(rcConfig.rootDir)) {
           throw new Error('Access denied: filePath is outside the project root.');
         }
-        const blameOptions: string[] = [];
+        const blameCommandArgs: string[] = ['blame'];
         if (args.commitHash) {
-          // Potentially add commit range if needed, simple-git blame might not directly support single commit blame easily
-          // For now, we just pass the file path.
-          // A more robust implementation might need `git.raw` for specific blame commands.
-          console.warn('commitHash specific blame is not fully implemented, showing full blame.');
+          // Include the commit hash in the command arguments before the file path
+          blameCommandArgs.push(args.commitHash);
         }
-        const blame = await git.raw('blame', absoluteFilePath, ...blameOptions);
-        responseContent = `Blame for ${args.filePath}:\n${formatBlame(blame)}`;
+        // Use '--' to clearly separate the commit/options from the file path
+        blameCommandArgs.push('--', absoluteFilePath);
+
+        const blame = await git.raw(...blameCommandArgs);
+        responseContent = `Blame for ${args.filePath}${args.commitHash ? ` at commit ${args.commitHash.substring(0, 7)}` : ''}:\n${formatBlame(blame)}`;
         break;
       }
       default: {
