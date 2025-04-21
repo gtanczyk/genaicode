@@ -30,6 +30,7 @@ describe('step-ask-question', () => {
       conversationGraph: true,
       readExternalFiles: true,
       exploreExternalDirectories: true,
+      requestGitContext: true,
     };
 
     // Check if each action type has a registered handler
