@@ -40,8 +40,10 @@ const generateContent: GenerateContentFunction = async function generateContent(
   // Determine the model to use based on modelType and service config
   const model =
     modelType === ModelType.CHEAP
-      ? (serviceConfig.modelOverrides?.cheap ?? 'grok-beta')
-      : (serviceConfig.modelOverrides?.default ?? 'grok-beta');
+      ? (serviceConfig.modelOverrides?.cheap ?? 'grok-3-mini-beta')
+      : modelType === ModelType.REASONING
+        ? (serviceConfig.modelOverrides?.reasoning ?? 'grok-3-mini-beta')
+        : (serviceConfig.modelOverrides?.default ?? 'grok-3-beta');
 
   // Call internalGenerateContent from openai.ts with the new signature
   return await internalGenerateContent(
@@ -60,8 +62,9 @@ const grokAiService: Plugin = {
       serviceConfig: {
         apiKey: process.env.GROK_OPENAI_API_KEY,
         modelOverrides: {
-          default: 'grok-beta',
-          cheap: 'grok-beta',
+          default: 'grok-3-beta',
+          cheap: 'grok-3-mini-beta',
+          reasoning: 'grok-3-mini-beta',
         },
       },
     },
