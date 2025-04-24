@@ -1,13 +1,13 @@
 import {
   Content,
-  FunctionCallingMode,
+  FunctionCallingConfigMode,
   FunctionDeclaration,
-  GenerateContentRequest,
-  GoogleGenerativeAI,
+  GenerateContentParameters,
+  GoogleGenAI,
   HarmBlockThreshold,
   HarmCategory,
-  ResponseSchema,
-} from '@google/generative-ai';
+  Schema,
+} from '@google/genai';
 import assert from 'node:assert';
 import { printTokenUsageAndCost } from './common.js';
 import { GenerateContentFunction, GenerateContentResult, GenerateContentResultPart } from './common-types.js';
@@ -16,6 +16,7 @@ import { FunctionCall } from './common-types.js';
 import { FunctionDef } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
+
 import { unescapeFunctionCall } from './unescape-function-call.js';
 import { enableVertexUnescape } from '../cli/cli-params.js';
 import { getServiceConfig, getModelSettings } from './service-configurations.js';
@@ -100,46 +101,45 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     });
 
-  const req: GenerateContentRequest = {
+  const req: GenerateContentParameters = {
     contents: messages,
+    model: '',
+    config: {},
   };
 
   if (functionDefs.length > 0) {
-    req.tools = [
+    req.config!.tools = [
       {
         functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
       },
     ];
   }
   if (expectedResponseType.functionCall !== false) {
-    req.toolConfig = {
+    req.config!.toolConfig = {
       functionCallingConfig: {
-        mode: FunctionCallingMode.ANY,
+        mode: FunctionCallingConfigMode.ANY,
         ...(requiredFunctionName ? { allowedFunctionNames: [requiredFunctionName] } : {}),
       },
     };
   } else if (expectedResponseType.functionCall === false) {
-    req.toolConfig = {
+    req.config!.toolConfig = {
       functionCallingConfig: {
-        mode: FunctionCallingMode.NONE,
+        mode: FunctionCallingConfigMode.NONE,
         allowedFunctionNames: [],
       },
     };
   }
 
-  const model = getModel(
+  const result = await modelGenerateContent(
     modelType,
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt,
     options.geminiBlockNone,
+    req,
   );
 
-  const result = await model.generateContent(req, {
-    signal: abortController?.signal,
-  });
-
   // Print token usage
-  const usageMetadata = result.response.usageMetadata!;
+  const usageMetadata = result.usageMetadata!;
   const usage = {
     inputTokens: usageMetadata.promptTokenCount,
     outputTokens: usageMetadata.candidatesTokenCount,
@@ -153,22 +153,22 @@ export const generateContent: GenerateContentFunction = async function generateC
     modelType,
   });
 
-  if (result.response.promptFeedback) {
+  if (result.promptFeedback) {
     console.log('Prompt feedback:');
-    console.log(JSON.stringify(result.response.promptFeedback, null, 2));
+    console.log(JSON.stringify(result.promptFeedback, null, 2));
   }
 
-  if (!result.response.candidates?.length) {
+  if (!result.candidates?.length) {
     console.log('Response:', result);
     throw new Error('No candidates found');
   }
 
-  const functionCalls = result.response.candidates
+  const functionCalls = result.candidates
     .map((candidate) => candidate.content?.parts?.map((part) => part.functionCall))
     .flat()
     .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
     .map((call) => ({
-      name: call.name,
+      name: call.name!,
       args: call.args as Record<string, unknown>,
     }))
     .map(!enableVertexUnescape ? (call) => call : unescapeFunctionCall);
@@ -189,17 +189,17 @@ export const generateContent: GenerateContentFunction = async function generateC
   // Handle reasoning model special case
   if (modelType === ModelType.REASONING) {
     // Add the reasoning text if available
-    if (result.response.candidates[0].content?.parts.length === 2) {
+    if (result.candidates[0].content?.parts?.length === 2) {
       resultParts.push({
         type: 'text',
-        text: result.response.candidates[0].content?.parts.slice(-2)[0].text ?? '',
+        text: result.candidates[0].content?.parts.slice(-2)[0].text ?? '',
       });
     }
 
     // Add the response text
     resultParts.push({
       type: 'text',
-      text: result.response.candidates[0].content?.parts.slice(-1)[0].text ?? '',
+      text: result.candidates[0].content?.parts?.slice(-1)[0].text ?? '',
     });
 
     // Add the special function call for reasoning inference response
@@ -209,10 +209,10 @@ export const generateContent: GenerateContentFunction = async function generateC
         name: 'reasoningInferenceResponse',
         args: {
           reasoning:
-            result.response.candidates[0].content?.parts.length === 2
-              ? result.response.candidates[0].content?.parts.slice(-2)[0].text
+            result.candidates[0].content?.parts?.length === 2
+              ? result.candidates[0].content?.parts.slice(-2)[0].text
               : undefined,
-          response: result.response.candidates[0].content?.parts.slice(-1)[0].text,
+          response: result.candidates[0].content?.parts?.slice(-1)[0].text,
         },
       },
     });
@@ -221,12 +221,11 @@ export const generateContent: GenerateContentFunction = async function generateC
   // Handle text response if no function calls were returned
   if (functionCalls.length === 0) {
     const textResponse =
-      result.response.candidates
+      result.candidates
         .map((candidate) => candidate.content?.parts?.map((part) => part.text))
         .flat()
         .filter((text): text is string => !!text)[0] ??
-      result.response.candidates.map((candidate) =>
-        // @ts-expect-error: FinishReason type does not have this error
+      result.candidates.map((candidate) =>
         candidate.finishReason === 'MALFORMED_FUNCTION_CALL' ? candidate.finishMessage : '',
       )[0];
 
@@ -263,15 +262,16 @@ export const generateContent: GenerateContentFunction = async function generateC
   return resultParts;
 };
 
-function getModel(
+function modelGenerateContent(
   modelType: ModelType,
   temperature: number,
   systemPrompt: string | undefined,
   geminiBlockNone: boolean | undefined,
+  { contents, config }: Pick<GenerateContentParameters, 'contents' | 'config'>,
 ) {
   const serviceConfig = getServiceConfig('ai-studio');
   assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
-  const genAI = new GoogleGenerativeAI(serviceConfig.apiKey);
+  const genAI = new GoogleGenAI({ apiKey: serviceConfig.apiKey });
 
   // Determine the model name based on model type
   const model = (() => {
@@ -296,45 +296,50 @@ function getModel(
     effectiveSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
   }
 
-  const generationConfig = {
-    maxOutputTokens: outputTokenLimit,
-    temperature,
-    topP: 0.95,
-  };
-
-  return genAI.getGenerativeModel({
+  return genAI.models.generateContent({
     model,
-    generationConfig,
-    safetySettings: [
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-      },
-    ],
-    ...(effectiveSystemPrompt
-      ? {
-          systemInstruction: {
-            role: 'system',
-            parts: [
-              {
-                text: effectiveSystemPrompt,
-              },
-            ],
-          },
-        }
-      : {}),
+    config: {
+      abortSignal: abortController?.signal,
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        },
+      ],
+      ...Object.assign(
+        {
+          maxOutputTokens: outputTokenLimit,
+          temperature,
+          topP: 0.95,
+        },
+        config,
+      ),
+      ...(effectiveSystemPrompt
+        ? {
+            systemInstruction: {
+              role: 'system',
+              parts: [
+                {
+                  text: effectiveSystemPrompt,
+                },
+              ],
+            },
+          }
+        : {}),
+    },
+    contents,
   });
 }
 
@@ -344,14 +349,12 @@ async function recoverFunctionCall(
   functionDef: FunctionDef,
 ): Promise<Record<string, unknown> | false> {
   console.log('Recovering function call');
-  // @ts-expect-error: "object" !== "OBJECT"
-  const schema: ResponseSchema = functionDef.parameters;
-  const result = await getModel(
+  const schema: Schema = functionDef.parameters as unknown as Schema;
+  const result = await modelGenerateContent(
     ModelType.DEFAULT, // Always use default model for recovery attempts
     0.2,
     'Your role is read the text below and if possible, return it in the desired format.',
     undefined,
-  ).generateContent(
     {
       contents: [
         {
@@ -363,18 +366,15 @@ async function recoverFunctionCall(
           ],
         },
       ],
-      generationConfig: {
+      config: {
         responseMimeType: 'application/json',
         responseSchema: schema,
       },
     },
-    {
-      signal: abortController?.signal,
-    },
   );
 
   try {
-    const parsed = JSON.parse(result.response.text());
+    const parsed = JSON.parse(result.text!);
     const functionCall = enableVertexUnescape
       ? unescapeFunctionCall({ name: functionDef.name, args: parsed })
       : { name: functionDef.name, args: parsed };
