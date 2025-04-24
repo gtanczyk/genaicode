@@ -103,6 +103,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 
   const req: GenerateContentParameters = {
     contents: messages,
+    model: '',
     config: {},
   };
 
@@ -298,9 +299,7 @@ function modelGenerateContent(
   return genAI.models.generateContent({
     model,
     config: {
-      httpOptions: {
-        abortSignal: abortController?.signal,
-      },
+      abortSignal: abortController?.signal,
       safetySettings: [
         {
           category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,

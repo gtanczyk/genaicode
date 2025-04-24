@@ -93,7 +93,7 @@
     "@fontsource/press-start-2p": "^5.1.0",
     "@google-cloud/aiplatform": "^3.34.0",
     "@google-cloud/vertexai": "^1.9.2",
-    "@google/genai": "^0.9.0",
+    "@google/genai": "^0.10.0",
     "@imgly/background-removal-node": "^1.4.5",
     "@inquirer/prompts": "^5.3.8",
     "@types/diff": "^5.2.1",
