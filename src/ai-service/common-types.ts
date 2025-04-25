@@ -13,6 +13,7 @@ export interface TokenUsage {
   totalTokens: number | undefined | null;
   cacheCreateTokens?: number | null;
   cacheReadTokens?: number | null;
+  thinkingTokens?: number | null;
 }
 
 export interface FunctionDef {

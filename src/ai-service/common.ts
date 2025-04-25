@@ -25,6 +25,9 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
   if (usage.cacheReadTokens) {
     console.log('  - Cache read tokens: ', usage.cacheReadTokens);
   }
+  if (usage.thinkingTokens) {
+    console.log('  - Thinking tokens: ', usage.thinkingTokens);
+  }
   console.log('  - Output tokens: ', usage.outputTokens ?? 0);
   console.log('  - Total tokens: ', usage.totalTokens ?? 0);
 
