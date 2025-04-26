@@ -24,6 +24,8 @@ export async function handleReadExternalFiles({
   let reason: string | undefined;
   let inferredCallId: string | undefined;
 
+  putSystemMessage('Generating arguments for reading external files action...');
+
   try {
     const inferencePrompt: PromptItem[] = [
       ...prompt,
@@ -61,6 +63,8 @@ export async function handleReadExternalFiles({
     requestedFilePaths = inferredCall.args.externalFilePaths;
     reason = inferredCall.args.reason;
     inferredCallId = inferredCall.id;
+
+    putSystemMessage('Generated arguments for reading external files', inferredCall.args);
 
     if (!requestedFilePaths || requestedFilePaths.length === 0 || !reason) {
       putSystemMessage('Missing filePaths or reason after inferring arguments for readExternalFiles action.');
@@ -103,6 +107,8 @@ export async function handleReadExternalFiles({
 
   // 4. Process confirmed external files or mark as denied
   if (confirmed) {
+    putSystemMessage('Reading external files...', externalFilesToConfirm);
+
     for (const absolutePath of externalFilesToConfirm) {
       try {
         const content = readFileContent(absolutePath);
@@ -128,7 +134,9 @@ export async function handleReadExternalFiles({
         });
       }
     }
+    putSystemMessage('Finished reading external files.', { fileResults });
   } else if (externalFilesToConfirm.length > 0) {
+    putSystemMessage('User denied access to external files.');
     // User denied access for the batch
     for (const absolutePath of externalFilesToConfirm) {
       fileResults.push({ filePath: absolutePath, result: 'access denied by the user' });
