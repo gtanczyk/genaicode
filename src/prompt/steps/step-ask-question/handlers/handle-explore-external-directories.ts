@@ -24,6 +24,8 @@ export async function handleExploreExternalDirectories({
   prompt,
   generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> {
+  putSystemMessage('Generating arguments for explore external directories action...');
+
   // 1. Infer arguments using LLM
   const inferencePrompt: PromptItem[] = [
     ...prompt,
@@ -64,6 +66,8 @@ export async function handleExploreExternalDirectories({
   const requestedDirectories = directories;
   const reason = inferredReason;
   const executorParams = { depth, ...restParams }; // Includes recursive, searchPhrases, maxResults if provided
+
+  putSystemMessage('Inferred arguments for explore external directories action.', executorParams);
 
   if (!requestedDirectories || requestedDirectories.length === 0 || !reason || typeof depth !== 'number' || depth < 0) {
     let errorMsg = 'Missing or invalid arguments after inferring for exploreExternalDirectories action.';
@@ -156,6 +160,7 @@ export async function handleExploreExternalDirectories({
 
     if (confirmationResult.confirmed) {
       try {
+        putSystemMessage('Exploring external directory...');
         const filePaths = await exploreDirectories({
           directories: externalDirsToExplore,
           // Pass validated executorParams
@@ -195,7 +200,7 @@ export async function handleExploreExternalDirectories({
             const synthesizedText = synthesisResult.find((part) => part.type === 'text')?.text;
             if (synthesizedText) {
               userResponse.synthesis = synthesizedText;
-              putSystemMessage(`Synthesis complete.`);
+              putSystemMessage(`Synthesis complete.`, { synthesizedText });
             } else {
               putSystemMessage('Synthesis failed: No text content returned from LLM.');
               userResponse.error = 'Exploration succeeded, but synthesis failed to generate content.';
