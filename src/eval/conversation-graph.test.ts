@@ -289,4 +289,191 @@ describe.each([
 
     expect(result.args?.selectedEdge?.targetNode).toBe(expectedEdge);
   });
+
+  it('should test graph, find problems, and improve it', async () => {
+    // prepare context with some existing conversation graph which has a problem
+    // example problem: the graph is not connected, or there are no edges
+    const conversationGraph: ConversationGraphArgs = {
+      entryNode: 'start' as ConverationNodeId,
+      nodes: [
+        {
+          id: 'start' as ConverationNodeId,
+          actionType: 'sendMessage',
+          instruction: "Initial assessment of feature development request. Ask about user's readiness and preferences.",
+        },
+        {
+          id: 'gatherInfo' as ConverationNodeId,
+          actionType: 'sendMessage',
+          instruction: 'Gather more information about feature requirements and constraints.',
+        },
+        {
+          id: 'planImplementation' as ConverationNodeId,
+          actionType: 'sendMessage',
+          instruction: 'Plan the implementation steps and discuss technical approach.',
+        },
+        {
+          id: 'modifyRequirements' as ConverationNodeId,
+          actionType: 'sendMessage',
+          instruction: 'Discuss and refine feature requirements.',
+        },
+        {
+          id: 'confirmCodegen' as ConverationNodeId,
+          actionType: 'confirmCodeGeneration',
+          instruction: 'Confirm readiness to proceed with code generation.',
+        },
+      ],
+      edges: [
+        {
+          sourceNode: 'start' as ConverationNodeId,
+          targetNode: 'gatherInfo' as ConverationNodeId,
+          instruction: 'User needs more information or clarification about the feature before proceeding.',
+        },
+        {
+          sourceNode: 'start' as ConverationNodeId,
+          targetNode: 'planImplementation' as ConverationNodeId,
+          instruction: 'User has clear requirements and wants to proceed with implementation.',
+        },
+        {
+          sourceNode: 'start' as ConverationNodeId,
+          targetNode: 'modifyRequirements' as ConverationNodeId,
+          instruction: 'User wants to modify or refine the feature requirements.',
+        },
+        {
+          sourceNode: 'gatherInfo' as ConverationNodeId,
+          targetNode: 'planImplementation' as ConverationNodeId,
+          instruction: 'After gathering information, proceed with implementation planning.',
+        },
+        {
+          sourceNode: 'modifyRequirements' as ConverationNodeId,
+          targetNode: 'planImplementation' as ConverationNodeId,
+          instruction: 'After modifying requirements, proceed with implementation planning.',
+        },
+        {
+          sourceNode: 'planImplementation' as ConverationNodeId,
+          targetNode: 'confirmCodegen' as ConverationNodeId,
+          instruction: 'Ready to proceed with code generation.',
+        },
+        {
+          sourceNode: 'confirmCodegen' as ConverationNodeId,
+          targetNode: 'testCode' as ConverationNodeId,
+          instruction: 'Test the generated code and provide feedback.',
+        },
+        {
+          sourceNode: 'testCode' as ConverationNodeId,
+          targetNode: 'reviewCode' as ConverationNodeId,
+          instruction: 'Review the generated code and provide feedback.',
+        },
+        {
+          sourceNode: 'reviewCode' as ConverationNodeId,
+          targetNode: 'deployCode' as ConverationNodeId,
+          instruction: 'Deploy the generated code to production.',
+        },
+        {
+          sourceNode: 'confirmCodegen' as ConverationNodeId,
+          targetNode: 'cancel' as ConverationNodeId,
+          instruction: 'Cancel the feature development process.',
+        },
+      ],
+    };
+    // Prepare prompt items for testing
+    const prompt: PromptItem[] = [
+      {
+        type: 'user',
+        text: 'Please prepare a conversation graph.',
+      },
+      {
+        type: 'assistant',
+        text: 'I have prepared a conversation graph for you.',
+        functionCalls: [{ name: 'conversationGraph', args: conversationGraph }],
+      },
+      {
+        type: 'user',
+        text: `Please execute the graph and find problems in it. 
+You need to simulate the executions, perform a few example and diverse conversations, and find problems in the graph.
+
+Once you do the test, detect problems, and think about how to improve the graph.
+`,
+        functionResponses: [{ name: 'conversationGraph', content: '' }],
+      },
+    ];
+
+    // Execute graph testing
+    let [result] = await generateContent(
+      prompt,
+      {
+        functionDefs: getFunctionDefs(),
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: { text: true, functionCall: false, media: false },
+      },
+      {},
+    );
+
+    if (result.type === 'text') {
+      console.log('Graph Testing Result:', result.text);
+    } else {
+      throw new Error('Expected text response for graph testing');
+    }
+
+    // Generate a new graph based on the testing result
+    [result] = await generateContent(
+      [
+        ...prompt,
+        {
+          type: 'assistant',
+          text: result.text,
+        },
+        {
+          type: 'user',
+          text: `Please generate a new graph based on the testing result. Consider the problems you found and how to improve the graph.
+If there are no problems, please say so and generate a new graph with the same nodes and edges.`,
+        },
+      ],
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'conversationGraph',
+        temperature: 0.7,
+        modelType: ModelType.CHEAP,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
+      {},
+    );
+
+    if (result.type !== 'functionCall') {
+      throw new Error('Expected function call response for graph generation');
+    }
+
+    console.log('New Graph:', JSON.stringify(result.functionCall.args, null, 2));
+
+    // Generate a diff between the old and new graph
+    const oldGraph = conversationGraph;
+    const newGraph = result.functionCall?.args as ConversationGraphArgs;
+    const oldGraphNodes = new Set(oldGraph.nodes.map((node) => node.id));
+    const newGraphNodes = new Set(newGraph.nodes.map((node) => node.id));
+    const oldGraphEdges = new Set(oldGraph.edges.map((edge) => `${edge.sourceNode}->${edge.targetNode}`));
+    const newGraphEdges = new Set(newGraph.edges.map((edge) => `${edge.sourceNode}->${edge.targetNode}`));
+    const addedNodes = newGraph.nodes.filter((node) => !oldGraphNodes.has(node.id));
+    const removedNodes = oldGraph.nodes.filter((node) => !newGraphNodes.has(node.id));
+    const addedEdges = newGraph.edges.filter((edge) => !oldGraphEdges.has(`${edge.sourceNode}->${edge.targetNode}`));
+    const removedEdges = oldGraph.edges.filter((edge) => !newGraphEdges.has(`${edge.sourceNode}->${edge.targetNode}`));
+    const modifiedNodes = newGraph.nodes.filter(
+      (node) =>
+        oldGraphNodes.has(node.id) && node.actionType !== oldGraph.nodes.find((n) => n.id === node.id)?.actionType,
+    );
+    const modifiedEdges = newGraph.edges.filter(
+      (edge) =>
+        oldGraphEdges.has(`${edge.sourceNode}->${edge.targetNode}`) &&
+        edge.instruction !==
+          oldGraph.edges.find((e) => e.sourceNode === edge.sourceNode && e.targetNode === edge.targetNode)?.instruction,
+    );
+    const diff = {
+      addedNodes,
+      removedNodes,
+      addedEdges,
+      removedEdges,
+      modifiedNodes,
+      modifiedEdges,
+    };
+    console.log('Graph Diff:', JSON.stringify(diff, null, 2));
+  });
 });
