@@ -44,7 +44,13 @@ A conversation graph is a flexible structure for managing complex interactions. 
 - Nodes should be self-contained and focused
 - Edges should have clear, evaluatable conditions
 - Any node can connect to any other node if logically appropriate
-- Nodes and edges must formulate a direct acyclic graph (DAG)
+- Nodes and edges must formulate a graph structure, allowing for complex interactions
+
+## Graph Structure requirements and constraints
+
+- The graph may contain cycles, but should be designed to avoid infinite loops
+- Each node should be reachable from the entry node
+- The entry node should be clearly defined and serve as the starting point for the conversation
 
 ## Technical Details
 
