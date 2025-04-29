@@ -1,6 +1,6 @@
-import { ActionHandlerProps, ActionResult, SendMessageArgs } from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult, AskQuestionCall, SendMessageArgs } from '../step-ask-question-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
-import { FunctionCall, ModelType } from '../../../../ai-service/common-types.js';
+import { FunctionCall, ModelType, PromptItem } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import {
   ConversationEdge,
@@ -38,6 +38,7 @@ A conversation graph is a flexible structure for managing complex interactions. 
 - **Flow Control**: Edges determine how the conversation can progress
 - **Flexibility**: Support for various conversation patterns and flows
 - **Context Awareness**: Each node operates with awareness of the conversation state
+- **User Interaction**: User can reject or accept some of the actions, so the graph should account for that
 
 ## Implementation Notes
 
@@ -76,18 +77,23 @@ export const getEdgeEvaluationPrompt = (currentNode: ConversationNode, outgoingE
   return `We are evaluating the outgoing edges from the current node(${currentNode.id}):
 
 ${outgoingEdges.map((edge) => `- ${edge.targetNode}: ${edge.instruction}`).join('\n')}
-  
-Select the correct edge, or terminate if the conversation should stop.`;
+
+Select the correct edge, or terminate if the conversation should stop. Use the 'evaluateEdge' function.`;
 };
+
+export const GRAPH_ANALYSIS_PROMPT_TEXT = `Please analyze the conversation graph provided by the assistant in the preceding message. Simulate diverse conversation paths mentally and identify any structural or logical problems, dead ends, unreachable nodes, missing transitions, or potential infinite loops. Explain the problems you find in detail. If no significant problems are found, state that clearly.`;
+
+export const GRAPH_REVISION_PROMPT_TEXT = `Based on the analysis provided in the preceding message, generate a new, improved conversation graph using the 'conversationGraph' function. Ensure the new graph addresses the identified problems and better facilitates the original conversation goal.`;
 
 registerActionHandler('conversationGraph', handleConversationGraph);
 
 /**
  * Handles the conversationGraph action by:
- * 1. Generating a conversationGraph function call
- * 2. Extracting nodes and edges from the response
- * 3. Traversing the graph and executing actions
- * 4. Returning appropriate ActionResult
+ * 1. Generating an initial conversation graph.
+ * 2. Automatically analyzing the graph once for problems using the LLM.
+ * 3. Automatically attempting to fix identified problems once using the LLM.
+ * 4. Executing the final version of the graph (original or revised).
+ * 5. Returning appropriate ActionResult.
  */
 export async function handleConversationGraph({
   askQuestionCall,
@@ -132,45 +138,80 @@ export async function handleConversationGraph({
 
     putSystemMessage('Generating conversation graph...');
 
-    // Generate the conversationGraph function call
-    const [conversationGraphCall] = (
-      await generateContentFn(
-        [
-          ...prompt,
-          {
-            type: 'assistant',
-            text: askQuestionCall.args?.message ?? '',
-          },
-          {
-            type: 'user',
-            text: CONVERSATION_GRAPH_PROMPT + (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
-          },
-        ],
+    // 1. Initial Graph Generation
+    const initialGraphResponse = await generateContentFn(
+      [
+        ...prompt,
         {
-          functionDefs: getFunctionDefs(),
-          requiredFunctionName: 'conversationGraph',
-          temperature: 0.7,
-          modelType: ModelType.DEFAULT,
-          expectedResponseType: {
-            text: false,
-            functionCall: true,
-            media: false,
-          },
+          type: 'assistant',
+          text: askQuestionCall.args?.message ?? '',
         },
-        options,
-      )
-    )
-      .filter((item) => item.type === 'functionCall')
-      .map((item) => item.functionCall) as [ConversationGraphCall];
+        {
+          type: 'user',
+          text: CONVERSATION_GRAPH_PROMPT,
+        },
+      ],
+      {
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: 'conversationGraph',
+        temperature: 0.7,
+        modelType: ModelType.DEFAULT,
+        expectedResponseType: {
+          text: false,
+          functionCall: true,
+          media: false,
+        },
+      },
+      options,
+    );
 
-    prompt.push(
+    const conversationGraphCall = initialGraphResponse
+      .filter((item) => item.type === 'functionCall')
+      .map((item) => item.functionCall)[0] as ConversationGraphCall | undefined;
+
+    if (!conversationGraphCall || !conversationGraphCall.args) {
+      putSystemMessage('Failed to generate initial conversation graph.');
+      prompt.push(
+        {
+          type: 'assistant',
+          text: 'I encountered an issue generating the conversation plan.',
+        },
+        {
+          type: 'user',
+          text: 'Okay, unable to generate graph.',
+        },
+      );
+      return {
+        breakLoop: false,
+        items: [],
+      };
+    }
+
+    prompt.push({
+      type: 'assistant',
+      text: askQuestionCall.args?.message ?? '',
+      functionCalls: [conversationGraphCall],
+    });
+
+    // 2. Automatic Single Test-Fix Attempt
+    putSystemMessage('Starting automatic graph analysis...', {
+      ...conversationGraphCall.args,
+    });
+
+    // 3. Automatic Analysis Step
+    const analysisPrompt: PromptItem[] = [
       {
         type: 'assistant',
-        text: askQuestionCall.args?.message ?? '',
+        text: CONVERSATION_GRAPH_PROMPT,
+      },
+      {
+        type: 'assistant',
+        text: 'I have prepared a conversation graph for you.',
         functionCalls: [conversationGraphCall],
       },
       {
         type: 'user',
+        text: GRAPH_ANALYSIS_PROMPT_TEXT,
         functionResponses: [
           {
             name: 'conversationGraph',
@@ -179,9 +220,73 @@ export async function handleConversationGraph({
           },
         ],
       },
+    ];
+
+    const analysisResult = await generateContentFn(
+      analysisPrompt,
+      {
+        modelType: ModelType.CHEAP, // Analysis can use a cheaper model
+        temperature: 0.5, // Lower temp for more focused analysis
+        expectedResponseType: { text: true, functionCall: false, media: false },
+      },
+      options,
     );
 
-    const { entryNode, nodes, edges } = conversationGraphCall.args!;
+    const analysisText = analysisResult.find((part) => part.type === 'text')?.text;
+
+    if (analysisText) {
+      // Add analysis to history
+      analysisPrompt.push({ type: 'assistant', text: analysisText });
+
+      // 5. Automatic Revision Step
+      putSystemMessage('Attempting to fix graph based on analysis...', {
+        analysisText,
+      });
+      const revisionPrompt: PromptItem[] = [
+        ...analysisPrompt, // History includes graph, analysis
+        {
+          type: 'user',
+          text: GRAPH_REVISION_PROMPT_TEXT,
+        },
+      ];
+
+      const revisionResult = await generateContentFn(
+        revisionPrompt,
+        {
+          modelType: ModelType.DEFAULT, // Revision needs quality
+          temperature: 0.7,
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'conversationGraph',
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
+        },
+        options,
+      );
+
+      const revisedGraphCall = revisionResult
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall)[0] as ConversationGraphCall | undefined;
+
+      if (revisedGraphCall?.args?.nodes?.length) {
+        // 6. Graph Update and Validation (Basic)
+        putSystemMessage('Graph revised successfully.', {
+          ...revisedGraphCall.args,
+        });
+        conversationGraphCall.args = Object.assign({}, conversationGraphCall.args, revisedGraphCall.args); // Merge args
+      } else {
+        putSystemMessage('Failed to generate revised conversation graph, keeping original.');
+      }
+    } else {
+      putSystemMessage('LLM failed to provide analysis text. Proceeding with original graph.');
+    }
+
+    // --- End of Test-Fix Attempt ---
+
+    const graphToExecute = conversationGraphCall; // Use the final version of the graph
+    const { entryNode, nodes, edges } = graphToExecute.args!;
 
     putSystemMessage('Starting conversation graph traversal.', {
       entryNode,
@@ -194,23 +299,37 @@ export async function handleConversationGraph({
 
     if (!currentNode) {
       putSystemMessage('Error occurred during conversation graph execution.');
-
-      prompt.push(
-        {
-          type: 'assistant',
-          text: askQuestionCall.args?.message ?? '',
-        },
-        {
-          type: 'user',
-          text: 'Error occurred during conversation graph execution.',
-        },
-      );
-
+      prompt.push({
+        type: 'user',
+        text: 'Okay, unable to start graph execution (entry node not found).',
+        functionResponses: [
+          {
+            name: 'conversationGraph',
+            call_id: conversationGraphCall.id,
+            content: '',
+          },
+        ],
+      });
       return {
         breakLoop: false,
         items: [],
       };
     }
+
+    // Add prompt to history about user accepting the graph
+    prompt.push({
+      type: 'user',
+      text:
+        'I accept the conversation graph and will proceed with it.' +
+        (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
+      functionResponses: [
+        {
+          name: 'conversationGraph',
+          call_id: conversationGraphCall.id,
+          content: '',
+        },
+      ],
+    });
 
     // Track visited nodes to prevent cycles
     const visitedNodes = new Set<string>();
@@ -222,42 +341,49 @@ export async function handleConversationGraph({
       visitedNodes.add(currentNode.id);
 
       // Execute the current node
+      const nodeAskQuestionCall: AskQuestionCall = {
+        name: 'askQuestion',
+        args: {
+          message: currentNode.instruction, // Use node instruction as message hint
+          actionType: currentNode.actionType,
+        },
+      };
 
       putSystemMessage(`Executing node ${currentNode.id}`, currentNode);
 
-      const [sendMessage] = (
-        await generateContentFn(
-          prompt,
-          {
-            functionDefs: getFunctionDefs(),
-            requiredFunctionName: 'sendMessage',
-            temperature: 0.7,
-            modelType: ModelType.CHEAP,
-            expectedResponseType: {
-              text: false,
-              functionCall: true,
-              media: false,
+      if (currentNode.actionType === 'sendMessage') {
+        const [sendMessage] = (
+          await generateContentFn(
+            prompt,
+            {
+              functionDefs: getFunctionDefs(),
+              requiredFunctionName: 'sendMessage',
+              temperature: 0.7,
+              modelType: ModelType.CHEAP,
+              expectedResponseType: {
+                text: false,
+                functionCall: true,
+                media: false,
+              },
             },
-          },
-          options,
+            options,
+          )
         )
-      )
-        .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall) as [FunctionCall<SendMessageArgs>];
+          .filter((item) => item.type === 'functionCall')
+          .map((item) => item.functionCall) as [FunctionCall<SendMessageArgs>];
 
-      if (sendMessage.args?.message) {
-        putAssistantMessage(sendMessage.args.message, sendMessage.args);
+        if (sendMessage.args?.message) {
+          putAssistantMessage(sendMessage.args.message, sendMessage.args);
+          nodeAskQuestionCall.args!.message = sendMessage.args.message;
+        }
       }
 
+      // 1. Get the correct handler for the node's action type
       const currentNodeHandler = getActionHandler(currentNode.actionType);
+
+      // 3. Call the handler with the constructed context
       const nodeResult = await currentNodeHandler({
-        askQuestionCall: {
-          name: 'askQuestion',
-          args: {
-            message: sendMessage.args?.message ?? '',
-            actionType: currentNode.actionType,
-          },
-        },
+        askQuestionCall: nodeAskQuestionCall,
         prompt,
         options,
         generateContentFn,
@@ -265,69 +391,93 @@ export async function handleConversationGraph({
         waitIfPaused,
       });
 
-      const lastItem = nodeResult.items.slice(-1)[0];
-      if (lastItem?.user?.text) {
-        putUserMessage(lastItem.user.text, undefined, undefined, undefined, lastItem.user);
+      // Add results to history
+      // Iterate through *all* items returned by the handler
+      if (nodeResult.items && nodeResult.items.length > 0) {
+        for (const item of nodeResult.items) {
+          if (item?.assistant) {
+            prompt.push(item.assistant);
+          }
+          if (item?.user) {
+            // Use putUserMessage to ensure it's displayed in the UI correctly
+            putUserMessage(item.user.text ?? '', item.user.data, undefined, item.user.images, item.user);
+            prompt.push(item.user); // Add to internal history for LLM context
+          }
+        }
       }
 
-      prompt.push(...nodeResult.items.map(({ assistant, user }) => [assistant, user]).flat());
+      if (nodeResult.breakLoop) {
+        putSystemMessage(`Node action ${currentNode.actionType} requested to break loop.`);
+        return { breakLoop: true, stepResult: nodeResult.stepResult, items: nodeResult.items };
+      }
 
-      // Move to the next node
-
+      // Determine next node
       const outgoingEdges = edges.filter((edge) => edge.sourceNode === currentNode.id);
-
-      const [evaluateEdge] = (
-        await generateContentFn(
-          [
-            ...prompt,
-            {
-              type: 'user',
-              text: getEdgeEvaluationPrompt(currentNode, outgoingEdges),
-            },
-          ],
-          {
-            functionDefs: getFunctionDefs(),
-            requiredFunctionName: 'evaluateEdge',
-            temperature: 0.7,
-            modelType: ModelType.CHEAP,
-            expectedResponseType: {
-              text: false,
-              functionCall: true,
-              media: false,
-            },
-          },
-          options,
-        )
-      )
-        .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall) as [FunctionCall<EvaluateEdgeArgs>];
-
-      if (!evaluateEdge.args?.shouldTerminate) {
-        putSystemMessage('Conversation graph traversal terminated.');
+      if (outgoingEdges.length === 0) {
+        putSystemMessage(`No outgoing edges found from node ${currentNode.id}. Ending execution.`);
         break;
       }
 
-      const outgoingEdge = outgoingEdges.find(
-        (edge) => edge.targetNode === evaluateEdge.args?.selectedEdge?.targetNode,
+      const edgeEvaluationResult = await generateContentFn(
+        [
+          ...prompt,
+          {
+            type: 'user',
+            text: getEdgeEvaluationPrompt(currentNode, outgoingEdges),
+          },
+        ],
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'evaluateEdge',
+          temperature: 0.2,
+          modelType: ModelType.CHEAP,
+          expectedResponseType: {
+            text: false,
+            functionCall: true,
+            media: false,
+          },
+        },
+        options,
       );
 
-      if (!outgoingEdge) {
-        putSystemMessage(`No valid outgoing edge found from node ${currentNode.id}.`);
+      const evaluateEdge = edgeEvaluationResult
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall)[0] as FunctionCall<EvaluateEdgeArgs> | undefined;
+
+      if (!evaluateEdge?.args) {
+        putSystemMessage(`Failed to evaluate edges from node ${currentNode.id}. Ending execution.`);
         break;
       }
 
-      // Find next node
-      const nextNode = nodes.find((node) => node.id === outgoingEdge.targetNode);
+      // Add edge evaluation to history
+      prompt.push({ type: 'assistant', functionCalls: [evaluateEdge] });
+      prompt.push({
+        type: 'user',
+        functionResponses: [
+          {
+            name: 'evaluateEdge',
+            call_id: evaluateEdge.id,
+            content: JSON.stringify(evaluateEdge.args),
+          },
+        ],
+        text: `Edge evaluated: ${evaluateEdge.args.shouldTerminate ? 'Terminate' : (evaluateEdge.args.selectedEdge?.targetNode ?? 'Error')}`,
+      });
+
+      if (evaluateEdge.args.shouldTerminate || !evaluateEdge.args.selectedEdge) {
+        putSystemMessage('Conversation graph traversal terminated by edge evaluation.');
+        break;
+      }
+
+      const nextNodeId = evaluateEdge.args.selectedEdge.targetNode;
+      const nextNode = nodes.find((node) => node.id === nextNodeId);
+
       if (!nextNode) {
-        putSystemMessage(`Target node ${outgoingEdge.targetNode} not found.`);
+        putSystemMessage(`Target node ${nextNodeId} not found. Ending execution.`);
         break;
       }
 
-      // Check for cycles
-      if (visitedNodes.has(nextNode.id)) {
-        putSystemMessage(`Cycle detected at node ${nextNode.id}. Stopping traversal.`);
-        break;
-      }
+      // TODO: Add explicit cycle detection check here:
+      // if (visitedNodes.has(nextNode.id)) { ... break; }
 
       currentNode = nextNode;
     }
