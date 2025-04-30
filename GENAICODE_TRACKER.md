@@ -11,7 +11,6 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [-] [GEN-101] 2025-04-06: Fix conversation graph node execution logic and improve history management.
 - [-] [GEN-100] 2025-04-06: Add evaluation tests for conversationGraph and external directory exploration integration.
 - [ ] [GEN-098] 2025-04-05: Refine action descriptions and examples for `readExternalFiles` and `exploreExternalDirectories` to improve LLM selection accuracy.
 - [-] [GEN-097] 2025-04-05 (Updated 2025-04-05): Refactor explore-external-directories.test.ts to validate inference and synthesis prompts
