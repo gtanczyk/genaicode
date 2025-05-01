@@ -20,7 +20,7 @@ import {
   getEdgeEvaluationPrompt,
 } from '../prompt/steps/step-ask-question/handlers/handle-conversation-graph.js';
 import {
-  ConverationNodeId,
+  ConversationNodeId,
   ConversationGraphArgs,
   EvaluateEdgeArgs,
 } from '../prompt/function-defs/conversation-graph.js';
@@ -172,63 +172,63 @@ describe.each([
     },
   ])('should evaluate edges in a conversation graph: $expectedEdge', async ({ userResponse, expectedEdge }) => {
     const conversationGraph: ConversationGraphArgs = {
-      entryNode: 'start' as ConverationNodeId,
+      entryNode: 'start' as ConversationNodeId,
       nodes: [
         {
-          id: 'start' as ConverationNodeId,
+          id: 'start' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: "Initial assessment of feature development request. Ask about user's readiness and preferences.",
         },
         {
-          id: 'gatherInfo' as ConverationNodeId,
+          id: 'gatherInfo' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Gather more information about feature requirements and constraints.',
         },
         {
-          id: 'planImplementation' as ConverationNodeId,
+          id: 'planImplementation' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Plan the implementation steps and discuss technical approach.',
         },
         {
-          id: 'modifyRequirements' as ConverationNodeId,
+          id: 'modifyRequirements' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Discuss and refine feature requirements.',
         },
         {
-          id: 'confirmCodegen' as ConverationNodeId,
+          id: 'confirmCodegen' as ConversationNodeId,
           actionType: 'confirmCodeGeneration',
           instruction: 'Confirm readiness to proceed with code generation.',
         },
       ],
       edges: [
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'gatherInfo' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'gatherInfo' as ConversationNodeId,
           instruction: 'User needs more information or clarification about the feature before proceeding.',
         },
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'User has clear requirements and wants to proceed with implementation.',
         },
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'modifyRequirements' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'modifyRequirements' as ConversationNodeId,
           instruction: 'User wants to modify or refine the feature requirements.',
         },
         {
-          sourceNode: 'gatherInfo' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'gatherInfo' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'After gathering information, proceed with implementation planning.',
         },
         {
-          sourceNode: 'modifyRequirements' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'modifyRequirements' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'After modifying requirements, proceed with implementation planning.',
         },
         {
-          sourceNode: 'planImplementation' as ConverationNodeId,
-          targetNode: 'confirmCodegen' as ConverationNodeId,
+          sourceNode: 'planImplementation' as ConversationNodeId,
+          targetNode: 'confirmCodegen' as ConversationNodeId,
           instruction: 'Ready to proceed with code generation.',
         },
       ],
@@ -299,84 +299,84 @@ describe.each([
     // prepare context with some existing conversation graph which has a problem
     // example problem: the graph is not connected, or there are no edges to a terminal node
     const conversationGraph: ConversationGraphArgs = {
-      entryNode: 'start' as ConverationNodeId,
+      entryNode: 'start' as ConversationNodeId,
       nodes: [
         {
-          id: 'start' as ConverationNodeId,
+          id: 'start' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: "Initial assessment of feature development request. Ask about user's readiness and preferences.",
         },
         {
-          id: 'gatherInfo' as ConverationNodeId,
+          id: 'gatherInfo' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Gather more information about feature requirements and constraints.',
         },
         {
-          id: 'planImplementation' as ConverationNodeId,
+          id: 'planImplementation' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Plan the implementation steps and discuss technical approach.',
         },
         {
-          id: 'modifyRequirements' as ConverationNodeId,
+          id: 'modifyRequirements' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Discuss and refine feature requirements.',
         },
         {
-          id: 'confirmCodegen' as ConverationNodeId,
+          id: 'confirmCodegen' as ConversationNodeId,
           actionType: 'confirmCodeGeneration',
           instruction: 'Confirm readiness to proceed with code generation.',
         },
         // These nodes are disconnected/problematic
         {
-          id: 'testCode' as ConverationNodeId,
+          id: 'testCode' as ConversationNodeId,
           actionType: 'sendMessage', // Should be a tool call?
           instruction: 'Test the generated code and provide feedback.',
         },
         {
-          id: 'reviewCode' as ConverationNodeId,
+          id: 'reviewCode' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Review the generated code and provide feedback.',
         },
         {
-          id: 'deployCode' as ConverationNodeId,
+          id: 'deployCode' as ConversationNodeId,
           actionType: 'sendMessage',
           instruction: 'Deploy the generated code to production.',
         },
         {
-          id: 'cancel' as ConverationNodeId,
+          id: 'cancel' as ConversationNodeId,
           actionType: 'endConversation',
           instruction: 'Cancel the feature development process.',
         },
       ],
       edges: [
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'gatherInfo' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'gatherInfo' as ConversationNodeId,
           instruction: 'User needs more information or clarification about the feature before proceeding.',
         },
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'User has clear requirements and wants to proceed with implementation.',
         },
         {
-          sourceNode: 'start' as ConverationNodeId,
-          targetNode: 'modifyRequirements' as ConverationNodeId,
+          sourceNode: 'start' as ConversationNodeId,
+          targetNode: 'modifyRequirements' as ConversationNodeId,
           instruction: 'User wants to modify or refine the feature requirements.',
         },
         {
-          sourceNode: 'gatherInfo' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'gatherInfo' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'After gathering information, proceed with implementation planning.',
         },
         {
-          sourceNode: 'modifyRequirements' as ConverationNodeId,
-          targetNode: 'planImplementation' as ConverationNodeId,
+          sourceNode: 'modifyRequirements' as ConversationNodeId,
+          targetNode: 'planImplementation' as ConversationNodeId,
           instruction: 'After modifying requirements, proceed with implementation planning.',
         },
         {
-          sourceNode: 'planImplementation' as ConverationNodeId,
-          targetNode: 'confirmCodegen' as ConverationNodeId,
+          sourceNode: 'planImplementation' as ConversationNodeId,
+          targetNode: 'confirmCodegen' as ConversationNodeId,
           instruction: 'Ready to proceed with code generation.',
         },
         // Missing edges from confirmCodegen to testCode/reviewCode/deployCode/cancel
