@@ -115,20 +115,19 @@ export async function handleUpdateFile({
 
   if (!file || !('content' in file) || !file.content) {
     // TODO: In this corner case we should probably retry the operation but prefix it with getSourceCode
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: 'The file does not exist or is empty or its content is not present in the context.',
+      },
+    );
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: askQuestionCall.args!.message,
-          },
-          user: {
-            type: 'user',
-            text: 'The file does not exist or is empty or its content is not present in the context.',
-          },
-        },
-      ],
+      items: [],
     };
   }
 
