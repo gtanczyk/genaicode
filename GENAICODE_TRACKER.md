@@ -11,6 +11,9 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-103] 2025-05-01: Refactored Conversation Graph Toggle Button into dedicated component (`graph-toggle-button.tsx`)
+- [-] [GEN-102] 2025-05-01: Relocate Conversation Graph Visualiser toggle button to bottom-right, make it larger, add pulsing animation, and ensure visibility only during active graph traversal.
+- [x] [GEN-102] 2025-05-01: Relocate Conversation Graph Visualiser toggle button to bottom-right, make it larger, add pulsing animation, and ensure visibility only during active graph traversal. (Updated 2025-05-01): Fixed button positioning.
 - [-] [GEN-100] 2025-04-06: Add evaluation tests for conversationGraph and external directory exploration integration.
 - [ ] [GEN-098] 2025-04-05: Refine action descriptions and examples for `readExternalFiles` and `exploreExternalDirectories` to improve LLM selection accuracy.
 - [-] [GEN-097] 2025-04-05 (Updated 2025-04-05): Refactor explore-external-directories.test.ts to validate inference and synthesis prompts
