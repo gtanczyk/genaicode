@@ -85,3 +85,33 @@ export interface ServiceConfigUpdate<T extends AiServiceType = AiServiceType> {
   serviceType: T;
   config: ServiceConfig<T>;
 }
+
+// --- Conversation Graph Types ---
+
+/**
+ * Represents a node in the conversation graph.
+ */
+export interface ConversationGraphNode {
+  id: string;
+  actionType: string; // Consider importing ActionType if available globally
+  instruction: string;
+}
+
+/**
+ * Represents an edge connecting two nodes in the conversation graph.
+ */
+export interface ConversationGraphEdge {
+  sourceNode: string;
+  targetNode: string;
+  instruction: string;
+}
+
+/**
+ * Represents the current state of the conversation graph sent to the frontend.
+ */
+export interface ConversationGraphState {
+  nodes: ConversationGraphNode[];
+  edges: ConversationGraphEdge[];
+  currentNodeId: string | null; // ID of the currently active node, null if graph not active
+  isActive: boolean; // Explicit flag to indicate if graph traversal is active
+}

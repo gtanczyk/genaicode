@@ -86,22 +86,22 @@ export const conversationGraph: FunctionDef = {
 
 // Types for conversation graph
 
-export type ConverationNodeId = string & { __type: 'ConverationNodeId' };
+export type ConversationNodeId = string & { __type: 'ConversationNodeId' };
 
 export type ConversationEdge = {
-  sourceNode: ConverationNodeId;
-  targetNode: ConverationNodeId;
+  sourceNode: ConversationNodeId;
+  targetNode: ConversationNodeId;
   instruction: string;
 };
 
 export type ConversationNode = {
-  id: ConverationNodeId;
+  id: ConversationNodeId;
   actionType: ActionType;
   instruction: string;
 };
 
 export type ConversationGraphArgs = {
-  entryNode: ConverationNodeId;
+  entryNode: ConversationNodeId;
   nodes: ConversationNode[];
   edges: ConversationEdge[];
 };

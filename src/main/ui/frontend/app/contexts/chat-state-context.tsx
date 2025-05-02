@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
-import { Question, Usage } from '../../../common/api-types.js';
+import { Question, Usage, ConversationGraphState } from '../../../common/api-types.js'; // Import ConversationGraphState
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-types.js';
 import {
@@ -30,6 +30,8 @@ interface ChatState {
   rcConfig: RcConfig | null;
   lastFinishedExecutionId: string | null;
   initialDataLoaded: boolean; // Added flag
+  conversationGraphState: ConversationGraphState | null; // Added for graph data
+  isGraphVisualiserOpen: boolean; // Added for visualiser visibility
 }
 
 // Define the shape of the context actions/setters
@@ -46,6 +48,8 @@ interface ChatActions {
   stopPolling: () => void;
   handlePauseExecution: () => Promise<void>;
   handleResumeExecution: () => Promise<void>;
+  setConversationGraphState: React.Dispatch<React.SetStateAction<ConversationGraphState | null>>;
+  toggleGraphVisualiser: () => void;
 }
 
 // Create the context with a default value
@@ -60,7 +64,9 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   codegenOptions: undefined,
   rcConfig: null,
   lastFinishedExecutionId: null,
-  initialDataLoaded: false, // Default value for flag
+  initialDataLoaded: false,
+  conversationGraphState: null,
+  isGraphVisualiserOpen: false,
   setMessages: () => {},
   setExecutionStatus: () => {},
   setCurrentQuestion: () => {},
@@ -73,6 +79,8 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   stopPolling: () => {},
   handlePauseExecution: async () => {},
   handleResumeExecution: async () => {},
+  setConversationGraphState: () => {}, // Default setter
+  toggleGraphVisualiser: () => {}, // Default toggle
 });
 
 // Define the props for the provider
@@ -99,6 +107,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   const [initialDataLoaded, setInitialDataLoaded] = useState(false); // State for flag
   const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [conversationGraphState, setConversationGraphState] = useState<ConversationGraphState | null>(null);
+  const [isGraphVisualiserOpen, setIsGraphVisualiserOpen] = useState(false);
+
   // Actions migrated/adapted from AppState
   const toggleTheme = useCallback(() => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
@@ -107,6 +118,10 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   // Keep the signature for setCodegenOptions as it's used directly by consumers
   const setCodegenOptions = useCallback((options: CodegenOptions) => {
     _setCodegenOptions(options);
+  }, []);
+
+  const toggleGraphVisualiser = useCallback(() => {
+    setIsGraphVisualiserOpen((prev) => !prev);
   }, []);
 
   const fetchInitialData = useCallback(async () => {
@@ -142,7 +157,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+  }, [fetchInitialData]);
 
   const pollData = useCallback(async () => {
     try {
@@ -268,7 +283,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       codegenOptions,
       rcConfig,
       lastFinishedExecutionId,
-      initialDataLoaded, // Include flag in context value
+      initialDataLoaded,
+      conversationGraphState,
+      isGraphVisualiserOpen,
       setMessages,
       setExecutionStatus,
       setCurrentQuestion,
@@ -281,6 +298,8 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       stopPolling,
       handlePauseExecution,
       handleResumeExecution,
+      setConversationGraphState,
+      toggleGraphVisualiser,
     }),
     [
       messages,
@@ -293,13 +312,16 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       codegenOptions,
       rcConfig,
       lastFinishedExecutionId,
-      initialDataLoaded, // Include flag in dependencies
+      initialDataLoaded,
+      conversationGraphState,
+      isGraphVisualiserOpen,
       toggleTheme,
       setCodegenOptions,
       startPolling,
       stopPolling,
       handlePauseExecution,
       handleResumeExecution,
+      toggleGraphVisualiser,
     ],
   );
 

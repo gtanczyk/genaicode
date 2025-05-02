@@ -18,7 +18,7 @@ import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-re
 import { RcConfig } from '../main/config-types.js';
 import { CodegenOptions } from '../main/codegen-types.js';
 import {
-  ConverationNodeId,
+  ConversationNodeId,
   ConversationGraphArgs,
   EvaluateEdgeArgs,
 } from '../prompt/function-defs/conversation-graph.js';
@@ -395,33 +395,33 @@ describe.each([
       const foundFiles = [`${externalDir}/main.log`, `${externalDir}/error.log`];
 
       const graph: ConversationGraphArgs = {
-        entryNode: 'start' as ConverationNodeId,
+        entryNode: 'start' as ConversationNodeId,
         nodes: [
           {
-            id: 'start' as ConverationNodeId,
+            id: 'start' as ConversationNodeId,
             actionType: 'sendMessage',
             instruction: 'Initiate analysis of external logs.',
           },
           {
-            id: 'exploreLogs' as ConverationNodeId,
+            id: 'exploreLogs' as ConversationNodeId,
             actionType: 'exploreExternalDirectories',
             instruction: `Explore the log directory: ${externalDir}`,
           },
           {
-            id: 'readLogs' as ConverationNodeId,
+            id: 'readLogs' as ConversationNodeId,
             actionType: 'readExternalFiles',
             instruction: 'Read the discovered log files.',
           },
         ],
         edges: [
           {
-            sourceNode: 'start' as ConverationNodeId,
-            targetNode: 'exploreLogs' as ConverationNodeId,
+            sourceNode: 'start' as ConversationNodeId,
+            targetNode: 'exploreLogs' as ConversationNodeId,
             instruction: 'Proceed to explore logs.',
           },
           {
-            sourceNode: 'exploreLogs' as ConverationNodeId,
-            targetNode: 'readLogs' as ConverationNodeId,
+            sourceNode: 'exploreLogs' as ConversationNodeId,
+            targetNode: 'readLogs' as ConversationNodeId,
             instruction: 'If log files are found, proceed to read them.',
           },
         ],
@@ -513,33 +513,33 @@ describe.each([
       const processedLogContent = 'Found 2 critical errors in app.log.';
 
       const graph: ConversationGraphArgs = {
-        entryNode: 'explore' as ConverationNodeId,
+        entryNode: 'explore' as ConversationNodeId,
         nodes: [
           {
-            id: 'explore' as ConverationNodeId,
+            id: 'explore' as ConversationNodeId,
             actionType: 'exploreExternalDirectories',
             instruction: `Explore the log directory: ${externalDir}`,
           },
           {
-            id: 'read' as ConverationNodeId,
+            id: 'read' as ConversationNodeId,
             actionType: 'readExternalFiles',
             instruction: 'Read the discovered log files.',
           },
           {
-            id: 'analyze' as ConverationNodeId,
+            id: 'analyze' as ConversationNodeId,
             actionType: 'sendMessage', // Or performAnalysis
             instruction: 'Analyze the content of the log files.',
           },
         ],
         edges: [
           {
-            sourceNode: 'explore' as ConverationNodeId,
-            targetNode: 'read' as ConverationNodeId,
+            sourceNode: 'explore' as ConversationNodeId,
+            targetNode: 'read' as ConversationNodeId,
             instruction: 'If log files are found, proceed to read them.',
           },
           {
-            sourceNode: 'read' as ConverationNodeId,
-            targetNode: 'analyze' as ConverationNodeId,
+            sourceNode: 'read' as ConversationNodeId,
+            targetNode: 'analyze' as ConversationNodeId,
             instruction: 'If log files were read successfully, proceed to analyze their content.',
           },
         ],

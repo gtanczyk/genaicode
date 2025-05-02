@@ -15,6 +15,8 @@ import { GenaicodeConfigModal } from './components/genaicode-config/genaicode-co
 import { GenAIcodeNotifications } from './notifications/genaicode-notifications.js';
 import { ChatStateProvider, ChatStateContext } from './contexts/chat-state-context.js';
 import { SuggestionGenerator } from './components/suggestion-generator.js';
+import { ConversationGraphVisualiser } from './components/chat/conversation-graph-visualiser.js';
+import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js'; // Ensure this import is present
 
 const GenAIcodeAppContent = () => {
   // Consume the context to get state and actions
@@ -95,6 +97,8 @@ const GenAIcodeAppContent = () => {
       {/* Pass setCodegenOptions directly if GenaicodeConfigModal modifies options */}
       <GenaicodeConfigModal options={codegenOptions} onOptionsChange={setCodegenOptions} />
       <GenAIcodeNotifications messages={messages} muteNotifications={codegenOptions.muteNotifications} />
+      <ConversationGraphVisualiser />
+      <ConversationGraphStateHandler />
     </ThemeProvider>
   );
 };
