@@ -358,11 +358,7 @@ export async function handleConversationGraph({
       type: 'user',
       text:
         'I accept the conversation graph and will proceed with it.' +
-        (userConfirmation.answer
-          ? `\
-\
-${userConfirmation.answer}`
-          : ''),
+        (userConfirmation.answer ? `\n\n${userConfirmation.answer}` : ''),
       functionResponses: [
         {
           name: 'conversationGraph',
