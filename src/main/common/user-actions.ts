@@ -9,7 +9,7 @@ export type InputHandlerResponse = {
 
 type InputHandler = (prompt: string, message: string) => Promise<InputHandlerResponse>;
 
-type ConfirmHandlerResponse = {
+export type ConfirmHandlerResponse = {
   confirmed: boolean | undefined;
   options?: CodegenOptions;
   answer?: string;
