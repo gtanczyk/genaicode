@@ -5,6 +5,7 @@ import path from 'node:path';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { ModelType, PromptItem } from '../../../../ai-service/common-types.js'; // Import PromptItem
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
 // Helper function to format log output
 function formatLog(log: LogResult<DefaultLogFields>): string {
@@ -212,3 +213,5 @@ export const handleRequestGitContext: ActionHandler = async ({
     items: [],
   };
 };
+
+registerActionHandler('requestGitContext', handleRequestGitContext);
