@@ -29,8 +29,9 @@ export type ActionType =
   | 'pushAppContext'
   | 'reasoningInference'
   | 'requestFilesFragments'
-  | 'requestGitContext' // Added for Git integration
+  | 'requestGitContext'
   | 'conversationGraph'
+  | 'compoundAction'
   | PluginActionType;
 
 type AskQuestionArgs = {
@@ -180,6 +181,24 @@ export type LintResult = {
   success: boolean;
   stdout?: string;
   stderr?: string;
+};
+
+/**
+ * Represents a single action within a compound action batch.
+ */
+export interface CompoundActionItem {
+  /** The name of the operation to execute (e.g., 'createFile', 'updateFile'). */
+  actionName: string;
+  /** The parameters required by the specified actionName. */
+  params: Record<string, unknown>;
+}
+
+/**
+ * Arguments for the internal `compoundActionList` function call.
+ */
+export type CompoundActionListArgs = {
+  /** An array of actions to be executed as part of a compound operation. */
+  actions: CompoundActionItem[];
 };
 
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;

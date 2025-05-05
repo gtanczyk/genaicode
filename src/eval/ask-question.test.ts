@@ -249,6 +249,14 @@ describe.each([
       sourceCode: {}, // No specific source code needed for repo-level commits
       promptPrefix: [],
     },
+    {
+      name: 'compound action request',
+      userMessage:
+        'Create a new file /project/src/new-util.ts and add a function `sum(a,b)` to /project/src/main/calculator.ts',
+      expectedActionType: 'compoundAction' as ActionType,
+      sourceCode: MOCK_SOURCE_CODE_SUMMARIES_LARGE, // Provide relevant source context
+      promptPrefix: [],
+    },
   ])('$name', async ({ userMessage, expectedActionType, expectedMessageContent, sourceCode, promptPrefix }) => {
     // Prepare prompt items for testing
     const prompt: PromptItem[] = [
@@ -288,7 +296,7 @@ describe.each([
         type: 'assistant',
         text: READY_TO_ASSIST,
       },
-      ...promptPrefix,
+      ...(promptPrefix ?? []),
     ];
 
     if (userMessage) {

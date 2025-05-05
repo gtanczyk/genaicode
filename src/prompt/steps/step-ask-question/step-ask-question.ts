@@ -35,6 +35,7 @@ import './handlers/handle-update-file.js';
 import './handlers/handle-read-external-files.js';
 import './handlers/handle-explore-external-directories.js';
 import './handlers/handle-request-git-context.js';
+import './handlers/handle-compound-action.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,
