@@ -11,7 +11,6 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [x] [GEN-104] 2025-05-06: Implement compoundAction - Allow AI to propose a batch of actions (create, update files) for single user confirmation.
 - [x] [GEN-103] 2025-05-01: Refactored Conversation Graph Toggle Button into dedicated component (`graph-toggle-button.tsx`)
 - [-] [GEN-102] 2025-05-01: Relocate Conversation Graph Visualiser toggle button to bottom-right, make it larger, add pulsing animation, and ensure visibility only during active graph traversal.
 - [x] [GEN-102] 2025-05-01: Relocate Conversation Graph Visualiser toggle button to bottom-right, make it larger, add pulsing animation, and ensure visibility only during active graph traversal. (Updated 2025-05-01): Fixed button positioning.

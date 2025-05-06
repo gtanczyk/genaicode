@@ -746,9 +746,4 @@ export const MOCK_SOURCE_CODE_SUMMARIES_LARGE: SourceCodeMap = {
       'Provides utility functions for making API requests to the backend, including handling authentication and error handling.',
     dependencies: [],
   },
-  '/project/src/main/calculator.ts': {
-    fileId: generateFileId('/project/src/main/calculator.ts'),
-    summary: 'A simple calculator module that provides basic arithmetic operations.',
-    dependencies: [],
-  },
 };

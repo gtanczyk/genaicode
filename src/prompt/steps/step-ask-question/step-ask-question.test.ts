@@ -31,7 +31,6 @@ describe('step-ask-question', () => {
       readExternalFiles: true,
       exploreExternalDirectories: true,
       requestGitContext: true,
-      compoundAction: true,
     };
 
     // Check if each action type has a registered handler
