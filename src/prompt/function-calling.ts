@@ -35,6 +35,7 @@ import { conversationGraph, evaluateEdge } from './function-defs/conversation-gr
 import { conversationSummaryDef } from './function-defs/conversation-summary.js';
 import { readExternalFiles } from './function-defs/read-external-files.js';
 import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
+import { getCompoundActionListDef } from './function-defs/compound-action-list.js';
 
 /**
  * Function definitions for function calling feature
@@ -75,6 +76,7 @@ export function getFunctionDefs(): FunctionDef[] {
     readExternalFiles,
     exploreExternalDirectories,
     requestGitContextDef,
+    getCompoundActionListDef(),
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (
