@@ -145,6 +145,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     outputTokens: usageMetadata.candidatesTokenCount,
     totalTokens: usageMetadata.totalTokenCount,
     thinkingTokens: usageMetadata.thoughtsTokenCount,
+    cacheReadTokens: usageMetadata.cachedContentTokenCount,
   };
   printTokenUsageAndCost({
     aiService: 'ai-studio',
