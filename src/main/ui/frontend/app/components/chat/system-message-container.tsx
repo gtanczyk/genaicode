@@ -12,6 +12,7 @@ import {
 import { CodegenPlanningView, isCodegenPlanningData } from './codegen-planning-view.js';
 import { CodegenSummaryView, isCodegenSummaryData } from './codegen-summary-view.js';
 import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
+import { CompoundActionView, isCompoundActionData, CompoundActionData } from './compound-action-view.js';
 
 export interface SystemMessageBlock extends Omit<ChatMessage, 'type'> {
   type: ChatMessageType.SYSTEM;
@@ -94,9 +95,16 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
   parts.forEach((part) => {
     currentParts.push(part);
 
-    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data) || isFileUpdateData(part.data)) {
+    if (
+      isCompoundActionData(part.data) ||
+      isCodegenPlanningData(part.data) ||
+      isCodegenSummaryData(part.data) ||
+      isFileUpdateData(part.data)
+    ) {
       // Add the codegen view section
-      const codegenView = isCodegenPlanningData(part.data) ? (
+      const codegenView = isCompoundActionData(part.data) ? (
+        <CompoundActionView key={`compound-${part.id}`} {...(part.data as CompoundActionData)} title={part.content} />
+      ) : isCodegenPlanningData(part.data) ? (
         <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
       ) : isCodegenSummaryData(part.data) ? (
         <CodegenSummaryView key={`summary-${part.id}`} data={part.data} />
