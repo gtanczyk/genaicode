@@ -19,7 +19,7 @@ export async function validateAndRecoverSingleResult(
   let calls = result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
 
   let call: FunctionCall | undefined = calls[0];
-  const validatorError = validateFunctionCall(call, requiredFunctionName, calls, rootDir);
+  const validatorError = validateFunctionCall(call, requiredFunctionName, calls, rootDir, functionDefs);
   if (validatorError) {
     console.log('Invalid function call', call, validatorError);
     if (!call) {
@@ -66,7 +66,7 @@ export async function validateAndRecoverSingleResult(
     console.log('Recover result:', result);
 
     if (calls?.length === 1) {
-      let recoveryError = validateFunctionCall(calls[0], requiredFunctionName, calls, rootDir);
+      let recoveryError = validateFunctionCall(calls[0], requiredFunctionName, calls, rootDir, functionDefs);
       if (recoveryError) {
         console.log("Use more expensive recovery method, because we couldn't recover.");
         result = await generateContentFn(
@@ -75,7 +75,7 @@ export async function validateAndRecoverSingleResult(
           options,
         );
         calls = result.filter((item) => item.type === 'functionCall').map((item) => item.functionCall);
-        recoveryError = validateFunctionCall(calls?.[0], requiredFunctionName, calls, rootDir);
+        recoveryError = validateFunctionCall(calls?.[0], requiredFunctionName, calls, rootDir, functionDefs);
         assert(!recoveryError, 'Recovery failed');
       }
       console.log('Recovery was successful');

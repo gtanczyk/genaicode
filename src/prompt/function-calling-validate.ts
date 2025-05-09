@@ -9,9 +9,12 @@ export function validateFunctionCall(
   requiredFunctionName: string,
   calls: FunctionCall[],
   rootDir: string,
+  functionDefs: FunctionDef[] | undefined,
 ): Omit<ValidatorResult, 'addError'> | undefined {
   const validator = new Validator();
-  const functionDef: FunctionDef | undefined = getFunctionDefs().find((def) => def.name === call?.name);
+  const functionDef: FunctionDef | undefined = (functionDefs ?? getFunctionDefs()).find(
+    (def) => def.name === call?.name,
+  );
 
   // Check if a function was called
   if (!call) {
