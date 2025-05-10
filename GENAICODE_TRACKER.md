@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-107] 2025-05-15: Add test suite for compoundAction handler (`src/eval/compound-action.test.ts`).
 - [-] [GEN-106] 2025-05-10: Refactor `handleCompoundAction` for multi-step inference (plan, then params per action).
 - [x] [GEN-105] 2025-05-10: Refactor `handleCompoundAction` to use full conversation context for action inference instead of `askQuestionCall.args.message`.
 - [x] [GEN-104] 2025-05-06: Implement compoundAction - Allow AI to propose a batch of actions (create, update files) for single user confirmation.
