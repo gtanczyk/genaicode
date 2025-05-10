@@ -93,13 +93,12 @@ describe.each([
 
   it('Test Case 1: Evaluates the planning prompt for a simple compound action', async () => {
     const userMessage =
-      "Create a file /project/new.txt with 'hello' and update /project/src/main/project-manager.ts to 'new world content'";
+      "Create a file /project/new.txt with 'hello' and update /project/existing.txt to 'new world content'";
     const initialPrompt: PromptItem[] = [...getBasePrompt(), { type: 'user', text: userMessage }];
 
     const compoundActionDef = getCompoundActionDef();
     const assistantPlanningMessage = 'Okay, I will plan the actions for you.';
 
-    // Use the exported function to construct the planning prompt
     const planningPhasePrompt = constructCompoundActionPlanningPrompt(
       initialPrompt,
       assistantPlanningMessage,
@@ -110,7 +109,7 @@ describe.each([
       planningPhasePrompt,
       {
         modelType: ModelType.DEFAULT,
-        functionDefs: getFunctionDefs(), // getFunctionDefs includes compoundActionDef and others
+        functionDefs: getFunctionDefs(),
         requiredFunctionName: compoundActionDef.name,
         temperature: 0.1,
         expectedResponseType: { text: false, functionCall: true, media: false },
@@ -125,13 +124,10 @@ describe.each([
         }>
       | undefined;
 
-    console.log(functionCall?.args);
-
     expect(functionCall).toBeDefined();
     expect(functionCall?.name).toBe(compoundActionDef.name);
     expect(functionCall?.args?.actions).toBeInstanceOf(Array);
     expect(functionCall?.args?.actions.length).toBeGreaterThanOrEqual(2);
-    // Check for specific actions if the model is consistent enough, otherwise check for general structure
     const actionNames = functionCall?.args?.actions.map((a) => a.name) ?? [];
     expect(actionNames).toContain('createFile');
     expect(actionNames).toContain('updateFile');
@@ -144,8 +140,6 @@ describe.each([
     const createFileOpDef = getOperationDef('createFile');
     expect(createFileOpDef).toBeDefined();
 
-    // Simulate conversation history leading up to parameter inference for createFile
-    // This history must be compatible with how constructCompoundActionParameterInferencePrompt expects it.
     const actionIdForTest = 'action1';
     const actionNameToTest = 'createFile';
 
@@ -183,7 +177,6 @@ describe.each([
       },
     ];
 
-    // Use the exported function to construct the parameter inference prompt
     const paramInferencePhasePrompt = constructCompoundActionParameterInferencePrompt(
       historyLeadingToParamInference,
       actionIdForTest,
@@ -195,7 +188,7 @@ describe.each([
       paramInferencePhasePrompt,
       {
         modelType: ModelType.DEFAULT,
-        functionDefs: getFunctionDefs(), // getFunctionDefs includes createFileOpDef and others
+        functionDefs: getFunctionDefs(),
         requiredFunctionName: actionNameToTest,
         temperature: 0.1,
         expectedResponseType: { text: false, functionCall: true, media: false },
@@ -207,14 +200,89 @@ describe.each([
       | FunctionCall<{ filePath: string; newContent: string }>
       | undefined;
 
-    console.log(functionCall?.args);
-
     expect(functionCall).toBeDefined();
     expect(functionCall?.name).toBe(actionNameToTest);
     expect(functionCall?.args?.filePath).toBeTypeOf('string');
-    // Looser check for content as AI might slightly rephrase
     expect(functionCall?.args?.filePath).toContain('new_param_test.txt');
     expect(functionCall?.args?.newContent).toBeTypeOf('string');
     expect(functionCall?.args?.newContent.toLowerCase()).toContain('parameter inference content');
+  });
+
+  it('Test Case 3: Evaluates planning prompt for a 3-level DAG with an orphan action', async () => {
+    const userMessage =
+      'Please create the directory /project/dirA and the directory /project/dirB. ' +
+      'Once /project/dirA exists, create the file /project/dirA/fileA1.txt. ' +
+      'Once /project/dirB exists, create the file /project/dirB/fileB1.txt. ' +
+      'After both /project/dirA/fileA1.txt and /project/dirB/fileB1.txt have been created, update the content of /project/fileC.txt. ' +
+      'Separately from these tasks, please also delete the file /project/fileD.txt.';
+
+    const initialPrompt: PromptItem[] = [...getBasePrompt(), { type: 'user', text: userMessage }];
+    const compoundActionDef = getCompoundActionDef();
+    const assistantPlanningMessage = 'Okay, I will plan this complex set of actions for you.';
+
+    const planningPhasePrompt = constructCompoundActionPlanningPrompt(
+      initialPrompt,
+      assistantPlanningMessage,
+      compoundActionDef,
+    );
+
+    const result = await generateContent(
+      planningPhasePrompt,
+      {
+        modelType: ModelType.DEFAULT,
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: compoundActionDef.name,
+        temperature: 0.1,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
+      baseCodegenOptions,
+    );
+
+    const functionCall = result.find((part) => part.type === 'functionCall')?.functionCall as
+      | FunctionCall<{
+          actions: Array<{ id: string; name: string; dependsOn?: string[] }>;
+          summary: string;
+        }>
+      | undefined;
+
+    console.log(functionCall?.args);
+
+    expect(functionCall).toBeDefined();
+    expect(functionCall?.name).toBe(compoundActionDef.name);
+    const actions = functionCall?.args?.actions;
+    expect(actions).toBeInstanceOf(Array);
+    expect(actions?.length).toBe(6); // 2 createDir, 2 createFile, 1 updateFile, 1 deleteFile
+
+    const findAction = (name: string, idFragment: string) =>
+      actions?.find((a) => a.name === name && a.id.toLowerCase().includes(idFragment.toLowerCase()));
+
+    const dirA = findAction('createDirectory', 'dirA');
+    const dirB = findAction('createDirectory', 'dirB');
+    const fileA1 = findAction('createFile', 'a1');
+    const fileB1 = findAction('createFile', 'b1');
+    const fileC = findAction('updateFile', 'fileC');
+    const fileD = findAction('deleteFile', 'fileD');
+
+    expect(dirA).toBeDefined();
+    expect(dirB).toBeDefined();
+    expect(fileA1).toBeDefined();
+    expect(fileB1).toBeDefined();
+    expect(fileC).toBeDefined();
+    expect(fileD).toBeDefined();
+
+    // Check dependencies
+    expect(fileA1?.dependsOn).toEqual(expect.arrayContaining([dirA?.id]));
+    expect(fileB1?.dependsOn).toEqual(expect.arrayContaining([dirB?.id]));
+    expect(fileC?.dependsOn).toEqual(expect.arrayContaining([fileA1?.id, fileB1?.id]));
+
+    // Orphan action should have no dependencies listed, or an empty array
+    expect(fileD?.dependsOn === undefined || fileD?.dependsOn?.length === 0).toBe(true);
+
+    // Check for unique IDs
+    const ids = actions?.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids?.length);
+
+    expect(functionCall?.args?.summary).toBeTypeOf('string');
+    expect(functionCall?.args?.summary.length).toBeGreaterThan(10);
   });
 });
