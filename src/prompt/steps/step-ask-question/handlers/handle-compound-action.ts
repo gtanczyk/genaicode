@@ -1,34 +1,11 @@
-import { FunctionCall, ModelType, PromptItem, FunctionDef } from '../../../../ai-service/common-types.js';
+import { FunctionCall, ModelType, PromptItem } from '../../../../ai-service/common-types.js';
 import { ActionHandler, ActionResult, ActionHandlerProps, CompoundActionItem } from '../step-ask-question-types.js';
 import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
 import { getOperationExecutor, getOperationDefs } from '../../../../operations/operations-index.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-
-// Helper FunctionDef for initial high-level plan inference
-const inferActionTypesAndSummaryDef: FunctionDef = {
-  name: 'inferActionTypesAndSummary',
-  description: 'Infers the types of actions required and a summary for user confirmation.',
-  parameters: {
-    type: 'object',
-    properties: {
-      actionNames: {
-        type: 'array',
-        description: 'An array of action names (e.g., createFile, updateFile) to be performed.',
-        items: {
-          type: 'string',
-          enum: getOperationDefs().map((op) => op.name),
-        },
-      },
-      summary: {
-        type: 'string',
-        description: 'A user-facing summary of the proposed actions, asking for confirmation.',
-      },
-    },
-    required: ['actionNames', 'summary'],
-  },
-};
+import { getCompoundActionDef } from '../../../function-defs/compound-action.js';
 
 export const handleCompoundAction: ActionHandler = async ({
   askQuestionCall,
@@ -36,11 +13,20 @@ export const handleCompoundAction: ActionHandler = async ({
   generateContentFn,
   prompt,
 }: ActionHandlerProps): Promise<ActionResult> => {
-  let actionNames: string[] = [];
+  const compoundActionDef = getCompoundActionDef();
+  let actions: Array<{
+    id: string;
+    name: string;
+    dependsOn?: string[];
+  }> = [];
   let summary = '';
   let initialInferenceCall:
     | FunctionCall<{
-        actionNames: string[];
+        actions: Array<{
+          id: string;
+          name: string;
+          dependsOn?: string[];
+        }>;
         summary: string;
       }>
     | undefined;
@@ -60,7 +46,7 @@ export const handleCompoundAction: ActionHandler = async ({
           .map((op) => op.name)
           .join(
             ', ',
-          )}) needed to fulfill my request. Provide an array of action names and a concise summary message for my confirmation. Use the "${inferActionTypesAndSummaryDef.name}" function to return this information.`,
+          )}) needed to fulfill my request. Provide an array of action names and a concise summary message for my confirmation. Use the "${compoundActionDef.name}" function to return this information.`,
       },
     ];
 
@@ -68,8 +54,8 @@ export const handleCompoundAction: ActionHandler = async ({
       initialInferencePrompt,
       {
         modelType: ModelType.DEFAULT, // Use a capable model for planning
-        functionDefs: [...getFunctionDefs(), inferActionTypesAndSummaryDef],
-        requiredFunctionName: inferActionTypesAndSummaryDef.name,
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: compoundActionDef.name,
         temperature: 0.2,
         expectedResponseType: { text: false, functionCall: true, media: false },
       },
@@ -77,11 +63,15 @@ export const handleCompoundAction: ActionHandler = async ({
     );
 
     initialInferenceCall = initialResult.find((part) => part.type === 'functionCall')?.functionCall as FunctionCall<{
-      actionNames: string[];
+      actions: Array<{
+        id: string;
+        name: string;
+        dependsOn?: string[];
+      }>;
       summary: string;
     }>;
 
-    if (!initialInferenceCall?.args?.actionNames || initialInferenceCall.args.actionNames.length === 0) {
+    if (!initialInferenceCall?.args?.actions || initialInferenceCall.args.actions.length === 0) {
       putSystemMessage('AI failed to generate a list of action types or returned an empty list. Cannot proceed.');
       prompt.push({
         type: 'assistant',
@@ -93,9 +83,9 @@ export const handleCompoundAction: ActionHandler = async ({
       });
       return { breakLoop: false, items: [] };
     }
-    actionNames = initialInferenceCall.args.actionNames;
+    actions = initialInferenceCall.args.actions;
     summary = initialInferenceCall.args.summary;
-    putSystemMessage(`Inferred action types`, { actionNames, summary });
+    putSystemMessage(`Inferred actions`, { actions, summary });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     putSystemMessage(`Error during high-level plan inference: ${errorMessage}`);
@@ -112,67 +102,122 @@ export const handleCompoundAction: ActionHandler = async ({
     return { breakLoop: false, items: [] };
   }
 
-  prompt.push({
-    type: 'assistant',
-    text: askQuestionCall.args?.message ?? '',
-    functionCalls: initialInferenceCall ? [initialInferenceCall] : [],
-  });
+  prompt.push(
+    {
+      type: 'assistant',
+      text: askQuestionCall.args?.message ?? '',
+      functionCalls: [initialInferenceCall],
+    },
+    {
+      type: 'user',
+      functionResponses: [
+        {
+          name: initialInferenceCall.name,
+          call_id: initialInferenceCall.id,
+          content: '',
+        },
+      ],
+    },
+    {
+      type: 'assistant',
+      text: `I have inferred the actions, and I'm ready to proceed with the next steps`,
+    },
+  );
 
   // Step 2: Infer Parameters for Each Action
   const detailedActions: CompoundActionItem[] = [];
   let parameterInferenceFailed = false;
 
-  for (const actionName of actionNames) {
-    const currentOperationDef = getOperationDefs().find((op) => op.name === actionName);
-    if (!currentOperationDef) {
-      putSystemMessage(`Error: Operation definition not found for action "${actionName}". Skipping this action.`);
-      // Potentially mark as failure or decide to continue with other actions
-      parameterInferenceFailed = true; // Or a more nuanced error handling
+  const completedActions = new Set<string>();
+
+  while (actions.length > 0) {
+    const actionsToProcess = actions.filter(
+      (action) => !action.dependsOn || action.dependsOn?.every((dep) => completedActions.has(dep)),
+    );
+    if (!actionsToProcess.length) {
+      putSystemMessage('No more actions to process or circular dependency detected. Stopping parameter inference.');
       break;
     }
+    actions = actions.filter((action) => !actionsToProcess.includes(action));
 
-    try {
-      putSystemMessage(`Inferring parameters for action: ${actionName}...`);
-      const paramInferencePrompt: PromptItem[] = [
-        ...prompt, // Includes the initial inference call and its response
-        {
-          type: 'user',
-          text: `Now, for the action "${actionName}", please determine the specific parameters required. Refer to its definition: ${JSON.stringify(currentOperationDef.parameters)}. Use the "${actionName}" function to return these parameters.`,
-        },
-      ];
+    const results = await Promise.allSettled(
+      actionsToProcess.map(async (action) => {
+        const { id: actionId, name: actionName } = action;
+        const currentOperationDef = getOperationDefs().find((op) => op.name === actionName);
+        if (!currentOperationDef) {
+          putSystemMessage(
+            `Error: Operation definition not found for action "${actionId}:${actionName}". Skipping this action.`,
+          );
+          // Potentially mark as failure or decide to continue with other actions
+          parameterInferenceFailed = true; // Or a more nuanced error handling
+          return false;
+        }
 
-      const paramResult = await generateContentFn(
-        paramInferencePrompt,
-        {
-          modelType: ModelType.DEFAULT, // Use a capable model for parameter filling
-          functionDefs: [...getFunctionDefs(), inferActionTypesAndSummaryDef, currentOperationDef],
-          requiredFunctionName: actionName,
-          temperature: 0.1, // Low temperature for precise parameter generation
-          expectedResponseType: { text: false, functionCall: true, media: false },
-        },
-        options,
-      );
+        try {
+          putSystemMessage(`Inferring parameters for action: ${actionId}:${actionName}...`);
+          const paramInferencePrompt: PromptItem[] = [
+            ...prompt, // Includes the initial inference call and its response
+            {
+              type: 'user',
+              text: `Now, for the action "${actionId}:${actionName}", please determine the specific parameters required. Refer to its definition: ${JSON.stringify(currentOperationDef.parameters)}. Use the "${actionName}" function to return these parameters.`,
+            },
+          ];
 
-      const paramFunctionCall = paramResult.find((part) => part.type === 'functionCall')?.functionCall;
+          const paramResult = await generateContentFn(
+            paramInferencePrompt,
+            {
+              modelType: ModelType.DEFAULT, // Use a capable model for parameter filling
+              functionDefs: getFunctionDefs(),
+              requiredFunctionName: actionName,
+              temperature: 0.1, // Low temperature for precise parameter generation
+              expectedResponseType: { text: false, functionCall: true, media: false },
+            },
+            options,
+          );
 
-      if (!paramFunctionCall?.args) {
-        putSystemMessage(`AI failed to generate parameters for action "${actionName}".`);
-        parameterInferenceFailed = true;
-        break;
-      }
+          const paramFunctionCall = paramResult.find((part) => part.type === 'functionCall')?.functionCall;
 
-      detailedActions.push({ name: actionName, args: paramFunctionCall.args });
-      putSystemMessage(`Inferred parameters for ${actionName}`, { ...paramFunctionCall });
+          if (!paramFunctionCall?.args) {
+            putSystemMessage(`AI failed to generate parameters for action "${actionId}:${actionName}".`);
+            parameterInferenceFailed = true;
+            return false;
+          }
 
-      // Add this specific parameter inference to the prompt history
-      prompt.push({
-        type: 'assistant',
-        functionCalls: [paramFunctionCall],
-        text: `Inferring parameters for ${actionName}`,
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      putSystemMessage(`Error inferring parameters for action "${actionName}": ${errorMessage}`);
+          detailedActions.push({ name: actionName, args: paramFunctionCall.args });
+          putSystemMessage(`Inferred parameters for ${actionId}:${actionName}`, { ...paramFunctionCall });
+
+          // Add this specific parameter inference to the prompt history
+          prompt.push(
+            {
+              type: 'assistant',
+              functionCalls: [paramFunctionCall],
+              text: `Inferring parameters for ${actionId}:${actionName}`,
+            },
+            {
+              type: 'user',
+              functionResponses: [
+                {
+                  name: paramFunctionCall.name,
+                  call_id: paramFunctionCall.id,
+                  content: '',
+                },
+              ],
+            },
+          );
+
+          completedActions.add(actionId);
+          return true;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          putSystemMessage(`Error inferring parameters for action "${actionName}": ${errorMessage}`);
+          parameterInferenceFailed = true;
+          return false;
+        }
+      }),
+    );
+
+    if (results.some((result) => result.status === 'rejected' || !result.value)) {
+      putSystemMessage('Some actions failed to infer parameters. Stopping parameter inference.');
       parameterInferenceFailed = true;
       break;
     }
