@@ -33,7 +33,9 @@ export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
           <Button onClick={() => setShowExplanation(!showExplanation)}>
             {showExplanation ? 'Hide Explanation' : 'Explanation'}
           </Button>
-          <Button onClick={() => setShowDiff(!showDiff)}>{showDiff ? 'Hide Diff' : 'Show Diff'}</Button>
+          {(oldContent || newContent) && (
+            <Button onClick={() => setShowDiff(!showDiff)}>{showDiff ? 'Hide Diff' : 'Show Diff'}</Button>
+          )}
         </ButtonContainer>
       </FileHeader>
 
@@ -48,13 +50,26 @@ export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
   );
 };
 
+const supportedFileUpdateNames: string[] = [
+  'updateFile',
+  'createFile',
+  'patchFile',
+  `createDirectory`,
+  `deleteFile`,
+  `moveFile`,
+  `downloadFile`,
+  `splitImage`,
+  `resizeImage`,
+  `imglyRemoveBackground`,
+];
+
 export function isFileUpdateData(data: unknown): data is { name: string; args: FileUpdate } {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
-  if (obj.name !== 'updateFile' && obj.name !== 'createFile' && obj.name !== 'patchFile') return false;
+  if (typeof obj.name !== 'string' || !supportedFileUpdateNames.includes(obj.name)) return false;
   const args = obj.args as Record<string, unknown>;
 
-  return typeof args.filePath === 'string' && typeof args.newContent === 'string';
+  return typeof args.filePath === 'string';
 }
 
 const FileUpdateContainer = styled.div`

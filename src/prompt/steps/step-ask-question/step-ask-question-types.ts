@@ -188,14 +188,9 @@ export type LintResult = {
  */
 export interface CompoundActionItem {
   /** The name of the operation to execute (e.g., 'createFile', 'updateFile'). */
-  actionName: string;
+  name: string;
   /** The parameters required by the specified actionName. */
-  params: Array<{
-    /** The name of the parameter required by the action. */
-    paramName: string;
-    /** The value of the parameter required by the action. */
-    paramValue: string;
-  }>;
+  args: Record<string, unknown>;
 }
 
 /**
