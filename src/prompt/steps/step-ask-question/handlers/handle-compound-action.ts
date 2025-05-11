@@ -31,7 +31,9 @@ export function constructCompoundActionPlanningPrompt(
         .map((op) => op.name)
         .join(
           ', ',
-        )}) needed to fulfill my request. Provide an array of action names and a concise summary message for my confirmation. Use the "${compoundActionDef.name}" function to return this information.`,
+        )}) needed to fulfill my request. Provide an array of action names and a concise summary message for my confirmation.
+Please provide information about dependency between actions.
+Use the "${compoundActionDef.name}" function to return this information.`,
     },
   ];
 }
@@ -95,7 +97,7 @@ export const handleCompoundAction: ActionHandler = async ({
     const initialResult = await generateContentFn(
       initialInferencePrompt,
       {
-        modelType: ModelType.DEFAULT, // Use a capable model for planning
+        modelType: ModelType.CHEAP, // Use a capable model for planning
         functionDefs: getFunctionDefs(), // getFunctionDefs() already includes compoundActionDef
         requiredFunctionName: compoundActionDef.name,
         temperature: 0.2,

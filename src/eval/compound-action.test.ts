@@ -108,7 +108,7 @@ describe.each([
     const result = await generateContent(
       planningPhasePrompt,
       {
-        modelType: ModelType.DEFAULT,
+        modelType: ModelType.CHEAP,
         functionDefs: getFunctionDefs(),
         requiredFunctionName: compoundActionDef.name,
         temperature: 0.1,
@@ -187,7 +187,7 @@ describe.each([
     const result = await generateContent(
       paramInferencePhasePrompt,
       {
-        modelType: ModelType.DEFAULT,
+        modelType: ModelType.CHEAP,
         functionDefs: getFunctionDefs(),
         requiredFunctionName: actionNameToTest,
         temperature: 0.1,
@@ -229,7 +229,7 @@ describe.each([
     const result = await generateContent(
       planningPhasePrompt,
       {
-        modelType: ModelType.DEFAULT,
+        modelType: ModelType.CHEAP,
         functionDefs: getFunctionDefs(),
         requiredFunctionName: compoundActionDef.name,
         temperature: 0.1,
@@ -280,6 +280,84 @@ describe.each([
 
     // Check for unique IDs
     const ids = actions?.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids?.length);
+
+    expect(functionCall?.args?.summary).toBeTypeOf('string');
+    expect(functionCall?.args?.summary.length).toBeGreaterThan(10);
+  });
+
+  it('Test Case 4: Evaluates planning prompt for a 3-level DAG based on implicit code dependencies', async () => {
+    const userMessage =
+      "I need to make some changes to how we handle user authentication. I've been looking at the `authenticateUser` function in `authService.ts`. " +
+      'We also need to update the login flow component, `Login.tsx`, because it calls that service. ' +
+      'And the integration tests for the login process, `login.test.ts`, will definitely need adjusting. ' +
+      "While we're at it, let's add a simple README to the `components` directory.";
+
+    const initialPrompt: PromptItem[] = [...getBasePrompt(), { type: 'user', text: userMessage }];
+    const compoundActionDef = getCompoundActionDef();
+    const assistantPlanningMessage = 'Okay, I will plan these code refactoring steps for you.';
+
+    const planningPhasePrompt = constructCompoundActionPlanningPrompt(
+      initialPrompt,
+      assistantPlanningMessage,
+      compoundActionDef,
+    );
+
+    const result = await generateContent(
+      planningPhasePrompt,
+      {
+        modelType: ModelType.CHEAP,
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: compoundActionDef.name,
+        temperature: 0.1,
+        expectedResponseType: { text: false, functionCall: true, media: false },
+      },
+      baseCodegenOptions,
+    );
+
+    const functionCall = result.find((part) => part.type === 'functionCall')?.functionCall as
+      | FunctionCall<{
+          actions: Array<{ id: string; name: string; args?: Record<string, unknown>; dependsOn?: string[] }>;
+          summary: string;
+        }>
+      | undefined;
+
+    console.log(functionCall?.args);
+
+    expect(functionCall).toBeDefined();
+    expect(functionCall?.name).toBe(compoundActionDef.name);
+    const actions = functionCall?.args?.actions;
+    expect(actions).toBeInstanceOf(Array);
+    expect(actions?.length).toBe(4); // 3 updateFile, 1 createFile
+
+    const findAction = (name: string, ...keywords: string[]) =>
+      actions?.find(
+        (a) => a.name === name && keywords.every((keyword) => a.id.toLowerCase().includes(keyword.toLowerCase())),
+      );
+
+    const authServiceUpdate = findAction('updateFile', 'auth', 'update');
+    const loginTsxUpdate = findAction('updateFile', 'login', 'update');
+    const loginTestUpdate = findAction('updateFile', 'login', 'test');
+    const readmeCreate = findAction('createFile', 'readme');
+
+    expect(authServiceUpdate).toBeDefined();
+    expect(loginTsxUpdate).toBeDefined();
+    expect(loginTestUpdate).toBeDefined();
+    expect(readmeCreate).toBeDefined();
+
+    // Check for defined IDs needed for dependency checks
+    expect(authServiceUpdate?.id).toBeDefined();
+    expect(loginTsxUpdate?.id).toBeDefined();
+    expect(loginTestUpdate?.id).toBeDefined();
+
+    // Check dependencies
+    expect(loginTsxUpdate?.dependsOn).toEqual(expect.arrayContaining([authServiceUpdate?.id]));
+    expect(loginTestUpdate?.dependsOn).toEqual(expect.arrayContaining([loginTsxUpdate?.id]));
+
+    // Orphan action
+    expect(readmeCreate?.dependsOn === undefined || readmeCreate?.dependsOn?.length === 0).toBe(true);
+
+    const ids = actions?.map((a) => a.id).filter((id) => id !== undefined) as string[];
     expect(new Set(ids).size).toBe(ids?.length);
 
     expect(functionCall?.args?.summary).toBeTypeOf('string');
