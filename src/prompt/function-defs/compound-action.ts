@@ -1,5 +1,5 @@
-import { FunctionDef } from '../../ai-service/common-types';
-import { getOperationDefs } from '../../operations/operations-index';
+import { FunctionDef } from '../../ai-service/common-types.js';
+import { getOperationDefs } from '../../operations/operations-index.js';
 
 export const getCompoundActionDef: () => FunctionDef = () => ({
   name: 'compoundAction',
