@@ -11,3 +11,5 @@
 - no idea what permissions are requested
 - asset file type
 - optimize context not working, returning all files on gemini
+- diff in compound action view
+- unsure context for compound?
