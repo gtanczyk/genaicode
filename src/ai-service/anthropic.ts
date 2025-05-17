@@ -100,11 +100,16 @@ export const generateContent: GenerateContentFunction = async function generateC
             content.push(
               ...(item.images ?? []).map((image) => ({
                 type: 'image' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: image.mediaType,
-                  data: image.base64url,
-                },
+                source: image.uri
+                  ? {
+                      type: 'url' as const,
+                      url: image.uri,
+                    }
+                  : {
+                      type: 'base64' as const,
+                      media_type: image.mediaType,
+                      data: image.base64url,
+                    },
               })),
             );
           }

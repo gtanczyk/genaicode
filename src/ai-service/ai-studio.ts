@@ -1,5 +1,7 @@
 import {
+  Blob,
   Content,
+  FileData,
   FunctionCallingConfigMode,
   FunctionDeclaration,
   GenerateContentParameters,
@@ -67,12 +69,21 @@ export const generateContent: GenerateContentFunction = async function generateC
                 response: { name: response.name, content: response.content },
               },
             })),
-            ...(item.images ?? []).map((image) => ({
-              inlineData: {
-                mimeType: image.mediaType,
-                data: image.base64url,
-              },
-            })),
+            ...(item.images ?? []).map((image) =>
+              image.uri
+                ? {
+                    fileData: {
+                      fileUri: image.uri,
+                      mimeType: image.mediaType,
+                    } as FileData,
+                  }
+                : {
+                    inlineData: {
+                      mimeType: image.mediaType,
+                      data: image.base64url,
+                    } as Blob,
+                  },
+            ),
             ...(item.text ? [{ text: item.text }] : []),
           ],
         };
@@ -83,12 +94,21 @@ export const generateContent: GenerateContentFunction = async function generateC
           role: 'model' as const,
           parts: [
             ...(item.text ? [{ text: item.text }] : []),
-            ...(item.images ?? []).map((image) => ({
-              inlineData: {
-                mimeType: image.mediaType,
-                data: image.base64url,
-              },
-            })),
+            ...(item.images ?? []).map((image) =>
+              image.uri
+                ? {
+                    fileData: {
+                      mimeType: image.mediaType,
+                      fileUri: image.uri,
+                    } as FileData,
+                  }
+                : {
+                    inlineData: {
+                      mimeType: image.mediaType,
+                      data: image.base64url,
+                    } as Blob,
+                  },
+            ),
             ...(item.functionCalls ?? []).map((call) => ({
               functionCall: {
                 name: call.name,

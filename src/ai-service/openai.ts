@@ -105,7 +105,7 @@ export async function internalGenerateContent(
               ...item.images!.map((image) => ({
                 type: 'image_url' as const,
                 image_url: {
-                  url: 'data:' + image.mediaType + ';base64,' + image.base64url,
+                  url: image.uri ? image.uri : 'data:' + image.mediaType + ';base64,' + image.base64url,
                 },
               })),
               ...(item.text

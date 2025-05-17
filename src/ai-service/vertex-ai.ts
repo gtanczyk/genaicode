@@ -81,12 +81,21 @@ export const generateContent: GenerateContentFunction = async function generateC
           }
           if (item.images) {
             parts.push(
-              ...item.images.map((image) => ({
-                inlineData: {
-                  mimeType: image.mediaType,
-                  data: image.base64url,
-                },
-              })),
+              ...item.images.map((image) =>
+                image.uri
+                  ? {
+                      fileData: {
+                        fileUri: image.uri,
+                        mimeType: image.mediaType,
+                      },
+                    }
+                  : {
+                      inlineData: {
+                        mimeType: image.mediaType,
+                        data: image.base64url,
+                      },
+                    },
+              ),
             );
           }
           if (item.text) {

@@ -37,6 +37,7 @@ export type PromptImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'i
 export type PromptItemImage = {
   mediaType: PromptImageMediaType;
   base64url: string;
+  uri?: string; // if specified, takes precedence over base64url
 };
 
 export interface PromptItem {
