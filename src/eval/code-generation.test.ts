@@ -47,7 +47,7 @@ describe.each([
       'anthropic',
       {
         modelOverrides: {
-          default: 'claude-3-7-sonnet-20250219',
+          default: 'claude-sonnet-4-20250514',
         },
       },
     ] as Parameters<typeof updateServiceConfig>,

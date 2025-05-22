@@ -189,7 +189,7 @@ describe('prompt-debug', () => {
   it('Claude Sonnet', async () => {
     updateServiceConfig('anthropic', {
       modelOverrides: {
-        default: 'claude-3-7-sonnet-20250219',
+        default: 'claude-sonnet-4-20250514',
       },
       apiKey: process.env.ANHROPIC_API_KEY,
     });

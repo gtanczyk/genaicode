@@ -52,7 +52,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     let baseSystemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
 
     // Determine which model to use
-    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-3-7-sonnet-20250219';
+    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-20250514';
     const modelOverrides = serviceConfig?.modelOverrides;
     let model =
       modelType === ModelType.CHEAP
