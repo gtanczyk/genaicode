@@ -10,6 +10,7 @@ import {
 } from '../step-ask-question-types.js';
 import { getContextSourceCode } from '../../../../files/source-code-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
+import { reasoningInferenceResponse } from '../../../function-defs/reasoning-inference.js';
 
 registerActionHandler('reasoningInference', handleReasoningInference);
 
@@ -94,7 +95,7 @@ export async function handleReasoningInference({
           },
         ],
         {
-          functionDefs: [],
+          functionDefs: [reasoningInferenceResponse],
           requiredFunctionName: 'reasoningInferenceResponse',
           temperature: 0.7,
           modelType: ModelType.REASONING,
