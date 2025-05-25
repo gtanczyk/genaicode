@@ -13,3 +13,5 @@
 - optimize context not working, returning all files on gemini
 - diff in compound action view
 - unsure context for compound?
+- misuse of request filest content with external path
+- recover from tool misuse?
