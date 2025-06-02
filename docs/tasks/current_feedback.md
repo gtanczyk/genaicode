@@ -15,3 +15,5 @@
 - unsure context for compound?
 - misuse of request filest content with external path
 - recover from tool misuse?
+- old content in compound action diff
+- codegen plan/summary/explanations are too long
