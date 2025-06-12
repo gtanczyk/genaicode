@@ -19,3 +19,4 @@
 - codegen plan/summary/explanations are too long
 - detect update of files from FS, inject into context (prompt user?)
 - codegen plan/summary editing
+- multiple sessions
