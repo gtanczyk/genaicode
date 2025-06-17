@@ -31,7 +31,7 @@ describe.each([
       'ai-studio',
       {
         modelOverrides: {
-          cheap: 'gemini-2.0-flash',
+          cheap: 'gemini-2.5-flash',
         },
       },
     ] as Parameters<typeof updateServiceConfig>,

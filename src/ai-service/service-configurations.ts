@@ -13,8 +13,8 @@ const configurations: ServiceConfigurations = {
   'ai-studio': {
     apiKey: process.env.API_KEY,
     modelOverrides: {
-      default: modelOverrides.aiStudio?.default ?? 'gemini-1.5-pro-002',
-      cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.0-flash',
+      default: modelOverrides.aiStudio?.default ?? 'gemini-2.5-pro',
+      cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.5-flash',
       reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
       modelSpecificSettings: modelOverrides.aiStudio?.modelSpecificSettings ?? {},
     },
@@ -51,8 +51,8 @@ const configurations: ServiceConfigurations = {
   'vertex-ai': {
     googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT ?? '',
     modelOverrides: {
-      default: modelOverrides.vertexAi?.default ?? 'gemini-1.5-pro-002',
-      cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.0-flash',
+      default: modelOverrides.vertexAi?.default ?? 'gemini-2.5-pro',
+      cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.5-flash',
       reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
       modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },

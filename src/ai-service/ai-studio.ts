@@ -299,11 +299,11 @@ function modelGenerateContent(
   const model = (() => {
     switch (modelType) {
       case ModelType.CHEAP:
-        return serviceConfig.modelOverrides?.cheap ?? 'gemini-2.0-flash';
+        return serviceConfig.modelOverrides?.cheap ?? 'gemini-2.5-flash';
       case ModelType.REASONING:
         return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21';
       default:
-        return serviceConfig.modelOverrides?.default ?? 'gemini-1.5-pro-002';
+        return serviceConfig.modelOverrides?.default ?? 'gemini-2.5-pro';
     }
   })();
 

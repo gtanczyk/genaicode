@@ -284,7 +284,7 @@ async function getGenModel(params: GetGenModelParams) {
     const vertex_ai = new VertexAI({ project: serviceConfig.googleCloudProjectId });
 
     // Determine model name
-    const defaultModelName = modelType === ModelType.CHEAP ? 'gemini-2.0-flash' : 'gemini-1.5-pro-002';
+    const defaultModelName = modelType === ModelType.CHEAP ? 'gemini-2.5-flash' : 'gemini-2.5-pro';
     const modelOverrides = serviceConfig?.modelOverrides;
     const modelName =
       (modelType === ModelType.CHEAP
@@ -399,7 +399,7 @@ async function recoverFunctionCall(textResponse: string, functionDef: FunctionDe
     });
 
     // Get specific settings for the recovery model
-    const recoveryModelName = getServiceConfig('vertex-ai').modelOverrides?.cheap ?? 'gemini-2.0-flash';
+    const recoveryModelName = getServiceConfig('vertex-ai').modelOverrides?.cheap ?? 'gemini-2.5-flash';
     const { outputTokenLimit: recoveryOutputLimit } = getModelSettings('vertex-ai', recoveryModelName);
 
     const recoveryReq: GenerateContentRequest = {
