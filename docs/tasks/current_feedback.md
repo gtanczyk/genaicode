@@ -20,3 +20,6 @@
 - detect update of files from FS, inject into context (prompt user?)
 - codegen plan/summary editing
 - multiple sessions
+- render markdown
+- no prompt before compound action?
+- external file access message too long
