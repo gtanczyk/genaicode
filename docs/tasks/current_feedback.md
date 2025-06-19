@@ -24,3 +24,4 @@
 - no prompt before compound action?
 - external file access message too long
 - duplicate prompt and assistant message after compoud
+- diff missing in compound action diff
