@@ -1,9 +1,9 @@
 import { FunctionCall, ModelType, PromptItem, FunctionDef } from '../../../../ai-service/common-types.js';
 import { ActionHandler, ActionResult, ActionHandlerProps, CompoundActionItem } from '../step-ask-question-types.js';
-import { askUserForConfirmation } from '../../../../main/common/user-actions.js';
+import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 import { getOperationExecutor, getOperationDefs } from '../../../../operations/operations-index.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
-import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { getCompoundActionDef } from '../../../function-defs/compound-action.js';
 
@@ -146,15 +146,48 @@ export const handleCompoundAction: ActionHandler = async ({
     return { breakLoop: false, items: [] };
   }
 
+  prompt.push({
+    type: 'assistant',
+    text: askQuestionCall.args?.message ?? '', // This is the original assistant message that triggered compound action
+    functionCalls: [initialInferenceCall], // The AI call for planning
+  });
+
+  // prompt user for confirmation of the inferred actions
+  let confirmation = await askUserForConfirmationWithAnswer(
+    summary,
+    'Yes, proceed with these actions',
+    'No, I want to change something',
+    true,
+    options,
+  );
+
+  putAssistantMessage(summary!);
+  if (confirmation.answer) {
+    putUserMessage(confirmation.answer!);
+  }
+
+  if (!confirmation.confirmed) {
+    putSystemMessage('User declined the proposed actions.');
+    prompt.push({
+      type: 'user',
+      text: `Declining the proposed actions. ${confirmation.answer ?? ''}`,
+      functionResponses: [
+        {
+          name: initialInferenceCall.name,
+          call_id: initialInferenceCall.id,
+          content: '',
+        },
+      ],
+    });
+    return { breakLoop: false, items: [] };
+  }
+  putSystemMessage('User confirmed the proposed actions. Proceeding with parameter inference...');
+
   // Add initial planning call to conversation history
   prompt.push(
     {
-      type: 'assistant',
-      text: askQuestionCall.args?.message ?? '', // This is the original assistant message that triggered compound action
-      functionCalls: [initialInferenceCall], // The AI call for planning
-    },
-    {
       type: 'user', // User function response for the planning call (empty content as it was a planning step)
+      text: `Accepting the proposed actions. ${confirmation.answer ?? ''}`,
       functionResponses: [
         {
           name: initialInferenceCall.name,
@@ -288,28 +321,36 @@ export const handleCompoundAction: ActionHandler = async ({
 
   // Step 3: Consolidate and Confirm with User
   putSystemMessage('Proposed actions', { actions: detailedActions });
-  // The summary is from Step 1, which should be user-friendly.
-  putAssistantMessage(summary!);
 
-  const confirmation = await askUserForConfirmation(summary!, true, options, 'Yes, execute all', 'No, cancel');
+  confirmation = await askUserForConfirmationWithAnswer(
+    'Code changes are generated, now what?',
+    'Apply code changes',
+    'Reject code changes',
+    true,
+    options,
+  );
+
+  if (confirmation.answer) {
+    putUserMessage(confirmation.answer!);
+  }
 
   if (!confirmation.confirmed) {
-    putSystemMessage('User declined compound action execution.');
+    putSystemMessage('User declined code changes.');
     prompt.push({
       type: 'user',
-      text: `User declined the proposed actions. ${confirmation.answer ?? ''}`,
+      text: `Rejecting proposed code changes. ${confirmation.answer ?? ''}`,
     });
     return { breakLoop: false, items: [] };
   }
 
   // Step 4: Execute Actions
-  putSystemMessage('User confirmed compound action execution. Proceeding...');
+  putSystemMessage('User accepted code changes. Applying...');
   let executionError: Error | null = null;
   let executionErrorMessage = '';
 
   prompt.push({
     type: 'user', // User confirms the plan
-    text: `User confirmed: ${confirmation.answer ?? 'Yes'}`,
+    text: `Applying code changes. ${confirmation.answer ?? 'Yes'}`,
   });
 
   for (const [index, action] of detailedActions.entries()) {
@@ -328,7 +369,6 @@ export const handleCompoundAction: ActionHandler = async ({
       executionError = error instanceof Error ? error : new Error(String(error));
       executionErrorMessage = `Error executing action ${index + 1} (${action.name}): ${executionError.message}. Stopping batch execution.`;
       putSystemMessage(executionErrorMessage);
-      break;
     }
   }
 
