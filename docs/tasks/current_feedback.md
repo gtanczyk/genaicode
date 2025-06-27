@@ -28,3 +28,4 @@
 - when rejecting/accepting compound let me explain why
 - thinking tokens in context size
 - compound action is not ensuring context?
+- codegen like compound parallel when possible
