@@ -29,3 +29,4 @@
 - thinking tokens in context size
 - compound action is not ensuring context?
 - codegen like compound parallel when possible
+- https://developer.chrome.com/docs/ai/prompt-api
