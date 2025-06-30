@@ -1,45 +1,43 @@
-// Define the interface for the browser AI model based on the example usage
 import { ChatMessage, ChatMessageType } from '../../../../common/content-bus-types.js';
 
+// Updated PromptItem to include 'system' role
 type PromptItem = {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
 };
 
-interface BrowserAIModel {
-  prompt(text: string | PromptItem[]): Promise<string>;
-  destroy(): void;
+// New interface for the language model session
+interface LanguageModelSession {
+  prompt(text: string): Promise<string>;
 }
 
 /**
- * Initializes the browser's built-in language model.
- * Caches the model instance to avoid re-creation.
- * @returns The initialized model instance or null if initialization fails.
+ * Creates a new AI session using the browser's built-in language model.
+ * @param initialPrompts - The initial prompts to seed the conversation.
+ * @returns The initialized session object or null if creation fails.
  */
-async function initializeBrowserModel(context: PromptItem[]): Promise<BrowserAIModel | null> {
+async function createAiSession(initialPrompts: PromptItem[]): Promise<LanguageModelSession | null> {
   try {
-    // Check if the API exists
-    // Use a more specific type for window to satisfy the linter
-    const ai = (
+    // Type definition for the new window.ai API
+    const LanguageModel = (
       window as Window & {
-        ai?: {
-          languageModel?: {
-            create?: (opts?: { systemPrompt?: string; initialPrompts?: PromptItem[] }) => Promise<unknown>;
-          };
+        LanguageModel?: {
+          create?: (opts: { initialPrompts: PromptItem[] }) => Promise<LanguageModelSession | null>;
         };
       }
-    ).ai;
-    if (!ai || !ai.languageModel || typeof ai.languageModel.create !== 'function') {
+    ).LanguageModel;
+
+    if (!LanguageModel || typeof LanguageModel.create !== 'function') {
+      console.warn('Browser AI API (window.ai.languageModel.create) not available.');
       return null;
     }
 
-    // Cast the result of create more carefully if possible, or keep as unknown then cast
-    const model = (await ai.languageModel.create({
-      systemPrompt: `You are a helpful assistant, answering questions based on the conversation context.`,
-      initialPrompts: context,
-    })) as BrowserAIModel;
-    return model;
+    const session = await LanguageModel.create({
+      initialPrompts,
+    });
+    return session;
   } catch (error) {
+    console.error('Failed to create browser AI session:', error);
     return null;
   }
 }
@@ -55,59 +53,59 @@ export async function generateSuggestions(conversationContext: ChatMessage[]): P
     return [];
   }
 
-  const prompt: PromptItem[] = [];
+  const lastMessage = conversationContext[conversationContext.length - 1];
+  // We only want to generate suggestions for the user's messages
+  if (lastMessage.type !== ChatMessageType.ASSISTANT) {
+    return [];
+  }
 
+  const initialPrompts: PromptItem[] = [
+    {
+      role: 'system',
+      content: `You are a helpful assistant. The user will provide a conversation history.
+Your task is to provide a few concise, relevant suggestions for a reply based on the last message in the conversation.
+Provide only the suggestions, separated by newlines. Each suggestion should be a few words long. Do not prefix with numbers or dashes.`,
+    },
+  ];
+
+  // Map ChatMessage to PromptItem
   for (const message of conversationContext) {
     if (message.type === ChatMessageType.USER) {
-      prompt.push({
+      initialPrompts.push({
         role: 'user',
         content: message.content,
       });
     } else if (message.type === ChatMessageType.ASSISTANT) {
-      prompt.push({
+      initialPrompts.push({
         role: 'assistant',
         content: message.content,
       });
     }
   }
 
-  const model = await initializeBrowserModel(prompt);
-  if (!model) {
+  const session = await createAiSession(initialPrompts);
+  if (!session) {
     return [];
   }
 
   try {
-    const lastMessage = conversationContext[conversationContext.length - 1];
-    const isQuestion =
-      (await model.prompt(`Does this message contain a question? 
+    // The session is already primed with the context.
+    // This prompt now asks the model to perform its main task.
+    const response = await session.prompt('What are some possible replies?');
 
-<Message>${lastMessage.content}</Message>
-        
-Answer with "yes" or "no".`)) === 'yes';
-
-    if (!isQuestion) {
+    if (!response) {
       return [];
     }
 
-    const response = await model.prompt(
-      `Given this message:
-
-<Message>${lastMessage.content}</Message>
-
-Please provide max 10 suggestions how the user could answer the question, separated by newlines, maximum few word long, do not prefix with a number.`,
-    );
-
     // Parse the response into an array of suggestions
     const suggestions = response
-      .split('\n') // Split by newline
-      .map((s) => s.trim())
+      .split('\n')
+      .map((s) => s.trim().replace(/^- /, '')) // Also remove leading dash
       .filter((s) => s.length > 0);
 
-    return suggestions;
+    return suggestions.slice(0, 5); // Limit to 5 suggestions
   } catch (error) {
-    console.error('Failed to generate suggestions using browser AI model:', error);
+    console.error('Failed to generate suggestions using browser AI session:', error);
     return [];
-  } finally {
-    model.destroy();
   }
 }
