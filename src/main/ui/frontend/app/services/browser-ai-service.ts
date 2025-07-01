@@ -8,7 +8,12 @@ type PromptItem = {
 
 // New interface for the language model session
 interface LanguageModelSession {
-  prompt(text: string): Promise<string>;
+  prompt(
+    text: string,
+    options?: {
+      responseConstraint?: unknown;
+    },
+  ): Promise<string>;
 }
 
 /**
@@ -62,9 +67,7 @@ export async function generateSuggestions(conversationContext: ChatMessage[]): P
   const initialPrompts: PromptItem[] = [
     {
       role: 'system',
-      content: `You are a helpful assistant. The user will provide a conversation history.
-Your task is to provide a few concise, relevant suggestions for a reply based on the last message in the conversation.
-Provide only the suggestions, separated by newlines. Each suggestion should be a few words long. Do not prefix with numbers or dashes.`,
+      content: `You are a reply suggestion assistant. Your task is to suggest a few concise, relevant replies for the **user**. Base the suggestions on the last message in the conversation. Provide only the suggestions. Each suggestion should be a few words long. Do not prefix with numbers or dashes.`,
     },
   ];
 
@@ -91,17 +94,23 @@ Provide only the suggestions, separated by newlines. Each suggestion should be a
   try {
     // The session is already primed with the context.
     // This prompt now asks the model to perform its main task.
-    const response = await session.prompt('What are some possible replies?');
+    const response = await session.prompt('', {
+      responseConstraint: {
+        type: 'array',
+        items: {
+          type: 'string',
+          description: 'A concise suggestion for a reply, based on the conversation context.',
+          maxLength: 50,
+        },
+      },
+    });
 
     if (!response) {
       return [];
     }
 
     // Parse the response into an array of suggestions
-    const suggestions = response
-      .split('\n')
-      .map((s) => s.trim().replace(/^- /, '')) // Also remove leading dash
-      .filter((s) => s.length > 0);
+    const suggestions = JSON.parse(response).filter((s: string) => s.length > 0);
 
     return suggestions.slice(0, 5); // Limit to 5 suggestions
   } catch (error) {
