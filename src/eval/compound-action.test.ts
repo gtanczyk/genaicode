@@ -119,7 +119,7 @@ describe.each([
 
     const functionCall = result.find((part) => part.type === 'functionCall')?.functionCall as
       | FunctionCall<{
-          actions: Array<{ id: string; name: string; dependsOn?: string[] }>;
+          actions: Array<{ id: string; name: string; filePath?: string; dependsOn?: string[] }>;
           summary: string;
         }>
       | undefined;
@@ -153,7 +153,7 @@ describe.each([
           {
             name: getCompoundActionDef().name,
             args: {
-              actions: [{ id: actionIdForTest, name: actionNameToTest }],
+              actions: [{ id: actionIdForTest, name: actionNameToTest, filePath: '/project/new_param_test.txt' }],
               summary: `Will create /project/new_param_test.txt.`,
             },
           },
@@ -166,7 +166,6 @@ describe.each([
             name: getCompoundActionDef().name,
             content: JSON.stringify({
               filePath: '/project/new_param_test.txt',
-              newContent: 'parameter inference content',
             }),
           },
         ],
@@ -240,7 +239,7 @@ describe.each([
 
     const functionCall = result.find((part) => part.type === 'functionCall')?.functionCall as
       | FunctionCall<{
-          actions: Array<{ id: string; name: string; dependsOn?: string[] }>;
+          actions: Array<{ id: string; name: string; filePath?: string; dependsOn?: string[] }>;
           summary: string;
         }>
       | undefined;
@@ -317,7 +316,13 @@ describe.each([
 
     const functionCall = result.find((part) => part.type === 'functionCall')?.functionCall as
       | FunctionCall<{
-          actions: Array<{ id: string; name: string; args?: Record<string, unknown>; dependsOn?: string[] }>;
+          actions: Array<{
+            id: string;
+            name: string;
+            filePath?: string;
+            args?: Record<string, unknown>;
+            dependsOn?: string[];
+          }>;
           summary: string;
         }>
       | undefined;
@@ -344,6 +349,12 @@ describe.each([
     expect(loginTsxUpdate).toBeDefined();
     expect(loginTestUpdate).toBeDefined();
     expect(readmeCreate).toBeDefined();
+
+    // Check filePaths
+    expect(authServiceUpdate?.filePath).toContain('authService.ts');
+    expect(loginTsxUpdate?.filePath).toContain('Login.tsx');
+    expect(loginTestUpdate?.filePath).toContain('login.test.ts');
+    expect(readmeCreate?.filePath).toContain('components/README');
 
     // Check for defined IDs needed for dependency checks
     expect(authServiceUpdate?.id).toBeDefined();

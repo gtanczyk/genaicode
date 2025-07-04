@@ -119,12 +119,24 @@ async function processFileUpdate(
       },
       options,
     ];
-    let partialResult = (await generateContentFn(...partialRequest))
-      .filter((item) => item.type === 'functionCall')
-      .map((item) => item.functionCall);
+    let partialResult = (await generateContentFn(...partialRequest)).find(
+      (item) => item.type === 'functionCall',
+    )?.functionCall;
+
+    if (!partialResult) {
+      putSystemMessage('No function call returned from content generation', {
+        filePath: file.filePath,
+        updateToolName: file.updateToolName,
+      });
+      return {
+        success: false,
+        functionCalls: [],
+        error: new Error('No function call returned from content generation'),
+      };
+    }
 
     // Verify patch file operations
-    const patchFileCall = partialResult.find((call) => call.name === 'patchFile');
+    const patchFileCall = partialResult?.name === 'patchFile' ? partialResult : undefined;
     if (patchFileCall) {
       partialResult = await executeStepVerifyPatch(
         patchFileCall.args as { filePath: string; patch: string; explanation: string },
@@ -138,8 +150,8 @@ async function processFileUpdate(
     }
 
     // Add current content
-    const fileUpdateResult = partialResult[0];
-    if (fileUpdateResult.args) {
+    const fileUpdateResult = partialResult;
+    if (fileUpdateResult?.args) {
       const fileSource = getSourceCode({ filterPaths: [file.filePath], forceAll: true }, options)[file.filePath];
       if (fileSource && 'content' in fileSource) {
         fileUpdateResult.args.oldContent = fileSource.content;
@@ -149,27 +161,27 @@ async function processFileUpdate(
     putSystemMessage('Received partial update', fileUpdateResult);
 
     // Handle image generation requests
-    const generateImageCall = partialResult.find((call) => call.name === 'generateImage');
+    const generateImageCall = partialResult?.name === 'generateImage' ? partialResult : undefined;
     if (generateImageCall && generateImageFn) {
-      partialResult.push(await executeStepGenerateImage(generateImageFn, generateImageCall));
+      partialResult = await executeStepGenerateImage(generateImageFn, generateImageCall);
     } else if (generateImageCall) {
       console.warn('Image generation requested but generateImageFn not provided');
     }
 
     // Update prompt with results
     prompt.push(
-      { type: 'assistant', functionCalls: partialResult },
+      { type: 'assistant', functionCalls: [partialResult] },
       {
         type: 'user',
         // TODO: Not always true
         text: 'Update applied.',
-        functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
+        functionResponses: [partialResult],
       },
     );
 
     return {
       success: true,
-      functionCalls: partialResult,
+      functionCalls: [partialResult],
     };
   } catch (error) {
     return {

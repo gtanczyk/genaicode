@@ -70,20 +70,19 @@ export async function handleSearchCode({
     // Handle errors and return appropriate message
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during search';
 
+    putSystemMessage(`Error during searchCode: ${errorMessage}`);
+    prompt.push({
+      type: 'assistant',
+      text: `Error performing search: ${errorMessage}\nPlease try again with valid search parameters.`,
+    });
+    prompt.push({
+      type: 'user',
+      text: 'Let me try again with different search parameters.',
+    });
+
     return {
       breakLoop: false,
-      items: [
-        {
-          assistant: {
-            type: 'assistant',
-            text: `Error performing search: ${errorMessage}\nPlease try again with valid search parameters.`,
-          },
-          user: {
-            type: 'user',
-            text: 'Let me try again with different search parameters.',
-          },
-        },
-      ],
+      items: [],
     };
   }
 }

@@ -6,6 +6,10 @@ import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { getCompoundActionDef } from '../../../function-defs/compound-action.js';
+import { executeStepEnsureContext } from '../../step-ensure-context.js';
+import { StepResult } from '../../steps-types.js';
+import { getSourceCode } from '../../../../files/read-files.js';
+import { executeStepVerifyPatch } from '../../step-verify-patch.js';
 
 /**
  * Constructs the prompt for the initial planning phase of a compound action.
@@ -31,9 +35,9 @@ export function constructCompoundActionPlanningPrompt(
         .map((op) => op.name)
         .join(
           ', ',
-        )}) needed to fulfill my request. Provide an array of action names and a concise summary message for my confirmation.
-Please provide information about dependency between actions.
-Use the "${compoundActionDef.name}" function to return this information.`,
+        )}). For each operation, specify the target 'filePath' where applicable. Provide an array of actions and a concise summary message for my confirmation. Please provide information about dependency between actions. Use the "${
+        compoundActionDef.name
+      }" function to return this information.`,
     },
   ];
 }
@@ -56,7 +60,9 @@ export function constructCompoundActionParameterInferencePrompt(
     ...basePrompt,
     {
       type: 'user',
-      text: `Now, for the action "${actionId}:${actionName}", please determine the specific parameters required. Refer to its definition: ${JSON.stringify(operationDef.parameters)}. Use the "${actionName}" function to return these parameters.`,
+      text: `Now, for the action "${actionId}:${actionName}", please determine the specific parameters required. Refer to its definition: ${JSON.stringify(
+        operationDef.parameters,
+      )}. Use the "${actionName}" function to return these parameters.`,
     },
   ];
 }
@@ -71,6 +77,7 @@ export const handleCompoundAction: ActionHandler = async ({
   let actions: Array<{
     id: string;
     name: string;
+    filePath?: string;
     dependsOn?: string[];
   }> = [];
   let summary = '';
@@ -79,6 +86,7 @@ export const handleCompoundAction: ActionHandler = async ({
         actions: Array<{
           id: string;
           name: string;
+          filePath?: string;
           dependsOn?: string[];
         }>;
         summary: string;
@@ -110,6 +118,7 @@ export const handleCompoundAction: ActionHandler = async ({
       actions: Array<{
         id: string;
         name: string;
+        filePath?: string;
         dependsOn?: string[];
       }>;
       summary: string;
@@ -183,6 +192,20 @@ export const handleCompoundAction: ActionHandler = async ({
   }
   putSystemMessage('User confirmed the proposed actions. Proceeding with parameter inference...');
 
+  // Ensure context for all planned files
+  const uniqueFilePaths = Array.from(new Set(actions.map((a) => a.filePath).filter((p): p is string => !!p)));
+  if (uniqueFilePaths.length > 0) {
+    const contextAssuranceCall: FunctionCall = {
+      name: 'contextAssurance',
+      args: { filePaths: uniqueFilePaths },
+    };
+    const contextResult = await executeStepEnsureContext(prompt, contextAssuranceCall, options);
+    if (contextResult === StepResult.BREAK) {
+      putSystemMessage('Error: Context ensuring failed during compound action. Aborting.');
+      return { breakLoop: true, items: [] };
+    }
+  }
+
   // Add initial planning call to conversation history
   prompt.push(
     {
@@ -223,7 +246,7 @@ export const handleCompoundAction: ActionHandler = async ({
 
     const results = await Promise.allSettled(
       processableActions.map(async (actionToProcess) => {
-        const { id: actionId, name: actionName } = actionToProcess;
+        const { id: actionId, name: actionName, filePath } = actionToProcess;
         const currentOperationDef = getOperationDefs().find((op) => op.name === actionName);
 
         if (!currentOperationDef) {
@@ -255,12 +278,37 @@ export const handleCompoundAction: ActionHandler = async ({
             options,
           );
 
-          const paramFunctionCall = paramResult.find((part) => part.type === 'functionCall')?.functionCall;
+          let paramFunctionCall = paramResult.find((part) => part.type === 'functionCall')?.functionCall;
 
           if (!paramFunctionCall?.args) {
             putSystemMessage(`AI failed to generate parameters for action "${actionId}:${actionName}".`);
             parameterInferenceFailed = true;
             return { success: false, actionId };
+          }
+
+          if (actionName === 'patchFile') {
+            paramFunctionCall = await executeStepVerifyPatch(
+              paramFunctionCall.args as { filePath: string; patch: string; explanation: string },
+              generateContentFn,
+              prompt,
+              getFunctionDefs(),
+              options.temperature!,
+              false,
+              options,
+            );
+
+            if (!paramFunctionCall || !paramFunctionCall.args) {
+              putSystemMessage(`Error verifying patch for action "${actionId}:${actionName}".`);
+              parameterInferenceFailed = true;
+              return { success: false, actionId };
+            }
+          }
+
+          if (filePath) {
+            const fileSource = getSourceCode({ filterPaths: [filePath], forceAll: true }, options)[filePath];
+            if (fileSource && 'content' in fileSource) {
+              paramFunctionCall.args.oldContent = fileSource.content;
+            }
           }
 
           detailedActions.push({ name: actionName, args: paramFunctionCall.args });
@@ -367,7 +415,9 @@ export const handleCompoundAction: ActionHandler = async ({
       putSystemMessage(`Action ${action.name} completed successfully.`);
     } catch (error) {
       executionError = error instanceof Error ? error : new Error(String(error));
-      executionErrorMessage = `Error executing action ${index + 1} (${action.name}): ${executionError.message}. Stopping batch execution.`;
+      executionErrorMessage = `Error executing action ${index + 1} (${action.name}): ${
+        executionError.message
+      }. Stopping batch execution.`;
       putSystemMessage(executionErrorMessage);
     }
   }

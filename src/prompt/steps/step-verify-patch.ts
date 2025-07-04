@@ -16,7 +16,7 @@ export async function executeStepVerifyPatch(
   temperature: number,
   cheap: boolean,
   options: CodegenOptions,
-): Promise<FunctionCall[]> {
+): Promise<FunctionCall> {
   console.log('Verification of patch for file:', filePath);
 
   let updatedContent: string | boolean = false;
@@ -60,14 +60,12 @@ export async function executeStepVerifyPatch(
       throw new Error('Unexpected patchFile in retry response');
     }
 
-    return partialResult;
+    return partialResult[0];
   } else {
     console.log('Patch verified successfully');
-    return [
-      {
-        name: 'patchFile',
-        args: { filePath, patch, explanation, oldContent: currentContent, newContent: updatedContent },
-      },
-    ];
+    return {
+      name: 'patchFile',
+      args: { filePath, patch, explanation, oldContent: currentContent, newContent: updatedContent },
+    };
   }
 }

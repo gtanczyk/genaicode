@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-109] 2025-06-22: Ensure `compoundAction` loads full file content for all planned files into the context before execution.
 - [ ] [GEN-108] 2025-06-22: Fix browser-side suggestion generation due to `window.ai` API changes.
 - [-] [GEN-107] 2025-05-15: Add test suite for compoundAction handler (`src/eval/compound-action.test.ts`).
 - [-] [GEN-106] 2025-05-10: Refactor `handleCompoundAction` for multi-step inference (plan, then params per action).
@@ -80,10 +81,9 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [ ] [GEN-030] 2024-01-09: Enhanced Long Explanation Test
 - [ ] [GEN-028] 2024-01-08: Create code-generation test suite
 - [ ] [GEN-027] 2024-01-07: Implement Ask Question Test Suite
-- [ ] [GEN-026] 2024-01-06: Generate large mock-source-code-summaries dataset
-- [ ] [GEN-025] 2024-01-05: Implement Context Optimization Test
-- [ ] [GEN-024] 2024-01-04: Add updateFile action type
-- [ ] [GEN-021] 2024-01-03: Decompose backend/service.ts
+- [ ] [GEN-026] 2024-01-05: Generate large mock-source-code-summaries dataset
+- [ ] [GEN-025] 2024-01-04: Implement Context Optimization Test
+- [ ] [GEN-024] 2024-01-03: Decompose backend/service.ts
 - [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details
 - [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle
 - [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts

@@ -30,6 +30,10 @@ export const getCompoundActionDef: () => FunctionDef = () => ({
                 description: 'The ID of a dependent action.',
               },
             },
+            filePath: {
+              type: 'string',
+              description: 'The absolute path of the file to be acted upon, if applicable.',
+            },
           },
           required: ['id', 'name'],
         },
