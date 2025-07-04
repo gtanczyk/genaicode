@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { serviceAutoDetect } from './service-autodetect.js';
 
 describe('serviceAutoDetect', () => {
-  afterEach(() => {
+  beforeEach(() => {
     // Clean up environment variables after each test
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -29,11 +29,12 @@ describe('serviceAutoDetect', () => {
     expect(serviceAutoDetect()).toBeNull();
   });
 
-  it('should prioritize anthropic over other services', () => {
+  it('should prioritize ai-studio over other services', () => {
+    process.env.API_KEY = 'test-key';
     process.env.ANTHROPIC_API_KEY = 'test-key';
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.GOOGLE_CLOUD_PROJECT = 'test-project';
-    expect(serviceAutoDetect()).toBe('anthropic');
+    expect(serviceAutoDetect()).toBe('ai-studio');
   });
 
   it('should prioritize openai over vertex-ai', () => {
