@@ -225,7 +225,7 @@ describe('executeStepEnsureContext', () => {
         },
       };
 
-      const prompt = [
+      const prompt: PromptItem[] = [
         {
           type: 'user',
           functionResponses: [
@@ -267,7 +267,7 @@ describe('executeStepEnsureContext', () => {
         },
       };
 
-      const prompt = [
+      const prompt: PromptItem[] = [
         {
           type: 'user',
           functionResponses: [
@@ -347,7 +347,7 @@ describe('executeStepEnsureContext', () => {
         },
       };
 
-      const prompt = [
+      const prompt: PromptItem[] = [
         {
           type: 'user',
           functionResponses: [
