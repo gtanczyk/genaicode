@@ -26,4 +26,3 @@
 - when rejecting/accepting compound let me explain why
 - thinking tokens in context size
 - codegen like compound parallel when possible
-- https://developer.chrome.com/docs/ai/prompt-api
