@@ -120,7 +120,7 @@ export async function executeStepContextOptimization(
         functionDefs: getFunctionDefs(),
         requiredFunctionName: 'optimizeContext',
         temperature: CONTEXT_OPTIMIZATION_TEMPERATURE,
-        modelType: ModelType.CHEAP,
+        modelType: ModelType.LITE,
         expectedResponseType: { text: false, functionCall: true, media: false },
       },
       options,

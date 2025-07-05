@@ -49,6 +49,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
   const [hasApiKey, setHasApiKey] = useState(!!config?.hasApiKey);
   const [defaultModel, setDefaultModel] = useState(config?.modelOverrides?.default || '');
   const [cheapModel, setCheapModel] = useState(config?.modelOverrides?.cheap || '');
+  const [liteModel, setLiteModel] = useState(config?.modelOverrides?.lite || '');
   const [googleCloudProjectId, setGoogleCloudProjectId] = useState(config?.googleCloudProjectId || '');
   const [googleCloudRegion, setGoogleCloudRegion] = useState(config?.googleCloudRegion || '');
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState(config?.openaiBaseUrl || '');
@@ -59,6 +60,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
     setHasApiKey(!!config?.hasApiKey);
     setDefaultModel(config?.modelOverrides?.default || '');
     setCheapModel(config?.modelOverrides?.cheap || '');
+    setLiteModel(config?.modelOverrides?.lite || '');
     setGoogleCloudProjectId(config?.googleCloudProjectId || '');
     setGoogleCloudRegion(config?.googleCloudRegion || '');
     setOpenaiBaseUrl(config?.openaiBaseUrl || '');
@@ -94,6 +96,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
       modelOverrides: {
         default: defaultModel || undefined,
         cheap: cheapModel || undefined,
+        lite: liteModel || undefined,
       },
     };
 
@@ -227,6 +230,17 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
               onChange={(e) => setCheapModel(e.target.value)}
               placeholder="Enter model name"
               aria-label={`Cheap Model for ${serviceType}`}
+            />
+          </FormGroup>
+          <FormGroup>
+            <Label htmlFor={`liteModel-${serviceType}`}>Lite Model</Label>
+            <Input
+              id={`liteModel-${serviceType}`}
+              type="text"
+              value={liteModel}
+              onChange={(e) => setLiteModel(e.target.value)}
+              placeholder="Enter model name"
+              aria-label={`Lite Model for ${serviceType}`}
             />
           </FormGroup>
 

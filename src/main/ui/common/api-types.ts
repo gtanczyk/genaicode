@@ -39,6 +39,7 @@ export type SanitizedServiceConfig = {
   modelOverrides?: {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
+    lite?: string; // Model name for lite mode
     reasoning?: string; // Model name for reasoning mode
     hasModelSpecificSettings?: boolean; // Indicates if model-specific settings exist
   };

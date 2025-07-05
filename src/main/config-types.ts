@@ -24,6 +24,8 @@ export interface ModelSpecificSettings {
 export interface ServiceModelConfig {
   /** Model ID for cost-effective operations */
   cheap?: string;
+  /** Model ID for lite operations */
+  lite?: string;
   /** Model ID for standard operations (default model) */
   default?: string;
   /** Model ID for reasoning-specific tasks */

@@ -284,14 +284,17 @@ async function getGenModel(params: GetGenModelParams) {
     const vertex_ai = new VertexAI({ project: serviceConfig.googleCloudProjectId });
 
     // Determine model name
-    const defaultModelName = modelType === ModelType.CHEAP ? 'gemini-2.5-flash' : 'gemini-2.5-pro';
+    const defaultModelName =
+      modelType === ModelType.CHEAP || modelType === ModelType.LITE ? 'gemini-2.5-flash' : 'gemini-2.5-pro';
     const modelOverrides = serviceConfig?.modelOverrides;
     const modelName =
       (modelType === ModelType.CHEAP
         ? modelOverrides?.cheap
-        : modelType === ModelType.REASONING
-          ? modelOverrides?.reasoning // Use reasoning override if specified
-          : modelOverrides?.default) ?? defaultModelName;
+        : modelType === ModelType.LITE
+          ? modelOverrides?.lite
+          : modelType === ModelType.REASONING
+            ? modelOverrides?.reasoning // Use reasoning override if specified
+            : modelOverrides?.default) ?? defaultModelName;
 
     console.log(`Using Vertex AI model: ${modelName}`);
 

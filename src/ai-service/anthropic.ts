@@ -52,14 +52,19 @@ export const generateContent: GenerateContentFunction = async function generateC
     let baseSystemPrompt = prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt || '';
 
     // Determine which model to use
-    const defaultModel = modelType === ModelType.CHEAP ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-20250514';
+    const defaultModel =
+      modelType === ModelType.CHEAP || modelType === ModelType.LITE
+        ? 'claude-3-5-haiku-20241022'
+        : 'claude-sonnet-4-20250514';
     const modelOverrides = serviceConfig?.modelOverrides;
     let model =
       modelType === ModelType.CHEAP
         ? (modelOverrides?.cheap ?? defaultModel)
-        : modelType === ModelType.REASONING
-          ? (modelOverrides?.reasoning ?? defaultModel)
-          : (modelOverrides?.default ?? defaultModel);
+        : modelType === ModelType.LITE
+          ? (modelOverrides?.lite ?? defaultModel)
+          : modelType === ModelType.REASONING
+            ? (modelOverrides?.reasoning ?? defaultModel)
+            : (modelOverrides?.default ?? defaultModel);
 
     // Get model-specific settings
     const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('anthropic', model);

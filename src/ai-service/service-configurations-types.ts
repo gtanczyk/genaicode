@@ -13,6 +13,7 @@ export type ServiceConfig<T extends AiServiceType = AiServiceType> = {
   modelOverrides?: {
     default?: string; // Default model name
     cheap?: string; // Model name for cheap/fast mode
+    lite?: string; // Model name for lite mode
     reasoning?: string; // Model name for reasoning mode
     /** Specific settings for individual models within this service */
     modelSpecificSettings?: {

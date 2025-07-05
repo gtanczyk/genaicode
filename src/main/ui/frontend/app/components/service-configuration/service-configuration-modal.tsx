@@ -59,6 +59,9 @@ const getSuccessMessage = (serviceType: AiServiceType, config: ServiceConfig): s
   if (config.modelOverrides?.cheap) {
     messages.push(`Cheap model: ${config.modelOverrides.cheap}`);
   }
+  if (config.modelOverrides?.lite) {
+    messages.push(`Lite model: ${config.modelOverrides.lite}`);
+  }
   if (isOpenAIApiService(serviceType) && 'openaiBaseUrl' in config) {
     messages.push(`OpenAI base URL: ${config.openaiBaseUrl}`);
   }

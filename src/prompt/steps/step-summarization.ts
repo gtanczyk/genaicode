@@ -150,7 +150,7 @@ async function summarizeBatch(
         functionDefs: getFunctionDefs(),
         requiredFunctionName: 'setSummaries',
         temperature: 0.2,
-        modelType: ModelType.CHEAP,
+        modelType: ModelType.LITE,
         expectedResponseType: { text: false, functionCall: true, media: false },
       },
       options,

@@ -15,6 +15,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.aiStudio?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.5-flash',
+      lite: modelOverrides.aiStudio?.lite ?? 'gemini-2.5-flash-lite-preview-06-17',
       reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
       modelSpecificSettings: modelOverrides.aiStudio?.modelSpecificSettings ?? {},
     },
@@ -24,6 +25,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.anthropic?.default ?? 'claude-sonnet-4-20250514',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
+      lite: modelOverrides.anthropic?.lite ?? 'claude-3-5-haiku-20241022',
       reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-sonnet-4-20250514',
       modelSpecificSettings: modelOverrides.anthropic?.modelSpecificSettings ?? {},
     },
@@ -34,6 +36,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.openai?.default ?? 'gpt-4o',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
+      lite: modelOverrides.openai?.lite ?? 'gpt-4o-mini',
       reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
       modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {},
     },
@@ -44,6 +47,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.localLlm?.default ?? 'gemma3:12b',
       cheap: modelOverrides.localLlm?.cheap ?? 'gemma3:12b',
+      lite: modelOverrides.localLlm?.lite ?? 'gemma3:12b',
       reasoning: modelOverrides.localLlm?.reasoning ?? 'gemma3:12b',
       modelSpecificSettings: modelOverrides.localLlm?.modelSpecificSettings ?? {},
     },
@@ -53,6 +57,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: modelOverrides.vertexAi?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.5-flash',
+      lite: modelOverrides.vertexAi?.lite ?? 'gemini-2.5-flash-lite-preview-06-17',
       reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
       modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },
@@ -63,6 +68,7 @@ const configurations: ServiceConfigurations = {
     modelOverrides: {
       default: 'claude-3-5-sonnet@20240620',
       cheap: 'claude-3-haiku@20240307',
+      lite: 'claude-3-haiku@20240307',
       reasoning: 'claude-3-5-sonnet@20240620',
     },
   },
@@ -234,6 +240,7 @@ function sanitizeServiceConfig<T extends AiServiceType>(
     modelOverrides: {
       default: config.modelOverrides?.default,
       cheap: config.modelOverrides?.cheap,
+      lite: config.modelOverrides?.lite,
       reasoning: config.modelOverrides?.reasoning,
       // Indicate if any model-specific settings exist, but don't expose them
       hasModelSpecificSettings,

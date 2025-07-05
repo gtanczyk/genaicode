@@ -3,6 +3,8 @@ export enum ModelType {
   DEFAULT = 'default',
   /** Cheaper, faster model with potentially lower quality results */
   CHEAP = 'cheap',
+  /** Lite, even cheaper model for simple tasks like summarization */
+  LITE = 'lite',
   /** Specialized model for reasoning tasks */
   REASONING = 'reasoning',
 }
