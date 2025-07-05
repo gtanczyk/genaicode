@@ -1,9 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { serviceAutoDetect } from './service-autodetect.js';
 
 describe('serviceAutoDetect', () => {
-  afterEach(() => {
-    // Clean up environment variables after each test
+  beforeEach(() => {
+    // Clean up environment variables before each test
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_CLOUD_PROJECT;
