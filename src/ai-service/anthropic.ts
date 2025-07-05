@@ -67,7 +67,12 @@ export const generateContent: GenerateContentFunction = async function generateC
             : (modelOverrides?.default ?? defaultModel);
 
     // Get model-specific settings
-    const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('anthropic', model);
+    const {
+      systemInstruction: modelSystemInstruction,
+      outputTokenLimit,
+      thinkingEnabled,
+      thinkingBudget,
+    } = getModelSettings('anthropic', model);
 
     // Combine base system prompt with model-specific instructions if available
     if (modelSystemInstruction?.length) {
@@ -207,12 +212,17 @@ export const generateContent: GenerateContentFunction = async function generateC
             max_tokens: maxTokens,
             temperature: modelType !== ModelType.REASONING ? temperature : 1,
             thinking:
-              modelType === ModelType.REASONING
+              thinkingEnabled && thinkingBudget
                 ? {
                     type: 'enabled',
-                    budget_tokens: 8192,
+                    budget_tokens: thinkingBudget,
                   }
-                : undefined,
+                : modelType === ModelType.REASONING
+                  ? {
+                      type: 'enabled',
+                      budget_tokens: 8192,
+                    }
+                  : undefined,
           },
           {
             signal: abortController?.signal,

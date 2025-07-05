@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [ ] [GEN-113] 2025-07-06: Add per-model configuration for enabling 'thinking' and setting a 'thinking budget'.
 - [x] [GEN-112] 2025-06-23: Enhanced `updateFiles` to handle errors gracefully and provide accurate feedback in `handleCodeGeneration`.
 - [ ] [GEN-111] 2025-06-23: Introduce new LITE model type for summarization and context optimization.
 - [-] [GEN-110] 2025-06-22: Automatic context refresh on file changes.

@@ -312,12 +312,35 @@ function modelGenerateContent(
   console.log(`Using AI Studio model: ${model}`);
 
   // Get model-specific settings
-  const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('ai-studio', model);
-
+  const {
+    systemInstruction: modelSystemInstruction,
+    outputTokenLimit,
+    thinkingEnabled,
+    thinkingBudget,
+  } = getModelSettings('ai-studio', model);
   // Combine base system prompt with model-specific instructions if available
   let effectiveSystemPrompt = systemPrompt || '';
   if (modelSystemInstruction?.length) {
     effectiveSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
+  }
+
+  const effectiveConfig = Object.assign(
+    {
+      maxOutputTokens: outputTokenLimit,
+      temperature,
+      topP: 0.95,
+    },
+    config,
+  );
+
+  if (typeof thinkingEnabled === 'boolean') {
+    effectiveConfig.thinkingConfig = {
+      thinkingBudget: thinkingEnabled ? -1 : 0,
+    };
+
+    if (thinkingBudget) {
+      effectiveConfig.thinkingConfig.thinkingBudget = thinkingBudget;
+    }
   }
 
   return genAI.models.generateContent({
@@ -342,14 +365,7 @@ function modelGenerateContent(
           threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
         },
       ],
-      ...Object.assign(
-        {
-          maxOutputTokens: outputTokenLimit,
-          temperature,
-          topP: 0.95,
-        },
-        config,
-      ),
+      ...effectiveConfig,
       ...(effectiveSystemPrompt
         ? {
             systemInstruction: {

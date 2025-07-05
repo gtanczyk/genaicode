@@ -17,7 +17,12 @@ const configurations: ServiceConfigurations = {
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.5-flash',
       lite: modelOverrides.aiStudio?.lite ?? 'gemini-2.5-flash-lite-preview-06-17',
       reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
-      modelSpecificSettings: modelOverrides.aiStudio?.modelSpecificSettings ?? {},
+      modelSpecificSettings: Object.assign({}, modelOverrides.aiStudio?.modelSpecificSettings ?? {}, {
+        'gemini-2.5-flash-lite-preview-06-17': {
+          thinkingBudget: 24576,
+          thinkingEnabled: true,
+        },
+      }),
     },
   },
   anthropic: {
@@ -103,13 +108,20 @@ const configurations: ServiceConfigurations = {
 export function getModelSettings(
   serviceType: AiServiceType,
   modelName: string,
-): { systemInstruction?: string[]; outputTokenLimit?: number } {
+): {
+  systemInstruction?: string[];
+  outputTokenLimit?: number;
+  thinkingEnabled?: boolean;
+  thinkingBudget?: number;
+} {
   const serviceConfig = configurations[serviceType];
   const modelSpecificSettings = serviceConfig?.modelOverrides?.modelSpecificSettings?.[modelName];
 
   return {
     systemInstruction: modelSpecificSettings?.systemInstruction,
     outputTokenLimit: modelSpecificSettings?.outputTokenLimit,
+    thinkingEnabled: modelSpecificSettings?.thinkingEnabled,
+    thinkingBudget: modelSpecificSettings?.thinkingBudget,
   };
 }
 

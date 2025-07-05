@@ -299,7 +299,14 @@ async function getGenModel(params: GetGenModelParams) {
     console.log(`Using Vertex AI model: ${modelName}`);
 
     // Get model-specific settings
-    const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings('vertex-ai', modelName);
+    const {
+      systemInstruction: modelSystemInstruction,
+      outputTokenLimit,
+      thinkingEnabled,
+      thinkingBudget,
+    } = getModelSettings('vertex-ai', modelName);
+    console.log(`Thinking enabled: ${thinkingEnabled}, budget: ${thinkingBudget}`);
+    // TODO: once googleapis/nodejs-vertexai supports thinking_config
 
     // Combine base system prompt with model-specific instructions
     let effectiveSystemPrompt = systemPromptText ?? '';

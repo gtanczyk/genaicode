@@ -43,7 +43,7 @@ export async function executeStepGenerateSummary(
       functionDefs: getFunctionDefs(),
       requiredFunctionName: 'conversationSummary',
       temperature: 0.3, // Use a lower temperature for more focused summaries
-      modelType: ModelType.CHEAP,
+      modelType: ModelType.LITE,
       expectedResponseType: {
         text: false,
         functionCall: true,

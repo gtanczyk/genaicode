@@ -123,6 +123,7 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
             <Select value={modelType} onChange={(e) => setModelType(e.target.value as ModelType)}>
               <option value="default">Default</option>
               <option value="cheap">Cheap</option>
+              <option value="lite">Lite</option>
               <option value="reasoning">Reasoning</option>
             </Select>
           </Label>

@@ -11,6 +11,10 @@ export interface ModelSpecificSettings {
   systemInstruction?: string[];
   /** Maximum number of tokens to generate in the output specific to this model */
   outputTokenLimit?: number;
+  /** Whether the model should use 'thinking' mode if available */
+  thinkingEnabled?: boolean;
+  /** The token budget for 'thinking' mode */
+  thinkingBudget?: number;
 }
 
 /**

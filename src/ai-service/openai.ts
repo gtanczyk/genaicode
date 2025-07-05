@@ -63,7 +63,12 @@ export async function internalGenerateContent(
   const requiredFunctionName = config.requiredFunctionName;
 
   // Get model-specific settings
-  const { systemInstruction: modelSystemInstruction, outputTokenLimit } = getModelSettings(serviceType, model);
+  const {
+    systemInstruction: modelSystemInstruction,
+    outputTokenLimit,
+    thinkingEnabled,
+    thinkingBudget,
+  } = getModelSettings(serviceType, model);
 
   const expectedResponseType = config.expectedResponseType ?? {
     text: false,
@@ -190,11 +195,26 @@ export async function internalGenerateContent(
     }
   }
 
+  let reasoningEffort: 'low' | 'medium' | 'high' | undefined = undefined;
+  if (modelType === ModelType.REASONING) {
+    reasoningEffort = 'high';
+  } else if (typeof thinkingEnabled === 'boolean') {
+    reasoningEffort =
+      typeof thinkingBudget === 'number'
+        ? thinkingBudget <= 1024
+          ? 'low'
+          : thinkingBudget <= 8192
+            ? 'medium'
+            : 'high'
+        : 'medium';
+  }
+
   while (retryCount < maxRetries) {
     try {
       response = await openai.chat.completions.create(
         {
           model: model,
+          reasoning_effort: reasoningEffort,
           messages,
           ...(tools ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),

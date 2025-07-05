@@ -20,7 +20,7 @@ registerEndpoint((router, service) => {
         return res.status(400).json({ error: 'Invalid temperature: must be a number between 0 and 2' });
       }
 
-      if (!['default', 'cheap', 'reasoning'].includes(modelType)) {
+      if (!['default', 'cheap', 'reasoning', 'lite'].includes(modelType)) {
         return res
           .status(400)
           .json({ error: 'Invalid modelType parameter: must be one of: default, cheap, reasoning' });
