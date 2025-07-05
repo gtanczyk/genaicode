@@ -184,13 +184,19 @@ export async function handleCodeGeneration({
         putSystemMessage('Dry run mode, not updating files');
       } else {
         // Apply the code changes
-        await updateFiles(
+        const failedOperations = await updateFiles(
           functionCalls.filter(
             (call) => call.name !== 'explanation' && call.name !== 'getSourceCode' && call.name !== 'codegenSummary',
           ),
           options,
         );
-        putSystemMessage('Code changes applied successfully');
+        if (failedOperations.length > 0) {
+          putSystemMessage(
+            `Code changes applied, but some operations failed for: ${failedOperations.map((call) => call.args?.filePath).join(', ')}`,
+          );
+        } else {
+          putSystemMessage('Code changes applied successfully');
+        }
       }
     } else {
       if (confirmApply.answer) {

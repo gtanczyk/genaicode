@@ -54,7 +54,7 @@ vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../files/update-files.js');
+vi.mock('../files/update-files.js', () => ({ updateFiles: vi.fn().mockResolvedValue([]) }));
 vi.mock('../files/cache-file.js');
 vi.mock('../files/find-files.js', () => ({
   getSourceFiles: () => [],
