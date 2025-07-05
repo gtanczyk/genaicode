@@ -32,3 +32,9 @@ export function getSummary(filePath: string) {
       }
     : undefined;
 }
+
+export function clearSummaryCache(filePaths: string[]) {
+  for (const filePath of filePaths) {
+    delete summaryCache[filePath];
+  }
+}

@@ -10,6 +10,7 @@ import { abortController } from '../../../main/common/abort-controller.js';
 import { AskQuestionCall } from './step-ask-question-types.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
 import { getActionHandler } from './ask-question-handler.js';
+import { executeStepAutoContextRefresh, getFilesState } from '../step-auto-context-refresh.js';
 
 import './handlers/handle-code-generation.js';
 import './handlers/handle-confirm-code-generation.js';
@@ -48,6 +49,8 @@ export async function executeStepAskQuestion(
 ): Promise<FunctionCall[]> {
   putSystemMessage('Allowing the assistant to ask a question...');
 
+  let filesState = getFilesState();
+
   while (!abortController?.signal.aborted) {
     try {
       // Calculate context size using the total tokens per day (this is not a perfect metric, but it's a good approximation)
@@ -82,6 +85,8 @@ export async function executeStepAskQuestion(
         }
 
         prompt.push(...result.items.map(({ assistant, user }) => [assistant, user]).flat());
+
+        filesState = await executeStepAutoContextRefresh(filesState, generateContentFn, options, prompt);
 
         if (result.breakLoop) {
           return result.stepResult ?? [];

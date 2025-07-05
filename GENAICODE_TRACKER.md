@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-110] 2025-06-22: Automatic context refresh on file changes.
 - [ ] [GEN-109] 2025-06-22: Ensure `compoundAction` loads full file content for all planned files into the context before execution.
 - [ ] [GEN-108] 2025-06-22: Fix browser-side suggestion generation due to `window.ai` API changes.
 - [-] [GEN-107] 2025-05-15: Add test suite for compoundAction handler (`src/eval/compound-action.test.ts`).

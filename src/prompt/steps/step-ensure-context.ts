@@ -1,4 +1,4 @@
-import { FunctionCall } from '../../ai-service/common-types.js';
+import { FunctionCall, PromptItem } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
 import { importantContext } from '../../main/config.js';
 import { getSourceCode } from '../../files/read-files.js';
@@ -10,7 +10,7 @@ import { StepResult } from './steps-types.js';
  * Ensures all necessary files are included in the conversation context.
  */
 export async function executeStepEnsureContext(
-  prompt: { type: string; functionResponses?: { name: string; content?: string }[]; functionCalls?: FunctionCall[] }[],
+  prompt: PromptItem[],
   functionCall: FunctionCall,
   options: CodegenOptions,
 ): Promise<StepResult> {
