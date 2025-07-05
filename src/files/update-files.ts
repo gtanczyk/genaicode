@@ -14,6 +14,7 @@ export async function updateFiles(functionCalls: FunctionCall[], options: Codege
       console.warn(`Operation ${name} has no arguments`);
     } else {
       await executor(args, options);
+      // TODO: Handle errors here, instead of interrupting
     }
   }
 }
