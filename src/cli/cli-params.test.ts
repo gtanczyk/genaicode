@@ -12,7 +12,7 @@ describe('serviceAutoDetect', () => {
 
   it('should return "anthropic" when ANTHROPIC_API_KEY is set', () => {
     process.env.ANTHROPIC_API_KEY = 'test-key';
-    expect(serviceAutoDetect()).toBe('ai-studio');
+    expect(serviceAutoDetect()).toBe('anthropic');
   });
 
   it('should return "openai" when OPENAI_API_KEY is set', () => {
