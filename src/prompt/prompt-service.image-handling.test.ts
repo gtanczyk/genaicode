@@ -129,6 +129,7 @@ describe('promptService - Image Handling', () => {
           args: {
             fileUpdates: [
               {
+                id: '1',
                 filePath: mockData.paths.test,
                 updateToolName: 'updateFile',
                 contextImageAssets: [`${mockData.paths.root}/image1.png`, `${mockData.paths.root}/image2.jpg`],

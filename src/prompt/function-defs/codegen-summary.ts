@@ -31,6 +31,19 @@ The file updates are a consequence of the code generation planning step.`,
           description:
             'An object representing a proposed update to a file, containing properties like the absolute file path, the update tool name, and other important properties.',
           properties: {
+            id: {
+              type: 'string',
+              description: 'A unique identifier for the file update request.',
+            },
+            dependsOn: {
+              type: 'array',
+              description:
+                'An array of file update IDs that this update depends on. This is used to ensure that updates are executed and applied in a correct order.',
+              items: {
+                type: 'string',
+                description: 'The ID of a file update that this update depends on.',
+              },
+            },
             prompt: {
               type: 'string',
               description:
@@ -82,7 +95,7 @@ The file updates are a consequence of the code generation planning step.`,
               items: { type: 'string' },
             },
           },
-          required: ['prompt', 'filePath', 'updateToolName'],
+          required: ['id', 'prompt', 'filePath', 'updateToolName'],
         },
       },
       contextPaths: {

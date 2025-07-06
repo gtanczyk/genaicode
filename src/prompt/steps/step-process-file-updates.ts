@@ -36,7 +36,33 @@ export async function processFileUpdates(
     return result;
   }
 
-  for (const file of codegenSummaryRequest.args.fileUpdates) {
+  // Ensure updates are sorted by dependencies
+  // This is a simple topological sort-like approach to resolve dependencies
+  const resolvedUpdateIds = new Set<string>();
+  const resolvedUpdates: FileUpdate[] = [];
+  const pendingActions = [...codegenSummaryRequest.args.fileUpdates];
+
+  let iterations = 0;
+  while (pendingActions.length > 0) {
+    if (iterations++ > codegenSummaryRequest.args.fileUpdates.length) {
+      putSystemMessage('Circular dependency detected in file updates');
+      resolvedUpdates.push(...pendingActions); // Add remaining pending actions to resolved updates
+      break; // Prevent infinite loop in case of circular dependencies
+    }
+
+    const currentAction = pendingActions.shift();
+    if (!currentAction) continue;
+    if (resolvedUpdateIds.has(currentAction.id)) continue;
+    if (!currentAction.dependsOn?.length || currentAction.dependsOn.every((dep) => resolvedUpdateIds.has(dep))) {
+      resolvedUpdateIds.add(currentAction.id);
+      resolvedUpdates.push(currentAction);
+    } else {
+      // If dependencies are not resolved, re-add to the end of the queue
+      pendingActions.push(currentAction);
+    }
+  }
+
+  for (const file of resolvedUpdates) {
     try {
       const fileResult = await processFileUpdate(
         file,
@@ -93,10 +119,9 @@ async function processFileUpdate(
 
     // Update prompt with file-specific information
     if (prompt.slice(-1)[0].type === 'user') {
-      prompt.slice(-1)[0].text = getPartialPromptTemplate(file);
-    } else {
-      prompt.push({ type: 'user', text: getPartialPromptTemplate(file) });
+      prompt.push({ type: 'assistant', text: 'What would you like me to do next?' });
     }
+    prompt.push({ type: 'user', text: getPartialPromptTemplate(file) });
 
     // Handle image assets if vision is enabled
     if (options.vision && file.contextImageAssets) {
@@ -164,7 +189,7 @@ async function processFileUpdate(
       {
         type: 'user',
         // TODO: Not always true
-        text: 'Update applied.',
+        text: `Update ${file.id} applied.`,
         functionResponses: partialResult.map((call) => ({ name: call.name, call_id: call.id })),
       },
     );

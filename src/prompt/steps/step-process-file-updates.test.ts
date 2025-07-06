@@ -43,7 +43,7 @@ describe('processFileUpdates', () => {
   const mockWaitIfPaused = vi.fn();
 
   // Mock data
-  const mockPrompt: PromptItem[] = [{ type: 'user', text: 'test prompt' }];
+  let mockPrompt: PromptItem[];
   const mockFunctionDefs: FunctionDef[] = [
     {
       name: 'updateFile',
@@ -84,11 +84,7 @@ describe('processFileUpdates', () => {
     args: {
       explanation: 'Test explanation',
       fileUpdates: [
-        {
-          filePath: '/test/file1.ts',
-          updateToolName: 'updateFile',
-          prompt: 'Update file 1',
-        },
+        { id: '1', dependsOn: [], filePath: '/test/file1.ts', updateToolName: 'updateFile', prompt: 'Update file 1' },
       ],
       contextPaths: ['/test/context.ts'],
     },
@@ -101,6 +97,7 @@ describe('processFileUpdates', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('original content');
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
     vi.mocked(diff.applyPatch).mockReturnValue('patched content');
+    mockPrompt = [{ type: 'user', text: 'test prompt' }];
   });
 
   it('should process single file update successfully', async () => {
@@ -135,8 +132,8 @@ describe('processFileUpdates', () => {
       args: {
         explanation: 'Test multiple files',
         fileUpdates: [
-          { filePath: '/test/file1.ts', updateToolName: 'updateFile', prompt: 'Update 1' },
-          { filePath: '/test/file2.ts', updateToolName: 'updateFile', prompt: 'Update 2' },
+          { id: 'a1', dependsOn: [], filePath: '/test/file1.ts', updateToolName: 'updateFile', prompt: 'Update 1' },
+          { id: 'a2', dependsOn: [], filePath: '/test/file2.ts', updateToolName: 'updateFile', prompt: 'Update 2' },
         ],
         contextPaths: [],
       },
@@ -176,6 +173,8 @@ describe('processFileUpdates', () => {
         explanation: 'Test image generation',
         fileUpdates: [
           {
+            id: 'e1',
+            dependsOn: [],
             filePath: '/test/image.png',
             updateToolName: 'generateImage',
             prompt: 'Generate test image',
@@ -231,6 +230,8 @@ describe('processFileUpdates', () => {
         explanation: 'Test patch',
         fileUpdates: [
           {
+            id: 'r1',
+            dependsOn: [],
             filePath: '/test/file.ts',
             updateToolName: 'patchFile',
             prompt: 'Patch test file',
@@ -288,6 +289,8 @@ describe('processFileUpdates', () => {
         explanation: 'Test patch',
         fileUpdates: [
           {
+            id: 'v1',
+            dependsOn: [],
             filePath: '/test/file.ts',
             updateToolName: 'patchFile',
             prompt: 'Patch test file',
@@ -346,6 +349,7 @@ describe('processFileUpdates', () => {
     const mockUpdateResult: FunctionCall = {
       name: 'updateFile',
       args: {
+        id: 'f1',
         filePath: '/test/file1.ts',
         newContent: 'updated content',
         explanation: 'Updated file',
@@ -365,10 +369,82 @@ describe('processFileUpdates', () => {
     );
 
     // Check if prompt was updated with function calls and responses
-    expect(prompt).toHaveLength(3); // original user + assistant call + user response
-    expect(prompt[1].type).toBe('assistant');
-    expect(prompt[1].functionCalls).toEqual([expect.objectContaining(mockUpdateResult)]); // Check the content of the call
-    expect(prompt[2].type).toBe('user');
-    expect(prompt[2].functionResponses).toEqual([{ name: 'updateFile', call_id: undefined }]); // Check the response
+    expect(prompt).toHaveLength(5); // original user + assistant call + user response
+    expect(prompt[3].type).toBe('assistant');
+    expect(prompt[3].functionCalls).toEqual([expect.objectContaining(mockUpdateResult)]); // Check the content of the call
+    expect(prompt[4].type).toBe('user');
+    expect(prompt[4].functionResponses).toEqual([{ name: 'updateFile', call_id: undefined }]); // Check the response
+  });
+
+  it('should sort file updates based on dependencies', async () => {
+    const fileUpdate1 = {
+      id: 'u1',
+      filePath: '/test/file1.ts',
+      updateToolName: 'updateFile',
+      prompt: 'Update 1',
+      dependsOn: [],
+    };
+    const fileUpdate2 = {
+      id: 'u2',
+      filePath: '/test/file2.ts',
+      updateToolName: 'updateFile',
+      prompt: 'Update 2',
+      dependsOn: ['3'],
+    };
+    const fileUpdate3 = {
+      id: 'u3',
+      filePath: '/test/file3.ts',
+      updateToolName: 'updateFile',
+      prompt: 'Update 3',
+      dependsOn: ['1'],
+    };
+
+    const mockDependentSummary: FunctionCall<CodegenSummaryArgs> = {
+      name: 'codegenSummary',
+      args: {
+        explanation: 'Test dependencies',
+        fileUpdates: [
+          fileUpdate2, // Intentionally out of order
+          fileUpdate3,
+          fileUpdate1,
+        ],
+        contextPaths: [],
+      },
+    };
+
+    const mockUpdate1: FunctionCall = {
+      name: 'updateFile',
+      args: { filePath: '/test/file1.ts', newContent: 'content1', explanation: 'Update 1' },
+    };
+    const mockUpdate2: FunctionCall = {
+      name: 'updateFile',
+      args: { filePath: '/test/file2.ts', newContent: 'content2', explanation: 'Update 2' },
+    };
+    const mockUpdate3: FunctionCall = {
+      name: 'updateFile',
+      args: { filePath: '/test/file3.ts', newContent: 'content3', explanation: 'Update 3' },
+    };
+
+    mockGenerateContentFn
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdate1 }])
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdate3 }])
+      .mockResolvedValueOnce([{ type: 'functionCall', functionCall: mockUpdate2 }]);
+
+    const prompt = [...mockPrompt]; // Copy to avoid mutation across tests
+
+    await processFileUpdates(
+      mockGenerateContentFn,
+      prompt,
+      mockFunctionDefs,
+      mockOptions,
+      mockDependentSummary,
+      mockWaitIfPaused,
+    );
+
+    const updateCalls = prompt
+      .filter((item) => item.functionResponses?.[0].name === 'updateFile')
+      .map((item) => item.text);
+    expect(updateCalls).toEqual(['Update u1 applied.', 'Update u3 applied.', 'Update u2 applied.']);
+    expect(mockGenerateContentFn).toHaveBeenCalledTimes(3); // One for each file update
   });
 });

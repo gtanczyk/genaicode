@@ -87,6 +87,7 @@ describe.each([
     const codegenSummary = {
       fileUpdates: [
         {
+          id: '1',
           filePath: '/project/src/main/project-manager.ts',
           updateToolName: 'updateFile',
           prompt: 'Update the file to include the new feature.',

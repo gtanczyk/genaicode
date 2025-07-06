@@ -93,7 +93,7 @@ describe('promptService - Validation and Recovery', () => {
         {
           name: 'codegenSummary',
           args: {
-            files: [{ filePath: mockData.paths.test, updateToolName: 'updateFile' }],
+            files: [{ id: '1', filePath: mockData.paths.test, updateToolName: 'updateFile' }],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -105,7 +105,9 @@ describe('promptService - Validation and Recovery', () => {
         {
           name: 'codegenSummary',
           args: {
-            fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
+            fileUpdates: [
+              { id: '1', filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' },
+            ],
             contextPaths: [],
             explanation: 'Mock summary',
           },
@@ -180,11 +182,13 @@ describe('promptService - Validation and Recovery', () => {
           args: {
             fileUpdates: [
               {
+                id: '1',
                 filePath: `${mockData.paths.root}/test1.js`,
                 updateToolName: 'updateFile',
                 prompt: 'Generate file 1',
               },
               {
+                id: '2',
                 filePath: `${mockData.paths.root}/test2.js`,
                 updateToolName: 'updateFile',
                 prompt: 'Generate file 2',

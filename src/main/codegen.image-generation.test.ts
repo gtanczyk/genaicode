@@ -99,6 +99,7 @@ describe('Image Generation', () => {
       const mockSummary = createMockCodegenSummary(
         [
           {
+            id: '1',
             filePath: '/mocked/root/dir/landscape.png',
             updateToolName: 'generateImage',
             prompt: 'Generate image',
@@ -165,6 +166,7 @@ describe('Image Generation', () => {
       const mockSummary = createMockCodegenSummary(
         [
           {
+            id: '1',
             filePath: '/mocked/root/dir/landscape.png',
             updateToolName: 'generateImage',
             prompt: 'Generate small image',
@@ -229,6 +231,7 @@ describe('Image Generation', () => {
       const mockSummary = createMockCodegenSummary(
         [
           {
+            id: '1',
             filePath: '/mocked/root/dir/city.png',
             updateToolName: 'generateImage',
             prompt: 'Generate image',
@@ -298,6 +301,7 @@ describe('Image Generation', () => {
       const mockSummary = createMockCodegenSummary(
         [
           {
+            id: '1',
             filePath: '/mocked/root/dir/error.png',
             updateToolName: 'generateImage',
             prompt: 'Generate error image',

@@ -12,11 +12,15 @@ import {
   UpdateType,
   FilePrompt,
   FileDetailsRow,
+  DropdownTrigger,
+  DropdownContent,
 } from './styles/codegen-view-styles.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface FileUpdate {
+  id: string;
+  dependsOn?: string[];
   prompt: string;
   filePath: string;
   updateToolName: string;
@@ -37,13 +41,13 @@ interface CodegenSummaryViewProps {
 }
 
 export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) => {
-  const [sectionsState, setSectionsState] = useState({
+  const [sectionsState, setSectionsState] = useState<{ [key: string]: boolean }>({
     explanation: true,
     updates: true,
     context: false,
   });
 
-  const toggleSection = (section: keyof typeof sectionsState) => {
+  const toggleSection = (section: string) => {
     setSectionsState((prev) => ({
       ...prev,
       [section]: !prev[section],
@@ -77,10 +81,11 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
           <SectionContent>
             <FileList>
               {data.args.fileUpdates.map((update, index) => (
-                <FileItem key={index}>
+                <FileItem key={index} id={'file-update-' + update.id}>
                   <FileDetailsRow>
                     <UpdateType variant={update.updateToolName}>{update.updateToolName}</UpdateType>
                     <FilePath>{update.filePath}</FilePath>
+                    <DropdownTrigger onClick={() => toggleSection(update.id)}>{update.id}</DropdownTrigger>
                     {update.temperature && (
                       <UpdateType variant="temperature" title="Temperature">
                         {update.temperature}
@@ -92,6 +97,19 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
                       </UpdateType>
                     )}
                   </FileDetailsRow>
+                  {update.dependsOn && sectionsState[update.id] && (
+                    <DropdownContent>
+                      Depends on:{' '}
+                      {update.dependsOn?.map((dep) => (
+                        <DropdownTrigger
+                          key={dep}
+                          onClick={() => document.getElementById('file-update-' + dep)?.scrollIntoView()}
+                        >
+                          {dep}
+                        </DropdownTrigger>
+                      ))}
+                    </DropdownContent>
+                  )}
                   <FilePrompt title="Prompt">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{update.prompt}</ReactMarkdown>
                   </FilePrompt>

@@ -29,6 +29,7 @@ export const mockResponses = {
       args: {
         fileUpdates: [
           {
+            id: filePath,
             filePath,
             updateToolName,
             prompt: 'Generate file',

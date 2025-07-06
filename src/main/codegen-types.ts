@@ -68,6 +68,8 @@ export type CodegenSummaryArgs = {
 
 /** Arguments of the codegen execution function call */
 export interface FileUpdate {
+  id: string;
+  dependsOn?: string[];
   filePath: string;
   updateToolName: string;
   prompt: string;

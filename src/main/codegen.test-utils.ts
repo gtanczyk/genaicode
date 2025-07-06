@@ -52,7 +52,7 @@ export function createMockPlanningResponse(
  * Creates a mock codegen summary response
  */
 export function createMockCodegenSummary(
-  updates: Array<{ filePath: string; updateToolName: string; prompt?: string }> = [],
+  updates: Array<{ id: string; filePath: string; updateToolName: string; prompt?: string }> = [],
   paths: string[] = [],
   explanation: string = 'Mock explanation',
 ): FunctionCall[] {

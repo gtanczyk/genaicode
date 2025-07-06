@@ -93,7 +93,14 @@ describe('AI Services Integration', () => {
       ]);
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update file content' }],
+        [
+          {
+            id: '1',
+            filePath: '/mocked/root/dir/test.js',
+            updateToolName: 'updateFile',
+            prompt: 'Update file content',
+          },
+        ],
         [],
         'Test file update',
       );
@@ -129,7 +136,7 @@ describe('AI Services Integration', () => {
       ]);
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/new.js', updateToolName: 'createFile', prompt: 'Create new file' }],
+        [{ id: '1', filePath: '/mocked/root/dir/new.js', updateToolName: 'createFile', prompt: 'Create new file' }],
         [],
         'Create new test file',
       );
@@ -164,7 +171,14 @@ describe('AI Services Integration', () => {
       ]);
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/obsolete.js', updateToolName: 'deleteFile', prompt: 'Remove obsolete file' }],
+        [
+          {
+            id: '1',
+            filePath: '/mocked/root/dir/obsolete.js',
+            updateToolName: 'deleteFile',
+            prompt: 'Remove obsolete file',
+          },
+        ],
         [],
         'Remove test file',
       );
@@ -200,7 +214,7 @@ describe('AI Services Integration', () => {
       );
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update with Claude' }],
+        [{ id: '1', filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update with Claude' }],
         [],
         'Claude test update',
       );

@@ -89,7 +89,9 @@ describe('promptService - Context Optimization', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
+          fileUpdates: [
+            { id: '1', filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' },
+          ],
           contextPaths: [mockData.paths.context1, mockData.paths.context2],
           explanation: 'Mock summary with context',
         },
@@ -145,7 +147,9 @@ describe('promptService - Context Optimization', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
+          fileUpdates: [
+            { id: '1', filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' },
+          ],
           contextPaths: [mockData.paths.context1, mockData.paths.context2], // Still provided by mock, but should be ignored
           explanation: 'Mock summary without context optimization',
         },
@@ -191,8 +195,18 @@ describe('promptService - Context Optimization', () => {
         name: 'codegenSummary',
         args: {
           fileUpdates: [
-            { filePath: `${mockData.paths.root}/test1.js`, updateToolName: 'updateFile', prompt: 'Generate file 1' },
-            { filePath: `${mockData.paths.root}/test2.js`, updateToolName: 'updateFile', prompt: 'Generate file 2' },
+            {
+              id: '1',
+              filePath: `${mockData.paths.root}/test1.js`,
+              updateToolName: 'updateFile',
+              prompt: 'Generate file 1',
+            },
+            {
+              id: '2',
+              filePath: `${mockData.paths.root}/test2.js`,
+              updateToolName: 'updateFile',
+              prompt: 'Generate file 2',
+            },
           ],
           contextPaths: [mockData.paths.context1, mockData.paths.context2],
           explanation: 'Mock summary with multiple files',
@@ -231,7 +245,9 @@ describe('promptService - Context Optimization', () => {
       {
         name: 'codegenSummary',
         args: {
-          fileUpdates: [{ filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' }],
+          fileUpdates: [
+            { id: '1', filePath: mockData.paths.test, updateToolName: 'updateFile', prompt: 'Generate file' },
+          ],
           contextPaths: [], // Empty context paths
           explanation: 'Mock summary with no context',
         },

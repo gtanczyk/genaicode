@@ -107,7 +107,14 @@ describe('CLI Options', () => {
       ]);
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update file content' }],
+        [
+          {
+            id: '1',
+            filePath: '/mocked/root/dir/test.js',
+            updateToolName: 'updateFile',
+            prompt: 'Update file content',
+          },
+        ],
         [],
         'Test file update',
       );
@@ -145,6 +152,7 @@ describe('CLI Options', () => {
       const mockSummary = createMockCodegenSummary(
         [
           {
+            id: '1',
             filePath: '/mocked/root/dir/test.js',
             updateToolName: 'updateFile',
             prompt: 'Update with custom temperature',
@@ -191,7 +199,14 @@ describe('CLI Options', () => {
       );
 
       const mockSummary = createMockCodegenSummary(
-        [{ filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update with optimization' }],
+        [
+          {
+            id: '1',
+            filePath: '/mocked/root/dir/test.js',
+            updateToolName: 'updateFile',
+            prompt: 'Update with optimization',
+          },
+        ],
         ['/mocked/root/dir/context.js'], // Additional context paths
         'Context optimization test',
       );
