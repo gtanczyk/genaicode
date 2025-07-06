@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, ChatMessageFlags } from '../../../../../common/content-bus-types.js';
 import { DataContainer } from './data-container.js';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   MessageContainer as StyledMessageContainer,
   MessageBubble,
@@ -157,7 +159,9 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
             </EditControls>
           </>
         ) : (
-          <MessageContent>{message.content}</MessageContent>
+          <MessageContent>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </MessageContent>
         )}
 
         {message.images && message.images.length > 0 && (

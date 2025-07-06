@@ -39,11 +39,64 @@ export const MessageHeader = styled.div`
   align-items: center;
 `;
 
-export const MessageContent = styled.pre`
-  white-space: pre-wrap;
+export const MessageContent = styled.div`
   word-wrap: break-word;
   font-family: inherit;
   margin: 0;
+
+  > *:first-child {
+    margin-top: 0;
+  }
+
+  > *:last-child {
+    margin-bottom: 0;
+  }
+
+  p {
+    margin: 8px 0;
+  }
+
+  ul,
+  ol {
+    padding-left: 20px;
+    margin: 8px 0;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  pre {
+    background-color: ${(props) => props.theme.colors.codeBackground};
+    padding: 10px;
+    border-radius: 4px;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 8px 0;
+  }
+
+  code {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: ${(props) => props.theme.colors.codeBackground};
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  pre > code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+  }
+
+  blockquote {
+    border-left: 4px solid ${(props) => props.theme.colors.border};
+    padding-left: 10px;
+    margin: 8px 0;
+    color: ${(props) => props.theme.colors.textSecondary};
+  }
 `;
 
 // New component for editable content

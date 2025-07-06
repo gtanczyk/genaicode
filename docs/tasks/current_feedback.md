@@ -16,7 +16,6 @@
 - codegen plan/summary/explanations are too long
 - codegen plan/summary editing
 - multiple sessions
-- render markdown
 - no prompt before compound action?
 - external file access message too long
 - when rejecting/accepting compound let me explain why

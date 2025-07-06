@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-115] 2025-07-08 (Updated 2025-07-08): Render markdown in frontend chat messages.
 - [ ] [GEN-113] 2025-07-06: Add per-model configuration for enabling 'thinking' and setting a 'thinking budget'.
 - [x] [GEN-112] 2025-06-23: Enhanced `updateFiles` to handle errors gracefully and provide accurate feedback in `handleCodeGeneration`.
 - [ ] [GEN-111] 2025-06-23: Introduce new LITE model type for summarization and context optimization.
@@ -104,7 +105,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-003] 2023-12-20: Implement code planning plugin hook
 - [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance
 - [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc
-- [x] [GEN-006] 2023-12-17: Add unit test for content generation retry
-- [x] [GEN-007] 2023-12-16: Enhanced UI for Codegen Data Display
-- [x] [GEN-008] 2023-12-15: System Message Container Enhancement
+- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry
+- [x] [GEN-007] 2023-12-15: Enhanced UI for Codegen Data Display
+- [x] [GEN-008] 2023-12-14: System Message Container Enhancement
 - [x] [GEN-009] 2023-12-14: UI Component Theme Dependency Cleanup
