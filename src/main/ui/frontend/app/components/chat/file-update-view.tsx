@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { FilePath } from './styles/file-update-view-styles.js';
 import { DiffView } from './diff-view.js';
 import { UpdateType } from './styles/codegen-view-styles.js';
@@ -39,7 +41,11 @@ export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
         </ButtonContainer>
       </FileHeader>
 
-      {showExplanation && explanation && <Explanation>{explanation}</Explanation>}
+      {showExplanation && explanation && (
+        <Explanation>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{explanation}</ReactMarkdown>
+        </Explanation>
+      )}
 
       {showDiff && (
         <DiffViewContainer>

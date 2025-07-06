@@ -13,6 +13,8 @@ import {
   FilePrompt,
   FileDetailsRow,
 } from './styles/codegen-view-styles.js';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface FileUpdate {
   prompt: string;
@@ -57,7 +59,11 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
             Explanation
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.explanation && <SectionContent>{data.args.explanation}</SectionContent>}
+        {sectionsState.explanation && (
+          <SectionContent>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.explanation}</ReactMarkdown>
+          </SectionContent>
+        )}
       </Section>
 
       <Section>
@@ -86,7 +92,9 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
                       </UpdateType>
                     )}
                   </FileDetailsRow>
-                  <FilePrompt title="Prompt">{update.prompt}</FilePrompt>
+                  <FilePrompt title="Prompt">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{update.prompt}</ReactMarkdown>
+                  </FilePrompt>
                 </FileItem>
               ))}
             </FileList>

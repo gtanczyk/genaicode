@@ -21,3 +21,5 @@
 - when rejecting/accepting compound let me explain why
 - thinking tokens in context size
 - codegen like compound parallel when possible
+- sort imports automatically
+- run knip on each commit

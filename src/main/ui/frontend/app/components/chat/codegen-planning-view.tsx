@@ -16,6 +16,8 @@ import {
   DropdownContent,
 } from './styles/codegen-view-styles.js';
 import { CodegenPlanningArgs } from '../../../../../codegen-types.js';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface CodegenPlanningViewProps {
   data: {
@@ -54,7 +56,11 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
             Problem Analysis
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.analysis && <SectionContent>{data.args.problemAnalysis}</SectionContent>}
+        {sectionsState.analysis && (
+          <SectionContent>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.problemAnalysis}</ReactMarkdown>
+          </SectionContent>
+        )}
       </Section>
 
       <Section>
@@ -64,7 +70,11 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }
             Implementation Plan
           </CollapsibleButton>
         </SectionHeader>
-        {sectionsState.changes && <SectionContent>{data.args.codeChanges}</SectionContent>}
+        {sectionsState.changes && (
+          <SectionContent>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.codeChanges}</ReactMarkdown>
+          </SectionContent>
+        )}
       </Section>
 
       <Section>
