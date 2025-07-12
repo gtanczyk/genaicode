@@ -25,3 +25,4 @@
 - run knip on each commit
 - create/update/patch should also generate summary, put it to cache
 - option to regenerate last model response
+- option to force specifc tool usage
