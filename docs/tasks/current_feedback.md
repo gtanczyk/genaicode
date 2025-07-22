@@ -27,3 +27,5 @@
 - option to regenerate last model response
 - option to force specifc tool usage
 - delete directory (user conf)
+- 0 after action name in codegen summary
+- scrollbar on input missing
