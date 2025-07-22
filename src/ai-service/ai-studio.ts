@@ -301,7 +301,7 @@ function modelGenerateContent(
       case ModelType.CHEAP:
         return serviceConfig.modelOverrides?.cheap ?? 'gemini-2.5-flash';
       case ModelType.LITE:
-        return serviceConfig.modelOverrides?.lite ?? 'gemini-2.5-flash-lite-preview-06-17';
+        return serviceConfig.modelOverrides?.lite ?? 'gemini-2.5-flash-lite';
       case ModelType.REASONING:
         return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21';
       default:
