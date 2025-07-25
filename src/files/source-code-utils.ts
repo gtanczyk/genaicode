@@ -56,7 +56,7 @@ export function getContextSourceCode(contextPaths: string[], options: CodegenOpt
   }
 
   // Safeguard against large growth of resultSourceCodeMap
-  if (reverseDependencyPaths.size > contextPaths.length + dependencyPaths.size) {
+  if (reverseDependencyPaths.size > contextPaths.length * 2 + dependencyPaths.size * 2) {
     console.warn(
       'Too many reverse dependencies found, clearing them to prevent excessive growth of resultSourceCodeMap.',
     );
