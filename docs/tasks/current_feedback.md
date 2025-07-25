@@ -29,4 +29,3 @@
 - delete directory (user conf)
 - 0 after action name in codegen summary
 - scrollbar on input missing
-- request files content requesting too much (expanded context)

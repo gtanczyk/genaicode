@@ -55,6 +55,14 @@ export function getContextSourceCode(contextPaths: string[], options: CodegenOpt
     }
   }
 
+  // Safeguard against large growth of resultSourceCodeMap
+  if (reverseDependencyPaths.size > contextPaths.length + dependencyPaths.size) {
+    console.warn(
+      'Too many reverse dependencies found, clearing them to prevent excessive growth of resultSourceCodeMap.',
+    );
+    reverseDependencyPaths.clear();
+  }
+
   // Add reverse dependency files to the result
   for (const reverseDependencyPath of reverseDependencyPaths) {
     if (allSourceCodeMap[reverseDependencyPath]) {
