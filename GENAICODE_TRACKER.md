@@ -17,6 +17,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [ ] [GEN-111] 2025-06-23: Introduce new LITE model type for summarization and context optimization.
 - [-] [GEN-110] 2025-06-22: Automatic context refresh on file changes.
 - [ ] [GEN-109] 2025-06-22: Ensure `compoundAction` loads full file content for all planned files into the context before execution.
+- [-] [GEN-116] 2024-07-08: Implement popular dependency inclusion in context optimization after summarization.
 - [ ] [GEN-108] 2025-06-22: Fix browser-side suggestion generation due to `window.ai` API changes.
 - [-] [GEN-107] 2025-05-15: Add test suite for compoundAction handler (`src/eval/compound-action.test.ts`).
 - [-] [GEN-106] 2025-05-10: Refactor `handleCompoundAction` for multi-step inference (plan, then params per action).

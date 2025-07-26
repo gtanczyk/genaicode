@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getContextSourceCode } from './source-code-utils.js';
+import { getContextSourceCode, computePopularDependencies } from './source-code-utils.js';
 import { FileId, SourceCodeMap } from './source-code-types.js';
 import * as readFiles from './read-files.js';
+import { SummaryCache } from './summary-cache.js';
+import { md5 } from './cache-file.js';
 
 // Mock the getSourceCode function
 vi.mock('./read-files.js', () => ({
@@ -218,5 +220,99 @@ describe('getContextSourceCode', () => {
     const result = getContextSourceCode(['/path/to/file.ts'], mockOptions);
 
     expect(result).toEqual(mockSourceCodeMap);
+  });
+});
+
+describe('computePopularDependencies', () => {
+  it('should return an empty set for an empty cache', () => {
+    const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
+    const popular = computePopularDependencies(summaryCache);
+    expect(popular).toEqual(new Set());
+  });
+
+  it('should return an empty set if no dependency meets the threshold', () => {
+    const summaryCache = {
+      _version: '1',
+    } as SummaryCache;
+    summaryCache['file1.ts'] = {
+      dependencies: [
+        { path: 'dep1.ts', type: 'local' },
+        { path: 'dep2.ts', type: 'local' },
+      ],
+      tokenCount: 100,
+      summary: 'File 1 summary',
+      checksum: md5('File 1 summary'),
+    };
+    summaryCache['file2.ts'] = {
+      dependencies: [{ path: 'dep1.ts', type: 'local' }],
+      tokenCount: 50,
+      summary: 'File 2 summary',
+      checksum: md5('File 2 summary'),
+    };
+    const popular = computePopularDependencies(summaryCache, 3);
+    expect(popular).toEqual(new Set());
+  });
+
+  it('should identify popular dependencies that meet the default threshold', () => {
+    const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
+    for (let i = 0; i < 10; i++) {
+      summaryCache[`file${i}.ts`] = {
+        dependencies: [{ path: 'popular.ts', type: 'local' }],
+        tokenCount: 100,
+        summary: `File ${i} summary`,
+        checksum: md5(`File ${i} summary`),
+      };
+    }
+    summaryCache['another.ts'] = {
+      dependencies: [{ path: 'less-popular.ts', type: 'local' }],
+      tokenCount: 50,
+      summary: 'Another file summary',
+      checksum: md5('Another file summary'),
+    };
+
+    const popular = computePopularDependencies(summaryCache, 10);
+    expect(popular).toEqual(new Set(['popular.ts']));
+  });
+
+  it('should ignore non-local dependencies', () => {
+    const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
+    for (let i = 0; i < 20; i++) {
+      summaryCache[`file${i}.ts`] = {
+        dependencies: [
+          { path: 'popular.ts', type: 'local' },
+          { path: 'npm-package', type: 'external' },
+        ],
+        tokenCount: 100,
+        summary: `File ${i} summary`,
+        checksum: md5(`File ${i} summary`),
+      };
+    }
+    const popular = computePopularDependencies(summaryCache);
+    expect(popular).toEqual(new Set(['popular.ts']));
+    expect(popular.has('npm-package')).toBe(false);
+  });
+
+  it('should correctly rank dependencies by popularity', () => {
+    const summaryCache: SummaryCache = {
+      _version: '1',
+      ...Object.fromEntries(
+        Array.from({ length: 5 }, (_, i) => [`fileA${i}.ts`, { dependencies: [{ path: 'depA.ts', type: 'local' }] }]),
+      ),
+      ...Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => [`fileB${i}.ts`, { dependencies: [{ path: 'depB.ts', type: 'local' }] }]),
+      ),
+      ...Object.fromEntries(
+        Array.from({ length: 3 }, (_, i) => [`fileC${i}.ts`, { dependencies: [{ path: 'depC.ts', type: 'local' }] }]),
+      ),
+    } as SummaryCache;
+
+    const popular = computePopularDependencies(summaryCache, 4);
+    expect(popular).toEqual(new Set(['depB.ts', 'depA.ts']));
+    const result = Array.from(popular);
+    // The order is not guaranteed by Set, but the underlying logic sorts it.
+    // Let's test the sorting inside the function logic by checking the order of insertion if possible
+    // or just the content
+    expect(result.includes('depB.ts')).toBe(true);
+    expect(result.includes('depA.ts')).toBe(true);
   });
 });

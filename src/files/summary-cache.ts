@@ -9,6 +9,8 @@ export interface SummaryInfo {
   summary: string;
 }
 
+export const popularDependencies = new Set<string>();
+
 export type SummaryCache = Record<
   string,
   {
@@ -37,4 +39,5 @@ export function clearSummaryCache(filePaths: string[]) {
   for (const filePath of filePaths) {
     delete summaryCache[filePath];
   }
+  popularDependencies.clear();
 }

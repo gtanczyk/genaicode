@@ -12,7 +12,7 @@ import { StepResult } from './steps-types.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { getSourceCodeResponse } from './steps-utils.js';
 import { importantContext } from '../../main/config.js';
-import { getSummary } from '../../files/summary-cache.js';
+import { getSummary, popularDependencies } from '../../files/summary-cache.js';
 import { generateFileId } from '../../files/file-id-utils.js';
 
 export const OPTIMIZATION_PROMPT = `You need to analyze the provided source code files and determine their relevance to the user's prompt. You will then call the \`optimizeContext\` function with the results.
@@ -256,6 +256,27 @@ function parseOptimizationResult(
     // Break if we exceed token limit and the file isn't highly relevant
     if (totalTokens > MAX_TOTAL_TOKENS && relevance < 0.7) {
       break;
+    }
+  }
+
+  // Add popular dependencies if they are not already included
+  const resultFilePaths = new Set(result.map(([filePath]) => filePath));
+  for (const popularDep of popularDependencies) {
+    if (!resultFilePaths.has(popularDep)) {
+      const content =
+        (fullSourceCode[popularDep] && 'content' in fullSourceCode[popularDep]
+          ? fullSourceCode[popularDep]?.content
+          : undefined) ?? '';
+      const popularDepTokens = estimateTokenCount(content);
+
+      if (totalTokens + popularDepTokens <= MAX_TOTAL_TOKENS) {
+        totalTokens += popularDepTokens;
+        result.push([popularDep, 0.8]);
+        irrelevantFiles.delete(popularDep); // Ensure it's not marked as irrelevant
+      } else {
+        putSystemMessage(`Skipping popular dependency ${popularDep} due to token limit.`);
+        break; // Stop adding if we run out of tokens
+      }
     }
   }
 

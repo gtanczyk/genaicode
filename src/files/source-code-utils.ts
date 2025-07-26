@@ -1,6 +1,7 @@
 import { SourceCodeMap, FileSummary, FileContent } from './source-code-types.js';
 import { getSourceCode } from './read-files.js';
 import { CodegenOptions } from '../main/codegen-types.js';
+import { SummaryCache } from './summary-cache.js';
 
 /**
  * Returns a SourceCodeMap containing the content of context files, their first-level dependencies,
@@ -84,4 +85,40 @@ export function getExpandedContextPaths(contextPaths: string[], options: Codegen
   const sourceCodeMap = getContextSourceCode(contextPaths, options);
   // need to make sure original contextPaths values are included in the result
   return [...new Set([...contextPaths, ...Object.keys(sourceCodeMap)])];
+}
+
+/**
+ * Computes a set of popular dependencies from the summary cache.
+ * @param summaryCache The cache containing summaries and dependencies.
+ * @param threshold The minimum number of times a file must be depended on to be considered popular.
+ * @returns A Set of file paths for popular dependencies.
+ */
+export function computePopularDependencies(summaryCache: SummaryCache, threshold = 20): Set<string> {
+  const dependencyCounts = new Map<string, number>();
+
+  // Count occurrences of each dependency
+  for (const key in summaryCache) {
+    if (key === '_version') continue;
+    const fileInfo = summaryCache[key];
+    if (fileInfo.dependencies) {
+      for (const dep of fileInfo.dependencies) {
+        if (dep.type === 'local') {
+          dependencyCounts.set(dep.path, (dependencyCounts.get(dep.path) || 0) + 1);
+        }
+      }
+    }
+  }
+
+  const popular = new Set<string>();
+  const sortedDeps = [...dependencyCounts.entries()].sort((a, b) => b[1] - a[1]);
+
+  for (const [filePath, count] of sortedDeps) {
+    if (count >= threshold) {
+      popular.add(filePath);
+    } else {
+      break; // Stop if we hit a dependency below the threshold
+    }
+  }
+
+  return popular;
 }

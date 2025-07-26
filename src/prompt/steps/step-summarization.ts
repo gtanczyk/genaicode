@@ -10,8 +10,9 @@ import { md5, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
 import { estimateTokenCount } from '../token-estimator.js';
 import { refreshFiles } from '../../files/find-files.js';
-import { summaryCache, SummaryInfo, CACHE_VERSION } from '../../files/summary-cache.js';
+import { summaryCache, SummaryInfo, CACHE_VERSION, popularDependencies } from '../../files/summary-cache.js';
 import { generateFileId } from '../../files/file-id-utils.js';
+import { computePopularDependencies } from '../../files/source-code-utils.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
@@ -179,6 +180,17 @@ async function summarizeBatch(
   summaryCache._version = CACHE_VERSION;
 
   writeCache('summaries', summaryCache);
+
+  // Compute and store popular dependencies
+  const computedPopularDeps = computePopularDependencies(summaryCache);
+  popularDependencies.clear();
+  computedPopularDeps.forEach((dep) => popularDependencies.add(dep));
+
+  if (popularDependencies.size > 0) {
+    putSystemMessage(`Identified ${popularDependencies.size} popular dependencies.`, {
+      popularDependencies: Array.from(popularDependencies),
+    });
+  }
 
   putSystemMessage('Summarization of the source code is finished.');
 }
