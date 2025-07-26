@@ -14,6 +14,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-115] 2025-07-06: Render markdown in frontend chat messages, codegen planning, codegen summary, and file prompts.
 - [ ] [GEN-113] 2025-07-05: Add per-model configuration for enabling 'thinking' and setting a 'thinking budget'.
 - [x] [GEN-112] 2025-06-23: Enhanced `updateFiles` to handle errors gracefully and provide accurate feedback in `handleCodeGeneration`.
+- [x] [GEN-117] 2025-07-08: Implemented popularDependencies config option in .genaicoderc to disable feature and customize threshold.
 - [ ] [GEN-111] 2025-06-23: Introduce new LITE model type for summarization and context optimization.
 - [-] [GEN-110] 2025-06-22: Automatic context refresh on file changes.
 - [ ] [GEN-109] 2025-06-22: Ensure `compoundAction` loads full file content for all planned files into the context before execution.

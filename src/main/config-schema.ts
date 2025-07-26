@@ -41,6 +41,23 @@ Examples: ['.js', '.ts', '.tsx', '.md'], ['.py', '.go', '.java'], ['.c', '.h', '
       description: `Directories and files that should be excluded from code analysis and generation:
 Examples: ['node_modules', 'dist', 'build'], ['coverage', '.vscode', '.github']`,
     },
+    popularDependencies: {
+      type: 'object',
+      description:
+        'Configuration for the popular dependencies feature, which automatically includes frequently used files in the context.',
+      properties: {
+        enabled: {
+          type: 'boolean',
+          description: 'Enable or disable the popular dependencies feature. Defaults to true.',
+        },
+        threshold: {
+          type: 'number',
+          description:
+            'The minimum number of times a file must be depended on to be considered popular. Defaults to 20.',
+        },
+      },
+      additionalProperties: false,
+    },
     importantContext: {
       type: 'object',
       description: 'Configuration for important context that should always be available to the AI model.',

@@ -58,6 +58,10 @@ export interface RcConfig {
   lintCommand?: string;
   extensions?: string[];
   ignorePaths?: string[];
+  popularDependencies?: {
+    enabled?: boolean;
+    threshold?: number;
+  };
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
   plugins?: string[];

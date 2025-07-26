@@ -10,6 +10,20 @@ import { SCHEMA_VIRTUAL_FILE_NAME } from './config-schema.js';
 const rcFilePath: string = await findRcFile();
 export const rcConfig: RcConfig = parseRcFile(rcFilePath);
 
+// Initialize popularDependencies with defaults if not present
+if (rcConfig.popularDependencies === undefined) {
+  rcConfig.popularDependencies = { enabled: true, threshold: 20 };
+} else {
+  if (rcConfig.popularDependencies.enabled === undefined) {
+    rcConfig.popularDependencies.enabled = true;
+  }
+  if (rcConfig.popularDependencies.threshold === undefined) {
+    rcConfig.popularDependencies.threshold = 20;
+  } else if (rcConfig.popularDependencies.threshold < 0) {
+    rcConfig.popularDependencies.threshold = 0;
+  }
+}
+
 if (typeof rcConfig.featuresEnabled === 'undefined') {
   rcConfig.featuresEnabled = {};
 }

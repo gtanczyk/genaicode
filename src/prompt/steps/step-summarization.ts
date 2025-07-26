@@ -13,6 +13,7 @@ import { refreshFiles } from '../../files/find-files.js';
 import { summaryCache, SummaryInfo, CACHE_VERSION, popularDependencies } from '../../files/summary-cache.js';
 import { generateFileId } from '../../files/file-id-utils.js';
 import { computePopularDependencies } from '../../files/source-code-utils.js';
+import { rcConfig } from '../../main/config.js';
 
 const BATCH_SIZE = 50;
 const MAX_SUMMARY_TOKENS = 10;
@@ -118,6 +119,20 @@ export async function summarizeSourceCode(
 
   await summarizeBatch(generateContentFn, items, sourceCode, options);
 
+  // Compute and store popular dependencies
+  const computedPopularDeps =
+    rcConfig.popularDependencies?.enabled !== false
+      ? computePopularDependencies(summaryCache, rcConfig.popularDependencies?.threshold ?? 20)
+      : new Set<string>();
+  popularDependencies.clear();
+  computedPopularDeps.forEach((dep) => popularDependencies.add(dep));
+
+  if (popularDependencies.size > 0) {
+    putSystemMessage(`Identified ${popularDependencies.size} popular dependencies.`, {
+      popularDependencies: Array.from(popularDependencies),
+    });
+  }
+
   refreshFiles();
 }
 
@@ -180,17 +195,6 @@ async function summarizeBatch(
   summaryCache._version = CACHE_VERSION;
 
   writeCache('summaries', summaryCache);
-
-  // Compute and store popular dependencies
-  const computedPopularDeps = computePopularDependencies(summaryCache);
-  popularDependencies.clear();
-  computedPopularDeps.forEach((dep) => popularDependencies.add(dep));
-
-  if (popularDependencies.size > 0) {
-    putSystemMessage(`Identified ${popularDependencies.size} popular dependencies.`, {
-      popularDependencies: Array.from(popularDependencies),
-    });
-  }
 
   putSystemMessage('Summarization of the source code is finished.');
 }
