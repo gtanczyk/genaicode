@@ -39,7 +39,7 @@ export default function viteGenaicode(
         ui: true,
         uiPort: genaicodePort,
         uiFrameAncestors: ['http://localhost:' + port],
-        aiService: stringToAiServiceType(serviceAutoDetect()),
+        aiService: options?.aiService ?? stringToAiServiceType(serviceAutoDetect()),
         isDev: false,
 
         allowFileCreate: true,
