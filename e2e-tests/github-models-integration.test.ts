@@ -15,29 +15,18 @@ describe('GitHub Models Integration E2E Tests', () => {
 
     try {
       const { stdout, stderr } = await execAsync(command, {
-        env: {
-          ...process.env,
-          GITHUB_TOKEN: '', // Explicitly unset the token for this test
-        },
         timeout: 15000, // Shorter timeout
       });
 
-      // If GITHUB_TOKEN is available, should succeed
-      if (process.env.GITHUB_TOKEN) {
-        // Verify the command executed successfully
-        expect(stderr).toBe('');
+      // Verify the command executed successfully
+      expect(stderr).toBe('');
 
-        // Verify that the output contains expected patterns
-        // The dry-run should show what would be generated without actually writing files
-        expect(stdout).toContain('Hello, World!');
+      // Verify that the output contains expected patterns
+      // The dry-run should show what would be generated without actually writing files
+      expect(stdout).toContain('Hello, World!');
 
-        // Verify that GitHub Models service was used
-        expect(stdout).toMatch(/Using.*github-models/i);
-      } else {
-        // If no token, should show proper error message
-        const errorOutput = stderr + stdout;
-        expect(errorOutput).toContain('GitHub Models API token not configured');
-      }
+      // Verify that GitHub Models service was used
+      expect(stdout).toMatch(/Using.*github-models/i);
     } catch (error: unknown) {
       const execError = error as { code?: number; stdout?: string; stderr?: string };
 
@@ -51,13 +40,6 @@ describe('GitHub Models Integration E2E Tests', () => {
       if (execError.stderr?.includes('rate limit') || execError.stderr?.includes('quota')) {
         console.warn('GitHub Models API rate limit reached. This is expected in CI environments.');
         return; // Don't fail the test for rate limits
-      }
-
-      // If no token is provided, expect specific error handling
-      if (!process.env.GITHUB_TOKEN) {
-        const errorOutput = (execError.stderr || '') + (execError.stdout || '');
-        expect(errorOutput).toContain('GitHub Models API token not configured');
-        return;
       }
 
       throw error;
