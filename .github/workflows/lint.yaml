@@ -11,8 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Allow access to GitHub Models API
-      id-token: write
+      models: read
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +27,4 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm run test
-      - name: Run E2E tests with GitHub Models integration
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run test:e2e
+      - run: npm run test:e2e
