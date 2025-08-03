@@ -6,6 +6,7 @@ import { generateContent as generateContentAnthropic } from '../ai-service/anthr
 import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentLocalLllm } from '../ai-service/local-llm.js';
+import { generateContent as generateContentGitHubModels } from '../ai-service/github-models.js';
 import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
 import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
@@ -137,6 +138,7 @@ export function getGenerateContentFunctions(): Record<AiServiceType, GenerateCon
     anthropic: generateContentAnthropic,
     openai: generateContentGPT,
     'local-llm': generateContentLocalLllm,
+    'github-models': generateContentGitHubModels,
     ...Object.fromEntries([...getRegisteredAiServices().entries()].map(([key, value]) => [key, value.generateContent])),
   };
 }

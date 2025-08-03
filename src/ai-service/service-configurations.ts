@@ -46,6 +46,16 @@ const configurations: ServiceConfigurations = {
       modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {},
     },
   },
+  'github-models': {
+    apiKey: process.env.GITHUB_TOKEN,
+    modelOverrides: {
+      default: modelOverrides.githubModels?.default ?? 'gpt-4o',
+      cheap: modelOverrides.githubModels?.cheap ?? 'gpt-4o-mini',
+      lite: modelOverrides.githubModels?.lite ?? 'gpt-4o-mini',
+      reasoning: modelOverrides.githubModels?.reasoning ?? 'o1-mini',
+      modelSpecificSettings: modelOverrides.githubModels?.modelSpecificSettings ?? {},
+    },
+  },
   'local-llm': {
     apiKey: process.env.LOCAL_LLM_API_KEY ?? 'local-llm',
     openaiBaseUrl: process.env.LOCAL_LLM_BASE_URL ?? 'http://localhost:11434/v1/',
