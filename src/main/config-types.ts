@@ -68,6 +68,5 @@ export interface RcConfig {
   featuresEnabled?: {
     appContext?: boolean;
     gitContext?: boolean;
-    docker?: boolean;
   };
 }
