@@ -60,5 +60,8 @@
         }
       }
     }
+  },
+  "featuresEnabled": {
+    "docker": true
   }
 }
