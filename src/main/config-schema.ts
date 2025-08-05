@@ -169,10 +169,6 @@ Example: ['./plugins/custom-plugin.js', './examples/genaicode_plugins/genaicode_
           type: 'boolean',
           description: 'Enable/disable the app context feature that provides additional context for code generation.',
         },
-        docker: {
-          type: 'boolean',
-          description: 'Enable/disable the Docker feature for sandboxed command execution. Defaults to true.',
-        },
       },
     },
   },
