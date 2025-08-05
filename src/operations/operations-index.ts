@@ -11,6 +11,9 @@ import * as downloadFile from './download-file/download-file-executor.js';
 import * as splitImage from './split-image/split-image-executor.js';
 import * as resizeImage from './resize-image/resize-image-executor.js';
 import * as imglyRemoveBackground from './imgly-remove-background/imgly-remove-background-executor.js';
+import * as startContainer from './docker/start-container-executor.js';
+import * as runCommand from './docker/run-command-executor.js';
+import * as stopContainer from './docker/stop-container-executor.js';
 
 const INDEX = [
   createDirectory,
@@ -23,6 +26,9 @@ const INDEX = [
   splitImage,
   resizeImage,
   imglyRemoveBackground,
+  startContainer,
+  runCommand,
+  stopContainer,
 ] as const;
 
 function getOperations() {

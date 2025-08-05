@@ -32,6 +32,10 @@ if (typeof rcConfig.featuresEnabled?.gitContext === 'undefined') {
   rcConfig.featuresEnabled.gitContext = await simpleGit(rcConfig.rootDir).checkIsRepo();
 }
 
+if (typeof rcConfig.featuresEnabled?.docker === 'undefined') {
+  rcConfig.featuresEnabled.docker = true;
+}
+
 export const rcConfigSchemaFilePath = path.join(rcConfig.rootDir, SCHEMA_VIRTUAL_FILE_NAME);
 
 await loadPlugins(rcConfig);
