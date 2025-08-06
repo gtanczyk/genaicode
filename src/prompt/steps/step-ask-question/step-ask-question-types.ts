@@ -186,6 +186,28 @@ export type RunContainerTaskArgs = {
   taskDescription: string;
 };
 
+/**
+ * Arguments for the runCommand action in container tasks
+ */
+export type RunCommandArgs = {
+  command: string;
+  reasoning: string;
+};
+
+/**
+ * Arguments for the completeTask action in container tasks
+ */
+export type CompleteTaskArgs = {
+  summary: string;
+};
+
+/**
+ * Arguments for the failTask action in container tasks
+ */
+export type FailTaskArgs = {
+  reason: string;
+};
+
 export type LintResult = {
   success: boolean;
   stdout?: string;
