@@ -5,7 +5,12 @@ import { ModelType } from '../../../../ai-service/common-types.js';
 import { Stream } from 'node:stream';
 
 export const handleRunContainerTask: ActionHandler = async ({ askQuestionCall, generateContentFn }) => {
-  const { image, taskDescription } = askQuestionCall.args as RunContainerTaskArgs;
+  const args = askQuestionCall.args as unknown as RunContainerTaskArgs;
+  if (!args || typeof args !== 'object' || !('image' in args) || !('taskDescription' in args)) {
+    putSystemMessage('❌ Invalid arguments for runContainerTask');
+    return { breakLoop: true, items: [] };
+  }
+  const { image, taskDescription } = args;
   const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
   putSystemMessage(`🐳 Starting container task with image: ${image}`);
@@ -67,7 +72,7 @@ async function pullImage(docker: Docker, image: string): Promise<void> {
       if (err) {
         return reject(err);
       }
-      docker.modem.followProgress(stream, (err: Error | null) => {
+      docker.modem.followProgress(stream as any, (err: Error | null) => {
         if (err) {
           return reject(err);
         }
@@ -106,7 +111,7 @@ Next command:`;
 
     const [nextCommandResult] = await generateContentFn(
       [{ type: 'user', text: nextCommandPrompt }],
-      { modelType: ModelType.CHEAP, expectedResponseType: { text: true, functionCall: false } },
+      { modelType: ModelType.CHEAP, expectedResponseType: { text: true, functionCall: false, media: false } },
       {},
     );
 
@@ -160,7 +165,7 @@ async function executeCommandInContainer(
   const output = await demuxDockerStream(stream);
   const { ExitCode: exitCode } = await exec.inspect();
 
-  return { output, exitCode };
+  return { output, exitCode: exitCode ?? 0 };
 }
 
 async function demuxDockerStream(stream: NodeJS.ReadableStream): Promise<string> {
@@ -197,7 +202,7 @@ Summary:`;
 
   const [summaryResult] = await generateContentFn(
     [{ type: 'user', text: summaryPrompt }],
-    { modelType: ModelType.DEFAULT, expectedResponseType: { text: true, functionCall: false } },
+    { modelType: ModelType.DEFAULT, expectedResponseType: { text: true, functionCall: false, media: false } },
     {},
   );
 
