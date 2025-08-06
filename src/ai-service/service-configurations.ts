@@ -16,7 +16,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.aiStudio?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.5-flash',
       lite: modelOverrides.aiStudio?.lite ?? 'gemini-2.5-flash-lite',
-      reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
+      reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.5-pro',
       modelSpecificSettings: Object.assign({}, modelOverrides.aiStudio?.modelSpecificSettings ?? {}, {
         'gemini-2.5-flash-lite': {
           thinkingBudget: 24576,
@@ -63,7 +63,7 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.vertexAi?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.5-flash',
       lite: modelOverrides.vertexAi?.lite ?? 'gemini-2.5-flash-lite',
-      reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.0-flash-thinking-exp-01-21',
+      reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.5-pro',
       modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },
   },
