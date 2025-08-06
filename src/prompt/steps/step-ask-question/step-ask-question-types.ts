@@ -31,6 +31,7 @@ export type ActionType =
   | 'requestFilesFragments'
   | 'requestGitContext'
   | 'conversationGraph'
+  | 'runContainerTask'
   | 'compoundAction'
   | PluginActionType;
 
@@ -175,6 +176,14 @@ export type RequestGitContextArgs = {
   filePath?: string; // Required for 'fileChanges', 'blame', and 'fileDiff'
   commitHash?: string; // Required for 'blame' and 'fileDiff'
   count?: number; // Applies mainly to 'commits' and 'fileChanges'
+};
+
+/**
+ * Arguments for the runContainerTask action
+ */
+export type RunContainerTaskArgs = {
+  image: string;
+  taskDescription: string;
 };
 
 export type LintResult = {

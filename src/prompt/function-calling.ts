@@ -36,6 +36,7 @@ import { conversationSummaryDef } from './function-defs/conversation-summary.js'
 import { readExternalFiles } from './function-defs/read-external-files.js';
 import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
 import { getCompoundActionDef } from './function-defs/compound-action.js';
+import { runContainerTaskDef } from './function-defs/run-container-task.js';
 
 /**
  * Function definitions for function calling feature
@@ -77,6 +78,7 @@ export function getFunctionDefs(): FunctionDef[] {
     exploreExternalDirectories,
     requestGitContextDef,
     getCompoundActionDef(),
+    runContainerTaskDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (
