@@ -1,25 +1,28 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, PromptItem } from '../../../../ai-service/common-types.js';
-import { 
-  ActionHandler, 
-  ActionHandlerProps, 
+import {
+  ActionHandlerProps,
   RunContainerTaskArgs,
   RunCommandArgs,
   CompleteTaskArgs,
-  FailTaskArgs
+  FailTaskArgs,
+  ActionResult,
 } from '../step-ask-question-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { Stream } from 'node:stream';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { runCommandDef, completeTaskDef, failTaskDef } from '../../../function-defs/container-task-commands.js';
+import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../../../../utils/docker-utils.js';
+import { registerActionHandler } from '../step-ask-question-handlers.js';
 
-export const handleRunContainerTask: ActionHandler = async ({ 
-  askQuestionCall, 
-  prompt, 
-  generateContentFn, 
-  options 
-}: ActionHandlerProps) => {
+registerActionHandler('runContainerTask', handleRunContainerTask);
+
+export async function handleRunContainerTask({
+  askQuestionCall,
+  prompt,
+  generateContentFn,
+  options,
+}: ActionHandlerProps): Promise<ActionResult> {
   try {
     putSystemMessage('Container task: generating proper task request');
 
@@ -46,12 +49,14 @@ export const handleRunContainerTask: ActionHandler = async ({
       options,
     ];
 
-    const [runContainerTaskCall] = (await generateContentFn(...request))
+    const response = await generateContentFn(...request);
+    const [runContainerTaskCall] = response
       .filter((item) => item.type === 'functionCall')
       .map((item) => item.functionCall) as [FunctionCall<RunContainerTaskArgs> | undefined];
 
     if (!runContainerTaskCall?.args?.image || !runContainerTaskCall.args.taskDescription) {
       putSystemMessage('❌ Failed to get valid runContainerTask request');
+
       prompt.push(
         {
           type: 'assistant',
@@ -75,7 +80,7 @@ export const handleRunContainerTask: ActionHandler = async ({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       putSystemMessage(`❌ Failed to pull Docker image: ${errorMessage}`);
-      
+
       prompt.push(
         {
           type: 'assistant',
@@ -98,22 +103,13 @@ export const handleRunContainerTask: ActionHandler = async ({
 
     let container: Docker.Container | undefined;
     try {
-      container = await docker.createContainer({
-        Image: image,
-        Tty: true,
-        Cmd: ['/bin/sh'],
-        HostConfig: {
-          AutoRemove: true,
-        },
-      });
-      await container.start();
-      putSystemMessage(`✅ Container started successfully (ID: ${container.id.substring(0, 12)})`);
+      container = await createAndStartContainer(docker, image);
 
       const { taskExecutionPrompt, success, summary } = await commandExecutionLoop(
-        container, 
-        taskDescription, 
+        container,
+        taskDescription,
         generateContentFn,
-        options
+        options,
       );
 
       const finalMessage = `✅ Task finished with status: ${success ? 'Success' : 'Failed'}.
@@ -141,10 +137,11 @@ ${summary}`;
         },
         ...taskExecutionPrompt,
       );
+      return { breakLoop: true, items: [] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       putSystemMessage(`❌ An error occurred during the container task: ${errorMessage}`);
-      
+
       prompt.push(
         {
           type: 'assistant',
@@ -162,20 +159,12 @@ ${summary}`;
           ],
         },
       );
+      return { breakLoop: false, items: [] };
     } finally {
       if (container) {
-        try {
-          putSystemMessage('Stopping and removing container...');
-          await container.stop();
-          // AutoRemove is true, so no need to remove explicitly
-          putSystemMessage('✅ Container stopped and removed.');
-        } catch (error) {
-          // Ignore errors during cleanup, as the container might already be gone.
-        }
+        await stopContainer(container);
       }
     }
-
-    return { breakLoop: false, items: [] };
   } catch (error) {
     // Handle errors gracefully
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -192,29 +181,8 @@ ${summary}`;
       },
     );
 
-    return {
-      breakLoop: true,
-      items: [],
-    };
+    return { breakLoop: true, items: [] };
   }
-};
-
-async function pullImage(docker: Docker, image: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    putSystemMessage(`PULLING DOCKER IMAGE: ${image} (this may take a while)...`);
-    docker.pull(image, (err: Error, stream: Stream) => {
-      if (err) {
-        return reject(err);
-      }
-      docker.modem.followProgress(stream as any, (err: Error | null) => {
-        if (err) {
-          return reject(err);
-        }
-        putSystemMessage(`✅ Image "${image}" pulled successfully.`);
-        resolve();
-      });
-    });
-  });
 }
 
 async function commandExecutionLoop(
@@ -229,45 +197,51 @@ async function commandExecutionLoop(
   const maxCommands = 25;
   const taskExecutionPrompt: PromptItem[] = [];
 
-  // Build the initial context for the command execution loop
-  const initialContext = [
-    {
-      type: 'user' as const,
-      text: `You are an expert system operator inside a Docker container. Your task is to complete the following objective by executing shell commands one at a time.
-
-Overall Task:
-${taskDescription}
+  // Build the system prompt
+  const systemPrompt: PromptItem = {
+    type: 'systemPrompt',
+    text: `You are an expert system operator inside a Docker container. Your task is to complete the following objective by executing shell commands one at a time.
 
 You have access to the following functions:
 - runCommand(command, reasoning): Execute a shell command in the container
 - completeTask(summary): Mark the task as successfully completed with a summary
 - failTask(reason): Mark the task as failed with a reason
 
-Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
+Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.`,
+  };
+
+  // Build the initial user message
+  const getTaskPrompt = (): PromptItem => ({
+    type: 'user',
+    text: `Overall Task:
+${taskDescription}
 
 Current command history:
 ${commandHistory || 'No commands executed yet.'}`,
-    },
-  ];
+  });
 
   for (let i = 0; i < maxCommands; i++) {
     try {
-      const [actionResult] = (await generateContentFn(
-        initialContext.concat(taskExecutionPrompt),
-        {
-          functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
-          temperature: 0.7,
-          modelType: ModelType.CHEAP,
-          expectedResponseType: {
-            text: false,
-            functionCall: true,
-            media: false,
+      const [actionResult] = (
+        await generateContentFn(
+          [systemPrompt, getTaskPrompt(), ...taskExecutionPrompt],
+          {
+            functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
+            temperature: 0.7,
+            modelType: ModelType.CHEAP,
+            expectedResponseType: {
+              text: false,
+              functionCall: true,
+              media: false,
+            },
           },
-        },
-        options,
-      ))
+          options,
+        )
+      )
         .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall) as [FunctionCall<RunCommandArgs | CompleteTaskArgs | FailTaskArgs> | undefined];
+        .map((item) => item.functionCall) as [
+        FunctionCall<RunCommandArgs | CompleteTaskArgs | FailTaskArgs> | undefined,
+      ];
 
       if (!actionResult) {
         putSystemMessage('❌ Internal LLM failed to produce a valid function call.');
@@ -280,7 +254,7 @@ ${commandHistory || 'No commands executed yet.'}`,
         putSystemMessage('✅ Task marked as complete by internal operator.');
         success = true;
         summary = args.summary;
-        
+
         taskExecutionPrompt.push(
           {
             type: 'assistant',
@@ -306,7 +280,7 @@ ${commandHistory || 'No commands executed yet.'}`,
         putSystemMessage('❌ Task marked as failed by internal operator.');
         success = false;
         summary = args.reason;
-        
+
         taskExecutionPrompt.push(
           {
             type: 'assistant',
@@ -340,31 +314,15 @@ ${commandHistory || 'No commands executed yet.'}`,
         putSystemMessage(`Executing command: \`\`\`sh\n${command}\n\`\`\``);
         putSystemMessage(`Reasoning: ${reasoning}`);
 
-        const { output, exitCode } = await executeCommandInContainer(container, command);
+        const { output, exitCode } = await executeCommand(container, command);
 
         const logEntry = `$ ${command}\n${output}\nExit Code: ${exitCode}\n\n`;
         commandHistory += logEntry;
-        
+
         // Cap history to keep the context manageable
         if (commandHistory.length > 4096) {
           commandHistory = commandHistory.slice(commandHistory.length - 4096);
         }
-
-        // Update the initial context with new command history
-        initialContext[0].text = `You are an expert system operator inside a Docker container. Your task is to complete the following objective by executing shell commands one at a time.
-
-Overall Task:
-${taskDescription}
-
-You have access to the following functions:
-- runCommand(command, reasoning): Execute a shell command in the container
-- completeTask(summary): Mark the task as successfully completed with a summary
-- failTask(reason): Mark the task as failed with a reason
-
-Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
-
-Current command history:
-${commandHistory}`;
 
         taskExecutionPrompt.push(
           {
@@ -398,36 +356,3 @@ ${commandHistory}`;
 
   return { taskExecutionPrompt, success, summary };
 }
-
-async function executeCommandInContainer(
-  container: Docker.Container,
-  command: string,
-): Promise<{ output: string; exitCode: number }> {
-  const exec = await container.exec({
-    Cmd: ['/bin/sh', '-c', command],
-    AttachStdout: true,
-    AttachStderr: true,
-  });
-
-  const stream = await exec.start({ hijack: true, stdin: true });
-  const output = await demuxDockerStream(stream);
-  const { ExitCode: exitCode } = await exec.inspect();
-
-  return { output, exitCode: exitCode ?? 0 };
-}
-
-async function demuxDockerStream(stream: NodeJS.ReadableStream): Promise<string> {
-  return new Promise((resolve) => {
-    let output = '';
-    stream.on('data', (chunk) => {
-      // The Docker stream prefixes each chunk with an 8-byte header:
-      // 1 byte for stream type (1 for stdout, 2 for stderr),
-      // 3 unused bytes, and 4 bytes for the size of the payload.
-      // We can ignore the header for this simple implementation and just decode the payload.
-      output += chunk.toString('utf8').substring(8);
-    });
-    stream.on('end', () => resolve(output));
-  });
-}
-
-

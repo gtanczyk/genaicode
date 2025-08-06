@@ -5,6 +5,7 @@ import { PromptItemImage } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { PluginActionType } from '../../../ai-service/service-configurations-types.js';
+import { AllowedDockerImage } from '../../function-defs/run-container-task.js';
 
 export type ActionType =
   | 'codeGeneration'
@@ -182,7 +183,7 @@ export type RequestGitContextArgs = {
  * Arguments for the runContainerTask action
  */
 export type RunContainerTaskArgs = {
-  image: string;
+  image: AllowedDockerImage;
   taskDescription: string;
 };
 
