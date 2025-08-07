@@ -15,6 +15,8 @@ export interface ModelSpecificSettings {
   thinkingEnabled?: boolean;
   /** The token budget for 'thinking' mode */
   thinkingBudget?: number;
+  /** Temperature unsupported */
+  temperatureUnsupported?: boolean;
 }
 
 /**

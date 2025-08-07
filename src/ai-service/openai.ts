@@ -31,13 +31,13 @@ export const generateContent: GenerateContentFunction = async function generateC
     const model = (() => {
       switch (modelType) {
         case ModelType.CHEAP:
-          return serviceConfig.modelOverrides?.cheap ?? 'gpt-4o-mini';
+          return serviceConfig.modelOverrides?.cheap ?? 'gpt-5-mini';
         case ModelType.LITE:
-          return serviceConfig.modelOverrides?.lite ?? 'gpt-4o-mini';
+          return serviceConfig.modelOverrides?.lite ?? 'gpt-5-nano';
         case ModelType.REASONING:
-          return serviceConfig.modelOverrides?.reasoning ?? 'o3-mini';
+          return serviceConfig.modelOverrides?.reasoning ?? 'gpt-5';
         default:
-          return serviceConfig.modelOverrides?.default ?? 'gpt-4o';
+          return serviceConfig.modelOverrides?.default ?? 'gpt-5';
       }
     })();
 
@@ -68,6 +68,7 @@ export async function internalGenerateContent(
     outputTokenLimit,
     thinkingEnabled,
     thinkingBudget,
+    temperatureUnsupported,
   } = getModelSettings(serviceType, model);
 
   const expectedResponseType = config.expectedResponseType ?? {
@@ -218,7 +219,7 @@ export async function internalGenerateContent(
           messages,
           ...(tools ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
-          ...(modelType !== ModelType.REASONING ? { temperature } : {}),
+          ...(modelType !== ModelType.REASONING && !temperatureUnsupported ? { temperature } : {}),
           ...(outputTokenLimit && modelType !== ModelType.REASONING ? { max_tokens: outputTokenLimit } : {}),
         },
         { signal: abortController?.signal },

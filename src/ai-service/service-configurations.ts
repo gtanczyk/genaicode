@@ -39,11 +39,21 @@ const configurations: ServiceConfigurations = {
     apiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL,
     modelOverrides: {
-      default: modelOverrides.openai?.default ?? 'gpt-4o',
-      cheap: modelOverrides.openai?.cheap ?? 'gpt-4o-mini',
-      lite: modelOverrides.openai?.lite ?? 'gpt-4o-mini',
-      reasoning: modelOverrides.openai?.reasoning ?? 'o3-mini',
-      modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {},
+      default: modelOverrides.openai?.default ?? 'gpt-5',
+      cheap: modelOverrides.openai?.cheap ?? 'gpt-5-mini',
+      lite: modelOverrides.openai?.lite ?? 'gpt-5-nano',
+      reasoning: modelOverrides.openai?.reasoning ?? 'gpt-5',
+      modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {
+        'gpt-5': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5-mini': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5-nano': {
+          temperatureUnsupported: true,
+        },
+      },
     },
   },
   'local-llm': {
@@ -113,6 +123,7 @@ export function getModelSettings(
   outputTokenLimit?: number;
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
+  temperatureUnsupported?: boolean;
 } {
   const serviceConfig = configurations[serviceType];
   const modelSpecificSettings = serviceConfig?.modelOverrides?.modelSpecificSettings?.[modelName];
@@ -122,6 +133,7 @@ export function getModelSettings(
     outputTokenLimit: modelSpecificSettings?.outputTokenLimit,
     thinkingEnabled: modelSpecificSettings?.thinkingEnabled,
     thinkingBudget: modelSpecificSettings?.thinkingBudget,
+    temperatureUnsupported: modelSpecificSettings?.temperatureUnsupported,
   };
 }
 
