@@ -189,3 +189,163 @@ Example: "runContainerTask({ image: 'node:18', taskDescription: 'Clone the repos
 ## 🎯 Final Recommendation
 
 ✅ Proceed with the MVP implementation of the `runContainerTask` action. It simplifies the user interaction and provides a more powerful, self-contained execution environment.
+
+---
+
+## 📚 Implementation Reference
+
+This section documents how the Docker container task execution system actually works in practice, including the prompt engineering approach and session management strategies.
+
+### Architectural Overview
+
+The system uses a **two-level AI architecture**:
+
+1. **Primary LLM**: GenAIcode's main AI service that decides to use `runContainerTask`
+2. **Internal Task Executor**: A dedicated AI operator that runs inside the container context to execute step-by-step commands
+
+### Function Call Architecture
+
+Instead of text-based command loops, the system uses **structured function calling**:
+
+```typescript
+// Available functions for the internal AI operator:
+- runCommand(command: string, reasoning: string)    // Execute shell command
+- completeTask(summary: string)                     // Mark task as successful
+- failTask(reason: string)                          // Mark task as failed
+```
+
+### Prompt Engineering Strategy
+
+#### System Prompt Design
+The internal AI operator receives comprehensive best practices guidance:
+
+```
+You are an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands one at a time.
+
+Best Practices:
+- Be efficient: Plan your approach and minimize unnecessary commands
+- Be incremental: Check results after each command before proceeding  
+- Be concise: Keep command outputs focused on the task
+- Be mindful: Avoid generating excessive output that could overflow context
+```
+
+#### Context Management
+The system implements intelligent context size management to prevent token overflow:
+
+- **Conversation Limit**: Maximum 50 conversation items in context
+- **Output Truncation**: Command outputs limited to 2048 characters
+- **Context Pruning**: Removes middle conversation items when context grows too large, preserving initial task and recent interactions
+- **User Feedback**: Notifies when truncation occurs for transparency
+
+#### Dual Response Mode
+The internal AI can provide both:
+- **Reasoning Text**: Explanatory text for planning and analysis
+- **Function Calls**: Structured commands to execute
+
+This mirrors advanced AI assistant behavior patterns for better task execution.
+
+### Session Execution Flow
+
+#### 1. Initialization Phase
+```typescript
+// Primary LLM decides to use runContainerTask
+runContainerTask({
+  image: 'ubuntu:latest',
+  taskDescription: 'Clone repo, install deps, run tests'
+})
+
+// System validates image from allowed list
+// Pulls image and creates container with TTY
+```
+
+#### 2. Command Execution Loop
+```typescript
+for (let i = 0; i < maxCommands; i++) {
+  // AI operator analyzes current state
+  const response = await generateContentFn([
+    systemPrompt,           // Best practices & function definitions
+    taskPrompt,            // Original task description  
+    ...conversationHistory // Previous commands & outputs
+  ], {
+    functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
+    modelType: ModelType.CHEAP,  // Use fast model for step execution
+    expectedResponseType: {
+      text: true,          // Allow reasoning
+      functionCall: true   // Require structured commands
+    }
+  })
+  
+  // Execute command or handle completion/failure
+  if (response.functionCall.name === 'runCommand') {
+    const { output, exitCode } = await executeCommand(container, command)
+    // Append to conversation history with truncation if needed
+  }
+}
+```
+
+#### 3. Context Size Safeguards
+```typescript
+// Dynamic context management
+if (conversationHistory.length > maxContextItems) {
+  conversationHistory = [
+    ...conversationHistory.slice(0, keepStart),
+    { type: 'user', text: '[... earlier commands truncated ...]' },
+    ...conversationHistory.slice(-keepEnd)
+  ]
+}
+
+// Output length management
+if (output.length > maxOutputLength) {
+  managedOutput = output.slice(0, maxOutputLength) + 
+    '\n\n[... output truncated for context management ...]'
+}
+```
+
+#### 4. Completion & Cleanup
+```typescript
+// Task completion via function call
+completeTask({ summary: "Successfully ran tests. 15 passed, 0 failed." })
+
+// Automatic container cleanup
+await container.stop()
+await container.remove()
+```
+
+### Key Design Decisions
+
+#### Why Function Calls Over Text Parsing?
+- **Reliability**: Structured responses prevent parsing errors
+- **Type Safety**: Arguments are validated at runtime
+- **Extensibility**: Easy to add new command types
+- **Debugging**: Clear function call logs for troubleshooting
+
+#### Why Two-Level AI Architecture?
+- **Cost Optimization**: Use cheap models for repetitive command decisions
+- **Specialization**: Task-specific system prompts for container operations
+- **Isolation**: Container AI can't affect main GenAIcode logic
+- **Scalability**: Internal loop can run many iterations without affecting main conversation
+
+#### Why Context Management?
+- **Token Limits**: Prevents expensive model failures from context overflow
+- **Performance**: Keeps responses fast by managing context size
+- **User Experience**: Provides feedback when truncation occurs
+- **Reliability**: Ensures long-running tasks can complete successfully
+
+### Security & Constraints
+
+#### Image Allowlist
+```typescript
+type AllowedDockerImage = 
+  | 'ubuntu:latest' | 'ubuntu:22.04' | 'ubuntu:20.04'
+  | 'alpine:latest' | 'alpine:3.18' 
+  | 'node:latest' | 'node:18' | 'node:20'
+  | 'python:latest' | 'python:3.11' | 'python:3.12'
+```
+
+#### Resource Limits
+- **Max Commands**: 25 commands per task to prevent infinite loops
+- **Container TTY**: Ensures interactive shell availability
+- **Automatic Cleanup**: Containers are always stopped and removed
+- **Error Handling**: Comprehensive error recovery at each step
+
+This implementation provides a robust, scalable foundation for AI-driven container task execution while maintaining cost efficiency and reliability.
