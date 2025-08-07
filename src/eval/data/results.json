@@ -1,11 +1,11 @@
 {
   "numTotalTestSuites": 2,
-  "numPassedTestSuites": 2,
-  "numFailedTestSuites": 0,
+  "numPassedTestSuites": 0,
+  "numFailedTestSuites": 2,
   "numPendingTestSuites": 0,
-  "numTotalTests": 5,
-  "numPassedTests": 5,
-  "numFailedTests": 0,
+  "numTotalTests": 4,
+  "numPassedTests": 0,
+  "numFailedTests": 4,
   "numPendingTests": 0,
   "numTodoTests": 0,
   "snapshot": {
@@ -24,8 +24,8 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1754516290888,
-  "success": true,
+  "startTime": 1754515479203,
+  "success": false,
   "testResults": [
     {
       "assertionResults": [
@@ -34,10 +34,13 @@
             "handleRunContainerTask"
           ],
           "fullName": "handleRunContainerTask should successfully run a simple task",
-          "status": "passed",
+          "status": "failed",
           "title": "should successfully run a simple task",
-          "duration": 5.272537,
-          "failureMessages": [],
+          "duration": 11.134726,
+          "failureMessages": [
+            "AssertionError: expected false to be true // Object.is equality\n    at ./src/eval/run-container-task.test.ts:91:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError: expected false to be true // Object.is equality\n    at ./src/eval/run-container-task.test.ts:91:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
           "meta": {}
         },
         {
@@ -45,10 +48,13 @@
             "handleRunContainerTask"
           ],
           "fullName": "handleRunContainerTask should handle task failure from internal LLM",
-          "status": "passed",
+          "status": "failed",
           "title": "should handle task failure from internal LLM",
-          "duration": 0.9927020000000084,
-          "failureMessages": [],
+          "duration": 5.499500000000012,
+          "failureMessages": [
+            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"❌ Failed to get valid runContainerTask request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:112:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"❌ Failed to get valid runContainerTask request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:112:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
           "meta": {}
         },
         {
@@ -56,38 +62,33 @@
             "handleRunContainerTask"
           ],
           "fullName": "handleRunContainerTask should handle image pull failure",
-          "status": "passed",
+          "status": "failed",
           "title": "should handle image pull failure",
-          "duration": 0.7927270000000135,
-          "failureMessages": [],
+          "duration": 3.0709379999999555,
+          "failureMessages": [
+            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Error during container task initialization: Cannot read properties of undefined (reading 'filter')\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:131:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Error during container task initialization: Cannot read properties of undefined (reading 'filter')\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:131:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
           "meta": {}
         },
         {
           "ancestorTitles": [
             "handleRunContainerTask"
           ],
-          "fullName": "handleRunContainerTask should handle command execution with failure exit code",
-          "status": "passed",
-          "title": "should handle command execution with failure exit code",
-          "duration": 0.8013019999999642,
-          "failureMessages": [],
-          "meta": {}
-        },
-        {
-          "ancestorTitles": [
-            "handleRunContainerTask"
+          "fullName": "handleRunContainerTask should handle command execution failure",
+          "status": "failed",
+          "title": "should handle command execution failure",
+          "duration": 2.4058199999999488,
+          "failureMessages": [
+            "AssertionError: expected \"spy\" to be called with arguments: [ ObjectContaining{…} ]\u001b[90m\n\nReceived: \n\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m0\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:150:32\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError: expected \"spy\" to be called with arguments: [ ObjectContaining{…} ]\u001b[90m\n\nReceived: \n\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m0\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:150:32\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
           ],
-          "fullName": "handleRunContainerTask should handle invalid function call generation",
-          "status": "passed",
-          "title": "should handle invalid function call generation",
-          "duration": 0.534061999999949,
-          "failureMessages": [],
           "meta": {}
         }
       ],
-      "startTime": 1754516291284,
-      "endTime": 1754516291292.5342,
-      "status": "passed",
+      "startTime": 1754515480170,
+      "endTime": 1754515480192.4058,
+      "status": "failed",
       "message": "",
       "name": "./src/eval/run-container-task.test.ts"
     }

@@ -1,29 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleRunContainerTask } from '../prompt/steps/step-ask-question/handlers/handle-run-container-task.js';
-import { ActionHandlerProps, AskQuestionCall } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
-import { putSystemMessage } from '../main/common/content-bus.js';
-import * as dockerUtils from '../utils/docker-utils.js';
+import { handleRunContainerTask } from './handle-run-container-task.js';
+import { ActionHandlerProps, AskQuestionCall } from '../step-ask-question-types.js';
+import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import * as dockerUtils from '../../../../utils/docker-utils.js';
+import Docker from 'dockerode';
 
 // Mock dependencies
-vi.mock('../main/common/content-bus.js', () => ({
+vi.mock('../../../../main/common/content-bus.js', () => ({
   putSystemMessage: vi.fn(),
 }));
 
-vi.mock('../utils/docker-utils.js', () => ({
-  pullImage: vi.fn(),
-  createAndStartContainer: vi.fn(),
-  executeCommand: vi.fn(),
-  stopContainer: vi.fn(),
-}));
+vi.mock('../../../../utils/docker-utils.js');
 
-vi.mock('../prompt/function-calling.js', () => ({
+vi.mock('../../../../prompt/function-calling.js', () => ({
   getFunctionDefs: vi.fn().mockReturnValue([]),
 }));
+
+const mockPullImage = vi.mocked(dockerUtils.pullImage);
+const mockCreateAndStartContainer = vi.mocked(dockerUtils.createAndStartContainer);
+const mockExecuteCommand = vi.mocked(dockerUtils.executeCommand);
+const mockStopContainer = vi.mocked(dockerUtils.stopContainer);
 
 describe('handleRunContainerTask', () => {
   let mockGenerateContentFn: ReturnType<typeof vi.fn>;
   let mockAskQuestionCall: AskQuestionCall;
-  let mockContainer: { id: string };
+  let mockContainer: Docker.Container;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,13 +38,13 @@ describe('handleRunContainerTask', () => {
       },
     } as unknown as AskQuestionCall;
 
-    mockContainer = { id: 'mock-container-id-1234567890ab' };
+    mockContainer = { id: 'mock-container-id-1234567890ab' } as Docker.Container;
 
     // Mock docker utils
-    (dockerUtils.pullImage as any).mockResolvedValue(undefined);
-    (dockerUtils.createAndStartContainer as any).mockResolvedValue(mockContainer);
-    (dockerUtils.executeCommand as any).mockResolvedValue({ output: 'hello world', exitCode: 0 });
-    (dockerUtils.stopContainer as any).mockResolvedValue(undefined);
+    mockPullImage.mockResolvedValue(undefined);
+    mockCreateAndStartContainer.mockResolvedValue(mockContainer);
+    mockExecuteCommand.mockResolvedValue({ output: 'hello world', exitCode: 0 });
+    mockStopContainer.mockResolvedValue(undefined);
   });
 
   const getProps = (): Omit<ActionHandlerProps, 'generateImageFn' | 'waitIfPaused'> => ({
@@ -101,11 +102,11 @@ describe('handleRunContainerTask', () => {
     const result = await handleRunContainerTask(props as ActionHandlerProps);
 
     expect(result.breakLoop).toBe(true);
-    expect(dockerUtils.pullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
-    expect(dockerUtils.createAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
-    expect(dockerUtils.executeCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"');
+    expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
+    expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
-    expect(dockerUtils.stopContainer).toHaveBeenCalledWith(mockContainer);
+    expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
 
   it('should handle task failure from internal LLM', async () => {
@@ -143,7 +144,7 @@ describe('handleRunContainerTask', () => {
 
     expect(putSystemMessage).toHaveBeenCalledWith('❌ Task marked as failed by internal operator.');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Failed'));
-    expect(dockerUtils.stopContainer).toHaveBeenCalledWith(mockContainer);
+    expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
 
   it('should handle image pull failure', async () => {
@@ -164,13 +165,13 @@ describe('handleRunContainerTask', () => {
 
     // Mock pullImage to fail
     const pullError = new Error('Image not found');
-    (dockerUtils.pullImage as any).mockRejectedValue(pullError);
+    mockPullImage.mockRejectedValue(pullError);
 
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
     expect(putSystemMessage).toHaveBeenCalledWith('❌ Failed to pull Docker image: Image not found');
-    expect(dockerUtils.createAndStartContainer).not.toHaveBeenCalled();
+    expect(mockCreateAndStartContainer).not.toHaveBeenCalled();
   });
 
   it('should handle command execution with failure exit code', async () => {
@@ -218,7 +219,7 @@ describe('handleRunContainerTask', () => {
       ]);
 
     // Mock executeCommand to return failure
-    (dockerUtils.executeCommand as any).mockResolvedValue({
+    mockExecuteCommand.mockResolvedValue({
       output: 'sh: badcommand: not found',
       exitCode: 1,
     });
@@ -226,9 +227,9 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(dockerUtils.executeCommand).toHaveBeenCalledWith(mockContainer, 'badcommand');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
-    expect(dockerUtils.stopContainer).toHaveBeenCalledWith(mockContainer);
+    expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
 
   it('should handle invalid function call generation', async () => {
@@ -240,6 +241,6 @@ describe('handleRunContainerTask', () => {
 
     expect(result.breakLoop).toBe(false);
     expect(putSystemMessage).toHaveBeenCalledWith('❌ Failed to get valid runContainerTask request');
-    expect(dockerUtils.pullImage).not.toHaveBeenCalled();
+    expect(mockPullImage).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,6 @@ import { PromptItemImage } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { PluginActionType } from '../../../ai-service/service-configurations-types.js';
-import { AllowedDockerImage } from '../../function-defs/run-container-task.js';
 
 export type ActionType =
   | 'codeGeneration'
@@ -177,36 +176,6 @@ export type RequestGitContextArgs = {
   filePath?: string; // Required for 'fileChanges', 'blame', and 'fileDiff'
   commitHash?: string; // Required for 'blame' and 'fileDiff'
   count?: number; // Applies mainly to 'commits' and 'fileChanges'
-};
-
-/**
- * Arguments for the runContainerTask action
- */
-export type RunContainerTaskArgs = {
-  image: AllowedDockerImage;
-  taskDescription: string;
-};
-
-/**
- * Arguments for the runCommand action in container tasks
- */
-export type RunCommandArgs = {
-  command: string;
-  reasoning: string;
-};
-
-/**
- * Arguments for the completeTask action in container tasks
- */
-export type CompleteTaskArgs = {
-  summary: string;
-};
-
-/**
- * Arguments for the failTask action in container tasks
- */
-export type FailTaskArgs = {
-  reason: string;
 };
 
 export type LintResult = {

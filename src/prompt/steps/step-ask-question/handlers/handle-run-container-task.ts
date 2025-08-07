@@ -1,19 +1,43 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, PromptItem } from '../../../../ai-service/common-types.js';
-import {
-  ActionHandlerProps,
-  RunContainerTaskArgs,
-  RunCommandArgs,
-  CompleteTaskArgs,
-  FailTaskArgs,
-  ActionResult,
-} from '../step-ask-question-types.js';
+import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { runCommandDef, completeTaskDef, failTaskDef } from '../../../function-defs/container-task-commands.js';
 import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../../../../utils/docker-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
+import { AllowedDockerImage } from '../../../function-defs/run-container-task.js';
+
+/**
+ * Arguments for the runContainerTask action
+ */
+export type RunContainerTaskArgs = {
+  image: AllowedDockerImage;
+  taskDescription: string;
+};
+
+/**
+ * Arguments for the runCommand action in container tasks
+ */
+export type RunCommandArgs = {
+  command: string;
+  reasoning: string;
+};
+
+/**
+ * Arguments for the completeTask action in container tasks
+ */
+export type CompleteTaskArgs = {
+  summary: string;
+};
+
+/**
+ * Arguments for the failTask action in container tasks
+ */
+export type FailTaskArgs = {
+  reason: string;
+};
 
 registerActionHandler('runContainerTask', handleRunContainerTask);
 
@@ -191,46 +215,72 @@ async function commandExecutionLoop(
   generateContentFn: ActionHandlerProps['generateContentFn'],
   options: ActionHandlerProps['options'],
 ): Promise<{ taskExecutionPrompt: PromptItem[]; success: boolean; summary: string }> {
-  let commandHistory = '';
   let success = false;
   let summary = '';
   const maxCommands = 25;
   const taskExecutionPrompt: PromptItem[] = [];
 
-  // Build the system prompt
+  // Build the system prompt with best practices for context management
   const systemPrompt: PromptItem = {
     type: 'systemPrompt',
-    text: `You are an expert system operator inside a Docker container. Your task is to complete the following objective by executing shell commands one at a time.
+    text: `You are an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands one at a time.
+
+Best Practices:
+- Be efficient: Plan your approach and minimize unnecessary commands
+- Be incremental: Check results after each command before proceeding
+- Be concise: Keep command outputs focused on the task
+- Be mindful: Avoid generating excessive output that could overflow context
 
 You have access to the following functions:
 - runCommand(command, reasoning): Execute a shell command in the container
 - completeTask(summary): Mark the task as successfully completed with a summary
 - failTask(reason): Mark the task as failed with a reason
 
-Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.`,
+Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
+
+You may also provide reasoning text before function calls to explain your approach or analyze the current situation.`,
   };
 
-  // Build the initial user message
-  const getTaskPrompt = (): PromptItem => ({
+  // Build the initial user message with task description only
+  const taskPrompt: PromptItem = {
     type: 'user',
     text: `Overall Task:
 ${taskDescription}
 
-Current command history:
-${commandHistory || 'No commands executed yet.'}`,
-  });
+Begin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
+  };
+
+  // Context size management
+  const maxContextItems = 50; // Limit the number of conversation items
+  const maxOutputLength = 2048; // Limit individual command output length
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      // Manage context size - keep only recent items if context grows too large
+      let currentPrompt = taskExecutionPrompt;
+      if (currentPrompt.length > maxContextItems) {
+        // Keep the first few and last several items, removing middle ones
+        const keepStart = 2;
+        const keepEnd = maxContextItems - keepStart - 5;
+        currentPrompt = [
+          ...currentPrompt.slice(0, keepStart),
+          {
+            type: 'user',
+            text: '[... earlier commands truncated for context management ...]',
+          },
+          ...currentPrompt.slice(-keepEnd),
+        ];
+      }
+
       const [actionResult] = (
         await generateContentFn(
-          [systemPrompt, getTaskPrompt(), ...taskExecutionPrompt],
+          [systemPrompt, taskPrompt, ...currentPrompt],
           {
             functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
             temperature: 0.7,
             modelType: ModelType.CHEAP,
             expectedResponseType: {
-              text: false,
+              text: true, // Allow text responses for reasoning
               functionCall: true,
               media: false,
             },
@@ -316,12 +366,11 @@ ${commandHistory || 'No commands executed yet.'}`,
 
         const { output, exitCode } = await executeCommand(container, command);
 
-        const logEntry = `$ ${command}\n${output}\nExit Code: ${exitCode}\n\n`;
-        commandHistory += logEntry;
-
-        // Cap history to keep the context manageable
-        if (commandHistory.length > 4096) {
-          commandHistory = commandHistory.slice(commandHistory.length - 4096);
+        // Truncate excessive output to manage context size
+        let managedOutput = output;
+        if (output.length > maxOutputLength) {
+          managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
+          putSystemMessage(`⚠️ Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
         }
 
         taskExecutionPrompt.push(
@@ -336,7 +385,7 @@ ${commandHistory || 'No commands executed yet.'}`,
               {
                 name: 'runCommand',
                 call_id: actionResult.id || undefined,
-                content: `Command executed successfully.\n\nOutput:\n${output}\n\nExit Code: ${exitCode}`,
+                content: `Command executed successfully.\n\nOutput:\n${managedOutput}\n\nExit Code: ${exitCode}`,
               },
             ],
           },
