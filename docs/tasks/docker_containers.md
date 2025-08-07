@@ -194,158 +194,476 @@ Example: "runContainerTask({ image: 'node:18', taskDescription: 'Clone the repos
 
 ## 📚 Implementation Reference
 
-This section documents how the Docker container task execution system actually works in practice, including the prompt engineering approach and session management strategies.
+This section documents how the Docker container task execution system works in practice, drawing from advanced AI assistant techniques for multi-step task execution, context management, and tool coordination.
 
-### Architectural Overview
+### AI Assistant Architecture Patterns
 
-The system uses a **two-level AI architecture**:
+The system follows proven patterns used by advanced AI assistants:
 
-1. **Primary LLM**: GenAIcode's main AI service that decides to use `runContainerTask`
-2. **Internal Task Executor**: A dedicated AI operator that runs inside the container context to execute step-by-step commands
+1. **Tool-First Approach**: Always prefer using available tools over manual implementation
+2. **Iterative Validation**: Validate each step before proceeding to the next
+3. **Context Awareness**: Continuously monitor and manage context size
+4. **Graceful Degradation**: Handle errors and constraints elegantly
 
-### Function Call Architecture
+### Advanced Tool Coordination Techniques
 
-Instead of text-based command loops, the system uses **structured function calling**:
+#### Multi-Tool Workflows
+
+Advanced AI assistants use coordinated tool sequences:
 
 ```typescript
-// Available functions for the internal AI operator:
-- runCommand(command: string, reasoning: string)    // Execute shell command
-- completeTask(summary: string)                     // Mark task as successful
-- failTask(reason: string)                          // Mark task as failed
+// Pattern: Explore → Plan → Execute → Validate
+1. str_replace_editor.view()     // Understand current state
+2. think()                       // Plan approach
+3. bash.command()               // Execute changes
+4. bash.command()               // Validate results
 ```
 
-### Prompt Engineering Strategy
+#### Parallel Tool Execution
 
-#### System Prompt Design
-The internal AI operator receives comprehensive best practices guidance:
+When operations are independent, execute simultaneously:
 
-```
-You are an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands one at a time.
+```typescript
+// Instead of sequential calls:
+view(file1) → view(file2) → view(file3)
 
-Best Practices:
-- Be efficient: Plan your approach and minimize unnecessary commands
-- Be incremental: Check results after each command before proceeding  
-- Be concise: Keep command outputs focused on the task
-- Be mindful: Avoid generating excessive output that could overflow context
+// Use parallel execution:
+[view(file1), view(file2), view(file3)]
 ```
 
-#### Context Management
-The system implements intelligent context size management to prevent token overflow:
+### Context Management Strategies
 
-- **Conversation Limit**: Maximum 50 conversation items in context
-- **Output Truncation**: Command outputs limited to 2048 characters
-- **Context Pruning**: Removes middle conversation items when context grows too large, preserving initial task and recent interactions
-- **User Feedback**: Notifies when truncation occurs for transparency
+#### Intelligent Truncation
+
+Advanced assistants manage context proactively:
+
+- **Output Limiting**: Cap command outputs at reasonable lengths (2048 chars)
+- **History Pruning**: Keep first/last items, remove middle when context grows
+- **Smart Summarization**: Replace verbose outputs with essential information
+- **User Transparency**: Always notify when truncation occurs
+
+#### Context Windows
+
+```typescript
+// Sliding window approach
+const contextWindow = {
+  systemPrompt: 'Always present',
+  taskDescription: 'Always present',
+  recentHistory: 'Last 10 interactions',
+  middleHistory: 'Summarized or removed',
+  currentState: 'Always present',
+};
+```
+
+### Problem Decomposition Patterns
+
+#### The Think-Plan-Execute Cycle
+
+```typescript
+1. think() → Analyze problem and plan approach
+2. explore() → Gather necessary information
+3. plan() → Create detailed step-by-step approach
+4. execute() → Implement changes incrementally
+5. validate() → Test and verify each change
+6. iterate() → Refine based on results
+```
+
+#### Breaking Down Complex Tasks
+
+Advanced assistants decompose tasks into atomic operations:
+
+```typescript
+// Large task: "Set up CI/CD pipeline"
+// Decomposed into:
+1. "Examine existing project structure"
+2. "Identify testing framework"
+3. "Create GitHub Actions workflow file"
+4. "Configure build steps"
+5. "Add deployment steps"
+6. "Test workflow locally"
+```
+
+### Error Handling & Recovery
+
+#### Graceful Failure Patterns
+
+```typescript
+// Pattern: Try → Detect → Recover → Continue
+try {
+  await executeCommand(command);
+} catch (error) {
+  // 1. Understand what went wrong
+  await analyzeError(error);
+
+  // 2. Try alternative approach
+  await executeAlternativeCommand(fallbackCommand);
+
+  // 3. Update mental model
+  await updateContext("Learned that X doesn't work, using Y instead");
+}
+```
+
+#### Progressive Fallbacks
+
+- **First attempt**: Optimal solution
+- **Second attempt**: Alternative approach
+- **Third attempt**: Minimal viable solution
+- **Final attempt**: Manual/user-guided approach
+
+### Communication Patterns
+
+#### When to Explain vs Act
+
+Advanced assistants balance explanation with action:
+
+```typescript
+// Explain when:
+- Task is complex/multi-step
+- Approach might be surprising
+- User needs to understand context
+- Error recovery is happening
+
+// Act directly when:
+- Task is straightforward
+- Pattern is well-established
+- User prefers efficiency
+- Action is clearly correct
+```
 
 #### Dual Response Mode
-The internal AI can provide both:
-- **Reasoning Text**: Explanatory text for planning and analysis
-- **Function Calls**: Structured commands to execute
 
-This mirrors advanced AI assistant behavior patterns for better task execution.
-
-### Session Execution Flow
-
-#### 1. Initialization Phase
 ```typescript
-// Primary LLM decides to use runContainerTask
-runContainerTask({
-  image: 'ubuntu:latest',
-  taskDescription: 'Clone repo, install deps, run tests'
-})
-
-// System validates image from allowed list
-// Pulls image and creates container with TTY
-```
-
-#### 2. Command Execution Loop
-```typescript
-for (let i = 0; i < maxCommands; i++) {
-  // AI operator analyzes current state
-  const response = await generateContentFn([
-    systemPrompt,           // Best practices & function definitions
-    taskPrompt,            // Original task description  
-    ...conversationHistory // Previous commands & outputs
-  ], {
-    functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
-    modelType: ModelType.CHEAP,  // Use fast model for step execution
-    expectedResponseType: {
-      text: true,          // Allow reasoning
-      functionCall: true   // Require structured commands
-    }
-  })
-  
-  // Execute command or handle completion/failure
-  if (response.functionCall.name === 'runCommand') {
-    const { output, exitCode } = await executeCommand(container, command)
-    // Append to conversation history with truncation if needed
-  }
-}
-```
-
-#### 3. Context Size Safeguards
-```typescript
-// Dynamic context management
-if (conversationHistory.length > maxContextItems) {
-  conversationHistory = [
-    ...conversationHistory.slice(0, keepStart),
-    { type: 'user', text: '[... earlier commands truncated ...]' },
-    ...conversationHistory.slice(-keepEnd)
+// Combine reasoning with action:
+{
+  text: "I need to check the current file structure first, then modify the configuration",
+  functionCalls: [
+    { name: "str_replace_editor", args: { command: "view", path: "." } }
   ]
 }
-
-// Output length management
-if (output.length > maxOutputLength) {
-  managedOutput = output.slice(0, maxOutputLength) + 
-    '\n\n[... output truncated for context management ...]'
-}
 ```
 
-#### 4. Completion & Cleanup
+### Efficiency Techniques
+
+#### Batch Operations
+
 ```typescript
-// Task completion via function call
-completeTask({ summary: "Successfully ran tests. 15 passed, 0 failed." })
+// Instead of:
+git add file1 → git add file2 → git add file3
 
-// Automatic container cleanup
-await container.stop()
-await container.remove()
+// Use:
+git add file1 file2 file3
+
+// Or even better:
+git add .
 ```
 
-### Key Design Decisions
+#### Smart Defaults
 
-#### Why Function Calls Over Text Parsing?
-- **Reliability**: Structured responses prevent parsing errors
-- **Type Safety**: Arguments are validated at runtime
-- **Extensibility**: Easy to add new command types
-- **Debugging**: Clear function call logs for troubleshooting
+- **Auto-detect**: Framework, language, patterns from codebase
+- **Convention over configuration**: Follow established patterns
+- **Minimal changes**: Prefer small, surgical modifications
+- **Idempotent operations**: Safe to run multiple times
 
-#### Why Two-Level AI Architecture?
-- **Cost Optimization**: Use cheap models for repetitive command decisions
-- **Specialization**: Task-specific system prompts for container operations
-- **Isolation**: Container AI can't affect main GenAIcode logic
-- **Scalability**: Internal loop can run many iterations without affecting main conversation
+### Container-Specific Applications
 
-#### Why Context Management?
-- **Token Limits**: Prevents expensive model failures from context overflow
-- **Performance**: Keeps responses fast by managing context size
-- **User Experience**: Provides feedback when truncation occurs
-- **Reliability**: Ensures long-running tasks can complete successfully
+#### System Prompt Design
 
-### Security & Constraints
+The container AI operator uses these principles:
 
-#### Image Allowlist
+```
+You are an expert system operator. Apply advanced AI assistant techniques:
+
+🎯 Tool-First: Use available commands efficiently
+🔄 Iterate: Check results before proceeding
+📏 Context-Aware: Keep outputs concise and relevant
+🛡️ Robust: Handle errors gracefully with fallbacks
+💡 Smart: Plan ahead but adapt based on results
+```
+
+#### Intelligent Command Selection
+
 ```typescript
-type AllowedDockerImage = 
-  | 'ubuntu:latest' | 'ubuntu:22.04' | 'ubuntu:20.04'
-  | 'alpine:latest' | 'alpine:3.18' 
-  | 'node:latest' | 'node:18' | 'node:20'
-  | 'python:latest' | 'python:3.11' | 'python:3.12'
+// Progressive command strategy:
+1. Start with info-gathering: pwd, ls, ps
+2. Make minimal test changes: touch, echo
+3. Proceed with main operations: install, build
+4. Validate results: test, check logs
+5. Clean up if needed: rm temp files
 ```
 
-#### Resource Limits
-- **Max Commands**: 25 commands per task to prevent infinite loops
-- **Container TTY**: Ensures interactive shell availability
-- **Automatic Cleanup**: Containers are always stopped and removed
-- **Error Handling**: Comprehensive error recovery at each step
+This approach mirrors how advanced AI assistants handle complex, multi-step tasks while maintaining reliability and efficiency.
 
-This implementation provides a robust, scalable foundation for AI-driven container task execution while maintaining cost efficiency and reliability.
+### Practical Session Management
+
+#### Task Execution Patterns
+
+Advanced AI assistants follow consistent execution patterns:
+
+```typescript
+// 1. Understand → 2. Plan → 3. Execute → 4. Validate
+const executionCycle = {
+  understand: () => gatherContext(), // What's the current state?
+  plan: () => decomposeTask(), // What steps are needed?
+  execute: () => runCommands(), // How to implement each step?
+  validate: () => checkResults(), // Did it work as expected?
+};
+```
+
+#### Smart Command Sequencing
+
+```typescript
+// Pattern: Safe → Progressive → Comprehensive
+const commandStrategy = [
+  // Phase 1: Orientation (low risk)
+  'pwd && ls -la', // Where am I? What's here?
+  'which python && python --version', // What tools are available?
+
+  // Phase 2: Preparation (medium risk)
+  'mkdir -p workspace && cd workspace', // Set up safe working area
+  'git clone <repo> && cd <repo>', // Get the code
+
+  // Phase 3: Execution (high value)
+  'npm install', // Install dependencies
+  'npm test', // Run the actual task
+
+  // Phase 4: Verification (critical)
+  "echo $? && echo 'Exit code above'", // Check if it worked
+];
+```
+
+#### Dynamic Context Adaptation
+
+```typescript
+// Adaptive context management based on task complexity
+const manageContext = (history, task) => {
+  if (task.isExploration) {
+    // Keep more history for complex debugging
+    return keepRecentItems(history, 40);
+  } else if (task.isRepetitive) {
+    // Compress repeated patterns
+    return summarizePatterns(history, 20);
+  } else {
+    // Standard pruning for normal tasks
+    return intelligentPrune(history, 30);
+  }
+};
+```
+
+#### Error Recovery Workflows
+
+```typescript
+// Multi-level error handling
+const handleError = async (error, context) => {
+  // Level 1: Immediate retry with slight variation
+  if (error.type === 'transient') {
+    return await retryWithDelay(originalCommand, 2000);
+  }
+
+  // Level 2: Alternative approach
+  if (error.type === 'approach') {
+    return await tryAlternativeMethod(context.alternatives);
+  }
+
+  // Level 3: Graceful degradation
+  if (error.type === 'fundamental') {
+    return await fallbackToSimpler(context.minimalGoal);
+  }
+
+  // Level 4: Human guidance
+  return await requestUserInput(error, context);
+};
+```
+
+### Key AI Assistant Design Principles
+
+#### Tool Selection Strategy
+
+Advanced assistants prioritize tools by effectiveness:
+
+```typescript
+const toolPriority = {
+  // Tier 1: Ecosystem tools (highest reliability)
+  ecosystem: ['npm install', 'pip install', 'cargo build'],
+
+  // Tier 2: Standard utilities (high reliability)
+  standard: ['git', 'curl', 'grep', 'find', 'sed'],
+
+  // Tier 3: Manual operations (lower reliability)
+  manual: ['custom scripts', 'complex pipes', 'manual parsing'],
+};
+
+// Always prefer higher tiers when available
+```
+
+#### Function Calls vs Text Processing
+
+Why structured responses outperform text parsing:
+
+- **Reliability**: `{ command: "ls -la" }` vs parsing "I'll run `ls -la`"
+- **Type Safety**: Arguments validated at runtime
+- **Extensibility**: Easy to add new capabilities
+- **Debugging**: Clear audit trail of actions taken
+- **Composability**: Functions can be chained and combined
+
+#### Intelligent Decomposition
+
+How advanced assistants break down complex tasks:
+
+```typescript
+// Example: "Set up a React project with TypeScript and testing"
+const taskDecomposition = {
+  analyze: ['Check if Node.js is available', 'Determine best scaffolding tool (create-react-app, Vite, etc.)'],
+
+  scaffold: ['Run scaffolding command with TypeScript template', 'Verify project structure was created correctly'],
+
+  enhance: [
+    'Add testing framework (Jest, Vitest, etc.)',
+    'Configure linting and formatting',
+    'Set up basic component structure',
+  ],
+
+  validate: [
+    'Run build to ensure everything compiles',
+    'Run tests to verify setup works',
+    'Check that dev server starts successfully',
+  ],
+};
+```
+
+#### Context Efficiency Patterns
+
+Advanced assistants maximize context utility:
+
+```typescript
+// Information density optimization
+const contextOptimization = {
+  // High value: Recent outputs, current state, error messages
+  keep: (item) => item.isRecent || item.isError || item.isState,
+
+  // Medium value: Successful intermediate steps
+  summarize: (item) => item.isSuccess && item.isIntermediate,
+
+  // Low value: Verbose outputs, repeated patterns
+  truncate: (item) => item.isVerbose || item.isRepeated,
+};
+```
+
+#### Adaptive Behavior
+
+How assistants adjust their approach based on context:
+
+```typescript
+const adaptiveBehavior = {
+  // Fast iteration for simple tasks
+  simple: {
+    commands: ['quick', 'direct'],
+    validation: 'minimal',
+    explanation: 'brief',
+  },
+
+  // Careful progression for complex tasks
+  complex: {
+    commands: ['incremental', 'validated'],
+    validation: 'comprehensive',
+    explanation: 'detailed',
+  },
+
+  // Recovery mode for error situations
+  recovery: {
+    commands: ['diagnostic', 'alternative'],
+    validation: 'extensive',
+    explanation: 'explanatory',
+  },
+};
+```
+
+### Safety & Constraint Management
+
+#### Multi-Layer Safety Approach
+
+Advanced AI assistants implement defense in depth:
+
+```typescript
+const safetyLayers = {
+  // Layer 1: Input validation
+  validation: {
+    imageAllowlist: ['ubuntu:latest', 'alpine:latest', 'node:18'],
+    commandBlacklist: ['rm -rf /', 'dd if=/dev/zero', 'fork bomb'],
+    resourceLimits: { maxCommands: 25, maxTime: '30min' },
+  },
+
+  // Layer 2: Runtime monitoring
+  monitoring: {
+    outputSizeLimit: 2048,
+    contextSizeLimit: 50,
+    errorThresholdLimit: 5,
+  },
+
+  // Layer 3: Graceful degradation
+  degradation: {
+    onResourceExhaustion: 'switch to minimal mode',
+    onRepeatedFailures: 'request human intervention',
+    onContextOverflow: 'intelligent pruning',
+  },
+};
+```
+
+#### Operational Constraints
+
+Real-world constraints that shape assistant behavior:
+
+```typescript
+const operationalConstraints = {
+  // Performance constraints
+  performance: {
+    responseTime: '<30s preferred',
+    tokenEfficiency: 'minimize context waste',
+    resourceUsage: 'clean up after tasks',
+  },
+
+  // Reliability constraints
+  reliability: {
+    errorRecovery: 'multiple fallback strategies',
+    idempotency: 'safe to retry operations',
+    stateManagement: 'always know current state',
+  },
+
+  // User experience constraints
+  userExperience: {
+    transparency: 'explain significant decisions',
+    predictability: 'consistent behavior patterns',
+    efficiency: 'minimize user waiting time',
+  },
+};
+```
+
+#### Container Security Model
+
+Specific security considerations for container operations:
+
+```typescript
+const containerSecurity = {
+  // Image security
+  images: {
+    allowedSources: 'official Docker Hub images only',
+    versionPinning: 'prefer specific tags over "latest"',
+    scanningPolicy: 'vulnerability scanning recommended',
+  },
+
+  // Runtime security
+  runtime: {
+    networkIsolation: 'no external network access',
+    volumeMounting: 'read-only mounts preferred',
+    privilegeEscalation: 'never run as root if avoidable',
+  },
+
+  // Lifecycle security
+  lifecycle: {
+    automaticCleanup: 'always stop and remove containers',
+    logRetention: 'preserve execution logs for debugging',
+    resourceLimits: 'prevent resource exhaustion attacks',
+  },
+};
+```
+
+This comprehensive approach ensures that AI-driven container operations remain both powerful and safe, following the same principles that govern advanced AI assistant behavior in production environments.
