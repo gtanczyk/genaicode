@@ -48,6 +48,7 @@ export interface ModelOverrides {
   vertexAi?: ServiceModelConfig;
   aiStudio?: ServiceModelConfig;
   localLlm?: ServiceModelConfig;
+  githubModels?: ServiceModelConfig;
 }
 
 /**
