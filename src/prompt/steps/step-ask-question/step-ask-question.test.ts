@@ -31,6 +31,7 @@ describe('step-ask-question', () => {
       readExternalFiles: true,
       exploreExternalDirectories: true,
       requestGitContext: true,
+      runContainerTask: true,
       compoundAction: true,
     };
 

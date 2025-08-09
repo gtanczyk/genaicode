@@ -30,6 +30,7 @@ import './handlers/handle-remove-files-from-context.js';
 import './handlers/handle-request-files-content.js';
 import './handlers/handle-request-files-fragments.js';
 import './handlers/handle-request-permissions.js';
+import './handlers/handle-run-container-task.js';
 import './handlers/handle-search-code.js';
 import './handlers/handle-send-message.js';
 import './handlers/handle-update-file.js';

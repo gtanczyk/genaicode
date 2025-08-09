@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-118] 2025-07-26: Implement `runContainerTask` action to execute multi-step tasks in a sandboxed Docker environment.
 - [x] [GEN-118] 2025-08-07: Fix StyledTextarea to preserve auto-grow for short content and enable vertical scrolling when exceeding max viewport height; added resize handling and -webkit-overflow-scrolling.
 - [x] [GEN-115] 2025-07-06: Render markdown in frontend chat messages, codegen planning, codegen summary, and file prompts.
 - [ ] [GEN-113] 2025-07-05: Add per-model configuration for enabling 'thinking' and setting a 'thinking budget'.
