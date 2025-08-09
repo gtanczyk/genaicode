@@ -54,7 +54,7 @@ describe('handleRunContainerTask', () => {
     generateContentFn: mockGenerateContentFn,
   });
 
-  it('should successfully run a simple task with Think-Plan-Execute cycle', async () => {
+  it('should successfully run a simple task', async () => {
     // Mock generateContentFn to return runContainerTask function call
     mockGenerateContentFn
       .mockResolvedValueOnce([
@@ -70,59 +70,16 @@ describe('handleRunContainerTask', () => {
           },
         },
       ])
-      // Mock task analysis
+      // Mock command execution directly (simplified flow)
       .mockResolvedValueOnce([
         {
           type: 'functionCall',
           functionCall: {
             id: 'test-call-2',
-            name: 'analyzeTask',
-            args: {
-              analysis: 'This is a simple task to run an echo command',
-              complexity: 'simple',
-              approach: 'Use basic shell commands',
-            },
-          },
-        },
-      ])
-      // Mock plan creation
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-3',
-            name: 'planSteps',
-            args: {
-              steps: [
-                {
-                  phase: 'orientation',
-                  commands: ['pwd', 'ls'],
-                  rationale: 'Check environment',
-                  riskLevel: 'low',
-                },
-                {
-                  phase: 'execution',
-                  commands: ['echo "hello world"'],
-                  rationale: 'Execute main task',
-                  riskLevel: 'low',
-                },
-              ],
-            },
-          },
-        },
-      ])
-      // Mock command execution - first runCommand
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-4',
             name: 'runCommand',
             args: {
               command: 'echo "hello world"',
               reasoning: 'Testing echo command',
-              phase: 'execution',
-              expectedOutcome: 'Print hello world to stdout',
             },
           },
         },
@@ -132,7 +89,7 @@ describe('handleRunContainerTask', () => {
         {
           type: 'functionCall',
           functionCall: {
-            id: 'test-call-5',
+            id: 'test-call-3',
             name: 'completeTask',
             args: {
               summary: 'The task completed successfully.',
@@ -152,7 +109,7 @@ describe('handleRunContainerTask', () => {
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
 
-  it('should handle task analysis failure', async () => {
+  it('should handle command execution failure', async () => {
     // Mock generateContentFn to return runContainerTask function call
     mockGenerateContentFn
       .mockResolvedValueOnce([
@@ -168,118 +125,17 @@ describe('handleRunContainerTask', () => {
           },
         },
       ])
-      // Mock analysis failure (no function call)
+      // Mock invalid function call (no valid response)
       .mockResolvedValueOnce([]);
 
     const props = getProps();
     const result = await handleRunContainerTask(props as ActionHandlerProps);
 
     expect(result.breakLoop).toBe(true);
-    expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to analyze task requirements'));
+    expect(putSystemMessage).toHaveBeenCalledWith('❌ Internal LLM failed to produce a valid function call.');
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
 
-  it('should handle command execution with fallback', async () => {
-    // Mock generateContentFn to return runContainerTask function call
-    mockGenerateContentFn
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-1',
-            name: 'runContainerTask',
-            args: {
-              image: 'ubuntu:latest',
-              taskDescription: 'Run a test task.',
-            },
-          },
-        },
-      ])
-      // Mock task analysis
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-2',
-            name: 'analyzeTask',
-            args: {
-              analysis: 'Test task with fallback',
-              complexity: 'medium',
-              approach: 'Use commands with fallback',
-            },
-          },
-        },
-      ])
-      // Mock plan creation
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-3',
-            name: 'planSteps',
-            args: {
-              steps: [
-                {
-                  phase: 'execution',
-                  commands: ['primarycommand'],
-                  rationale: 'Try primary approach',
-                  riskLevel: 'medium',
-                },
-              ],
-            },
-          },
-        },
-      ])
-      // Mock command execution with fallback
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-4',
-            name: 'runCommand',
-            args: {
-              command: 'primarycommand',
-              reasoning: 'Try primary command',
-              phase: 'execution',
-              expectedOutcome: 'Command should work',
-              fallbackCommand: 'fallbackcommand',
-            },
-          },
-        },
-      ])
-      // Mock completion
-      .mockResolvedValueOnce([
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'test-call-5',
-            name: 'completeTask',
-            args: {
-              summary: 'Task completed with fallback.',
-            },
-          },
-        },
-      ]);
-
-    // Mock primary command failure and fallback success
-    mockExecuteCommand
-      .mockResolvedValueOnce({
-        output: 'primarycommand: not found',
-        exitCode: 1,
-      })
-      .mockResolvedValueOnce({
-        output: 'fallback succeeded',
-        exitCode: 0,
-      });
-
-    const props = getProps();
-    await handleRunContainerTask(props as ActionHandlerProps);
-
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'primarycommand');
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'fallbackcommand');
-    expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('trying fallback'));
-    expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
-  });
 
   it('should handle image pull failure', async () => {
     // Mock generateContentFn to return runContainerTask function call
@@ -306,6 +162,100 @@ describe('handleRunContainerTask', () => {
 
     expect(putSystemMessage).toHaveBeenCalledWith('❌ Failed to pull Docker image: Image not found');
     expect(mockCreateAndStartContainer).not.toHaveBeenCalled();
+  });
+
+  it('should handle optional planning tools', async () => {
+    // Mock the function call extraction
+    vi.mocked(getFunctionDefs).mockReturnValue([
+      {
+        type: 'function',
+        function: {
+          name: 'runContainerTask',
+          description: 'Execute a task in a Docker container',
+        },
+      },
+    ]);
+
+    mockGenerateContentFn
+      // Initial request
+      .mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            id: 'test-call-1',
+            name: 'runContainerTask',
+            args: {
+              image: 'ubuntu:latest',
+              taskDescription: 'Analyze and execute task.',
+            },
+          },
+        },
+      ])
+      // Mock optional analyzeTask tool usage
+      .mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            id: 'test-call-2',
+            name: 'analyzeTask',
+            args: {
+              analysis: 'This task requires careful planning',
+              approach: 'Use systematic approach with verification',
+            },
+          },
+        },
+      ])
+      // Mock optional planSteps tool usage
+      .mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            id: 'test-call-3',
+            name: 'planSteps',
+            args: {
+              plan: 'Step 1: Check environment, Step 2: Execute command, Step 3: Verify result',
+            },
+          },
+        },
+      ])
+      // Mock command execution
+      .mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            id: 'test-call-4',
+            name: 'runCommand',
+            args: {
+              command: 'echo "planned execution"',
+              reasoning: 'Execute according to plan',
+            },
+          },
+        },
+      ])
+      // Mock completion
+      .mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            id: 'test-call-5',
+            name: 'completeTask',
+            args: {
+              summary: 'Task completed using planning tools.',
+            },
+          },
+        },
+      ]);
+
+    const props = getProps();
+    const result = await handleRunContainerTask(props as ActionHandlerProps);
+
+    expect(result.breakLoop).toBe(true);
+    expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
+    expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "planned execution"');
+    expect(putSystemMessage).toHaveBeenCalledWith('📊 Task Analysis: This task requires careful planning');
+    expect(putSystemMessage).toHaveBeenCalledWith('🎯 Approach: Use systematic approach with verification');
+    expect(putSystemMessage).toHaveBeenCalledWith('📋 Execution Plan: Step 1: Check environment, Step 2: Execute command, Step 3: Verify result');
   });
 
   it('should handle invalid function call generation', async () => {
