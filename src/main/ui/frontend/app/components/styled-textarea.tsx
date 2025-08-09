@@ -28,7 +28,10 @@ const Textarea = styled.textarea`
   background-color: ${(props) => props.theme.colors.inputBg};
   color: ${(props) => props.theme.colors.inputText};
   box-sizing: border-box;
-  overflow: hidden;
+  /* Allow vertical scrolling when content exceeds max height, keep horizontal hidden */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 
   &:focus {
     outline: none;
@@ -47,14 +50,31 @@ export const StyledTextarea: React.FC<StyledTextareaProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Recompute height and overflow based on content and viewport
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const scrollHeight = textareaRef.current.scrollHeight;
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const recompute = () => {
+      // Reset height to measure natural content size
+      el.style.height = 'auto';
+      const scrollHeight = el.scrollHeight;
       const maxHeightPx = maxViewportHeight * window.innerHeight;
       const newHeight = Math.min(scrollHeight, maxHeightPx);
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
+      el.style.height = `${newHeight}px`;
+      // Toggle overflowY based on whether content exceeds max height
+      el.style.overflowY = scrollHeight <= maxHeightPx ? 'hidden' : 'auto';
+    };
+
+    // Initial compute on mount/update
+    recompute();
+
+    // Recompute on resize
+    const handleResize = () => recompute();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, [value, maxViewportHeight]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

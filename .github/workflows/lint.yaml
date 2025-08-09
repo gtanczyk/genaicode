@@ -9,15 +9,18 @@ defaults:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      models: read
     strategy:
       fail-fast: false
       matrix:
-        nodejs: [18]
+        nodejs: [20]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       # https://github.com/actions/setup-node
-      - uses: actions/setup-node@v2-beta
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.nodejs }}
       - run: npm install

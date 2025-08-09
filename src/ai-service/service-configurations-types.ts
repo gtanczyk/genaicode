@@ -66,6 +66,11 @@ export type ServiceConfigRequirements = {
     googleCloudProjectId?: never;
     googleCloudRegion?: never;
   };
+  'github-models': {
+    apiKey: string | undefined;
+    googleCloudProjectId?: never;
+    googleCloudRegion?: never;
+  };
 }; /** Example: {@link ../../examples/genaicode_plugins/grok_ai_service.ts} */
 
 export type PluginAiServiceType =
@@ -80,4 +85,5 @@ export type AiServiceType =
   | 'openai'
   | 'local-llm'
   | 'anthropic'
+  | 'github-models'
   | PluginAiServiceType;

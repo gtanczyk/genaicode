@@ -9,6 +9,7 @@ export function getSupportedAiServices(): AiServiceType[] {
     'openai',
     'anthropic',
     'local-llm',
+    'github-models',
     ...getRegisteredAiServices().keys(),
   ];
 }

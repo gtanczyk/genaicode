@@ -64,6 +64,7 @@ const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
   anthropic: anthropic.generateContent,
   openai: openai.generateContent,
   'local-llm': localLlm.generateContent,
+  'github-models': openai.generateContent, // Reuse OpenAI implementation for testing
 } as const;
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
