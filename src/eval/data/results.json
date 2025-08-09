@@ -1,11 +1,11 @@
 {
-  "numTotalTestSuites": 2,
+  "numTotalTestSuites": 4,
   "numPassedTestSuites": 0,
-  "numFailedTestSuites": 2,
+  "numFailedTestSuites": 4,
   "numPendingTestSuites": 0,
-  "numTotalTests": 4,
-  "numPassedTests": 0,
-  "numFailedTests": 4,
+  "numTotalTests": 12,
+  "numPassedTests": 3,
+  "numFailedTests": 9,
   "numPendingTests": 0,
   "numTodoTests": 0,
   "snapshot": {
@@ -24,73 +24,176 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1754515479203,
+  "startTime": 1754722840000,
   "success": false,
   "testResults": [
     {
       "assertionResults": [
         {
           "ancestorTitles": [
-            "handleRunContainerTask"
+            "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
-          "fullName": "handleRunContainerTask should successfully run a simple task",
+          "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'simple command execution'",
           "status": "failed",
-          "title": "should successfully run a simple task",
-          "duration": 11.134726,
+          "title": "'simple command execution'",
+          "duration": 37.56545099999994,
           "failureMessages": [
-            "AssertionError: expected false to be true // Object.is equality\n    at ./src/eval/run-container-task.test.ts:91:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError: expected false to be true // Object.is equality\n    at ./src/eval/run-container-task.test.ts:91:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": [
-            "handleRunContainerTask"
+            "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
-          "fullName": "handleRunContainerTask should handle task failure from internal LLM",
+          "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'file operations task'",
           "status": "failed",
-          "title": "should handle task failure from internal LLM",
-          "duration": 5.499500000000012,
+          "title": "'file operations task'",
+          "duration": 6.048766000000114,
           "failureMessages": [
-            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"❌ Failed to get valid runContainerTask request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:112:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Task marked as failed by internal operator.\",\u001b[90m\n\u001b[31m+   \"❌ Failed to get valid runContainerTask request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:112:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": [
-            "handleRunContainerTask"
+            "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
-          "fullName": "handleRunContainerTask should handle image pull failure",
+          "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'Python script execution'",
           "status": "failed",
-          "title": "should handle image pull failure",
-          "duration": 3.0709379999999555,
+          "title": "'Python script execution'",
+          "duration": 6.590588000000025,
           "failureMessages": [
-            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Error during container task initialization: Cannot read properties of undefined (reading 'filter')\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:131:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError: expected \"spy\" to be called with arguments: [ Array(1) ]\u001b[90m\n\nReceived: \n\n\u001b[1m  1st spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Container task: generating proper task request\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\n\u001b[1m  2nd spy call:\n\n\u001b[22m\u001b[2m  [\u001b[22m\n\u001b[32m-   \"❌ Failed to pull Docker image: Image not found\",\u001b[90m\n\u001b[31m+   \"Error during container task initialization: Cannot read properties of undefined (reading 'filter')\",\u001b[90m\n\u001b[2m  ]\u001b[22m\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m2\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:131:30\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
           ],
           "meta": {}
         },
         {
           "ancestorTitles": [
-            "handleRunContainerTask"
+            "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
-          "fullName": "handleRunContainerTask should handle command execution failure",
+          "fullName": "Run Container Task Handler E2E: 'Gemini Flash' should handle Docker unavailable gracefully",
+          "status": "passed",
+          "title": "should handle Docker unavailable gracefully",
+          "duration": 2.2313400000000456,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'Claude Haiku'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'simple command execution'",
           "status": "failed",
-          "title": "should handle command execution failure",
-          "duration": 2.4058199999999488,
+          "title": "'simple command execution'",
+          "duration": 6.267172999999957,
           "failureMessages": [
-            "AssertionError: expected \"spy\" to be called with arguments: [ ObjectContaining{…} ]\u001b[90m\n\nReceived: \n\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m0\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:150:32\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError: expected \"spy\" to be called with arguments: [ ObjectContaining{…} ]\u001b[90m\n\nReceived: \n\n\u001b[39m\u001b[90m\n\nNumber of calls: \u001b[1m0\u001b[22m\n\u001b[39m\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1528:13)\n    at Proxy.<anonymous> (file://./node_modules/@vitest/expect/dist/index.js:1035:17)\n    at Proxy.methodWrapper (file://./node_modules/chai/chai.js:1618:25)\n    at ./src/eval/run-container-task.test.ts:150:32\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
           ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'Claude Haiku'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'file operations task'",
+          "status": "failed",
+          "title": "'file operations task'",
+          "duration": 5.55150599999979,
+          "failureMessages": [
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'Claude Haiku'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'Python script execution'",
+          "status": "failed",
+          "title": "'Python script execution'",
+          "duration": 4.9692079999999805,
+          "failureMessages": [
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'Claude Haiku'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'Claude Haiku' should handle Docker unavailable gracefully",
+          "status": "passed",
+          "title": "should handle Docker unavailable gracefully",
+          "duration": 1.9349560000000565,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'GPT-4o Mini'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'simple command execution'",
+          "status": "failed",
+          "title": "'simple command execution'",
+          "duration": 5.584600000000137,
+          "failureMessages": [
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'GPT-4o Mini'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'file operations task'",
+          "status": "failed",
+          "title": "'file operations task'",
+          "duration": 4.876455000000078,
+          "failureMessages": [
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'GPT-4o Mini'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'Python script execution'",
+          "status": "failed",
+          "title": "'Python script execution'",
+          "duration": 4.9982400000001235,
+          "failureMessages": [
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
+            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "Run Container Task Handler E2E: 'GPT-4o Mini'"
+          ],
+          "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' should handle Docker unavailable gracefully",
+          "status": "passed",
+          "title": "should handle Docker unavailable gracefully",
+          "duration": 1.8027790000001005,
+          "failureMessages": [],
           "meta": {}
         }
       ],
-      "startTime": 1754515480170,
-      "endTime": 1754515480192.4058,
+      "startTime": 1754722841109,
+      "endTime": 1754722841198.8027,
       "status": "failed",
       "message": "",
-      "name": "./src/eval/run-container-task.test.ts"
+      "name": "./src/eval/run-container-task-handler.test.ts"
     }
   ]
 }
