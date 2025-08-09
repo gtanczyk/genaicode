@@ -31,6 +31,7 @@ export type ActionType =
   | 'requestFilesFragments'
   | 'requestGitContext'
   | 'conversationGraph'
+  | 'runContainerTask'
   | 'compoundAction'
   | PluginActionType;
 
