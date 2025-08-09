@@ -1,11 +1,11 @@
 {
   "numTotalTestSuites": 4,
-  "numPassedTestSuites": 0,
-  "numFailedTestSuites": 4,
+  "numPassedTestSuites": 4,
+  "numFailedTestSuites": 0,
   "numPendingTestSuites": 0,
   "numTotalTests": 12,
-  "numPassedTests": 3,
-  "numFailedTests": 9,
+  "numPassedTests": 12,
+  "numFailedTests": 0,
   "numPendingTests": 0,
   "numTodoTests": 0,
   "snapshot": {
@@ -24,8 +24,8 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1754722840000,
-  "success": false,
+  "startTime": 1754737700379,
+  "success": true,
   "testResults": [
     {
       "assertionResults": [
@@ -34,13 +34,10 @@
             "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'simple command execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'simple command execution'",
-          "duration": 37.56545099999994,
-          "failureMessages": [
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 12.952633000000105,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -48,13 +45,10 @@
             "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'file operations task'",
-          "status": "failed",
+          "status": "passed",
           "title": "'file operations task'",
-          "duration": 6.048766000000114,
-          "failureMessages": [
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.4153459999999995,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -62,13 +56,10 @@
             "Run Container Task Handler E2E: 'Gemini Flash'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Gemini Flash' 'Python script execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'Python script execution'",
-          "duration": 6.590588000000025,
-          "failureMessages": [
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "AssertionError [ERR_ASSERTION]: API key not configured, use API_KEY environment variable\n    at modelGenerateContent (./src/ai-service/ai-studio.ts:295:3)\n    at generateContent2 (./src/ai-service/ai-studio.ts:153:24)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.235409000000118,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -78,7 +69,7 @@
           "fullName": "Run Container Task Handler E2E: 'Gemini Flash' should handle Docker unavailable gracefully",
           "status": "passed",
           "title": "should handle Docker unavailable gracefully",
-          "duration": 2.2313400000000456,
+          "duration": 2.3480500000000575,
           "failureMessages": [],
           "meta": {}
         },
@@ -87,13 +78,10 @@
             "Run Container Task Handler E2E: 'Claude Haiku'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'simple command execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'simple command execution'",
-          "duration": 6.267172999999957,
-          "failureMessages": [
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.595514000000094,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -101,13 +89,10 @@
             "Run Container Task Handler E2E: 'Claude Haiku'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'file operations task'",
-          "status": "failed",
+          "status": "passed",
           "title": "'file operations task'",
-          "duration": 5.55150599999979,
-          "failureMessages": [
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.1120180000000346,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -115,13 +100,10 @@
             "Run Container Task Handler E2E: 'Claude Haiku'"
           ],
           "fullName": "Run Container Task Handler E2E: 'Claude Haiku' 'Python script execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'Python script execution'",
-          "duration": 4.9692079999999805,
-          "failureMessages": [
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: Anthropic API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/anthropic.ts:353:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.1493880000000445,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -131,7 +113,7 @@
           "fullName": "Run Container Task Handler E2E: 'Claude Haiku' should handle Docker unavailable gracefully",
           "status": "passed",
           "title": "should handle Docker unavailable gracefully",
-          "duration": 1.9349560000000565,
+          "duration": 1.995300000000043,
           "failureMessages": [],
           "meta": {}
         },
@@ -140,13 +122,10 @@
             "Run Container Task Handler E2E: 'GPT-4o Mini'"
           ],
           "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'simple command execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'simple command execution'",
-          "duration": 5.584600000000137,
-          "failureMessages": [
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.066361999999799,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -154,13 +133,10 @@
             "Run Container Task Handler E2E: 'GPT-4o Mini'"
           ],
           "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'file operations task'",
-          "status": "failed",
+          "status": "passed",
           "title": "'file operations task'",
-          "duration": 4.876455000000078,
-          "failureMessages": [
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 1.9487020000001394,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -168,13 +144,10 @@
             "Run Container Task Handler E2E: 'GPT-4o Mini'"
           ],
           "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' 'Python script execution'",
-          "status": "failed",
+          "status": "passed",
           "title": "'Python script execution'",
-          "duration": 4.9982400000001235,
-          "failureMessages": [
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22",
-            "Error: OpenAI API key not configured. Please set up the service configuration.\n    at generateContent2 (./src/ai-service/openai.ts:47:13)\n    at wrappedGenerateContent (./src/eval/test-utils/generate-content-retry.ts:75:22)\n    at ./src/eval/run-container-task-handler.test.ts:134:37\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file://./node_modules/@vitest/runner/dist/index.js:558:22"
-          ],
+          "duration": 2.0093959999999242,
+          "failureMessages": [],
           "meta": {}
         },
         {
@@ -184,14 +157,14 @@
           "fullName": "Run Container Task Handler E2E: 'GPT-4o Mini' should handle Docker unavailable gracefully",
           "status": "passed",
           "title": "should handle Docker unavailable gracefully",
-          "duration": 1.8027790000001005,
+          "duration": 1.7262640000001284,
           "failureMessages": [],
           "meta": {}
         }
       ],
-      "startTime": 1754722841109,
-      "endTime": 1754722841198.8027,
-      "status": "failed",
+      "startTime": 1754737701498,
+      "endTime": 1754737701535.7263,
+      "status": "passed",
       "message": "",
       "name": "./src/eval/run-container-task-handler.test.ts"
     }
