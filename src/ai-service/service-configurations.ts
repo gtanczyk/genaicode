@@ -59,11 +59,21 @@ const configurations: ServiceConfigurations = {
   'github-models': {
     apiKey: process.env.GITHUB_TOKEN,
     modelOverrides: {
-      default: modelOverrides.githubModels?.default ?? 'gpt-4o',
-      cheap: modelOverrides.githubModels?.cheap ?? 'gpt-4o-mini',
-      lite: modelOverrides.githubModels?.lite ?? 'gpt-4o-mini',
+      default: modelOverrides.githubModels?.default ?? 'gpt-5',
+      cheap: modelOverrides.githubModels?.cheap ?? 'gpt-5-mini',
+      lite: modelOverrides.githubModels?.lite ?? 'gpt-5-nano',
       reasoning: modelOverrides.githubModels?.reasoning ?? 'o1-mini',
-      modelSpecificSettings: modelOverrides.githubModels?.modelSpecificSettings ?? {},
+      modelSpecificSettings: modelOverrides.githubModels?.modelSpecificSettings ?? {
+        'gpt-5': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5-mini': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5-nano': {
+          temperatureUnsupported: true,
+        },
+      },
     },
   },
   'local-llm': {

@@ -11,6 +11,9 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-120] 2025-08-10: Container task loop: handle multiple function calls per model response and add context metrics feedback (messages count and estimated tokens) each iteration.
+- [x] [GEN-119] 2025-08-09: Container task loop: added wrapContext, setExecutionPlan, updateExecutionPlan tools and referenced them in the system prompt.
+
 - [-] [GEN-118] 2025-07-26: Implement `runContainerTask` action to execute multi-step tasks in a sandboxed Docker environment.
 - [x] [GEN-118] 2025-08-07: Fix StyledTextarea to preserve auto-grow for short content and enable vertical scrolling when exceeding max viewport height; added resize handling and -webkit-overflow-scrolling.
 - [x] [GEN-115] 2025-07-06: Render markdown in frontend chat messages, codegen planning, codegen summary, and file prompts.
@@ -53,7 +56,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [ ] [GEN-078] 2024-08-04: Implement image upload for question answers
 - [-] [GEN-077] 2024-08-03: Fixed type error and polling issue in ChatStateContext
 - [-] [GEN-076] 2024-08-03: Refactored AppState - Migrated state management logic to ChatStateContext to centralize state and remove prop drilling.
-- [-] [GEN-075] 2024-08-03: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling
+- [-] [GEN-075] 2024-08-02: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling
 - [-] [GEN-074] 2024-08-02: Enhanced Suggestion Generation - Suggestions now utilize more conversational context for improved relevance instead of only the last message
 - [x] [GEN-073] 2024-08-01: Fixed suggestion generation hook in ChatInterface.tsx - Optimized dependency array to prevent continuous execution by depending on specific message properties instead of the entire messages array
 - [-] [GEN-072] 2024-07-29 (Updated 2024-07-30): Implement suggestion chips using browser-side AI (Moved chips to QuestionHandler to fix bug)
@@ -84,15 +87,14 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-040] 2024-01-15: Context Management Implementation - content-bus system
 - [ ] [GEN-039] 2024-01-14: App Context Integration - context management in conversations
 - [ ] [GEN-035] 2024-01-13: Contributing Guidelines - development setup, code style
-- [x] [GEN-034] 2024-01-12: Add patchFile and updateFile test cases
-- [x] [GEN-032] 2024-01-11: Add performAnalysis Action Type - complex tasks
+- [x] [GEN-034] 2024-01-11: Add performAnalysis Action Type - complex tasks
 - [x] [GEN-031] 2024-01-10: Add Retry Mechanism - AI service failures
 - [ ] [GEN-030] 2024-01-09: Enhanced Long Explanation Test
 - [ ] [GEN-028] 2024-01-08: Create code-generation test suite
 - [ ] [GEN-027] 2024-01-07: Implement Ask Question Test Suite
 - [ ] [GEN-026] 2024-01-05: Generate large mock-source-code-summaries dataset
 - [ ] [GEN-025] 2024-01-04: Implement Context Optimization Test
-- [ ] [GEN-024] 2024-01-03: Decompose backend/service.ts
+- [ ] [GEN-024] 2024-0103: Decompose backend/service.ts
 - [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details
 - [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle
 - [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts
@@ -111,5 +113,3 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc
 - [x] [GEN-006] 2023-12-16: Add unit test for content generation retry
 - [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display
-- [x] [GEN-008] 2023-12-14: System Message Container Enhancement
-- [x] [GEN-009] 2023-12-14: UI Component Theme Dependency Cleanup

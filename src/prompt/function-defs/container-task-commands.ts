@@ -14,8 +14,12 @@ export const runCommandDef: FunctionDef = {
         type: 'string',
         description: 'Explanation of why this command is needed for the task.',
       },
+      workingDir: {
+        type: 'string',
+        description: 'Working directory inside the container to run the command in. This MUST be an absolute path.',
+      },
     },
-    required: ['command', 'reasoning'],
+    required: ['command', 'workingDir', 'reasoning'],
   },
 };
 
@@ -46,5 +50,50 @@ export const failTaskDef: FunctionDef = {
       },
     },
     required: ['reason'],
+  },
+};
+
+export const wrapContextDef: FunctionDef = {
+  name: 'wrapContext',
+  description: 'Replace prior conversation in the loop with a concise, single-entry summary for continued processing.',
+  parameters: {
+    type: 'object',
+    properties: {
+      summary: {
+        type: 'string',
+        description: 'A compact summary of prior steps and important findings to keep for next actions.',
+      },
+    },
+    required: ['summary'],
+  },
+};
+
+export const setExecutionPlanDef: FunctionDef = {
+  name: 'setExecutionPlan',
+  description: 'Record a concise execution plan to follow in subsequent steps.',
+  parameters: {
+    type: 'object',
+    properties: {
+      plan: {
+        type: 'string',
+        description: 'Brief execution plan (high level outline).',
+      },
+    },
+    required: ['plan'],
+  },
+};
+
+export const updateExecutionPlanDef: FunctionDef = {
+  name: 'updateExecutionPlan',
+  description: 'Update progress/status against the previously set execution plan.',
+  parameters: {
+    type: 'object',
+    properties: {
+      progress: {
+        type: 'string',
+        description: 'Progress update and next steps if applicable.',
+      },
+    },
+    required: ['progress'],
   },
 };

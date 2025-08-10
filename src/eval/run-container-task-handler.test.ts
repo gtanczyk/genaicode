@@ -94,7 +94,7 @@ describe.each([
     {
       name: 'complex task',
       userMessage:
-        'please checkout the project from https://github.com/gtanczyk/genaicode and build it, please report success or error',
+        'please checkout the project from https://github.com/gtanczyk/genaicode (node.js project) and build it. If you encounter any compilation errors => FIX THEM, please report success or error',
       expectation: 'The response should include the results of the build process.',
     },
   ])('$name', async ({ userMessage, expectation }) => {
@@ -111,7 +111,7 @@ describe.each([
       return;
     }
 
-    const prompt: PromptItem[] = [];
+    const prompt: PromptItem[] = [{ type: 'user', text: userMessage }];
 
     // Step 2: Execute the run container task handler with real LLM
     const handlerProps: ActionHandlerProps = {
@@ -119,7 +119,7 @@ describe.each([
         name: 'askQuestion',
         args: {
           actionType: 'runContainerTask',
-          message: userMessage,
+          message: 'I will use a container to fulfill your request',
         },
       },
       prompt,

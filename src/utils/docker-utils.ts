@@ -53,9 +53,11 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
 export async function executeCommand(
   container: Docker.Container,
   command: string,
+  workingDir: string,
 ): Promise<{ output: string; exitCode: number }> {
   const exec = await container.exec({
     Cmd: ['/bin/sh', '-c', command],
+    WorkingDir: workingDir,
     AttachStdout: true,
     AttachStderr: true,
   });

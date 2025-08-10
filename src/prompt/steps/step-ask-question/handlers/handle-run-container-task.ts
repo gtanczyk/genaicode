@@ -4,10 +4,18 @@ import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js'
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
-import { runCommandDef, completeTaskDef, failTaskDef } from '../../../function-defs/container-task-commands.js';
+import {
+  runCommandDef,
+  completeTaskDef,
+  failTaskDef,
+  wrapContextDef,
+  setExecutionPlanDef,
+  updateExecutionPlanDef,
+} from '../../../function-defs/container-task-commands.js';
 import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../../../../utils/docker-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { AllowedDockerImage } from '../../../function-defs/run-container-task.js';
+import { estimateTokenCount } from '../../../../prompt/token-estimator.js';
 
 /**
  * Arguments for the runContainerTask action
@@ -22,6 +30,7 @@ export type RunContainerTaskArgs = {
  */
 export type RunCommandArgs = {
   command: string;
+  workingDir: string;
   reasoning: string;
 };
 
@@ -38,6 +47,11 @@ export type CompleteTaskArgs = {
 export type FailTaskArgs = {
   reason: string;
 };
+
+/** New utility action args */
+export type WrapContextArgs = { summary: string };
+export type SetExecutionPlanArgs = { plan: string };
+export type UpdateExecutionPlanArgs = { progress: string };
 
 registerActionHandler('runContainerTask', handleRunContainerTask);
 
@@ -58,6 +72,10 @@ export async function handleRunContainerTask({
           type: 'assistant',
           text: askQuestionCall.args!.message,
         },
+        {
+          type: 'user',
+          text: 'I understand that you want to run a container task. Please provide the Docker image and task description.',
+        },
       ],
       {
         functionDefs: getFunctionDefs(),
@@ -74,9 +92,11 @@ export async function handleRunContainerTask({
     ];
 
     const response = await generateContentFn(...request);
-    const [runContainerTaskCall] = response
-      .filter((item) => item.type === 'functionCall')
-      .map((item) => item.functionCall) as [FunctionCall<RunContainerTaskArgs> | undefined];
+    const runContainerTaskCall = (
+      response
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall) as FunctionCall<RunContainerTaskArgs>[]
+    ).find((call) => call.name === 'runContainerTask');
 
     if (!runContainerTaskCall?.args?.image || !runContainerTaskCall.args.taskDescription) {
       putSystemMessage('❌ Failed to get valid runContainerTask request');
@@ -211,8 +231,11 @@ async function commandExecutionLoop(
 ): Promise<{ success: boolean; summary: string }> {
   let success = false;
   let summary = '';
-  const maxCommands = 25;
+  const maxCommands = 50;
   const taskExecutionPrompt: PromptItem[] = [];
+
+  // Helper to truncate long content
+  const maxOutputLength = 2048; // existing constraint used for outputs
 
   // Build the system prompt with best practices for context management
   const systemPrompt: PromptItem = {
@@ -224,11 +247,20 @@ Best Practices:
 - Be incremental: Check results after each command before proceeding
 - Be concise: Keep command outputs focused on the task
 - Be mindful: Avoid generating excessive output that could overflow context
+- Be adaptive: Adjust your strategy based on command results, including failures.
+- Be meticulous: Pay attention to detail and ensure accuracy in all commands and responses.
+- Don't give up: If a command fails, analyze the output and try to find a solution.
+- Avoid waste: Clear unnecessary context to keep the conversation focused.
+- Use reasoning: Provide clear reasoning for each command you execute.
+- Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below 10 messages or 4096 tokens, whichever is smaller.
 
 You have access to the following functions:
 - runCommand(command, reasoning): Execute a shell command in the container
 - completeTask(summary): Mark the task as successfully completed with a summary
 - failTask(reason): Mark the task as failed with a reason
+- wrapContext(summary): Condense prior conversation into one succinct entry when context grows or after milestones.
+- setExecutionPlan(plan): Record a brief plan to follow.
+- updateExecutionPlan(progress): Update plan progress and next steps.
 
 Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
 
@@ -246,10 +278,50 @@ Begin by analyzing the task and formulating your approach. Then start executing 
 
   // Context size management
   const maxContextItems = 50; // Limit the number of conversation items
-  const maxOutputLength = 2048; // Limit individual command output length
+
+  // Helper: collect texts from prompt items
+  const collectTexts = (items: PromptItem[]): string[] => {
+    const texts: string[] = [];
+    for (const it of items) {
+      if (it.type === 'systemPrompt' && it.systemPrompt) texts.push(it.systemPrompt);
+      if (it.text) texts.push(it.text);
+      if (it.functionResponses) {
+        for (const fr of it.functionResponses) {
+          if (fr.content) texts.push(fr.content);
+        }
+      }
+    }
+    return texts;
+  };
+
+  const computeContextMetrics = () => {
+    const baseMessages = 2; // systemPrompt + taskPrompt
+    const messageCount = baseMessages + taskExecutionPrompt.length;
+    const allTexts = [
+      ...(systemPrompt.systemPrompt ? [systemPrompt.systemPrompt] : []),
+      ...(taskPrompt.text ? [taskPrompt.text] : []),
+      ...collectTexts(taskExecutionPrompt),
+    ];
+    const estimatedTokens = allTexts.reduce((acc, t) => acc + estimateTokenCount(t), 0);
+    return { messageCount, estimatedTokens };
+  };
+
+  const pushContextMetrics = () => {
+    const { messageCount, estimatedTokens } = computeContextMetrics();
+    putSystemMessage(`Context size: ${messageCount} messages; ~${estimatedTokens} tokens`);
+    taskExecutionPrompt.push({
+      type: 'user',
+      text: `[context] messages: ${messageCount}; tokens: ~${estimatedTokens}`,
+    });
+  };
+
+  let commandsExecuted = 0;
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      // Report current context metrics (to UI and to the model)
+      pushContextMetrics();
+
       // Manage context size - keep only recent items if context grows too large
       let currentPrompt = taskExecutionPrompt;
       if (currentPrompt.length > maxContextItems) {
@@ -266,124 +338,222 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         ];
       }
 
-      const [actionResult] = (
-        await generateContentFn(
-          [systemPrompt, taskPrompt, ...currentPrompt],
-          {
-            functionDefs: [runCommandDef, completeTaskDef, failTaskDef],
-            temperature: 0.7,
-            modelType: ModelType.CHEAP,
-            expectedResponseType: {
-              text: true, // Allow text responses for reasoning
-              functionCall: true,
-              media: false,
-            },
+      const modelResponse = await generateContentFn(
+        [systemPrompt, taskPrompt, ...currentPrompt],
+        {
+          functionDefs: [
+            runCommandDef,
+            completeTaskDef,
+            failTaskDef,
+            wrapContextDef,
+            setExecutionPlanDef,
+            updateExecutionPlanDef,
+          ],
+          temperature: 0.7,
+          modelType: ModelType.LITE,
+          expectedResponseType: {
+            text: true, // Allow text responses for reasoning
+            functionCall: true,
+            media: false,
           },
-          options,
-        )
-      )
-        .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall) as [
-        FunctionCall<RunCommandArgs | CompleteTaskArgs | FailTaskArgs> | undefined,
-      ];
+        },
+        options,
+      );
 
-      if (!actionResult) {
+      const actionResults = modelResponse
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall) as Array<
+        FunctionCall<
+          | RunCommandArgs
+          | CompleteTaskArgs
+          | FailTaskArgs
+          | WrapContextArgs
+          | SetExecutionPlanArgs
+          | UpdateExecutionPlanArgs
+        >
+      >;
+
+      if (!actionResults || actionResults.length === 0) {
         putSystemMessage('❌ Internal LLM failed to produce a valid function call.');
         summary = 'Task failed: AI system could not determine next action';
         break;
       }
 
-      if (actionResult.name === 'completeTask') {
-        const args = actionResult.args as CompleteTaskArgs;
-        putSystemMessage('✅ Task marked as complete by internal operator.');
-        success = true;
-        summary = args.summary;
+      let shouldBreakOuter = false;
 
-        taskExecutionPrompt.push(
-          {
-            type: 'assistant',
-            text: 'Completing the task.',
-            functionCalls: [actionResult],
-          },
-          {
-            type: 'user',
-            functionResponses: [
-              {
-                name: 'completeTask',
-                call_id: actionResult.id || undefined,
-                content: 'Task completed successfully.',
-              },
-            ],
-          },
-        );
-        break;
-      }
+      for (const actionResult of actionResults) {
+        if (actionResult.name === 'completeTask') {
+          const args = actionResult.args as CompleteTaskArgs;
+          putSystemMessage('✅ Task marked as complete by internal operator.');
+          success = true;
+          summary = args.summary;
 
-      if (actionResult.name === 'failTask') {
-        const args = actionResult.args as FailTaskArgs;
-        putSystemMessage('❌ Task marked as failed by internal operator.');
-        success = false;
-        summary = args.reason;
-
-        taskExecutionPrompt.push(
-          {
-            type: 'assistant',
-            text: 'Failing the task.',
-            functionCalls: [actionResult],
-          },
-          {
-            type: 'user',
-            functionResponses: [
-              {
-                name: 'failTask',
-                call_id: actionResult.id || undefined,
-                content: 'Task marked as failed.',
-              },
-            ],
-          },
-        );
-        break;
-      }
-
-      if (actionResult.name === 'runCommand') {
-        const args = actionResult.args as RunCommandArgs;
-        const { command, reasoning } = args;
-
-        if (i === maxCommands - 1) {
-          putSystemMessage('⚠️ Reached maximum command limit.');
-          summary = 'Task incomplete: Reached maximum command limit';
+          taskExecutionPrompt.push(
+            {
+              type: 'assistant',
+              text: 'Completing the task.',
+              functionCalls: [actionResult],
+            },
+            {
+              type: 'user',
+              functionResponses: [
+                {
+                  name: 'completeTask',
+                  call_id: actionResult.id || undefined,
+                  content: 'Task completed successfully.',
+                },
+              ],
+            },
+          );
+          shouldBreakOuter = true;
           break;
         }
 
-        putSystemMessage(`Executing command: \`\`\`sh\n${command}\n\`\`\``);
-        putSystemMessage(`Reasoning: ${reasoning}`);
+        if (actionResult.name === 'failTask') {
+          const args = actionResult.args as FailTaskArgs;
+          putSystemMessage('❌ Task marked as failed by internal operator.');
+          success = false;
+          summary = args.reason;
 
-        const { output, exitCode } = await executeCommand(container, command);
-
-        // Truncate excessive output to manage context size
-        let managedOutput = output;
-        if (output.length > maxOutputLength) {
-          managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
-          putSystemMessage(`⚠️ Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
+          taskExecutionPrompt.push(
+            {
+              type: 'assistant',
+              text: 'Failing the task.',
+              functionCalls: [actionResult],
+            },
+            {
+              type: 'user',
+              functionResponses: [
+                {
+                  name: 'failTask',
+                  call_id: actionResult.id || undefined,
+                  content: 'Task marked as failed.',
+                },
+              ],
+            },
+          );
+          shouldBreakOuter = true;
+          break;
         }
 
-        taskExecutionPrompt.push(
-          {
-            type: 'assistant',
-            text: `Executing command with reasoning: ${reasoning}`,
-            functionCalls: [actionResult],
-          },
-          {
-            type: 'user',
-            functionResponses: [
+        if (actionResult.name === 'wrapContext') {
+          const args = actionResult.args as WrapContextArgs | undefined;
+          if (!args?.summary) {
+            putSystemMessage('⚠️ wrapContext called without summary; ignoring.');
+          } else {
+            putSystemMessage('🗂️ Context wrapped by internal operator.');
+
+            const assistantMsg: PromptItem = {
+              type: 'assistant',
+              text: 'Wrapping context for continued processing.',
+              functionCalls: [actionResult],
+            };
+            const userResp: PromptItem = {
+              type: 'user',
+              functionResponses: [
+                {
+                  name: 'wrapContext',
+                  call_id: actionResult.id || undefined,
+                },
+              ],
+            };
+
+            taskExecutionPrompt.push(assistantMsg, userResp);
+            // Replace accumulated history with the condensed entries
+            taskExecutionPrompt.splice(0, taskExecutionPrompt.length - 2);
+          }
+          continue;
+        }
+
+        if (actionResult.name === 'setExecutionPlan') {
+          const args = actionResult.args as SetExecutionPlanArgs | undefined;
+          if (!args?.plan) {
+            putSystemMessage('⚠️ setExecutionPlan called without plan; ignoring.');
+          } else {
+            putSystemMessage('📝 Execution plan recorded.');
+
+            taskExecutionPrompt.push(
+              { type: 'assistant', text: 'Setting execution plan.', functionCalls: [actionResult] },
               {
-                name: 'runCommand',
-                call_id: actionResult.id || undefined,
-                content: `Command executed successfully.\n\nOutput:\n${managedOutput}\n\nExit Code: ${exitCode}`,
+                type: 'user',
+                functionResponses: [{ name: 'setExecutionPlan', call_id: actionResult.id || undefined }],
               },
-            ],
-          },
-        );
+            );
+          }
+          continue;
+        }
+
+        if (actionResult.name === 'updateExecutionPlan') {
+          const args = actionResult.args as UpdateExecutionPlanArgs | undefined;
+          if (!args?.progress) {
+            putSystemMessage('⚠️ updateExecutionPlan called without progress; ignoring.');
+          } else {
+            putSystemMessage('📈 Execution plan updated.');
+
+            taskExecutionPrompt.push(
+              { type: 'assistant', text: 'Updating execution plan.', functionCalls: [actionResult] },
+              {
+                type: 'user',
+                functionResponses: [{ name: 'updateExecutionPlan', call_id: actionResult.id || undefined }],
+              },
+            );
+          }
+          continue;
+        }
+
+        if (actionResult.name === 'runCommand') {
+          const args = actionResult.args as RunCommandArgs;
+          const { command, workingDir, reasoning } = args;
+
+          if (commandsExecuted >= maxCommands) {
+            putSystemMessage('⚠️ Reached maximum command limit.');
+            summary = 'Task incomplete: Reached maximum command limit';
+            shouldBreakOuter = true;
+            break;
+          }
+
+          putSystemMessage(`Executing command: \`\`\`sh\n${command}\n\`\`\` in working directory: ${workingDir}`);
+          putSystemMessage(`Reasoning: ${reasoning}`);
+
+          const { output, exitCode } = await executeCommand(container, command, workingDir);
+
+          // Truncate excessive output to manage context size
+          let managedOutput = output;
+          if (output.length > maxOutputLength) {
+            managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
+            putSystemMessage(`⚠️ Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
+          }
+
+          putSystemMessage('Command executed', { managedOutput, exitCode });
+
+          taskExecutionPrompt.push(
+            {
+              type: 'assistant',
+              text: `Executing command with reasoning: ${reasoning}`,
+              functionCalls: [actionResult],
+            },
+            {
+              type: 'user',
+              functionResponses: [
+                {
+                  name: 'runCommand',
+                  call_id: actionResult.id || undefined,
+                  content: `Command executed successfully.\n\nOutput:\n${managedOutput}\n\nExit Code: ${exitCode}`,
+                },
+              ],
+            },
+          );
+
+          commandsExecuted++;
+          continue;
+        }
+
+        // Unknown function call - log and continue
+        putSystemMessage(`⚠️ Unknown function call received: ${actionResult.name}`);
+      }
+
+      if (shouldBreakOuter) {
+        break;
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
