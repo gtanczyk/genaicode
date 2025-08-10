@@ -4,6 +4,7 @@ import { ActionHandlerProps, AskQuestionCall } from '../step-ask-question-types.
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
 import * as dockerUtils from '../../../../utils/docker-utils.js';
 import Docker from 'dockerode';
+import * as userActions from '../../../../main/common/user-actions.js';
 
 // Mock dependencies
 vi.mock('../../../../main/common/content-bus.js', () => ({
@@ -11,6 +12,7 @@ vi.mock('../../../../main/common/content-bus.js', () => ({
 }));
 
 vi.mock('../../../../utils/docker-utils.js');
+vi.mock('../../../../main/common/user-actions.js');
 
 vi.mock('../../../../prompt/function-calling.js', () => ({
   getFunctionDefs: vi.fn().mockReturnValue([]),
@@ -20,6 +22,7 @@ const mockPullImage = vi.mocked(dockerUtils.pullImage);
 const mockCreateAndStartContainer = vi.mocked(dockerUtils.createAndStartContainer);
 const mockExecuteCommand = vi.mocked(dockerUtils.executeCommand);
 const mockStopContainer = vi.mocked(dockerUtils.stopContainer);
+const mockAskUserForConfirmation = vi.mocked(userActions.askUserForConfirmation);
 
 describe('handleRunContainerTask', () => {
   let mockGenerateContentFn: ReturnType<typeof vi.fn>;
@@ -45,13 +48,15 @@ describe('handleRunContainerTask', () => {
     mockCreateAndStartContainer.mockResolvedValue(mockContainer);
     mockExecuteCommand.mockResolvedValue({ output: 'hello world', exitCode: 0 });
     mockStopContainer.mockResolvedValue(undefined);
+    mockAskUserForConfirmation.mockResolvedValue({ confirmed: true });
   });
 
-  const getProps = (): Omit<ActionHandlerProps, 'generateImageFn' | 'waitIfPaused'> => ({
+  const getProps = (): Omit<ActionHandlerProps, 'generateImageFn'> => ({
     askQuestionCall: mockAskQuestionCall,
     prompt: [],
     options: {} as unknown as ActionHandlerProps['options'],
     generateContentFn: mockGenerateContentFn,
+    waitIfPaused: () => Promise.resolve(),
   });
 
   it('should successfully run a simple task', async () => {
@@ -80,6 +85,7 @@ describe('handleRunContainerTask', () => {
             args: {
               command: 'echo "hello world"',
               reasoning: 'Testing echo command',
+              workingDir: '/',
             },
           },
         },
@@ -104,7 +110,7 @@ describe('handleRunContainerTask', () => {
     expect(result.breakLoop).toBe(true);
     expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
     expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"', '/');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
@@ -200,6 +206,7 @@ describe('handleRunContainerTask', () => {
             args: {
               command: 'badcommand',
               reasoning: 'Testing bad command',
+              workingDir: '/',
             },
           },
         },
@@ -227,7 +234,7 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand', '/');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
