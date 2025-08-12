@@ -39,6 +39,7 @@ ${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide f
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 - reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
+${rcConfig.featuresEnabled?.containerTask ? '- runContainerTask: Use to perform a complex task inside a Docker container.' : ''}
 
 This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }
@@ -63,6 +64,7 @@ export const actionTypeOptions: string[] = [
   'requestFilesFragments',
   ...(rcConfig.featuresEnabled?.appContext ? ['pullAppContext', 'pushAppContext'] : []),
   ...(rcConfig.lintCommand ? ['lint'] : []),
+  ...(rcConfig.featuresEnabled?.containerTask ? ['runContainerTask'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
   'genaicodeHelp',
   'reasoningInference',

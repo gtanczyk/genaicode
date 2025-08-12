@@ -17,6 +17,9 @@
     "src/eval/data",
     "src/prompt-debug/current-prompt.js"
   ],
+  "featuresEnabled": {
+    "containerTask": true
+  },
   "lintCommand": "npm run type-check && npm run lint",
   "importantContext": {
     "files": [

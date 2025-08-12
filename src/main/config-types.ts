@@ -71,5 +71,6 @@ export interface RcConfig {
   featuresEnabled?: {
     appContext?: boolean;
     gitContext?: boolean;
+    containerTask?: boolean;
   };
 }
