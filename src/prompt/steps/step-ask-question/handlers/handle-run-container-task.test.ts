@@ -107,7 +107,7 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     const result = await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(result.breakLoop).toBe(false);
+    expect(result.breakLoop).toBe(true);
     expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
     expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
     expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"', '/');

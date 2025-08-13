@@ -97,22 +97,3 @@ export const updateExecutionPlanDef: FunctionDef = {
     required: ['progress'],
   },
 };
-
-export const sendMessageDef: FunctionDef = {
-  name: 'sendMessage',
-  description: 'Send a message to the user. Should be used for non-interactive messages.',
-  parameters: {
-    type: 'object',
-    properties: {
-      message: {
-        type: 'string',
-        description: 'The message to send to the user.',
-      },
-      isQuestion: {
-        type: 'boolean',
-        description: 'Whether the message is a question, and user input is expected.',
-      },
-    },
-    required: ['message', 'isQuestion'],
-  },
-};
