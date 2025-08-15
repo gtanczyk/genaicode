@@ -255,13 +255,34 @@ export async function copyFromContainer(
     extract.on('entry', (header, stream, next) => {
       const filePath = path.join(absoluteHostPath, header.name);
       const dir = path.dirname(filePath);
+
+      if (header.type === 'directory') {
+        if (!fs.existsSync(filePath)) {
+          fs.mkdirSync(filePath, { recursive: true });
+        }
+        stream.on('end', () => next());
+        stream.resume();
+        return;
+      }
+
+      // Ensure directory exists for the file
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
+
       const writeStream = fs.createWriteStream(filePath);
       stream.pipe(writeStream);
-      stream.on('end', () => next());
-      stream.resume();
+
+      // Only call next() after the file has been fully written
+      writeStream.on('finish', () => next());
+      writeStream.on('error', (err) => {
+        console.error(`Error writing file ${filePath}:`, err);
+        next(err); // Pass error to tar-stream
+      });
+      stream.on('error', (err) => {
+        console.error(`Error in tar stream for ${filePath}:`, err);
+        next(err); // Pass error to tar-stream
+      });
     });
 
     await new Promise<void>((resolve, reject) => {

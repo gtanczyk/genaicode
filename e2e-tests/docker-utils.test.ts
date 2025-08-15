@@ -260,9 +260,9 @@ describe('Docker Utils E2E Tests', () => {
       expect(fs.existsSync(path.join(tempDirFromContainer, 'app/test/index.test.js'))).toBe(true);
 
       // 4. Verify file content
-      const sourceContent = fs.readFileSync(path.join(tempDirFromContainer, 'src/index.js'), 'utf-8');
+      const sourceContent = fs.readFileSync(path.join(tempDirFromContainer, 'app/src/index.js'), 'utf-8');
       expect(sourceContent.trim()).toBe('source');
-      const testContent = fs.readFileSync(path.join(tempDirFromContainer, 'test/index.test.js'), 'utf-8');
+      const testContent = fs.readFileSync(path.join(tempDirFromContainer, 'app/test/index.test.js'), 'utf-8');
       expect(testContent.trim()).toBe('test');
     }, 60000);
 
