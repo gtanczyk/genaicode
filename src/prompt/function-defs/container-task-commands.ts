@@ -3,7 +3,8 @@ import { rcConfig } from '../../main/config.js';
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
-  description: 'Execute a shell command in the Docker container.',
+  description: `Execute a shell command in the Docker container.
+IMPORTANT: The command will block you until it completes, so consider using a non-blocking approach if needed.`,
   parameters: {
     type: 'object',
     properties: {

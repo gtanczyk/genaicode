@@ -41,3 +41,29 @@ export type CacheChecksum = string & { readonly __cacheChecksum: true };
 export function md5(content: string): CacheChecksum {
   return crypto.createHash('md5').update(content).digest('hex') as CacheChecksum;
 }
+
+const getContainerIdsCacheKey = () => 'containerIds';
+
+export function getCachedContainerIds(): string[] {
+  return readCache<string[]>(getContainerIdsCacheKey(), []);
+}
+
+export function cacheContainerId(containerId: string): void {
+  const ids = getCachedContainerIds();
+  if (!ids.includes(containerId)) {
+    ids.push(containerId);
+    writeCache(getContainerIdsCacheKey(), ids);
+  }
+}
+
+export function removeCachedContainerId(containerId: string): void {
+  let ids = getCachedContainerIds();
+  if (ids.includes(containerId)) {
+    ids = ids.filter((id) => id !== containerId);
+    writeCache(getContainerIdsCacheKey(), ids);
+  }
+}
+
+export function clearCachedContainerIds(): void {
+  writeCache(getContainerIdsCacheKey(), []);
+}

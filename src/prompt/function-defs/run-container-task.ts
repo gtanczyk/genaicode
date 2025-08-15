@@ -11,7 +11,8 @@ export type AllowedDockerImage =
   | 'node:20'
   | 'python:latest'
   | 'python:3.11'
-  | 'python:3.12';
+  | 'python:3.12'
+  | 'ghcr.io/puppeteer/puppeteer:latest';
 
 export const runContainerTaskDef: FunctionDef = {
   name: 'runContainerTask',
@@ -33,6 +34,7 @@ export const runContainerTaskDef: FunctionDef = {
           'python:latest',
           'python:3.11',
           'python:3.12',
+          'ghcr.io/puppeteer/puppeteer:latest',
         ],
         description: 'The Docker image to use from the allowed list.',
       },

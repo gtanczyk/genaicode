@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-124] 2025-08-15: Enhanced runContainerTask: implemented orphaned container cleanup and added user confirmation for all file copy operations.
 - [x] [GEN-123] 2025-08-10: Enhanced Docker container file operations: clarified hostPath requirements to use absolute paths and added recursive directory copying support for copyToContainer function.
 - [x] [GEN-120] 2025-08-10: Container task loop: handle multiple function calls per model response and add context metrics feedback (messages count and estimated tokens) each iteration.
 - [-] [GEN-121] 2025-08-10: Container task loop: allow LLM to ask user questions and send messages; add user confirmation before starting the task.

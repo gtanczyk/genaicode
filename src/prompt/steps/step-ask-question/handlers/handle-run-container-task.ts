@@ -22,6 +22,8 @@ import {
   stopContainer,
   copyToContainer,
   copyFromContainer,
+  cleanupOrphanedContainers,
+  listFilesInContainerArchive,
 } from '../../../../utils/docker-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { AllowedDockerImage } from '../../../function-defs/run-container-task.js';
@@ -82,6 +84,9 @@ export async function handleRunContainerTask({
   options,
   waitIfPaused,
 }: ActionHandlerProps): Promise<ActionResult> {
+  const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+  await cleanupOrphanedContainers(docker);
+
   try {
     putSystemMessage('Container task: generating proper task request');
 
@@ -157,7 +162,6 @@ export async function handleRunContainerTask({
     }
 
     const { image, taskDescription } = runContainerTaskCall.args;
-    const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
     putSystemMessage(`🐳 Starting container task with image: ${image}`);
 
@@ -325,9 +329,6 @@ You may also provide reasoning text before function calls to explain your approa
     text: `Overall Task:\n${taskDescription}\n\nBegin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };
 
-  // Context size management
-  const maxContextItems = 50; // Limit the number of conversation items
-
   // Helper: collect texts from prompt items
   const collectTexts = (items: PromptItem[]): string[] => {
     const texts: string[] = [];
@@ -362,6 +363,24 @@ You may also provide reasoning text before function calls to explain your approa
       type: 'user',
       text: `[context] messages: ${messageCount}; tokens: ~${estimatedTokens}`,
     });
+    if (messageCount > MAX_CONTEXT_ITEMS) {
+      taskExecutionPrompt.push({
+        type: 'user',
+        text: `[context] messages exceeded limit (${MAX_CONTEXT_ITEMS}).`,
+      });
+    }
+    if (estimatedTokens > MAX_CONTEXT_SIZE) {
+      taskExecutionPrompt.push({
+        type: 'user',
+        text: `[context] tokens exceeded limit (${MAX_CONTEXT_SIZE}).`,
+      });
+    }
+    if (messageCount > MAX_CONTEXT_ITEMS || estimatedTokens > MAX_CONTEXT_SIZE) {
+      taskExecutionPrompt.push({
+        type: 'user',
+        text: `[context] size exceeded limits: ${messageCount} messages, ${estimatedTokens} tokens. Consider wrapping context.`,
+      });
+    }
   };
 
   let commandsExecuted = 0;
@@ -374,10 +393,10 @@ You may also provide reasoning text before function calls to explain your approa
 
       // Manage context size - keep only recent items if context grows too large
       let currentPrompt = taskExecutionPrompt;
-      if (currentPrompt.length > maxContextItems) {
+      if (currentPrompt.length > MAX_CONTEXT_ITEMS) {
         // Keep the first few and last several items, removing middle ones
         const keepStart = 2;
-        const keepEnd = maxContextItems - keepStart - 5;
+        const keepEnd = MAX_CONTEXT_ITEMS - keepStart - 5;
         currentPrompt = [
           ...currentPrompt.slice(0, keepStart),
           {
@@ -431,8 +450,15 @@ You may also provide reasoning text before function calls to explain your approa
 
       if (!actionResults || actionResults.length === 0) {
         putSystemMessage('❌ Internal LLM failed to produce a valid function call.');
-        summary = 'Task failed: AI system could not determine next action';
-        break;
+        taskExecutionPrompt.push({
+          type: 'assistant',
+          text: 'I could not determine a valid action to take.',
+        });
+        taskExecutionPrompt.push({
+          type: 'user',
+          text: 'Please try again.',
+        });
+        continue;
       }
 
       let shouldBreakOuter = false;
@@ -648,6 +674,33 @@ You may also provide reasoning text before function calls to explain your approa
 
         if (actionResult.name === 'copyToContainer') {
           const args = actionResult.args as CopyToContainerArgs;
+          const confirmation = await askUserForConfirmation(
+            `Do you want to copy from host path "${args.hostPath}" to container path "${args.containerPath}"?`,
+            true,
+            options,
+          );
+
+          if (!confirmation.confirmed) {
+            putSystemMessage('Copy to container cancelled by user.');
+            taskExecutionPrompt.push(
+              {
+                type: 'assistant',
+                functionCalls: [actionResult],
+              },
+              {
+                type: 'user',
+                functionResponses: [
+                  {
+                    name: 'copyToContainer',
+                    call_id: actionResult.id || undefined,
+                    content: 'User cancelled the copy operation.',
+                  },
+                ],
+              },
+            );
+            continue;
+          }
+
           try {
             await copyToContainer(container, args.hostPath, args.containerPath);
             taskExecutionPrompt.push(
@@ -692,6 +745,58 @@ You may also provide reasoning text before function calls to explain your approa
         if (actionResult.name === 'copyFromContainer') {
           const args = actionResult.args as CopyFromContainerArgs;
           try {
+            const filesToCopy = await listFilesInContainerArchive(container, args.containerPath);
+
+            if (filesToCopy.length === 0) {
+              const message = `No files found at container path "${args.containerPath}" to copy.`;
+              putSystemMessage(message);
+              taskExecutionPrompt.push(
+                {
+                  type: 'assistant',
+                  functionCalls: [actionResult],
+                },
+                {
+                  type: 'user',
+                  functionResponses: [
+                    {
+                      name: 'copyFromContainer',
+                      call_id: actionResult.id || undefined,
+                      content: message,
+                    },
+                  ],
+                },
+              );
+              continue;
+            }
+
+            const fileListStr = filesToCopy.map((f) => `  - ${f}`).join('\n');
+            const confirmation = await askUserForConfirmation(
+              `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\n${fileListStr}\n\nDo you want to proceed?`,
+              true,
+              options,
+            );
+
+            if (!confirmation.confirmed) {
+              putSystemMessage('Copy from container cancelled by user.');
+              taskExecutionPrompt.push(
+                {
+                  type: 'assistant',
+                  functionCalls: [actionResult],
+                },
+                {
+                  type: 'user',
+                  functionResponses: [
+                    {
+                      name: 'copyFromContainer',
+                      call_id: actionResult.id || undefined,
+                      content: 'User cancelled the copy operation.',
+                    },
+                  ],
+                },
+              );
+              continue;
+            }
+
             await copyFromContainer(container, args.containerPath, args.hostPath);
             taskExecutionPrompt.push(
               {

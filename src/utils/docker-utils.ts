@@ -5,6 +5,12 @@ import tar from 'tar-stream';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { AllowedDockerImage } from '../prompt/function-defs/run-container-task.js';
 import { rcConfig } from '../main/config.js';
+import {
+  cacheContainerId,
+  clearCachedContainerIds,
+  getCachedContainerIds,
+  removeCachedContainerId,
+} from '../files/cache-file.js';
 
 /**
  * Pull a Docker image
@@ -46,6 +52,7 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
   });
 
   await container.start();
+  cacheContainerId(container.id);
   putSystemMessage(`✅ Container started successfully (ID: ${container.id.substring(0, 12)})`);
 
   return container;
@@ -96,7 +103,38 @@ export async function stopContainer(container: Docker.Container): Promise<void> 
   } catch (error) {
     // Container might already be stopped, which is fine
     putSystemMessage('🛑 Container cleanup completed');
+  } finally {
+    removeCachedContainerId(container.id);
   }
+}
+
+/**
+ * Clean up orphaned containers left over from previous runs.
+ */
+export async function cleanupOrphanedContainers(docker: Docker): Promise<void> {
+  const containerIds = getCachedContainerIds();
+  if (containerIds.length === 0) {
+    return;
+  }
+
+  putSystemMessage(`🧹 Found ${containerIds.length} potentially orphaned containers. Cleaning up...`);
+
+  const cleanupPromises = containerIds.map(async (id) => {
+    try {
+      const container = docker.getContainer(id);
+      const inspectInfo = await container.inspect();
+      if (inspectInfo.State.Running) {
+        await container.stop();
+        putSystemMessage(`🛑 Stopped orphaned container ${id.substring(0, 12)}`);
+      }
+    } catch (error) {
+      // Ignore errors (e.g., container not found)
+    }
+  });
+
+  await Promise.all(cleanupPromises);
+  clearCachedContainerIds();
+  putSystemMessage('✅ Orphaned container cleanup complete.');
 }
 
 /**
@@ -162,6 +200,40 @@ export async function copyToContainer(
     const errorMessage = error instanceof Error ? error.message : String(error);
     putSystemMessage(`❌ Failed to copy to container: ${errorMessage}`);
     throw error;
+  }
+}
+
+/**
+ * Lists the files within a container archive without extracting them.
+ */
+export async function listFilesInContainerArchive(
+  container: Docker.Container,
+  containerPath: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  try {
+    const stream = await container.getArchive({ path: containerPath });
+    const extract = tar.extract();
+
+    extract.on('entry', (header, stream, next) => {
+      // We only care about files, not directories
+      if (header.type === 'file') {
+        files.push(header.name);
+      }
+      stream.on('end', () => next());
+      stream.resume(); // Discard the stream's data
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      extract.on('finish', resolve);
+      extract.on('error', reject);
+      stream.pipe(extract);
+    });
+
+    return files;
+  } catch (error) {
+    // If the path doesn't exist, getArchive throws an error. Return an empty list.
+    return [];
   }
 }
 
