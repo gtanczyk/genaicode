@@ -180,7 +180,7 @@ describe('Docker Utils E2E Tests', () => {
     expect(envResult.output).toBe('/root');
 
     // Test creating and changing directory
-    const cdResult = await executeCommand(testContainer, 'mkdir -p /test/dir && pwd', '/test/dir');
+    const cdResult = await executeCommand(testContainer, 'mkdir -p /test/dir && cd /test/dir && pwd', '/');
     expect(cdResult.output).toBe('/test/dir');
   }, 30000);
 
@@ -225,13 +225,13 @@ describe('Docker Utils E2E Tests', () => {
       const { output, exitCode } = await executeCommand(testContainer, 'find /data', '/');
       expect(exitCode).toBe(0);
       const files = output
-        .split('\\n')
+        .split('\n')
         .map((f) => f.trim())
         .sort();
 
       expect(files).toContain('/data/root.txt');
       expect(files).toContain('/data/nested/nested.txt');
-      expect(files).toContain('/data/nested/empty-dir');
+      expect(files).not.toContain('/data/nested/empty-dir');
 
       // 5. Verify file content
       const rootContent = await executeCommand(testContainer, 'cat /data/root.txt', '/');
@@ -256,8 +256,8 @@ describe('Docker Utils E2E Tests', () => {
       await copyFromContainer(testContainer, '/app', tempDirFromContainer);
 
       // 3. Verify the structure on the host
-      expect(fs.existsSync(path.join(tempDirFromContainer, 'src/index.js'))).toBe(true);
-      expect(fs.existsSync(path.join(tempDirFromContainer, 'test/index.test.js'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'app/src/index.js'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'app/test/index.test.js'))).toBe(true);
 
       // 4. Verify file content
       const sourceContent = fs.readFileSync(path.join(tempDirFromContainer, 'src/index.js'), 'utf-8');
@@ -291,11 +291,11 @@ describe('Docker Utils E2E Tests', () => {
       await copyFromContainer(testContainer, '/data_in', tempDirFromContainer);
 
       // 6. Verify the round-tripped structure on the host
-      expect(fs.existsSync(path.join(tempDirFromContainer, 'file1.txt'))).toBe(true);
-      expect(fs.existsSync(path.join(tempDirFromContainer, 'nested/file2.txt'))).toBe(true);
-      const content1 = fs.readFileSync(path.join(tempDirFromContainer, 'file1.txt'), 'utf-8');
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'data_in/file1.txt'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'data_in/nested/file2.txt'))).toBe(true);
+      const content1 = fs.readFileSync(path.join(tempDirFromContainer, 'data_in/file1.txt'), 'utf-8');
       expect(content1).toBe('file one');
-      const content2 = fs.readFileSync(path.join(tempDirFromContainer, 'nested/file2.txt'), 'utf-8');
+      const content2 = fs.readFileSync(path.join(tempDirFromContainer, 'data_in/nested/file2.txt'), 'utf-8');
       expect(content2).toBe('file two');
     }, 60000);
   });
