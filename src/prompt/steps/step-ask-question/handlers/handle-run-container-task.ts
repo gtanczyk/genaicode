@@ -12,8 +12,17 @@ import {
   setExecutionPlanDef,
   updateExecutionPlanDef,
   sendMessageDef,
+  getCopyToContainerDef,
+  getCopyFromContainerDef,
 } from '../../../function-defs/container-task-commands.js';
-import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../../../../utils/docker-utils.js';
+import {
+  pullImage,
+  createAndStartContainer,
+  executeCommand,
+  stopContainer,
+  copyToContainer,
+  copyFromContainer,
+} from '../../../../utils/docker-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { AllowedDockerImage } from '../../../function-defs/run-container-task.js';
 import { estimateTokenCount } from '../../../../prompt/token-estimator.js';
@@ -57,6 +66,14 @@ export type UpdateExecutionPlanArgs = { progress: string };
 export type SendMessageArgs = { message: string; isQuestion: boolean };
 
 registerActionHandler('runContainerTask', handleRunContainerTask);
+export type CopyToContainerArgs = {
+  hostPath: string;
+  containerPath: string;
+};
+export type CopyFromContainerArgs = {
+  containerPath: string;
+  hostPath: string;
+};
 
 export async function handleRunContainerTask({
   askQuestionCall,
@@ -251,6 +268,9 @@ export async function handleRunContainerTask({
   }
 }
 
+const MAX_CONTEXT_ITEMS = 50;
+const MAX_CONTEXT_SIZE = 4096;
+
 async function commandExecutionLoop(
   container: Docker.Container,
   taskDescription: string,
@@ -281,18 +301,20 @@ Best Practices:
 - Don't give up: If a command fails, analyze the output and try to find a solution.
 - Avoid waste: Clear unnecessary context to keep the conversation focused.
 - Use reasoning: Provide clear reasoning for each command you execute.
-- Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below 10 messages or 4096 tokens, whichever is smaller.
+- Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below ${MAX_CONTEXT_ITEMS} messages or ${MAX_CONTEXT_SIZE} tokens, whichever is smaller.
 
 You have access to the following functions:
 - runCommand(command, reasoning, workingDir): Execute a shell command in the container
 - completeTask(summary): Mark the task as successfully completed with a summary
 - failTask(reason): Mark the task as failed with a reason
-- wrapContext(summary): Condense prior conversation into one succinct entry when context grows or after milestones.
+- wrapContext(summary): Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
 - setExecutionPlan(plan): Record a brief plan to follow.
 - updateExecutionPlan(progress): Update plan progress and next steps.
 - sendMessage(message, isQuestion): Sends a message to the user, optionally marking it as a question, when user input is expected.
 
-Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
+- sendMessage(message, isQuestion): Sends a message to the user, optionally marking it as a question, when user input is expected.
+- copyToContainer(hostPath, containerPath): Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
+- copyFromContainer(containerPath, hostPath): Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.`,
   };
@@ -377,6 +399,8 @@ You may also provide reasoning text before function calls to explain your approa
             setExecutionPlanDef,
             updateExecutionPlanDef,
             sendMessageDef,
+            getCopyToContainerDef(),
+            getCopyFromContainerDef(),
           ],
           temperature: 0.7,
           modelType: ModelType.LITE,
@@ -400,6 +424,8 @@ You may also provide reasoning text before function calls to explain your approa
           | SetExecutionPlanArgs
           | UpdateExecutionPlanArgs
           | SendMessageArgs
+          | CopyToContainerArgs
+          | CopyFromContainerArgs
         >
       >;
 
@@ -491,6 +517,11 @@ You may also provide reasoning text before function calls to explain your approa
             taskExecutionPrompt.push(assistantMsg, userResp);
             // Replace accumulated history with the condensed entries
             taskExecutionPrompt.splice(0, taskExecutionPrompt.length - 2);
+
+            const { messageCount, estimatedTokens } = computeContextMetrics();
+            if (messageCount < MAX_CONTEXT_ITEMS && estimatedTokens < MAX_CONTEXT_SIZE) {
+              userResp.text = `The context is within limits: ${messageCount} messages, ${estimatedTokens} tokens is less than the maximum allowed: ${MAX_CONTEXT_ITEMS} messages, ${MAX_CONTEXT_SIZE} tokens.`;
+            }
           }
           continue;
         }
@@ -612,6 +643,92 @@ You may also provide reasoning text before function calls to explain your approa
           );
 
           commandsExecuted++;
+          continue;
+        }
+
+        if (actionResult.name === 'copyToContainer') {
+          const args = actionResult.args as CopyToContainerArgs;
+          try {
+            await copyToContainer(container, args.hostPath, args.containerPath);
+            taskExecutionPrompt.push(
+              {
+                type: 'assistant',
+                functionCalls: [actionResult],
+              },
+              {
+                type: 'user',
+                functionResponses: [
+                  {
+                    name: 'copyToContainer',
+                    call_id: actionResult.id || undefined,
+                    content: `Successfully copied ${args.hostPath} to container path ${args.containerPath}.`,
+                  },
+                ],
+              },
+            );
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            putSystemMessage(`❌ Error copying to container: ${errorMessage}`);
+            taskExecutionPrompt.push(
+              {
+                type: 'assistant',
+                functionCalls: [actionResult],
+              },
+              {
+                type: 'user',
+                functionResponses: [
+                  {
+                    name: 'copyToContainer',
+                    call_id: actionResult.id || undefined,
+                    content: `Error: ${errorMessage}`,
+                  },
+                ],
+              },
+            );
+          }
+          continue;
+        }
+
+        if (actionResult.name === 'copyFromContainer') {
+          const args = actionResult.args as CopyFromContainerArgs;
+          try {
+            await copyFromContainer(container, args.containerPath, args.hostPath);
+            taskExecutionPrompt.push(
+              {
+                type: 'assistant',
+                functionCalls: [actionResult],
+              },
+              {
+                type: 'user',
+                functionResponses: [
+                  {
+                    name: 'copyFromContainer',
+                    call_id: actionResult.id || undefined,
+                    content: `Successfully copied from container path ${args.containerPath} to ${args.hostPath}.`,
+                  },
+                ],
+              },
+            );
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            putSystemMessage(`❌ Error copying from container: ${errorMessage}`);
+            taskExecutionPrompt.push(
+              {
+                type: 'assistant',
+                functionCalls: [actionResult],
+              },
+              {
+                type: 'user',
+                functionResponses: [
+                  {
+                    name: 'copyFromContainer',
+                    call_id: actionResult.id || undefined,
+                    content: `Error: ${errorMessage}`,
+                  },
+                ],
+              },
+            );
+          }
           continue;
         }
 

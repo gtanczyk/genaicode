@@ -11,8 +11,10 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-123] 2025-08-10: Enhanced Docker container file operations: clarified hostPath requirements to use absolute paths and added recursive directory copying support for copyToContainer function.
 - [x] [GEN-120] 2025-08-10: Container task loop: handle multiple function calls per model response and add context metrics feedback (messages count and estimated tokens) each iteration.
 - [-] [GEN-121] 2025-08-10: Container task loop: allow LLM to ask user questions and send messages; add user confirmation before starting the task.
+- [x] [GEN-122] 2025-08-10: Implement dynamic file transfer capabilities for runContainerTask - Added copyToContainer and copyFromContainer functions to enable on-demand file transfers between host and Docker container during task execution.
 - [x] [GEN-119] 2025-08-09: Container task loop: added wrapContext, setExecutionPlan, updateExecutionPlan tools and referenced them in the system prompt.
 
 - [x] [GEN-118] 2025-07-26: Implement `runContainerTask` action to execute multi-step tasks in a sandboxed Docker environment.

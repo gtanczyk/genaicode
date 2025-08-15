@@ -1,4 +1,5 @@
 import { FunctionDef } from '../../ai-service/common-types.js';
+import { rcConfig } from '../../main/config.js';
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
@@ -97,6 +98,47 @@ export const updateExecutionPlanDef: FunctionDef = {
     required: ['progress'],
   },
 };
+
+export const getCopyToContainerDef: () => FunctionDef = () => ({
+  name: 'copyToContainer',
+  description: 'Copy a file or directory from the host to the container.',
+  parameters: {
+    type: 'object',
+    properties: {
+      hostPath: {
+        type: 'string',
+        description: `The absolute path of the file or directory on the host machine, which must be within the project root directory.
+The file path must start from: ${rcConfig.rootDir}`,
+      },
+      containerPath: {
+        type: 'string',
+        description: 'The absolute destination path inside the container.',
+      },
+    },
+    required: ['hostPath', 'containerPath'],
+  },
+});
+
+export const getCopyFromContainerDef: () => FunctionDef = () => ({
+  name: 'copyFromContainer',
+  description: 'Copy a file or directory from the container to the host.',
+  parameters: {
+    type: 'object',
+    properties: {
+      containerPath: {
+        type: 'string',
+        description:
+          'The absolute destination path on the host machine, which must be within the project root directory.',
+      },
+      hostPath: {
+        type: 'string',
+        description: `The absolute destination path on the host machine, which must be within the project root directory.
+The file path must start from: ${rcConfig.rootDir}`,
+      },
+    },
+    required: ['containerPath', 'hostPath'],
+  },
+});
 
 export const sendMessageDef: FunctionDef = {
   name: 'sendMessage',

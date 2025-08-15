@@ -1,7 +1,17 @@
-import { describe, test, expect, beforeAll, afterEach } from 'vitest';
+import { describe, test, expect, beforeAll, afterEach, beforeEach } from 'vitest';
 import Docker from 'dockerode';
-import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../src/utils/docker-utils.js';
+import fs from 'fs';
+import path from 'path';
+import {
+  pullImage,
+  createAndStartContainer,
+  executeCommand,
+  stopContainer,
+  copyToContainer,
+  copyFromContainer,
+} from '../src/utils/docker-utils.js';
 import type { AllowedDockerImage } from '../src/prompt/function-defs/run-container-task.js';
+import { rcConfig } from '../src/main/config.js';
 
 /**
  * End-to-end tests for Docker utilities
@@ -101,16 +111,20 @@ describe('Docker Utils E2E Tests', () => {
     testContainer = await createAndStartContainer(docker, testImage);
 
     // Test basic command execution
-    const result1 = await executeCommand(testContainer, 'echo "Hello Docker"');
+    const result1 = await executeCommand(testContainer, 'echo "Hello Docker"', '/');
     expect(result1.output).toBe('Hello Docker');
     expect(result1.exitCode).toBe(0);
 
     // Test command with non-zero exit code
-    const result2 = await executeCommand(testContainer, 'exit 1');
+    const result2 = await executeCommand(testContainer, 'exit 1', '/');
     expect(result2.exitCode).toBe(1);
 
     // Test file operations
-    const result3 = await executeCommand(testContainer, 'echo "test content" > /tmp/test.txt && cat /tmp/test.txt');
+    const result3 = await executeCommand(
+      testContainer,
+      'echo "test content" > /tmp/test.txt && cat /tmp/test.txt',
+      '/',
+    );
     expect(result3.output).toBe('test content');
     expect(result3.exitCode).toBe(0);
   }, 30000);
@@ -125,7 +139,7 @@ describe('Docker Utils E2E Tests', () => {
     testContainer = await createAndStartContainer(docker, testImage);
 
     // Test command that doesn't exist
-    const result = await executeCommand(testContainer, 'nonexistentcommand');
+    const result = await executeCommand(testContainer, 'nonexistentcommand', '/');
     expect(result.exitCode).not.toBe(0);
     expect(result.output).toContain('not found');
   }, 30000);
@@ -144,7 +158,7 @@ describe('Docker Utils E2E Tests', () => {
 
     // Verify container is stopped by checking if we can still execute commands
     // This should fail since container is stopped
-    await expect(executeCommand(testContainer, 'echo "test"')).rejects.toThrow();
+    await expect(executeCommand(testContainer, 'echo "test"', '/')).rejects.toThrow();
 
     testContainer = null; // Mark as cleaned up
   }, 30000);
@@ -158,15 +172,131 @@ describe('Docker Utils E2E Tests', () => {
     testContainer = await createAndStartContainer(docker, testImage);
 
     // Test working directory
-    const pwdResult = await executeCommand(testContainer, 'pwd');
+    const pwdResult = await executeCommand(testContainer, 'pwd', '/');
     expect(pwdResult.output).toBe('/');
 
     // Test environment variables
-    const envResult = await executeCommand(testContainer, 'echo $HOME');
+    const envResult = await executeCommand(testContainer, 'echo $HOME', '/');
     expect(envResult.output).toBe('/root');
 
     // Test creating and changing directory
-    const cdResult = await executeCommand(testContainer, 'mkdir -p /test/dir && cd /test/dir && pwd');
+    const cdResult = await executeCommand(testContainer, 'mkdir -p /test/dir && pwd', '/test/dir');
     expect(cdResult.output).toBe('/test/dir');
   }, 30000);
+
+  describe('File Transfer Tests', () => {
+    const tempDirHost = path.join(rcConfig.rootDir, 'temp-test-dir-host');
+    const tempDirHostNested = path.join(tempDirHost, 'nested');
+    const tempDirFromContainer = path.join(rcConfig.rootDir, 'temp-test-dir-from-container');
+
+    beforeEach(() => {
+      // Clean up and create temp directories for each test
+      if (fs.existsSync(tempDirHost)) fs.rmSync(tempDirHost, { recursive: true, force: true });
+      if (fs.existsSync(tempDirFromContainer)) fs.rmSync(tempDirFromContainer, { recursive: true, force: true });
+      fs.mkdirSync(tempDirHostNested, { recursive: true });
+      fs.mkdirSync(tempDirFromContainer, { recursive: true });
+    });
+
+    afterEach(() => {
+      // Cleanup temp directories
+      if (fs.existsSync(tempDirHost)) fs.rmSync(tempDirHost, { recursive: true, force: true });
+      if (fs.existsSync(tempDirFromContainer)) fs.rmSync(tempDirFromContainer, { recursive: true, force: true });
+    });
+
+    test('should copy a directory with nested files to the container', async () => {
+      if (!isDockerAvailable) {
+        console.log('Skipping test - Docker not available');
+        return;
+      }
+
+      // 1. Create a nested directory structure on the host
+      fs.writeFileSync(path.join(tempDirHost, 'root.txt'), 'root file');
+      fs.writeFileSync(path.join(tempDirHostNested, 'nested.txt'), 'nested file');
+      fs.mkdirSync(path.join(tempDirHostNested, 'empty-dir'));
+
+      // 2. Setup container
+      testContainer = await createAndStartContainer(docker, testImage);
+      await executeCommand(testContainer, 'mkdir /data', '/');
+
+      // 3. Copy to container
+      await copyToContainer(testContainer, tempDirHost, '/data');
+
+      // 4. Verify the structure inside the container
+      const { output, exitCode } = await executeCommand(testContainer, 'find /data', '/');
+      expect(exitCode).toBe(0);
+      const files = output
+        .split('\\n')
+        .map((f) => f.trim())
+        .sort();
+
+      expect(files).toContain('/data/root.txt');
+      expect(files).toContain('/data/nested/nested.txt');
+      expect(files).toContain('/data/nested/empty-dir');
+
+      // 5. Verify file content
+      const rootContent = await executeCommand(testContainer, 'cat /data/root.txt', '/');
+      expect(rootContent.output).toBe('root file');
+
+      const nestedContent = await executeCommand(testContainer, 'cat /data/nested/nested.txt', '/');
+      expect(nestedContent.output).toBe('nested file');
+    }, 60000);
+
+    test('should copy a directory with nested files from the container', async () => {
+      if (!isDockerAvailable) {
+        console.log('Skipping test - Docker not available');
+        return;
+      }
+
+      // 1. Setup container and create file structure inside it
+      testContainer = await createAndStartContainer(docker, testImage);
+      await executeCommand(testContainer, 'mkdir -p /app/src && echo "source" > /app/src/index.js', '/');
+      await executeCommand(testContainer, 'mkdir -p /app/test && echo "test" > /app/test/index.test.js', '/');
+
+      // 2. Copy from container
+      await copyFromContainer(testContainer, '/app', tempDirFromContainer);
+
+      // 3. Verify the structure on the host
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'src/index.js'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'test/index.test.js'))).toBe(true);
+
+      // 4. Verify file content
+      const sourceContent = fs.readFileSync(path.join(tempDirFromContainer, 'src/index.js'), 'utf-8');
+      expect(sourceContent.trim()).toBe('source');
+      const testContent = fs.readFileSync(path.join(tempDirFromContainer, 'test/index.test.js'), 'utf-8');
+      expect(testContent.trim()).toBe('test');
+    }, 60000);
+
+    test('should perform a round-trip copy (host -> container -> host)', async () => {
+      if (!isDockerAvailable) {
+        console.log('Skipping test - Docker not available');
+        return;
+      }
+
+      // 1. Create initial host structure
+      fs.writeFileSync(path.join(tempDirHost, 'file1.txt'), 'file one');
+      fs.writeFileSync(path.join(tempDirHostNested, 'file2.txt'), 'file two');
+
+      // 2. Setup container
+      testContainer = await createAndStartContainer(docker, testImage);
+      await executeCommand(testContainer, 'mkdir /data_in', '/');
+
+      // 3. Copy to container
+      await copyToContainer(testContainer, tempDirHost, '/data_in');
+
+      // 4. Verify in container
+      const findInResult = await executeCommand(testContainer, 'find /data_in', '/');
+      expect(findInResult.output).toContain('/data_in/nested/file2.txt');
+
+      // 5. Copy from container to a different host directory
+      await copyFromContainer(testContainer, '/data_in', tempDirFromContainer);
+
+      // 6. Verify the round-tripped structure on the host
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'file1.txt'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDirFromContainer, 'nested/file2.txt'))).toBe(true);
+      const content1 = fs.readFileSync(path.join(tempDirFromContainer, 'file1.txt'), 'utf-8');
+      expect(content1).toBe('file one');
+      const content2 = fs.readFileSync(path.join(tempDirFromContainer, 'nested/file2.txt'), 'utf-8');
+      expect(content2).toBe('file two');
+    }, 60000);
+  });
 });
