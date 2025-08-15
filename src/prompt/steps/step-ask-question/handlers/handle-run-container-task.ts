@@ -1,7 +1,7 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, PromptItem } from '../../../../ai-service/common-types.js';
 import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js';
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../main/common/content-bus.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import {
@@ -11,11 +11,13 @@ import {
   wrapContextDef,
   setExecutionPlanDef,
   updateExecutionPlanDef,
+  sendMessageDef,
 } from '../../../function-defs/container-task-commands.js';
 import { pullImage, createAndStartContainer, executeCommand, stopContainer } from '../../../../utils/docker-utils.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
 import { AllowedDockerImage } from '../../../function-defs/run-container-task.js';
 import { estimateTokenCount } from '../../../../prompt/token-estimator.js';
+import { askUserForConfirmation, askUserForInput } from '../../../../main/common/user-actions.js';
 
 /**
  * Arguments for the runContainerTask action
@@ -52,6 +54,7 @@ export type FailTaskArgs = {
 export type WrapContextArgs = { summary: string };
 export type SetExecutionPlanArgs = { plan: string };
 export type UpdateExecutionPlanArgs = { progress: string };
+export type SendMessageArgs = { message: string; isQuestion: boolean };
 
 registerActionHandler('runContainerTask', handleRunContainerTask);
 
@@ -60,6 +63,7 @@ export async function handleRunContainerTask({
   prompt,
   generateContentFn,
   options,
+  waitIfPaused,
 }: ActionHandlerProps): Promise<ActionResult> {
   try {
     putSystemMessage('Container task: generating proper task request');
@@ -114,6 +118,27 @@ export async function handleRunContainerTask({
       return { breakLoop: false, items: [] };
     }
 
+    const confirmation = await askUserForConfirmation(
+      `Do you want to run the following task in a container with image "${runContainerTaskCall.args.image}"?\n\nTask: ${runContainerTaskCall.args.taskDescription}`,
+      true,
+      options,
+    );
+
+    if (!confirmation.confirmed) {
+      putSystemMessage('Container task cancelled by user.');
+      prompt.push(
+        {
+          type: 'assistant',
+          text: askQuestionCall.args!.message,
+        },
+        {
+          type: 'user',
+          text: 'User cancelled the container task.',
+        },
+      );
+      return { breakLoop: false, items: [] };
+    }
+
     const { image, taskDescription } = runContainerTaskCall.args;
     const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -149,12 +174,15 @@ export async function handleRunContainerTask({
     try {
       container = await createAndStartContainer(docker, image);
 
-      const { success, summary } = await commandExecutionLoop(container, taskDescription, generateContentFn, options);
+      const { success, summary } = await commandExecutionLoop(
+        container,
+        taskDescription,
+        generateContentFn,
+        options,
+        waitIfPaused,
+      );
 
-      const finalMessage = `✅ Task finished with status: ${success ? 'Success' : 'Failed'}.
-
-**Summary:**
-${summary}`;
+      const finalMessage = `✅ Task finished with status: ${success ? 'Success' : 'Failed'}.\n\n**Summary:**\n${summary}`;
 
       putSystemMessage(finalMessage);
 
@@ -175,7 +203,7 @@ ${summary}`;
           ],
         },
       );
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       putSystemMessage(`❌ An error occurred during the container task: ${errorMessage}`);
@@ -215,11 +243,11 @@ ${summary}`;
       },
       {
         type: 'user',
-        text: `Error during container task initialization.`,
+        text: `Error during container task initialization: ${errorMessage}`,
       },
     );
 
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 }
 
@@ -228,6 +256,7 @@ async function commandExecutionLoop(
   taskDescription: string,
   generateContentFn: ActionHandlerProps['generateContentFn'],
   options: ActionHandlerProps['options'],
+  waitIfPaused: ActionHandlerProps['waitIfPaused'],
 ): Promise<{ success: boolean; summary: string }> {
   let success = false;
   let summary = '';
@@ -255,12 +284,13 @@ Best Practices:
 - Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below 10 messages or 4096 tokens, whichever is smaller.
 
 You have access to the following functions:
-- runCommand(command, reasoning): Execute a shell command in the container
+- runCommand(command, reasoning, workingDir): Execute a shell command in the container
 - completeTask(summary): Mark the task as successfully completed with a summary
 - failTask(reason): Mark the task as failed with a reason
 - wrapContext(summary): Condense prior conversation into one succinct entry when context grows or after milestones.
 - setExecutionPlan(plan): Record a brief plan to follow.
 - updateExecutionPlan(progress): Update plan progress and next steps.
+- sendMessage(message, isQuestion): Sends a message to the user, optionally marking it as a question, when user input is expected.
 
 Execute commands step by step to complete the task. After each command, you will see the output and can decide on the next command. When the task is complete or if you determine it cannot be completed, use the appropriate completion function.
 
@@ -270,10 +300,7 @@ You may also provide reasoning text before function calls to explain your approa
   // Build the initial user message with task description only
   const taskPrompt: PromptItem = {
     type: 'user',
-    text: `Overall Task:
-${taskDescription}
-
-Begin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
+    text: `Overall Task:\n${taskDescription}\n\nBegin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };
 
   // Context size management
@@ -319,6 +346,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      await waitIfPaused();
       // Report current context metrics (to UI and to the model)
       pushContextMetrics();
 
@@ -348,6 +376,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
             wrapContextDef,
             setExecutionPlanDef,
             updateExecutionPlanDef,
+            sendMessageDef,
           ],
           temperature: 0.7,
           modelType: ModelType.LITE,
@@ -370,6 +399,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
           | WrapContextArgs
           | SetExecutionPlanArgs
           | UpdateExecutionPlanArgs
+          | SendMessageArgs
         >
       >;
 
@@ -498,6 +528,43 @@ Begin by analyzing the task and formulating your approach. Then start executing 
               },
             );
           }
+          continue;
+        }
+
+        if (actionResult.name === 'sendMessage') {
+          const args = actionResult.args as SendMessageArgs;
+          putAssistantMessage(args.message);
+
+          taskExecutionPrompt.push({
+            type: 'assistant',
+            functionCalls: [actionResult],
+          });
+
+          if (args.isQuestion) {
+            const response = await askUserForInput('Your answer', args.message, options);
+            putUserMessage(response.answer);
+            taskExecutionPrompt.push({
+              type: 'user',
+              text: response.answer,
+              functionResponses: [
+                {
+                  name: 'sendMessage',
+                  call_id: actionResult.id || undefined,
+                },
+              ],
+            });
+          } else {
+            taskExecutionPrompt.push({
+              type: 'user',
+              functionResponses: [
+                {
+                  name: 'sendMessage',
+                  call_id: actionResult.id || undefined,
+                },
+              ],
+            });
+          }
+
           continue;
         }
 

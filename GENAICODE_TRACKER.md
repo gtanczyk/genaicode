@@ -12,9 +12,10 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 ## Issues
 
 - [x] [GEN-120] 2025-08-10: Container task loop: handle multiple function calls per model response and add context metrics feedback (messages count and estimated tokens) each iteration.
+- [-] [GEN-121] 2025-08-10: Container task loop: allow LLM to ask user questions and send messages; add user confirmation before starting the task.
 - [x] [GEN-119] 2025-08-09: Container task loop: added wrapContext, setExecutionPlan, updateExecutionPlan tools and referenced them in the system prompt.
 
-- [-] [GEN-118] 2025-07-26: Implement `runContainerTask` action to execute multi-step tasks in a sandboxed Docker environment.
+- [x] [GEN-118] 2025-07-26: Implement `runContainerTask` action to execute multi-step tasks in a sandboxed Docker environment.
 - [x] [GEN-118] 2025-08-07: Fix StyledTextarea to preserve auto-grow for short content and enable vertical scrolling when exceeding max viewport height; added resize handling and -webkit-overflow-scrolling.
 - [x] [GEN-115] 2025-07-06: Render markdown in frontend chat messages, codegen planning, codegen summary, and file prompts.
 - [ ] [GEN-113] 2025-07-05: Add per-model configuration for enabling 'thinking' and setting a 'thinking budget'.
@@ -41,7 +42,6 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [-] [GEN-093] 2024-08-16: Refactor conversation summary prompt generation - Extracted prompt creation logic from `step-generate-summary.ts` into `prepareSummaryPrompt` and updated evaluation tests (`conversation-summary.test.ts`) to use it for consistency.
 - [-] [GEN-092] 2024-08-15: Refactored modelOverrides to support per-model systemInstruction and outputTokenLimit configuration, allowing different settings for individual models rather than just per service.
 - [-] [GEN-091] 2024-08-14: Enhanced OpenAI service to fully support `expectedResponseType` parameter, allowing callers to specify whether they expect text, function calls, or both in responses.
-- [-] [GEN-090] 2024-08-13: Add `outputTokenLimit` to `modelOverrides` in `.genaicoderc` to allow customizing max output tokens per service.
 - [-] [GEN-089] 2024-08-09: Fix multiple failing unit tests across various test suites.
 - [-] [GEN-088] 2024-08-08: Fixed TypeScript errors in multiple test files
 - [-] [GEN-087] 2024-08-07: Refactor Plugin AI Services (Grok, Deepseek, Fake) to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent` to use the new interface.
@@ -98,18 +98,4 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details
 - [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle
 - [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts
-- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts
-- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature
-- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature
-- [x] [GEN-014] 2023-12-27: Add old content handling to file updates
-- [x] [GEN-013] 2023-12-26: Add FileUpdateView component
-- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal
-- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration
-- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates
-- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement
-- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration
-- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook
-- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance
-- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc
-- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry
-- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display
+- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts\n- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature\n- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature\n- [x] [GEN-014] 2023-12-27: Add old content handling to file updates\n- [x] [GEN-013] 2023-12-26: Add FileUpdateView component\n- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal\n- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration\n- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates\n- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement\n- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration\n- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook\n- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance\n- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc\n- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry\n- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display\n"}}
