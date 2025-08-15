@@ -272,8 +272,8 @@ export async function handleRunContainerTask({
   }
 }
 
-const MAX_CONTEXT_ITEMS = 50;
-const MAX_CONTEXT_SIZE = 4096;
+const MAX_CONTEXT_ITEMS = 25;
+const MAX_CONTEXT_SIZE = 2048;
 
 async function commandExecutionLoop(
   container: Docker.Container,
@@ -284,7 +284,7 @@ async function commandExecutionLoop(
 ): Promise<{ success: boolean; summary: string }> {
   let success = false;
   let summary = '';
-  const maxCommands = 50;
+  const maxCommands = 100;
   const taskExecutionPrompt: PromptItem[] = [];
 
   // Helper to truncate long content
@@ -308,17 +308,17 @@ Best Practices:
 - Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below ${MAX_CONTEXT_ITEMS} messages or ${MAX_CONTEXT_SIZE} tokens, whichever is smaller.
 
 You have access to the following functions:
-- runCommand(command, reasoning, workingDir): Execute a shell command in the container
-- completeTask(summary): Mark the task as successfully completed with a summary
-- failTask(reason): Mark the task as failed with a reason
-- wrapContext(summary): Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
-- setExecutionPlan(plan): Record a brief plan to follow.
-- updateExecutionPlan(progress): Update plan progress and next steps.
-- sendMessage(message, isQuestion): Sends a message to the user, optionally marking it as a question, when user input is expected.
+- runCommand: Execute a shell command in the container, and wait for the result.
+- completeTask: Mark the task as successfully completed with a summary
+- failTask: Mark the task as failed with a reason
+- wrapContext: Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
+- setExecutionPlan: Record a brief plan to follow.
+- updateExecutionPlan: Update plan progress and next steps.
+- sendMessage: Sends a message to the user, optionally marking it as a question, when user input is expected.
 
-- sendMessage(message, isQuestion): Sends a message to the user, optionally marking it as a question, when user input is expected.
-- copyToContainer(hostPath, containerPath): Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
-- copyFromContainer(containerPath, hostPath): Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
+- sendMessage: Sends a message to the user, optionally marking it as a question, when user input is expected.
+- copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
+- copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.`,
   };
@@ -391,24 +391,15 @@ You may also provide reasoning text before function calls to explain your approa
       // Report current context metrics (to UI and to the model)
       pushContextMetrics();
 
-      // Manage context size - keep only recent items if context grows too large
-      let currentPrompt = taskExecutionPrompt;
-      if (currentPrompt.length > MAX_CONTEXT_ITEMS) {
-        // Keep the first few and last several items, removing middle ones
-        const keepStart = 2;
-        const keepEnd = MAX_CONTEXT_ITEMS - keepStart - 5;
-        currentPrompt = [
-          ...currentPrompt.slice(0, keepStart),
-          {
-            type: 'user',
-            text: '[... earlier commands truncated for context management ...]',
-          },
-          ...currentPrompt.slice(-keepEnd),
-        ];
+      if (i === maxCommands - 10) {
+        taskExecutionPrompt.push({
+          type: 'user',
+          text: `[context] nearing command limit of ${maxCommands}! 10 commands remaining! Start finishing up.`,
+        });
       }
 
       const modelResponse = await generateContentFn(
-        [systemPrompt, taskPrompt, ...currentPrompt],
+        [systemPrompt, taskPrompt, ...taskExecutionPrompt],
         {
           functionDefs: [
             runCommandDef,

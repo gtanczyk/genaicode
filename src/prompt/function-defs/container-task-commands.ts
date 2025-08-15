@@ -57,16 +57,31 @@ export const failTaskDef: FunctionDef = {
 
 export const wrapContextDef: FunctionDef = {
   name: 'wrapContext',
-  description: 'Replace prior conversation in the loop with a concise, single-entry summary for continued processing.',
+  description: 'Replace prior conversation in the loop with a concise summary for continued processing.',
   parameters: {
     type: 'object',
     properties: {
       summary: {
         type: 'string',
-        description: 'A compact summary of prior steps and important findings to keep for next actions.',
+        description: 'A summary of prior steps and important findings to keep for next actions.',
+      },
+      importantFiles: {
+        type: 'array',
+        items: {
+          type: 'string',
+          description: 'Paths to important files to keep for next actions.',
+        },
+      },
+      plan: {
+        type: 'string',
+        description: 'A concise plan outlining the steps to be taken.',
+      },
+      nextStep: {
+        type: 'string',
+        description: 'The next step to take in the process.',
       },
     },
-    required: ['summary'],
+    required: ['summary', 'importantFiles', 'plan', 'nextStep'],
   },
 };
 
