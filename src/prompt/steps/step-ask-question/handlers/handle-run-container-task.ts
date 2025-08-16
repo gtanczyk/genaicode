@@ -43,6 +43,7 @@ export type RunContainerTaskArgs = {
  */
 export type RunCommandArgs = {
   command: string;
+  stdin?: string;
   workingDir: string;
   reasoning: string;
 };
@@ -140,11 +141,11 @@ export async function handleRunContainerTask({
       return { breakLoop: false, items: [] };
     }
 
-    const confirmation = await askUserForConfirmation(
-      `Do you want to run the following task in a container with image "${runContainerTaskCall.args.image}"?\n\nTask: ${runContainerTaskCall.args.taskDescription}`,
-      true,
-      options,
+    putAssistantMessage(
+      `I would like to run a container task with image: ${runContainerTaskCall.args.image}\n\nTask description:\n\n${runContainerTaskCall.args.taskDescription}`,
     );
+
+    const confirmation = await askUserForConfirmation(`Do you want to run the task?`, true, options);
 
     if (!confirmation.confirmed) {
       putSystemMessage('Container task cancelled by user.');
@@ -169,7 +170,7 @@ export async function handleRunContainerTask({
       await pullImage(docker, image);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      putSystemMessage(`❌ Failed to pull Docker image: ${errorMessage}`);
+      putSystemMessage('❌ Failed to pull Docker image', { error: errorMessage });
 
       prompt.push(
         {
@@ -227,7 +228,7 @@ export async function handleRunContainerTask({
       return { breakLoop: false, items: [] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      putSystemMessage(`❌ An error occurred during the container task: ${errorMessage}`);
+      putSystemMessage('❌ An error occurred during the container task', { error: errorMessage });
 
       prompt.push(
         {
@@ -255,7 +256,7 @@ export async function handleRunContainerTask({
   } catch (error) {
     // Handle errors gracefully
     const errorMessage = error instanceof Error ? error.message : String(error);
-    putSystemMessage(`Error during container task initialization: ${errorMessage}`);
+    putSystemMessage('Error during container task initialization', { error: errorMessage });
 
     prompt.push(
       {
@@ -314,9 +315,6 @@ You have access to the following functions:
 - wrapContext: Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
 - setExecutionPlan: Record a brief plan to follow.
 - updateExecutionPlan: Update plan progress and next steps.
-- sendMessage: Sends a message to the user, optionally marking it as a question, when user input is expected.
-
-- sendMessage: Sends a message to the user, optionally marking it as a question, when user input is expected.
 - copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
 
@@ -378,7 +376,7 @@ You may also provide reasoning text before function calls to explain your approa
     if (messageCount > MAX_CONTEXT_ITEMS || estimatedTokens > MAX_CONTEXT_SIZE) {
       taskExecutionPrompt.push({
         type: 'user',
-        text: `[context] size exceeded limits: ${messageCount} messages, ${estimatedTokens} tokens. Consider wrapping context.`,
+        text: `[context] size exceeded limits: ${messageCount} messages, ${estimatedTokens} tokens. You must wrap the context using the wrapContext function!`,
       });
     }
   };
@@ -514,7 +512,7 @@ You may also provide reasoning text before function calls to explain your approa
           if (!args?.summary) {
             putSystemMessage('⚠️ wrapContext called without summary; ignoring.');
           } else {
-            putSystemMessage('🗂️ Context wrapped by internal operator.');
+            putSystemMessage('🗂️ Context wrapped by internal operator.', args);
 
             const assistantMsg: PromptItem = {
               type: 'assistant',
@@ -548,7 +546,7 @@ You may also provide reasoning text before function calls to explain your approa
           if (!args?.plan) {
             putSystemMessage('⚠️ setExecutionPlan called without plan; ignoring.');
           } else {
-            putSystemMessage('📝 Execution plan recorded.');
+            putSystemMessage('📝 Execution plan recorded.', args);
 
             taskExecutionPrompt.push(
               { type: 'assistant', text: 'Setting execution plan.', functionCalls: [actionResult] },
@@ -566,7 +564,7 @@ You may also provide reasoning text before function calls to explain your approa
           if (!args?.progress) {
             putSystemMessage('⚠️ updateExecutionPlan called without progress; ignoring.');
           } else {
-            putSystemMessage('📈 Execution plan updated.');
+            putSystemMessage('📈 Execution plan updated.', args);
 
             taskExecutionPrompt.push(
               { type: 'assistant', text: 'Updating execution plan.', functionCalls: [actionResult] },
@@ -618,7 +616,7 @@ You may also provide reasoning text before function calls to explain your approa
 
         if (actionResult.name === 'runCommand') {
           const args = actionResult.args as RunCommandArgs;
-          const { command, workingDir, reasoning } = args;
+          const { command, workingDir, reasoning, stdin } = args;
 
           if (commandsExecuted >= maxCommands) {
             putSystemMessage('⚠️ Reached maximum command limit.');
@@ -627,10 +625,9 @@ You may also provide reasoning text before function calls to explain your approa
             break;
           }
 
-          putSystemMessage(`Executing command: \`\`\`sh\n${command}\n\`\`\` in working directory: ${workingDir}`);
-          putSystemMessage(`Reasoning: ${reasoning}`);
+          putSystemMessage(`💿 Executing command: ${reasoning}`, args);
 
-          const { output, exitCode } = await executeCommand(container, command, workingDir);
+          const { output, exitCode } = await executeCommand(container, command, stdin, workingDir);
 
           // Truncate excessive output to manage context size
           let managedOutput = output;
@@ -665,8 +662,11 @@ You may also provide reasoning text before function calls to explain your approa
 
         if (actionResult.name === 'copyToContainer') {
           const args = actionResult.args as CopyToContainerArgs;
+          putAssistantMessage(
+            `Preparing to copy from host path "${args.hostPath}" to container path "${args.containerPath}".`,
+          );
           const confirmation = await askUserForConfirmation(
-            `Do you want to copy from host path "${args.hostPath}" to container path "${args.containerPath}"?`,
+            `Do you want to proceed with the copy operation?`,
             true,
             options,
           );
@@ -712,7 +712,7 @@ You may also provide reasoning text before function calls to explain your approa
             );
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            putSystemMessage(`❌ Error copying to container: ${errorMessage}`);
+            putSystemMessage('❌ Error copying to container', { error: errorMessage });
             taskExecutionPrompt.push(
               {
                 type: 'assistant',
@@ -761,11 +761,10 @@ You may also provide reasoning text before function calls to explain your approa
             }
 
             const fileListStr = filesToCopy.map((f) => `  - ${f}`).join('\n');
-            const confirmation = await askUserForConfirmation(
-              `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\n${fileListStr}\n\nDo you want to proceed?`,
-              true,
-              options,
+            putAssistantMessage(
+              `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\n${fileListStr}`,
             );
+            const confirmation = await askUserForConfirmation(`Do you want to proceed?`, true, options);
 
             if (!confirmation.confirmed) {
               putSystemMessage('Copy from container cancelled by user.');
@@ -807,7 +806,7 @@ You may also provide reasoning text before function calls to explain your approa
             );
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            putSystemMessage(`❌ Error copying from container: ${errorMessage}`);
+            putSystemMessage('❌ Error copying from container', { error: errorMessage });
             taskExecutionPrompt.push(
               {
                 type: 'assistant',
@@ -830,6 +829,16 @@ You may also provide reasoning text before function calls to explain your approa
 
         // Unknown function call - log and continue
         putSystemMessage(`⚠️ Unknown function call received: ${actionResult.name}`);
+        taskExecutionPrompt.push({
+          type: 'user',
+          functionResponses: [
+            {
+              name: actionResult.name,
+              call_id: actionResult.id || undefined,
+              content: `Unknown function call: ${actionResult.name}`,
+            },
+          ],
+        });
       }
 
       if (shouldBreakOuter) {
@@ -837,7 +846,7 @@ You may also provide reasoning text before function calls to explain your approa
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      putSystemMessage(`❌ Error during command execution loop: ${errorMessage}`);
+      putSystemMessage('❌ Error during command execution loop', { error: errorMessage });
       summary = `Task failed: Error during execution - ${errorMessage}`;
       break;
     }

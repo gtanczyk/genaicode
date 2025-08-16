@@ -64,16 +64,24 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
 export async function executeCommand(
   container: Docker.Container,
   command: string,
+  stdin: string | undefined,
   workingDir: string,
 ): Promise<{ output: string; exitCode: number }> {
   const exec = await container.exec({
     Cmd: ['/bin/sh', '-c', command],
     WorkingDir: workingDir,
+    AttachStdin: true,
+    Tty: false,
     AttachStdout: true,
     AttachStderr: true,
   });
 
-  const stream = await exec.start({});
+  const stream = await exec.start({ hijack: true, stdin: true });
+  if (stdin) {
+    stream.write(stdin);
+  }
+  stream.end();
+
   let output = '';
 
   // Collect output from the stream

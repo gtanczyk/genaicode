@@ -4,13 +4,19 @@ import { rcConfig } from '../../main/config.js';
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
   description: `Execute a shell command in the Docker container.
-IMPORTANT: The command will block you until it completes, so consider using a non-blocking approach if needed.`,
+IMPORTANT: 
+- The command will block you until it completes, so consider using a non-blocking approach if needed.
+- For complex/long input you should prefer \`stdin\` over command-line arguments.`,
   parameters: {
     type: 'object',
     properties: {
       command: {
         type: 'string',
         description: 'The shell command to execute in the container.',
+      },
+      stdin: {
+        type: 'string',
+        description: 'Input to provide to the command via stdin.',
       },
       reasoning: {
         type: 'string',
@@ -19,6 +25,7 @@ IMPORTANT: The command will block you until it completes, so consider using a no
       workingDir: {
         type: 'string',
         description: 'Working directory inside the container to run the command in. This MUST be an absolute path.',
+        minLength: 1,
       },
     },
     required: ['command', 'workingDir', 'reasoning'],
