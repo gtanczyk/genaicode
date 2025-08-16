@@ -276,7 +276,7 @@ describe('computePopularDependencies', () => {
 
   it('should ignore non-local dependencies', () => {
     const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 30; i++) {
       summaryCache[`file${i}.ts`] = {
         dependencies: [
           { path: 'popular.ts', type: 'local' },
