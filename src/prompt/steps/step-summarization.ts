@@ -15,7 +15,7 @@ import { generateFileId } from '../../files/file-id-utils.js';
 import { computePopularDependencies } from '../../files/source-code-utils.js';
 import { rcConfig } from '../../main/config.js';
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 25;
 const MAX_SUMMARY_TOKENS = 10;
 
 const SUMMARIZATION_PROMPT = `Your role is to summarize content of files in ${MAX_SUMMARY_TOKENS} tokens or fewer while also detecting dependencies. 
@@ -37,6 +37,7 @@ For dependencies:
 - Provide your response using the \`setSummaries\` function.
 - The file path must be absolute, exactly the same as you receive in the \`getSourceCode\` function responses.
 - Deduplicate dependencies if they are repeated in the code
+- Add only direct dependencies, do not include transitive dependencies.
 `;
 
 export function getSummarizationPrefix(
@@ -122,7 +123,7 @@ export async function summarizeSourceCode(
   // Compute and store popular dependencies
   const computedPopularDeps =
     rcConfig.popularDependencies?.enabled !== false
-      ? computePopularDependencies(summaryCache, rcConfig.popularDependencies?.threshold ?? 20)
+      ? computePopularDependencies(summaryCache, rcConfig.popularDependencies?.threshold ?? 25)
       : new Set<string>();
   popularDependencies.clear();
   computedPopularDeps.forEach((dep) => popularDependencies.add(dep));
@@ -156,45 +157,54 @@ async function summarizeBatch(
 
   putSystemMessage('Summarization of the source code is starting.', { files: uncachedItems.map((item) => item.path) });
 
+  const batches = [];
   for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
     const batch = uncachedItems.slice(i, i + BATCH_SIZE);
+    batches.push(batch);
+  }
 
-    const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
-    const request: GenerateContentArgs = [
-      prompt,
-      {
-        functionDefs: getFunctionDefs(),
-        requiredFunctionName: 'setSummaries',
-        temperature: 0.2,
-        modelType: ModelType.LITE,
-        expectedResponseType: { text: false, functionCall: true, media: false },
-      },
-      options,
-    ];
-    const result = (await generateContentFn(...request))
-      .filter((item) => item.type === 'functionCall')
-      .map((item) => item.functionCall);
+  await Promise.allSettled(
+    batches.map(async (batch) => {
+      const prompt: PromptItem[] = getSummarizationPrefix(batch, Object.keys(allSourceCodeMap));
+      const request: GenerateContentArgs = [
+        prompt,
+        {
+          functionDefs: getFunctionDefs(),
+          requiredFunctionName: 'setSummaries',
+          temperature: 0.2,
+          modelType: ModelType.LITE,
+          expectedResponseType: { text: false, functionCall: true, media: false },
+        },
+        options,
+      ];
+      const result = (await generateContentFn(...request))
+        .filter((item) => item.type === 'functionCall')
+        .map((item) => item.functionCall);
 
-    const batchSummaries = parseSummarizationResult(result);
-    batchSummaries.forEach((file) => {
-      const item = items.find((item) => item.path === file.filePath);
-      const content = item?.content ?? '';
-      summaryCache[file.filePath] = {
-        tokenCount: estimateTokenCount(content),
-        summary: file.summary,
-        checksum: md5(content),
-        dependencies: (file.dependencies ?? item?.dependencies ?? []).map((dep) => ({
+      const batchSummaries = parseSummarizationResult(result);
+      batchSummaries.forEach((file) => {
+        const item = items.find((item) => item.path === file.filePath);
+        const content = item?.content ?? '';
+        const dependencies = (file.dependencies ?? item?.dependencies ?? []).map((dep) => ({
           path: dep.type === 'local' ? parseLocalPath(dep, allSourceCodeMap) : dep.path,
           type: dep.type,
           fileId: dep.fileId,
-        })),
-      };
-    });
-  }
+        }));
+        const uniqueDependencies = Array.from(new Set(dependencies.map((dep) => JSON.stringify(dep)))).map((dep) =>
+          JSON.parse(dep),
+        );
+        summaryCache[file.filePath] = {
+          tokenCount: estimateTokenCount(content),
+          summary: file.summary,
+          checksum: md5(content),
+          dependencies: uniqueDependencies,
+        };
+      });
 
-  summaryCache._version = CACHE_VERSION;
-
-  writeCache('summaries', summaryCache);
+      summaryCache._version = CACHE_VERSION;
+      writeCache('summaries', summaryCache);
+    }),
+  );
 
   putSystemMessage('Summarization of the source code is finished.');
 }

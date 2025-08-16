@@ -93,7 +93,7 @@ export function getExpandedContextPaths(contextPaths: string[], options: Codegen
  * @param threshold The minimum number of times a file must be depended on to be considered popular.
  * @returns A Set of file paths for popular dependencies.
  */
-export function computePopularDependencies(summaryCache: SummaryCache, threshold = 20): Set<string> {
+export function computePopularDependencies(summaryCache: SummaryCache, threshold = 25): Set<string> {
   const dependencyCounts = new Map<string, number>();
 
   // Count occurrences of each dependency
