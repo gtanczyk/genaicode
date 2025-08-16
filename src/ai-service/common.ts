@@ -1,6 +1,6 @@
 import { AiServiceType } from './service-configurations-types.js';
 import { collectCost } from '../main/common/cost-collector.js';
-import { FunctionCall, FunctionDef, ModelType, TokenUsage } from './common-types.js';
+import { FunctionCall, FunctionDef, ModelType, PromptItem, TokenUsage } from './common-types.js';
 
 interface CostInfo {
   aiService: AiServiceType;
@@ -72,4 +72,22 @@ export function processFunctionCalls(functionCalls: FunctionCall[], functionDefs
   }
 
   return functionCalls;
+}
+
+/**
+ * Optimize function definitions based on prompt context
+ */
+export function optimizeFunctionDefs(
+  prompt: PromptItem[],
+  functionDefs: FunctionDef[] | undefined,
+  requiredFunctionName: string | undefined,
+): FunctionDef[] {
+  if (!functionDefs) return [];
+
+  const promptFunctionNames = new Set(
+    prompt.map((item) => item.functionCalls).flatMap((fcs) => fcs?.map((fc) => fc.name)),
+  );
+  return functionDefs.filter(
+    (def) => promptFunctionNames.has(def.name) || !requiredFunctionName || def.name === requiredFunctionName,
+  );
 }

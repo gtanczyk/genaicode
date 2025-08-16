@@ -1,6 +1,6 @@
 import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
 import assert from 'node:assert';
-import { printTokenUsageAndCost } from './common.js';
+import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import {
   GenerateContentFunction,
   GenerateContentResult,
@@ -33,7 +33,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 ): Promise<GenerateContentResult> {
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;
-  let functionDefs = config.functionDefs ?? [];
+  let functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
   let requiredFunctionName = config.requiredFunctionName ?? null;
   const expectedResponseType = config.expectedResponseType ?? { text: true, functionCall: true, media: false };
 

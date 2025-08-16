@@ -1,6 +1,6 @@
 import OpenAI, { APIError } from 'openai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost } from './common.js';
+import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { TokenUsage } from './common-types.js';
@@ -59,7 +59,7 @@ export async function internalGenerateContent(
 ): Promise<GenerateContentResult> {
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7; // Default temperature
-  const functionDefs = config.functionDefs ?? [];
+  const functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
   const requiredFunctionName = config.requiredFunctionName;
 
   // Get model-specific settings
@@ -255,6 +255,7 @@ export async function internalGenerateContent(
   // Print token usage for openai
   const usage: TokenUsage = {
     inputTokens: response.usage!.prompt_tokens - (response.usage?.prompt_tokens_details?.cached_tokens ?? 0),
+    thinkingTokens: response.usage!.completion_tokens_details?.reasoning_tokens,
     outputTokens: response.usage!.completion_tokens,
     totalTokens: response.usage!.total_tokens,
     cacheReadTokens: response.usage?.prompt_tokens_details?.cached_tokens,

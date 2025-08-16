@@ -1,12 +1,6 @@
 import OpenAI from 'openai';
 import assert from 'node:assert';
-import {
-  FunctionDef,
-  GenerateContentArgs,
-  GenerateContentFunction,
-  GenerateContentResult,
-  PromptItem,
-} from './common-types.js';
+import { GenerateContentArgs, GenerateContentFunction, GenerateContentResult } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { getServiceConfig } from './service-configurations.js';
 import { internalGenerateContent } from './openai.js';
@@ -53,11 +47,6 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     })();
 
-    if (config.functionDefs) {
-      // GH Models input token limit is very low (8k), so we need to cut something from the context
-      config.functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
-    }
-
     // Reuse OpenAI implementation since GitHub Models uses the same API format
     return internalGenerateContent(prompt, config, model, openai, 'github-models');
   } catch (error) {
@@ -67,16 +56,3 @@ export const generateContent: GenerateContentFunction = async function generateC
     throw error;
   }
 };
-
-function optimizeFunctionDefs(
-  prompt: PromptItem[],
-  functionDefs: FunctionDef[],
-  requiredFunctionName: string | undefined,
-): FunctionDef[] {
-  const promptFunctionNames = new Set(
-    prompt.map((item) => item.functionCalls).flatMap((fcs) => fcs?.map((fc) => fc.name)),
-  );
-  return functionDefs.filter(
-    (def) => promptFunctionNames.has(def.name) || !requiredFunctionName || def.name === requiredFunctionName,
-  );
-}

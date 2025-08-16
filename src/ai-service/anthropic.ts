@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
-import { printTokenUsageAndCost } from './common.js';
+import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import { GenerateContentFunction, GenerateContentResult, PromptItem } from './common-types.js';
 import { FunctionDef } from './common-types.js';
 import { ModelType } from './common-types.js';
@@ -33,7 +33,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 ): Promise<GenerateContentResult> {
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;
-  let functionDefs = config.functionDefs ?? [];
+  let functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
   let requiredFunctionName = config.requiredFunctionName ?? null;
   const expectedResponseType = config.expectedResponseType ?? { text: false, functionCall: true, media: false };
 

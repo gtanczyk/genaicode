@@ -16,7 +16,7 @@ import {
   SchemaType,
   Schema,
 } from '@google-cloud/vertexai';
-import { printTokenUsageAndCost } from './common.js';
+import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import {
   GenerateContentFunction,
   GenerateContentResult,
@@ -60,7 +60,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 
     const modelType = config.modelType ?? ModelType.DEFAULT;
     const temperature = config.temperature ?? 0.7;
-    const functionDefs = config.functionDefs ?? [];
+    const functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
     const requiredFunctionName = config.requiredFunctionName ?? null;
     const expectedResponseType = config.expectedResponseType ?? { text: false, functionCall: true, media: false };
 

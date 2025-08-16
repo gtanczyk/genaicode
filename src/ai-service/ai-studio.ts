@@ -11,7 +11,7 @@ import {
   Schema,
 } from '@google/genai';
 import assert from 'node:assert';
-import { printTokenUsageAndCost } from './common.js';
+import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import { GenerateContentFunction, GenerateContentResult, GenerateContentResultPart } from './common-types.js';
 import { PromptItem } from './common-types.js';
 import { FunctionCall } from './common-types.js';
@@ -48,7 +48,7 @@ export const generateContent: GenerateContentFunction = async function generateC
 ): Promise<GenerateContentResult> {
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;
-  const functionDefs = config.functionDefs ?? [];
+  const functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
   const requiredFunctionName = config.requiredFunctionName ?? null;
   const expectedResponseType = config.expectedResponseType ?? {
     text: false,

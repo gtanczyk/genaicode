@@ -5,6 +5,7 @@ import { FunctionCall } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { getServiceConfig } from './service-configurations.js';
 import { internalGenerateContent } from './openai.js'; // Import the exported function
+import { optimizeFunctionDefs } from './common.js';
 
 /**
  * This function generates content using the local llm service.
@@ -49,7 +50,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     const config: GenerateContentArgs[1] = {
       modelType,
       temperature,
-      functionDefs,
+      functionDefs: optimizeFunctionDefs(prompt, functionDefs, requiredFunctionName ?? undefined),
       requiredFunctionName,
       expectedResponseType: { functionCall: true, text: false, media: false }, // Old interface expects only function calls
     };
