@@ -44,6 +44,7 @@ export type RunContainerTaskArgs = {
 export type RunCommandArgs = {
   command: string;
   stdin?: string;
+  truncMode: 'start' | 'end';
   workingDir: string;
   reasoning: string;
 };
@@ -529,9 +530,19 @@ You may also provide reasoning text before function calls to explain your approa
               ],
             };
 
-            taskExecutionPrompt.push(assistantMsg, userResp);
-            // Replace accumulated history with the condensed entries
-            taskExecutionPrompt.splice(0, taskExecutionPrompt.length - 2);
+            const previousWraps = taskExecutionPrompt.filter(
+              (item) =>
+                item.functionCalls?.some((call) => call.name === 'wrapContext') ||
+                item.functionResponses?.some((resp) => resp.name === 'wrapContext'),
+            );
+            for (const wrap of previousWraps) {
+              delete wrap.text;
+              wrap.functionCalls = wrap.functionCalls?.filter((call) => call.name === 'wrapContext');
+              wrap.functionResponses = wrap.functionResponses?.filter((resp) => resp.name === 'wrapContext');
+            }
+
+            taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
+            taskExecutionPrompt.push(...previousWraps, assistantMsg, userResp);
 
             const { messageCount, estimatedTokens } = computeContextMetrics();
             if (messageCount < MAX_CONTEXT_ITEMS && estimatedTokens < MAX_CONTEXT_SIZE) {
@@ -616,7 +627,7 @@ You may also provide reasoning text before function calls to explain your approa
 
         if (actionResult.name === 'runCommand') {
           const args = actionResult.args as RunCommandArgs;
-          const { command, workingDir, reasoning, stdin } = args;
+          const { command, workingDir, reasoning, stdin, truncMode } = args;
 
           if (commandsExecuted >= maxCommands) {
             putSystemMessage('⚠️ Reached maximum command limit.');
@@ -632,7 +643,12 @@ You may also provide reasoning text before function calls to explain your approa
           // Truncate excessive output to manage context size
           let managedOutput = output;
           if (output.length > maxOutputLength) {
-            managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
+            if (truncMode === 'start') {
+              managedOutput =
+                output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
+            } else {
+              managedOutput = '[... output truncated for context management ...]' + output.slice(-maxOutputLength);
+            }
             putSystemMessage(`⚠️ Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
           }
 

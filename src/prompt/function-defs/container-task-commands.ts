@@ -6,21 +6,30 @@ export const runCommandDef: FunctionDef = {
   description: `Execute a shell command in the Docker container.
 IMPORTANT: 
 - The command will block you until it completes, so consider using a non-blocking approach if needed.
-- For complex/long input you should prefer \`stdin\` over command-line arguments.`,
+- For complex/long input you should prefer \`stdin\` over command-line arguments. For example instead of echo \`some long text\`, you can put the long text in the \`stdin\` field, and then use it in the command like this: \`cat | some_command\`.
+  `,
   parameters: {
     type: 'object',
     properties: {
-      command: {
-        type: 'string',
-        description: 'The shell command to execute in the container.',
-      },
-      stdin: {
-        type: 'string',
-        description: 'Input to provide to the command via stdin.',
-      },
       reasoning: {
         type: 'string',
         description: 'Explanation of why this command is needed for the task.',
+      },
+      command: {
+        type: 'string',
+        description:
+          'The shell command to execute in the container. Command must be 256 characters or less. If there is a need for a longer command, consider using a script file, and consider using `stdin` to pass the script contents.',
+        maxLength: 256,
+      },
+      stdin: {
+        type: 'string',
+        description:
+          'Input to provide to the command via stdin. Equivalent of `echo <stdin> | <command>`. Very good for long inputs, better than passing as command-line arguments in the command string parameter.',
+      },
+      truncMode: {
+        type: 'string',
+        description: 'Mode for truncating command output (e.g., "start", "end").',
+        enum: ['start', 'end'],
       },
       workingDir: {
         type: 'string',
@@ -28,7 +37,7 @@ IMPORTANT:
         minLength: 1,
       },
     },
-    required: ['command', 'workingDir', 'reasoning'],
+    required: ['reasoning', 'command', 'stdin', 'workingDir', 'truncMode'],
   },
 };
 
@@ -72,23 +81,28 @@ export const wrapContextDef: FunctionDef = {
         type: 'string',
         description: 'A summary of prior steps and important findings to keep for next actions.',
       },
+      plan: {
+        type: 'string',
+        description: 'A concise plan outlining the plan of action for the task.',
+      },
+      progress: {
+        type: 'string',
+        description: 'What was achieved so far? What are the outcomes?',
+      },
       importantFiles: {
         type: 'array',
         items: {
           type: 'string',
-          description: 'Paths to important files to keep for next actions.',
+          description: `Paths to important files to keep for next actions.
+It is critically IMPORTANT to keep track of files which are essential for the task. For example the files that were modified or created during the task so far.`,
         },
-      },
-      plan: {
-        type: 'string',
-        description: 'A concise plan outlining the steps to be taken.',
       },
       nextStep: {
         type: 'string',
         description: 'The next step to take in the process.',
       },
     },
-    required: ['summary', 'importantFiles', 'plan', 'nextStep'],
+    required: ['summary', 'plan', 'progress', 'importantFiles', 'nextStep'],
   },
 };
 
