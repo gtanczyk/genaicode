@@ -43,7 +43,7 @@ export interface HandleWrapContextProps extends CommandHandlerBaseProps {
   maxContextSize: number;
 }
 
-type WrapContextArgs = { summary: string };
+type WrapContextArgs = { summary: string; nextStep: string };
 
 export async function handleWrapContext(props: HandleWrapContextProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, computeContextMetrics, maxContextItems, maxContextSize } = props;
@@ -60,7 +60,7 @@ export async function handleWrapContext(props: HandleWrapContextProps): Promise<
     };
     const userResp: PromptItem = {
       type: 'user',
-      text: 'Please continue ',
+      text: `Please continue with the next step: ${args.nextStep}`,
       functionResponses: [
         {
           name: 'wrapContext',
