@@ -63,9 +63,9 @@ export async function handleCopyFromContainer(
       return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
     }
 
-    const fileListStr = filesToCopy.map((f) => `  - ${f}`).join('\\n');
+    const fileListStr = filesToCopy.map((f) => `  - ${f}`).join('\n');
     putAssistantMessage(
-      `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\\n${fileListStr}`,
+      `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\n${fileListStr}`,
     );
     const confirmation = await askUserForConfirmation(`Do you want to proceed?`, true, options);
 

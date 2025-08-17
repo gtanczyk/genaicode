@@ -75,7 +75,7 @@ export async function runContainerTaskOrchestrator({
     }
 
     putAssistantMessage(
-      `I would like to run a container task with image: ${runContainerTaskCall.args.image}\\n\\nTask description:\\n\\n${runContainerTaskCall.args.taskDescription}`,
+      `I would like to run a container task with image: ${runContainerTaskCall.args.image}\n\nTask description:\n\n${runContainerTaskCall.args.taskDescription}`,
     );
 
     const confirmation = await askUserForConfirmation(`Do you want to run the task?`, true, options);
@@ -139,7 +139,7 @@ export async function runContainerTaskOrchestrator({
 
       const finalMessage = `✅ Task finished with status: ${
         success ? 'Success' : 'Failed'
-      }.\\n\\n**Summary:**\\n${summary}`;
+      }.\n\n**Summary:**\n${summary}`;
 
       putSystemMessage(finalMessage);
 

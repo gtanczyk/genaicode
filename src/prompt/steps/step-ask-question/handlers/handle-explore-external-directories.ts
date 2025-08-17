@@ -182,7 +182,7 @@ export async function handleExploreExternalDirectories({
           const synthesisPrompt: PromptItem[] = [
             {
               type: 'user',
-              text: `You explored directories and found ${filePaths.length} files because: ${reason}.\nFiles:\n${filePaths.join('\\n')}\n\nBased on this reason, provide a concise and helpful output. Choose the most suitable format from summary, categorized list, or plain file list.`,
+              text: `You explored directories and found ${filePaths.length} files because: ${reason}.\nFiles:\n${filePaths.join('\n')}\n\nBased on this reason, provide a concise and helpful output. Choose the most suitable format from summary, categorized list, or plain file list.`,
             },
           ];
 

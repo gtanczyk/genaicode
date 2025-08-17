@@ -58,7 +58,7 @@ You may also provide reasoning text before function calls to explain your approa
 
   const taskPrompt: PromptItem = {
     type: 'user',
-    text: `Overall Task:\\n${taskDescription}\\n\\nBegin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
+    text: `Overall Task:\n${taskDescription}\n\nBegin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };
 
   const collectTexts = (items: PromptItem[]): string[] => {

@@ -67,7 +67,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   let managedOutput = output;
   if (output.length > maxOutputLength) {
     if (truncMode === 'start') {
-      managedOutput = output.slice(0, maxOutputLength) + '\\n\\n[... output truncated for context management ...]';
+      managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
     } else {
       managedOutput = '[... output truncated for context management ...]' + output.slice(-maxOutputLength);
     }
@@ -88,7 +88,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
         {
           name: 'runCommand',
           call_id: actionResult.id || undefined,
-          content: `Command executed successfully.\\n\\nOutput:\\n${managedOutput}\\n\\nExit Code: ${exitCode}`,
+          content: `Command executed successfully.\n\nOutput:\n${managedOutput}\n\nExit Code: ${exitCode}`,
         },
       ],
     },
