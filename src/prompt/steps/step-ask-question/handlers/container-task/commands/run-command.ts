@@ -1,7 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
 import { executeCommand } from '../../../../../../utils/docker-utils.js';
-import { RunCommandArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const runCommandDef: FunctionDef = {
@@ -47,6 +46,14 @@ IMPORTANT:
 export interface HandleRunCommandProps extends CommandHandlerBaseProps {
   maxOutputLength: number;
 }
+
+type RunCommandArgs = {
+  command: string;
+  stdin?: string;
+  truncMode: 'start' | 'end';
+  workingDir: string;
+  reasoning: string;
+};
 
 export async function handleRunCommand(props: HandleRunCommandProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, container, maxOutputLength } = props;

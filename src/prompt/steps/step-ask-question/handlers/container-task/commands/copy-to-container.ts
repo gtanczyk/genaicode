@@ -2,7 +2,6 @@ import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../../../main/common/user-actions.js';
 import { copyToContainer as utilCopyToContainer } from '../../../../../../utils/docker-utils.js';
-import { CopyToContainerArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { rcConfig } from '../../../../../../main/config.js';
 
@@ -24,6 +23,11 @@ export const getCopyToContainerDef: () => FunctionDef = () => ({
     required: ['hostPath', 'containerPath'],
   },
 });
+
+type CopyToContainerArgs = {
+  hostPath: string;
+  containerPath: string;
+};
 
 export async function handleCopyToContainer(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt' | 'container' | 'options'>,

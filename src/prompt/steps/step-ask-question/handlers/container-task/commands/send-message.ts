@@ -1,7 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putUserMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForInput } from '../../../../../../main/common/user-actions.js';
-import { SendMessageArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const sendMessageDef: FunctionDef = {
@@ -22,6 +21,8 @@ export const sendMessageDef: FunctionDef = {
     required: ['message', 'isQuestion'],
   },
 };
+
+type SendMessageArgs = { message: string; isQuestion: boolean };
 
 export async function handleSendMessage(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt' | 'options'>,

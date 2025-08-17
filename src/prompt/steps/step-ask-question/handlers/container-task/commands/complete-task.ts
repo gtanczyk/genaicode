@@ -1,6 +1,5 @@
 import { FunctionDef, FunctionCall, PromptItem } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { CompleteTaskArgs } from '../container-task-types.js';
 import { ActionHandlerProps } from '../../../step-ask-question-types.js';
 import Docker from 'dockerode';
 
@@ -18,6 +17,10 @@ export interface CommandHandlerBaseProps {
   options: ActionHandlerProps['options'];
   container: Docker.Container;
 }
+
+type CompleteTaskArgs = {
+  summary: string;
+};
 
 export const completeTaskDef: FunctionDef = {
   name: 'completeTask',

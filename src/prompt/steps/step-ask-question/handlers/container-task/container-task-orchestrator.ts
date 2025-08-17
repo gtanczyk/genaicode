@@ -2,7 +2,7 @@ import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, ModelType } from '../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../../main/common/user-actions.js';
-import { runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
+import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
 import {
   cleanupOrphanedContainers,
   createAndStartContainer,
@@ -11,7 +11,6 @@ import {
 } from '../../../../../utils/docker-utils.js';
 import { ActionHandlerProps, ActionResult } from '../../step-ask-question-types.js';
 import { commandExecutionLoop } from './command-execution-loop.js';
-import { RunContainerTaskArgs } from './container-task-types.js';
 
 export async function runContainerTaskOrchestrator({
   askQuestionCall,

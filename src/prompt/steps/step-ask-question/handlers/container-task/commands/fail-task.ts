@@ -1,6 +1,5 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { FailTaskArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const failTaskDef: FunctionDef = {
@@ -16,6 +15,10 @@ export const failTaskDef: FunctionDef = {
     },
     required: ['reason'],
   },
+};
+
+type FailTaskArgs = {
+  reason: string;
 };
 
 export async function handleFailTask(

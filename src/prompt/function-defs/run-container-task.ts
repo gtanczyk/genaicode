@@ -47,3 +47,11 @@ export const runContainerTaskDef: FunctionDef = {
     required: ['image', 'taskDescription'],
   },
 };
+
+/**
+ * Arguments for the runContainerTask action
+ */
+export type RunContainerTaskArgs = {
+  image: AllowedDockerImage;
+  taskDescription: string;
+};

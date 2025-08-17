@@ -10,17 +10,6 @@ import {
   HandleWrapContextProps,
   HandleRunCommandProps,
 } from './container-commands-registry.js';
-import {
-  CompleteTaskArgs,
-  CopyFromContainerArgs,
-  CopyToContainerArgs,
-  FailTaskArgs,
-  RunCommandArgs,
-  SendMessageArgs,
-  SetExecutionPlanArgs,
-  UpdateExecutionPlanArgs,
-  WrapContextArgs,
-} from './container-task-types.js';
 
 const MAX_CONTEXT_ITEMS = 25;
 const MAX_CONTEXT_SIZE = 2048;
@@ -156,19 +145,7 @@ You may also provide reasoning text before function calls to explain your approa
 
       const actionResults = modelResponse
         .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall) as Array<
-        FunctionCall<
-          | RunCommandArgs
-          | CompleteTaskArgs
-          | FailTaskArgs
-          | WrapContextArgs
-          | SetExecutionPlanArgs
-          | UpdateExecutionPlanArgs
-          | SendMessageArgs
-          | CopyToContainerArgs
-          | CopyFromContainerArgs
-        >
-      >;
+        .map((item) => item.functionCall) as Array<FunctionCall>;
 
       if (!actionResults || actionResults.length === 0) {
         putSystemMessage('❌ Internal LLM failed to produce a valid function call.');

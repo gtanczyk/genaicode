@@ -1,6 +1,5 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { SetExecutionPlanArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const setExecutionPlanDef: FunctionDef = {
@@ -17,6 +16,8 @@ export const setExecutionPlanDef: FunctionDef = {
     required: ['plan'],
   },
 };
+
+type SetExecutionPlanArgs = { plan: string };
 
 export async function handleSetExecutionPlan(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt'>,

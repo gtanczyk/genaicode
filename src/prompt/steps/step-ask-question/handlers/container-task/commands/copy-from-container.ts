@@ -5,7 +5,6 @@ import {
   copyFromContainer as utilCopyFromContainer,
   listFilesInContainerArchive,
 } from '../../../../../../utils/docker-utils.js';
-import { CopyFromContainerArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { rcConfig } from '../../../../../../main/config.js';
 
@@ -28,6 +27,11 @@ export const getCopyFromContainerDef: () => FunctionDef = () => ({
     required: ['containerPath', 'hostPath'],
   },
 });
+
+type CopyFromContainerArgs = {
+  containerPath: string;
+  hostPath: string;
+};
 
 export async function handleCopyFromContainer(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt' | 'container' | 'options'>,

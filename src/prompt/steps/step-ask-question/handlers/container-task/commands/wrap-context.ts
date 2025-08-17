@@ -1,6 +1,5 @@
 import { FunctionDef, PromptItem } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { WrapContextArgs } from '../container-task-types.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const wrapContextDef: FunctionDef = {
@@ -44,6 +43,8 @@ export interface HandleWrapContextProps extends CommandHandlerBaseProps {
   maxContextSize: number;
 }
 
+type WrapContextArgs = { summary: string };
+
 export async function handleWrapContext(props: HandleWrapContextProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, computeContextMetrics, maxContextItems, maxContextSize } = props;
   const args = actionResult.args as WrapContextArgs | undefined;
@@ -59,6 +60,7 @@ export async function handleWrapContext(props: HandleWrapContextProps): Promise<
     };
     const userResp: PromptItem = {
       type: 'user',
+      text: 'Please continue ',
       functionResponses: [
         {
           name: 'wrapContext',
