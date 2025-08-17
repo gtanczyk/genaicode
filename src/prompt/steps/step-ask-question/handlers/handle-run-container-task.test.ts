@@ -9,6 +9,7 @@ import * as userActions from '../../../../main/common/user-actions.js';
 // Mock dependencies
 vi.mock('../../../../main/common/content-bus.js', () => ({
   putSystemMessage: vi.fn(),
+  putAssistantMessage: vi.fn(),
 }));
 
 vi.mock('../../../../utils/docker-utils.js');
@@ -86,6 +87,7 @@ describe('handleRunContainerTask', () => {
               command: 'echo "hello world"',
               reasoning: 'Testing echo command',
               workingDir: '/',
+              stdin: '',
             },
           },
         },
@@ -110,7 +112,7 @@ describe('handleRunContainerTask', () => {
     expect(result.breakLoop).toBe(false);
     expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
     expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"', '/');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"', '', '/');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
@@ -176,7 +178,7 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(putSystemMessage).toHaveBeenCalledWith('❌ Failed to pull Docker image: Image not found');
+    expect(putSystemMessage).toHaveBeenCalledWith('❌ Failed to pull Docker image', { error: 'Image not found' });
     expect(mockCreateAndStartContainer).not.toHaveBeenCalled();
   });
 
@@ -207,6 +209,7 @@ describe('handleRunContainerTask', () => {
               command: 'badcommand',
               reasoning: 'Testing bad command',
               workingDir: '/',
+              stdin: '',
             },
           },
         },
@@ -234,7 +237,7 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand', '/');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand', '', '/');
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
