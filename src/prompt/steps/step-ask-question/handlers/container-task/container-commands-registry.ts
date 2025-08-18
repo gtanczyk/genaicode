@@ -13,6 +13,7 @@ import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
 import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
+import { knowledgeBaseDef, handleKnowledgeBase } from './commands/knowledge-base.js';
 
 // Re-export shared types for use in the execution loop
 export type { CommandHandlerResult, CommandHandlerBaseProps, HandleWrapContextProps, HandleRunCommandProps };
@@ -48,6 +49,7 @@ registerCommand('sendMessage', sendMessageDef, handleSendMessage);
 registerCommand('runCommand', runCommandDef, handleRunCommand);
 registerCommand('copyToContainer', getCopyToContainerDef, handleCopyToContainer);
 registerCommand('copyFromContainer', getCopyFromContainerDef, handleCopyFromContainer);
+registerCommand('knowledgeBase', knowledgeBaseDef, handleKnowledgeBase);
 
 /**
  * Gets all function definitions for the container commands.

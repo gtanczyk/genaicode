@@ -1,9 +1,13 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmation } from '../../../../../../main/common/user-actions.js';
-import { copyToContainer as utilCopyToContainer } from '../../../../../../utils/docker-utils.js';
+import {
+  checkPathExistsInContainer,
+  copyToContainer as utilCopyToContainer,
+} from '../../../../../../utils/docker-utils.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { rcConfig } from '../../../../../../main/config.js';
+import { isAncestorDirectory } from '../../../../../../files/file-utils.js';
 
 export const getCopyToContainerDef: () => FunctionDef = () => ({
   name: 'copyToContainer',
@@ -34,6 +38,53 @@ export async function handleCopyToContainer(
 ): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, container, options } = props;
   const args = actionResult.args as CopyToContainerArgs;
+
+  // check if hostPath belongs to the project directory
+  if (!isAncestorDirectory(rcConfig.rootDir, args.hostPath)) {
+    putSystemMessage(
+      `❌ Invalid host path: ${args.hostPath}. It must be within the project root directory: ${rcConfig.rootDir}`,
+    );
+    taskExecutionPrompt.push(
+      {
+        type: 'assistant',
+        functionCalls: [actionResult],
+      },
+      {
+        type: 'user',
+        functionResponses: [
+          {
+            name: 'copyToContainer',
+            call_id: actionResult.id || undefined,
+            content: `Error: Invalid host path. It must be within the project root directory: ${rcConfig.rootDir}.`,
+          },
+        ],
+      },
+    );
+    return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
+  }
+
+  // check if container path exists in container
+  if (!(await checkPathExistsInContainer(container, args.containerPath))) {
+    putSystemMessage(`❌ Invalid container path: ${args.containerPath}. It must be a valid path inside the container.`);
+    taskExecutionPrompt.push(
+      {
+        type: 'assistant',
+        functionCalls: [actionResult],
+      },
+      {
+        type: 'user',
+        functionResponses: [
+          {
+            name: 'copyToContainer',
+            call_id: actionResult.id || undefined,
+            content: `Error: Invalid container path. It must be a valid path inside the container.`,
+          },
+        ],
+      },
+    );
+    return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
+  }
+
   putAssistantMessage(`Preparing to copy from host path "${args.hostPath}" to container path "${args.containerPath}".`);
   const confirmation = await askUserForConfirmation(`Do you want to proceed with the copy operation?`, true, options);
 

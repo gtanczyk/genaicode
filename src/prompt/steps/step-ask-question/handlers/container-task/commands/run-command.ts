@@ -5,7 +5,7 @@ import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.j
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
-  description: `Execute a shell command in the Docker container.
+  description: `Execute a shell command in the Docker container in non-interactive mode.
 IMPORTANT: 
 - The command will block you until it completes, so consider using a non-blocking approach if needed.
 - For complex/long input you should prefer \`stdin\` over command-line arguments. For example instead of echo \`some long text\`, you can put the long text in the \`stdin\` field, and then use it in the command like this: \`cat | some_command\`.
@@ -33,13 +33,18 @@ IMPORTANT:
         description: 'Mode for truncating command output (e.g., "start", "end").',
         enum: ['start', 'end'],
       },
+      timeout: {
+        type: 'string',
+        description: 'How long to wait for the command to complete.',
+        enum: ['10sec', '30sec', '1min', '2min', '5min', '10min'],
+      },
       workingDir: {
         type: 'string',
         description: 'Working directory inside the container to run the command in. This MUST be an absolute path.',
         minLength: 1,
       },
     },
-    required: ['reasoning', 'command', 'stdin', 'workingDir', 'truncMode'],
+    required: ['reasoning', 'command', 'stdin', 'workingDir', 'truncMode', 'timeout'],
   },
 };
 
@@ -51,6 +56,7 @@ type RunCommandArgs = {
   command: string;
   stdin?: string;
   truncMode: 'start' | 'end';
+  timeout: '10sec' | '30sec' | '1min' | '2min' | '5min' | '10min';
   workingDir: string;
   reasoning: string;
 };
@@ -58,11 +64,15 @@ type RunCommandArgs = {
 export async function handleRunCommand(props: HandleRunCommandProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, container, maxOutputLength } = props;
   const args = actionResult.args as RunCommandArgs;
-  const { command, workingDir, reasoning, stdin, truncMode } = args;
+  const { command, workingDir, reasoning, stdin, truncMode, timeout } = args;
 
   putSystemMessage(`💿 Executing command: ${reasoning}`, args);
 
-  const { output, exitCode } = await executeCommand(container, command, stdin, workingDir);
+  const abortController = new AbortController();
+  const timeoutSeconds = parseTimeout(timeout);
+  const abortTimeout = setTimeout(() => abortController.abort(), timeoutSeconds * 1000);
+  const { output, exitCode } = await executeCommand(container, command, stdin, workingDir, abortController.signal);
+  clearTimeout(abortTimeout);
 
   let managedOutput = output;
   if (output.length > maxOutputLength) {
@@ -95,4 +105,24 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   );
 
   return { shouldBreakOuter: false, commandsExecutedIncrement: 1 };
+}
+
+// Parse timeout values
+function parseTimeout(timeout: RunCommandArgs['timeout']): number {
+  switch (timeout) {
+    case '10sec':
+      return 10;
+    case '30sec':
+      return 30;
+    case '1min':
+      return 60;
+    case '2min':
+      return 120;
+    case '5min':
+      return 300;
+    case '10min':
+      return 600;
+    default:
+      throw new Error(`Unknown timeout value: ${timeout}`);
+  }
 }
