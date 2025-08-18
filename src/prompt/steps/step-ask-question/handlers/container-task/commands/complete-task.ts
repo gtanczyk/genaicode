@@ -44,8 +44,6 @@ export async function handleCompleteTask(
   const args = actionResult.args as CompleteTaskArgs;
   putSystemMessage('✅ Task marked as complete by internal operator.');
 
-  // TODO: prompt user
-
   taskExecutionPrompt.push(
     {
       type: 'assistant',

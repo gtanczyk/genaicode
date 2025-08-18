@@ -299,22 +299,5 @@ describe('Docker Utils E2E Tests', () => {
       const content2 = fs.readFileSync(path.join(tempDirFromContainer, 'data_in/nested/file2.txt'), 'utf-8');
       expect(content2).toBe('file two');
     }, 60000);
-
-    test('abort signal', async () => {
-      if (!isDockerAvailable) {
-        console.log('Skipping test - Docker not available');
-        return;
-      }
-
-      const abortController = new AbortController();
-
-      // Simulate a long-running command
-      testContainer = await createAndStartContainer(docker, testImage);
-      const timeout = setTimeout(() => abortController.abort(), 1000);
-      const longRunningCommand = await executeCommand(testContainer, 'sleep 10', '', '/', abortController.signal);
-      expect(longRunningCommand.output).toContain('Aborted command execution');
-
-      clearTimeout(timeout);
-    });
   });
 });

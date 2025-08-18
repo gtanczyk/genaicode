@@ -41,11 +41,10 @@ Best Practices:
 - Don't give up: If a command fails, analyze the output and try to find a solution.
 - Avoid waste: Clear unnecessary context to keep the conversation focused.
 - Use reasoning: Provide clear reasoning for each command you execute.
-- Persist knowledge: When you learn reusable facts (example: you fail to do something, and then you succeed later), store them using the knowledgeBase function with a clear namespaced key for future steps.
 - Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below ${MAX_CONTEXT_ITEMS} messages or ${MAX_CONTEXT_SIZE} tokens, whichever is smaller.
 
 You have access to the following functions:
-- runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
+- runCommand: Execute a shell command in the container, and wait for the result.
 - completeTask: Mark the task as successfully completed with a summary
 - failTask: Mark the task as failed with a reason
 - wrapContext: Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
@@ -53,7 +52,6 @@ You have access to the following functions:
 - updateExecutionPlan: Update plan progress and next steps.
 - copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
-- knowledgeBase: Manage a cache-backed knowledge base to remember findings across commands. Operations: upsert, append, remove, get. Use concise, descriptive keys and namespaces when appropriate.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.`,
   };
@@ -79,9 +77,7 @@ You may also provide reasoning text before function calls to explain your approa
 
   const computeContextMetrics = () => {
     const baseMessages = 2; // systemPrompt + taskPrompt
-    const messageCount =
-      baseMessages +
-      taskExecutionPrompt.filter((item) => !item.functionCalls?.some((fc) => fc.name !== 'wrapContext')).length;
+    const messageCount = baseMessages + taskExecutionPrompt.length;
     const allTexts = [
       ...(systemPrompt.systemPrompt ? [systemPrompt.systemPrompt] : []),
       ...(taskPrompt.text ? [taskPrompt.text] : []),

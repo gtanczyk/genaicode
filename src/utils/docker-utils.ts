@@ -66,7 +66,6 @@ export async function executeCommand(
   command: string,
   stdin: string | undefined,
   workingDir: string,
-  abortSignal?: AbortSignal,
 ): Promise<{ output: string; exitCode: number }> {
   const exec = await container.exec({
     Cmd: ['/bin/sh', '-c', command],
@@ -83,11 +82,6 @@ export async function executeCommand(
   }
   stream.end();
 
-  abortSignal?.addEventListener('abort', async () => {
-    await executeCommand(container, `pkill -9 -f "${command}"`, '', '/');
-    stream.destroy();
-  });
-
   let output = '';
 
   // Collect output from the stream
@@ -102,10 +96,6 @@ export async function executeCommand(
       resolve();
     });
   });
-
-  if (abortSignal?.aborted) {
-    output += '\n\nAborted command execution';
-  }
 
   const inspect = await exec.inspect();
   return { output: output.trim(), exitCode: inspect.ExitCode || 0 };
@@ -314,9 +304,4 @@ export async function copyFromContainer(
     putSystemMessage(`❌ Failed to copy from container: ${errorMessage}`);
     throw error;
   }
-}
-
-export async function checkPathExistsInContainer(container: Docker.Container, containerPath: string): Promise<boolean> {
-  const check = await executeCommand(container, `ls ${containerPath}`, '', '/');
-  return check.exitCode === 0;
 }
