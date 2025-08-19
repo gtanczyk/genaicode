@@ -44,7 +44,7 @@ Best Practices:
 - Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below ${MAX_CONTEXT_ITEMS} messages or ${MAX_CONTEXT_SIZE} tokens, whichever is smaller.
 
 You have access to the following functions:
-- runCommand: Execute a shell command in the container, and wait for the result.
+- runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
 - completeTask: Mark the task as successfully completed with a summary
 - failTask: Mark the task as failed with a reason
 - wrapContext: Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
@@ -77,7 +77,9 @@ You may also provide reasoning text before function calls to explain your approa
 
   const computeContextMetrics = () => {
     const baseMessages = 2; // systemPrompt + taskPrompt
-    const messageCount = baseMessages + taskExecutionPrompt.length;
+    const messageCount =
+      baseMessages +
+      taskExecutionPrompt.filter((item) => !item.functionCalls?.some((fc) => fc.name !== 'wrapContext')).length;
     const allTexts = [
       ...(systemPrompt.systemPrompt ? [systemPrompt.systemPrompt] : []),
       ...(taskPrompt.text ? [taskPrompt.text] : []),
