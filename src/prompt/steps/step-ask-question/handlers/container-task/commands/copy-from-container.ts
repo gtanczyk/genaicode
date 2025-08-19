@@ -4,9 +4,11 @@ import { askUserForConfirmation } from '../../../../../../main/common/user-actio
 import {
   copyFromContainer as utilCopyFromContainer,
   listFilesInContainerArchive,
+  checkPathExistsInContainer,
 } from '../../../../../../utils/docker-utils.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { rcConfig } from '../../../../../../main/config.js';
+import { isAncestorDirectory } from '../../../../../../files/file-utils.js';
 
 export const getCopyFromContainerDef: () => FunctionDef = () => ({
   name: 'copyFromContainer',
@@ -39,8 +41,54 @@ export async function handleCopyFromContainer(
   const { actionResult, taskExecutionPrompt, container, options } = props;
   const args = actionResult.args as CopyFromContainerArgs;
   try {
-    const filesToCopy = await listFilesInContainerArchive(container, args.containerPath);
+    if (!isAncestorDirectory(rcConfig.rootDir, args.hostPath)) {
+      putSystemMessage(
+        `❌ Invalid host path: ${args.hostPath}. It must be within the project root directory: ${rcConfig.rootDir}`,
+      );
+      taskExecutionPrompt.push(
+        {
+          type: 'assistant',
+          functionCalls: [actionResult],
+        },
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'copyToContainer',
+              call_id: actionResult.id || undefined,
+              content: `Error: Invalid host path. It must be within the project root directory: ${rcConfig.rootDir}.`,
+            },
+          ],
+        },
+      );
+      return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
+    }
 
+    // check if container path exists in container
+    if (!(await checkPathExistsInContainer(container, args.containerPath))) {
+      putSystemMessage(
+        `❌ Invalid container path: ${args.containerPath}. It must be a valid path inside the container.`,
+      );
+      taskExecutionPrompt.push(
+        {
+          type: 'assistant',
+          functionCalls: [actionResult],
+        },
+        {
+          type: 'user',
+          functionResponses: [
+            {
+              name: 'copyToContainer',
+              call_id: actionResult.id || undefined,
+              content: `Error: Invalid container path. It must be a valid path inside the container.`,
+            },
+          ],
+        },
+      );
+      return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
+    }
+
+    const filesToCopy = await listFilesInContainerArchive(container, args.containerPath);
     if (filesToCopy.length === 0) {
       const message = `No files found at container path "${args.containerPath}" to copy.`;
       putSystemMessage(message);
@@ -63,9 +111,11 @@ export async function handleCopyFromContainer(
       return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
     }
 
-    const fileListStr = filesToCopy.map((f) => `  - ${f}`).join('\n');
     putAssistantMessage(
-      `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}":\n${fileListStr}`,
+      `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}"`,
+      {
+        filesToCopy,
+      },
     );
     const confirmation = await askUserForConfirmation(`Do you want to proceed?`, true, options);
 
