@@ -1,5 +1,6 @@
 import { FunctionDef, FunctionCall, PromptItem } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import { ActionHandlerProps } from '../../../step-ask-question-types.js';
 import Docker from 'dockerode';
 
@@ -38,11 +39,18 @@ export const completeTaskDef: FunctionDef = {
 };
 
 export async function handleCompleteTask(
-  props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt'>,
+  props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt' | 'options'>,
 ): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt } = props;
   const args = actionResult.args as CompleteTaskArgs;
   putSystemMessage('✅ Task marked as complete by internal operator.');
+  const confirmation = await askUserForConfirmationWithAnswer(
+    'Are you sure you want to complete the task?',
+    'Yes',
+    'No',
+    true,
+    props.options,
+  );
 
   taskExecutionPrompt.push(
     {
@@ -56,14 +64,16 @@ export async function handleCompleteTask(
         {
           name: 'completeTask',
           call_id: actionResult.id || undefined,
-          content: 'Task completed successfully.',
+          content: confirmation.confirmed
+            ? 'Task completed successfully.'
+            : 'Task is incomplete. Please continue.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
         },
       ],
     },
   );
 
   return {
-    shouldBreakOuter: true,
+    shouldBreakOuter: confirmation.confirmed === true,
     success: true,
     summary: args.summary,
     commandsExecutedIncrement: 0,
