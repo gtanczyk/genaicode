@@ -1,7 +1,7 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, ModelType } from '../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../main/common/content-bus.js';
-import { askUserForConfirmation } from '../../../../../main/common/user-actions.js';
+import { askUserForConfirmationWithAnswer } from '../../../../../main/common/user-actions.js';
 import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
 import {
   cleanupOrphanedContainers,
@@ -78,7 +78,13 @@ export async function runContainerTaskOrchestrator({
       `I would like to run a container task with image: ${runContainerTaskCall.args.image}\n\nTask description:\n\n${runContainerTaskCall.args.taskDescription}`,
     );
 
-    const confirmation = await askUserForConfirmation(`Do you want to run the task?`, true, options);
+    const confirmation = await askUserForConfirmationWithAnswer(
+      `Do you want to run the task?`,
+      'Yes',
+      'No',
+      true,
+      options,
+    );
 
     if (!confirmation.confirmed) {
       putSystemMessage('Container task cancelled by user.');
@@ -89,11 +95,22 @@ export async function runContainerTaskOrchestrator({
         },
         {
           type: 'user',
-          text: 'User cancelled the container task.',
+          text: 'I reject running the container task.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
         },
       );
       return { breakLoop: false, items: [] };
     }
+
+    prompt.push(
+      {
+        type: 'assistant',
+        text: askQuestionCall.args!.message,
+      },
+      {
+        type: 'user',
+        text: 'I accept running the container task.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
+      },
+    );
 
     const { image, taskDescription } = runContainerTaskCall.args;
 

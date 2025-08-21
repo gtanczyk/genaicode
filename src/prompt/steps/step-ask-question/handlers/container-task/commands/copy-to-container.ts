@@ -1,6 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { askUserForConfirmation } from '../../../../../../main/common/user-actions.js';
+import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   checkPathExistsInContainer,
   copyToContainer as utilCopyToContainer,
@@ -86,13 +86,20 @@ export async function handleCopyToContainer(
   }
 
   putAssistantMessage(`Preparing to copy from host path "${args.hostPath}" to container path "${args.containerPath}".`);
-  const confirmation = await askUserForConfirmation(`Do you want to proceed with the copy operation?`, true, options);
+  const confirmation = await askUserForConfirmationWithAnswer(
+    `Do you want to proceed with the copy operation?`,
+    'Yes',
+    'No',
+    true,
+    options,
+  );
 
   if (!confirmation.confirmed) {
     putSystemMessage('Copy to container cancelled by user.');
     taskExecutionPrompt.push(
       {
         type: 'assistant',
+        text: `Do you want to proceed with the copy operation?`,
         functionCalls: [actionResult],
       },
       {
@@ -101,7 +108,7 @@ export async function handleCopyToContainer(
           {
             name: 'copyToContainer',
             call_id: actionResult.id || undefined,
-            content: 'User cancelled the copy operation.',
+            content: 'I reject the copy operation.' + confirmation.answer,
           },
         ],
       },
@@ -114,10 +121,12 @@ export async function handleCopyToContainer(
     taskExecutionPrompt.push(
       {
         type: 'assistant',
+        text: `Do you want to proceed with the copy operation?`,
         functionCalls: [actionResult],
       },
       {
         type: 'user',
+        text: 'I approve the copy operation.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
         functionResponses: [
           {
             name: 'copyToContainer',
