@@ -1,6 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { askUserForConfirmation } from '../../../../../../main/common/user-actions.js';
+import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   copyFromContainer as utilCopyFromContainer,
   listFilesInContainerArchive,
@@ -117,7 +117,7 @@ export async function handleCopyFromContainer(
         filesToCopy,
       },
     );
-    const confirmation = await askUserForConfirmation(`Do you want to proceed?`, true, options);
+    const confirmation = await askUserForConfirmationWithAnswer(`Do you want to proceed?`, 'Yes', 'No', true, options);
 
     if (!confirmation.confirmed) {
       putSystemMessage('Copy from container cancelled by user.');
@@ -128,11 +128,11 @@ export async function handleCopyFromContainer(
         },
         {
           type: 'user',
+          text: 'I reject the copy operation.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
           functionResponses: [
             {
               name: 'copyFromContainer',
               call_id: actionResult.id || undefined,
-              content: 'User cancelled the copy operation.',
             },
           ],
         },
@@ -148,6 +148,7 @@ export async function handleCopyFromContainer(
       },
       {
         type: 'user',
+        text: 'I accept the copy operation.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
         functionResponses: [
           {
             name: 'copyFromContainer',
