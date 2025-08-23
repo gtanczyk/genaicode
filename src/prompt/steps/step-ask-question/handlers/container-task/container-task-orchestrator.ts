@@ -1,7 +1,8 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, ModelType } from '../../../../../ai-service/common-types.js';
-import { putAssistantMessage, putSystemMessage } from '../../../../../main/common/content-bus.js';
+import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../main/common/user-actions.js';
+import { abortController } from '../../../../../main/common/abort-controller.js';
 import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
 import {
   cleanupOrphanedContainers,
@@ -22,8 +23,14 @@ export async function runContainerTaskOrchestrator({
   const docker = new Docker({ socketPath: '/var/run/docker.sock' });
   await cleanupOrphanedContainers(docker);
 
+  if (abortController?.signal.aborted) {
+    putContainerLog('warn', 'Container task aborted before start.');
+    putSystemMessage('Container task aborted before start.');
+    return { breakLoop: false, items: [] };
+  }
+
   try {
-    putSystemMessage('Container task: generating proper task request');
+    putContainerLog('info', 'Container task: generating proper task request');
 
     const request: GenerateContentArgs = [
       [
@@ -59,6 +66,7 @@ export async function runContainerTaskOrchestrator({
     ).find((call) => call.name === 'runContainerTask');
 
     if (!runContainerTaskCall?.args?.image || !runContainerTaskCall.args.taskDescription) {
+      putContainerLog('error', 'Failed to get valid runContainerTask request');
       putSystemMessage('❌ Failed to get valid runContainerTask request');
 
       prompt.push(
@@ -87,6 +95,7 @@ export async function runContainerTaskOrchestrator({
     );
 
     if (!confirmation.confirmed) {
+      putContainerLog('warn', 'Container task cancelled by user.');
       putSystemMessage('Container task cancelled by user.');
       prompt.push(
         {
@@ -114,13 +123,21 @@ export async function runContainerTaskOrchestrator({
 
     const { image, taskDescription } = runContainerTaskCall.args;
 
+    putContainerLog('info', `Starting container task with image: ${image}`);
     putSystemMessage(`🐳 Starting container task with image: ${image}`);
+
+    if (abortController?.signal.aborted) {
+      putContainerLog('warn', 'Container task aborted before pulling image.');
+      putSystemMessage('Container task aborted by user.');
+      return { breakLoop: false, items: [] };
+    }
 
     try {
       await pullImage(docker, image);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       putSystemMessage('❌ Failed to pull Docker image', { error: errorMessage });
+      // The pullImage function already logs the detailed error to the terminal.
 
       prompt.push(
         {
@@ -143,9 +160,20 @@ export async function runContainerTaskOrchestrator({
     }
 
     let container: Docker.Container | undefined;
+    let onAbort: (() => void) | undefined;
     try {
       container = await createAndStartContainer(docker, image);
 
+      onAbort = () => {
+        putContainerLog('warn', 'Execution interrupted by user. Stopping container...', undefined, 'docker');
+        // Best-effort stop; stopContainer is idempotent/safe via try/catch
+        if (container) {
+          stopContainer(container).catch(() => {});
+        }
+      };
+      abortController?.signal.addEventListener('abort', onAbort);
+
+      putContainerLog('info', 'Entering command execution loop.');
       const { success, summary } = await commandExecutionLoop(
         container,
         taskDescription,
@@ -158,6 +186,7 @@ export async function runContainerTaskOrchestrator({
         success ? 'Success' : 'Failed'
       }.\n\n**Summary:**\n${summary}`;
 
+      putContainerLog(success ? 'success' : 'error', `Task finished. Summary: ${summary}`);
       putSystemMessage(finalMessage);
 
       prompt.push(
@@ -180,6 +209,7 @@ export async function runContainerTaskOrchestrator({
       return { breakLoop: false, items: [] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      putContainerLog('error', 'An error occurred during the container task', { error: errorMessage });
       putSystemMessage('❌ An error occurred during the container task', {
         error: errorMessage,
       });
@@ -205,10 +235,14 @@ export async function runContainerTaskOrchestrator({
     } finally {
       if (container) {
         await stopContainer(container);
+        if (onAbort) {
+          abortController?.signal.removeEventListener('abort', onAbort);
+        }
       }
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    putContainerLog('error', 'Error during container task initialization', { error: errorMessage });
     putSystemMessage('Error during container task initialization', { error: errorMessage });
 
     prompt.push(

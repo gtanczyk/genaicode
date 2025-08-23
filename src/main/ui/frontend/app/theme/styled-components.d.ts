@@ -6,6 +6,7 @@ declare module 'styled-components' {
     name: string;
     colors: {
       background: string;
+      overlayBackground: string;
       pageBackground: string;
       backgroundSecondary: string;
       text: string;

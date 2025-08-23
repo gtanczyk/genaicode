@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-127] 2025-08-23: Implement dedicated terminal view for runContainerTask logs; added terminal event channel, backend support, and frontend UI.
 - [x] [GEN-126] 2025-08-17: Refactored container task command handlers into a registry-based, modular architecture for improved extensibility and maintainability.
 - [x] [GEN-125] 2025-08-16: Refactored `handleRunContainerTask` into a dedicated module with separate files for orchestration, command execution loop, command handlers, and types to improve maintainability.
 - [-] [GEN-124] 2025-08-15: Enhanced runContainerTask: implemented orphaned container cleanup and added user confirmation for all file copy operations.
@@ -103,5 +104,18 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details
 - [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle
 - [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts
-- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts\n- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature\n- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature\n- [x] [GEN-014] 2023-12-27: Add old content handling to file updates\n- [x] [GEN-013] 2023-12-26: Add FileUpdateView component\n- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal\n- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration\n- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates\n- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement\n- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration\n- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook\n- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance\n- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc\n- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry\n- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display\n",
-      oldContent:
+- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts
+- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature
+- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature
+- [x] [GEN-014] 2023-12-27: Add old content handling to file updates
+- [x] [GEN-013] 2023-12-26: Add FileUpdateView component
+- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal
+- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration
+- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates
+- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement
+- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration
+- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook
+- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance
+- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc
+- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry
+- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display

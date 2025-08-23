@@ -1,7 +1,8 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
-import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { executeCommand } from '../../../../../../utils/docker-utils.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { abortController as globalAbortController } from '../../../../../../main/common/abort-controller.js';
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
@@ -66,13 +67,23 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   const args = actionResult.args as RunCommandArgs;
   const { command, workingDir, reasoning, stdin, truncMode, timeout } = args;
 
-  putSystemMessage(`💿 Executing command: ${reasoning}`, args);
+  putContainerLog('info', `Executing command: ${reasoning}`, args, 'command');
 
-  const abortController = new AbortController();
+  const localController = new AbortController();
+  const onGlobalAbort = () => localController.abort();
+  globalAbortController?.signal.addEventListener('abort', onGlobalAbort);
   const timeoutSeconds = parseTimeout(timeout);
-  const abortTimeout = setTimeout(() => abortController.abort(), timeoutSeconds * 1000);
-  const { output, exitCode } = await executeCommand(container, command, stdin, workingDir, abortController.signal);
-  clearTimeout(abortTimeout);
+  const abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
+  let output: string = '';
+  let exitCode: number = 0;
+  try {
+    const result = await executeCommand(container, command, stdin, workingDir, localController.signal);
+    output = result.output;
+    exitCode = result.exitCode;
+  } finally {
+    clearTimeout(abortTimeout);
+    globalAbortController?.signal.removeEventListener('abort', onGlobalAbort);
+  }
 
   let managedOutput = output;
   if (output.length > maxOutputLength) {
@@ -81,10 +92,10 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
     } else {
       managedOutput = '[... output truncated for context management ...]' + output.slice(-maxOutputLength);
     }
-    putSystemMessage(`⚠️ Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
+    putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
   }
 
-  putSystemMessage('Command executed', { managedOutput, exitCode });
+  putContainerLog('info', 'Command executed', { managedOutput, exitCode }, 'command');
 
   taskExecutionPrompt.push(
     {

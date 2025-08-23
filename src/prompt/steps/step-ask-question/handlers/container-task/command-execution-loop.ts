@@ -1,7 +1,8 @@
 import Docker from 'dockerode';
 import { FunctionCall, ModelType, PromptItem } from '../../../../../ai-service/common-types.js';
-import { putSystemMessage } from '../../../../../main/common/content-bus.js';
+import { putContainerLog, putSystemMessage } from '../../../../../main/common/content-bus.js';
 import { estimateTokenCount } from '../../../../token-estimator.js';
+import { abortController } from '../../../../../main/common/abort-controller.js';
 import { ActionHandlerProps } from '../../step-ask-question-types.js';
 import {
   getContainerCommandDefs,
@@ -11,7 +12,7 @@ import {
   HandleRunCommandProps,
 } from './container-commands-registry.js';
 
-const MAX_CONTEXT_ITEMS = 25;
+const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
 const MAX_OUTPUT_LENGTH = 2048;
 
@@ -26,6 +27,7 @@ export async function commandExecutionLoop(
   let summary = '';
   const maxCommands = 100;
   const taskExecutionPrompt: PromptItem[] = [];
+  const isAborted = () => abortController?.signal.aborted === true;
 
   const systemPrompt: PromptItem = {
     type: 'systemPrompt',
@@ -91,7 +93,7 @@ You may also provide reasoning text before function calls to explain your approa
 
   const pushContextMetrics = () => {
     const { messageCount, estimatedTokens } = computeContextMetrics();
-    putSystemMessage(`Context size: ${messageCount} messages; ~${estimatedTokens} tokens`);
+    putContainerLog('debug', `Context size: ${messageCount} messages; ~${estimatedTokens} tokens`);
     taskExecutionPrompt.push({
       type: 'user',
       text: `[context] messages: ${messageCount}; tokens: ~${estimatedTokens}`,
@@ -120,6 +122,12 @@ You may also provide reasoning text before function calls to explain your approa
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      if (isAborted()) {
+        putContainerLog('warn', 'Task cancelled by user. Exiting command loop.');
+        summary = 'Task cancelled by user';
+        break;
+      }
+
       await waitIfPaused();
       pushContextMetrics();
 
@@ -128,6 +136,12 @@ You may also provide reasoning text before function calls to explain your approa
           type: 'user',
           text: `[context] nearing command limit of ${maxCommands}! 10 commands remaining! Start finishing up.`,
         });
+      }
+
+      if (isAborted()) {
+        putContainerLog('warn', 'Task cancelled by user before model call.');
+        summary = 'Task cancelled by user';
+        break;
       }
 
       const modelResponse = await generateContentFn(
@@ -145,12 +159,18 @@ You may also provide reasoning text before function calls to explain your approa
         options,
       );
 
+      if (isAborted()) {
+        putContainerLog('warn', 'Task cancelled by user after model call.');
+        summary = 'Task cancelled by user';
+        break;
+      }
+
       const actionResults = modelResponse
         .filter((item) => item.type === 'functionCall')
         .map((item) => item.functionCall) as Array<FunctionCall>;
 
       if (!actionResults || actionResults.length === 0) {
-        putSystemMessage('❌ Internal LLM failed to produce a valid function call.');
+        putContainerLog('error', 'Internal LLM failed to produce a valid function call.');
         taskExecutionPrompt.push(
           {
             type: 'assistant',
@@ -168,7 +188,8 @@ You may also provide reasoning text before function calls to explain your approa
 
       for (const actionResult of actionResults) {
         if (actionResult.name === 'runCommand' && commandsExecuted >= maxCommands) {
-          putSystemMessage('⚠️ Reached maximum command limit.');
+          putContainerLog('warn', 'Reached maximum command limit.');
+          putSystemMessage('⚠️ Task incomplete: Reached maximum command limit');
           summary = 'Task incomplete: Reached maximum command limit';
           shouldBreakOuter = true;
           break;
@@ -177,7 +198,7 @@ You may also provide reasoning text before function calls to explain your approa
         const handler = getContainerCommandHandler(actionResult.name);
 
         if (!handler) {
-          putSystemMessage(`⚠️ Unknown function call received: ${actionResult.name}`);
+          putContainerLog('warn', `Unknown function call received: ${actionResult.name}`);
           taskExecutionPrompt.push({
             type: 'user',
             functionResponses: [
@@ -223,6 +244,7 @@ You may also provide reasoning text before function calls to explain your approa
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      putContainerLog('error', 'Error during command execution loop', { error: errorMessage });
       putSystemMessage('❌ Error during command execution loop', { error: errorMessage });
       summary = `Task failed: Error during execution - ${errorMessage}`;
       break;

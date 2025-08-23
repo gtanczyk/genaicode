@@ -2,7 +2,7 @@ import Docker from 'dockerode';
 import path from 'path';
 import fs from 'fs';
 import tar from 'tar-stream';
-import { putSystemMessage } from '../main/common/content-bus.js';
+import { putContainerLog, putSystemMessage } from '../main/common/content-bus.js';
 import { AllowedDockerImage } from '../prompt/function-defs/run-container-task.js';
 import { rcConfig } from '../main/config.js';
 import {
@@ -16,7 +16,7 @@ import {
  * Pull a Docker image
  */
 export async function pullImage(docker: Docker, image: AllowedDockerImage): Promise<void> {
-  putSystemMessage(`🐳 Pulling Docker image: ${image}`);
+  putContainerLog('info', `Pulling Docker image: ${image}`, undefined, 'docker');
 
   return new Promise((resolve, reject) => {
     docker
@@ -24,14 +24,17 @@ export async function pullImage(docker: Docker, image: AllowedDockerImage): Prom
       .then((stream) => {
         docker.modem.followProgress(stream, (err) => {
           if (err) {
+            putContainerLog('error', `Failed to pull Docker image: ${err.message}`, undefined, 'docker');
             reject(err);
           } else {
+            putContainerLog('success', `Successfully pulled Docker image: ${image}`, undefined, 'docker');
             putSystemMessage(`✅ Successfully pulled Docker image: ${image}`);
             resolve();
           }
         });
       })
       .catch((error) => {
+        putContainerLog('error', `Failed to pull Docker image: ${error.message}`, undefined, 'docker');
         putSystemMessage(`❌ Failed to pull Docker image: ${error.message}`);
         reject(error);
       });
@@ -52,6 +55,7 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
   });
 
   await container.start();
+  putContainerLog('info', `Container started (ID: ${container.id.substring(0, 12)})`, { image }, 'docker');
   cacheContainerId(container.id);
   putSystemMessage(`✅ Container started successfully (ID: ${container.id.substring(0, 12)})`);
 
@@ -68,6 +72,7 @@ export async function executeCommand(
   workingDir: string,
   abortSignal?: AbortSignal,
 ): Promise<{ output: string; exitCode: number }> {
+  putContainerLog('info', `Executing command in ${workingDir}: ${command}`, { stdin: !!stdin }, 'command');
   const exec = await container.exec({
     Cmd: ['/bin/sh', '-c', command],
     WorkingDir: workingDir,
@@ -108,6 +113,7 @@ export async function executeCommand(
   }
 
   const inspect = await exec.inspect();
+  putContainerLog('info', `Command finished with exit code: ${inspect.ExitCode || 0}`, { command }, 'command');
   return { output: output.trim(), exitCode: inspect.ExitCode || 0 };
 }
 
@@ -117,9 +123,10 @@ export async function executeCommand(
 export async function stopContainer(container: Docker.Container): Promise<void> {
   try {
     await container.stop();
+    putContainerLog('info', 'Container stopped successfully', undefined, 'docker');
     putSystemMessage('🛑 Container stopped successfully');
   } catch (error) {
-    // Container might already be stopped, which is fine
+    putContainerLog('info', 'Container cleanup completed', undefined, 'docker');
     putSystemMessage('🛑 Container cleanup completed');
   } finally {
     removeCachedContainerId(container.id);
@@ -134,7 +141,7 @@ export async function cleanupOrphanedContainers(docker: Docker): Promise<void> {
   if (containerIds.length === 0) {
     return;
   }
-
+  putContainerLog('info', `Found ${containerIds.length} potentially orphaned containers. Cleaning up...`);
   putSystemMessage(`🧹 Found ${containerIds.length} potentially orphaned containers. Cleaning up...`);
 
   const cleanupPromises = containerIds.map(async (id) => {
@@ -143,6 +150,7 @@ export async function cleanupOrphanedContainers(docker: Docker): Promise<void> {
       const inspectInfo = await container.inspect();
       if (inspectInfo.State.Running) {
         await container.stop();
+        putContainerLog('info', `Stopped orphaned container ${id.substring(0, 12)}`);
         putSystemMessage(`🛑 Stopped orphaned container ${id.substring(0, 12)}`);
       }
     } catch (error) {
@@ -152,6 +160,7 @@ export async function cleanupOrphanedContainers(docker: Docker): Promise<void> {
 
   await Promise.all(cleanupPromises);
   clearCachedContainerIds();
+  putContainerLog('success', 'Orphaned container cleanup complete.');
   putSystemMessage('✅ Orphaned container cleanup complete.');
 }
 
@@ -200,6 +209,7 @@ export async function copyToContainer(
 ): Promise<void> {
   try {
     const absoluteHostPath = validateHostPath(hostPath);
+    putContainerLog('info', `Copying from host:${absoluteHostPath} to container:${containerPath}`, undefined, 'copy');
     putSystemMessage(`📦 Copying from host:${absoluteHostPath} to container:${containerPath}`);
 
     const pack = tar.pack();
@@ -208,14 +218,16 @@ export async function copyToContainer(
     if (stats.isDirectory()) {
       addDirectoryToPack(pack, absoluteHostPath, '');
     } else {
-      pack.entry({ name: path.basename(hostPath) }, fs.readFileSync(absoluteHostPath));
+      pack.entry({ name: path.basename(absoluteHostPath) }, fs.readFileSync(absoluteHostPath));
     }
     pack.finalize();
 
     await container.putArchive(pack, { path: containerPath });
+    putContainerLog('success', `Successfully copied to container.`, undefined, 'copy');
     putSystemMessage(`✅ Successfully copied to container.`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    putContainerLog('error', `Failed to copy to container: ${errorMessage}`, undefined, 'copy');
     putSystemMessage(`❌ Failed to copy to container: ${errorMessage}`);
     throw error;
   }
@@ -247,6 +259,7 @@ export async function listFilesInContainerArchive(
       extract.on('error', reject);
       stream.pipe(extract);
     });
+    putContainerLog('debug', `Listed ${files.length} files in archive at: ${containerPath}`, undefined, 'copy');
 
     return files;
   } catch (error) {
@@ -265,6 +278,7 @@ export async function copyFromContainer(
 ): Promise<void> {
   try {
     const absoluteHostPath = validateHostPath(hostPath);
+    putContainerLog('info', `Copying from container:${containerPath} to host:${absoluteHostPath}`, undefined, 'copy');
     putSystemMessage(`📦 Copying from container:${containerPath} to host:${absoluteHostPath}`);
 
     const stream = await container.getArchive({ path: containerPath });
@@ -308,9 +322,11 @@ export async function copyFromContainer(
       extract.on('error', reject);
       stream.pipe(extract);
     });
+    putContainerLog('success', 'Successfully copied from container.', undefined, 'copy');
     putSystemMessage(`✅ Successfully copied from container.`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    putContainerLog('error', `Failed to copy from container: ${errorMessage}`, undefined, 'copy');
     putSystemMessage(`❌ Failed to copy from container: ${errorMessage}`);
     throw error;
   }

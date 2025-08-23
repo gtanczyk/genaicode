@@ -28,8 +28,28 @@ export interface ChatMessage {
   images?: ChatMessageImage[];
 }
 
-export type ContentProps = {
-  message?: ChatMessage;
-  data?: unknown;
-  promptItem?: PromptItem;
-};
+export type LogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug';
+
+export interface TerminalEvent {
+  id: string;
+  iterationId: string;
+  level: LogLevel;
+  source: 'docker' | 'container-task' | 'command' | 'copy' | 'system';
+  text: string;
+  timestamp: Date;
+  data?: Record<string, unknown>;
+}
+
+export type ContentProps =
+  | {
+      message: ChatMessage;
+      terminalEvent?: never;
+      data?: unknown;
+      promptItem?: PromptItem;
+    }
+  | {
+      message?: never;
+      terminalEvent: TerminalEvent;
+      data?: unknown;
+      promptItem?: never;
+    };

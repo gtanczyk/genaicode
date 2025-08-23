@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
-import { Question, Usage, ConversationGraphState } from '../../../common/api-types.js'; // Import ConversationGraphState
+import { Question, Usage, ConversationGraphState, TerminalEvent } from '../../../common/api-types.js'; // Import ConversationGraphState
 import { CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-types.js';
 import {
@@ -16,6 +16,7 @@ import {
 
 type ExecutionStatus = 'idle' | 'executing' | 'paused';
 const POLLING_INTERVAL = 500; // 0.5 seconds
+const MAX_TERMINAL_EVENTS = 5000;
 
 // Define the shape of the context state
 interface ChatState {
@@ -32,6 +33,9 @@ interface ChatState {
   initialDataLoaded: boolean; // Added flag
   conversationGraphState: ConversationGraphState | null; // Added for graph data
   isGraphVisualiserOpen: boolean; // Added for visualiser visibility
+  terminalEvents: Record<string, TerminalEvent[]>;
+  isTerminalOpen: boolean;
+  autoScrollTerminal: boolean;
 }
 
 // Define the shape of the context actions/setters
@@ -50,6 +54,9 @@ interface ChatActions {
   handleResumeExecution: () => Promise<void>;
   setConversationGraphState: React.Dispatch<React.SetStateAction<ConversationGraphState | null>>;
   toggleGraphVisualiser: () => void;
+  toggleTerminal: () => void;
+  toggleAutoScrollTerminal: () => void;
+  clearTerminalEvents: (iterationId: string) => void;
 }
 
 // Create the context with a default value
@@ -67,6 +74,9 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   initialDataLoaded: false,
   conversationGraphState: null,
   isGraphVisualiserOpen: false,
+  terminalEvents: {},
+  isTerminalOpen: false,
+  autoScrollTerminal: true,
   setMessages: () => {},
   setExecutionStatus: () => {},
   setCurrentQuestion: () => {},
@@ -81,6 +91,9 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   handleResumeExecution: async () => {},
   setConversationGraphState: () => {}, // Default setter
   toggleGraphVisualiser: () => {}, // Default toggle
+  toggleTerminal: () => {},
+  toggleAutoScrollTerminal: () => {},
+  clearTerminalEvents: () => {},
 });
 
 // Define the props for the provider
@@ -110,6 +123,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   const [conversationGraphState, setConversationGraphState] = useState<ConversationGraphState | null>(null);
   const [isGraphVisualiserOpen, setIsGraphVisualiserOpen] = useState(false);
 
+  // New state for terminal view
+  const [terminalEvents, setTerminalEvents] = useState<Record<string, TerminalEvent[]>>({});
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [autoScrollTerminal, setAutoScrollTerminal] = useState(true);
+
   // Actions migrated/adapted from AppState
   const toggleTheme = useCallback(() => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
@@ -122,6 +140,19 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
 
   const toggleGraphVisualiser = useCallback(() => {
     setIsGraphVisualiserOpen((prev) => !prev);
+  }, []);
+
+  // New actions for terminal view
+  const toggleTerminal = useCallback(() => {
+    setIsTerminalOpen((prev) => !prev);
+  }, []);
+
+  const toggleAutoScrollTerminal = useCallback(() => {
+    setAutoScrollTerminal((prev) => !prev);
+  }, []);
+
+  const clearTerminalEvents = useCallback((iterationId: string) => {
+    setTerminalEvents((prev) => ({ ...prev, [iterationId]: [] }));
   }, []);
 
   const fetchInitialData = useCallback(async () => {
@@ -137,14 +168,40 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
 
       setExecutionStatus(status);
       setCurrentQuestion(question);
-      setMessages(
-        content
-          .filter((item) => !!item.message)
-          .map((item) => ({
-            ...item.message!,
+
+      // Process content for both messages and terminal events
+      const initialMessages: ChatMessage[] = [];
+      const initialTerminalEvents: Record<string, TerminalEvent[]> = {};
+
+      for (const item of content) {
+        if (item.message) {
+          initialMessages.push({
+            ...item.message,
+            timestamp: new Date(item.message.timestamp), // Convert string to Date
             data: item.data as Record<string, unknown> | undefined,
-          })),
-      );
+          });
+        }
+        if (item.terminalEvent) {
+          const { iterationId } = item.terminalEvent;
+          if (!initialTerminalEvents[iterationId]) {
+            initialTerminalEvents[iterationId] = [];
+          }
+          initialTerminalEvents[iterationId].push({
+            ...item.terminalEvent,
+            timestamp: new Date(item.terminalEvent.timestamp), // Convert string to Date
+          });
+        }
+      }
+
+      // Prune terminal events on initial load
+      for (const iterationId in initialTerminalEvents) {
+        if (initialTerminalEvents[iterationId].length > MAX_TERMINAL_EVENTS) {
+          initialTerminalEvents[iterationId] = initialTerminalEvents[iterationId].slice(-MAX_TERMINAL_EVENTS);
+        }
+      }
+
+      setMessages(initialMessages);
+      setTerminalEvents(initialTerminalEvents);
       setUsage(usageData);
       _setCodegenOptions(defaultOptions);
       setRcConfig(config);
@@ -182,7 +239,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       setMessages((prevMessages) => {
         const newMessages: ChatMessage[] = content
           .filter((item) => !!item.message)
-          .map((item) => ({ ...item.message!, data: item.data as Record<string, unknown> | undefined }));
+          .map((item) => ({
+            ...item.message!,
+            timestamp: new Date(item.message!.timestamp), // Convert string to Date
+            data: item.data as Record<string, unknown> | undefined,
+          }));
 
         // Keep existing comparison: check length and last message ID
         return prevMessages.length !== newMessages.length ||
@@ -192,6 +253,51 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
           ? newMessages
           : prevMessages;
       });
+
+      // Process and update terminal events
+      setTerminalEvents((prevTerminalEvents) => {
+        const newTerminalEventsByIteration: Record<string, TerminalEvent[]> = {};
+        let hasChanges = false;
+
+        for (const item of content) {
+          if (item.terminalEvent) {
+            const { iterationId } = item.terminalEvent;
+            if (!newTerminalEventsByIteration[iterationId]) {
+              newTerminalEventsByIteration[iterationId] = [];
+            }
+            newTerminalEventsByIteration[iterationId].push({
+              ...item.terminalEvent,
+              timestamp: new Date(item.terminalEvent.timestamp), // Convert string to Date
+            });
+          }
+        }
+
+        const allIterationIds = new Set([
+          ...Object.keys(prevTerminalEvents),
+          ...Object.keys(newTerminalEventsByIteration),
+        ]);
+        const finalTerminalEvents = { ...prevTerminalEvents };
+
+        for (const iterationId of allIterationIds) {
+          const prevEvents = prevTerminalEvents[iterationId] || [];
+          const newEvents = newTerminalEventsByIteration[iterationId] || [];
+
+          if (
+            prevEvents.length !== newEvents.length ||
+            (newEvents.length > 0 &&
+              prevEvents.length > 0 &&
+              prevEvents[prevEvents.length - 1].id !== newEvents[newEvents.length - 1].id)
+          ) {
+            hasChanges = true;
+            // Prune before setting
+            finalTerminalEvents[iterationId] =
+              newEvents.length > MAX_TERMINAL_EVENTS ? newEvents.slice(-MAX_TERMINAL_EVENTS) : newEvents;
+          }
+        }
+
+        return hasChanges ? finalTerminalEvents : prevTerminalEvents;
+      });
+
       setUsage((prevUsage) =>
         // Simplified comparison: check relevant properties
         prevUsage?.usageMetrics.total.cost !== usageData?.usageMetrics.total.cost ||
@@ -286,6 +392,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       initialDataLoaded,
       conversationGraphState,
       isGraphVisualiserOpen,
+      terminalEvents,
+      isTerminalOpen,
+      autoScrollTerminal,
       setMessages,
       setExecutionStatus,
       setCurrentQuestion,
@@ -300,6 +409,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       handleResumeExecution,
       setConversationGraphState,
       toggleGraphVisualiser,
+      toggleTerminal,
+      toggleAutoScrollTerminal,
+      clearTerminalEvents,
     }),
     [
       messages,
@@ -315,6 +427,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       initialDataLoaded,
       conversationGraphState,
       isGraphVisualiserOpen,
+      terminalEvents,
+      isTerminalOpen,
+      autoScrollTerminal,
       toggleTheme,
       setCodegenOptions,
       startPolling,
@@ -322,6 +437,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       handlePauseExecution,
       handleResumeExecution,
       toggleGraphVisualiser,
+      toggleTerminal,
+      toggleAutoScrollTerminal,
+      clearTerminalEvents,
     ],
   );
 

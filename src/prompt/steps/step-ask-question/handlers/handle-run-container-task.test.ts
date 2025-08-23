@@ -10,6 +10,7 @@ import * as userActions from '../../../../main/common/user-actions.js';
 vi.mock('../../../../main/common/content-bus.js', () => ({
   putSystemMessage: vi.fn(),
   putAssistantMessage: vi.fn(),
+  putContainerLog: vi.fn(),
 }));
 
 vi.mock('../../../../utils/docker-utils.js');

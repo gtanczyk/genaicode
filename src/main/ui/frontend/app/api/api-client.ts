@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { RcConfig } from '../../../../config-types.js';
-import { ContentProps } from '../../../../common/content-bus-types.js';
-import { Question, Usage, SanitizedServiceConfigurations, ServiceConfigUpdate } from '../../../common/api-types.js';
+import {
+  ApiContentProps,
+  Question,
+  Usage,
+  SanitizedServiceConfigurations,
+  ServiceConfigUpdate,
+} from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common-types.js';
 
 const API_BASE_URL = '/api';
@@ -104,7 +109,7 @@ export const editMessage = async (messageId: string, newContent: string): Promis
   }
 };
 
-export const getContent = async (): Promise<ContentProps[]> => {
+export const getContent = async (): Promise<ApiContentProps[]> => {
   const response = await api.get('/content');
   return response.data.content;
 };

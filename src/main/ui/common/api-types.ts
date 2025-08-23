@@ -87,6 +87,65 @@ export interface ServiceConfigUpdate<T extends AiServiceType = AiServiceType> {
   config: ServiceConfig<T>;
 }
 
+// --- Content Types ---
+
+export enum ChatMessageType {
+  USER = 'user',
+  ASSISTANT = 'assistant',
+  SYSTEM = 'system',
+}
+
+export enum ChatMessageFlags {
+  CONVERSATION_SUMMARY = 'conversation-summary',
+  MESSAGE_EDITABLE = 'editable',
+}
+
+export interface ChatMessageImage {
+  base64url: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  originalName?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  iterationId: string;
+  type: ChatMessageType;
+  flags?: ChatMessageFlags[];
+  content: string;
+  timestamp: string; // Dates are serialized as strings
+  data?: Record<string, unknown>;
+  images?: ChatMessageImage[];
+}
+
+export type LogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug';
+
+export interface TerminalEvent {
+  id: string;
+  iterationId: string;
+  level: LogLevel;
+  source: 'docker' | 'container-task' | 'command' | 'copy' | 'system';
+  text: string;
+  timestamp: string; // Dates are serialized as strings
+  data?: Record<string, unknown>;
+}
+
+/**
+ * Represents a single content item from the backend, which can be
+ * either a chat message or a terminal event. This is the shape of items
+ * returned by the /api/content endpoint.
+ */
+export type ApiContentProps =
+  | {
+      message: ChatMessage;
+      terminalEvent?: never;
+      data?: unknown;
+    }
+  | {
+      message?: never;
+      terminalEvent: TerminalEvent;
+      data?: unknown;
+    };
+
 // --- Conversation Graph Types ---
 
 /**

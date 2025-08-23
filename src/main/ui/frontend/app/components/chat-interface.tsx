@@ -12,6 +12,7 @@ import {
   ExpandIcon,
   IterationContent,
   DeleteButton,
+  TerminalToggleButton,
 } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { ContextSizeDisplay } from './chat/context-size-display.js';
@@ -21,6 +22,8 @@ import { ProgressIndicator } from './progress-indicator.js';
 import { deleteIteration } from '../api/api-client.js';
 import { Question } from '../../../common/api-types.js';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
+import { useChatState } from '../contexts/chat-state-context.js';
+import { TerminalView } from './chat/terminal-view.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -51,8 +54,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [confirmDeleteIteration, setConfirmDeleteIteration] = useState<string | null>(null);
 
+  const {
+    isTerminalOpen,
+    toggleTerminal,
+    terminalEvents,
+    autoScrollTerminal,
+    toggleAutoScrollTerminal,
+    clearTerminalEvents,
+  } = useChatState();
+
   const iterations = useMergedMessages(messages);
   const currentIterationId = executionStatus !== 'idle' ? iterations[iterations.length - 1]?.iterationId : null;
+  const currentTerminalEvents = (currentIterationId && terminalEvents[currentIterationId]) || [];
 
   const isAtBottom = useCallback(() => {
     if (!messagesContainerRef.current) return true;
@@ -240,6 +253,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           )}
         <div ref={messagesEndRef} />
       </MessagesContainer>
+
+      {isTerminalOpen && currentIterationId && (
+        <TerminalView
+          events={currentTerminalEvents}
+          onClear={() => clearTerminalEvents(currentIterationId)}
+          autoScroll={autoScrollTerminal}
+          onToggleAutoScroll={toggleAutoScrollTerminal}
+        />
+      )}
+
       {hasUnreadMessages && !isScrolledToBottom && <UnreadMessagesNotification onClick={scrollToBottom} />}
       <ProgressIndicator
         isVisible={executionStatus !== 'idle' && !currentQuestion}
@@ -247,6 +270,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onPauseResume={onPauseResume}
         executionStatus={executionStatus}
       />
+      {currentTerminalEvents.length > 0 && (
+        <TerminalToggleButton onClick={toggleTerminal} hasBadge={!isTerminalOpen}>
+          {isTerminalOpen ? 'Hide Terminal' : 'Show Terminal'}
+        </TerminalToggleButton>
+      )}
     </ChatContainer>
   );
 };

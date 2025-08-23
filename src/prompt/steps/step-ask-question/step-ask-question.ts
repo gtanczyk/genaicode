@@ -79,6 +79,11 @@ export async function executeStepAskQuestion(
           waitIfPaused,
         });
 
+        if (abortController?.signal.aborted) {
+          putSystemMessage('Iteration aborted.');
+          break;
+        }
+
         // This is important to display the content to the user interface (ui or interactive cli)
         const lastItem = result.items.slice(-1)[0];
         if (lastItem?.user?.text || lastItem?.user?.images) {

@@ -1,5 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
-import { putAssistantMessage, putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { abortController } from '../../../../../../main/common/abort-controller.js';
+import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   checkPathExistsInContainer,
@@ -39,11 +40,25 @@ export async function handleCopyToContainer(
   const { actionResult, taskExecutionPrompt, container, options } = props;
   const args = actionResult.args as CopyToContainerArgs;
 
+  if (abortController?.signal.aborted) {
+    putContainerLog('warn', 'Copy to container cancelled by user.', undefined, 'copy');
+    taskExecutionPrompt.push(
+      { type: 'assistant', functionCalls: [actionResult] },
+      {
+        type: 'user',
+        functionResponses: [
+          { name: 'copyToContainer', call_id: actionResult.id || undefined, content: 'Operation cancelled by user.' },
+        ],
+      },
+    );
+    return { shouldBreakOuter: true, commandsExecutedIncrement: 0 };
+  }
+
   // check if hostPath belongs to the project directory
   if (!isAncestorDirectory(rcConfig.rootDir, args.hostPath)) {
-    putSystemMessage(
-      `❌ Invalid host path: ${args.hostPath}. It must be within the project root directory: ${rcConfig.rootDir}`,
-    );
+    const errorMsg = `Invalid host path: ${args.hostPath}. It must be within the project root directory: ${rcConfig.rootDir}`;
+    putContainerLog('error', errorMsg, args, 'copy');
+    putSystemMessage(`❌ ${errorMsg}`);
     taskExecutionPrompt.push(
       {
         type: 'assistant',
@@ -65,7 +80,9 @@ export async function handleCopyToContainer(
 
   // check if container path exists in container
   if (!(await checkPathExistsInContainer(container, args.containerPath))) {
-    putSystemMessage(`❌ Invalid container path: ${args.containerPath}. It must be a valid path inside the container.`);
+    const errorMsg = `Invalid container path: ${args.containerPath}. It must be a valid path inside the container.`;
+    putContainerLog('error', errorMsg, args, 'copy');
+    putSystemMessage(`❌ ${errorMsg}`);
     taskExecutionPrompt.push(
       {
         type: 'assistant',
@@ -77,7 +94,7 @@ export async function handleCopyToContainer(
           {
             name: 'copyToContainer',
             call_id: actionResult.id || undefined,
-            content: `Error: Invalid container path. It must be a valid path inside the container.`,
+            content: `Error: Invalid container path. It must be a valid path inside the container. The path must exist, perhaps you need to create the directory first.`,
           },
         ],
       },
@@ -95,6 +112,7 @@ export async function handleCopyToContainer(
   );
 
   if (!confirmation.confirmed) {
+    putContainerLog('warn', 'Copy to container cancelled by user.', undefined, 'copy');
     putSystemMessage('Copy to container cancelled by user.');
     taskExecutionPrompt.push(
       {

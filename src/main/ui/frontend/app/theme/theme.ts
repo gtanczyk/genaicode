@@ -7,6 +7,7 @@ const lightTheme: DefaultTheme = {
   name: 'light',
   colors: {
     background: '#ffffffaa',
+    overlayBackground: '#ffffffdd',
     pageBackground: '#ffffff',
     backgroundSecondary: '#f6f8fa',
     text: '#333333',
@@ -61,6 +62,7 @@ const darkTheme: DefaultTheme = {
   name: 'dark',
   colors: {
     background: '#00000055',
+    overlayBackground: '#000000cc',
     pageBackground: '#1e1e1e',
     backgroundSecondary: '#2d333b',
     text: '#d4d4d4',
