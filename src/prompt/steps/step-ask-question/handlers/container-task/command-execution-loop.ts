@@ -11,6 +11,7 @@ import {
   HandleWrapContextProps,
   HandleRunCommandProps,
 } from './container-commands-registry.js';
+import { rcConfig } from '../../../../../main/config.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
@@ -41,9 +42,7 @@ Best Practices:
 - Be adaptive: Adjust your strategy based on command results, including failures.
 - Be meticulous: Pay attention to detail and ensure accuracy in all commands and responses.
 - Don't give up: If a command fails, analyze the output and try to find a solution.
-- Avoid waste: Clear unnecessary context to keep the conversation focused.
 - Use reasoning: Provide clear reasoning for each command you execute.
-- Think about the planet: Consider the environmental impact of your commands and strive for sustainability. Keep the context size below ${MAX_CONTEXT_ITEMS} messages or ${MAX_CONTEXT_SIZE} tokens, whichever is smaller.
 
 You have access to the following functions:
 - runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
@@ -54,13 +53,24 @@ You have access to the following functions:
 - updateExecutionPlan: Update plan progress and next steps.
 - copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
+- checkContext: Get current context metrics (messages and tokens) and guidance about wrapping when near or over limits. Call this frequently (every 1-3 actions). If you do not call it for 10 actions, the system will remind you to call it.
 
-You may also provide reasoning text before function calls to explain your approach or analyze the current situation.`,
+You may also provide reasoning text before function calls to explain your approach or analyze the current situation.
+
+The container starts fresh with a clean state and no prior context. You need to setup the container to perform the task described in the user prompt.
+If the task requires current project source code(located in ${rcConfig.rootDir}) then you may need to copy it from host to the container.
+Outcomes of your work can be provided in two ways back to the current project:
+- Provide comprehensive description of the outcome in completeTask function call.
+- Copy the relevant files or directories from the container to the host using copyFromContainer function call.
+`,
   };
 
   const taskPrompt: PromptItem = {
     type: 'user',
-    text: `Overall Task:\n${taskDescription}\n\nBegin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
+    text: `Overall Task:
+${taskDescription}
+
+Begin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };
 
   const collectTexts = (items: PromptItem[]): string[] => {
@@ -91,37 +101,13 @@ You may also provide reasoning text before function calls to explain your approa
     return { messageCount, estimatedTokens };
   };
 
-  const pushContextMetrics = () => {
-    const { messageCount, estimatedTokens } = computeContextMetrics();
-    putContainerLog('debug', `Context size: ${messageCount} messages; ~${estimatedTokens} tokens`);
-    taskExecutionPrompt.push({
-      type: 'user',
-      text: `[context] messages: ${messageCount}; tokens: ~${estimatedTokens}`,
-    });
-    if (messageCount > MAX_CONTEXT_ITEMS) {
-      taskExecutionPrompt.push({
-        type: 'user',
-        text: `[context] messages exceeded limit (${MAX_CONTEXT_ITEMS}).`,
-      });
-    }
-    if (estimatedTokens > MAX_CONTEXT_SIZE) {
-      taskExecutionPrompt.push({
-        type: 'user',
-        text: `[context] tokens exceeded limit (${MAX_CONTEXT_SIZE}).`,
-      });
-    }
-    if (messageCount > MAX_CONTEXT_ITEMS || estimatedTokens > MAX_CONTEXT_SIZE) {
-      taskExecutionPrompt.push({
-        type: 'user',
-        text: `[context] size exceeded limits: ${messageCount} messages, ${estimatedTokens} tokens. You must wrap the context using the wrapContext function!`,
-      });
-    }
-  };
-
   let commandsExecuted = 0;
+  let actionIndex = 0;
+  let lastCheckActionIndex = 0;
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      actionIndex++;
       if (isAborted()) {
         putContainerLog('warn', 'Task cancelled by user. Exiting command loop.');
         summary = 'Task cancelled by user';
@@ -129,7 +115,14 @@ You may also provide reasoning text before function calls to explain your approa
       }
 
       await waitIfPaused();
-      pushContextMetrics();
+
+      if (actionIndex - lastCheckActionIndex >= 10) {
+        taskExecutionPrompt.push({
+          type: 'user',
+          text: '[policy] It has been 10 steps without a context check. Call checkContext now to retrieve context metrics.',
+        });
+        lastCheckActionIndex = actionIndex;
+      }
 
       if (i === maxCommands - 10) {
         taskExecutionPrompt.push({
@@ -151,7 +144,7 @@ You may also provide reasoning text before function calls to explain your approa
           temperature: 0.7,
           modelType: ModelType.LITE,
           expectedResponseType: {
-            text: true,
+            text: false,
             functionCall: true,
             media: false,
           },
@@ -187,6 +180,10 @@ You may also provide reasoning text before function calls to explain your approa
       let shouldBreakOuter = false;
 
       for (const actionResult of actionResults) {
+        if (actionResult.name === 'checkContext') {
+          lastCheckActionIndex = actionIndex;
+        }
+
         if (actionResult.name === 'runCommand' && commandsExecuted >= maxCommands) {
           putContainerLog('warn', 'Reached maximum command limit.');
           putSystemMessage('⚠️ Task incomplete: Reached maximum command limit');

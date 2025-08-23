@@ -47,8 +47,8 @@ export async function handleCompleteTask(
   putAssistantMessage(args.summary);
   const confirmation = await askUserForConfirmationWithAnswer(
     'Are you sure you want to complete the task?',
-    'Yes',
-    'No',
+    'Complete task',
+    'Continue',
     true,
     props.options,
   );

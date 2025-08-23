@@ -16,7 +16,9 @@ export type AllowedDockerImage =
 
 export const runContainerTaskDef: FunctionDef = {
   name: 'runContainerTask',
-  description: 'Executes a multi-step task safely in a sandboxed Docker container.',
+  description: `Executes a multi-step task safely in a sandboxed Docker container. It starts a a new container in clean state. 
+Current project files are NOT automatically available in the container, you need to copy them explicitly if needed. 
+You can run multiple commands in the container to accomplish the task. Outcomes can be copied back to the current project on the host machine.`,
   parameters: {
     type: 'object',
     properties: {
@@ -40,8 +42,9 @@ export const runContainerTaskDef: FunctionDef = {
       },
       taskDescription: {
         type: 'string',
-        description:
-          'A detailed, natural language description of the entire task to be performed. This guides the command execution loop.',
+        description: `A detailed, natural language description of the entire task to be performed. This guides the command execution loop.
+It is important to provide as much context as possible to ensure successful execution.
+When a task requires current project files to be included, you must explicitly state this in the task description.`,
       },
     },
     required: ['image', 'taskDescription'],

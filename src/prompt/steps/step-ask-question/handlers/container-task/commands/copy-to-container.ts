@@ -110,8 +110,8 @@ export async function handleCopyToContainer(
   putAssistantMessage(`Preparing to copy from host path "${args.hostPath}" to container path "${args.containerPath}".`);
   const confirmation = await askUserForConfirmationWithAnswer(
     `Do you want to proceed with the copy operation?`,
-    'Yes',
-    'No',
+    'Copy files to container',
+    'Reject',
     true,
     options,
   );

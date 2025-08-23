@@ -88,13 +88,14 @@ export async function runContainerTaskOrchestrator({
     }
 
     putAssistantMessage(
-      `I would like to run a container task with image: ${runContainerTaskCall.args.image}\n\nTask description:\n\n${runContainerTaskCall.args.taskDescription}`,
+      `I would like to run a container task with image: ${runContainerTaskCall.args.image}`,
+      runContainerTaskCall.args,
     );
 
     const confirmation = await askUserForConfirmationWithAnswer(
       `Do you want to run the task?`,
-      'Yes',
-      'No',
+      'Run task',
+      'Reject',
       true,
       options,
     );

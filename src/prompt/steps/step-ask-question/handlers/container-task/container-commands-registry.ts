@@ -12,6 +12,7 @@ import { updateExecutionPlanDef, handleUpdateExecutionPlan } from './commands/up
 import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
 import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
+import { checkContextDef, handleCheckContext } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
 
 // Re-export shared types for use in the execution loop
@@ -47,6 +48,7 @@ registerCommand('updateExecutionPlan', updateExecutionPlanDef, handleUpdateExecu
 registerCommand('sendMessage', sendMessageDef, handleSendMessage);
 registerCommand('runCommand', runCommandDef, handleRunCommand);
 registerCommand('copyToContainer', getCopyToContainerDef, handleCopyToContainer);
+registerCommand('checkContext', checkContextDef, handleCheckContext);
 registerCommand('copyFromContainer', getCopyFromContainerDef, handleCopyFromContainer);
 
 /**

@@ -141,7 +141,13 @@ export async function handleCopyFromContainer(
         filesToCopy,
       },
     );
-    const confirmation = await askUserForConfirmationWithAnswer(`Do you want to proceed?`, 'Yes', 'No', true, options);
+    const confirmation = await askUserForConfirmationWithAnswer(
+      `Do you want to proceed?`,
+      'Copy files to host',
+      'Reject',
+      true,
+      options,
+    );
     if (confirmation.answer) {
       putUserMessage(confirmation.answer);
     }
