@@ -1,5 +1,5 @@
 import { FunctionDef, FunctionCall, PromptItem } from '../../../../../../ai-service/common-types.js';
-import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import { ActionHandlerProps } from '../../../step-ask-question-types.js';
 import Docker from 'dockerode';
@@ -44,6 +44,7 @@ export async function handleCompleteTask(
   const { actionResult, taskExecutionPrompt } = props;
   const args = actionResult.args as CompleteTaskArgs;
   putSystemMessage('✅ Task marked as complete by internal operator.');
+  putAssistantMessage(args.summary);
   const confirmation = await askUserForConfirmationWithAnswer(
     'Are you sure you want to complete the task?',
     'Yes',
@@ -51,6 +52,9 @@ export async function handleCompleteTask(
     true,
     props.options,
   );
+  if (confirmation.answer) {
+    putUserMessage(confirmation.answer);
+  }
 
   taskExecutionPrompt.push(
     {

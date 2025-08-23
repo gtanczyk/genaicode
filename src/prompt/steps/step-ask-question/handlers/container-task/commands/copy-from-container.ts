@@ -1,6 +1,11 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { abortController } from '../../../../../../main/common/abort-controller.js';
-import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import {
+  putAssistantMessage,
+  putContainerLog,
+  putSystemMessage,
+  putUserMessage,
+} from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   copyFromContainer as utilCopyFromContainer,
@@ -137,6 +142,9 @@ export async function handleCopyFromContainer(
       },
     );
     const confirmation = await askUserForConfirmationWithAnswer(`Do you want to proceed?`, 'Yes', 'No', true, options);
+    if (confirmation.answer) {
+      putUserMessage(confirmation.answer);
+    }
 
     if (!confirmation.confirmed) {
       putContainerLog('warn', 'Copy from container cancelled by user.', undefined, 'copy');

@@ -17,6 +17,7 @@ import { ChatStateProvider, ChatStateContext } from './contexts/chat-state-conte
 import { SuggestionGenerator } from './components/suggestion-generator.js';
 import { ConversationGraphVisualiser } from './components/chat/conversation-graph-visualiser.js';
 import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js'; // Ensure this import is present
+import { TerminalView } from './components/chat/terminal-view.js';
 
 const GenAIcodeAppContent = () => {
   // Consume the context to get state and actions
@@ -32,10 +33,19 @@ const GenAIcodeAppContent = () => {
     setCodegenOptions, // Get setter for options
     handlePauseExecution,
     handleResumeExecution,
+    isTerminalOpen,
+    terminalEvents,
+    clearTerminalEvents,
+    autoScrollTerminal,
+    toggleAutoScrollTerminal,
   } = useContext(ChatStateContext);
 
   // Instantiate AppHandlers - It now gets setters from context, only needs codegenOptions
   const { handleExecute, handleQuestionSubmit, handleInterrupt } = AppHandlers({ codegenOptions });
+
+  const currentIterationId =
+    executionStatus !== 'idle' && messages.length > 0 ? messages[messages.length - 1].iterationId : null;
+  const currentTerminalEvents = (currentIterationId && terminalEvents[currentIterationId]) || [];
 
   // Polling is handled within the context provider
 
@@ -90,6 +100,16 @@ const GenAIcodeAppContent = () => {
         }
         usage={usage} // Pass usage from context
       />
+
+      {isTerminalOpen && currentIterationId && (
+        <TerminalView
+          events={currentTerminalEvents}
+          onClear={() => clearTerminalEvents(currentIterationId)}
+          autoScroll={autoScrollTerminal}
+          onToggleAutoScroll={toggleAutoScrollTerminal}
+        />
+      )}
+
       <ContentGenerationModal currentService={codegenOptions.aiService} />
       <HealthCheckModal />
       <ServiceConfigurationModal />

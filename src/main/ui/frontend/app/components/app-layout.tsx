@@ -17,6 +17,7 @@ import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaico
 import { version } from '../../../../../../package.json';
 import { ToggleButton } from './toggle-button.js';
 import { GraphToggleButtonWrapper } from './chat/graph-toggle-button.js';
+import { TerminalToggleButton } from './chat/terminal-toggle-button.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -105,6 +106,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
         <ChatContainer>{chatInterface}</ChatContainer>
         <InputContainer>{inputArea}</InputContainer>
         <GraphToggleButtonWrapper />
+        <TerminalToggleButton />
       </MainContent>
     </AppContainer>
   );

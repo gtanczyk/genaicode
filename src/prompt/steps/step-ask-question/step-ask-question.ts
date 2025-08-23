@@ -52,7 +52,12 @@ export async function executeStepAskQuestion(
 
   let filesState = getFilesState();
 
-  while (!abortController?.signal.aborted) {
+  let aborted = false;
+  abortController?.signal.addEventListener('abort', () => {
+    aborted = true;
+  });
+
+  while (!aborted) {
     try {
       // Calculate context size using the total tokens per day (this is not a perfect metric, but it's a good approximation)
       const lastTokenCount = getUsageMetrics().total.tpd;
@@ -79,7 +84,7 @@ export async function executeStepAskQuestion(
           waitIfPaused,
         });
 
-        if (abortController?.signal.aborted) {
+        if (aborted) {
           putSystemMessage('Iteration aborted.');
           break;
         }

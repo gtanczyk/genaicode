@@ -1,6 +1,11 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { abortController } from '../../../../../../main/common/abort-controller.js';
-import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import {
+  putAssistantMessage,
+  putContainerLog,
+  putSystemMessage,
+  putUserMessage,
+} from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   checkPathExistsInContainer,
@@ -110,6 +115,9 @@ export async function handleCopyToContainer(
     true,
     options,
   );
+  if (confirmation.answer) {
+    putUserMessage(confirmation.answer);
+  }
 
   if (!confirmation.confirmed) {
     putContainerLog('warn', 'Copy to container cancelled by user.', undefined, 'copy');

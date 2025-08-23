@@ -1,6 +1,11 @@
 import Docker from 'dockerode';
 import { FunctionCall, GenerateContentArgs, ModelType } from '../../../../../ai-service/common-types.js';
-import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../main/common/content-bus.js';
+import {
+  putAssistantMessage,
+  putContainerLog,
+  putSystemMessage,
+  putUserMessage,
+} from '../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../main/common/user-actions.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
@@ -26,7 +31,7 @@ export async function runContainerTaskOrchestrator({
   if (abortController?.signal.aborted) {
     putContainerLog('warn', 'Container task aborted before start.');
     putSystemMessage('Container task aborted before start.');
-    return { breakLoop: false, items: [] };
+    return { breakLoop: true, items: [] };
   }
 
   try {
@@ -93,10 +98,13 @@ export async function runContainerTaskOrchestrator({
       true,
       options,
     );
-
     if (!confirmation.confirmed) {
       putContainerLog('warn', 'Container task cancelled by user.');
       putSystemMessage('Container task cancelled by user.');
+      if (confirmation.answer) {
+        putUserMessage(confirmation.answer);
+      }
+
       prompt.push(
         {
           type: 'assistant',
@@ -126,10 +134,14 @@ export async function runContainerTaskOrchestrator({
     putContainerLog('info', `Starting container task with image: ${image}`);
     putSystemMessage(`🐳 Starting container task with image: ${image}`);
 
+    if (confirmation.answer) {
+      putUserMessage(confirmation.answer);
+    }
+
     if (abortController?.signal.aborted) {
       putContainerLog('warn', 'Container task aborted before pulling image.');
       putSystemMessage('Container task aborted by user.');
-      return { breakLoop: false, items: [] };
+      return { breakLoop: true, items: [] };
     }
 
     try {
