@@ -37,7 +37,7 @@ IMPORTANT:
       timeout: {
         type: 'string',
         description: 'How long to wait for the command to complete.',
-        enum: ['10sec', '30sec', '1min', '2min', '5min', '10min'],
+        enum: ['10sec', '30sec', '1min', '2min', '5min', '10min', '15min'],
       },
       workingDir: {
         type: 'string',
@@ -57,7 +57,7 @@ type RunCommandArgs = {
   command: string;
   stdin?: string;
   truncMode: 'start' | 'end';
-  timeout: '10sec' | '30sec' | '1min' | '2min' | '5min' | '10min';
+  timeout: '10sec' | '30sec' | '1min' | '2min' | '5min' | '10min' | '15min';
   workingDir: string;
   reasoning: string;
 };
@@ -72,14 +72,36 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   const localController = new AbortController();
   const onGlobalAbort = () => localController.abort();
   globalAbortController?.signal.addEventListener('abort', onGlobalAbort);
-  const timeoutSeconds = parseTimeout(timeout);
-  const abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
+  let abortTimeout;
   let output: string = '';
   let exitCode: number = 0;
   try {
+    const timeoutSeconds = parseTimeout(timeout);
+    abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
     const result = await executeCommand(container, command, stdin, workingDir, localController.signal);
     output = result.output;
     exitCode = result.exitCode;
+  } catch (e) {
+    const errMessage = e instanceof Error ? e.message : String(e);
+    putContainerLog('error', 'An error occurred while executing the command', { error: errMessage });
+    taskExecutionPrompt.push(
+      {
+        type: 'assistant',
+        text: `Executing command with reasoning: ${reasoning}`,
+        functionCalls: [actionResult],
+      },
+      {
+        type: 'user',
+        functionResponses: [
+          {
+            name: 'runCommand',
+            call_id: actionResult.id || undefined,
+            content: `Command execution failed: ${errMessage}`,
+          },
+        ],
+      },
+    );
+    return { shouldBreakOuter: false, commandsExecutedIncrement: 1 };
   } finally {
     clearTimeout(abortTimeout);
     globalAbortController?.signal.removeEventListener('abort', onGlobalAbort);
@@ -133,6 +155,8 @@ function parseTimeout(timeout: RunCommandArgs['timeout']): number {
       return 300;
     case '10min':
       return 600;
+    case '15min':
+      return 900;
     default:
       throw new Error(`Unknown timeout value: ${timeout}`);
   }
