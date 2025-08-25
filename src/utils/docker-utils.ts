@@ -298,7 +298,15 @@ export async function copyFromContainer(
     const extract = tar.extract();
 
     extract.on('entry', (header, stream, next) => {
-      const filePath = path.join(absoluteHostPath, header.name);
+      const unsafeName = header.name;
+      // Resolve destination and ensure it's inside the intended output dir
+      const filePath = path.resolve(absoluteHostPath, unsafeName);
+      if (!filePath.startsWith(absoluteHostPath + path.sep)) {
+        console.warn(`Skipping suspicious archive entry: ${unsafeName} resolves outside destination directory.`);
+        stream.resume();
+        next();
+        return;
+      }
       const dir = path.dirname(filePath);
 
       if (header.type === 'directory') {
