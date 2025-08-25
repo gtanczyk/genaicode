@@ -1,6 +1,6 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../types.js';
 
 export const setExecutionPlanDef: FunctionDef = {
   name: 'setExecutionPlan',

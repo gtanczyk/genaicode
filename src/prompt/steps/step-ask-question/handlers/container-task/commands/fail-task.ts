@@ -1,7 +1,7 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../types.js';
 
 export const failTaskDef: FunctionDef = {
   name: 'failTask',

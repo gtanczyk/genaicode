@@ -1,6 +1,6 @@
 import { FunctionDef, PromptItem } from '../../../../../../ai-service/common-types.js';
 import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerResult, HandleWrapContextProps } from '../types.js';
 
 export const wrapContextDef: FunctionDef = {
   name: 'wrapContext',
@@ -36,12 +36,6 @@ It is critically IMPORTANT to keep track of files which are essential for the ta
     required: ['summary', 'plan', 'progress', 'importantFiles', 'nextStep'],
   },
 };
-
-export interface HandleWrapContextProps extends CommandHandlerBaseProps {
-  computeContextMetrics: () => { messageCount: number; estimatedTokens: number };
-  maxContextItems: number;
-  maxContextSize: number;
-}
 
 type WrapContextArgs = { summary: string; nextStep: string };
 

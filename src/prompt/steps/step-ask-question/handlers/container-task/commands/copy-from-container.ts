@@ -12,7 +12,7 @@ import {
   listFilesInContainerArchive,
   checkPathExistsInContainer,
 } from '../../../../../../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../types.js';
 import { rcConfig } from '../../../../../../main/config.js';
 import { isAncestorDirectory } from '../../../../../../files/file-utils.js';
 

@@ -1,16 +1,17 @@
 import { FunctionDef } from '../../../../../ai-service/common-types.js';
 import {
-  completeTaskDef,
-  handleCompleteTask,
   CommandHandlerResult,
   CommandHandlerBaseProps,
-} from './commands/complete-task.js';
+  HandleWrapContextProps,
+  HandleRunCommandProps,
+} from './types.js';
+import { completeTaskDef, handleCompleteTask } from './commands/complete-task.js';
 import { failTaskDef, handleFailTask } from './commands/fail-task.js';
-import { wrapContextDef, handleWrapContext, HandleWrapContextProps } from './commands/wrap-context.js';
+import { wrapContextDef, handleWrapContext } from './commands/wrap-context.js';
 import { setExecutionPlanDef, handleSetExecutionPlan } from './commands/set-execution-plan.js';
 import { updateExecutionPlanDef, handleUpdateExecutionPlan } from './commands/update-execution-plan.js';
 import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
-import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './commands/run-command.js';
+import { runCommandDef, handleRunCommand } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
 import { checkContextDef, handleCheckContext } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';

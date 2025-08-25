@@ -1,7 +1,7 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { executeCommand } from '../../../../../../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerResult, HandleRunCommandProps } from '../types.js';
 import { abortController as globalAbortController } from '../../../../../../main/common/abort-controller.js';
 
 export const runCommandDef: FunctionDef = {
@@ -48,10 +48,6 @@ IMPORTANT:
     required: ['reasoning', 'command', 'stdin', 'workingDir', 'truncMode', 'timeout'],
   },
 };
-
-export interface HandleRunCommandProps extends CommandHandlerBaseProps {
-  maxOutputLength: number;
-}
 
 type RunCommandArgs = {
   command: string;
