@@ -1,7 +1,23 @@
-import { FunctionDef } from '../../../../../../ai-service/common-types.js';
+import { FunctionDef, FunctionCall, PromptItem } from '../../../../../../ai-service/common-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from '../types.js';
+import { ActionHandlerProps } from '../../../step-ask-question-types.js';
+import Docker from 'dockerode';
+
+// Types from the old container-command-handlers.ts that will be shared by other commands
+export interface CommandHandlerResult {
+  shouldBreakOuter: boolean;
+  success?: boolean;
+  summary?: string;
+  commandsExecutedIncrement: number;
+}
+
+export interface CommandHandlerBaseProps {
+  actionResult: FunctionCall;
+  taskExecutionPrompt: PromptItem[];
+  options: ActionHandlerProps['options'];
+  container: Docker.Container;
+}
 
 type CompleteTaskArgs = {
   summary: string;
