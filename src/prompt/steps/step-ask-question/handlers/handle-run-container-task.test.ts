@@ -24,7 +24,7 @@ const mockPullImage = vi.mocked(dockerUtils.pullImage);
 const mockCreateAndStartContainer = vi.mocked(dockerUtils.createAndStartContainer);
 const mockExecuteCommand = vi.mocked(dockerUtils.executeCommand);
 const mockStopContainer = vi.mocked(dockerUtils.stopContainer);
-const mockAskUserForConfirmation = vi.mocked(userActions.askUserForConfirmation);
+const mockAskUserForConfirmationWithAnswer = vi.mocked(userActions.askUserForConfirmationWithAnswer);
 
 describe('handleRunContainerTask', () => {
   let mockGenerateContentFn: ReturnType<typeof vi.fn>;
@@ -50,7 +50,7 @@ describe('handleRunContainerTask', () => {
     mockCreateAndStartContainer.mockResolvedValue(mockContainer);
     mockExecuteCommand.mockResolvedValue({ output: 'hello world', exitCode: 0 });
     mockStopContainer.mockResolvedValue(undefined);
-    mockAskUserForConfirmation.mockResolvedValue({ confirmed: true });
+    mockAskUserForConfirmationWithAnswer.mockResolvedValue({ confirmed: true });
   });
 
   const getProps = (): Omit<ActionHandlerProps, 'generateImageFn'> => ({
@@ -89,6 +89,8 @@ describe('handleRunContainerTask', () => {
               reasoning: 'Testing echo command',
               workingDir: '/',
               stdin: '',
+              truncMode: 'end',
+              timeout: '30sec',
             },
           },
         },
@@ -113,7 +115,13 @@ describe('handleRunContainerTask', () => {
     expect(result.breakLoop).toBe(false);
     expect(mockPullImage).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
     expect(mockCreateAndStartContainer).toHaveBeenCalledWith(expect.anything(), 'ubuntu:latest');
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'echo "hello world"', '', '/');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      mockContainer,
+      'echo "hello world"',
+      '',
+      '/',
+      expect.any(AbortSignal),
+    );
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
@@ -211,6 +219,8 @@ describe('handleRunContainerTask', () => {
               reasoning: 'Testing bad command',
               workingDir: '/',
               stdin: '',
+              truncMode: 'end',
+              timeout: '30sec',
             },
           },
         },
@@ -238,7 +248,7 @@ describe('handleRunContainerTask', () => {
     const props = getProps();
     await handleRunContainerTask(props as ActionHandlerProps);
 
-    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand', '', '/');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(mockContainer, 'badcommand', '', '/', expect.any(AbortSignal));
     expect(putSystemMessage).toHaveBeenCalledWith(expect.stringContaining('Task finished with status: Success'));
     expect(mockStopContainer).toHaveBeenCalledWith(mockContainer);
   });
