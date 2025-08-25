@@ -191,6 +191,39 @@ function validateHostPath(hostPath: string): string {
 }
 
 /**
+ * Validates that an archive entry path doesn't contain directory traversal sequences.
+ * Prevents "Zip Slip" attacks by ensuring extracted files remain within the target directory.
+ * @param entryName The archive entry name/path
+ * @param extractionDir The intended extraction directory
+ * @returns The validated absolute file path
+ * @throws Error if the path tries to escape the extraction directory
+ */
+function validateArchiveEntryPath(entryName: string, extractionDir: string): string {
+  // Normalize the entry name to resolve any '..' sequences
+  const normalizedEntryName = path.normalize(entryName);
+
+  // Check for any remaining '..' sequences after normalization
+  if (normalizedEntryName.includes('..')) {
+    throw new Error(`Archive entry contains directory traversal sequences: ${entryName}`);
+  }
+
+  // Check for absolute paths
+  if (path.isAbsolute(normalizedEntryName)) {
+    throw new Error(`Archive entry contains absolute path: ${entryName}`);
+  }
+
+  // Construct the full file path
+  const fullPath = path.resolve(extractionDir, normalizedEntryName);
+
+  // Ensure the resolved path is still within the extraction directory
+  if (!fullPath.startsWith(extractionDir)) {
+    throw new Error(`Archive entry tries to escape extraction directory: ${entryName}`);
+  }
+
+  return fullPath;
+}
+
+/**
  * Recursively adds files and directories to a tar pack stream.
  * @param pack The tar-stream pack instance.
  * @param directoryPath The absolute path of the directory to add.
@@ -261,7 +294,16 @@ export async function listFilesInContainerArchive(
     extract.on('entry', (header, stream, next) => {
       // We only care about files, not directories
       if (header.type === 'file') {
-        files.push(header.name);
+        // Validate the entry path for security (even though we're just listing)
+        try {
+          // Create a dummy extraction path for validation
+          const dummyExtractionPath = path.resolve('/tmp');
+          validateArchiveEntryPath(header.name, dummyExtractionPath);
+          files.push(header.name);
+        } catch (error) {
+          // Skip files with invalid paths and log a warning
+          putContainerLog('warn', `Skipping archive entry with invalid path: ${header.name}`, undefined, 'copy');
+        }
       }
       stream.on('end', () => next());
       stream.resume(); // Discard the stream's data
@@ -298,36 +340,45 @@ export async function copyFromContainer(
     const extract = tar.extract();
 
     extract.on('entry', (header, stream, next) => {
-      const filePath = path.join(absoluteHostPath, header.name);
-      const dir = path.dirname(filePath);
+      try {
+        // Validate the archive entry path to prevent Zip Slip attacks
+        const filePath = validateArchiveEntryPath(header.name, absoluteHostPath);
+        const dir = path.dirname(filePath);
 
-      if (header.type === 'directory') {
-        if (!fs.existsSync(filePath)) {
-          fs.mkdirSync(filePath, { recursive: true });
+        if (header.type === 'directory') {
+          if (!fs.existsSync(filePath)) {
+            fs.mkdirSync(filePath, { recursive: true });
+          }
+          stream.on('end', () => next());
+          stream.resume();
+          return;
         }
-        stream.on('end', () => next());
-        stream.resume();
-        return;
+
+        // Ensure directory exists for the file
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+
+        const writeStream = fs.createWriteStream(filePath);
+        stream.pipe(writeStream);
+
+        // Only call next() after the file has been fully written
+        writeStream.on('finish', () => next());
+        writeStream.on('error', (err) => {
+          console.error(`Error writing file ${filePath}:`, err);
+          next(err); // Pass error to tar-stream
+        });
+        stream.on('error', (err) => {
+          console.error(`Error in tar stream for ${filePath}:`, err);
+          next(err); // Pass error to tar-stream
+        });
+      } catch (error) {
+        // Handle validation errors and pass them to the extract stream
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        putContainerLog('error', `Archive extraction failed: ${errorMessage}`, undefined, 'copy');
+        stream.resume(); // Consume the stream to avoid hanging
+        next(error); // Pass error to tar-stream which will trigger the 'error' event
       }
-
-      // Ensure directory exists for the file
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      const writeStream = fs.createWriteStream(filePath);
-      stream.pipe(writeStream);
-
-      // Only call next() after the file has been fully written
-      writeStream.on('finish', () => next());
-      writeStream.on('error', (err) => {
-        console.error(`Error writing file ${filePath}:`, err);
-        next(err); // Pass error to tar-stream
-      });
-      stream.on('error', (err) => {
-        console.error(`Error in tar stream for ${filePath}:`, err);
-        next(err); // Pass error to tar-stream
-      });
     });
 
     await new Promise<void>((resolve, reject) => {
