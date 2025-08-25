@@ -1,5 +1,5 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-registry.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 
 export const checkContextDef: FunctionDef = {
   name: 'checkContext',
