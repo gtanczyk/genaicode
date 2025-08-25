@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { TerminalEvent } from '../../../../common/api-types.js';
 import { useChatState } from '../../contexts/chat-state-context.js';
+import { interruptCurrentCommand } from '../../api/api-client.js';
 import {
   TerminalContainer,
   TerminalHeader,
@@ -49,6 +50,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ events, onClear, aut
     });
   };
 
+  const handleInterrupt = async () => {
+    try {
+      await interruptCurrentCommand();
+    } catch (error) {
+      console.error('Failed to interrupt command:', error);
+    }
+  };
+
   const displayedEvents = events.length > MAX_LOG_LINES ? events.slice(-MAX_LOG_LINES) : events;
 
   return (
@@ -56,6 +65,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ events, onClear, aut
       <TerminalHeader>
         <h4>Container Task Log</h4>
         <ControlBar>
+          <ToggleButton active={false} onClick={handleInterrupt} aria-label="Interrupt current container command">
+            Interrupt command
+          </ToggleButton>
           <ToggleButton active={false} onClick={onClear} aria-label="Clear terminal log">
             Clear
           </ToggleButton>

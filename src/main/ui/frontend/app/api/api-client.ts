@@ -202,6 +202,12 @@ export const interruptExecution = async (): Promise<void> => {
   await api.post('/interrupt-execution');
 };
 
+export const interruptCurrentCommand = async (): Promise<void> => {
+  return await api.post('/interrupt-execution', {
+    scope: 'container-command',
+  });
+};
+
 export const pauseExecution = async (): Promise<void> => {
   await api.post('/pause-execution');
 };

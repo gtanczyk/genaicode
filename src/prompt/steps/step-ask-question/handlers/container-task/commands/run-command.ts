@@ -3,6 +3,7 @@ import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { executeCommand } from '../../../../../../utils/docker-utils.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { abortController as globalAbortController } from '../../../../../../main/common/abort-controller.js';
+import { onInterruptRequested } from './interrupt-controller.js';
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
@@ -75,6 +76,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   let abortTimeout;
   let output: string = '';
   let exitCode: number = 0;
+  let clearInterruptListener = onInterruptRequested(() => localController.abort());
   try {
     const timeoutSeconds = parseTimeout(timeout);
     abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
@@ -105,6 +107,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   } finally {
     clearTimeout(abortTimeout);
     globalAbortController?.signal.removeEventListener('abort', onGlobalAbort);
+    clearInterruptListener();
   }
 
   let managedOutput = output;

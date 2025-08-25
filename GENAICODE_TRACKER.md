@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [-] [GEN-130] 2025-08-25: Implement per-command interrupt for container tasks with optional post-interrupt messaging, enhancing user control over long-running processes (related to GEN-127, GEN-128). Immediate interrupt now triggers a server-side `askQuestion` to capture a reason and confirm whether to stop the entire task.
 - [-] [GEN-129] 2025-08-23: Introduce `checkContext` command in container tasks to replace implicit `pushContextMetrics`, improving model-driven context management.
 - [x] [GEN-128] 2025-08-23: Refactor TerminalView and its toggle button out of ChatInterface to the main app layout for better component structure.
 - [x] [GEN-127] 2025-08-23: Implement dedicated terminal view for runContainerTask logs; added terminal event channel, backend support, and frontend UI.

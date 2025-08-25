@@ -1,9 +1,9 @@
-import { styled, css, keyframes } from 'styled-components';
+import { styled, css } from 'styled-components';
 import { MessageContainer, MessageBubble } from './message-container-styles.js';
 import { LogLevelColors } from './terminal-view-styles.js';
 
 export const InlineContainer = styled(MessageContainer)`
-  /* no extra rules needed; keeps alignment with assistant messages */
+  align-items: center;
 `;
 
 export const InlineButton = styled(MessageBubble).attrs({ as: 'button' })<{ flashing: boolean }>`

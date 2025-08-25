@@ -1,6 +1,11 @@
 import Docker from 'dockerode';
 import { FunctionCall, ModelType, PromptItem } from '../../../../../ai-service/common-types.js';
-import { putContainerLog, putSystemMessage } from '../../../../../main/common/content-bus.js';
+import {
+  putAssistantMessage,
+  putContainerLog,
+  putSystemMessage,
+  putUserMessage,
+} from '../../../../../main/common/content-bus.js';
 import { estimateTokenCount } from '../../../../token-estimator.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { ActionHandlerProps } from '../../step-ask-question-types.js';
@@ -12,6 +17,8 @@ import {
   HandleRunCommandProps,
 } from './container-commands-registry.js';
 import { rcConfig } from '../../../../../main/config.js';
+import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
+import { askUserForInput } from '../../../../../main/common/user-actions.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
@@ -119,6 +126,20 @@ Begin by analyzing the task and formulating your approach. Then start executing 
       }
 
       await waitIfPaused();
+
+      if (isInterrupted()) {
+        clearInterruption();
+        putSystemMessage('Task interrupted, waiting for user input');
+        putAssistantMessage('What would you like to do?');
+        const response = await askUserForInput('Your answer', 'What would you like to do?', options);
+        const item: PromptItem = {
+          type: 'user',
+          text: response.answer,
+          images: response.images,
+        };
+        putUserMessage(response.answer ?? '', undefined, undefined, response.images, item);
+        taskExecutionPrompt.push(item);
+      }
 
       if (actionIndex - lastCheckActionIndex >= 10) {
         taskExecutionPrompt.push({
