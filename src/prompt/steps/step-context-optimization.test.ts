@@ -475,6 +475,147 @@ describe('executeStepContextOptimization', () => {
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
     });
 
+    it('should handle malformed optimizedContext gracefully', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockGenerateContentFn.mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            name: 'optimizeContext',
+            args: {
+              optimizedContext: 'not an array', // Invalid format
+            },
+          },
+        },
+      ]);
+
+      const result = await executeStepContextOptimization(
+        mockGenerateContentFn,
+        [
+          {
+            type: 'user',
+            functionResponses: [
+              {
+                name: 'getSourceCode',
+                content: JSON.stringify({ '/test/file1.ts': { fileId: FILE_ID, content: 'content1' } }),
+              },
+            ],
+          },
+        ],
+        mockOptions,
+      );
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(putSystemMessage).toHaveBeenCalledWith('Context optimization is starting for large codebase');
+      expect(putSystemMessage).toHaveBeenCalledWith(
+        'Context optimization did not generate changes to current context.',
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Invalid optimizedContext: expected array, got', 'string');
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle invalid optimization items gracefully', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockGenerateContentFn.mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            name: 'optimizeContext',
+            args: {
+              optimizedContext: [
+                { filePath: '/test/file1.ts', relevance: 0.8 }, // Valid
+                { filePath: 123, relevance: 0.9 }, // Invalid filePath type
+                { relevance: 0.7 }, // Missing filePath
+                { filePath: '/test/file2.ts' }, // Missing relevance
+                null, // Null item
+                'invalid', // String instead of object
+              ],
+            },
+          },
+        },
+      ]);
+
+      const result = await executeStepContextOptimization(
+        mockGenerateContentFn,
+        [
+          {
+            type: 'user',
+            functionResponses: [
+              {
+                name: 'getSourceCode',
+                content: JSON.stringify({ '/test/file1.ts': { fileId: FILE_ID, content: 'content1' } }),
+              },
+            ],
+          },
+        ],
+        mockOptions,
+      );
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(5); // 5 invalid items should be warned about
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should sanitize relevance scores to valid range', async () => {
+      const mockSourceCode: SourceCodeMap = {
+        '/test/file1.ts': { fileId: FILE_ID, content: 'content1' + Array.from(Array(10000).keys()).join(',') },
+        '/test/file2.ts': { fileId: FILE_ID, content: 'content2' + Array.from(Array(5000).keys()).join(',') },
+        '/test/file3.ts': { fileId: FILE_ID, content: 'content3' + Array.from(Array(3000).keys()).join(',') },
+      };
+
+      vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
+
+      mockGenerateContentFn.mockResolvedValueOnce([
+        {
+          type: 'functionCall',
+          functionCall: {
+            name: 'optimizeContext',
+            args: {
+              optimizedContext: [
+                { filePath: '/test/file1.ts', relevance: -0.5 }, // Below 0, should be clamped to 0 (< 0.5 threshold)
+                { filePath: '/test/file2.ts', relevance: 1.5 }, // Above 1, should be clamped to 1 (>= 0.5 threshold)
+                { filePath: '/test/file3.ts', relevance: 0.7 }, // Valid, should remain unchanged (>= 0.5 threshold)
+              ],
+            },
+          },
+        },
+      ]);
+
+      const result = await executeStepContextOptimization(
+        mockGenerateContentFn,
+        [
+          {
+            type: 'user',
+            functionResponses: [
+              {
+                name: 'getSourceCode',
+                content: JSON.stringify(mockSourceCode),
+              },
+            ],
+          },
+        ],
+        mockOptions,
+      );
+
+      expect(result).toBe(StepResult.CONTINUE);
+      expect(putSystemMessage).toHaveBeenCalledWith('Context optimization is starting for large codebase');
+      // Should include files with clamped relevance >= 0.5 (file2 with 1.0 and file3 with 0.7)
+      expect(putSystemMessage).toHaveBeenCalledWith(
+        'Context optimization completed successfully.',
+        expect.objectContaining({
+          optimizedContext: expect.arrayContaining([
+            ['/test/file2.ts', 1], // Clamped from 1.5 to 1.0
+            ['/test/file3.ts', 0.7], // Unchanged
+          ]),
+        }),
+      );
+      // file1 should not be included as clamped relevance (0) is below 0.5 threshold
+    });
+
     it('should handle missing source code response', async () => {
       const result = await executeStepContextOptimization(
         mockGenerateContentFn,

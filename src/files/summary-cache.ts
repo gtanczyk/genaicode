@@ -26,18 +26,37 @@ export const summaryCache: SummaryCache = readCache<SummaryCache>('summaries', {
 } as SummaryCache);
 
 export function getSummary(filePath: string) {
-  const summary = summaryCache[filePath];
-  return summary
-    ? {
-        summary: summary.summary,
-        ...(summary.dependencies && { dependencies: summary.dependencies }),
-      }
-    : undefined;
+  if (typeof filePath !== 'string' || !filePath.trim()) {
+    console.warn('Invalid file path provided to getSummary:', filePath);
+    return undefined;
+  }
+
+  try {
+    const summary = summaryCache[filePath];
+    return summary
+      ? {
+          summary: summary.summary,
+          ...(summary.dependencies && { dependencies: summary.dependencies }),
+        }
+      : undefined;
+  } catch (error) {
+    console.warn(`Error retrieving summary for ${filePath}:`, error);
+    return undefined;
+  }
 }
 
 export function clearSummaryCache(filePaths: string[]) {
+  if (!Array.isArray(filePaths)) {
+    console.warn('clearSummaryCache expects an array of file paths, got:', typeof filePaths);
+    return;
+  }
+
   for (const filePath of filePaths) {
-    delete summaryCache[filePath];
+    if (typeof filePath === 'string' && filePath.trim()) {
+      delete summaryCache[filePath];
+    } else {
+      console.warn('Skipping invalid file path in clearSummaryCache:', filePath);
+    }
   }
   popularDependencies.clear();
 }

@@ -66,12 +66,39 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
  * Common function to process function calls and explanations
  */
 export function processFunctionCalls(functionCalls: FunctionCall[], functionDefs: FunctionDef[]): FunctionCall[] {
-  const unknownFunctionCalls = functionCalls.filter((call) => !functionDefs.some((fd) => fd.name === call.name));
+  if (!Array.isArray(functionCalls)) {
+    console.warn('Invalid function calls: expected array, got', typeof functionCalls);
+    return [];
+  }
+
+  if (!Array.isArray(functionDefs)) {
+    console.warn('Invalid function definitions: expected array, got', typeof functionDefs);
+    return functionCalls; // Return as-is if we can't validate
+  }
+
+  const functionDefNames = new Set(functionDefs.map((fd) => fd.name));
+  const validFunctionCalls: FunctionCall[] = [];
+  const unknownFunctionCalls: FunctionCall[] = [];
+
+  for (const call of functionCalls) {
+    if (!call || typeof call !== 'object' || typeof call.name !== 'string') {
+      console.warn('Invalid function call structure:', call);
+      continue;
+    }
+
+    if (functionDefNames.has(call.name)) {
+      validFunctionCalls.push(call);
+    } else {
+      unknownFunctionCalls.push(call);
+    }
+  }
+
   if (unknownFunctionCalls.length > 0) {
     console.warn('Unknown function name: ' + unknownFunctionCalls.map((call) => call.name).join(', '));
   }
 
-  return functionCalls;
+  // Return all function calls to maintain backward compatibility, but log warnings for unknown ones
+  return [...validFunctionCalls, ...unknownFunctionCalls];
 }
 
 /**
@@ -82,12 +109,34 @@ export function optimizeFunctionDefs(
   functionDefs: FunctionDef[] | undefined,
   requiredFunctionName: string | undefined,
 ): FunctionDef[] {
-  if (!functionDefs) return [];
+  if (!functionDefs || !Array.isArray(functionDefs)) {
+    return [];
+  }
 
-  const promptFunctionNames = new Set(
-    prompt.map((item) => item.functionCalls).flatMap((fcs) => fcs?.map((fc) => fc.name)),
-  );
-  return functionDefs.filter(
-    (def) => promptFunctionNames.has(def.name) || !requiredFunctionName || def.name === requiredFunctionName,
-  );
+  if (!Array.isArray(prompt)) {
+    console.warn('Invalid prompt: expected array, got', typeof prompt);
+    return functionDefs; // Return all function defs if we can't analyze the prompt
+  }
+
+  const promptFunctionNames = new Set<string>();
+
+  // Extract function names from prompt items with better error handling
+  for (const item of prompt) {
+    if (item && typeof item === 'object' && item.functionCalls && Array.isArray(item.functionCalls)) {
+      for (const fc of item.functionCalls) {
+        if (fc && typeof fc === 'object' && typeof fc.name === 'string') {
+          promptFunctionNames.add(fc.name);
+        }
+      }
+    }
+  }
+
+  return functionDefs.filter((def) => {
+    if (!def || typeof def !== 'object' || typeof def.name !== 'string') {
+      console.warn('Invalid function definition:', def);
+      return false;
+    }
+
+    return promptFunctionNames.has(def.name) || !requiredFunctionName || def.name === requiredFunctionName;
+  });
 }

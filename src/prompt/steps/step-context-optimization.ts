@@ -130,13 +130,14 @@ export async function executeStepContextOptimization(
       .map((item) => item.functionCall);
 
     const [optimizedContext, irrelevantFiles] = parseOptimizationResult(fullSourceCode, result);
-    if (!optimizedContext) {
-      putSystemMessage(`Warning: Context optimization failed. We need to abort.`);
-      return StepResult.BREAK;
-    }
-
-    if (optimizedContext.length === 0) {
-      putSystemMessage('Context optimization did not generate changes to current context.');
+    if (!optimizedContext || optimizedContext.length === 0) {
+      if (!optimizedContext) {
+        putSystemMessage(
+          `Warning: Context optimization failed due to invalid response format. Continuing with current context.`,
+        );
+      } else {
+        putSystemMessage('Context optimization did not generate changes to current context.');
+      }
       return StepResult.CONTINUE;
     }
 
@@ -211,14 +212,30 @@ function parseOptimizationResult(
     return [[], new Set()];
   }
 
+  // Validate the optimizedContext is an array
+  const optimizedContext = optimizeCall.args.optimizedContext;
+  if (!Array.isArray(optimizedContext)) {
+    console.warn('Invalid optimizedContext: expected array, got', typeof optimizedContext);
+    return [[], new Set()];
+  }
+
   let totalTokens = 0;
   const result: [filePath: string, relevance: number][] = [];
   const relevantFiles = new Set<string>();
   const irrelevantFiles = new Set<string>();
 
   // First pass: collect initially relevant files and track irrelevant ones
-  for (const item of optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]) {
-    if (item.relevance >= 0.5) {
+  for (const item of optimizedContext) {
+    // Validate item structure
+    if (!item || typeof item !== 'object' || typeof item.filePath !== 'string' || typeof item.relevance !== 'number') {
+      console.warn('Invalid optimization item:', item);
+      continue;
+    }
+
+    // Sanitize relevance score
+    const relevance = Math.max(0, Math.min(1, item.relevance));
+
+    if (relevance >= 0.5) {
       relevantFiles.add(item.filePath);
     } else {
       irrelevantFiles.add(item.filePath);
@@ -233,15 +250,28 @@ function parseOptimizationResult(
   }
 
   // Second pass: calculate final relevance including dependency weights
-  for (const item of (optimizeCall.args.optimizedContext as { filePath: string; relevance: number }[]).sort((a, b) =>
-    a.relevance > b.relevance ? -1 : 1,
-  )) {
+  const validOptimizedContext = optimizedContext
+    .filter(
+      (item): item is { filePath: string; relevance: number } =>
+        item && typeof item === 'object' && typeof item.filePath === 'string' && typeof item.relevance === 'number',
+    )
+    .map((item) => ({ ...item, relevance: Math.max(0, Math.min(1, item.relevance)) }))
+    .sort((a, b) => b.relevance - a.relevance);
+
+  for (const item of validOptimizedContext) {
     const { filePath, relevance } = item;
     if (relevance < 0.5) {
       break;
     }
+
     if (importantContext.files?.includes(filePath)) {
       // Preserving important files
+      continue;
+    }
+
+    // Check if file exists in source code
+    if (!fullSourceCode[filePath]) {
+      console.warn(`File not found in source code: ${filePath}`);
       continue;
     }
 
@@ -249,9 +279,11 @@ function parseOptimizationResult(
       (fullSourceCode[filePath] && 'content' in fullSourceCode[filePath]
         ? fullSourceCode[filePath]?.content
         : undefined) ?? '';
-    totalTokens += estimateTokenCount(content);
 
-    result.push([item.filePath, relevance]);
+    const tokenCount = estimateTokenCount(content);
+    totalTokens += tokenCount;
+
+    result.push([filePath, relevance]);
 
     // Break if we exceed token limit and the file isn't highly relevant
     if (totalTokens > MAX_TOTAL_TOKENS && relevance < 0.7) {
@@ -293,20 +325,26 @@ function optimizeSourceCode(
   let contentTokenCount = 0;
   let summaryTokenCount = 0;
 
-  // Create a set of all required files (including dependencies)
-  const requiredFiles = new Set<string>();
-  for (const [path] of optimizedContext) {
-    requiredFiles.add(path);
+  // Early return if no context to optimize
+  if (optimizedContext.length === 0) {
+    return [optimizedSourceCode, contentTokenCount, summaryTokenCount];
   }
 
-  for (const [path] of Object.entries(fullSourceCode)) {
+  // Create a set of all required files for O(1) lookups
+  const requiredFiles = new Set(optimizedContext.map(([path]) => path));
+
+  // Process only the files we need to consider
+  const filesToProcess = new Set([...requiredFiles, ...Object.keys(fullSourceCode)]);
+
+  for (const path of filesToProcess) {
+    const fileData = fullSourceCode[path];
+    if (!fileData) continue; // Skip if file doesn't exist
+
     const isRequired = requiredFiles.has(path);
     const isIrrelevant = irrelevantFiles.has(path);
     const summary = getSummary(path);
-    const content =
-      (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
-    const dependencies =
-      fullSourceCode[path] && 'dependencies' in fullSourceCode[path] ? fullSourceCode[path]?.dependencies : undefined;
+    const content = 'content' in fileData ? fileData.content : undefined;
+    const dependencies = 'dependencies' in fileData ? fileData.dependencies : undefined;
 
     if (
       isRequired &&
