@@ -89,7 +89,12 @@ export async function executeCommand(
   stream.end();
 
   abortSignal?.addEventListener('abort', async () => {
-    await executeCommand(container, `pkill -9 -f "${command}"`, '', '/');
+    const killExec = await container.exec({
+      Cmd: ['pkill', '-9', '-f', command],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    await killExec.start({});
     stream.destroy();
   });
 
@@ -104,6 +109,14 @@ export async function executeCommand(
     });
 
     stream.on('end', () => {
+      resolve();
+    });
+
+    stream.on('error', () => {
+      resolve();
+    });
+
+    abortSignal?.addEventListener('abort', () => {
       resolve();
     });
   });

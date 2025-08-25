@@ -10,6 +10,7 @@ export const runCommandDef: FunctionDef = {
   description: `Execute a shell command in the Docker container in non-interactive mode.
 IMPORTANT: 
 - The command will block you until it completes, so consider using a non-blocking approach if needed.
+- Ensure you are going to run command in non interactive mode, so that it will not block waiting for input, which will not come.
 - For complex/long input you should prefer \`stdin\` over command-line arguments. For example instead of echo \`some long text\`, you can put the long text in the \`stdin\` field, and then use it in the command like this: \`cat | some_command\`.
   `,
   parameters: {
@@ -76,7 +77,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   let abortTimeout;
   let output: string = '';
   let exitCode: number = 0;
-  let clearInterruptListener = onInterruptRequested(() => localController.abort());
+  const clearInterruptListener = onInterruptRequested(() => localController.abort());
   try {
     const timeoutSeconds = parseTimeout(timeout);
     abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
