@@ -12,8 +12,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 ## Issues
 
 - [-] [GEN-129] 2025-08-23: Introduce `checkContext` command in container tasks to replace implicit `pushContextMetrics`, improving model-driven context management.
-- [-] [GEN-128] 2025-08-23: Refactor TerminalView and its toggle button out of ChatInterface to the main app layout for better component structure.
-- [-] [GEN-127] 2025-08-23: Implement dedicated terminal view for runContainerTask logs; added terminal event channel, backend support, and frontend UI.
+- [x] [GEN-128] 2025-08-23: Refactor TerminalView and its toggle button out of ChatInterface to the main app layout for better component structure.
+- [x] [GEN-127] 2025-08-23: Implement dedicated terminal view for runContainerTask logs; added terminal event channel, backend support, and frontend UI.
 - [x] [GEN-126] 2025-08-17: Refactored container task command handlers into a registry-based, modular architecture for improved extensibility and maintainability.
 - [x] [GEN-125] 2025-08-16: Refactored `handleRunContainerTask` into a dedicated module with separate files for orchestration, command execution loop, command handlers, and types to improve maintainability.
 - [-] [GEN-124] 2025-08-15: Enhanced runContainerTask: implemented orphaned container cleanup and added user confirmation for all file copy operations.

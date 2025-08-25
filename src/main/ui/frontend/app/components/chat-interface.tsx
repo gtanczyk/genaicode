@@ -21,6 +21,7 @@ import { ProgressIndicator } from './progress-indicator.js';
 import { deleteIteration } from '../api/api-client.js';
 import { Question } from '../../../common/api-types.js';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
+import { TerminalInlineToggle } from './chat/terminal-inline-toggle.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -221,6 +222,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     )}
                 </React.Fragment>
               ))}
+              {iterationIndex === iterations.length - 1 && <TerminalInlineToggle iterationId={currentIterationId} />}
             </IterationContent>
           </IterationContainer>
         ))}
