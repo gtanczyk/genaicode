@@ -2,15 +2,15 @@ import Docker from 'dockerode';
 import path from 'path';
 import fs from 'fs';
 import tar from 'tar-stream';
-import { putContainerLog, putSystemMessage } from '../main/common/content-bus.js';
-import { AllowedDockerImage } from '../prompt/function-defs/run-container-task.js';
-import { rcConfig } from '../main/config.js';
+import { putContainerLog, putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { AllowedDockerImage } from '../../../../../function-defs/run-container-task.js';
+import { rcConfig } from '../../../../../../main/config.js';
 import {
   cacheContainerId,
   clearCachedContainerIds,
   getCachedContainerIds,
   removeCachedContainerId,
-} from '../files/cache-file.js';
+} from '../../../../../../files/cache-file.js';
 
 /**
  * Pull a Docker image

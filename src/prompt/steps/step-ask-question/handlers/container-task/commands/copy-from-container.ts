@@ -11,7 +11,7 @@ import {
   copyFromContainer as utilCopyFromContainer,
   listFilesInContainerArchive,
   checkPathExistsInContainer,
-} from '../../../../../../utils/docker-utils.js';
+} from '../utils/docker-utils.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
 import { rcConfig } from '../../../../../../main/config.js';
 import { isAncestorDirectory } from '../../../../../../files/file-utils.js';

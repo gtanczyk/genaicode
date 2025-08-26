@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleRunContainerTask } from './handle-run-container-task.js';
 import { ActionHandlerProps, AskQuestionCall } from '../step-ask-question-types.js';
 import { putSystemMessage } from '../../../../main/common/content-bus.js';
-import * as dockerUtils from '../../../../utils/docker-utils.js';
+import * as dockerUtils from './container-task/utils/docker-utils.js';
 import Docker from 'dockerode';
 import * as userActions from '../../../../main/common/user-actions.js';
 
@@ -13,7 +13,7 @@ vi.mock('../../../../main/common/content-bus.js', () => ({
   putContainerLog: vi.fn(),
 }));
 
-vi.mock('../../../../utils/docker-utils.js');
+vi.mock('./container-task/utils/docker-utils.js');
 vi.mock('../../../../main/common/user-actions.js');
 
 vi.mock('../../../../prompt/function-calling.js', () => ({

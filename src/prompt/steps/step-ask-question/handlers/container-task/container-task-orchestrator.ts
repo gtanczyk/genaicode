@@ -9,12 +9,7 @@ import {
 import { askUserForConfirmationWithAnswer } from '../../../../../main/common/user-actions.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
-import {
-  cleanupOrphanedContainers,
-  createAndStartContainer,
-  pullImage,
-  stopContainer,
-} from '../../../../../utils/docker-utils.js';
+import { cleanupOrphanedContainers, createAndStartContainer, pullImage, stopContainer } from './utils/docker-utils.js';
 import { ActionHandlerProps, ActionResult } from '../../step-ask-question-types.js';
 import { commandExecutionLoop } from './command-execution-loop.js';
 
