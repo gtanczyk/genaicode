@@ -191,14 +191,12 @@ function validateHostPath(hostPath: string): string {
 }
 
 /**
- * Validates that an archive entry path doesn't contain directory traversal sequences.
- * Prevents "Zip Slip" attacks by ensuring extracted files remain within the target directory.
- * @param entryName The archive entry name/path
- * @param extractionDir The intended extraction directory
- * @returns The validated absolute file path
- * @throws Error if the path tries to escape the extraction directory
+ * Validates an archive entry name for basic security issues.
+ * This is a lightweight validation for cases where we don't have an extraction directory.
+ * @param entryName The name/path of the entry in the archive
+ * @throws Error if the path contains obvious security issues
  */
-function validateArchiveEntryPath(entryName: string, extractionDir: string): string {
+function validateArchiveEntryName(entryName: string): void {
   // Normalize the entry name to resolve any '..' sequences
   const normalizedEntryName = path.normalize(entryName);
 
@@ -211,6 +209,21 @@ function validateArchiveEntryPath(entryName: string, extractionDir: string): str
   if (path.isAbsolute(normalizedEntryName)) {
     throw new Error(`Archive entry contains absolute path: ${entryName}`);
   }
+}
+
+/**
+ * Validates that an archive entry path doesn't contain directory traversal sequences.
+ * Prevents "Zip Slip" attacks by ensuring extracted files remain within the target directory.
+ * @param entryName The archive entry name/path
+ * @param extractionDir The intended extraction directory
+ * @returns The validated absolute file path
+ * @throws Error if the path tries to escape the extraction directory
+ */
+function validateArchiveEntryPath(entryName: string, extractionDir: string): string {
+  // First do basic validation
+  validateArchiveEntryName(entryName);
+  
+  const normalizedEntryName = path.normalize(entryName);
 
   // Construct the full file path
   const fullPath = path.resolve(extractionDir, normalizedEntryName);
@@ -296,9 +309,7 @@ export async function listFilesInContainerArchive(
       if (header.type === 'file') {
         // Validate the entry path for security (even though we're just listing)
         try {
-          // Create a dummy extraction path for validation
-          const dummyExtractionPath = path.resolve('/tmp');
-          validateArchiveEntryPath(header.name, dummyExtractionPath);
+          validateArchiveEntryName(header.name);
           files.push(header.name);
         } catch (error) {
           // Skip files with invalid paths and log a warning
