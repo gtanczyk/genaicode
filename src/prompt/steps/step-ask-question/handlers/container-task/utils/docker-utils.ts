@@ -11,6 +11,7 @@ import {
   getCachedContainerIds,
   removeCachedContainerId,
 } from '../../../../../../files/cache-file.js';
+import { isProjectPath } from '../../../../../../files/path-utils.js';
 
 /**
  * Pull a Docker image
@@ -300,6 +301,13 @@ export async function copyFromContainer(
     extract.on('entry', (header, stream, next) => {
       const filePath = path.join(absoluteHostPath, header.name);
       const dir = path.dirname(filePath);
+
+      if (!isProjectPath(filePath)) {
+        console.error(`Refusing to write outside project root: ${filePath}`);
+        next(new Error(`Refusing to write outside project root: ${filePath}`));
+        putContainerLog('error', `Refusing to write outside project root: ${filePath}`, undefined, 'copy');
+        return;
+      }
 
       if (header.type === 'directory') {
         if (!fs.existsSync(filePath)) {
