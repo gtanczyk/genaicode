@@ -1,5 +1,8 @@
 {
   "extends": "./tsconfig.json", // Inherit from the main tsconfig.json
+  "compilerOptions": {
+    "types": [] // Override types to exclude vitest/globals from build
+  },
   "exclude": [
     "node_modules", // Exclude dependencies
     "**/*.test.ts", // Exclude test files
