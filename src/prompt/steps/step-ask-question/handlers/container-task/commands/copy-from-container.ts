@@ -29,7 +29,9 @@ export const getCopyFromContainerDef: () => FunctionDef = () => ({
       },
       hostPath: {
         type: 'string',
-        description: `The absolute destination path on the host machine, which must be within the project root directory.\nThe file path must start from: ${rcConfig.rootDir}`,
+        description: `The absolute destination path on the host machine, which must be within the project root directory.
+The file path must start from: ${rcConfig.rootDir}
+IMPORTANT: hostPath must be the target directory!`,
       },
     },
     required: ['containerPath', 'hostPath'],

@@ -283,6 +283,68 @@ export async function listFilesInContainerArchive(
 }
 
 /**
+ * Extracts a tar stream to a specified directory, with path validation.
+ * @param tarStream The readable tar stream.
+ * @param destinationHostPath The absolute path on the host to extract files to.
+ * @param pathValidator A function to validate each file path before writing.
+ */
+export async function extractTarStreamToDirectory(
+  tarStream: NodeJS.ReadableStream,
+  destinationHostPath: string,
+  pathValidator: (filePath: string) => boolean,
+): Promise<void> {
+  const extract = tar.extract();
+
+  extract.on('entry', (header, stream, next) => {
+    const filePath = path.join(destinationHostPath, header.name);
+    const dir = path.dirname(filePath);
+
+    if (!pathValidator(filePath)) {
+      const errorMessage = `Refusing to write outside project root: ${filePath}`;
+      console.error(errorMessage);
+      putContainerLog('error', errorMessage, undefined, 'copy');
+      // Pass an error to next() to stop the extraction process
+      next(new Error(errorMessage));
+      return;
+    }
+
+    if (header.type === 'directory') {
+      if (!fs.existsSync(filePath)) {
+        fs.mkdirSync(filePath, { recursive: true });
+      }
+      stream.on('end', () => next());
+      stream.resume();
+      return;
+    }
+
+    // Ensure directory exists for the file
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const writeStream = fs.createWriteStream(filePath);
+    stream.pipe(writeStream);
+
+    writeStream.on('finish', () => next());
+    writeStream.on('error', (err) => {
+      console.error(`Error writing file ${filePath}:`, err);
+      next(err); // Pass error to tar-stream
+    });
+    stream.on('error', (err) => {
+      console.error(`Error in tar stream for ${filePath}:`, err);
+      next(err); // Pass error to tar-stream
+    });
+  });
+
+  return new Promise<void>((resolve, reject) => {
+    tarStream.on('error', reject);
+    extract.on('finish', resolve);
+    extract.on('error', reject);
+    tarStream.pipe(extract);
+  });
+}
+
+/**
  * Copy a file or directory from the container to the host.
  */
 export async function copyFromContainer(
@@ -292,57 +354,17 @@ export async function copyFromContainer(
 ): Promise<void> {
   try {
     const absoluteHostPath = validateHostPath(hostPath);
+    if (!fs.existsSync(absoluteHostPath) || !fs.statSync(absoluteHostPath).isDirectory()) {
+      throw new Error(`Invalid host path: ${absoluteHostPath}, it must exist, and it must be directory!`);
+    }
+
     putContainerLog('info', `Copying from container:${containerPath} to host:${absoluteHostPath}`, undefined, 'copy');
     putSystemMessage(`📦 Copying from container:${containerPath} to host:${absoluteHostPath}`);
 
     const stream = await container.getArchive({ path: containerPath });
-    const extract = tar.extract();
 
-    extract.on('entry', (header, stream, next) => {
-      const filePath = path.join(absoluteHostPath, header.name);
-      const dir = path.dirname(filePath);
+    await extractTarStreamToDirectory(stream, absoluteHostPath, isProjectPath);
 
-      if (!isProjectPath(filePath)) {
-        console.error(`Refusing to write outside project root: ${filePath}`);
-        next(new Error(`Refusing to write outside project root: ${filePath}`));
-        putContainerLog('error', `Refusing to write outside project root: ${filePath}`, undefined, 'copy');
-        return;
-      }
-
-      if (header.type === 'directory') {
-        if (!fs.existsSync(filePath)) {
-          fs.mkdirSync(filePath, { recursive: true });
-        }
-        stream.on('end', () => next());
-        stream.resume();
-        return;
-      }
-
-      // Ensure directory exists for the file
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      const writeStream = fs.createWriteStream(filePath);
-      stream.pipe(writeStream);
-
-      // Only call next() after the file has been fully written
-      writeStream.on('finish', () => next());
-      writeStream.on('error', (err) => {
-        console.error(`Error writing file ${filePath}:`, err);
-        next(err); // Pass error to tar-stream
-      });
-      stream.on('error', (err) => {
-        console.error(`Error in tar stream for ${filePath}:`, err);
-        next(err); // Pass error to tar-stream
-      });
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      extract.on('finish', resolve);
-      extract.on('error', reject);
-      stream.pipe(extract);
-    });
     putContainerLog('success', 'Successfully copied from container.', undefined, 'copy');
     putSystemMessage(`✅ Successfully copied from container.`);
   } catch (error) {

@@ -121,7 +121,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
     putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
   }
 
-  putContainerLog('info', 'Command executed', { managedOutput, exitCode }, 'command');
+  putContainerLog('info', `Command executed: ${reasoning}`, { managedOutput, exitCode }, 'command');
 
   taskExecutionPrompt.push(
     {
