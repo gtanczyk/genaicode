@@ -13,7 +13,7 @@ export const wrapContextDef: FunctionDef = {
         type: 'string',
         description: 'A summary of prior steps and important findings to keep for next actions.',
       },
-      plan: setExecutionPlanDef.parameters,
+      plan: setExecutionPlanDef.parameters.properties.plan,
       progress: {
         type: 'string',
         description: 'What was achieved so far? What are the outcomes?',
@@ -64,19 +64,8 @@ export async function handleWrapContext(props: HandleWrapContextProps): Promise<
     ],
   };
 
-  const previousWraps = taskExecutionPrompt.filter(
-    (item) =>
-      item.functionCalls?.some((call) => call.name === 'wrapContext') ||
-      item.functionResponses?.some((resp) => resp.name === 'wrapContext'),
-  );
-  for (const wrap of previousWraps) {
-    delete wrap.text;
-    wrap.functionCalls = wrap.functionCalls?.filter((call) => call.name === 'wrapContext');
-    wrap.functionResponses = wrap.functionResponses?.filter((resp) => resp.name === 'wrapContext');
-  }
-
   taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
-  taskExecutionPrompt.push(...previousWraps, assistantMsg, userResp);
+  taskExecutionPrompt.push(assistantMsg, userResp);
 
   const { messageCount, estimatedTokens } = computeContextMetrics();
   if (messageCount < maxContextItems && estimatedTokens < maxContextSize) {

@@ -146,6 +146,26 @@ export type ApiContentProps =
       data?: unknown;
     };
 
+// --- Execution Plan Types ---
+
+export type ExecutionPlanStepState = 'pending' | 'in-progress' | 'completed' | 'failed' | 'skipped';
+
+export interface ExecutionPlanStep {
+  id: string;
+  description: string;
+  state: ExecutionPlanStepState;
+  statusUpdate?: string;
+  dependencies?: string[];
+}
+
+export type ExecutionPlan = ExecutionPlanStep[];
+
+export type ExecutionPlanUpdate = {
+  id: string;
+  state: ExecutionPlanStepState;
+  statusUpdate?: string;
+};
+
 // --- Conversation Graph Types ---
 
 /**

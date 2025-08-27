@@ -31,3 +31,13 @@ export const NetworkIcon = () => (
     <path d="M12 14V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
+
+// ExecutionPlanIcon
+export const ExecutionPlanIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M12 2L2 7v5c0 5 3 8 10 8s10-3 10-8V7l-10-5zm0 2.5L18 7v3c0 4-2 6-6 6s-6-2-6-6V7l6-2.5z"
+      fill="currentColor"
+    />
+  </svg>
+);

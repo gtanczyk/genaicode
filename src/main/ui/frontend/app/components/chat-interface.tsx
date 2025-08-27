@@ -12,6 +12,7 @@ import {
   ExpandIcon,
   IterationContent,
   DeleteButton,
+  InlineTogglesContainer,
 } from './chat/styles/chat-interface-styles.js';
 import { useMergedMessages } from '../hooks/merged-messages.js';
 import { ContextSizeDisplay } from './chat/context-size-display.js';
@@ -22,6 +23,7 @@ import { deleteIteration } from '../api/api-client.js';
 import { Question } from '../../../common/api-types.js';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { TerminalInlineToggle } from './chat/terminal-inline-toggle.js';
+import { ExecutionPlanVisualiser } from './chat/execution-plan-visualiser.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -222,7 +224,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     )}
                 </React.Fragment>
               ))}
-              {iterationIndex === iterations.length - 1 && <TerminalInlineToggle iterationId={currentIterationId} />}
+              {iterationIndex === iterations.length - 1 && (
+                <InlineTogglesContainer>
+                  <TerminalInlineToggle iterationId={currentIterationId} />
+                </InlineTogglesContainer>
+              )}
             </IterationContent>
           </IterationContainer>
         ))}
@@ -250,6 +256,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onPauseResume={onPauseResume}
         executionStatus={executionStatus}
       />
+      <ExecutionPlanVisualiser iterationId={currentIterationId} />
     </ChatContainer>
   );
 };

@@ -119,7 +119,8 @@ function isPathProperty(prop: string): boolean {
     'contextPaths',
     'filePaths',
     'requestFilesContent',
-    'projectFIlePath',
+    'projectFilePath',
+    'hostPath',
   ].includes(prop);
 }
 

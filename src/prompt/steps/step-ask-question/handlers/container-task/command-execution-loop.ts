@@ -42,7 +42,7 @@ export async function commandExecutionLoop(
     systemPrompt: `You are an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands one at a time.
 
 Best Practices:
-- Be efficient: Plan your approach and minimize unnecessary commands
+- Be efficient: Plan your approach and minimize unnecessary commands. Write down your plan, keep it up to date.
 - Be incremental: Check results after each command before proceeding
 - Be concise: Keep command outputs focused on the task
 - Be mindful: Avoid generating excessive output that could overflow context
@@ -271,6 +271,43 @@ Begin by analyzing the task and formulating your approach. Then start executing 
       summary = `Task failed: Error during execution - ${errorMessage}`;
       break;
     }
+  }
+
+  try {
+    const modelResponse = await generateContentFn(
+      [
+        systemPrompt,
+        taskPrompt,
+        ...taskExecutionPrompt,
+        {
+          type: 'user',
+          text: 'Please provide a concise summary of the outcomes of the task',
+        },
+      ],
+      {
+        functionDefs: getContainerCommandDefs(),
+        temperature: 0.7,
+        modelType: ModelType.LITE,
+        expectedResponseType: {
+          text: true,
+          functionCall: false,
+          media: false,
+        },
+      },
+      options,
+    );
+    for (const item of modelResponse) {
+      if (item.type === 'text' && item.text) {
+        const text = item.text.length > 1000 ? item.text.substring(0, 1000) + '...' : item.text;
+        putContainerLog('info', 'Final wrap-up summary from the model', { text });
+        summary = text;
+        break;
+      }
+    }
+  } catch (error) {
+    putContainerLog('error', 'Error during post-loop wrap-up', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   if (!summary) {

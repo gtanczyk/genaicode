@@ -154,3 +154,7 @@ export const ShowDataLink = styled.span`
     text-decoration: underline;
   }
 `;
+
+export const InlineTogglesContainer = styled.div`
+  // TODO
+`;

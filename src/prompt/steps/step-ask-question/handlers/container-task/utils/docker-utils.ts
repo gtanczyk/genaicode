@@ -354,10 +354,6 @@ export async function copyFromContainer(
 ): Promise<void> {
   try {
     const absoluteHostPath = validateHostPath(hostPath);
-    if (!fs.existsSync(absoluteHostPath) || !fs.statSync(absoluteHostPath).isDirectory()) {
-      throw new Error(`Invalid host path: ${absoluteHostPath}, it must exist, and it must be directory!`);
-    }
-
     putContainerLog('info', `Copying from container:${containerPath} to host:${absoluteHostPath}`, undefined, 'copy');
     putSystemMessage(`📦 Copying from container:${containerPath} to host:${absoluteHostPath}`);
 

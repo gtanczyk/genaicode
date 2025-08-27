@@ -36,6 +36,7 @@ interface ChatState {
   terminalEvents: Record<string, TerminalEvent[]>;
   isTerminalOpen: boolean;
   autoScrollTerminal: boolean;
+  isExecutionPlanVisualiserOpen: boolean;
 }
 
 // Define the shape of the context actions/setters
@@ -57,6 +58,7 @@ interface ChatActions {
   toggleTerminal: () => void;
   toggleAutoScrollTerminal: () => void;
   clearTerminalEvents: (iterationId: string) => void;
+  toggleExecutionPlanVisualiser: () => void;
 }
 
 // Create the context with a default value
@@ -77,6 +79,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   terminalEvents: {},
   isTerminalOpen: false,
   autoScrollTerminal: true,
+  isExecutionPlanVisualiserOpen: false,
   setMessages: () => {},
   setExecutionStatus: () => {},
   setCurrentQuestion: () => {},
@@ -94,6 +97,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   toggleTerminal: () => {},
   toggleAutoScrollTerminal: () => {},
   clearTerminalEvents: () => {},
+  toggleExecutionPlanVisualiser: () => {},
 });
 
 // Define the props for the provider
@@ -127,6 +131,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   const [terminalEvents, setTerminalEvents] = useState<Record<string, TerminalEvent[]>>({});
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [autoScrollTerminal, setAutoScrollTerminal] = useState(true);
+  const [isExecutionPlanVisualiserOpen, setIsExecutionPlanVisualiserOpen] = useState(false);
 
   // Actions migrated/adapted from AppState
   const toggleTheme = useCallback(() => {
@@ -155,6 +160,10 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
     setTerminalEvents((prev) => ({ ...prev, [iterationId]: [] }));
   }, []);
 
+  const toggleExecutionPlanVisualiser = useCallback(() => {
+    setIsExecutionPlanVisualiserOpen((prev) => !prev);
+  }, []);
+
   const fetchInitialData = useCallback(async () => {
     try {
       const [status, question, content, usageData, defaultOptions, config] = await Promise.all([
@@ -177,7 +186,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
         if (item.message) {
           initialMessages.push({
             ...item.message,
-            timestamp: new Date(item.message.timestamp), // Convert string to Date
+            timestamp: new Date(item.message.timestamp),
             data: item.data as Record<string, unknown> | undefined,
           });
         }
@@ -188,7 +197,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
           }
           initialTerminalEvents[iterationId].push({
             ...item.terminalEvent,
-            timestamp: new Date(item.terminalEvent.timestamp), // Convert string to Date
+            timestamp: new Date(item.terminalEvent.timestamp).toString(),
           });
         }
       }
@@ -267,7 +276,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
             }
             newTerminalEventsByIteration[iterationId].push({
               ...item.terminalEvent,
-              timestamp: new Date(item.terminalEvent.timestamp), // Convert string to Date
+              timestamp: new Date(item.terminalEvent.timestamp).toString(),
             });
           }
         }
@@ -395,6 +404,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       terminalEvents,
       isTerminalOpen,
       autoScrollTerminal,
+      isExecutionPlanVisualiserOpen,
       setMessages,
       setExecutionStatus,
       setCurrentQuestion,
@@ -412,6 +422,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleTerminal,
       toggleAutoScrollTerminal,
       clearTerminalEvents,
+      toggleExecutionPlanVisualiser,
     }),
     [
       messages,
@@ -430,6 +441,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       terminalEvents,
       isTerminalOpen,
       autoScrollTerminal,
+      isExecutionPlanVisualiserOpen,
       toggleTheme,
       setCodegenOptions,
       startPolling,
@@ -440,6 +452,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleTerminal,
       toggleAutoScrollTerminal,
       clearTerminalEvents,
+      toggleExecutionPlanVisualiser,
     ],
   );
 

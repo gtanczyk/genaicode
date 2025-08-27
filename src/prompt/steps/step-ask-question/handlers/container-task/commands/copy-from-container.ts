@@ -1,3 +1,4 @@
+import path from 'path';
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { abortController } from '../../../../../../main/common/abort-controller.js';
 import {
@@ -29,9 +30,7 @@ export const getCopyFromContainerDef: () => FunctionDef = () => ({
       },
       hostPath: {
         type: 'string',
-        description: `The absolute destination path on the host machine, which must be within the project root directory.
-The file path must start from: ${rcConfig.rootDir}
-IMPORTANT: hostPath must be the target directory!`,
+        description: `The absolute destination path on the host machine, which must be within the project root directory. The file path must start from: ${rcConfig.rootDir}`,
       },
     },
     required: ['containerPath', 'hostPath'],
@@ -136,9 +135,20 @@ export async function handleCopyFromContainer(
       return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
     }
 
+    let extractionHostPath = args.hostPath;
+    if (filesToCopy.length === 1 && path.basename(args.containerPath) === path.basename(args.hostPath)) {
+      extractionHostPath = path.dirname(args.hostPath);
+      putContainerLog(
+        'info',
+        'Host path appears to be a file path for a single file copy. Adjusting destination to parent directory.',
+        { original: args.hostPath, adjusted: extractionHostPath },
+        'copy',
+      );
+    }
+
     putContainerLog('info', `Found ${filesToCopy.length} files to copy from container`, { filesToCopy }, 'copy');
     putAssistantMessage(
-      `The following files will be copied from container path "${args.containerPath}" to host path "${args.hostPath}"`,
+      `The following files will be copied from container path "${args.containerPath}" to host path "${extractionHostPath}"`,
       {
         filesToCopy,
       },
@@ -176,7 +186,7 @@ export async function handleCopyFromContainer(
       return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
     }
 
-    await utilCopyFromContainer(container, args.containerPath, args.hostPath);
+    await utilCopyFromContainer(container, args.containerPath, extractionHostPath);
     taskExecutionPrompt.push(
       {
         type: 'assistant',
@@ -189,7 +199,7 @@ export async function handleCopyFromContainer(
           {
             name: 'copyFromContainer',
             call_id: actionResult.id || undefined,
-            content: `Successfully copied from container path ${args.containerPath} to ${args.hostPath}.`,
+            content: `Successfully copied from container path ${args.containerPath} to ${extractionHostPath}.`,
           },
         ],
       },

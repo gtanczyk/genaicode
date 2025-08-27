@@ -26,7 +26,11 @@ export const updateExecutionPlanDef: FunctionDef = {
   },
 };
 
-type UpdateExecutionPlanArgs = { id: string; statusUpdate: string; state: string };
+type UpdateExecutionPlanArgs = {
+  id: string;
+  statusUpdate: string;
+  state: 'pending' | 'in-progress' | 'completed' | 'failed' | 'skipped';
+};
 
 export async function handleUpdateExecutionPlan(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt'>,
