@@ -1,6 +1,7 @@
 import { FunctionDef, PromptItem } from '../../../../../../ai-service/common-types.js';
-import { putSystemMessage } from '../../../../../../main/common/content-bus.js';
+import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { setExecutionPlanDef } from './set-execution-plan.js';
 
 export const wrapContextDef: FunctionDef = {
   name: 'wrapContext',
@@ -12,10 +13,7 @@ export const wrapContextDef: FunctionDef = {
         type: 'string',
         description: 'A summary of prior steps and important findings to keep for next actions.',
       },
-      plan: {
-        type: 'string',
-        description: 'A concise plan outlining the plan of action for the task.',
-      },
+      plan: setExecutionPlanDef.parameters,
       progress: {
         type: 'string',
         description: 'What was achieved so far? What are the outcomes?',
@@ -24,7 +22,7 @@ export const wrapContextDef: FunctionDef = {
         type: 'array',
         items: {
           type: 'string',
-          description: `Paths to important files to keep for next actions.
+          description: `Paths to important files or directories to keep in mind for next actions.
 It is critically IMPORTANT to keep track of files which are essential for the task. For example the files that were modified or created during the task so far.`,
         },
       },
@@ -47,46 +45,42 @@ type WrapContextArgs = { summary: string; nextStep: string };
 
 export async function handleWrapContext(props: HandleWrapContextProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, computeContextMetrics, maxContextItems, maxContextSize } = props;
-  const args = actionResult.args as WrapContextArgs | undefined;
-  if (!args?.summary) {
-    putSystemMessage('⚠️ wrapContext called without summary; ignoring.');
-  } else {
-    putSystemMessage('🗂️ Context wrapped by internal operator.', args);
+  const args = actionResult.args as WrapContextArgs;
+  putContainerLog('info', '🗂️ Context wrapped by internal operator.', args);
 
-    const assistantMsg: PromptItem = {
-      type: 'assistant',
-      text: 'Wrapping context for continued processing.',
-      functionCalls: [actionResult],
-    };
-    const userResp: PromptItem = {
-      type: 'user',
-      text: `Please continue with the next step: ${args.nextStep}`,
-      functionResponses: [
-        {
-          name: 'wrapContext',
-          call_id: actionResult.id || undefined,
-        },
-      ],
-    };
+  const assistantMsg: PromptItem = {
+    type: 'assistant',
+    text: 'Wrapping context for continued processing. This summary will help maintain continuity, it contains the current plan, list of important files, and progress made so far, as well as the next step to take.',
+    functionCalls: [actionResult],
+  };
+  const userResp: PromptItem = {
+    type: 'user',
+    text: `Please continue with the next step: ${args.nextStep}`,
+    functionResponses: [
+      {
+        name: 'wrapContext',
+        call_id: actionResult.id || undefined,
+      },
+    ],
+  };
 
-    const previousWraps = taskExecutionPrompt.filter(
-      (item) =>
-        item.functionCalls?.some((call) => call.name === 'wrapContext') ||
-        item.functionResponses?.some((resp) => resp.name === 'wrapContext'),
-    );
-    for (const wrap of previousWraps) {
-      delete wrap.text;
-      wrap.functionCalls = wrap.functionCalls?.filter((call) => call.name === 'wrapContext');
-      wrap.functionResponses = wrap.functionResponses?.filter((resp) => resp.name === 'wrapContext');
-    }
+  const previousWraps = taskExecutionPrompt.filter(
+    (item) =>
+      item.functionCalls?.some((call) => call.name === 'wrapContext') ||
+      item.functionResponses?.some((resp) => resp.name === 'wrapContext'),
+  );
+  for (const wrap of previousWraps) {
+    delete wrap.text;
+    wrap.functionCalls = wrap.functionCalls?.filter((call) => call.name === 'wrapContext');
+    wrap.functionResponses = wrap.functionResponses?.filter((resp) => resp.name === 'wrapContext');
+  }
 
-    taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
-    taskExecutionPrompt.push(...previousWraps, assistantMsg, userResp);
+  taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
+  taskExecutionPrompt.push(...previousWraps, assistantMsg, userResp);
 
-    const { messageCount, estimatedTokens } = computeContextMetrics();
-    if (messageCount < maxContextItems && estimatedTokens < maxContextSize) {
-      userResp.text = `The context is within limits: ${messageCount} messages, ${estimatedTokens} tokens is less than the maximum allowed: ${maxContextItems} messages, ${maxContextSize} tokens.`;
-    }
+  const { messageCount, estimatedTokens } = computeContextMetrics();
+  if (messageCount < maxContextItems && estimatedTokens < maxContextSize) {
+    userResp.text = `The context is within limits: ${messageCount} messages, ${estimatedTokens} tokens is less than the maximum allowed: ${maxContextItems} messages, ${maxContextSize} tokens.`;
   }
   return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
 }
