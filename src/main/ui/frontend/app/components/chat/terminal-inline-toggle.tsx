@@ -96,11 +96,6 @@ export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
       <InterruptButton onClick={handleInterrupt} title="Interrupt current command">
         &#9209;
       </InterruptButton>
-      {executionPlan && (
-        <ActionButton onClick={toggleExecutionPlanVisualiser} title="Toggle Execution Plan">
-          <ExecutionPlanIcon />
-        </ActionButton>
-      )}
       {latestEvent && (
         <InlineButton
           flashing={hasNew}
@@ -113,6 +108,11 @@ export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
           <Timestamp>{new Date(latestEvent.timestamp).toLocaleTimeString()}</Timestamp>
           {hasNew && <FlashDot aria-hidden="true" />}
         </InlineButton>
+      )}
+      {executionPlan && (
+        <ActionButton onClick={toggleExecutionPlanVisualiser} title="Toggle Execution Plan">
+          <ExecutionPlanIcon />
+        </ActionButton>
       )}
     </InlineContainer>
   );
