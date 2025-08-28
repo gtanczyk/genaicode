@@ -7,6 +7,7 @@ import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
 import { getServiceConfig, getModelSettings } from './service-configurations.js';
+import { WebSearchToolResultBlock } from '@anthropic-ai/sdk/resources/messages.js';
 
 /**
  * This function generates content using the Anthropic Claude model.
@@ -19,9 +20,10 @@ export const generateContent: GenerateContentFunction = async function generateC
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean;
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
     };
   },
   options: {
@@ -186,6 +188,28 @@ export const generateContent: GenerateContentFunction = async function generateC
     // Set max_tokens based on model-specific setting or defaults
     const maxTokens = outputTokenLimit ?? (modelType === ModelType.REASONING ? 8192 * 2 : 8192);
 
+    let tools: Anthropic.Messages.ToolUnion[] | undefined = undefined;
+    if (expectedResponseType.functionCall !== false) {
+      tools = [
+        ...(tools ?? []),
+        ...functionDefs.map((fd) => ({
+          name: fd.name,
+          description: fd.description,
+          input_schema: fd.parameters,
+        })),
+      ];
+    }
+    if (expectedResponseType.webSearch) {
+      tools = [
+        ...(tools ?? []),
+        {
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 5,
+        },
+      ];
+    }
+
     while (retryCount < 3) {
       try {
         response = await anthropic.messages.create(
@@ -193,14 +217,7 @@ export const generateContent: GenerateContentFunction = async function generateC
             model: model,
             system: baseSystemPrompt,
             messages: messages,
-            tools:
-              expectedResponseType.functionCall !== false
-                ? functionDefs.map((fd) => ({
-                    name: fd.name,
-                    description: fd.description,
-                    input_schema: fd.parameters,
-                  }))
-                : undefined,
+            tools: tools,
             tool_choice:
               requiredFunctionName && modelType !== ModelType.REASONING
                 ? { type: 'tool' as const, name: requiredFunctionName }
@@ -314,6 +331,8 @@ export const generateContent: GenerateContentFunction = async function generateC
       ];
     }
 
+    const result: GenerateContentResult = [];
+
     const functionCalls = response!.content
       .filter((item) => item.type === 'tool_use')
       .map((item) => ({
@@ -322,32 +341,43 @@ export const generateContent: GenerateContentFunction = async function generateC
         args: item.input as Record<string, unknown>,
       }));
 
-    if (!expectedResponseType.functionCall) {
-      functionCalls.length = 0;
+    if (expectedResponseType.functionCall) {
+      for (const fc of functionCalls) {
+        result.push({
+          type: 'functionCall',
+          functionCall: fc,
+        });
+      }
     }
 
-    if (!expectedResponseType.text) {
-      responseMessages.length = 0;
-    }
-
-    return [
-      ...functionCalls.map(
-        (fc) =>
-          ({
-            type: 'functionCall',
-            functionCall: fc,
-          }) as const,
-      ),
-      ...responseMessages
+    if (expectedResponseType.webSearch) {
+      const urls = responseMessages
+        .filter((item): item is WebSearchToolResultBlock => item.type === 'web_search_tool_result')
+        .map((item) => item.content)
+        .filter((content) => Array.isArray(content))
+        .flatMap((content) => content.filter((item) => item.type === 'web_search_result'))
+        .map((item) => item.url);
+      const text = responseMessages
         .filter((item) => item.type === 'text')
-        .map(
-          (item) =>
-            ({
-              type: 'text',
-              text: item.text,
-            }) as const,
-        ),
-    ];
+        .map((item) => item.text)
+        .join('');
+      if (text) {
+        result.push({
+          type: 'webSearch',
+          text,
+          urls,
+        });
+      }
+    } else if (expectedResponseType.text) {
+      for (const item of responseMessages.filter((itm) => itm.type === 'text')) {
+        result.push({
+          type: 'text',
+          text: item.text,
+        });
+      }
+    }
+
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message.includes('API key not configured')) {
       throw new Error('Anthropic API key not configured. Please set up the service configuration.');

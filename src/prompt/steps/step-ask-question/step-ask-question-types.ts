@@ -33,6 +33,7 @@ export type ActionType =
   | 'conversationGraph'
   | 'runContainerTask'
   | 'compoundAction'
+  | 'webSearch'
   | PluginActionType;
 
 type AskQuestionArgs = {

@@ -42,9 +42,10 @@ export const generateContent: GenerateContentFunction = async function generateC
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean;
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
     };
   },
   options: {
@@ -258,9 +259,10 @@ interface GetGenModelParams {
   requiredFunctionName: string | null;
   modelType: ModelType;
   expectedResponseType: {
-    text: boolean;
-    functionCall: boolean;
-    media: boolean;
+    text?: boolean;
+    functionCall?: boolean;
+    media?: boolean;
+    webSearch?: boolean;
   };
 }
 

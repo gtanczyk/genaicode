@@ -65,6 +65,7 @@ You have access to the following functions:
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
 - checkContext: Get current context metrics (messages and tokens) and guidance about wrapping when near or over limits. Call this frequently (every 1-3 actions). If you do not call it for 10 actions, the system will remind you to call it.
 - sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question.
+- webSearch: Perform a web search given an exhaustive prompt. Return a concise, grounded answer and a list of source URLs used.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.
 
@@ -243,6 +244,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
             container,
             options,
             computeContextMetrics,
+            generateContentFn,
             maxContextItems: MAX_CONTEXT_ITEMS,
             maxContextSize: MAX_CONTEXT_SIZE,
             maxOutputLength: MAX_OUTPUT_LENGTH,

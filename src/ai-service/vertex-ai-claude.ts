@@ -25,9 +25,10 @@ export const generateContent: GenerateContentFunction = async function generateC
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean; // Note: Claude doesn't generate media
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
     };
   },
 ): Promise<GenerateContentResult> {

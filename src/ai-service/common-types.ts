@@ -73,6 +73,11 @@ export type GenerateContentResultPart =
         mediaType: PromptImageMediaType;
         base64url: string;
       };
+    }
+  | {
+      type: 'webSearch';
+      text: string;
+      urls: string[];
     };
 
 export type GenerateContentResult = GenerateContentResultPart[];
@@ -87,9 +92,10 @@ export type GenerateContentArgs = [
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean;
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
     };
   },
   options: {

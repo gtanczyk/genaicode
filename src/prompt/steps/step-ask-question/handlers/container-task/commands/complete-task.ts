@@ -15,6 +15,7 @@ export interface CommandHandlerResult {
 export interface CommandHandlerBaseProps {
   actionResult: FunctionCall;
   taskExecutionPrompt: PromptItem[];
+  generateContentFn: ActionHandlerProps['generateContentFn'];
   options: ActionHandlerProps['options'];
   container: Docker.Container;
 }

@@ -37,6 +37,7 @@ import { readExternalFiles } from './function-defs/read-external-files.js';
 import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
 import { getCompoundActionDef } from './function-defs/compound-action.js';
 import { runContainerTaskDef } from './function-defs/run-container-task.js';
+import { webSearchDef } from './function-defs/web-search.js';
 
 /**
  * Function definitions for function calling feature
@@ -79,6 +80,7 @@ export function getFunctionDefs(): FunctionDef[] {
     requestGitContextDef,
     getCompoundActionDef(),
     runContainerTaskDef,
+    webSearchDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

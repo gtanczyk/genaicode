@@ -31,6 +31,7 @@ export async function generateImage(
       n: 1,
       size: '1024x1024',
       response_format: 'url',
+      stream: false,
     };
 
     const response = contextImagePath
@@ -38,12 +39,12 @@ export async function generateImage(
           {
             ...options,
             image: await toFile(await ensureAlpha(contextImagePath)),
-          } as OpenAI.Images.ImageEditParams,
+          } as OpenAI.Images.ImageEditParamsNonStreaming,
           { signal: abortController?.signal },
         )
       : await openai.images.generate(options, { signal: abortController?.signal });
 
-    let imageUrl = response.data[0].url!;
+    let imageUrl = response.data![0].url!;
 
     if (size.width !== 1024 || size.height !== 1024) {
       console.log('Resizing image to desired size', size);

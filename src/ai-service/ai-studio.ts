@@ -10,6 +10,7 @@ import {
   HarmCategory,
   Schema,
 } from '@google/genai';
+import axios from 'axios';
 import assert from 'node:assert';
 import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import { GenerateContentFunction, GenerateContentResult, GenerateContentResultPart } from './common-types.js';
@@ -34,9 +35,10 @@ export const generateContent: GenerateContentFunction = async function generateC
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean;
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
     };
   },
   options: {
@@ -149,6 +151,14 @@ export const generateContent: GenerateContentFunction = async function generateC
       },
     };
   }
+  if (expectedResponseType.webSearch) {
+    req.config!.tools = [
+      {
+        googleSearch: {},
+      },
+    ];
+    delete req.config!.toolConfig;
+  }
 
   const result = await modelGenerateContent(
     modelType,
@@ -241,7 +251,7 @@ export const generateContent: GenerateContentFunction = async function generateC
   }
 
   // Handle text response if no function calls were returned
-  if (functionCalls.length === 0) {
+  if (functionCalls.length === 0 && expectedResponseType.text !== true && expectedResponseType.functionCall === true) {
     const textResponse =
       result.candidates
         .map((candidate) => candidate.content?.parts?.map((part) => part.text))
@@ -276,6 +286,55 @@ export const generateContent: GenerateContentFunction = async function generateC
           }
         } catch (error) {
           console.log('Failed to recover function call:', error);
+        }
+      }
+    }
+  }
+
+  if (expectedResponseType.text) {
+    for (const candidate of result.candidates) {
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.text && !part.thought) {
+          resultParts.push({
+            type: 'text',
+            text: part.text,
+          });
+        }
+      }
+    }
+  }
+
+  if (expectedResponseType.webSearch) {
+    for (const candidate of result.candidates) {
+      const urls: Record<string, boolean> = {};
+      for (const chunk of candidate.groundingMetadata?.groundingChunks ?? []) {
+        if (chunk.web?.uri) {
+          let url = chunk.web?.uri;
+          try {
+            const res = await axios.get(url);
+            if (res.request.res.responseUrl) {
+              url = res.request.res.responseUrl;
+            } else if (res.status !== 200) {
+              continue;
+            }
+          } catch (e) {
+            if (axios.isAxiosError(e) && e.response?.request.res.responseUrl) {
+              url = e.response.request.res.responseUrl;
+            } else {
+              continue;
+            }
+          }
+
+          urls[url] = true;
+        }
+      }
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.text && !part.thought) {
+          resultParts.push({
+            type: 'webSearch',
+            text: part.text,
+            urls: Object.keys(urls),
+          });
         }
       }
     }

@@ -24,6 +24,7 @@ ${rcConfig.featuresEnabled?.gitContext !== false ? '- requestGitContext: Use to 
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - contextCompression: Use to compress the context by removing unnecessary tokens and optimizing the context size while maintaining essential information.
 - searchCode: Use to search through source code files with flexible filtering. Supports searching in file contents and names, with pattern matching and case sensitivity options. Useful for finding specific code patterns or references across the codebase.
+- webSearch: Use to get a grounded answer with URLs via web search. Provide an exhaustive prompt for the best results.
 - confirmCodeGeneration: Use to confirm with the user before starting the main, multi-step code generation workflow for implementing features or significant code changes requiring analysis and potentially intertwined modifications across multiple files.
 - endConversation: Use to stop the conversation.
 - requestFilesFragments: Use to request fragments (specific parts) of files based on a given prompt. This is useful when you need only certain sections of files, not their entire content.
@@ -59,6 +60,7 @@ export const actionTypeOptions: string[] = [
   'contextOptimization',
   'contextCompression',
   'searchCode',
+  'webSearch',
   'confirmCodeGeneration',
   'endConversation',
   'requestFilesFragments',

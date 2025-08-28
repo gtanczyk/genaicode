@@ -19,9 +19,9 @@ const generateContent: GenerateContentFunction = async function generateContent(
     functionDefs?: FunctionDef[];
     requiredFunctionName?: string | null;
     expectedResponseType?: {
-      text: boolean;
-      functionCall: boolean;
-      media: boolean;
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
     };
   },
 ): Promise<GenerateContentResult> {

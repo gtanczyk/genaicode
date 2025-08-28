@@ -12,6 +12,7 @@ import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-
 import { cleanupOrphanedContainers, createAndStartContainer, pullImage, stopContainer } from './utils/docker-utils.js';
 import { ActionHandlerProps, ActionResult } from '../../step-ask-question-types.js';
 import { commandExecutionLoop } from './command-execution-loop.js';
+import { getFunctionDefs } from '../../../../function-calling.js';
 
 export async function runContainerTaskOrchestrator({
   askQuestionCall,
@@ -45,8 +46,8 @@ export async function runContainerTaskOrchestrator({
         },
       ],
       {
-        functionDefs: [runContainerTaskDef],
-        requiredFunctionName: 'runContainerTask',
+        functionDefs: getFunctionDefs(),
+        requiredFunctionName: runContainerTaskDef.name,
         temperature: 0.7,
         modelType: ModelType.CHEAP,
         expectedResponseType: {

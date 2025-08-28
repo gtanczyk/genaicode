@@ -33,6 +33,7 @@ describe('step-ask-question', () => {
       requestGitContext: true,
       runContainerTask: true,
       compoundAction: true,
+      webSearch: true,
     };
 
     // Check if each action type has a registered handler

@@ -14,6 +14,8 @@ import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './comman
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
 import { checkContextDef, handleCheckContext } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
+import { handleWebSearch } from './commands/web-search.js';
+import { webSearchDef } from '../../../../function-defs/web-search.js';
 
 // Re-export shared types for use in the execution loop
 export type { CommandHandlerResult, CommandHandlerBaseProps, HandleWrapContextProps, HandleRunCommandProps };
@@ -50,6 +52,7 @@ registerCommand('runCommand', runCommandDef, handleRunCommand);
 registerCommand('copyToContainer', getCopyToContainerDef, handleCopyToContainer);
 registerCommand('checkContext', checkContextDef, handleCheckContext);
 registerCommand('copyFromContainer', getCopyFromContainerDef, handleCopyFromContainer);
+registerCommand('webSearch', webSearchDef, handleWebSearch);
 
 /**
  * Gets all function definitions for the container commands.
