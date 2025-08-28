@@ -13,16 +13,16 @@ export const sendMessageDef: FunctionDef = {
         type: 'string',
         description: 'The message to send to the user.',
       },
-      isQuestion: {
+      waitForUserResponse: {
         type: 'boolean',
         description: 'Whether the message is a question, and user input is expected.',
       },
     },
-    required: ['message', 'isQuestion'],
+    required: ['message', 'waitForUserResponse'],
   },
 };
 
-type SendMessageArgs = { message: string; isQuestion: boolean };
+type SendMessageArgs = { message: string; waitForUserResponse: boolean };
 
 export async function handleSendMessage(
   props: Pick<CommandHandlerBaseProps, 'actionResult' | 'taskExecutionPrompt' | 'options'>,
@@ -36,7 +36,7 @@ export async function handleSendMessage(
     functionCalls: [actionResult],
   });
 
-  if (args.isQuestion) {
+  if (args.waitForUserResponse) {
     const response = await askUserForInput('Your answer', args.message, options);
     putUserMessage(response.answer);
     taskExecutionPrompt.push({

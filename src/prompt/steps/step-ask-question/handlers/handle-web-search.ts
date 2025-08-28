@@ -59,7 +59,7 @@ const handleWebSearch: ActionHandler = async ({ prompt, askQuestionCall, generat
     };
   }
 
-  putSystemMessage('Performing web search for query', webSearchCall.args);
+  putSystemMessage(`Performing web search for query: "${webSearchCall.args?.query}"`, webSearchCall.args);
 
   const searchResponse = await generateContentFn(
     [

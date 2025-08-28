@@ -2,7 +2,8 @@ import { FunctionDef } from '../../ai-service/common-types';
 
 export const webSearchDef: FunctionDef = {
   name: 'webSearch',
-  description: 'Performs a web search and returns a grounded answer with source URLs.',
+  description: `Performs a web search and returns a grounded answer with source URLs.
+The answer is not displayed to the user. It should be used to inform following actions.`,
   parameters: {
     type: 'object',
     properties: {
