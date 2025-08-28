@@ -295,48 +295,48 @@ export async function extractTarStreamToDirectory(
 ): Promise<void> {
   const extract = tar.extract();
 
-  extract.on('entry', (header, stream, next) => {
-    const filePath = path.join(destinationHostPath, header.name);
-    const dir = path.dirname(filePath);
-
-    if (!pathValidator(filePath)) {
-      const errorMessage = `Refusing to write outside project root: ${filePath}`;
-      console.error(errorMessage);
-      putContainerLog('error', errorMessage, undefined, 'copy');
-      // Pass an error to next() to stop the extraction process
-      next(new Error(errorMessage));
-      return;
-    }
-
-    if (header.type === 'directory') {
-      if (!fs.existsSync(filePath)) {
-        fs.mkdirSync(filePath, { recursive: true });
-      }
-      stream.on('end', () => next());
-      stream.resume();
-      return;
-    }
-
-    // Ensure directory exists for the file
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const writeStream = fs.createWriteStream(filePath);
-    stream.pipe(writeStream);
-
-    writeStream.on('finish', () => next());
-    writeStream.on('error', (err) => {
-      console.error(`Error writing file ${filePath}:`, err);
-      next(err); // Pass error to tar-stream
-    });
-    stream.on('error', (err) => {
-      console.error(`Error in tar stream for ${filePath}:`, err);
-      next(err); // Pass error to tar-stream
-    });
-  });
-
   return new Promise<void>((resolve, reject) => {
+    extract.on('entry', (header, stream, next) => {
+      const filePath = path.join(destinationHostPath, header.name);
+      const dir = path.dirname(filePath);
+
+      if (!pathValidator(filePath)) {
+        const errorMessage = `Refusing to write outside project root: ${filePath}`;
+        console.error(errorMessage);
+        putContainerLog('error', errorMessage, undefined, 'copy');
+        // Reject the promise directly instead of using next() with error
+        reject(new Error(errorMessage));
+        return;
+      }
+
+      if (header.type === 'directory') {
+        if (!fs.existsSync(filePath)) {
+          fs.mkdirSync(filePath, { recursive: true });
+        }
+        stream.on('end', () => next());
+        stream.resume();
+        return;
+      }
+
+      // Ensure directory exists for the file
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const writeStream = fs.createWriteStream(filePath);
+      stream.pipe(writeStream);
+
+      writeStream.on('finish', () => next());
+      writeStream.on('error', (err) => {
+        console.error(`Error writing file ${filePath}:`, err);
+        reject(err); // Reject the promise directly
+      });
+      stream.on('error', (err) => {
+        console.error(`Error in tar stream for ${filePath}:`, err);
+        reject(err); // Reject the promise directly
+      });
+    });
+
     tarStream.on('error', reject);
     extract.on('finish', resolve);
     extract.on('error', reject);
