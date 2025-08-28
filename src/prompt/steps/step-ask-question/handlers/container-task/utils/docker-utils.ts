@@ -302,9 +302,7 @@ export async function extractTarStreamToDirectory(
 
       if (!pathValidator(filePath)) {
         const errorMessage = `Refusing to write outside project root: ${filePath}`;
-        console.error(errorMessage);
-        putContainerLog('error', errorMessage, undefined, 'copy');
-        // Reject the promise directly instead of using next() with error
+        // Don't log path validation errors as they are expected during security checks
         reject(new Error(errorMessage));
         return;
       }
@@ -328,12 +326,14 @@ export async function extractTarStreamToDirectory(
 
       writeStream.on('finish', () => next());
       writeStream.on('error', (err) => {
+        // Only log unexpected file write errors, not validation errors
         console.error(`Error writing file ${filePath}:`, err);
-        reject(err); // Reject the promise directly
+        reject(err);
       });
       stream.on('error', (err) => {
+        // Only log unexpected stream errors, not validation errors
         console.error(`Error in tar stream for ${filePath}:`, err);
-        reject(err); // Reject the promise directly
+        reject(err);
       });
     });
 
