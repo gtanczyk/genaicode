@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-133] 2025-08-29: Merged Execution Plan visualiser into Terminal View as a new tab and fixed terminal auto-scroll bug.
 - [-] [GEN-132] 2025-08-28: Implement `requestSecret` container command for secure secret collection in CLI and UI modes.
 - [-] [GEN-131] 2025-08-27: Add webSearch tool (container command and top-level action) returning grounded results with source URLs.
 - [-] [GEN-130] 2025-08-25: Implement per-command interrupt for container tasks with optional post-interrupt messaging, enhancing user control over long-running processes (related to GEN-127, GEN-128). Immediate interrupt now triggers a server-side `askQuestion` to capture a reason and confirm whether to stop the entire task.

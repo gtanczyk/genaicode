@@ -10,7 +10,6 @@ import {
   Timestamp,
   FlashDot,
 } from './styles/terminal-inline-toggle-styles.js';
-import { ExecutionPlanIcon } from '../icons.js';
 
 interface Props {
   iterationId: string | null;
@@ -48,7 +47,7 @@ const InterruptButton = styled(ActionButton)`
 `;
 
 export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
-  const { terminalEvents, isTerminalOpen, toggleTerminal, toggleExecutionPlanVisualiser } = useChatState();
+  const { terminalEvents, isTerminalOpen, toggleTerminal } = useChatState();
   const lastSeenByIteration = useRef<Record<string, string | undefined>>({});
 
   const events = useMemo(() => {
@@ -59,7 +58,6 @@ export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
   }, [iterationId, terminalEvents]);
 
   const latestEvent = events[events.length - 1];
-  const executionPlan = events.filter((event) => event.data?.plan).reverse()[0];
 
   useEffect(() => {
     if (isTerminalOpen && iterationId && latestEvent) {
@@ -67,7 +65,7 @@ export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
     }
   }, [isTerminalOpen, iterationId, latestEvent]);
 
-  if (!iterationId || (events.length === 0 && !executionPlan)) {
+  if (!iterationId || events.length === 0) {
     return null;
   }
 
@@ -108,11 +106,6 @@ export const TerminalInlineToggle: React.FC<Props> = ({ iterationId }) => {
           <Timestamp>{new Date(latestEvent.timestamp).toLocaleTimeString()}</Timestamp>
           {hasNew && <FlashDot aria-hidden="true" />}
         </InlineButton>
-      )}
-      {executionPlan && (
-        <ActionButton onClick={toggleExecutionPlanVisualiser} title="Toggle Execution Plan">
-          <ExecutionPlanIcon />
-        </ActionButton>
       )}
     </InlineContainer>
   );

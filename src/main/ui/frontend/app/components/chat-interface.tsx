@@ -23,7 +23,6 @@ import { deleteIteration } from '../api/api-client.js';
 import { Question } from '../../../common/api-types.js';
 import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { TerminalInlineToggle } from './chat/terminal-inline-toggle.js';
-import { ExecutionPlanVisualiser } from './chat/execution-plan-visualiser.js';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -256,7 +255,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onPauseResume={onPauseResume}
         executionStatus={executionStatus}
       />
-      <ExecutionPlanVisualiser iterationId={currentIterationId} />
     </ChatContainer>
   );
 };

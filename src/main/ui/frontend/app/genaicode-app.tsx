@@ -36,8 +36,6 @@ const GenAIcodeAppContent = () => {
     isTerminalOpen,
     terminalEvents,
     clearTerminalEvents,
-    autoScrollTerminal,
-    toggleAutoScrollTerminal,
   } = useContext(ChatStateContext);
 
   // Instantiate AppHandlers - It now gets setters from context, only needs codegenOptions
@@ -102,12 +100,7 @@ const GenAIcodeAppContent = () => {
       />
 
       {isTerminalOpen && currentIterationId && (
-        <TerminalView
-          events={currentTerminalEvents}
-          onClear={() => clearTerminalEvents(currentIterationId)}
-          autoScroll={autoScrollTerminal}
-          onToggleAutoScroll={toggleAutoScrollTerminal}
-        />
+        <TerminalView events={currentTerminalEvents} onClear={() => clearTerminalEvents(currentIterationId)} />
       )}
 
       <ContentGenerationModal currentService={codegenOptions.aiService} />

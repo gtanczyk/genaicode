@@ -13,8 +13,8 @@ export const TerminalContainer = styled.div`
   position: fixed;
   bottom: 70px;
   right: 20px;
-  width: clamp(440px, 50vw, 690px);
-  max-height: 55vh;
+  width: clamp(750px, 50vw, 750px);
+  height: 55vh;
   background-color: ${({ theme }) => theme.colors.backgroundAlt || theme.colors.overlayBackground};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: 8px;
@@ -28,12 +28,13 @@ export const TerminalContainer = styled.div`
 
 export const TerminalHeader = styled.div`
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
   color: ${({ theme }) => theme.colors.text};
+  gap: 16px;
+  flex-wrap: wrap;
 
   h4 {
     margin: 0;
@@ -60,6 +61,32 @@ export const ControlBar = styled.div`
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  flex-grow: 1;
+  justify-content: flex-end;
+`;
+
+export const TabsContainer = styled.div`
+  display: flex;
+  gap: 5px;
+`;
+
+export const TabButton = styled.button<{ active: boolean }>`
+  background-color: ${({ active, theme }) => (active ? theme.colors.primary : 'transparent')};
+  color: ${({ active, theme }) => (active ? 'white' : theme.colors.text)};
+  border: 1px solid ${({ active, theme }) => (active ? theme.colors.primary : theme.colors.border)};
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease-in-out;
+
+  &:hover:not(:disabled) {
+    background-color: ${({ theme }) => theme.colors.secondary};
+    border-color: ${({ theme }) => theme.colors.secondary};
+    color: white;
+  }
+  margin-left: auto; /* Pushes it to the right */
 `;
 
 export const ToggleButton = styled.button<{ active: boolean }>`
