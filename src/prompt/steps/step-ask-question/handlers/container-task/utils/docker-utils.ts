@@ -301,10 +301,10 @@ export async function extractTarStreamToDirectory(
 
     if (!pathValidator(filePath)) {
       const errorMessage = `Refusing to write outside project root: ${filePath}`;
-      console.error(errorMessage);
       putContainerLog('error', errorMessage, undefined, 'copy');
       // Pass an error to next() to stop the extraction process
-      next(new Error(errorMessage));
+      stream.on('end', () => next(new Error(errorMessage)));
+      stream.resume();
       return;
     }
 
