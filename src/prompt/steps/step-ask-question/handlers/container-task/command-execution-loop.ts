@@ -1,5 +1,10 @@
 import Docker from 'dockerode';
-import { FunctionCall, ModelType, PromptItem } from '../../../../../ai-service/common-types.js';
+import {
+  FunctionCall,
+  GenerateContentFunction,
+  ModelType,
+  PromptItem,
+} from '../../../../../ai-service/common-types.js';
 import {
   putAssistantMessage,
   putContainerLog,
@@ -19,6 +24,8 @@ import {
 import { rcConfig } from '../../../../../main/config.js';
 import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
 import { askUserForInput } from '../../../../../main/common/user-actions.js';
+import { CheckContextProps } from './commands/check-context.js';
+import { sanitizePrompt } from './commands/request-secret.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
@@ -27,15 +34,18 @@ const MAX_OUTPUT_LENGTH = 2048;
 export async function commandExecutionLoop(
   container: Docker.Container,
   taskDescription: string,
-  generateContentFn: ActionHandlerProps['generateContentFn'],
+  unsanitizedGenerateContentFn: ActionHandlerProps['generateContentFn'],
   options: ActionHandlerProps['options'],
   waitIfPaused: ActionHandlerProps['waitIfPaused'],
 ): Promise<{ success: boolean; summary: string }> {
   let success = false;
   let summary = '';
-  const maxCommands = 100;
+  const maxCommands = 200;
   const taskExecutionPrompt: PromptItem[] = [];
   const isAborted = () => abortController?.signal.aborted === true;
+
+  const generateContentFn: GenerateContentFunction = (prompt, ...args) =>
+    unsanitizedGenerateContentFn(sanitizePrompt(prompt), ...args);
 
   const systemPrompt: PromptItem = {
     type: 'systemPrompt',
@@ -54,6 +64,7 @@ Best Practices:
 - Don't be passive aggressive, it doesn't help anyone. Help the user achieve their goals, even if you encounter obstacles.
 - Let the user have a life, outside of this task, and avoid unnecessary interruptions, or bothering them with irrelevant details, especially if you can find a solution without involving them.
 - SFTU! You have the possibility to search the web for solutions or information.
+- Be careful about secrets and sensitive information, never expose them in your commands or outputs.
 
 You have access to the following functions:
 - runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
@@ -67,6 +78,7 @@ You have access to the following functions:
 - checkContext: Get current context metrics (messages and tokens) and guidance about wrapping when near or over limits. Call this frequently (every 1-3 actions). If you do not call it for 10 actions, the system will remind you to call it.
 - sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question.
 - webSearch: Perform a web search given an exhaustive prompt. Return a concise, grounded answer and a list of source URLs used. The answer is not displayed to the user. It should be used to inform following actions.
+- requestSecret: Ask the user to provide a secret value (e.g. API key) and write it to a specified file path in the container. The file path must be absolute path within the container.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.
 
@@ -169,7 +181,12 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         {
           functionDefs: getContainerCommandDefs(),
           temperature: 0.7,
-          modelType: ModelType.LITE,
+          modelType:
+            taskExecutionPrompt.length <= 2
+              ? ModelType.DEFAULT
+              : taskExecutionPrompt.length <= 5
+                ? ModelType.CHEAP
+                : ModelType.LITE,
           expectedResponseType: {
             text: false,
             functionCall: true,
@@ -238,18 +255,20 @@ Begin by analyzing the task and formulating your approach. Then start executing 
 
         // Prepare a comprehensive props object for the handler.
         // The handler will destructure and use only what it needs.
-        const handlerProps: CommandHandlerBaseProps & Partial<HandleWrapContextProps> & Partial<HandleRunCommandProps> =
-          {
-            actionResult,
-            taskExecutionPrompt,
-            container,
-            options,
-            computeContextMetrics,
-            generateContentFn,
-            maxContextItems: MAX_CONTEXT_ITEMS,
-            maxContextSize: MAX_CONTEXT_SIZE,
-            maxOutputLength: MAX_OUTPUT_LENGTH,
-          };
+        const handlerProps: CommandHandlerBaseProps &
+          Partial<HandleWrapContextProps> &
+          Partial<HandleRunCommandProps> &
+          Partial<CheckContextProps> = {
+          actionResult,
+          taskExecutionPrompt,
+          container,
+          options,
+          computeContextMetrics,
+          generateContentFn,
+          maxContextItems: MAX_CONTEXT_ITEMS,
+          maxContextSize: MAX_CONTEXT_SIZE,
+          maxOutputLength: MAX_OUTPUT_LENGTH,
+        };
 
         const handlerResult = await handler(handlerProps);
 

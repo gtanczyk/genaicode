@@ -29,7 +29,6 @@ export async function handleSendMessage(
 ): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, options } = props;
   const args = actionResult.args as SendMessageArgs;
-  putAssistantMessage(args.message);
 
   taskExecutionPrompt.push({
     type: 'assistant',
@@ -38,6 +37,7 @@ export async function handleSendMessage(
 
   if (args.waitForUserResponse) {
     const response = await askUserForInput('Your answer', args.message, options);
+    putAssistantMessage(args.message);
     putUserMessage(response.answer);
     taskExecutionPrompt.push({
       type: 'user',
@@ -50,6 +50,7 @@ export async function handleSendMessage(
       ],
     });
   } else {
+    putAssistantMessage(args.message);
     taskExecutionPrompt.push({
       type: 'user',
       functionResponses: [

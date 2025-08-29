@@ -328,14 +328,16 @@ export const generateContent: GenerateContentFunction = async function generateC
           urls[url] = true;
         }
       }
-      for (const part of candidate.content?.parts ?? []) {
-        if (part.text && !part.thought) {
-          resultParts.push({
-            type: 'webSearch',
-            text: part.text,
-            urls: Object.keys(urls),
-          });
-        }
+      const text = candidate.content?.parts
+        ?.filter((part) => part.text && !part.thought)
+        .map((part) => part.text)
+        .join('');
+      if (text) {
+        resultParts.push({
+          type: 'webSearch',
+          text: text,
+          urls: Object.keys(urls),
+        });
       }
     }
   }

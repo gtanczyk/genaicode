@@ -14,10 +14,11 @@ export interface CodegenResult {
 
 export type ConfirmationProps =
   | {
-      includeAnswer: boolean;
-      confirmLabel: string;
-      declineLabel: string;
-      defaultValue: boolean;
+      includeAnswer?: boolean;
+      confirmLabel?: string;
+      declineLabel?: string;
+      defaultValue?: boolean;
+      secret?: boolean;
     }
   | undefined;
 

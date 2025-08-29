@@ -1,4 +1,4 @@
-import { registerConfirmHandler, registerInputHandler } from '../common/user-actions.js';
+import { registerConfirmHandler, registerInputHandler, registerSecretHandler } from '../common/user-actions.js';
 import { Service } from './backend/service.js';
 
 export function registerUserActionHandlers(service: Service) {
@@ -11,5 +11,11 @@ export function registerUserActionHandlers(service: Service) {
       declineLabel: props.declineLabel,
     });
     return response;
+  });
+  registerSecretHandler(async (prompt) => {
+    const res = await service.askQuestion(prompt, {
+      secret: true,
+    });
+    return res?.answer || undefined;
   });
 }

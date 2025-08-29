@@ -35,16 +35,12 @@ It is critically IMPORTANT to keep track of files which are essential for the ta
   },
 };
 
-export interface HandleWrapContextProps extends CommandHandlerBaseProps {
-  computeContextMetrics: () => { messageCount: number; estimatedTokens: number };
-  maxContextItems: number;
-  maxContextSize: number;
-}
+export interface HandleWrapContextProps extends CommandHandlerBaseProps {}
 
 type WrapContextArgs = { summary: string; nextStep: string };
 
 export async function handleWrapContext(props: HandleWrapContextProps): Promise<CommandHandlerResult> {
-  const { actionResult, taskExecutionPrompt, computeContextMetrics, maxContextItems, maxContextSize } = props;
+  const { actionResult, taskExecutionPrompt } = props;
   const args = actionResult.args as WrapContextArgs;
   putContainerLog('info', '🗂️ Context wrapped by internal operator.', args);
 
@@ -67,9 +63,5 @@ export async function handleWrapContext(props: HandleWrapContextProps): Promise<
   taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
   taskExecutionPrompt.push(assistantMsg, userResp);
 
-  const { messageCount, estimatedTokens } = computeContextMetrics();
-  if (messageCount < maxContextItems && estimatedTokens < maxContextSize) {
-    userResp.text = `The context is within limits: ${messageCount} messages, ${estimatedTokens} tokens is less than the maximum allowed: ${maxContextItems} messages, ${maxContextSize} tokens.`;
-  }
   return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
 }

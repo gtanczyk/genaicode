@@ -24,6 +24,7 @@ export type ConfirmHandlerProps = {
 };
 
 type ConfirmHandler = (props: ConfirmHandlerProps) => Promise<ConfirmHandlerResponse>;
+type SecretHandler = (prompt: string) => Promise<string | undefined>;
 
 export async function askUserForInput(
   prompt: string,
@@ -71,8 +72,16 @@ export async function askUserForConfirmationWithAnswer(
   );
 }
 
+export async function askUserForSecret(prompt: string): Promise<string | undefined> {
+  if (!secretHandler) {
+    throw new Error('Secret handler not registered');
+  }
+  return await secretHandler(prompt);
+}
+
 let inputHandler: InputHandler;
 let confirmHandler: ConfirmHandler;
+let secretHandler: SecretHandler;
 
 export function registerInputHandler(handler: InputHandler) {
   inputHandler = handler;
@@ -80,6 +89,10 @@ export function registerInputHandler(handler: InputHandler) {
 
 export function registerConfirmHandler(handler: ConfirmHandler) {
   confirmHandler = handler;
+}
+
+export function registerSecretHandler(handler: SecretHandler) {
+  secretHandler = handler;
 }
 
 function handleOptionsUpdate<T extends { options?: CodegenOptions }>(response: T, options: CodegenOptions): T {

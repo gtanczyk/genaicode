@@ -112,26 +112,46 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     <HandlerContainer>
       {question ? (
         <AnswerForm onSubmit={handleSubmit}>
-          {question.confirmation && <p>{question.text}</p>}
-          {question.confirmation?.includeAnswer !== false && (
-            <StyledTextarea
+          <p>{question.text}</p>
+          {question.confirmation?.secret ? (
+            <StyledPasswordInput
+              type="password"
               value={answer}
-              onChange={setAnswer}
-              placeholder="Enter your answer here or select a suggestion"
-              maxViewportHeight={0.3}
-              onImagePaste={handleImagePaste} // Pass the image paste handler here
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="Enter secret"
+              autoFocus
             />
+          ) : (
+            question.confirmation?.includeAnswer !== false && (
+              <>
+                <StyledTextarea
+                  value={answer}
+                  onChange={setAnswer}
+                  placeholder="Enter your answer here or select a suggestion"
+                  maxViewportHeight={0.3}
+                  onImagePaste={handleImagePaste}
+                />
+                <ImageUpload
+                  images={images}
+                  onImagesChange={setImages}
+                  error={imageError}
+                  setError={setImageError}
+                  fileInputRef={fileInputRef}
+                />
+              </>
+            )
           )}
-          {question.confirmation?.includeAnswer !== false && (
-            <ImageUpload
-              images={images}
-              onImagesChange={setImages} // Use setImages to handle changes from ImageUpload (e.g., removing images)
-              error={imageError}
-              setError={setImageError}
-              fileInputRef={fileInputRef}
-            />
-          )}
-          {!question.confirmation && (
+          {question.confirmation?.secret ? (
+            <ButtonGroup>
+              <SubmitButton type="submit" disabled={!answer.trim()}>
+                Submit
+              </SubmitButton>
+              <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+                Decline
+              </ConfirmButton>
+              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+            </ButtonGroup>
+          ) : !question.confirmation ? (
             <ButtonGroup>
               <SubmitButton type="submit" disabled={!answer.trim() && images.length === 0}>
                 Submit Answer
@@ -159,8 +179,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               )}
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
-          )}
-          {question.confirmation && (
+          ) : (
             <ButtonGroup>
               <ConfirmButton onClick={() => handleConfirmation(true)}>
                 {question.confirmation.confirmLabel}
@@ -205,6 +224,19 @@ const AnswerForm = styled.form`
   > p {
     margin-top: 0;
   }
+`;
+
+const StyledPasswordInput = styled.input`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid ${({ theme }) => theme.colors.inputBorder};
+  border-radius: 4px;
+  background-color: ${({ theme }) => theme.colors.inputBg};
+  color: ${({ theme }) => theme.colors.inputText};
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
 `;
 
 const DropdownWrapper = styled.div`
