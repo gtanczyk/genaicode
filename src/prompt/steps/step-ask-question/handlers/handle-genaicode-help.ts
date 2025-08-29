@@ -46,7 +46,7 @@ export async function handleGenaicodeHelp({
 
     putAssistantMessage(genaicodeHelpCall.args?.message ?? '', genaicodeHelpCall.args);
 
-    const response = await askUserForInput('Your answer', genaicodeHelpCall.args?.message ?? '', options);
+    const response = await askUserForInput('Your answer', '', options);
 
     return {
       breakLoop: false,

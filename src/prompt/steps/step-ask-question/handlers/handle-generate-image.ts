@@ -110,10 +110,10 @@ export async function handleGenerateImage({
     mediaType: 'image/png',
   } as const;
 
-  putAssistantMessage('', generateImageCall.args, [], [imageData]);
+  putAssistantMessage(askQuestionCall.args?.message ?? '', generateImageCall.args, [], [imageData]);
 
   // Get user's response with the image displayed
-  const inputResponse = await askUserForInput('Your answer', askQuestionCall.args?.message ?? '', options);
+  const inputResponse = await askUserForInput('Your answer', '', options);
 
   // Return the conversation items with the generated image included in the context
   return {
