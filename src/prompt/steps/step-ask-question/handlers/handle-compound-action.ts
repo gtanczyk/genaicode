@@ -161,16 +161,17 @@ export const handleCompoundAction: ActionHandler = async ({
     functionCalls: [initialInferenceCall], // The AI call for planning
   });
 
+  putAssistantMessage(summary!);
+
   // prompt user for confirmation of the inferred actions
   let confirmation = await askUserForConfirmationWithAnswer(
-    summary,
+    '',
     'Yes, proceed with these actions',
     'No, I want to change something',
     true,
     options,
   );
 
-  putAssistantMessage(summary!);
   if (confirmation.answer) {
     putUserMessage(confirmation.answer!);
   }
