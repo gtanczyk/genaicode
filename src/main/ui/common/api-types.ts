@@ -154,7 +154,7 @@ export type ExecutionPlanStepState = 'pending' | 'in-progress' | 'completed' | '
 export interface ExecutionPlanStep {
   id: string;
   description: string;
-  state: ExecutionPlanStepState;
+  state?: ExecutionPlanStepState;
   statusUpdate?: string;
   dependencies?: string[];
 }

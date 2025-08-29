@@ -47,8 +47,8 @@ export const ExecutionPlanVisualiser: React.FC<{ iterationId: string | null }> =
       </VisualiserHeader>
       <PlanContent>
         {executionPlan.map((step: ExecutionPlanStep) => (
-          <StepElement key={step.id} state={step.state}>
-            <StepStatus state={step.state}>{step.state}</StepStatus>
+          <StepElement key={step.id} state={step.state ?? 'pending'}>
+            <StepStatus state={step.state ?? 'pending'}>{step.state}</StepStatus>
             <StepDescription>
               <strong>ID: {step.id}</strong>
               <p>{step.description}</p>
