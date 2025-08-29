@@ -33,8 +33,9 @@ IMPORTANT:
       },
       truncMode: {
         type: 'string',
-        description: 'Mode for truncating command output (e.g., "start", "end").',
-        enum: ['start', 'end'],
+        description:
+          'Mode for truncating command output (e.g., "start", "end"). "none" means no truncation will be applied. "none" should be used only when you are sure the output will be rather short.',
+        enum: ['start', 'end', 'none'],
       },
       timeout: {
         type: 'string',
@@ -58,7 +59,7 @@ export interface HandleRunCommandProps extends CommandHandlerBaseProps {
 type RunCommandArgs = {
   command: string;
   stdin?: string;
-  truncMode: 'start' | 'end';
+  truncMode: 'start' | 'end' | 'none';
   timeout: '10sec' | '30sec' | '1min' | '2min' | '5min' | '10min' | '15min';
   workingDir: string;
   reasoning: string;
@@ -115,13 +116,15 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   if (output.length > maxOutputLength) {
     if (truncMode === 'start') {
       managedOutput = output.slice(0, maxOutputLength) + '\n\n[... output truncated for context management ...]';
-    } else {
+    } else if (truncMode === 'end') {
       managedOutput = '[... output truncated for context management ...]' + output.slice(-maxOutputLength);
     }
-    putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
+    if (truncMode !== 'none') {
+      putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
+    }
   }
 
-  putContainerLog('info', 'Command executed:', { managedOutput, exitCode }, 'command');
+  putContainerLog('info', 'Command executed', { command, managedOutput, exitCode }, 'command');
 
   taskExecutionPrompt.push(
     {

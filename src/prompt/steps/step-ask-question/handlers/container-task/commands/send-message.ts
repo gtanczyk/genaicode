@@ -35,9 +35,9 @@ export async function handleSendMessage(
     functionCalls: [actionResult],
   });
 
+  putAssistantMessage(args.message);
   if (args.waitForUserResponse) {
-    const response = await askUserForInput('Your answer', args.message, options);
-    putAssistantMessage(args.message);
+    const response = await askUserForInput('Your answer', '', options);
     putUserMessage(response.answer);
     taskExecutionPrompt.push({
       type: 'user',
@@ -50,7 +50,6 @@ export async function handleSendMessage(
       ],
     });
   } else {
-    putAssistantMessage(args.message);
     taskExecutionPrompt.push({
       type: 'user',
       functionResponses: [
