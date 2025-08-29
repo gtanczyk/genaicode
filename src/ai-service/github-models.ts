@@ -47,6 +47,8 @@ export const generateContent: GenerateContentFunction = async function generateC
       }
     })();
 
+    console.log('Using github-models');
+
     // Reuse OpenAI implementation since GitHub Models uses the same API format
     return internalGenerateContent(prompt, config, model, openai, 'github-models');
   } catch (error) {
