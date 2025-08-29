@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ExecutionPlan, ExecutionPlanUpdate, TerminalEvent } from '../../../../common/api-types.js';
 import { useChatState } from '../../contexts/chat-state-context.js';
 import { interruptCurrentCommand } from '../../api/api-client.js';
