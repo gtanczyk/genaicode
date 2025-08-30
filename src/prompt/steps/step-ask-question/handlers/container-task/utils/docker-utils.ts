@@ -12,6 +12,7 @@ import {
   removeCachedContainerId,
 } from '../../../../../../files/cache-file.js';
 import { isProjectPath } from '../../../../../../files/path-utils.js';
+import { isIgnoredPath } from '../../../../../../files/find-files.js';
 
 /**
  * Pull a Docker image
@@ -198,6 +199,10 @@ function validateHostPath(hostPath: string): string {
  * @param relativeTo The base path for entries in the tar archive.
  */
 function addDirectoryToPack(pack: tar.Pack, directoryPath: string, relativeTo: string) {
+  if (isIgnoredPath(directoryPath)) {
+    return;
+  }
+
   const items = fs.readdirSync(directoryPath);
   const dirStats = fs.lstatSync(directoryPath);
 
@@ -218,6 +223,8 @@ function addDirectoryToPack(pack: tar.Pack, directoryPath: string, relativeTo: s
 
     if (stats.isDirectory()) {
       addDirectoryToPack(pack, fullPath, tarPath);
+    } else if (isIgnoredPath(fullPath)) {
+      // Skip ignored files
     } else if (stats.isSymbolicLink()) {
       const linkname = fs.readlinkSync(fullPath);
       pack.entry(
@@ -264,7 +271,7 @@ export async function copyToContainer(
 
     if (stats.isDirectory()) {
       addDirectoryToPack(pack, absoluteHostPath, '');
-    } else {
+    } else if (!isIgnoredPath(absoluteHostPath)) {
       pack.entry({ name: path.basename(absoluteHostPath) }, fs.readFileSync(absoluteHostPath));
     }
     pack.finalize();

@@ -14,8 +14,8 @@
     "coverage",
     "package-lock.json",
     ".vscode",
-    "src/eval/data",
-    "src/prompt-debug/current-prompt.js"
+    "src/eval",
+    "src/prompt-debug"
   ],
   "featuresEnabled": {
     "containerTask": true

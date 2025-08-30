@@ -62,7 +62,7 @@ export async function handleCopyFromContainer(
         ],
       },
     );
-    return { shouldBreakOuter: true, commandsExecutedIncrement: 0 };
+    return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
   }
   try {
     if (!isAncestorDirectory(rcConfig.rootDir, args.hostPath)) {

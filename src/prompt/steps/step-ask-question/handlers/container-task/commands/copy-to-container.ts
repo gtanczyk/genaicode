@@ -53,7 +53,7 @@ export async function handleCopyToContainer(
         ],
       },
     );
-    return { shouldBreakOuter: true, commandsExecutedIncrement: 0 };
+    return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
   }
 
   // check if hostPath belongs to the project directory

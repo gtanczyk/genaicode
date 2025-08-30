@@ -22,7 +22,7 @@ function findFiles(dir: string, recursive: boolean, extensions: FileExtensions):
   for (const item of items) {
     const fullPath = path.join(dir, item);
 
-    if (ignorePaths.some((ignorePath: string) => fullPath.endsWith(ignorePath))) {
+    if (isIgnoredPath(fullPath)) {
       continue;
     }
 
@@ -61,6 +61,10 @@ function getDependencies(filePath: string): DependencyList {
     }
   }
   return dependencies;
+}
+
+export function isIgnoredPath(filePath: string): boolean {
+  return ignorePaths.some((ignorePath) => filePath.endsWith(ignorePath));
 }
 
 /** Generates a dependency list for given file */

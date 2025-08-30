@@ -45,16 +45,16 @@ export async function handleEditFile(props: CommandHandlerBaseProps): Promise<Co
   const args = actionResult.args as EditFileArgs;
   const { reasoning, filePath, newContent, patch } = args;
 
-  if (!newContent && !patch) {
-    throw new Error('Either newContent or patch must be provided for editFile.');
-  }
-  if (newContent && patch) {
-    throw new Error('Cannot provide both newContent and patch for editFile.');
-  }
-
-  putContainerLog('info', `Editing file: ${reasoning}`, args, 'command');
-
   try {
+    if (!newContent && !patch) {
+      throw new Error('Either newContent or patch must be provided for editFile.');
+    }
+    if (newContent && patch) {
+      throw new Error('Cannot provide both newContent and patch for editFile.');
+    }
+
+    putContainerLog('info', `Editing file: ${reasoning}`, args, 'command');
+
     let finalContent: string;
 
     if (patch) {
