@@ -408,3 +408,15 @@ export async function checkPathExistsInContainer(container: Docker.Container, co
   const check = await executeCommand(container, '/bin/sh', `ls ${containerPath}`, '', '/');
   return check.exitCode === 0;
 }
+
+export async function getFileContentFromContainer(container: Docker.Container, filePath: string): Promise<string> {
+  const { output, exitCode } = await executeCommand(container, '/bin/sh', `cat "${filePath}"`, '', '/');
+  if (exitCode !== 0) {
+    // If cat fails, it might be because the file doesn't exist, which is a valid case for patching (creating a new file).
+    if (output.includes('No such file or directory')) {
+      return '';
+    }
+    throw new Error(`Failed to read file content: ${output}`);
+  }
+  return output;
+}

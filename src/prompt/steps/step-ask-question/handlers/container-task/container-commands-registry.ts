@@ -22,6 +22,8 @@ import { webSearchDef } from '../../../../function-defs/web-search.js';
 import { requestSecretDef, handleRequestSecret } from './commands/request-secret.js';
 import { gainKnowledgeDef, handleGainKnowledge } from './commands/gain-knowledge.js';
 import { queryKnowledgeDef, handleQueryKnowledge } from './commands/query-knowledge.js';
+import { viewFileDef, handleViewFile } from './commands/view-file.js';
+import { editFileDef, handleEditFile } from './commands/edit-file.js';
 
 // Centralized Base Props and Result Types
 export interface CommandHandlerBaseProps {
@@ -82,6 +84,8 @@ registerCommand('webSearch', webSearchDef, handleWebSearch);
 registerCommand('requestSecret', requestSecretDef, handleRequestSecret);
 registerCommand('gainKnowledge', gainKnowledgeDef, handleGainKnowledge);
 registerCommand('queryKnowledge', queryKnowledgeDef, handleQueryKnowledge);
+registerCommand('viewFile', viewFileDef, handleViewFile);
+registerCommand('editFile', editFileDef, handleEditFile);
 
 /**
  * Gets all function definitions for the container commands.
