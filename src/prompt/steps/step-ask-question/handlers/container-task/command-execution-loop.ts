@@ -17,11 +17,10 @@ import { ActionHandlerProps } from '../../step-ask-question-types.js';
 import {
   getContainerCommandDefs,
   getContainerCommandHandler,
-  CommandHandlerBaseProps,
   HandleWrapContextProps,
   HandleRunCommandProps,
-  CommandHandlerResult,
 } from './container-commands-registry.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from './container-commands-types.js';
 import { rcConfig } from '../../../../../main/config.js';
 import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
 import { askUserForInput } from '../../../../../main/common/user-actions.js';

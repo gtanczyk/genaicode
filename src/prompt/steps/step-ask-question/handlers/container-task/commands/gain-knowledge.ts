@@ -1,5 +1,5 @@
 import { FunctionDef, ModelType, PromptItem } from '../../../../../../ai-service/common-types.js';
-import { CommandHandlerResult, CommandHandlerBaseProps } from '../container-commands-registry.js';
+import { CommandHandlerResult, CommandHandlerBaseProps } from '../container-commands-types.js';
 import {
   appendKnowledge,
   getKnowledgeBase,

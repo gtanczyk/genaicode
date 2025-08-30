@@ -76,8 +76,14 @@ describe('handleRequestSecret', () => {
 
     expect(askUserForSecret).toHaveBeenCalledWith('Please enter your API key for Service X');
     expect(executeCommand).toHaveBeenCalledTimes(2);
-    expect(executeCommand).toHaveBeenCalledWith(props.container, 'mkdir -p "/app/secrets"', undefined, '/');
-    expect(executeCommand).toHaveBeenCalledWith(props.container, 'tee "/app/secrets/api.key"', 'my-secret-value', '/');
+    expect(executeCommand).toHaveBeenCalledWith(props.container, '/bin/sh', 'mkdir -p "/app/secrets"', undefined, '/');
+    expect(executeCommand).toHaveBeenCalledWith(
+      props.container,
+      '/bin/sh',
+      'tee "/app/secrets/api.key"',
+      'my-secret-value',
+      '/',
+    );
     expect(putContainerLog).toHaveBeenCalledWith(
       'success',
       'Secret "SERVICE_X_API_KEY" received and saved to /app/secrets/api.key.',
