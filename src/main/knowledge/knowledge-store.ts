@@ -12,7 +12,7 @@ import {
 const KNOWLEDGE_CACHE_KEY = 'container-task-knowledge-v1';
 
 // Function definition for providing context to the LLM.
-const knowledgeContextDef: FunctionDef = {
+export const knowledgeContextDef: FunctionDef = {
   name: 'provideKnowledgeContext',
   description: 'Provides the user query and knowledge base corpus for ranking.',
   parameters: {
@@ -77,7 +77,7 @@ export async function queryKnowledge(
   args: QueryKnowledgeArgs,
   generateContentFn: GenerateContentFunction,
 ): Promise<QueryResult> {
-  const { query = 5 } = args;
+  const { query } = args;
   const knowledgeBase = await getKnowledgeBase();
 
   if (knowledgeBase.length === 0) {
@@ -92,9 +92,8 @@ export async function queryKnowledge(
 
   const systemPrompt = `
     You are an AI assistant that ranks knowledge base entries based on relevance to a user query.
-    You will be given the context (query and corpus) as a function response to 'provideKnowledgeContext'.
-    Your task is to analyze this context and call the 'rankKnowledgeEntries' function with the results.
-    Only include entries with a relevance score greater than 0.5.
+    You will be given the context (query and corpus) as a function response to 'respondKnowledgeQuery'.
+    Your task is to analyze this context and call the 'respondKnowledgeQuery' function with the results.
   `;
 
   const prompt: PromptItem[] = [
@@ -108,6 +107,7 @@ export async function queryKnowledge(
     },
     {
       type: 'assistant',
+      text: 'Please provide me with context: corpus, query',
       functionCalls: [
         {
           name: 'provideKnowledgeContext',
@@ -116,7 +116,7 @@ export async function queryKnowledge(
     },
     {
       type: 'user',
-      text: 'Please proceed with ranking based on the provided context.',
+      text: 'This is the corpus, and the query, please respond.',
       functionResponses: [
         {
           name: 'provideKnowledgeContext',
@@ -133,6 +133,10 @@ export async function queryKnowledge(
       temperature: 0.1,
       functionDefs: [knowledgeContextDef, respondKnowledgeQueryDef],
       requiredFunctionName: 'respondKnowledgeQuery',
+      expectedResponseType: {
+        text: false,
+        functionCall: true,
+      },
     },
     { disableCache: true },
   );

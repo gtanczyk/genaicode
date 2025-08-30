@@ -20,12 +20,15 @@ import {
   CommandHandlerBaseProps,
   HandleWrapContextProps,
   HandleRunCommandProps,
+  CommandHandlerResult,
 } from './container-commands-registry.js';
 import { rcConfig } from '../../../../../main/config.js';
 import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
 import { askUserForInput } from '../../../../../main/common/user-actions.js';
 import { CheckContextProps } from './commands/check-context.js';
 import { sanitizePrompt } from './commands/request-secret.js';
+import { maybeQueryKnowledge } from './commands/query-knowledge.js';
+import { maybeGainKnowledge } from './commands/gain-knowledge.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
@@ -130,12 +133,32 @@ Begin by analyzing the task and formulating your approach. Then start executing 
     return { messageCount, estimatedTokens };
   };
 
+  await maybeQueryKnowledge({
+    actionResult: { name: 'queryKnowledge' }, // Placeholder, ignored by maybeQueryKnowledge
+    taskExecutionPrompt,
+    systemPrompt,
+    taskPrompt,
+    generateContentFn,
+    container,
+    options,
+    computeContextMetrics,
+    maxContextItems: MAX_CONTEXT_ITEMS,
+    maxContextSize: MAX_CONTEXT_SIZE,
+    maxOutputLength: MAX_OUTPUT_LENGTH,
+  });
+
   let commandsExecuted = 0;
   let actionIndex = 0;
   let lastCheckActionIndex = 0;
+  let periodicQueryPromise: Promise<CommandHandlerResult> | null = null;
 
   for (let i = 0; i < maxCommands; i++) {
     try {
+      if (periodicQueryPromise) {
+        await periodicQueryPromise;
+        periodicQueryPromise = null;
+      }
+
       actionIndex++;
       if (isAborted()) {
         putContainerLog('warn', 'Task cancelled by user. Exiting command loop.');
@@ -157,6 +180,26 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         };
         putUserMessage(response.answer ?? '', undefined, undefined, response.images, item);
         taskExecutionPrompt.push(item);
+      }
+
+      if (i > 0 && i % 5 === 0) {
+        periodicQueryPromise = maybeQueryKnowledge({
+          actionResult: { name: 'queryKnowledge' }, // Placeholder
+          taskExecutionPrompt,
+          systemPrompt,
+          taskPrompt,
+          generateContentFn,
+          container,
+          options,
+          computeContextMetrics,
+          maxContextItems: MAX_CONTEXT_ITEMS,
+          maxContextSize: MAX_CONTEXT_SIZE,
+          maxOutputLength: MAX_OUTPUT_LENGTH,
+        }).catch((err) => {
+          putContainerLog('error', 'Periodic knowledge query failed in background', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
       }
 
       if (actionIndex - lastCheckActionIndex >= 10) {
@@ -298,6 +341,28 @@ Begin by analyzing the task and formulating your approach. Then start executing 
       break;
     }
   }
+
+  maybeGainKnowledge({
+    actionResult: {
+      name: 'gainKnowledge', // Placeholder
+    },
+    systemPrompt,
+    taskPrompt,
+    taskExecutionPrompt,
+    generateContentFn,
+    container,
+    options,
+    computeContextMetrics,
+    maxContextItems: MAX_CONTEXT_ITEMS,
+    maxContextSize: MAX_CONTEXT_SIZE,
+    maxOutputLength: MAX_OUTPUT_LENGTH,
+    taskDescription,
+    summary,
+  }).catch((err) => {
+    putContainerLog('error', 'maybeGainKnowledge failed in background', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   try {
     const modelResponse = await generateContentFn(

@@ -42,7 +42,7 @@ export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<C
       ],
       {
         temperature: 0.7,
-        modelType: ModelType.CHEAP,
+        modelType: ModelType.LITE,
         expectedResponseType: {
           webSearch: true,
         },

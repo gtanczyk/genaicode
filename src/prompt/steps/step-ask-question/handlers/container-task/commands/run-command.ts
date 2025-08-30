@@ -9,9 +9,11 @@ export const runCommandDef: FunctionDef = {
   name: 'runCommand',
   description: `Execute a shell command in the Docker container in non-interactive mode.
 IMPORTANT: 
+- The shell by default is using /bin/sh - take this into account when running commands.
 - The command will block you until it completes, so consider using a non-blocking approach if needed.
 - Ensure you are going to run command in non interactive mode, so that it will not block waiting for input, which will not come.
 - For complex/long input you should prefer \`stdin\` over command-line arguments. For example instead of echo \`some long text\`, you can put the long text in the \`stdin\` field, and then use it in the command like this: \`cat | some_command\`.
+- State of shell is not persistent across commands, so you need to set up the environment each time (think how to do it effectively).
   `,
   parameters: {
     type: 'object',
