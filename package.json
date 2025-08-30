@@ -102,7 +102,7 @@
     "@google-cloud/vertexai": "^1.9.2",
     "@google/genai": "^0.10.0",
     "@imgly/background-removal-node": "^1.4.5",
-    "@inquirer/prompts": "^7.8.2",
+    "@inquirer/prompts": "^7.8.4",
     "@types/diff": "^5.2.1",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^18.0.0",
