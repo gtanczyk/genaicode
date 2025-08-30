@@ -65,6 +65,8 @@ Best Practices:
 - Let the user have a life, outside of this task, and avoid unnecessary interruptions, or bothering them with irrelevant details, especially if you can find a solution without involving them.
 - SFTU! You have the possibility to search the web for solutions or information.
 - Be careful about secrets and sensitive information, never expose them in your commands or outputs.
+- Reuse existing knowledge and solutions from the knowledge base to avoid reinventing the wheel.
+- Every corrected mistake, fixed problem, or learned lesson - no matter how small - may be worth documenting in the knowledge base.
 
 You have access to the following functions:
 - runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
@@ -79,6 +81,8 @@ You have access to the following functions:
 - sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question.
 - webSearch: Perform a web search given an exhaustive prompt. Return a concise, grounded answer and a list of source URLs used. The answer is not displayed to the user. It should be used to inform following actions.
 - requestSecret: Ask the user to provide a secret value (e.g. API key) and write it to a specified file path in the container. The file path must be absolute path within the container.
+- gainKnowledge: Persist a new knowledge entry in the knowledge base capturing a prompt, its answer/insight, and optional metadata. Use this to record successful operations, solutions to problems, or any other valuable information that could help in future tasks. Avoid storing secrets.
+- queryKnowledge: Query the knowledge base with a natural language prompt to find relevant information from past tasks. Use this to check for existing solutions before attempting a complex step.
 
 You may also provide reasoning text before function calls to explain your approach or analyze the current situation.
 
@@ -145,7 +149,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         clearInterruption();
         putSystemMessage('Task interrupted, waiting for user input');
         putAssistantMessage('What would you like to do?');
-        const response = await askUserForInput('Your answer', 'What would you like to do?', options);
+        const response = await askUserForInput('Your answer', '', options);
         const item: PromptItem = {
           type: 'user',
           text: response.answer,
@@ -275,7 +279,7 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         if (handlerResult) {
           if (handlerResult.success !== undefined) success = handlerResult.success;
           if (handlerResult.summary !== undefined) summary = handlerResult.summary;
-          commandsExecuted += handlerResult.commandsExecutedIncrement;
+          commandsExecuted += handlerResult.commandsExecutedIncrement ?? 0;
           if (handlerResult.shouldBreakOuter) {
             shouldBreakOuter = true;
             break;

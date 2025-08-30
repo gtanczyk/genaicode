@@ -1,10 +1,13 @@
-import { FunctionDef } from '../../../../../ai-service/common-types.js';
+import Docker from 'dockerode';
 import {
-  completeTaskDef,
-  handleCompleteTask,
-  CommandHandlerResult,
-  CommandHandlerBaseProps,
-} from './commands/complete-task.js';
+  FunctionCall,
+  GenerateContentFunction,
+  PromptItem,
+  FunctionDef,
+} from '../../../../../ai-service/common-types.js';
+import { CodegenOptions } from '../../../../../main/codegen-types.js';
+
+import { completeTaskDef, handleCompleteTask } from './commands/complete-task.js';
 import { failTaskDef, handleFailTask } from './commands/fail-task.js';
 import { wrapContextDef, handleWrapContext, HandleWrapContextProps } from './commands/wrap-context.js';
 import { setExecutionPlanDef, handleSetExecutionPlan } from './commands/set-execution-plan.js';
@@ -12,14 +15,36 @@ import { updateExecutionPlanDef, handleUpdateExecutionPlan } from './commands/up
 import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
 import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
-import { checkContextDef, handleCheckContext } from './commands/check-context.js';
+import { checkContextDef, handleCheckContext, CheckContextProps } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
 import { handleWebSearch } from './commands/web-search.js';
 import { webSearchDef } from '../../../../function-defs/web-search.js';
 import { requestSecretDef, handleRequestSecret } from './commands/request-secret.js';
+import { gainKnowledgeDef, handleGainKnowledge } from './commands/gain-knowledge.js';
+import { queryKnowledgeDef, handleQueryKnowledge } from './commands/query-knowledge.js';
+
+// Centralized Base Props and Result Types
+export interface CommandHandlerBaseProps {
+  actionResult: FunctionCall;
+  taskExecutionPrompt: PromptItem[];
+  generateContentFn: GenerateContentFunction;
+  container: Docker.Container;
+  options: CodegenOptions;
+  computeContextMetrics: () => { messageCount: number; estimatedTokens: number };
+  maxContextItems: number;
+  maxContextSize: number;
+  maxOutputLength: number;
+}
+
+export type CommandHandlerResult = void | {
+  success?: boolean;
+  summary?: string;
+  commandsExecutedIncrement?: number;
+  shouldBreakOuter?: boolean;
+};
 
 // Re-export shared types for use in the execution loop
-export type { CommandHandlerResult, CommandHandlerBaseProps, HandleWrapContextProps, HandleRunCommandProps };
+export type { HandleWrapContextProps, HandleRunCommandProps, CheckContextProps };
 
 // A generic type for command handlers to make the registry simpler.
 // The execution loop will be responsible for passing the correct props.
@@ -55,6 +80,8 @@ registerCommand('checkContext', checkContextDef, handleCheckContext);
 registerCommand('copyFromContainer', getCopyFromContainerDef, handleCopyFromContainer);
 registerCommand('webSearch', webSearchDef, handleWebSearch);
 registerCommand('requestSecret', requestSecretDef, handleRequestSecret);
+registerCommand('gainKnowledge', gainKnowledgeDef, handleGainKnowledge);
+registerCommand('queryKnowledge', queryKnowledgeDef, handleQueryKnowledge);
 
 /**
  * Gets all function definitions for the container commands.
