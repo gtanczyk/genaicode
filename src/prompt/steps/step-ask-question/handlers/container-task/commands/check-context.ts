@@ -44,11 +44,11 @@ export async function handleCheckContext({
     },
     {
       type: 'user',
+      text: content,
       functionResponses: [
         {
           name: actionResult.name,
           call_id: actionResult.id || undefined,
-          content,
         },
       ],
     },
