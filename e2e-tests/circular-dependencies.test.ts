@@ -39,6 +39,14 @@ describe('Circular Dependencies', () => {
         'main/ui/backend/api-handlers.ts',
         'main/ui/backend/service.ts',
       ],
+      [
+        'prompt/steps/step-ask-question/handlers/container-task/commands/gain-knowledge.ts',
+        'prompt/steps/step-ask-question/handlers/container-task/container-commands-registry.ts',
+      ],
+      [
+        'prompt/steps/step-ask-question/handlers/container-task/container-commands-registry.ts',
+        'prompt/steps/step-ask-question/handlers/container-task/commands/query-knowledge.ts',
+      ],
     ];
 
     // Helper function to check if a circular dependency is known
