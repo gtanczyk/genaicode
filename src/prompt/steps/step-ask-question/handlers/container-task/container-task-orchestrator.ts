@@ -9,7 +9,13 @@ import {
 import { askUserForConfirmationWithAnswer } from '../../../../../main/common/user-actions.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { RunContainerTaskArgs, runContainerTaskDef } from '../../../../function-defs/run-container-task.js';
-import { cleanupOrphanedContainers, createAndStartContainer, pullImage, stopContainer } from './utils/docker-utils.js';
+import {
+  cleanupOrphanedContainers,
+  createAndStartContainer,
+  executeCommand,
+  pullImage,
+  stopContainer,
+} from './utils/docker-utils.js';
 import { ActionHandlerProps, ActionResult } from '../../step-ask-question-types.js';
 import { commandExecutionLoop } from './command-execution-loop.js';
 import { getFunctionDefs } from '../../../../function-calling.js';
@@ -126,7 +132,7 @@ export async function runContainerTaskOrchestrator({
       },
     );
 
-    const { image, taskDescription } = runContainerTaskCall.args;
+    const { image, taskDescription, workingDir } = runContainerTaskCall.args;
 
     putContainerLog('info', `Starting container task with image: ${image}`);
     putSystemMessage(`🐳 Starting container task with image: ${image}`);
@@ -181,6 +187,9 @@ export async function runContainerTaskOrchestrator({
         }
       };
       abortController?.signal.addEventListener('abort', onAbort);
+
+      putContainerLog('info', 'Ensuring working directory exists.');
+      await executeCommand(container, '/bin/sh', `mkdir -p ${workingDir}`, '', '/');
 
       putContainerLog('info', 'Entering command execution loop.');
       const { success, summary } = await commandExecutionLoop(

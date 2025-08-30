@@ -46,8 +46,12 @@ You can run multiple commands in the container to accomplish the task. Outcomes 
 It is important to provide as much context as possible to ensure successful execution.
 When a task requires current project files to be included, you must explicitly state this in the task description.`,
       },
+      workingDir: {
+        type: 'string',
+        description: `Path of the working directory inside the container, which will be created if it doesn't exist.`,
+      },
     },
-    required: ['image', 'taskDescription'],
+    required: ['image', 'taskDescription', 'workingDir'],
   },
 };
 
@@ -57,4 +61,5 @@ When a task requires current project files to be included, you must explicitly s
 export type RunContainerTaskArgs = {
   image: AllowedDockerImage;
   taskDescription: string;
+  workingDir: string;
 };

@@ -7,7 +7,7 @@ import { onInterruptRequested } from './interrupt-controller.js';
 
 export const runCommandDef: FunctionDef = {
   name: 'runCommand',
-  description: `Execute a shell command in the Docker container in non-interactive mode.
+  description: `Execute a shell command in the Docker container in non-interactive mode using docker exec. It will do equivalent of /bin/bash -c "command" (or /bin/sh -c "command").
 IMPORTANT: 
 - The shell by default is using /bin/sh - take this into account when running commands.
 - The command will block you until it completes, so consider using a non-blocking approach if needed.
@@ -21,6 +21,12 @@ IMPORTANT:
       reasoning: {
         type: 'string',
         description: 'Explanation of why this command is needed for the task.',
+      },
+      shell: {
+        type: 'string',
+        description:
+          'The shell to use for executing the command. CAUTION: some docker images do not have bash pre-installed! Bash should be the preferred shell.',
+        enum: ['bash', '/bin/sh'],
       },
       command: {
         type: 'string',
@@ -51,7 +57,7 @@ IMPORTANT:
         minLength: 1,
       },
     },
-    required: ['reasoning', 'command', 'stdin', 'workingDir', 'truncMode', 'timeout'],
+    required: ['reasoning', 'shell', 'command', 'stdin', 'workingDir', 'truncMode', 'timeout'],
   },
 };
 
@@ -60,6 +66,7 @@ export interface HandleRunCommandProps extends CommandHandlerBaseProps {
 }
 
 type RunCommandArgs = {
+  shell: '/bin/sh' | '/bin/bash';
   command: string;
   stdin?: string;
   truncMode: 'start' | 'end' | 'none';
@@ -71,7 +78,7 @@ type RunCommandArgs = {
 export async function handleRunCommand(props: HandleRunCommandProps): Promise<CommandHandlerResult> {
   const { actionResult, taskExecutionPrompt, container, maxOutputLength } = props;
   const args = actionResult.args as RunCommandArgs;
-  const { command, workingDir, reasoning, stdin, truncMode, timeout } = args;
+  const { shell, command, workingDir, reasoning, stdin, truncMode, timeout } = args;
 
   putContainerLog('info', `Executing command: ${reasoning}`, args, 'command');
 
@@ -85,7 +92,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
   try {
     const timeoutSeconds = parseTimeout(timeout);
     abortTimeout = setTimeout(() => localController.abort(), timeoutSeconds * 1000);
-    const result = await executeCommand(container, command, stdin, workingDir, localController.signal);
+    const result = await executeCommand(container, shell, command, stdin, workingDir, localController.signal);
     output = result.output;
     exitCode = result.exitCode;
   } catch (e) {

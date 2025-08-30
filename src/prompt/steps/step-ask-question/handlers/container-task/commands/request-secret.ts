@@ -76,13 +76,13 @@ export async function handleRequestSecret(props: CommandHandlerBaseProps): Promi
     registerSecret(secretValue);
     try {
       const dirname = path.dirname(destinationFilePath);
-      const mkdirResult = await executeCommand(container, `mkdir -p "${dirname}"`, undefined, '/');
+      const mkdirResult = await executeCommand(container, '/bin/sh', `mkdir -p "${dirname}"`, undefined, '/');
       if (mkdirResult.exitCode !== 0) {
         throw new Error(`Failed to create directory ${dirname}: ${mkdirResult.output}`);
       }
 
       const command = `tee "${destinationFilePath}"`;
-      const result = await executeCommand(container, command, secretValue, '/');
+      const result = await executeCommand(container, '/bin/sh', command, secretValue, '/');
 
       if (result.exitCode !== 0) {
         throw new Error(`Failed to write secret to file: ${result.output}`);

@@ -49,7 +49,6 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
   const container = await docker.createContainer({
     Image: image,
     Tty: true,
-    Cmd: ['/bin/sh'],
     HostConfig: {
       AutoRemove: true,
     },
@@ -68,6 +67,7 @@ export async function createAndStartContainer(docker: Docker, image: AllowedDock
  */
 export async function executeCommand(
   container: Docker.Container,
+  shell: '/bin/sh' | '/bin/bash',
   command: string,
   stdin: string | undefined,
   workingDir: string,
@@ -75,7 +75,7 @@ export async function executeCommand(
 ): Promise<{ output: string; exitCode: number }> {
   putContainerLog('info', `Executing command in ${workingDir}: ${command}`, { stdin: !!stdin }, 'command');
   const exec = await container.exec({
-    Cmd: ['/bin/sh', '-c', command],
+    Cmd: [shell, '-c', command],
     WorkingDir: workingDir,
     AttachStdin: true,
     Tty: false,
@@ -199,16 +199,49 @@ function validateHostPath(hostPath: string): string {
  */
 function addDirectoryToPack(pack: tar.Pack, directoryPath: string, relativeTo: string) {
   const items = fs.readdirSync(directoryPath);
+  const dirStats = fs.lstatSync(directoryPath);
+
+  pack.entry(
+    {
+      name: relativeTo.endsWith('/') ? relativeTo : relativeTo + '/',
+      type: 'directory',
+      mode: dirStats.mode & 0o777,
+      mtime: dirStats.mtime,
+    },
+    () => {},
+  );
 
   for (const item of items) {
     const fullPath = path.join(directoryPath, item);
     const tarPath = path.join(relativeTo, item);
-    const stats = fs.statSync(fullPath);
+    const stats = fs.lstatSync(fullPath);
 
     if (stats.isDirectory()) {
       addDirectoryToPack(pack, fullPath, tarPath);
+    } else if (stats.isSymbolicLink()) {
+      const linkname = fs.readlinkSync(fullPath);
+      pack.entry(
+        {
+          name: tarPath,
+          type: 'symlink',
+          linkname,
+          mode: 0o777,
+          mtime: stats.mtime,
+        },
+        () => {},
+      );
     } else if (stats.isFile()) {
-      pack.entry({ name: tarPath }, fs.readFileSync(fullPath));
+      const data = fs.readFileSync(fullPath);
+      pack.entry(
+        {
+          name: tarPath,
+          type: 'file',
+          mode: stats.mode & 0o777,
+          size: data.length,
+          mtime: stats.mtime,
+        },
+        data,
+      );
     }
   }
 }
@@ -372,6 +405,6 @@ export async function copyFromContainer(
 }
 
 export async function checkPathExistsInContainer(container: Docker.Container, containerPath: string): Promise<boolean> {
-  const check = await executeCommand(container, `ls ${containerPath}`, '', '/');
+  const check = await executeCommand(container, '/bin/sh', `ls ${containerPath}`, '', '/');
   return check.exitCode === 0;
 }
