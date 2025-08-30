@@ -3,7 +3,7 @@ import { handleRequestSecret, registerSecret, sanitizePrompt } from './request-s
 import { askUserForSecret } from '../../../../../../main/common/user-actions.js';
 import { executeCommand } from '../utils/docker-utils.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
-import { CommandHandlerBaseProps } from './complete-task.js';
+import { CommandHandlerBaseProps } from '../container-commands-types.js';
 import { PromptItem } from '../../../../../../ai-service/common-types.js';
 import Dockerode from 'dockerode';
 
@@ -49,6 +49,10 @@ describe('handleRequestSecret', () => {
     taskExecutionPrompt = [];
     props = {
       generateContentFn: vi.fn(),
+      computeContextMetrics: vi.fn(),
+      maxContextItems: 5,
+      maxContextSize: 5,
+      maxOutputLength: 5,
       actionResult: {
         name: 'requestSecret',
         id: 'call_123',

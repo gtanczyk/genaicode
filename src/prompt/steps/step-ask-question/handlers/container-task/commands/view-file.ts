@@ -1,7 +1,7 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { getFileContentFromContainer, executeCommand } from '../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-registry.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 
 export const viewFileDef: FunctionDef = {
   name: 'viewFile',

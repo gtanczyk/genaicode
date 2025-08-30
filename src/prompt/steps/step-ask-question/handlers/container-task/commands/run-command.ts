@@ -1,7 +1,7 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { executeCommand } from '../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 import { abortController as globalAbortController } from '../../../../../../main/common/abort-controller.js';
 import { onInterruptRequested } from './interrupt-controller.js';
 

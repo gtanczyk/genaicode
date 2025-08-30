@@ -3,7 +3,7 @@ import { FunctionDef, PromptItem } from '../../../../../../ai-service/common-typ
 import { putAssistantMessage, putContainerLog, putSystemMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForSecret } from '../../../../../../main/common/user-actions.js';
 import { executeCommand } from '../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 
 export const requestSecretDef: FunctionDef = {
   name: 'requestSecret',

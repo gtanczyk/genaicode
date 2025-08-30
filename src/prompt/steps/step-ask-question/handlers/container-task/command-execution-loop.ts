@@ -14,12 +14,7 @@ import {
 import { estimateTokenCount } from '../../../../token-estimator.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { ActionHandlerProps } from '../../step-ask-question-types.js';
-import {
-  getContainerCommandDefs,
-  getContainerCommandHandler,
-  HandleWrapContextProps,
-  HandleRunCommandProps,
-} from './container-commands-registry.js';
+import { getContainerCommandDefs, getContainerCommandHandler } from './container-commands-registry.js';
 import { CommandHandlerBaseProps, CommandHandlerResult } from './container-commands-types.js';
 import { rcConfig } from '../../../../../main/config.js';
 import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
@@ -28,6 +23,8 @@ import { CheckContextProps } from './commands/check-context.js';
 import { sanitizePrompt } from './commands/request-secret.js';
 import { maybeQueryKnowledge } from './commands/query-knowledge.js';
 import { maybeGainKnowledge } from './commands/gain-knowledge.js';
+import { HandleWrapContextProps } from './commands/wrap-context.js';
+import { HandleRunCommandProps } from './commands/run-command.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;

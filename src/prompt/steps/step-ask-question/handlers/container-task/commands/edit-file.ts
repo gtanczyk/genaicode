@@ -1,7 +1,7 @@
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 import { executeCommand, getFileContentFromContainer } from '../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-registry.js';
 import * as diff from 'diff';
 
 export const editFileDef: FunctionDef = {

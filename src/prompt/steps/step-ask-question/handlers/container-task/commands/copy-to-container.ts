@@ -8,7 +8,7 @@ import {
 } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import { checkPathExistsInContainer, copyToContainer as utilCopyToContainer } from '../utils/docker-utils.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 import { rcConfig } from '../../../../../../main/config.js';
 import { isAncestorDirectory } from '../../../../../../files/file-utils.js';
 

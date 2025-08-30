@@ -1,7 +1,7 @@
 import { ModelType } from '../../../../../../ai-service/common-types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
 import { WebSearchArgs } from '../../../../../function-defs/web-search.js';
-import { CommandHandlerBaseProps, CommandHandlerResult } from './complete-task.js';
+import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-commands-types.js';
 
 export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<CommandHandlerResult> {
   const { actionResult, generateContentFn, options, taskExecutionPrompt } = props;

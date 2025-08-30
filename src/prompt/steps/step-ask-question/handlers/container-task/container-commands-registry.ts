@@ -3,13 +3,13 @@ import { CommandHandlerBaseProps, CommandHandler, Command } from './container-co
 
 import { completeTaskDef, handleCompleteTask } from './commands/complete-task.js';
 import { failTaskDef, handleFailTask } from './commands/fail-task.js';
-import { wrapContextDef, handleWrapContext, HandleWrapContextProps } from './commands/wrap-context.js';
+import { wrapContextDef, handleWrapContext } from './commands/wrap-context.js';
 import { setExecutionPlanDef, handleSetExecutionPlan } from './commands/set-execution-plan.js';
 import { updateExecutionPlanDef, handleUpdateExecutionPlan } from './commands/update-execution-plan.js';
 import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
-import { runCommandDef, handleRunCommand, HandleRunCommandProps } from './commands/run-command.js';
+import { runCommandDef, handleRunCommand } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
-import { checkContextDef, handleCheckContext, CheckContextProps } from './commands/check-context.js';
+import { checkContextDef, handleCheckContext } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
 import { handleWebSearch } from './commands/web-search.js';
 import { webSearchDef } from '../../../../function-defs/web-search.js';
@@ -18,10 +18,6 @@ import { gainKnowledgeDef, handleGainKnowledge } from './commands/gain-knowledge
 import { queryKnowledgeDef, handleQueryKnowledge } from './commands/query-knowledge.js';
 import { viewFileDef, handleViewFile } from './commands/view-file.js';
 import { editFileDef, handleEditFile } from './commands/edit-file.js';
-
-// Re-export shared types for use in the execution loop
-export type { HandleWrapContextProps, HandleRunCommandProps, CheckContextProps };
-export type { CommandHandlerBaseProps, CommandHandlerResult } from './container-commands-types.js';
 
 const commandRegistry = new Map<string, Command>();
 
