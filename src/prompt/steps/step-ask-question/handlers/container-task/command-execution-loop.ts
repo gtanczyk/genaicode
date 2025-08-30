@@ -182,7 +182,11 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         taskExecutionPrompt.push(item);
       }
 
-      if (i > 0 && i % 5 === 0) {
+      if (
+        i > 0 &&
+        i % 10 === 0 &&
+        !taskExecutionPrompt.find((item) => item.functionCalls?.some((fc) => fc.name === 'queryKnowledge'))
+      ) {
         periodicQueryPromise = maybeQueryKnowledge({
           actionResult: { name: 'queryKnowledge' }, // Placeholder
           taskExecutionPrompt,

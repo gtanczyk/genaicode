@@ -31,8 +31,13 @@ Before calling this function make sure to check if the information you want to s
         type: 'string',
         description: 'A brief explanation of why this knowledge is valuable to store.',
       },
+      knowledgeType: {
+        type: 'string',
+        description: 'The type of knowledge being captured',
+        enum: ['project specific', 'general', 'docker quirks', 'other'],
+      },
     },
-    required: ['prompt', 'answer', 'explanation'],
+    required: ['prompt', 'answer', 'explanation', 'knowledgeType'],
   },
 };
 

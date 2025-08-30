@@ -11,7 +11,8 @@ export const setExecutionPlanDef: FunctionDef = {
     properties: {
       plan: {
         type: 'array',
-        description: 'The steps of the execution plan.',
+        description:
+          'The steps of the execution plan. This is the latest most up to date version of the plan, which takes into account all prior context and findings.',
         items: {
           type: 'object',
           description: 'A single step in the execution plan.',
@@ -32,6 +33,7 @@ export const setExecutionPlanDef: FunctionDef = {
               },
             },
             state: updateExecutionPlanDef.parameters.properties.state,
+            statusUpdate: updateExecutionPlanDef.parameters.properties.statusUpdate,
           },
           required: ['id', 'description', 'dependsOn'],
         },

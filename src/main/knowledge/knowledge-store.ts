@@ -35,7 +35,8 @@ const respondKnowledgeQueryDef: FunctionDef = {
       },
       sourceEntries: {
         type: 'array',
-        description: 'An array of knowledge base entries that were used to generate the response.',
+        description: 'An array of knowledge base entries that are very relevant to the query.',
+        maxItems: 3,
         items: {
           type: 'object',
           properties: {
@@ -116,7 +117,7 @@ export async function queryKnowledge(
     },
     {
       type: 'user',
-      text: 'This is the corpus, and the query, please respond.',
+      text: `Query: ${query}`,
       functionResponses: [
         {
           name: 'provideKnowledgeContext',

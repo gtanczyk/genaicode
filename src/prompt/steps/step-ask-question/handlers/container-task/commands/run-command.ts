@@ -46,7 +46,8 @@ IMPORTANT:
       },
       workingDir: {
         type: 'string',
-        description: 'Working directory inside the container to run the command in. This MUST be an absolute path.',
+        description:
+          'Working directory (ALREADY EXISTING) inside the container to run the command in. This MUST be an absolute path.',
         minLength: 1,
       },
     },

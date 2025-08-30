@@ -5,7 +5,10 @@ import { setExecutionPlanDef } from './set-execution-plan.js';
 
 export const wrapContextDef: FunctionDef = {
   name: 'wrapContext',
-  description: 'Replace prior conversation in the loop with a concise summary for continued processing.',
+  description: `Used to reduce context size by summarizing prior steps and important findings.
+It contains the latest information about the task and its context, which can be used for future actions.
+It should not be executed when we are in the middle of a critical task.
+  `,
   parameters: {
     type: 'object',
     properties: {
