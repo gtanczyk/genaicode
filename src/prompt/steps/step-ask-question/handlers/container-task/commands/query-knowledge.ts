@@ -1,5 +1,5 @@
 import { FunctionDef, ModelType, FunctionCall, PromptItem } from '../../../../../../ai-service/common-types.js';
-import { CommandHandlerResult, CommandHandlerBaseProps } from '../container-commands-registry.js';
+import { CommandHandlerResult, CommandHandlerBaseProps } from '../container-commands-types.js';
 import { queryKnowledge } from '../../../../../../main/knowledge/knowledge-store.js';
 import { QueryKnowledgeArgs } from '../../../../../../main/knowledge/types.js';
 import { putContainerLog } from '../../../../../../main/common/content-bus.js';
