@@ -15,7 +15,8 @@
     "package-lock.json",
     ".vscode",
     "src/eval",
-    "src/prompt-debug"
+    "src/prompt-debug/current-prompt.js",
+    "src/prompt-debug/prompt-debug.test.ts"
   ],
   "featuresEnabled": {
     "containerTask": true
