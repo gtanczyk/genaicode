@@ -41,9 +41,8 @@ IMPORTANT:
       },
       truncMode: {
         type: 'string',
-        description:
-          'Mode for truncating command output (e.g., "start", "end"). "none" means no truncation will be applied. "none" should be used only when you are sure the output will be rather short.',
-        enum: ['start', 'end', 'none'],
+        description: 'Mode for truncating command output (e.g., "start", "end").',
+        enum: ['start', 'end'],
       },
       timeout: {
         type: 'string',
@@ -69,7 +68,7 @@ type RunCommandArgs = {
   shell: '/bin/sh' | '/bin/bash';
   command: string;
   stdin?: string;
-  truncMode: 'start' | 'end' | 'none';
+  truncMode: 'start' | 'end';
   timeout: '10sec' | '30sec' | '1min' | '2min' | '5min' | '10min' | '15min';
   workingDir: string;
   reasoning: string;
@@ -108,7 +107,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
         type: 'user',
         functionResponses: [
           {
-            name: 'runCommand',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `Command execution failed: ${errMessage}`,
           },
@@ -129,9 +128,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
     } else if (truncMode === 'end') {
       managedOutput = '[... output truncated for context management ...]' + output.slice(-maxOutputLength);
     }
-    if (truncMode !== 'none') {
-      putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
-    }
+    putContainerLog('warn', `Command output truncated (${output.length} -> ${managedOutput.length} chars)`);
   }
 
   putContainerLog('info', 'Command executed', { command, managedOutput, exitCode }, 'command');
@@ -146,7 +143,7 @@ export async function handleRunCommand(props: HandleRunCommandProps): Promise<Co
       type: 'user',
       functionResponses: [
         {
-          name: 'runCommand',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
           content: `Command executed successfully.\n\nOutput:\n${managedOutput}\n\nExit Code: ${exitCode}`,
         },

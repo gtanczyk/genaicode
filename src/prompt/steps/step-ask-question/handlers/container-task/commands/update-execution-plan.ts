@@ -46,7 +46,7 @@ export async function handleUpdateExecutionPlan(
     },
     {
       type: 'user',
-      functionResponses: [{ name: 'updateExecutionPlan', call_id: actionResult.id || undefined }],
+      functionResponses: [{ name: actionResult.name, call_id: actionResult.id || undefined }],
     },
   );
   return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };

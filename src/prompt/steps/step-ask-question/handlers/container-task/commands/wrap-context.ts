@@ -144,14 +144,14 @@ async function handleWrapContext(props: HandleWrapContextProps): Promise<Command
   const assistantMsg: PromptItem = {
     type: 'assistant',
     text: 'Wrapping context for continued processing. This summary will help maintain continuity, it contains the current plan, list of important files, and progress made so far, as well as the next step to take.',
-    functionCalls: [{ name: 'wrapContext', args: wrapContextCall.args }],
+    functionCalls: [wrapContextCall],
   };
   const userResp: PromptItem = {
     type: 'user',
     text: `Please continue with the next step: ${wrapContextCall.args.nextStep}`,
     functionResponses: [
       {
-        name: 'wrapContext',
+        name: wrapContextCall.name,
         call_id: wrapContextCall.id || undefined,
       },
     ],

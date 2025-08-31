@@ -61,7 +61,7 @@ export async function handleSetExecutionPlan(
     {
       type: 'user',
       text: 'Please follow the execution plan carefully.',
-      functionResponses: [{ name: 'setExecutionPlan', call_id: actionResult.id || undefined }],
+      functionResponses: [{ name: actionResult.name, call_id: actionResult.id || undefined }],
     },
   );
   return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };

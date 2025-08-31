@@ -50,7 +50,7 @@ export async function handleCompleteTask(
       type: 'user',
       functionResponses: [
         {
-          name: 'completeTask',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
           content: confirmation.confirmed
             ? 'Task completed successfully.'

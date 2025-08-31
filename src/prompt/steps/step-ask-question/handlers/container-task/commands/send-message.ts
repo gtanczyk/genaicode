@@ -5,7 +5,8 @@ import { CommandHandlerBaseProps, CommandHandlerResult } from '../container-comm
 
 export const sendMessageDef: FunctionDef = {
   name: 'sendMessage',
-  description: 'Send a message to the user. Should be used for non-interactive messages.',
+  description:
+    'Send a message to the user, either to inform them about something, or ask them a question, or answer their question.',
   parameters: {
     type: 'object',
     properties: {
@@ -44,7 +45,7 @@ export async function handleSendMessage(
       text: response.answer,
       functionResponses: [
         {
-          name: 'sendMessage',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
         },
       ],
@@ -54,7 +55,7 @@ export async function handleSendMessage(
       type: 'user',
       functionResponses: [
         {
-          name: 'sendMessage',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
         },
       ],

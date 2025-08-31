@@ -45,7 +45,7 @@ export async function handleQueryKnowledge(props: CommandHandlerBaseProps): Prom
         type: 'user',
         functionResponses: [
           {
-            name: 'queryKnowledge',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: JSON.stringify(results),
           },
@@ -64,7 +64,7 @@ export async function handleQueryKnowledge(props: CommandHandlerBaseProps): Prom
         type: 'user',
         functionResponses: [
           {
-            name: 'queryKnowledge',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: `Failed to query knowledge base: ${errorMessage}`,
           },

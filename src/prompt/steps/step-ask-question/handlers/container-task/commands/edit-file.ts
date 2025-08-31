@@ -86,7 +86,7 @@ export async function handleEditFile(props: CommandHandlerBaseProps): Promise<Co
         type: 'user',
         functionResponses: [
           {
-            name: 'editFile',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: resultMessage,
           },
@@ -105,7 +105,7 @@ export async function handleEditFile(props: CommandHandlerBaseProps): Promise<Co
         type: 'user',
         functionResponses: [
           {
-            name: 'editFile',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: `File edit failed: ${errMessage}`,
           },

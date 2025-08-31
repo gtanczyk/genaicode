@@ -193,6 +193,7 @@ export async function runContainerTaskOrchestrator({
 
       putContainerLog('info', 'Entering command execution loop.');
       const { success, summary } = await commandExecutionLoop(
+        runContainerTaskCall.args,
         container,
         taskDescription,
         generateContentFn,

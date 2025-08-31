@@ -18,7 +18,7 @@ export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<C
       type: 'user',
       functionResponses: [
         {
-          name: 'webSearch',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
           content: 'Web search failed: Missing query',
         },
@@ -58,7 +58,7 @@ export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<C
         type: 'user',
         functionResponses: [
           {
-            name: 'webSearch',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: JSON.stringify(webSearchResult),
           },
@@ -74,7 +74,7 @@ export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<C
         type: 'user',
         functionResponses: [
           {
-            name: 'webSearch',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: 'Web search failed: No results found',
           },
@@ -92,7 +92,7 @@ export async function handleWebSearch(props: CommandHandlerBaseProps): Promise<C
       type: 'user',
       functionResponses: [
         {
-          name: 'webSearch',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
           content: `Web search failed: ${errorMessage}`,
         },

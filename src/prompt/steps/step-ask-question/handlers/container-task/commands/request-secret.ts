@@ -99,7 +99,7 @@ export async function handleRequestSecret(props: CommandHandlerBaseProps): Promi
           type: 'user',
           functionResponses: [
             {
-              name: 'requestSecret',
+              name: actionResult.name,
               call_id: actionResult.id || undefined,
               content: `Secret for key "${key}" has been provided by the user and saved to ${destinationFilePath}.`,
             },
@@ -119,7 +119,7 @@ export async function handleRequestSecret(props: CommandHandlerBaseProps): Promi
           type: 'user',
           functionResponses: [
             {
-              name: 'requestSecret',
+              name: actionResult.name,
               call_id: actionResult.id || undefined,
               content: `Failed to save secret for key "${key}": ${errorMessage}`,
             },
@@ -140,7 +140,7 @@ export async function handleRequestSecret(props: CommandHandlerBaseProps): Promi
         type: 'user',
         functionResponses: [
           {
-            name: 'requestSecret',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `User cancelled providing secret for key "${key}".`,
           },

@@ -23,12 +23,14 @@ import { maybeQueryKnowledge } from './commands/query-knowledge.js';
 import { maybeGainKnowledge } from './commands/gain-knowledge.js';
 import { maybeWrapContext } from './commands/wrap-context.js';
 import { HandleRunCommandProps } from './commands/run-command.js';
+import { RunContainerTaskArgs } from '../../../../function-defs/run-container-task.js';
 
 const MAX_CONTEXT_ITEMS = 50;
 const MAX_CONTEXT_SIZE = 2048;
 const MAX_OUTPUT_LENGTH = 2048;
 
 export async function commandExecutionLoop(
+  args: RunContainerTaskArgs,
   container: Docker.Container,
   taskDescription: string,
   unsanitizedGenerateContentFn: ActionHandlerProps['generateContentFn'],
@@ -46,7 +48,7 @@ export async function commandExecutionLoop(
 
   const systemPrompt: PromptItem = {
     type: 'systemPrompt',
-    systemPrompt: `You are Genaicode, an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands one at a time. You help the user achieve their goals given the superpower of running bash in secure Docker container environment, which allows you to do anything you want or what is needed. Starting from running basic commands, through creating new files and directories, to installing software and configuring the environment.
+    systemPrompt: `You are Genaicode, an expert system operator inside a Docker container. Your task is to complete the objective by executing shell commands. You help the user achieve their goals given the superpower of running bash in secure Docker container environment, which allows you to do anything you want or what is needed. Starting from running basic commands, through creating new files and directories, to installing software and configuring the environment.
 
 Best Practices:
 - Be efficient: Plan your approach and minimize unnecessary commands. Write down your plan, keep it up to date.
@@ -73,7 +75,7 @@ You have access to the following functions:
 - updateExecutionPlan: Update plan progress and next steps.
 - copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
-- sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question. Think if asking user about something is really necessary before doing it (maybe you can find the answer yourself?)
+- sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question, or answer their question. Think if asking user about something is really necessary before doing it (maybe you can find the answer yourself?)
 - webSearch: Perform a web search given an exhaustive prompt. Return a concise, grounded answer and a list of source URLs used. The answer is not displayed to the user. It should be used to inform following actions.
 - requestSecret: Ask the user to provide a secret value (e.g. API key) and write it to a specified file path in the container. The file path must be absolute path within the container.
 - gainKnowledge: Persist a new knowledge entry in the knowledge base capturing a prompt, its answer/insight, and optional metadata. Use this to record successful operations, solutions to problems, or any other valuable information that could help in future tasks. Avoid storing secrets.
@@ -93,6 +95,11 @@ Outcomes of your work can be provided in two ways back to the current project:
     type: 'user',
     text: `Overall Task:
 ${taskDescription}
+
+Environment:
+- Docker CLI is not available in the environment.
+- Docker image used in the contianer: ${args.image}
+- Working directory: ${args.workingDir}
 
 Begin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };

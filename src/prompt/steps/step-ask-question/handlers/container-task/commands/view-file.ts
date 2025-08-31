@@ -84,7 +84,7 @@ export async function handleViewFile(props: CommandHandlerBaseProps): Promise<Co
         type: 'user',
         functionResponses: [
           {
-            name: 'viewFile',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: finalContent,
           },
@@ -103,7 +103,7 @@ export async function handleViewFile(props: CommandHandlerBaseProps): Promise<Co
         type: 'user',
         functionResponses: [
           {
-            name: 'viewFile',
+            name: actionResult.name,
             call_id: actionResult.id,
             content: `View path failed: ${errMessage}`,
           },

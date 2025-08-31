@@ -49,7 +49,7 @@ export async function handleCopyToContainer(
       {
         type: 'user',
         functionResponses: [
-          { name: 'copyToContainer', call_id: actionResult.id || undefined, content: 'Operation cancelled by user.' },
+          { name: actionResult.name, call_id: actionResult.id || undefined, content: 'Operation cancelled by user.' },
         ],
       },
     );
@@ -70,7 +70,7 @@ export async function handleCopyToContainer(
         type: 'user',
         functionResponses: [
           {
-            name: 'copyToContainer',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `Error: Invalid host path. It must be within the project root directory: ${rcConfig.rootDir}.`,
           },
@@ -94,7 +94,7 @@ export async function handleCopyToContainer(
         type: 'user',
         functionResponses: [
           {
-            name: 'copyToContainer',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `Error: Invalid container path. It must be a valid path inside the container. The path must exist, perhaps you need to create the directory first.`,
           },
@@ -129,7 +129,7 @@ export async function handleCopyToContainer(
         type: 'user',
         functionResponses: [
           {
-            name: 'copyToContainer',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: 'I reject the copy operation.' + confirmation.answer,
           },
@@ -152,7 +152,7 @@ export async function handleCopyToContainer(
         text: 'I approve the copy operation.' + (confirmation.answer ? ` ${confirmation.answer}` : ''),
         functionResponses: [
           {
-            name: 'copyToContainer',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `Successfully copied ${args.hostPath} to container path ${args.containerPath}.`,
           },
@@ -171,7 +171,7 @@ export async function handleCopyToContainer(
         type: 'user',
         functionResponses: [
           {
-            name: 'copyToContainer',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
             content: `Error: ${errorMessage}`,
           },

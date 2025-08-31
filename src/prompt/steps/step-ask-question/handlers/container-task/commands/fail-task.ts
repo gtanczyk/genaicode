@@ -55,7 +55,7 @@ export async function handleFailTask(
         text: 'Lets not fail the task, and continue working on it. ' + (confirmation.answer ? confirmation.answer : ''),
         functionResponses: [
           {
-            name: 'failTask',
+            name: actionResult.name,
             call_id: actionResult.id || undefined,
           },
         ],
@@ -83,7 +83,7 @@ export async function handleFailTask(
       type: 'user',
       functionResponses: [
         {
-          name: 'failTask',
+          name: actionResult.name,
           call_id: actionResult.id || undefined,
           content: 'Task marked as failed.',
         },

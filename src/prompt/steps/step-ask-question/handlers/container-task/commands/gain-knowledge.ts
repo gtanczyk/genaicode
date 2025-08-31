@@ -58,7 +58,7 @@ export async function handleGainKnowledge(props: CommandHandlerBaseProps): Promi
       type: 'user',
       functionResponses: [
         {
-          name: 'gainKnowledge',
+          name: actionResult.name,
           call_id: actionResult.id,
           content: JSON.stringify({ id: newEntry.id, success: true }),
         },
@@ -73,7 +73,7 @@ export async function handleGainKnowledge(props: CommandHandlerBaseProps): Promi
       type: 'user',
       functionResponses: [
         {
-          name: 'gainKnowledge',
+          name: actionResult.name,
           call_id: actionResult.id,
           content: `Failed to add knowledge entry: ${errorMessage}`,
         },
