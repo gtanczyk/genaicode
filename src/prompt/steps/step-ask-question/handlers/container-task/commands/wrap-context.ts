@@ -63,8 +63,14 @@ export async function handleWrapContext(props: HandleWrapContextProps): Promise<
     ],
   };
 
+  // Need to keep some messages beyond wrap, because the model is losing context
+  const tail = taskExecutionPrompt.filter(
+    (item) =>
+      !item.functionCalls?.some((fc) => fc.name === 'wrapContext' || fc.name === 'checkContext') &&
+      !item.functionResponses?.some((fr) => fr.name === 'wrapContext' || fr.name === 'checkContext'),
+  );
   taskExecutionPrompt.splice(0, taskExecutionPrompt.length);
-  taskExecutionPrompt.push(assistantMsg, userResp);
+  taskExecutionPrompt.push(...tail.slice(-4), assistantMsg, userResp);
 
   return { shouldBreakOuter: false, commandsExecutedIncrement: 0 };
 }
