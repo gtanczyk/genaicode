@@ -49,7 +49,6 @@ describe('handleRequestSecret', () => {
     taskExecutionPrompt = [];
     props = {
       generateContentFn: vi.fn(),
-      computeContextMetrics: vi.fn(),
       maxContextItems: 5,
       maxContextSize: 5,
       maxOutputLength: 5,
@@ -63,6 +62,8 @@ describe('handleRequestSecret', () => {
           destinationFilePath: '/app/secrets/api.key',
         },
       },
+      systemPrompt: {} as PromptItem,
+      taskPrompt: {} as PromptItem,
       taskExecutionPrompt,
       container: {} as unknown as Dockerode.Container,
       options: {

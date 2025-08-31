@@ -11,7 +11,6 @@ import {
   putSystemMessage,
   putUserMessage,
 } from '../../../../../main/common/content-bus.js';
-import { estimateTokenCount } from '../../../../token-estimator.js';
 import { abortController } from '../../../../../main/common/abort-controller.js';
 import { ActionHandlerProps } from '../../step-ask-question-types.js';
 import { getContainerCommandDefs, getContainerCommandHandler } from './container-commands-registry.js';
@@ -19,11 +18,10 @@ import { CommandHandlerBaseProps, CommandHandlerResult } from './container-comma
 import { rcConfig } from '../../../../../main/config.js';
 import { clearInterruption, isInterrupted } from './commands/interrupt-controller.js';
 import { askUserForInput } from '../../../../../main/common/user-actions.js';
-import { CheckContextProps } from './commands/check-context.js';
 import { sanitizePrompt } from './commands/request-secret.js';
 import { maybeQueryKnowledge } from './commands/query-knowledge.js';
 import { maybeGainKnowledge } from './commands/gain-knowledge.js';
-import { HandleWrapContextProps } from './commands/wrap-context.js';
+import { maybeWrapContext } from './commands/wrap-context.js';
 import { HandleRunCommandProps } from './commands/run-command.js';
 
 const MAX_CONTEXT_ITEMS = 50;
@@ -71,13 +69,11 @@ You have access to the following functions:
 - runCommand: Execute a shell command in the container, and wait for the result. Execute only non-interactive commands, otherwise you will wait indefinitely!
 - completeTask: Mark the task as successfully completed with a summary
 - failTask: Mark the task as failed with a reason
-- wrapContext: Condense prior conversation into one succinct entry when context grows or after milestones. You can call this function only once in a while!
 - setExecutionPlan: Record a brief plan to follow.
 - updateExecutionPlan: Update plan progress and next steps.
 - copyToContainer: Copy a file or directory from the host to the container. The hostPath must be absolute path container within project root.
 - copyFromContainer: Copy a file or directory from the container to the host. The hostPath must be absolute path container within project root.
-- checkContext: Get current context metrics (messages and tokens) and guidance about wrapping when near or over limits. Call this frequently (every 1-3 actions). If you do not call it for 10 actions, the system will remind you to call it.
-- sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question.
+- sendMessage: Use it to communicate with the user, either to inform them about something, or ask them a question. Think if asking user about something is really necessary before doing it (maybe you can find the answer yourself?)
 - webSearch: Perform a web search given an exhaustive prompt. Return a concise, grounded answer and a list of source URLs used. The answer is not displayed to the user. It should be used to inform following actions.
 - requestSecret: Ask the user to provide a secret value (e.g. API key) and write it to a specified file path in the container. The file path must be absolute path within the container.
 - gainKnowledge: Persist a new knowledge entry in the knowledge base capturing a prompt, its answer/insight, and optional metadata. Use this to record successful operations, solutions to problems, or any other valuable information that could help in future tasks. Avoid storing secrets.
@@ -101,34 +97,6 @@ ${taskDescription}
 Begin by analyzing the task and formulating your approach. Then start executing commands to complete it.`,
   };
 
-  const collectTexts = (items: PromptItem[]): string[] => {
-    const texts: string[] = [];
-    for (const it of items) {
-      if (it.type === 'systemPrompt' && it.systemPrompt) texts.push(it.systemPrompt);
-      if (it.text) texts.push(it.text);
-      if (it.functionResponses) {
-        for (const fr of it.functionResponses) {
-          if (fr.content) texts.push(fr.content);
-        }
-      }
-    }
-    return texts;
-  };
-
-  const computeContextMetrics = () => {
-    const baseMessages = 2; // systemPrompt + taskPrompt
-    const messageCount =
-      baseMessages +
-      taskExecutionPrompt.filter((item) => !item.functionCalls?.some((fc) => fc.name !== 'wrapContext')).length;
-    const allTexts = [
-      ...(systemPrompt.systemPrompt ? [systemPrompt.systemPrompt] : []),
-      ...(taskPrompt.text ? [taskPrompt.text] : []),
-      ...collectTexts(taskExecutionPrompt),
-    ];
-    const estimatedTokens = allTexts.reduce((acc, t) => acc + estimateTokenCount(t), 0);
-    return { messageCount, estimatedTokens };
-  };
-
   await maybeQueryKnowledge({
     actionResult: { name: 'queryKnowledge' }, // Placeholder, ignored by maybeQueryKnowledge
     taskExecutionPrompt,
@@ -137,15 +105,12 @@ Begin by analyzing the task and formulating your approach. Then start executing 
     generateContentFn,
     container,
     options,
-    computeContextMetrics,
     maxContextItems: MAX_CONTEXT_ITEMS,
     maxContextSize: MAX_CONTEXT_SIZE,
     maxOutputLength: MAX_OUTPUT_LENGTH,
   });
 
   let commandsExecuted = 0;
-  let actionIndex = 0;
-  let lastCheckActionIndex = 0;
   let periodicQueryPromise: Promise<CommandHandlerResult> | null = null;
 
   for (let i = 0; i < maxCommands; i++) {
@@ -155,7 +120,6 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         periodicQueryPromise = null;
       }
 
-      actionIndex++;
       if (isAborted()) {
         putContainerLog('warn', 'Task cancelled by user. Exiting command loop.');
         summary = 'Task cancelled by user';
@@ -191,7 +155,6 @@ Begin by analyzing the task and formulating your approach. Then start executing 
           generateContentFn,
           container,
           options,
-          computeContextMetrics,
           maxContextItems: MAX_CONTEXT_ITEMS,
           maxContextSize: MAX_CONTEXT_SIZE,
           maxOutputLength: MAX_OUTPUT_LENGTH,
@@ -202,20 +165,14 @@ Begin by analyzing the task and formulating your approach. Then start executing 
         });
       }
 
-      if (actionIndex - lastCheckActionIndex >= 10) {
-        taskExecutionPrompt.push({
-          type: 'user',
-          text: '[policy] It has been 10 steps without a context check. Call checkContext now to retrieve context metrics.',
-        });
-        lastCheckActionIndex = actionIndex;
-      }
-
       if (i === maxCommands - 10) {
         taskExecutionPrompt.push({
           type: 'user',
           text: `[context] nearing command limit of ${maxCommands}! 10 commands remaining! Start finishing up.`,
         });
       }
+
+      await maybeWrapContext(systemPrompt, taskPrompt, taskExecutionPrompt, generateContentFn, container, options);
 
       if (isAborted()) {
         putContainerLog('warn', 'Task cancelled by user before model call.');
@@ -271,10 +228,6 @@ Begin by analyzing the task and formulating your approach. Then start executing 
       let shouldBreakOuter = false;
 
       for (const actionResult of actionResults) {
-        if (actionResult.name === 'checkContext') {
-          lastCheckActionIndex = actionIndex;
-        }
-
         if (actionResult.name === 'runCommand' && commandsExecuted >= maxCommands) {
           putContainerLog('warn', 'Reached maximum command limit.');
           putSystemMessage('⚠️ Task incomplete: Reached maximum command limit');
@@ -300,17 +253,13 @@ Begin by analyzing the task and formulating your approach. Then start executing 
           continue;
         }
 
-        // Prepare a comprehensive props object for the handler.
-        // The handler will destructure and use only what it needs.
-        const handlerProps: CommandHandlerBaseProps &
-          Partial<HandleWrapContextProps> &
-          Partial<HandleRunCommandProps> &
-          Partial<CheckContextProps> = {
+        const handlerProps: CommandHandlerBaseProps & Partial<HandleRunCommandProps> = {
           actionResult,
+          systemPrompt,
+          taskPrompt,
           taskExecutionPrompt,
           container,
           options,
-          computeContextMetrics,
           generateContentFn,
           maxContextItems: MAX_CONTEXT_ITEMS,
           maxContextSize: MAX_CONTEXT_SIZE,
@@ -352,7 +301,6 @@ Begin by analyzing the task and formulating your approach. Then start executing 
     generateContentFn,
     container,
     options,
-    computeContextMetrics,
     maxContextItems: MAX_CONTEXT_ITEMS,
     maxContextSize: MAX_CONTEXT_SIZE,
     maxOutputLength: MAX_OUTPUT_LENGTH,

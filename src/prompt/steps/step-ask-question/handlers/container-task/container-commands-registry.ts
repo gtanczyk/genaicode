@@ -3,13 +3,11 @@ import { CommandHandlerBaseProps, CommandHandler, Command } from './container-co
 
 import { completeTaskDef, handleCompleteTask } from './commands/complete-task.js';
 import { failTaskDef, handleFailTask } from './commands/fail-task.js';
-import { wrapContextDef, handleWrapContext } from './commands/wrap-context.js';
 import { setExecutionPlanDef, handleSetExecutionPlan } from './commands/set-execution-plan.js';
 import { updateExecutionPlanDef, handleUpdateExecutionPlan } from './commands/update-execution-plan.js';
 import { sendMessageDef, handleSendMessage } from './commands/send-message.js';
 import { runCommandDef, handleRunCommand } from './commands/run-command.js';
 import { getCopyToContainerDef, handleCopyToContainer } from './commands/copy-to-container.js';
-import { checkContextDef, handleCheckContext } from './commands/check-context.js';
 import { getCopyFromContainerDef, handleCopyFromContainer } from './commands/copy-from-container.js';
 import { handleWebSearch } from './commands/web-search.js';
 import { webSearchDef } from '../../../../function-defs/web-search.js';
@@ -32,13 +30,11 @@ function registerCommand<T extends CommandHandlerBaseProps>(
 // Register all available commands
 registerCommand('completeTask', completeTaskDef, handleCompleteTask);
 registerCommand('failTask', failTaskDef, handleFailTask);
-registerCommand('wrapContext', wrapContextDef, handleWrapContext);
 registerCommand('setExecutionPlan', setExecutionPlanDef, handleSetExecutionPlan);
 registerCommand('updateExecutionPlan', updateExecutionPlanDef, handleUpdateExecutionPlan);
 registerCommand('sendMessage', sendMessageDef, handleSendMessage);
 registerCommand('runCommand', runCommandDef, handleRunCommand);
 registerCommand('copyToContainer', getCopyToContainerDef, handleCopyToContainer);
-registerCommand('checkContext', checkContextDef, handleCheckContext);
 registerCommand('copyFromContainer', getCopyFromContainerDef, handleCopyFromContainer);
 registerCommand('webSearch', webSearchDef, handleWebSearch);
 registerCommand('requestSecret', requestSecretDef, handleRequestSecret);

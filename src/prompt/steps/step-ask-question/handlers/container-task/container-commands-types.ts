@@ -10,11 +10,12 @@ import { CodegenOptions } from '../../../../../main/codegen-types.js';
 // Centralized Base Props and Result Types
 export interface CommandHandlerBaseProps {
   actionResult: FunctionCall;
+  systemPrompt: PromptItem;
+  taskPrompt: PromptItem;
   taskExecutionPrompt: PromptItem[];
   generateContentFn: GenerateContentFunction;
   container: Docker.Container;
   options: CodegenOptions;
-  computeContextMetrics: () => { messageCount: number; estimatedTokens: number };
   maxContextItems: number;
   maxContextSize: number;
   maxOutputLength: number;

@@ -200,9 +200,10 @@ export async function runContainerTaskOrchestrator({
         waitIfPaused,
       );
 
-      const finalMessage = `✅ Task finished with status: ${
-        success ? 'Success' : 'Failed'
-      }.\n\n**Summary:**\n${summary}`;
+      const finalMessage = `✅ Task finished with status: ${success ? 'Success' : 'Failed'}.
+
+**Summary:**
+${summary}`;
 
       putContainerLog(success ? 'success' : 'error', `Task finished. Summary: ${summary}`);
       putSystemMessage(finalMessage);
