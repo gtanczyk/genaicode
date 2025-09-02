@@ -124,7 +124,7 @@ export async function executeCommand(
   });
 
   if (abortSignal?.aborted) {
-    output += '\n\nAborted command execution';
+    output += '\\n\\nAborted command execution';
   }
 
   const inspect = await exec.inspect();
@@ -287,22 +287,29 @@ export async function copyToContainer(
   }
 }
 
+export interface ArchiveEntry {
+  name: string;
+  type: 'file' | 'directory';
+}
+
 /**
  * Lists the files within a container archive without extracting them.
  */
 export async function listFilesInContainerArchive(
   container: Docker.Container,
   containerPath: string,
-): Promise<string[]> {
-  const files: string[] = [];
+): Promise<ArchiveEntry[]> {
+  const entries: ArchiveEntry[] = [];
   try {
     const stream = await container.getArchive({ path: containerPath });
     const extract = tar.extract();
 
     extract.on('entry', (header, stream, next) => {
-      // We only care about files, not directories
-      if (header.type === 'file') {
-        files.push(header.name);
+      if (header.type === 'file' || header.type === 'directory') {
+        entries.push({
+          name: header.name,
+          type: header.type,
+        });
       }
       stream.on('end', () => next());
       stream.resume(); // Discard the stream's data
@@ -313,9 +320,10 @@ export async function listFilesInContainerArchive(
       extract.on('error', reject);
       stream.pipe(extract);
     });
-    putContainerLog('debug', `Listed ${files.length} files in archive at: ${containerPath}`, undefined, 'copy');
 
-    return files;
+    putContainerLog('debug', `Listed ${entries.length} entries in archive at: ${containerPath}`, undefined, 'copy');
+
+    return entries;
   } catch (error) {
     // If the path doesn't exist, getArchive throws an error. Return an empty list.
     return [];
