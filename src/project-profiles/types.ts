@@ -121,10 +121,10 @@ export const DETECTION_WEIGHTS = {
  * Default extensions for common project types
  */
 export const DEFAULT_EXTENSIONS = {
-  JS: ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.mts', '.cjs', '.json', '.md', '.css', '.scss', '.html'],
-  JAVA: ['.java', '.xml', '.properties', '.md'],
-  PYTHON: ['.py', '.pyi', '.pyw', '.md'],
-  GO: ['.go', '.mod', '.sum', '.md'],
+  JS: ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.mts', '.cjs', '.json', '.md', '.css', '.scss', '.html', '.txt'],
+  JAVA: ['.java', '.xml', '.properties', '.md', '.txt'],
+  PYTHON: ['.py', '.pyi', '.pyw', '.md', '.txt'],
+  GO: ['.go', '.mod', '.sum', '.md', '.txt'],
 } as const;
 
 /**
