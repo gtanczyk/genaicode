@@ -2,12 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { FunctionDef } from '../../../../../../ai-service/common-types.js';
 import { abortController } from '../../../../../../main/common/abort-controller.js';
-import {
-  putAssistantMessage,
-  putContainerLog,
-  putSystemMessage,
-  putUserMessage,
-} from '../../../../../../main/common/content-bus.js';
+import { putContainerLog, putSystemMessage, putUserMessage } from '../../../../../../main/common/content-bus.js';
 import { askUserForConfirmationWithAnswer } from '../../../../../../main/common/user-actions.js';
 import {
   checkPathExistsInContainer,
@@ -199,8 +194,8 @@ export async function handleCopyFromContainer(
     }
 
     putContainerLog('info', `Found ${entriesToCopy.length} entries to copy from container`, { entriesToCopy }, 'copy');
-    putAssistantMessage(
-      `The following changes will be applied from container path "${args.containerPath}" to host path "${extractionHostPath}"`,
+    putSystemMessage(
+      `Assistant is proposing to copy from container path "${args.containerPath}" to host path "${extractionHostPath}"`,
       { fileUpdates: updatesForSummary },
     );
 

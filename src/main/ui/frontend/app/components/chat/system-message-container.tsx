@@ -11,7 +11,7 @@ import {
 } from './styles/system-message-container-styles.js';
 import { CodegenPlanningView, isCodegenPlanningData } from './codegen-planning-view.js';
 import { CodegenSummaryView, isCodegenSummaryData } from './codegen-summary-view.js';
-import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
+import { FileUpdatesView, FileUpdateView, isFileUpdateData, isFileUpdatesData } from './file-update-view.js';
 
 export interface SystemMessageBlock extends Omit<ChatMessage, 'type'> {
   type: ChatMessageType.SYSTEM;
@@ -94,7 +94,12 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
   parts.forEach((part) => {
     currentParts.push(part);
 
-    if (isCodegenPlanningData(part.data) || isCodegenSummaryData(part.data) || isFileUpdateData(part.data)) {
+    if (
+      isCodegenPlanningData(part.data) ||
+      isCodegenSummaryData(part.data) ||
+      isFileUpdateData(part.data) ||
+      isFileUpdatesData(part.data)
+    ) {
       // Add the codegen view section
       const codegenView = isCodegenPlanningData(part.data) ? (
         <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
@@ -102,6 +107,8 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
         <CodegenSummaryView key={`summary-${part.id}`} data={part.data} />
       ) : isFileUpdateData(part.data) ? (
         <FileUpdateView key={`file-update-${part.id}`} data={part.data} />
+      ) : isFileUpdatesData(part.data) ? (
+        <FileUpdatesView data={part.data} />
       ) : null;
 
       sections.push({

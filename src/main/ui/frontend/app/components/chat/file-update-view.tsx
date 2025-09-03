@@ -10,12 +10,26 @@ interface FileUpdateViewProps {
   data: { name: string; args: FileUpdate };
 }
 
+interface FileUpdatesViewProps {
+  data: { fileUpdates: FileUpdate[] };
+}
+
 interface FileUpdate {
   filePath: string;
   explanation?: string;
   oldContent?: string;
   newContent: string;
 }
+
+export const FileUpdatesView: React.FC<FileUpdatesViewProps> = ({ data: { fileUpdates } }) => {
+  return (
+    <div>
+      {fileUpdates.map((fileUpdate, index) => (
+        <FileUpdateView key={index} data={{ name: fileUpdate.name, args: fileUpdate.args }} />
+      ))}
+    </div>
+  );
+};
 
 export const FileUpdateView: React.FC<FileUpdateViewProps> = ({
   data: {
@@ -76,6 +90,12 @@ export function isFileUpdateData(data: unknown): data is { name: string; args: F
   const args = obj.args as Record<string, unknown>;
 
   return typeof args.filePath === 'string';
+}
+
+export function isFileUpdatesData(data: unknown): data is { fileUpdates: FileUpdate[] } {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return Array.isArray(obj.fileUpdates) && obj.fileUpdates.every(isFileUpdateData);
 }
 
 const FileUpdateContainer = styled.div`
