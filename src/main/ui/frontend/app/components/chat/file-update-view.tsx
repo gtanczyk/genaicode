@@ -11,7 +11,7 @@ interface FileUpdateViewProps {
 }
 
 interface FileUpdatesViewProps {
-  data: { fileUpdates: FileUpdate[] };
+  data: { fileUpdates: { name: string; args: FileUpdate }[] };
 }
 
 interface FileUpdate {
@@ -92,7 +92,7 @@ export function isFileUpdateData(data: unknown): data is { name: string; args: F
   return typeof args.filePath === 'string';
 }
 
-export function isFileUpdatesData(data: unknown): data is { fileUpdates: FileUpdate[] } {
+export function isFileUpdatesData(data: unknown): data is { fileUpdates: { name: string; args: FileUpdate }[] } {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
   return Array.isArray(obj.fileUpdates) && obj.fileUpdates.every(isFileUpdateData);
