@@ -81,7 +81,6 @@ export type PluginActionType = `plugin:${string}`;
 export type AiServiceType =
   | 'vertex-ai'
   | 'ai-studio'
-  | 'vertex-ai-claude'
   | 'openai'
   | 'local-llm'
   | 'anthropic'

@@ -5,7 +5,6 @@ export function getSupportedAiServices(): AiServiceType[] {
   return [
     'vertex-ai',
     'ai-studio',
-    'vertex-ai-claude',
     'openai',
     'anthropic',
     'local-llm',
@@ -22,7 +21,6 @@ export function getAiServiceInfo(): string {
   const serviceInfo: Record<AiServiceType, string[]> = {
     'vertex-ai': ['GOOGLE_CLOUD_PROJECT'],
     'ai-studio': ['API_KEY'],
-    'vertex-ai-claude': ['GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_REGION'],
     openai: ['OPENAI_API_KEY', 'OPENAI_BASE_URL (optional)'],
     anthropic: ['ANTHROPIC_API_KEY'],
     'local-llm': ['LOCAL_LLM_API_KEY (optional)', 'LOCAL_LLM_BASE_URL (optional)'],

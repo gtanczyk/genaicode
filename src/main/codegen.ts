@@ -3,7 +3,6 @@ import { validateCliParams } from '../cli/validate-cli-params.js';
 import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
 import { generateContent as generateContentGPT } from '../ai-service/openai.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
-import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentLocalLllm } from '../ai-service/local-llm.js';
 import { generateContent as generateContentGitHubModels } from '../ai-service/github-models.js';
@@ -132,7 +131,6 @@ export async function runCodegenIteration(
 
 export function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
   return {
-    'vertex-ai-claude': generateContentVertexAiClaude,
     'vertex-ai': generateContentVertexAi,
     'ai-studio': generateContentAiStudio,
     anthropic: generateContentAnthropic,

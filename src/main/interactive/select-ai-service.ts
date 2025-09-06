@@ -6,7 +6,6 @@ const AI_SERVICE_CHOICES = [
   { name: 'AI Studio (Gemini)', value: 'ai-studio' },
   { name: 'OpenAI', value: 'openai' },
   { name: 'Anthropic Claude', value: 'anthropic' },
-  { name: 'Claude via Vertex AI', value: 'vertex-ai-claude' },
   { name: 'Local LLM', value: 'local-llm' },
 ] as const;
 

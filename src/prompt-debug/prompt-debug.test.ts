@@ -2,7 +2,6 @@ import { describe, it, vi } from 'vitest';
 import { generateContent as generateContentGemini } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentGPT } from '../ai-service/openai.js';
 import { generateContent as generateContentClaude } from '../ai-service/anthropic.js';
-import { generateContent as generateContentVertexClaude } from '../ai-service/vertex-ai-claude.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
 import { DEBUG_CURRENT_PROMPT } from './current-prompt.js';
@@ -76,23 +75,6 @@ describe('prompt-debug', () => {
 
     console.log(
       'CLAUDE',
-      JSON.stringify(result.filter((item) => item.type === 'functionCall')[0].functionCall.args, null, 4),
-    );
-  });
-
-  it('Claude Haikku (Vertex)', async () => {
-    const config: GenerateContentArgs[1] = {
-      functionDefs,
-      requiredFunctionName,
-      temperature,
-      modelType: ModelType.CHEAP,
-    };
-    const options: GenerateContentArgs[2] = { ...baseOptions };
-    let result: GenerateContentResult = await generateContentVertexClaude(prompt, config, options);
-    result = await validateAndRecoverSingleResult([prompt, config, options], result, generateContentVertexClaude);
-
-    console.log(
-      'CLAUDE VERTEX',
       JSON.stringify(result.filter((item) => item.type === 'functionCall')[0].functionCall.args, null, 4),
     );
   });
@@ -207,26 +189,5 @@ describe('prompt-debug', () => {
     const claudeArgs = result[0].functionCall.args;
 
     console.log('CLAUDE', JSON.stringify(claudeArgs, null, 4));
-  });
-
-  it('Claude Sonnet (Vertex)', async () => {
-    updateServiceConfig('vertex-ai-claude', {
-      googleCloudRegion: 'europe-west1',
-      googleCloudProjectId: 'gamedevpl',
-    });
-    const config: GenerateContentArgs[1] = {
-      functionDefs,
-      requiredFunctionName,
-      temperature,
-      modelType: ModelType.DEFAULT,
-    };
-    const options: GenerateContentArgs[2] = { ...baseOptions };
-
-    const result = (await generateContentVertexClaude(prompt, config, options)).filter(
-      (item) => item.type === 'functionCall',
-    );
-    const claudeArgs = result[0].functionCall.args;
-
-    console.log('CLAUDE VERTEX', JSON.stringify(claudeArgs, null, 4));
   });
 });

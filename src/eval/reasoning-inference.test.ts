@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
 import { generateContent as generateContentOpenAI } from '../ai-service/openai.js';
 import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
-import { generateContent as generateContentVertexAiClaude } from '../ai-service/vertex-ai-claude.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
@@ -34,7 +33,6 @@ describe.each([
   { model: 'O1', generateContent: generateContentOpenAI },
   { model: 'DeepSeek R1', generateContent: getPluginGenerateContentFn('plugin:deepseek-ai-service') },
   { model: 'Claude', generateContent: generateContentAnthropic },
-  { model: 'Claude Vertex (emulated)', generateContent: generateContentVertexAiClaude },
 ])('Reasoning inerence: $model', ({ model, generateContent }) => {
   it('should generate prompt', async () => {
     const prompt: PromptItem[] = [

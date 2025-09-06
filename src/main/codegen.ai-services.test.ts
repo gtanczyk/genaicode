@@ -3,7 +3,6 @@ import { runCodegen } from './codegen.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
 import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
-import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as updateFiles from '../files/update-files.js';
 import * as cliParams from '../cli/cli-params.js';
 import '../files/find-files.js';
@@ -53,7 +52,6 @@ vi.mock('../cli/cli-params.js', () => ({
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
-vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../files/update-files.js', () => ({ updateFiles: vi.fn().mockResolvedValue([]) }));
 vi.mock('../files/cache-file.js');
 vi.mock('../files/find-files.js', () => ({
@@ -200,43 +198,6 @@ describe('AI Services Integration', () => {
 
       expect(anthropic.generateContent).toHaveBeenCalledTimes(3);
       expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockDelete, expect.anything());
-    });
-  });
-
-  describe('Vertex AI Claude', () => {
-    it('should run codegen with Vertex AI Claude when specified', async () => {
-      vi.mocked(cliParams).aiService = 'vertex-ai-claude';
-
-      const mockPlanning = createMockPlanningResponse(
-        'Test analysis for Vertex AI Claude',
-        'Update test.js with Claude',
-        [{ filePath: '/mocked/root/dir/test.js', reason: 'Claude test update' }],
-      );
-
-      const mockSummary = createMockCodegenSummary(
-        [{ id: '1', filePath: '/mocked/root/dir/test.js', updateToolName: 'updateFile', prompt: 'Update with Claude' }],
-        [],
-        'Claude test update',
-      );
-
-      const mockUpdate = createMockFileUpdate('updateFile', {
-        filePath: '/mocked/root/dir/test.js',
-        newContent: 'console.log("Hello from Claude");',
-      });
-
-      const mockSequence = createMockResponseSequence(mockPlanning, mockSummary, [mockUpdate]);
-      mockSequence.forEach((response) => {
-        const resultParts: GenerateContentResultPart[] = response.map((fc) => ({
-          type: 'functionCall',
-          functionCall: fc,
-        }));
-        vi.mocked(vertexAiClaude.generateContent).mockResolvedValueOnce(resultParts);
-      });
-
-      await runCodegen();
-
-      expect(vertexAiClaude.generateContent).toHaveBeenCalledTimes(3);
-      expect(updateFiles.updateFiles).toHaveBeenCalledWith(mockUpdate, expect.anything());
     });
   });
 

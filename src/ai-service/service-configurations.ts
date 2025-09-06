@@ -97,16 +97,6 @@ const configurations: ServiceConfigurations = {
       modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },
   },
-  'vertex-ai-claude': {
-    googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT ?? '',
-    googleCloudRegion: process.env.GOOGLE_CLOUD_REGION ?? '',
-    modelOverrides: {
-      default: 'claude-3-5-sonnet@20240620',
-      cheap: 'claude-3-haiku@20240307',
-      lite: 'claude-3-haiku@20240307',
-      reasoning: 'claude-3-5-sonnet@20240620',
-    },
-  },
 };
 
 // Merge plugin configurations
@@ -227,7 +217,6 @@ export function updateServiceConfig<T extends AiServiceType>(serviceType: T, con
   // Preserve sensitive fields if not provided in the update
   if (
     serviceType !== 'vertex-ai' &&
-    serviceType !== 'vertex-ai-claude' &&
     !('apiKey' in config) && // Check if apiKey is explicitly in the partial update
     'apiKey' in currentConfig // Check if apiKey exists in the current config
   ) {
@@ -246,23 +235,6 @@ export function updateServiceConfig<T extends AiServiceType>(serviceType: T, con
     if (currentVertexConfig?.googleCloudProjectId) {
       (updatedConfig as ServiceConfigRequirements['vertex-ai']).googleCloudProjectId =
         currentVertexConfig.googleCloudProjectId;
-    }
-  }
-
-  if (serviceType === 'vertex-ai-claude') {
-    if (!('googleCloudProjectId' in config)) {
-      const currentVertexClaudeConfig = currentConfig as ServiceConfigRequirements['vertex-ai-claude'];
-      if (currentVertexClaudeConfig?.googleCloudProjectId) {
-        (updatedConfig as ServiceConfigRequirements['vertex-ai-claude']).googleCloudProjectId =
-          currentVertexClaudeConfig.googleCloudProjectId;
-      }
-    }
-    if (!('googleCloudRegion' in config)) {
-      const currentVertexClaudeConfig = currentConfig as ServiceConfigRequirements['vertex-ai-claude'];
-      if (currentVertexClaudeConfig?.googleCloudRegion) {
-        (updatedConfig as ServiceConfigRequirements['vertex-ai-claude']).googleCloudRegion =
-          currentVertexClaudeConfig.googleCloudRegion;
-      }
     }
   }
 
@@ -291,11 +263,11 @@ function sanitizeServiceConfig<T extends AiServiceType>(
     },
   };
 
-  if (serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude') {
+  if (serviceType === 'vertex-ai') {
     return {
       ...sanitizedBase,
       googleCloudProjectId: config.googleCloudProjectId,
-      googleCloudRegion: serviceType === 'vertex-ai-claude' ? config.googleCloudRegion : undefined,
+      googleCloudRegion: undefined,
       hasApiKey: false, // Vertex services don't use API keys directly in this context
     };
   } else {

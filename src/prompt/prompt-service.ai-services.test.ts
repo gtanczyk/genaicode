@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { promptService } from './prompt-service.js';
 import * as vertexAi from '../ai-service/vertex-ai.js';
-import * as vertexAiClaude from '../ai-service/vertex-ai-claude.js';
 import * as openai from '../ai-service/openai.js';
 import * as anthropic from '../ai-service/anthropic.js';
 import * as localLlm from '../ai-service/local-llm.js';
@@ -15,7 +14,6 @@ import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/co
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
 
 // Mock all external dependencies
-vi.mock('../ai-service/vertex-ai-claude.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/openai.js', () => ({ generateContent: vi.fn() }));
 vi.mock('../ai-service/anthropic.js', () => ({ generateContent: vi.fn() }));
@@ -56,7 +54,6 @@ vi.mock('../main/config.js', () => ({
 }));
 
 const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
-  'vertex-ai-claude': vertexAiClaude.generateContent,
   'vertex-ai': vertexAi.generateContent,
   'ai-studio': vertexAi.generateContent,
   anthropic: anthropic.generateContent,
