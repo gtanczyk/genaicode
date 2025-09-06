@@ -57,22 +57,10 @@ export async function findRcFile(): Promise<string> {
       // We've reached the root directory, .genaicoderc not found,
       // so lets ask the user to create one in the current directory
       const isInteractiveSession = process.stdout.isTTY;
-      const isTestMode = process.env.NODE_ENV === 'test';
+      const hasInteractiveFlag = process.argv.includes('--interactive');
 
-      // Special handling for test mode - create a temporary config instead of prompting
-      if (isTestMode && !isInteractiveSession) {
-        const tempConfigPath = path.join(os.tmpdir(), `.genaicoderc-test-${Date.now()}`);
-        const testConfig = {
-          rootDir: process.cwd(),
-          extensions: ['.ts', '.js', '.tsx', '.jsx'],
-          ignorePaths: ['node_modules', 'dist'],
-        };
-        fs.writeFileSync(tempConfigPath, JSON.stringify(testConfig, null, 2));
-        return tempConfigPath;
-      }
-
-      // If it's an interactive session, ask to create the config file.
-      if (isInteractiveSession) {
+      // If it's an interactive session or interactive mode is explicitly requested, ask to create the config file.
+      if (isInteractiveSession || hasInteractiveFlag) {
         rcFilePath = process.cwd();
         const createRcFile = await confirm({
           message: `${CODEGENRC_FILENAME} not found in any parent directory, would you like to create one in the current directory (${rcFilePath})?`,
