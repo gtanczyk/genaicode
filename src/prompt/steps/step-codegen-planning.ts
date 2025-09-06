@@ -42,7 +42,7 @@ export async function executeStepCodegenPlanning(
 
   // Add the planning prompt to the conversation
   if (prompt.slice(-1)[0].type === 'user') {
-    prompt.slice(-1)[0].text += '\\n\\n' + modifiedPlanningPrompt;
+    prompt.slice(-1)[0].text += '\n\n' + modifiedPlanningPrompt;
   } else {
     prompt.push({ type: 'user', text: modifiedPlanningPrompt });
   }

@@ -11,6 +11,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-135] 2024-08-08: Enhanced AI service selection - Improved error message to display available AI services and their required environment variables.
+- [x] [GEN-136] 2024-08-08: UI as default interaction model - Always prompt for .genaicoderc creation in interactive TTY sessions if the file is missing.
 - [-] [GEN-134] 2025-08-30: Implement code changes summary for `copyFromContainer` command, ensuring it handles both files and directories correctly using a tar-based approach for the final copy.
 - [x] [GEN-133] 2025-08-29: Merged Execution Plan visualiser into Terminal View as a new tab and fixed terminal auto-scroll bug.
 - [-] [GEN-132] 2025-08-28: Implement `requestSecret` container command for secure secret collection in CLI and UI modes.

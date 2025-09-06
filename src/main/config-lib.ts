@@ -38,8 +38,10 @@ export async function findRcFile(): Promise<string> {
     if (parentDir === rcFilePath) {
       // We've reached the root directory, .genaicoderc not found,
       // so lets ask the user to create one in the current directory
-      // but only if genaicode is run in interactive or ui mode
-      if (process.argv.includes('--interactive') || process.argv.includes('--ui')) {
+      const isInteractiveSession = process.stdout.isTTY;
+
+      // If it's an interactive session, ask to create the config file.
+      if (isInteractiveSession) {
         rcFilePath = process.cwd();
         const createRcFile = await confirm({
           message: `${CODEGENRC_FILENAME} not found in any parent directory, would you like to create one in the current directory (${rcFilePath})?`,

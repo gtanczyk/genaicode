@@ -124,7 +124,7 @@ export async function executeCommand(
   });
 
   if (abortSignal?.aborted) {
-    output += '\\n\\nAborted command execution';
+    output += '\n\nAborted command execution';
   }
 
   const inspect = await exec.inspect();

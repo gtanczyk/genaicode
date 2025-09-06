@@ -86,7 +86,7 @@ export async function internalGenerateContentResponses(
 
         // Add model-specific system instructions if available
         if (modelSystemInstruction?.length) {
-          systemPrompt += `\\n${modelSystemInstruction.join('\\n')}`;
+          systemPrompt += `\n${modelSystemInstruction.join('\n')}`;
         }
 
         return {
