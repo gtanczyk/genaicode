@@ -61,16 +61,16 @@ export default function viteGenaicode(
       codegenService = codegen.service;
       codegenServer = codegen.server;
 
-      const config = await codegenService.getRcConfig();
+      const genaicodeConfig = await codegenService.getRcConfig();
 
-      if (typeof config?.featuresEnabled?.appContext === 'undefined') {
-        config.featuresEnabled = {
-          ...config.featuresEnabled,
+      if (typeof genaicodeConfig?.featuresEnabled?.appContext === 'undefined') {
+        genaicodeConfig.featuresEnabled = {
+          ...genaicodeConfig.featuresEnabled,
           appContext: true,
         };
       }
 
-      appContextEnabled = config.featuresEnabled?.appContext;
+      appContextEnabled = genaicodeConfig.featuresEnabled?.appContext;
     } catch (error) {
       console.error('Failed to start GenAIcode UI:', error);
       throw error;
