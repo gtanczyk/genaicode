@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import assert from 'node:assert';
 import { confirm } from '@inquirer/prompts';
+import os from 'os';
 
 import { isAncestorDirectory } from '../files/file-utils.js';
 import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
@@ -33,12 +34,42 @@ async function createInitialConfig(rcFilePath: string): Promise<RcConfig> {
 // Find .genaicoderc file
 export async function findRcFile(): Promise<string> {
   let rcFilePath = process.cwd();
+
+  // Check if we're in help mode - provide fallback config
+  const isHelpMode = process.argv.includes('--help');
+
+  if (isHelpMode) {
+    // For help mode, create a temporary minimal config in memory
+    // This avoids the interactive prompts when just showing help
+    const tempConfigPath = path.join(os.tmpdir(), '.genaicoderc-help');
+    const minimalConfig = {
+      rootDir: process.cwd(),
+      extensions: ['.ts', '.js', '.tsx', '.jsx'],
+      ignorePaths: ['node_modules', 'dist'],
+    };
+    fs.writeFileSync(tempConfigPath, JSON.stringify(minimalConfig, null, 2));
+    return tempConfigPath;
+  }
+
   while (!fs.existsSync(path.join(rcFilePath, CODEGENRC_FILENAME))) {
     const parentDir = path.dirname(rcFilePath);
     if (parentDir === rcFilePath) {
       // We've reached the root directory, .genaicoderc not found,
       // so lets ask the user to create one in the current directory
       const isInteractiveSession = process.stdout.isTTY;
+      const isTestMode = process.env.NODE_ENV === 'test';
+
+      // Special handling for test mode - create a temporary config instead of prompting
+      if (isTestMode && !isInteractiveSession) {
+        const tempConfigPath = path.join(os.tmpdir(), `.genaicoderc-test-${Date.now()}`);
+        const testConfig = {
+          rootDir: process.cwd(),
+          extensions: ['.ts', '.js', '.tsx', '.jsx'],
+          ignorePaths: ['node_modules', 'dist'],
+        };
+        fs.writeFileSync(tempConfigPath, JSON.stringify(testConfig, null, 2));
+        return tempConfigPath;
+      }
 
       // If it's an interactive session, ask to create the config file.
       if (isInteractiveSession) {
