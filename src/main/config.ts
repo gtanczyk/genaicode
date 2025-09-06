@@ -5,6 +5,7 @@ import { findRcFile, parseRcFile, CODEGENRC_FILENAME } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
 import { SCHEMA_VIRTUAL_FILE_NAME } from './config-schema.js';
+import { checkDockerAvailability } from '../prompt/steps/step-ask-question/handlers/container-task/utils/docker-check.js';
 
 // Read and parse the configuration
 const rcFilePath: string = await findRcFile();
@@ -30,6 +31,10 @@ if (typeof rcConfig.featuresEnabled === 'undefined') {
 
 if (typeof rcConfig.featuresEnabled?.gitContext === 'undefined') {
   rcConfig.featuresEnabled.gitContext = await simpleGit(rcConfig.rootDir).checkIsRepo();
+}
+
+if (typeof rcConfig.featuresEnabled?.containerTask === 'undefined') {
+  rcConfig.featuresEnabled.containerTask = await checkDockerAvailability();
 }
 
 export const rcConfigSchemaFilePath = path.join(rcConfig.rootDir, SCHEMA_VIRTUAL_FILE_NAME);

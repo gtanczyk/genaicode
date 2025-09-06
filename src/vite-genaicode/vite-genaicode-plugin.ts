@@ -61,7 +61,16 @@ export default function viteGenaicode(
       codegenService = codegen.service;
       codegenServer = codegen.server;
 
-      appContextEnabled = (await codegenService.getRcConfig()).featuresEnabled?.appContext;
+      const config = await codegenService.getRcConfig();
+
+      if (typeof config?.featuresEnabled?.appContext === 'undefined') {
+        config.featuresEnabled = {
+          ...config.featuresEnabled,
+          appContext: true,
+        };
+      }
+
+      appContextEnabled = config.featuresEnabled?.appContext;
     } catch (error) {
       console.error('Failed to start GenAIcode UI:', error);
       throw error;
