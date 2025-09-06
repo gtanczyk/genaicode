@@ -43,50 +43,6 @@ Here is how it looks like:
 
 <img width="1284" alt="image" src="https://github.com/user-attachments/assets/82fae142-f2df-43c9-871a-50e526f37c83" />
 
-## GitHub Models Support
-
-GenAIcode now supports [GitHub Models](https://github.blog/ai-and-ml/llms/solving-the-inference-problem-for-open-source-ai-projects-with-github-models/), providing access to various AI models through GitHub's unified inference API.
-
-### Setup
-
-1. **Get a GitHub Personal Access Token**: Create a GitHub Personal Access Token with appropriate permissions from [GitHub Settings](https://github.com/settings/tokens).
-
-2. **Set the environment variable**:
-
-   ```bash
-   export GITHUB_TOKEN=your_github_token_here
-   ```
-
-3. **Use GitHub Models**:
-   ```bash
-   npx genaicode --ai-service=github-models --explicit-prompt="Your prompt here"
-   ```
-
-### Available Models
-
-GitHub Models provides access to various models from different providers. The default model configuration includes:
-
-- **Default**: `gpt-4o` - Most capable model for complex tasks
-- **Cheap**: `gpt-4o-mini` - Cost-effective model for simpler tasks
-- **Lite**: `gpt-4o-mini` - Lightweight model for basic operations
-- **Reasoning**: `o1-mini` - Specialized model for reasoning tasks
-
-### Custom Model Configuration
-
-You can customize which models to use by adding model overrides to your `.genaicoderc` file:
-
-```json
-{
-  "modelOverrides": {
-    "githubModels": {
-      "default": "gpt-4o",
-      "cheap": "gpt-4o-mini",
-      "reasoning": "o1-mini"
-    }
-  }
-}
-```
-
 ## CLI Features
 
 GenAIcode supports various command-line options to customize its behavior:
