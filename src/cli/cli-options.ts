@@ -32,7 +32,7 @@ const cliOptions: CliOption[] = [
   {
     name: '--ai-service=<service>',
     description:
-      'Specify the AI service to use for code generation. Available options include vertex-ai, ai-studio, openai, anthropic, vertex-ai-claude, local-llm, github-models, and any additional services loaded from plugins.',
+      'Specify the AI service to use for code generation. Available options include vertex-ai, ai-studio, openai, anthropic, local-llm, github-models, and any additional services loaded from plugins.',
   },
   {
     name: '--explicit-prompt=<prompt>',

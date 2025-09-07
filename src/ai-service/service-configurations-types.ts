@@ -37,12 +37,7 @@ export type ServiceConfigRequirements = {
   'vertex-ai': {
     apiKey?: never;
     googleCloudProjectId: string;
-    googleCloudRegion?: never;
-  };
-  'vertex-ai-claude': {
-    apiKey?: never;
-    googleCloudProjectId: string;
-    googleCloudRegion: string;
+    googleCloudRegion?: string;
   };
   openai: {
     apiKey: string | undefined;

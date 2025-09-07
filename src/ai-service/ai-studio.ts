@@ -13,11 +13,15 @@ import {
 import axios from 'axios';
 import assert from 'node:assert';
 import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
-import { GenerateContentFunction, GenerateContentResult, GenerateContentResultPart } from './common-types.js';
-import { PromptItem } from './common-types.js';
-import { FunctionCall } from './common-types.js';
-import { FunctionDef } from './common-types.js';
-import { ModelType } from './common-types.js';
+import {
+  GenerateContentFunction,
+  GenerateContentResult,
+  GenerateContentResultPart,
+  PromptItem,
+  FunctionCall,
+  FunctionDef,
+  ModelType,
+} from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 
 import { unescapeFunctionCall } from './unescape-function-call.js';
@@ -28,6 +32,31 @@ import { getServiceConfig, getModelSettings } from './service-configurations.js'
  * This function generates content using the Google AI Studio models with the new interface.
  */
 export const generateContent: GenerateContentFunction = async function generateContent(
+  prompt: PromptItem[],
+  config: {
+    modelType?: ModelType;
+    temperature?: number;
+    functionDefs?: FunctionDef[];
+    requiredFunctionName?: string | null;
+    expectedResponseType?: {
+      text?: boolean;
+      functionCall?: boolean;
+      media?: boolean;
+      webSearch?: boolean;
+    };
+  },
+  options: {
+    geminiBlockNone?: boolean;
+    disableCache?: boolean;
+    aiService?: string;
+    askQuestion?: boolean;
+  } = {},
+): Promise<GenerateContentResult> {
+  return internalGoogleGenerateContent('ai-studio', prompt, config, options);
+};
+
+export async function internalGoogleGenerateContent(
+  serviceType: 'ai-studio' | 'vertex-ai',
   prompt: PromptItem[],
   config: {
     modelType?: ModelType;
@@ -160,7 +189,8 @@ export const generateContent: GenerateContentFunction = async function generateC
     delete req.config!.toolConfig;
   }
 
-  const result = await modelGenerateContent(
+  const result = await internalGoogleModelsCall(
+    serviceType,
     modelType,
     temperature,
     prompt.find((item) => item.type === 'systemPrompt')?.systemPrompt,
@@ -178,7 +208,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     cacheReadTokens: usageMetadata.cachedContentTokenCount,
   };
   printTokenUsageAndCost({
-    aiService: 'ai-studio',
+    aiService: serviceType,
     usage,
     inputCostPerToken: 0.000125 / 1000,
     outputCostPerToken: 0.000375 / 1000,
@@ -271,7 +301,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       const functionDef = functionDefs.find((def) => def.name === requiredFunctionName);
       if (functionDef) {
         try {
-          const recoveredCall = await recoverFunctionCall(textResponse, [], functionDef);
+          const recoveredCall = await recoverFunctionCall(serviceType, textResponse, [], functionDef);
           if (recoveredCall) {
             console.log('Recovered function call.');
             // The recovered call will be added to the functionCalls array by the recoverFunctionCall function
@@ -343,18 +373,31 @@ export const generateContent: GenerateContentFunction = async function generateC
   }
 
   return resultParts;
-};
+}
 
-function modelGenerateContent(
+function internalGoogleModelsCall(
+  serviceType: 'ai-studio' | 'vertex-ai',
   modelType: ModelType,
   temperature: number,
   systemPrompt: string | undefined,
   geminiBlockNone: boolean | undefined,
   { contents, config }: Pick<GenerateContentParameters, 'contents' | 'config'>,
 ) {
-  const serviceConfig = getServiceConfig('ai-studio');
-  assert(serviceConfig.apiKey, 'API key not configured, use API_KEY environment variable');
-  const genAI = new GoogleGenAI({ apiKey: serviceConfig.apiKey });
+  const serviceConfig = getServiceConfig(serviceType);
+  assert(
+    serviceType === 'vertex-ai' ? serviceConfig.googleCloudProjectId : serviceConfig.apiKey,
+    serviceType === 'vertex-ai'
+      ? 'Google Cloud Project ID not configured.'
+      : 'API key not configured, use API_KEY environment variable',
+  );
+  const genAI =
+    serviceType === 'vertex-ai'
+      ? new GoogleGenAI({
+          vertexai: true,
+          project: serviceConfig.googleCloudProjectId,
+          location: serviceConfig.googleCloudRegion ?? 'global',
+        })
+      : new GoogleGenAI({ apiKey: serviceConfig.apiKey });
 
   // Determine the model name based on model type
   const model = (() => {
@@ -370,7 +413,7 @@ function modelGenerateContent(
     }
   })();
 
-  console.log(`Using AI Studio model: ${model}`);
+  console.log(`Using ${serviceType === 'vertex-ai' ? 'Vertex AI' : 'AI Studio'} model: ${model}`);
 
   // Get model-specific settings
   const {
@@ -378,7 +421,7 @@ function modelGenerateContent(
     outputTokenLimit,
     thinkingEnabled,
     thinkingBudget,
-  } = getModelSettings('ai-studio', model);
+  } = getModelSettings(serviceType, model);
   // Combine base system prompt with model-specific instructions if available
   let effectiveSystemPrompt = systemPrompt || '';
   if (modelSystemInstruction?.length) {
@@ -445,13 +488,15 @@ function modelGenerateContent(
 }
 
 async function recoverFunctionCall(
+  serviceType: 'ai-studio' | 'vertex-ai',
   textResponse: string,
   functionCalls: FunctionCall[],
   functionDef: FunctionDef,
 ): Promise<Record<string, unknown> | false> {
   console.log('Recovering function call');
   const schema: Schema = functionDef.parameters as unknown as Schema;
-  const result = await modelGenerateContent(
+  const result = await internalGoogleModelsCall(
+    serviceType,
     ModelType.DEFAULT, // Always use default model for recovery attempts
     0.2,
     'Your role is read the text below and if possible, return it in the desired format.',

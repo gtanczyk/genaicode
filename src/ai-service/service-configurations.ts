@@ -89,6 +89,7 @@ const configurations: ServiceConfigurations = {
   },
   'vertex-ai': {
     googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT ?? '',
+    googleCloudRegion: process.env.GOOGLE_CLOUD_REGION ?? '',
     modelOverrides: {
       default: modelOverrides.vertexAi?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.5-flash',

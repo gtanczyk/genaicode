@@ -26,11 +26,7 @@ interface ServiceConfigCardProps {
 }
 
 const isVertexService = (serviceType: AiServiceType): boolean => {
-  return serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude';
-};
-
-const isVertexClaudeService = (serviceType: AiServiceType): boolean => {
-  return serviceType === 'vertex-ai-claude';
+  return serviceType === 'vertex-ai';
 };
 
 const isOpenAIApiService = (serviceType: AiServiceType): boolean => {
@@ -72,8 +68,8 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
         setValidationError('GCP Project ID is required for Vertex AI services');
         return false;
       }
-      if (isVertexClaudeService(serviceType) && !googleCloudRegion) {
-        setValidationError('GCP Region is required for Vertex AI Claude');
+      if (isVertexService(serviceType) && !googleCloudRegion) {
+        setValidationError('GCP Region is required for Vertex AI services');
         return false;
       }
     } else if (!hasApiKey && !apiKey) {
@@ -103,9 +99,7 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
     // Add service-specific configuration
     if (isVertexService(serviceType)) {
       updatedConfig.googleCloudProjectId = googleCloudProjectId;
-      if (isVertexClaudeService(serviceType)) {
-        updatedConfig.googleCloudRegion = googleCloudRegion;
-      }
+      updatedConfig.googleCloudRegion = googleCloudRegion;
     } else {
       updatedConfig.apiKey = apiKey || undefined;
       updatedConfig.openaiBaseUrl = openaiBaseUrl || undefined;
@@ -193,8 +187,8 @@ export const ServiceConfigCard: React.FC<ServiceConfigCardProps> = ({
             </FormGroup>
           )}
 
-          {/* GCP Region for Vertex AI Claude */}
-          {isVertexClaudeService(serviceType) && (
+          {/* GCP Region for Vertex AI */}
+          {isVertexService(serviceType) && (
             <FormGroup>
               <Label htmlFor={`region-${serviceType}`}>GCP Region</Label>
               <Input

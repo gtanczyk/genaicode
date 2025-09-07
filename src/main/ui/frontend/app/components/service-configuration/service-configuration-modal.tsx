@@ -31,7 +31,7 @@ export function ServiceConfigurationIcon() {
 
 // Helper function to determine if a service is a Vertex AI service
 const isVertexService = (serviceType: AiServiceType): boolean => {
-  return serviceType === 'vertex-ai' || serviceType === 'vertex-ai-claude';
+  return serviceType === 'vertex-ai';
 };
 
 const isOpenAIApiService = (serviceType: AiServiceType): boolean => {
@@ -46,7 +46,7 @@ const getSuccessMessage = (serviceType: AiServiceType, config: ServiceConfig): s
     if (config.googleCloudProjectId) {
       messages.push(`GCP Project ID: ${config.googleCloudProjectId}`);
     }
-    if (serviceType === 'vertex-ai-claude' && config.googleCloudRegion) {
+    if (config.googleCloudRegion) {
       messages.push(`GCP Region: ${config.googleCloudRegion}`);
     }
   } else if (config.apiKey) {
@@ -75,8 +75,8 @@ const validateServiceConfig = (serviceType: AiServiceType, config: ServiceConfig
     if (!config.googleCloudProjectId) {
       return `GCP Project ID is required for ${serviceType}`;
     }
-    if (serviceType === 'vertex-ai-claude' && !config.googleCloudRegion) {
-      return 'GCP Region is required for Vertex AI Claude';
+    if (serviceType === 'vertex-ai' && !config.googleCloudRegion) {
+      return 'GCP Region is required for Vertex AI';
     }
   }
   return null;
