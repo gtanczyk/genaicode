@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import axios from 'axios';
 import {
   VertexAI,
   GenerateContentRequest,
@@ -178,9 +179,10 @@ export const generateContent: GenerateContentFunction = async function generateC
       throw new Error('No candidates found');
     }
 
+    // Extract function calls (if any)
     const functionCalls = result.response.candidates
       .flatMap((candidate) => candidate.content.parts?.filter((part) => part.functionCall))
-      .map((part) => part.functionCall)
+      .map((part) => part?.functionCall)
       .filter((functionCall): functionCall is NonNullable<typeof functionCall> => !!functionCall)
       .map((call) => ({ name: call.name, args: call.args as Record<string, unknown> }))
       .map(enableVertexUnescape ? unescapeFunctionCall : (call) => call); // Apply unescaping based on flag
@@ -198,43 +200,91 @@ export const generateContent: GenerateContentFunction = async function generateC
       });
     }
 
-    // Handle text response if no function calls were returned or if text is expected
-    if (functionCalls.length === 0 || expectedResponseType.text) {
-      const textResponse =
-        result.response.candidates
-          ?.flatMap((candidate) => candidate.content.parts?.filter((part) => part.text))
-          .map((part) => part.text)
-          .filter((text): text is string => !!text)
-          .join('\n') ?? // Join multiple text parts if they exist
-        result.response.candidates?.map((candidate) =>
-          // @ts-expect-error: finishReason might not be typed correctly in SDK
-          candidate.finishReason === 'MALFORMED_FUNCTION_CALL' ? candidate.finishMessage : '',
-        )[0] ??
-        ''; // Default to empty string
+    // Compute text response (used as summary and/or normal text response)
+    const textResponse =
+      result.response.candidates
+        ?.flatMap((candidate) => candidate.content.parts?.filter((part) => part.text))
+        .map((part) => part?.text)
+        .filter((text): text is string => !!text)
+        .join('\n') ??
+      result.response.candidates?.map((candidate) =>
+        // @ts-expect-error: finishReason might not be typed correctly in SDK
+        candidate.finishReason === 'MALFORMED_FUNCTION_CALL' ? candidate.finishMessage : '',
+      )[0] ??
+      '';
 
-      if (textResponse) {
-        if (expectedResponseType.text) {
-          resultParts.push({
-            type: 'text',
-            text: textResponse,
-          });
-        }
+    // If webSearch was requested, extract grounded URLs and return a webSearch result part
+    if (expectedResponseType.webSearch) {
+      const urlSet = new Set<string>();
 
-        // Try to recover function call from text if required function name is provided and no calls were found initially
-        const functionDef = functionDefs.find((def) => def.name === requiredFunctionName);
-        if (expectedResponseType.functionCall && functionDef && functionCalls.length === 0) {
-          try {
-            const recoveredCall = await recoverFunctionCall(textResponse, functionDef);
-            if (recoveredCall) {
-              console.log('Recovered function call.');
-              resultParts.push({
-                type: 'functionCall',
-                functionCall: recoveredCall,
-              });
+      for (const cand of result.response.candidates ?? []) {
+        // The SDK exposes grounding metadata on candidates; keep this robust to schema changes
+        const gm = ((cand as unknown as Record<string, unknown>).groundingMetadata ??
+          ((cand as unknown as Record<string, unknown>).safetyRatings as Record<string, unknown> | undefined)
+            ?.groundingMetadata) as Record<string, unknown> | undefined;
+        if (!gm) continue;
+
+        // Common shapes: groundingChunks with web.uri, retrievedContexts, or similar
+        try {
+          if (Array.isArray(gm.groundingChunks)) {
+            for (const ch of gm.groundingChunks) {
+              const web = (ch as Record<string, unknown> | undefined)?.web as
+                | { uri?: string; url?: string }
+                | undefined;
+              let url = web?.uri || web?.url;
+              if (!url) continue;
+              try {
+                const res = await axios.get(url);
+                if (res.request.res.responseUrl) {
+                  url = res.request.res.responseUrl;
+                } else if (res.status !== 200) {
+                  continue;
+                }
+              } catch (e) {
+                if (axios.isAxiosError(e) && e.response?.request.res.responseUrl) {
+                  url = e.response.request.res.responseUrl;
+                } else {
+                  continue;
+                }
+              }
+              if (url && typeof url === 'string') urlSet.add(url);
             }
-          } catch (error) {
-            console.log('Failed to recover function call:', error);
           }
+        } catch (e) {
+          console.warn('Could not parse grounding metadata field: groundingChunks', e);
+        }
+      }
+
+      resultParts.push({
+        type: 'webSearch',
+        text: textResponse ?? '',
+        urls: Array.from(urlSet),
+      });
+    }
+
+    // Handle text response for normal flows
+    if ((functionCalls.length === 0 || expectedResponseType.text) && textResponse) {
+      if (expectedResponseType.text) {
+        resultParts.push({
+          type: 'text',
+          text: textResponse,
+        });
+      }
+
+      // Try to recover function call from text if required function name is provided and no calls were found initially
+      const functionDef = functionDefs.find((def) => def.name === requiredFunctionName);
+      if (expectedResponseType.functionCall && functionDef && functionCalls.length === 0) {
+        try {
+          const recoveredCall = await recoverFunctionCall(textResponse, functionDef);
+          if (recoveredCall) {
+            console.log('Recovered function call.');
+            resultParts.push({
+              type: 'functionCall',
+              functionCall: recoveredCall,
+            });
+          }
+        } catch (error) {
+          console.log('Failed to recover function call:', error);
         }
       }
     }
@@ -327,32 +377,30 @@ async function getGenModel(params: GetGenModelParams) {
     const safetySettings: SafetySetting[] = [
       {
         category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
       {
         category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
       {
         category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
       {
         category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+        threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
     ];
 
     // Configure tools and tool config
-    let tools: Tool[] | undefined = undefined;
+    const tools: Tool[] = [];
     let toolConfig: ToolConfig | undefined = undefined;
 
     if (functionDefs.length > 0 && expectedResponseType.functionCall) {
-      tools = [
-        {
-          functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
-        },
-      ];
+      tools.push({
+        functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
+      });
       toolConfig = {
         functionCallingConfig: {
           mode: FunctionCallingMode.ANY,
@@ -365,6 +413,12 @@ async function getGenModel(params: GetGenModelParams) {
           mode: FunctionCallingMode.NONE,
         },
       };
+    }
+
+    // Add Google Search retrieval tool when webSearch is expected
+    if (expectedResponseType.webSearch) {
+      // Cast to any to accommodate SDK type variations
+      tools.push({ googleSearch: {} } as unknown as Tool);
     }
 
     // Instantiate the model
@@ -380,7 +434,7 @@ async function getGenModel(params: GetGenModelParams) {
             },
           }
         : {}),
-      ...(tools ? { tools } : {}),
+      ...(tools.length ? { tools } : {}),
       ...(toolConfig ? { toolConfig } : {}),
     });
   } catch (error) {

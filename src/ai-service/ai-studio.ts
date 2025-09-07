@@ -411,19 +411,19 @@ function modelGenerateContent(
       safetySettings: [
         {
           category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
         },
         {
           category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
         },
         {
           category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
         },
         {
           category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+          threshold: geminiBlockNone ? HarmBlockThreshold.BLOCK_NONE : HarmBlockThreshold.BLOCK_ONLY_HIGH,
         },
       ],
       ...effectiveConfig,
