@@ -33,13 +33,15 @@ export type ActionType =
   | 'conversationGraph'
   | 'runContainerTask'
   | 'compoundAction'
+  | 'runProjectCommand'
   | 'webSearch'
   | PluginActionType;
 
-type AskQuestionArgs = {
-  actionType: ActionType;
-  message: string;
+export type AskQuestionArgs = {
+  actionType?: ActionType;
+  message?: string;
   decisionMakingProcess?: string;
+  [key: string]: unknown; // Allow other properties for specific actions
 };
 
 /**
@@ -205,6 +207,20 @@ export type CompoundActionListArgs = {
   summary?: string;
 };
 
+export type RunProjectCommandArgs = {
+  name: string;
+  args?: string[];
+  env?: Record<string, string>;
+  workingDirOverride?: string;
+};
+
+export type ProjectCommandResult = {
+  success: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
 export type PerformAnalysisCall = FunctionCall<PerformAnalysisArgs>;
 export type AnalysisResultCall = FunctionCall<AnalysisResultArgs>;
@@ -226,6 +242,7 @@ export interface UserItem {
     name: string;
     call_id: string | undefined;
     content: string | undefined;
+    isError?: boolean;
   }>;
   images?: PromptItemImage[];
   cache?: true;
@@ -239,6 +256,7 @@ export interface ActionResult {
     user: UserItem;
   }>;
   lintResult?: LintResult;
+  projectCommandResult?: ProjectCommandResult;
 }
 
 export type ActionHandlerProps = {

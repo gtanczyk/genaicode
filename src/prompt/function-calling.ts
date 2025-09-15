@@ -37,6 +37,7 @@ import { readExternalFiles } from './function-defs/read-external-files.js';
 import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
 import { getCompoundActionDef } from './function-defs/compound-action.js';
 import { runContainerTaskDef } from './function-defs/run-container-task.js';
+import { runProjectCommandDef } from './function-defs/run-project-command.js';
 import { webSearchDef } from './function-defs/web-search.js';
 
 /**
@@ -80,6 +81,7 @@ export function getFunctionDefs(): FunctionDef[] {
     requestGitContextDef,
     getCompoundActionDef(),
     runContainerTaskDef,
+    runProjectCommandDef,
     webSearchDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
