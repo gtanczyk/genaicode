@@ -52,24 +52,6 @@ export interface ModelOverrides {
 }
 
 /**
- * Defines a project-specific command that can be executed by the AI.
- */
-export interface ProjectCommand {
-  /** The command string to execute. Can include shell operators. */
-  command: string;
-  /** A brief description of what the command does. */
-  description?: string;
-  /** Default arguments to pass to the command. */
-  defaultArgs?: string[];
-  /** Environment variables to set for the command execution. */
-  env?: Record<string, string>;
-  /** The working directory to run the command in. Defaults to rootDir. */
-  workingDir?: string;
-  /** Optional aliases for the command name. */
-  aliases?: string[];
-}
-
-/**
  * Configuration for the project codegen
  *
  * IMPORTANT: Keep this interface in sync with the JSON schema in config-schema.ts
@@ -86,15 +68,6 @@ export interface RcConfig {
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
   plugins?: string[];
-  /**
-   * A map of named project-specific commands that can be executed.
-   * @example
-   * "projectCommands": {
-   *   "test": { "command": "npm run test", "description": "Run unit tests" },
-   *   "lint:fix": { "command": "npm run lint -- --fix" }
-   * }
-   */
-  projectCommands?: Record<string, ProjectCommand>;
   featuresEnabled?: {
     appContext?: boolean;
     gitContext?: boolean;

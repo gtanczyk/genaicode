@@ -15,40 +15,14 @@ export const GENAICODERC_SCHEMA: Schema = {
   properties: {
     rootDir: {
       type: 'string',
-      description: `Root directory of the project. All file paths will be relative to this directory.\nDefault value is '.'.\nExamples: '.', 'src', './project'`,
+      description: `Root directory of the project. All file paths will be relative to this directory.
+Default value is '.'.
+Examples: '.', 'src', './project'`,
     },
     lintCommand: {
       type: 'string',
-      description: `Command to run for linting the code. Deprecated in favor of 'projectCommands.lint', but kept for backward compatibility. The command should return appropriate exit codes for success/failure.\nExamples: 'npm run lint', 'eslint .', 'npm run type-check && npm run lint'`,
-    },
-    projectCommands: {
-      type: 'object',
-      description:
-        'A map of named project-specific commands that can be executed by the AI, such as tests, builds, or formatters.',
-      additionalProperties: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: 'The command string to execute. Can include shell operators.' },
-          description: { type: 'string', description: 'A brief description of what the command does.' },
-          defaultArgs: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Default arguments to pass to the command.',
-          },
-          env: {
-            type: 'object',
-            additionalProperties: { type: 'string' },
-            description: 'Environment variables to set for the command execution.',
-          },
-          workingDir: {
-            type: 'string',
-            description: 'The working directory to run the command in. Defaults to rootDir.',
-          },
-          aliases: { type: 'array', items: { type: 'string' }, description: 'Optional aliases for the command name.' },
-        },
-        required: ['command'],
-        additionalProperties: false,
-      },
+      description: `Command to run for linting the code before and after generation. The command should return appropriate exit codes for success/failure.
+Examples: 'npm run lint', 'eslint .', 'npm run type-check && npm run lint'`,
     },
     extensions: {
       type: 'array',
@@ -56,14 +30,16 @@ export const GENAICODERC_SCHEMA: Schema = {
         type: 'string',
         pattern: '^\\.[a-z0-9\\.]+$',
       },
-      description: `File extensions that the tool should consider for code generation and analysis.\nExamples: ['.js', '.ts', '.tsx', '.md'], ['.py', '.go', '.java'], ['.c', '.h', '.cpp']`,
+      description: `File extensions that the tool should consider for code generation and analysis.
+Examples: ['.js', '.ts', '.tsx', '.md'], ['.py', '.go', '.java'], ['.c', '.h', '.cpp']`,
     },
     ignorePaths: {
       type: 'array',
       items: {
         type: 'string',
       },
-      description: `Directories and files that should be excluded from code analysis and generation:\nExamples: ['node_modules', 'dist', 'build'], ['coverage', '.vscode', '.github']`,
+      description: `Directories and files that should be excluded from code analysis and generation:
+Examples: ['node_modules', 'dist', 'build'], ['coverage', '.vscode', '.github']`,
     },
     popularDependencies: {
       type: 'object',
@@ -111,7 +87,8 @@ export const GENAICODERC_SCHEMA: Schema = {
           properties: {
             cheap: {
               type: 'string',
-              description: `Model to use when cheap flag is enabled for OpenAI compatible service.\nExample: ['gpt-4o-mini']`,
+              description: `Model to use when cheap flag is enabled for OpenAI compatible service.
+Example: ['gpt-4o-mini']`,
             },
             default: {
               type: 'string',
@@ -181,7 +158,8 @@ export const GENAICODERC_SCHEMA: Schema = {
       items: {
         type: 'string',
       },
-      description: `Paths to plugin files that should be loaded by GenAIcode. Plugins can extend functionality by adding custom operations, AI services, or action handlers.\nExample: ['./plugins/custom-plugin.js', './examples/genaicode_plugins/genaicode_tracker.js', './examples/genaicode_plugins/nonsense_operation.js']`,
+      description: `Paths to plugin files that should be loaded by GenAIcode. Plugins can extend functionality by adding custom operations, AI services, or action handlers.
+Example: ['./plugins/custom-plugin.js', './examples/genaicode_plugins/genaicode_tracker.js', './examples/genaicode_plugins/nonsense_operation.js']`,
     },
     featuresEnabled: {
       type: 'object',

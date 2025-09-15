@@ -112,7 +112,6 @@ Example use cases of action types:
 - Generate an image -> **generateImage**
 - Search for a keyword/phrase over the codebase of the project -> **searchCode**
 - Need to perform a linting of the code -> **lint**
-- Run project commands (lint, test, build, or custom) with parameters -> **runProjectCommand**
 - End the conversation -> **endConversation**
 - The user needs help with GenAIcode itself, encountered a problem, or needs guidance -> **genaicodeHelp**
 - Perform inference on a AI model with reasoning capabilities -> **reasoningInference**
