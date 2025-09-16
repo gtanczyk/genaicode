@@ -21,7 +21,28 @@
   "featuresEnabled": {
     "containerTask": true
   },
-  "lintCommand": "npm run type-check && npm run lint",
+  "projectCommands": {
+    "test": {
+      "command": "npm test",
+      "description": "Run unit tests"
+    },
+    "build": {
+      "command": "npm run build",
+      "description": "Build the project"
+    },
+    "format": {
+      "command": "npm run format",
+      "description": "Format the codebase"
+    },
+    "type-check": {
+      "command": "npm run type-check",
+      "description": "Run type checking"
+    },
+    "lint": {
+      "command": "npm run lint",
+      "description": "Run linting"
+    }
+  },
   "importantContext": {
     "files": [
       "./.prettierrc",

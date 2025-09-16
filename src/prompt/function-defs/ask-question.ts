@@ -36,7 +36,7 @@ ${
 }
 - conversationGraph: Use for complex conversations needing multiple steps and decisions.
 - compoundAction: Use when the user's request implies multiple *distinct*, *predefined* file operations (create, update, delete, move) or image manipulations that can be batched as a single logical step *within* the conversation flow. This action triggers an internal AI call to generate a list of specific operations based on the user's request, which is then shown to the user for confirmation before execution. **Important**: This is *not* for complex feature implementation or tasks requiring significant analysis and intertwined code generation (use **confirmCodeGeneration** for those instead).
-${rcConfig.lintCommand ? '- lint: Use to check the code for errors and provide feedback on the quality of the code.' : ''}
+- runProjectCommand: Execute a named project command (from .genaicoderc projectCommands or auto-discovered scripts). Supports arguments and environment variables.
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 - reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
@@ -65,7 +65,7 @@ export const actionTypeOptions: string[] = [
   'endConversation',
   'requestFilesFragments',
   ...(rcConfig.featuresEnabled?.appContext ? ['pullAppContext', 'pushAppContext'] : []),
-  ...(rcConfig.lintCommand ? ['lint'] : []),
+  'runProjectCommand',
   ...(rcConfig.featuresEnabled?.containerTask ? ['runContainerTask'] : []),
   ...Array.from(getRegisteredActionHandlers().keys()),
   'genaicodeHelp',
@@ -324,23 +324,6 @@ export const searchCode: FunctionDef = {
       },
     },
     required: ['query'],
-  },
-};
-
-// lint
-export const lint: FunctionDef = {
-  name: 'lint',
-  description: 'Use this function to run lint command, and get output.',
-  parameters: {
-    type: 'object',
-    properties: {
-      filePaths: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'An array of absolute file paths to lint. If not provided, all files will be linted.',
-      },
-    },
-    required: [],
   },
 };
 

@@ -18,7 +18,6 @@ describe('step-ask-question', () => {
       contextOptimization: true,
       contextCompression: true,
       searchCode: true,
-      lint: true,
       updateFile: true,
       performAnalysis: true,
       createFile: true,
@@ -33,6 +32,7 @@ describe('step-ask-question', () => {
       requestGitContext: true,
       runContainerTask: true,
       compoundAction: true,
+      runProjectCommand: true,
       webSearch: true,
     };
 

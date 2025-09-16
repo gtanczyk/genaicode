@@ -20,7 +20,6 @@ export type ActionType =
   | 'contextOptimization'
   | 'contextCompression'
   | 'searchCode'
-  | 'lint'
   | 'updateFile'
   | 'performAnalysis'
   | 'createFile'
@@ -33,13 +32,15 @@ export type ActionType =
   | 'conversationGraph'
   | 'runContainerTask'
   | 'compoundAction'
+  | 'runProjectCommand'
   | 'webSearch'
   | PluginActionType;
 
-type AskQuestionArgs = {
-  actionType: ActionType;
-  message: string;
+export type AskQuestionArgs = {
+  actionType?: ActionType;
+  message?: string;
   decisionMakingProcess?: string;
+  [key: string]: unknown; // Allow other properties for specific actions
 };
 
 /**
@@ -179,12 +180,6 @@ export type RequestGitContextArgs = {
   count?: number; // Applies mainly to 'commits' and 'fileChanges'
 };
 
-export type LintResult = {
-  success: boolean;
-  stdout?: string;
-  stderr?: string;
-};
-
 /**
  * Represents a single action within a compound action batch.
  */
@@ -203,6 +198,20 @@ export type CompoundActionListArgs = {
   actions: CompoundActionItem[];
   /** Summary of the actions to be performed. */
   summary?: string;
+};
+
+export type RunProjectCommandArgs = {
+  name: string;
+  args?: string[];
+  env?: Record<string, string>;
+  workingDirOverride?: string;
+};
+
+export type ProjectCommandResult = {
+  success: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
 };
 
 export type AskQuestionCall = FunctionCall<AskQuestionArgs>;
@@ -226,6 +235,7 @@ export interface UserItem {
     name: string;
     call_id: string | undefined;
     content: string | undefined;
+    isError?: boolean;
   }>;
   images?: PromptItemImage[];
   cache?: true;
@@ -238,7 +248,6 @@ export interface ActionResult {
     assistant: AssistantItem;
     user: UserItem;
   }>;
-  lintResult?: LintResult;
 }
 
 export type ActionHandlerProps = {

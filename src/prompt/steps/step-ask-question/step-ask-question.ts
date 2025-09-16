@@ -21,7 +21,6 @@ import './handlers/handle-create-file.js';
 import './handlers/handle-end-conversation.js';
 import './handlers/handle-genaicode-help.js';
 import './handlers/handle-generate-image.js';
-import './handlers/handle-lint.js';
 import './handlers/handle-perform-analysis.js';
 import './handlers/handle-pull-app-context.js';
 import './handlers/handle-push-app-context.js';
@@ -39,6 +38,7 @@ import './handlers/handle-explore-external-directories.js';
 import './handlers/handle-request-git-context.js';
 import './handlers/handle-web-search.js';
 import './handlers/handle-compound-action.js';
+import './handlers/handle-project-command.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,

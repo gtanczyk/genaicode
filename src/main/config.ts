@@ -1,6 +1,7 @@
+import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
-import { RcConfig, ImportantContext, ModelOverrides } from './config-types.js';
+import { RcConfig, ImportantContext, ModelOverrides, ProjectCommand } from './config-types.js';
 import { findRcFile, parseRcFile, CODEGENRC_FILENAME } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
@@ -53,6 +54,56 @@ export const importantContext: ImportantContext = processImportantContext(rcConf
 // modelOverrides is directly assigned. Downstream code in service-configurations.ts handles the structure.
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
 
+type ResolvedProjectCommand = ProjectCommand & { name: string };
+const projectCommandsMap = new Map<string, ResolvedProjectCommand>();
+
+// 1. Populate from rcConfig.projectCommands
+if (rcConfig.projectCommands) {
+  for (const [name, command] of Object.entries(rcConfig.projectCommands)) {
+    const resolvedCommand = { ...command, name };
+    projectCommandsMap.set(name, resolvedCommand);
+    // Add aliases
+    if (command.aliases) {
+      for (const alias of command.aliases) {
+        projectCommandsMap.set(alias, resolvedCommand);
+      }
+    }
+  }
+}
+
+// 2. Synthesize from legacy lintCommand for backward compatibility
+if (rcConfig.lintCommand && !projectCommandsMap.has('lint')) {
+  projectCommandsMap.set('lint', {
+    name: 'lint',
+    command: rcConfig.lintCommand,
+    description: 'Legacy lint command (from lintCommand)',
+  });
+}
+
+// 3. Auto-discover from package.json scripts
+try {
+  const packageJsonPath = path.join(rcConfig.rootDir, 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    if (packageJson.scripts) {
+      for (const scriptName in packageJson.scripts) {
+        if (!projectCommandsMap.has(scriptName)) {
+          projectCommandsMap.set(scriptName, {
+            name: scriptName,
+            command: `npm run ${scriptName}`,
+            description: `package.json script: ${scriptName}`,
+          });
+        }
+      }
+    }
+  }
+} catch (error) {
+  console.warn('Could not read or parse package.json for script discovery:', error);
+}
+
+export const getProjectCommands = (): Map<string, ResolvedProjectCommand> => projectCommandsMap;
+export const getProjectCommand = (name: string): ResolvedProjectCommand | undefined => projectCommandsMap.get(name);
+
 function processImportantContext(context: ImportantContext | undefined): ImportantContext {
   if (!context) {
     return { systemPrompt: [], files: [] };
@@ -74,3 +125,4 @@ console.log('Detected codegen configuration', rcConfig);
 console.log('Root dir:', rcConfig.rootDir);
 console.log('Important context:', importantContext);
 console.log('Model overrides:', modelOverrides);
+console.log('Project commands:', projectCommandsMap);
