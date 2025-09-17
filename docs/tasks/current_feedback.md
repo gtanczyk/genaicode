@@ -29,4 +29,3 @@
 - add lint to codegen summary
 - thought signature
 - working copy diff git context
-- project commands
