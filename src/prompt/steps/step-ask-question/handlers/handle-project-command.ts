@@ -9,7 +9,7 @@ import {
   RunProjectCommandArgs,
 } from '../step-ask-question-types.js';
 import { registerActionHandler } from '../step-ask-question-handlers.js';
-import { FunctionCall, GenerateContentArgs, ModelType } from '../../../../ai-service/common-types.js';
+import { FunctionCall, GenerateContentArgs, ModelType, PromptItem } from '../../../../ai-service/common-types.js';
 import { getFunctionDefs } from '../../../function-calling.js';
 import { askUserForConfirmationWithAnswer } from '../../../../main/common/user-actions.js';
 
@@ -22,7 +22,17 @@ export async function handleRunProjectCommand({
   options,
 }: ActionHandlerProps): Promise<ActionResult> {
   const runProjectCommandRequest: GenerateContentArgs = [
-    prompt,
+    [
+      ...prompt,
+      {
+        type: 'assistant',
+        text: askQuestionCall.args?.message ?? '',
+      },
+      {
+        type: 'user',
+        text: JSON.stringify(rcConfig.projectCommands),
+      },
+    ],
     {
       functionDefs: getFunctionDefs(),
       requiredFunctionName: 'runProjectCommand',
@@ -43,24 +53,17 @@ export async function handleRunProjectCommand({
     prompt.push(
       {
         type: 'assistant',
-        functionCalls: [askQuestionCall],
+        text: askQuestionCall.args!.message,
       },
       {
         type: 'user',
-        functionResponses: [
-          {
-            name: 'askQuestion',
-            call_id: askQuestionCall.id,
-            content: JSON.stringify({ error: 'No runProjectCommand call found in the assistant response.' }),
-            isError: true,
-          },
-        ],
+        text: 'No runProjectCommand call found in the assistant response.',
       },
     );
     return { breakLoop: true, items: [] };
   }
 
-  const { name, args = [], env: envOverride, workingDirOverride } = RunProjectCommandCall.args;
+  const { name, args = [], env: envOverride, workingDirOverride, truncMode = 'summarize' } = RunProjectCommandCall.args;
 
   const command = getProjectCommand(name);
 
@@ -134,7 +137,13 @@ export async function handleRunProjectCommand({
   const cwd = workingDirOverride || command.workingDir || rcConfig.rootDir;
   const env = { ...process.env, ...(command.env || {}), ...envOverride };
 
-  putSystemMessage(`Executing project command "${name}": ${fullCommand}`, { cwd, env, args: finalArgs });
+  putSystemMessage(`Executing project command "${name}": ${fullCommand}`, {
+    cwd,
+    envOverride,
+    args: finalArgs,
+    truncMode,
+    workingDirOverride,
+  });
 
   let result: ProjectCommandResult;
 
@@ -155,6 +164,27 @@ export async function handleRunProjectCommand({
       stderr: result.stderr,
     });
   }
+
+  // Handle output truncation
+  if (truncMode === 'first') {
+    result.stdout = truncateOutput(result.stdout, 'first');
+    result.stderr = truncateOutput(result.stderr, 'first');
+  } else if (truncMode === 'last') {
+    result.stdout = truncateOutput(result.stdout, 'last');
+    result.stderr = truncateOutput(result.stderr, 'last');
+  } else if (truncMode === 'summarize') {
+    if (result.stdout.length > 0) {
+      result.stdout = await summarizeOutput(result.stdout, generateContentFn, options);
+    }
+    if (result.stderr.length > 0) {
+      result.stderr = await summarizeOutput(result.stderr, generateContentFn, options);
+    }
+  }
+  putSystemMessage(`Command output sent to AI`, {
+    truncMode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
 
   prompt.push(
     {
@@ -180,6 +210,60 @@ export async function handleRunProjectCommand({
     breakLoop: false,
     items: [],
   };
+}
+
+const MAX_OUTPUT_LENGTH = 2000;
+const TRUNCATE_LINES = 200;
+const TRUNCATE_CHARS = 1000;
+
+function truncateOutput(output: string, mode: 'first' | 'last'): string {
+  if (output.length <= MAX_OUTPUT_LENGTH) {
+    return output;
+  }
+
+  const lines = output.split('\n');
+  if (mode === 'first') {
+    const truncatedLines = lines.slice(0, TRUNCATE_LINES).join('\n');
+    return truncatedLines.length > TRUNCATE_CHARS ? truncatedLines.substring(0, TRUNCATE_CHARS) : truncatedLines;
+  } else {
+    // mode === 'last'
+    const truncatedLines = lines.slice(-TRUNCATE_LINES).join('\n');
+    return truncatedLines.length > TRUNCATE_CHARS
+      ? truncatedLines.substring(truncatedLines.length - TRUNCATE_CHARS)
+      : truncatedLines;
+  }
+}
+
+async function summarizeOutput(
+  output: string,
+  generateContentFn: ActionHandlerProps['generateContentFn'],
+  options: ActionHandlerProps['options'],
+): Promise<string> {
+  if (output.length <= MAX_OUTPUT_LENGTH) {
+    return output;
+  }
+  putSystemMessage('Summarizing command output...');
+  const summaryPrompt: PromptItem[] = [
+    {
+      type: 'user',
+      text: `Please summarize the following command output:\n\n---\n\n${output}`,
+    },
+  ];
+  const summaryRequest: GenerateContentArgs = [
+    summaryPrompt,
+    {
+      modelType: ModelType.LITE,
+      expectedResponseType: { text: true, functionCall: false, media: false },
+    },
+    options,
+  ];
+  const summaryResult = await generateContentFn(...summaryRequest);
+  const summaryText = summaryResult.find((part) => part.type === 'text')?.text;
+  if (!summaryText) {
+    putSystemMessage('Failed to summarize output, returning truncated version.');
+    return truncateOutput(output, 'first');
+  }
+  return summaryText;
 }
 
 registerActionHandler('runProjectCommand', handleRunProjectCommand);

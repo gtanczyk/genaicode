@@ -121,6 +121,7 @@ function isPathProperty(prop: string): boolean {
     'requestFilesContent',
     'projectFilePath',
     'hostPath',
+    'workingDirOverride',
   ].includes(prop);
 }
 

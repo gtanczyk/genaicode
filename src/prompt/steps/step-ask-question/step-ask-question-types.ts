@@ -205,6 +205,7 @@ export type RunProjectCommandArgs = {
   args?: string[];
   env?: Record<string, string>;
   workingDirOverride?: string;
+  truncMode?: 'first' | 'last' | 'summarize' | 'full';
 };
 
 export type ProjectCommandResult = {

@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-139] 2025-09-16: Project commands
 - [-] [GEN-138] 2025-09-07: Refactor Google GenAI services: share internal implementation in ai-studio.ts and delegate vertex-ai.ts to it.
 - [x] [GEN-135] 2024-08-08: Enhanced AI service selection - Improved error message to display available AI services and their required environment variables.
 - [x] [GEN-136] 2024-08-08: UI as default interaction model - Always prompt for .genaicoderc creation in interactive TTY sessions if the file is missing.
