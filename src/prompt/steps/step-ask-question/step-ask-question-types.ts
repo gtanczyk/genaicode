@@ -174,10 +174,14 @@ export type ReasoningInferenceResponseArgs = {
 };
 
 export type RequestGitContextArgs = {
-  requestType: 'commits' | 'fileChanges' | 'blame' | 'fileDiff'; // Added fileDiff
-  filePath?: string; // Required for 'fileChanges', 'blame', and 'fileDiff'
+  requestType: 'commits' | 'fileChanges' | 'blame' | 'fileDiff' | 'workingChanges' | 'workingDiff';
+  filePath?: string; // Required for 'fileChanges', 'blame', 'fileDiff', and 'workingDiff'
   commitHash?: string; // Required for 'blame' and 'fileDiff'
   count?: number; // Applies mainly to 'commits' and 'fileChanges'
+  includeUntracked?: boolean;
+  stagedOnly?: boolean;
+  unstagedOnly?: boolean;
+  staged?: boolean;
 };
 
 /**

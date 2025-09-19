@@ -19,7 +19,7 @@ Detailed Explanation of actionTypes:
 - requestFilesContent: Use specifically when needing to access or review the contents of files, and it is **not already present in the \`sourceCode\`**. Only use this action if the file content is genuinely missing after the \`getSourceCode\` function response.
 - readExternalFiles: Use to request access to **read the content of specific files** located outside the project's root directory. User confirmation is required for the batch of external files. Only processed information (summary or extracted facts) will be returned, not the raw file content. **This function is for getting the *contents* of known external files, not for listing directory contents.**
 - exploreExternalDirectories: Use to **list files and subdirectories within directories** located outside the project's root directory.  You can specify criteria to filter the files (recursive, depth, search phrases). User confirmation is required. **This function returns a list of file paths, allowing you to explore directory structures.**
-${rcConfig.featuresEnabled?.gitContext !== false ? '- requestGitContext: Use to request Git context information like recent commits, file changes, blame output, or file diffs for specific files/commits.' : ''}
+${rcConfig.featuresEnabled?.gitContext !== false ? '- requestGitContext: Use to request Git context information like recent commits, file changes, blame output, or file diffs.' : ''}
 - removeFilesFromContext: Use to remove unnecessary file contents from context, optimizing token usage.
 - contextOptimization: Use to manage and optimize context during code generation tasks, allowing the LLM to provide guidance on what parts of the context are most relevant to keep.
 - contextCompression: Use to compress the context by removing unnecessary tokens and optimizing the context size while maintaining essential information.
@@ -375,18 +375,21 @@ export const pushAppContext: FunctionDef = {
 export const requestGitContextDef: FunctionDef = {
   name: 'requestGitContext',
   description:
-    'Use this function to request Git context information like recent commits, file changes, blame output, or file diffs.',
+    "Use this function to request Git context information like recent commits, file changes, blame output, file diffs, or current working copy changes. All file paths must be absolute and within the project's root directory.",
   parameters: {
     type: 'object',
     properties: {
       requestType: {
         type: 'string',
-        enum: ['commits', 'fileChanges', 'blame', 'fileDiff'],
-        description: 'The type of Git information to request.',
+        enum: ['commits', 'fileChanges', 'blame', 'fileDiff', 'workingChanges', 'workingDiff'],
+        description: `The type of Git information to request.
+- 'workingChanges': List staged, unstaged, and untracked file changes in the working directory.
+- 'workingDiff': Show the diff for a single file in the working directory.`,
       },
       filePath: {
         type: 'string',
-        description: "The absolute file path required for 'fileChanges', 'blame', and 'fileDiff' requests.",
+        description:
+          "The absolute file path required for 'fileChanges', 'blame', 'fileDiff', and 'workingDiff' requests.",
       },
       commitHash: {
         type: 'string',
@@ -395,6 +398,22 @@ export const requestGitContextDef: FunctionDef = {
       count: {
         type: 'number',
         description: "The number of recent commits to retrieve for 'commits' requests.",
+      },
+      includeUntracked: {
+        type: 'boolean',
+        description: "For 'workingChanges', set to false to exclude untracked files (default: true).",
+      },
+      stagedOnly: {
+        type: 'boolean',
+        description: "For 'workingChanges', set to true to only show staged changes.",
+      },
+      unstagedOnly: {
+        type: 'boolean',
+        description: "For 'workingChanges', set to true to only show unstaged changes.",
+      },
+      staged: {
+        type: 'boolean',
+        description: "For 'workingDiff', set to true to show the diff for staged changes (--cached).",
       },
     },
     required: ['requestType'],
