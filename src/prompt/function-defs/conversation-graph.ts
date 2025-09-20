@@ -1,10 +1,10 @@
 import { FunctionCall, FunctionDef } from '../../ai-service/common-types.js';
 import { ActionType } from '../steps/step-ask-question/step-ask-question-types.js';
-import { actionTypeOptions } from './ask-question.js';
+import { getActionTypeOptions } from './ask-question.js';
 
 // Function definitions for conversation graph
 
-export const conversationGraph: FunctionDef = {
+export const getConversationGraph = (): FunctionDef => ({
   name: 'conversationGraph',
   description:
     'Define and execute a series of conversation steps to achieve a specific goal. This allows for structured, multi-step conversations with clear transitions between steps.',
@@ -39,7 +39,7 @@ export const conversationGraph: FunctionDef = {
             },
             actionType: {
               type: 'string',
-              enum: actionTypeOptions,
+              enum: getActionTypeOptions(),
               description: 'The action to perform at this step.',
             },
             instruction: {
@@ -82,7 +82,7 @@ export const conversationGraph: FunctionDef = {
     },
     required: ['contextAnalysis', 'bigPicture', 'entryNode', 'nodes', 'edges'],
   },
-};
+});
 
 // Types for conversation graph
 

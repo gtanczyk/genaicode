@@ -30,7 +30,7 @@ import { genaicodeHelpDef } from './function-defs/genaicode-help.js';
 import { reasoningInference, reasoningInferenceResponse } from './function-defs/reasoning-inference.js';
 import { compressContext } from './function-defs/context-compression.js';
 import { extractFileFragments } from './function-defs/extract-file-fragments.js';
-import { conversationGraph, evaluateEdge } from './function-defs/conversation-graph.js';
+import { getConversationGraph, evaluateEdge } from './function-defs/conversation-graph.js';
 import { conversationSummaryDef } from './function-defs/conversation-summary.js';
 import { readExternalFiles } from './function-defs/read-external-files.js';
 import { exploreExternalDirectories } from './function-defs/explore-external-directories.js';
@@ -70,7 +70,7 @@ export function getFunctionDefs(): FunctionDef[] {
     reasoningInferenceResponse,
     extractFileFragments,
     requestFilesFragments,
-    conversationGraph,
+    getConversationGraph(),
     evaluateEdge,
     sendMessage,
     conversationSummaryDef,

@@ -1,4 +1,5 @@
 import { FunctionDef } from '../../ai-service/common-types.js';
+import { ActionType } from '../../index.js';
 import { rcConfig } from '../../main/config.js';
 import { getRegisteredActionHandlerDescriptions, getRegisteredActionHandlers } from '../../main/plugin-loader.js';
 
@@ -45,34 +46,36 @@ ${rcConfig.featuresEnabled?.containerTask ? '- runContainerTask: Use to perform 
 This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
 }
 
-export const actionTypeOptions: string[] = [
-  'sendMessage',
-  'generateImage',
-  'updateFile',
-  'createFile',
-  'performAnalysis',
-  'requestPermissions',
-  'requestFilesContent',
-  'readExternalFiles',
-  'exploreExternalDirectories',
-  ...(rcConfig.featuresEnabled?.gitContext !== false ? ['requestGitContext'] : ''),
-  'removeFilesFromContext',
-  'contextOptimization',
-  'contextCompression',
-  'searchCode',
-  'webSearch',
-  'confirmCodeGeneration',
-  'endConversation',
-  'requestFilesFragments',
-  ...(rcConfig.featuresEnabled?.appContext ? ['pullAppContext', 'pushAppContext'] : []),
-  'runProjectCommand',
-  ...(rcConfig.featuresEnabled?.containerTask ? ['runContainerTask'] : []),
-  ...Array.from(getRegisteredActionHandlers().keys()),
-  'genaicodeHelp',
-  'reasoningInference',
-  'conversationGraph',
-  'compoundAction',
-];
+export function getActionTypeOptions(): readonly ActionType[] {
+  return [
+    'sendMessage',
+    'generateImage',
+    'updateFile',
+    'createFile',
+    'performAnalysis',
+    'requestPermissions',
+    'requestFilesContent',
+    'readExternalFiles',
+    'exploreExternalDirectories',
+    ...(rcConfig.featuresEnabled?.gitContext !== false ? (['requestGitContext'] as const) : []),
+    'removeFilesFromContext',
+    'contextOptimization',
+    'contextCompression',
+    'searchCode',
+    'webSearch',
+    'confirmCodeGeneration',
+    'endConversation',
+    'requestFilesFragments',
+    ...(rcConfig.featuresEnabled?.appContext ? (['pullAppContext', 'pushAppContext'] as const) : []),
+    'runProjectCommand',
+    ...(rcConfig.featuresEnabled?.containerTask ? (['runContainerTask'] as const) : []),
+    ...Array.from(getRegisteredActionHandlers().keys()),
+    'genaicodeHelp',
+    'reasoningInference',
+    'conversationGraph',
+    'compoundAction',
+  ] as const;
+}
 
 /**
  * Function definition for askQuestion
@@ -109,7 +112,9 @@ The decisionMakingProcess value **MUST** be provided in the following **EXACT** 
 2. **Options Evaluation**:
     For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
     \`\`\`
-${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).join('\n')}
+${getActionTypeOptions()
+  .map((actionType) => `      - ${actionType}: <reasoning>`)
+  .join('\n')}
     \`\`\`
 
 3. **Decision Justification**:
@@ -128,7 +133,7 @@ ${actionTypeOptions.map((actionType) => `      - ${actionType}: <reasoning>`).jo
       },
       actionType: {
         type: 'string',
-        enum: actionTypeOptions,
+        enum: getActionTypeOptions(),
         description: getActionTypeDescription(),
       },
       message: {
