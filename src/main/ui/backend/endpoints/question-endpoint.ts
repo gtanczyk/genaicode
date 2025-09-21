@@ -32,8 +32,8 @@ registerEndpoint((router, service) => {
   // Use multer middleware to handle up to 5 images attached to the 'images' field
   router.post('/answer-question', upload.array('images', 5), async (req, res) => {
     try {
-      // Extract text fields from req.body
-      const { questionId, answer } = req.body;
+      // Extract text fields from req.body§§
+      const { questionId, answer, selectedActionType } = req.body;
       // Handle potential boolean/undefined conversion from FormData string
       const confirmed = req.body.confirmed ? req.body.confirmed === 'true' : undefined;
       // Parse options if present
@@ -64,13 +64,14 @@ registerEndpoint((router, service) => {
         }
       }
 
-      // Call the service method, passing the image data
+      // Call the service method, passing the image data and new optional fields
       await service.answerQuestion(
         questionId,
         answer,
         confirmed,
         images, // Pass the processed image data
         options as CodegenOptions, // Pass CodegenOptions
+        selectedActionType,
       );
 
       res.json({ message: 'Question answered successfully' });

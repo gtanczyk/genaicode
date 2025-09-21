@@ -7,7 +7,7 @@ import { ModelType } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { putAssistantMessage, putSystemMessage, putUserMessage } from '../../../main/common/content-bus.js';
 import { abortController } from '../../../main/common/abort-controller.js';
-import { AskQuestionCall } from './step-ask-question-types.js';
+import { ActionType, AskQuestionCall } from './step-ask-question-types.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
 import { getActionHandler } from './ask-question-handler.js';
 import { executeStepAutoContextRefresh, getFilesState } from '../step-auto-context-refresh.js';
@@ -57,12 +57,25 @@ export async function executeStepAskQuestion(
   abortController?.signal.addEventListener('abort', () => {
     aborted = true;
   });
+  let forcedActionType: ActionType | undefined = undefined;
 
   while (!aborted) {
     try {
       // Calculate context size using the total tokens per day (this is not a perfect metric, but it's a good approximation)
       const lastTokenCount = getUsageMetrics().total.tpd;
-      const askQuestionCall = await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
+      if (forcedActionType) {
+        putSystemMessage(`Forcing action type: ${forcedActionType}`);
+      }
+      const askQuestionCall = forcedActionType
+        ? {
+            name: 'askQuestion',
+            id: 'forced-action',
+            args: {
+              message: 'Proceeding with the selected action: ' + forcedActionType,
+              actionType: forcedActionType,
+            } as AskQuestionCall['args'],
+          }
+        : await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
       const totalTokens = getUsageMetrics().total.tpd - lastTokenCount;
 
       if (!askQuestionCall) {
@@ -84,6 +97,7 @@ export async function executeStepAskQuestion(
           generateImageFn,
           waitIfPaused,
         });
+        forcedActionType = result.forceActionType;
 
         if (aborted) {
           putSystemMessage('Iteration aborted.');

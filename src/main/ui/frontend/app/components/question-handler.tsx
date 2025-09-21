@@ -7,9 +7,16 @@ import { AiServiceType, CodegenOptions } from '../../../../codegen-types.js';
 import { AiServiceSelector } from './input-area/ai-service-selector';
 import { ImageUpload } from './input-area/image-upload'; // Import ImageUpload
 import { UploadIcon } from './icons';
+import { PromptActionTypeSelector } from './prompt-action-type-selector.js';
 
 interface QuestionHandlerProps {
-  onSubmit: (answer: string, images?: File[], confirmed?: boolean, aiService?: AiServiceType) => void; // Updated prop type
+  onSubmit: (
+    answer: string,
+    images?: File[],
+    confirmed?: boolean,
+    aiService?: AiServiceType,
+    selectedActionType?: string,
+  ) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   question: Question | null;
@@ -31,6 +38,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   const { suggestions } = useContext(ChatStateContext) ?? { suggestions: [] };
   const [error, setError] = useState<string | null>(null);
   const [aiService, setAiService] = useState<AiServiceType>(codegenOptions.aiService);
+  const [selectedActionType, setSelectedActionType] = useState<string | undefined>(undefined);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,7 +74,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     if ((answer.trim() || images.length > 0) && question) {
       // Allow submit if answer OR images exist
       try {
-        await onSubmit(answer, images, undefined, aiService); // Pass images
+        await onSubmit(answer, images, undefined, aiService, selectedActionType); // Pass images
         setAnswer('');
         setImages([]); // Clear images after submit
         setError(null);
@@ -81,7 +89,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
 
   const handleConfirmation = async (isYes: boolean) => {
     try {
-      await onSubmit(answer, images, isYes, aiService); // Pass images
+      await onSubmit(answer, images, isYes, aiService, selectedActionType); // Pass images
       setAnswer(''); // Clear answer as well on confirmation
       setImages([]); // Clear images after confirmation
       setError(null);
@@ -107,6 +115,10 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   };
 
   const isPaused = executionStatus === 'paused';
+
+  const isRegularQuestion =
+    !question?.confirmation ||
+    (!question.confirmation.confirmLabel && !question.confirmation.declineLabel && !question.confirmation.secret);
 
   return (
     <HandlerContainer>
@@ -151,7 +163,7 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
               </ConfirmButton>
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
-          ) : !question.confirmation ? (
+          ) : isRegularQuestion ? (
             <ButtonGroup>
               <SubmitButton type="submit" disabled={!answer.trim() && images.length === 0}>
                 Submit Answer
@@ -160,6 +172,13 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
                 <UploadIcon />
               </UploadButton>
               <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
+              {question.confirmation?.promptActionType && (
+                <PromptActionTypeSelector
+                  value={selectedActionType}
+                  onChange={setSelectedActionType}
+                  disabled={false}
+                />
+              )}
               {suggestions && suggestions.length > 0 && (
                 <DropdownWrapper ref={dropdownRef}>
                   <DropdownButton type="button" onClick={toggleDropdown}>
@@ -182,12 +201,19 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
           ) : (
             <ButtonGroup>
               <ConfirmButton onClick={() => handleConfirmation(true)}>
-                {question.confirmation.confirmLabel}
+                {question.confirmation?.confirmLabel}
               </ConfirmButton>
               <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-                {question.confirmation.declineLabel}
+                {question.confirmation?.declineLabel}
               </ConfirmButton>
               <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
+              {question.confirmation?.promptActionType && (
+                <PromptActionTypeSelector
+                  value={selectedActionType}
+                  onChange={setSelectedActionType}
+                  disabled={false}
+                />
+              )}
               <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
             </ButtonGroup>
           )}

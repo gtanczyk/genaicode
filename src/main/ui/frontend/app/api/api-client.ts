@@ -225,13 +225,14 @@ export const answerQuestion = async (
   questionId: string,
   answer: string,
   confirmed: boolean | undefined,
-  options?: CodegenOptions, // Made options optional to match service
-  images?: File[], // Add images parameter
+  options?: CodegenOptions,
+  images?: File[],
+  selectedActionType?: string,
 ): Promise<void> => {
   const formData = new FormData();
   formData.append('questionId', questionId);
   formData.append('answer', answer);
-  // FormData expects string values, convert boolean/undefined
+
   if (confirmed !== undefined) {
     formData.append('confirmed', String(confirmed));
   }
@@ -240,9 +241,11 @@ export const answerQuestion = async (
   }
   if (images && images.length > 0) {
     images.forEach((image) => {
-      // Use the same field name ('images') as expected by multer on the backend
       formData.append('images', image);
     });
+  }
+  if (selectedActionType) {
+    formData.append('selectedActionType', selectedActionType);
   }
 
   await api.post('/answer-question', formData, {
@@ -275,6 +278,11 @@ export const deleteIteration = async (iterationId: string): Promise<void> => {
 export const getAvailableAiServices = async (): Promise<AiServiceType[]> => {
   const response = await api.get('/available-ai-services');
   return response.data.services as AiServiceType[];
+};
+
+export const getActionTypeOptions = async (): Promise<string[]> => {
+  const response = await api.get('/action-type-options');
+  return response.data.options;
 };
 
 /**

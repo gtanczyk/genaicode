@@ -18,6 +18,9 @@ export function createRouter(service: Service) {
     next();
   });
 
+  // Middleware to parse JSON bodies, needed for answer-question with actionType
+  router.use(express.json());
+
   // Register all endpoints
   for (const handler of handlers) {
     handler(router, service);

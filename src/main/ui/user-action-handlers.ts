@@ -2,7 +2,11 @@ import { registerConfirmHandler, registerInputHandler, registerSecretHandler } f
 import { Service } from './backend/service.js';
 
 export function registerUserActionHandlers(service: Service) {
-  registerInputHandler((_, message) => service.askQuestion(message, undefined));
+  registerInputHandler((_, message, promptActionType) =>
+    service.askQuestion(message, {
+      promptActionType,
+    }),
+  );
   registerConfirmHandler(async (props) => {
     const response = await service.askQuestion(props.prompt, {
       defaultValue: props.defaultValue,

@@ -5,9 +5,10 @@ import { ActionHandlerProps, ActionResult } from '../step-ask-question-types.js'
 registerActionHandler('sendMessage', handleSendMessage);
 
 export async function handleSendMessage({ askQuestionCall, options }: ActionHandlerProps): Promise<ActionResult> {
-  const response = await askUserForInput('Your answer', '', options);
+  const response = await askUserForInput('Your answer', '', options, true);
   return {
     breakLoop: false,
+    forceActionType: response.selectedActionType,
     items: [
       {
         assistant: { type: 'assistant', text: askQuestionCall.args?.message ?? '' },

@@ -61,6 +61,7 @@ export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
     images?: File[],
     confirmed?: boolean,
     aiService?: AiServiceType,
+    selectedActionType?: string,
   ) => {
     // Fetch current question directly if needed, though context might already have it
     const currentQuestionFromContext = await getCurrentQuestion(); // Or use context.currentQuestion
@@ -71,7 +72,15 @@ export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
         if (codegenOptions) {
           const updatedOptions = { ...codegenOptions, aiService: aiService ?? codegenOptions.aiService };
           setCodegenOptions(updatedOptions);
-          await answerQuestion(currentQuestionFromContext.id, answer, confirmed, updatedOptions, images);
+          // Forward optional manual action selection parameters to backend.
+          await answerQuestion(
+            currentQuestionFromContext.id,
+            answer,
+            confirmed,
+            updatedOptions,
+            images,
+            selectedActionType,
+          );
         } else {
           console.error('Codegen options not available for submitting answer');
         }

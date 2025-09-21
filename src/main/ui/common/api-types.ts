@@ -19,6 +19,7 @@ export type ConfirmationProps =
       declineLabel?: string;
       defaultValue?: boolean;
       secret?: boolean;
+      promptActionType?: boolean;
     }
   | undefined;
 

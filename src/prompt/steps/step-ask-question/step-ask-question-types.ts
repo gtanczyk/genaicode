@@ -248,6 +248,7 @@ export interface UserItem {
 
 export interface ActionResult {
   breakLoop: boolean;
+  forceActionType?: ActionType;
   stepResult?: FunctionCall[];
   items: Array<{
     assistant: AssistantItem;

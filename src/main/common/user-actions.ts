@@ -1,3 +1,4 @@
+import { ActionType } from '../..';
 import { PromptItemImage } from '../../ai-service/common-types';
 import { CodegenOptions } from '../codegen-types';
 
@@ -5,14 +6,16 @@ export type InputHandlerResponse = {
   answer: string;
   images?: PromptItemImage[];
   options?: CodegenOptions;
+  selectedActionType?: ActionType | undefined;
 };
 
-type InputHandler = (prompt: string, message: string) => Promise<InputHandlerResponse>;
+type InputHandler = (prompt: string, message: string, promptActionType?: boolean) => Promise<InputHandlerResponse>;
 
 export type ConfirmHandlerResponse = {
   confirmed: boolean | undefined;
   options?: CodegenOptions;
   answer?: string;
+  selectedActionType?: ActionType | undefined;
 };
 
 export type ConfirmHandlerProps = {
@@ -30,8 +33,9 @@ export async function askUserForInput(
   prompt: string,
   message: string,
   options: CodegenOptions,
+  promptActionType?: boolean,
 ): Promise<InputHandlerResponse> {
-  return handleOptionsUpdate(await inputHandler(prompt, message), options);
+  return handleOptionsUpdate(await inputHandler(prompt, message, promptActionType), options);
 }
 
 export async function askUserForConfirmation(

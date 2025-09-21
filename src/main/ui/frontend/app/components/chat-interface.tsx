@@ -28,7 +28,13 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
   currentQuestion: Question | null;
   codegenOptions: CodegenOptions;
-  onQuestionSubmit: (answer: string, images?: File[], confirmed?: boolean, aiService?: AiServiceType) => void;
+  onQuestionSubmit: (
+    answer: string,
+    images?: File[],
+    confirmed?: boolean,
+    aiService?: AiServiceType,
+    selectedActionType?: string,
+  ) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
   executionStatus: 'idle' | 'executing' | 'paused';

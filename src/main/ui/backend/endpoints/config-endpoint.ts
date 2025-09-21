@@ -1,6 +1,7 @@
 import { registerEndpoint } from '../api-handlers.js';
 import { rcConfig as globalRcConfig } from '../../../config.js';
 import { getSupportedAiServices } from '../../../codegen-utils.js';
+import { getActionTypeOptions } from '../../../../prompt/function-defs/ask-question.js';
 
 registerEndpoint((router, service) => {
   // Get default CodegenOptions
@@ -33,6 +34,17 @@ registerEndpoint((router, service) => {
     } catch (error) {
       console.error('Error fetching available AI services:', error);
       res.status(500).json({ error: 'An error occurred while fetching available AI services' });
+    }
+  });
+
+  // Fetch available action types for questions
+  router.get('/action-type-options', async (_, res) => {
+    try {
+      const actionOptions = getActionTypeOptions();
+      res.json({ options: actionOptions });
+    } catch (error) {
+      console.error('Error fetching action type options:', error);
+      res.status(500).json({ error: 'An error occurred while fetching action type options' });
     }
   });
 });

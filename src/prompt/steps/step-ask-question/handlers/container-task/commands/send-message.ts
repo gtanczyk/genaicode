@@ -38,7 +38,7 @@ export async function handleSendMessage(
 
   putAssistantMessage(args.message);
   if (args.waitForUserResponse) {
-    const response = await askUserForInput('Your answer', '', options);
+    const response = await askUserForInput('Your answer', '', options, true);
     putUserMessage(response.answer);
     taskExecutionPrompt.push({
       type: 'user',

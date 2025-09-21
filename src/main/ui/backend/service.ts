@@ -15,6 +15,7 @@ import { FunctionCall, PromptImageMediaType, PromptItemImage } from '../../../ai
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
+import { ActionType } from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 export interface ImageData {
   buffer: Buffer;
@@ -29,6 +30,7 @@ interface AskQuestionConversationItem {
   confirmed: boolean | undefined;
   confirmation: ConfirmationProps;
   images?: PromptItemImage[];
+  selectedActionType?: ActionType | undefined;
 }
 
 export class Service implements AppContextProvider {
@@ -260,6 +262,7 @@ export class Service implements AppContextProvider {
     confirmed: boolean | undefined;
     options: CodegenOptions;
     images?: PromptItemImage[];
+    selectedActionType?: ActionType | undefined;
   }> {
     const questionId = Date.now().toString();
     this.currentQuestion = {
@@ -278,8 +281,8 @@ export class Service implements AppContextProvider {
       throw new Error(`Conversation item not found for question ID: ${questionId}`);
     }
 
-    const { answer, confirmed, images } = conversationItem;
-    return { answer, confirmed, images, options: this.codegenOptions };
+    const { answer, confirmed, images, selectedActionType } = conversationItem;
+    return { answer, confirmed, images, options: this.codegenOptions, selectedActionType };
   }
 
   async answerQuestion(
@@ -288,6 +291,7 @@ export class Service implements AppContextProvider {
     confirmed: boolean | undefined,
     images?: ImageData[], // Accept raw image data from the endpoint
     options?: CodegenOptions,
+    selectedActionType?: ActionType | undefined,
   ): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
       // Update codegenOptions if provided
@@ -309,6 +313,7 @@ export class Service implements AppContextProvider {
         confirmed,
         confirmation: this.currentQuestion.confirmation,
         images: processedImages, // Store the processed images
+        selectedActionType,
       });
 
       // Clear the current question now that it's answered
