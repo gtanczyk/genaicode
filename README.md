@@ -74,7 +74,9 @@ GenAIcode supports various command-line options to customize its behavior:
 
 ## Video Generation
 
-GenAIcode includes a built-in tool to generate animated visualization videos of your repository's development history using [Gource](https://gource.io/).
+GenAIcode includes built-in tools to generate animated visualization videos of your repository's development history using [Gource](https://gource.io/).
+
+### Single Repository Visualization
 
 To generate a video showing the evolution of your project:
 
@@ -82,12 +84,22 @@ To generate a video showing the evolution of your project:
 npm run generate-video
 ```
 
-This creates a high-quality MP4 video (`./videos/genaicode-development-history.mp4`) showing:
+### Multi-Repository Visualization
+
+To generate a combined video showing development across multiple repositories:
+
+```bash
+npm run generate-multi-repo-video
+```
+
+This creates videos showing:
 
 - Animated file creation, modification, and deletion
 - Developer activity over time
 - Project structure evolution
 - Timeline with dates
+
+The generated videos are perfect for presentations, documentation, or understanding project development patterns. See [scripts/README.md](scripts/README.md) for single repository options and [scripts/MULTI_REPO_README.md](scripts/MULTI_REPO_README.md) for multi-repository configuration and usage.
 
 The generated video is perfect for presentations, documentation, or understanding project development patterns. See [scripts/README.md](scripts/README.md) for detailed information and customization options.
 
