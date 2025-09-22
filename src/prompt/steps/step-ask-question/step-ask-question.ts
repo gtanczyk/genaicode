@@ -57,7 +57,7 @@ export async function executeStepAskQuestion(
   abortController?.signal.addEventListener('abort', () => {
     aborted = true;
   });
-  let forcedActionType: ActionType | undefined = undefined;
+  let forcedActionType: ActionType | undefined = options.initialActionType;
 
   while (!aborted) {
     try {
@@ -71,7 +71,6 @@ export async function executeStepAskQuestion(
             name: 'askQuestion',
             id: 'forced-action',
             args: {
-              message: 'Proceeding with the selected action: ' + forcedActionType,
               actionType: forcedActionType,
             } as AskQuestionCall['args'],
           }

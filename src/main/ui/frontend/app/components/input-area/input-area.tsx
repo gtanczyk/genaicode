@@ -52,6 +52,13 @@ export const InputArea: React.FC<InputAreaProps> = (props) => {
     });
   };
 
+  const handleInitialActionTypeChange = (actionType: string | undefined) => {
+    onOptionsChange({
+      ...codegenOptions,
+      initialActionType: actionType as CodegenOptions['initialActionType'],
+    });
+  };
+
   return (
     <InputContainer>
       <TextareaContainer>
@@ -74,6 +81,7 @@ export const InputArea: React.FC<InputAreaProps> = (props) => {
         onSubmit={handleSubmit}
         onUploadClick={handleUploadClick}
         onAiServiceChange={handleAiServiceChange}
+        onInitialActionTypeChange={handleInitialActionTypeChange}
         options={codegenOptions}
         disabled={!input.trim() && images.length === 0}
       />

@@ -50,6 +50,7 @@ export const cheap = params.includes('--cheap');
 export const interactive = params.includes('--interactive');
 export const ui = params.includes('--ui');
 export const askQuestion = (interactive || ui) && !params.includes('--disable-ask-question'); // Default enabled in interactive/ui
+export const initialActionType = params.find((param) => param.startsWith('--initial-action-type='))?.split('=')[1];
 export const disableConversationSummary = params.includes('--disable-conversation-summary');
 
 // Add support for --help option

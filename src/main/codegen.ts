@@ -57,6 +57,7 @@ export async function runCodegen(isDev = false): Promise<void> {
     contentMask: cliParams.contentMask,
     ignorePatterns: cliParams.ignorePatterns,
     askQuestion: cliParams.askQuestion,
+    initialActionType: cliParams.initialActionType as CodegenOptions['initialActionType'],
     disableCache: cliParams.disableCache,
     interactive: cliParams.interactive,
     ui: cliParams.ui,

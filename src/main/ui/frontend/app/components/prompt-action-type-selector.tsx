@@ -8,6 +8,35 @@ interface PromptActionTypeSelectorProps {
   disabled?: boolean;
 }
 
+const humanReadableActionTypes: Record<string, string> = {
+  sendMessage: 'Send Message',
+  updateFile: 'Update File',
+  createFile: 'Create File',
+  confirmCodeGeneration: 'Generate Code',
+  runProjectCommand: 'Run Command',
+  searchCode: 'Search Code',
+  requestFilesContent: 'Request Files',
+  endConversation: 'End Conversation',
+  compoundAction: 'Compound Action',
+  runContainerTask: 'Run Container Task',
+  requestPermissions: 'Request Permissions',
+  performAnalysis: 'Perform Analysis',
+  contextOptimization: 'Optimize Context',
+  reasoningInference: 'Reasoning Inference',
+  genaicodeHelp: 'GenAIcode Help',
+  conversationGraph: 'Conversation Graph',
+  generateImage: 'Generate Image',
+  readExternalFiles: 'Read External Files',
+  exploreExternalDirectories: 'Explore External Dirs',
+  removeFilesFromContext: 'Remove Files from Context',
+  requestGitContext: 'Request Git Context',
+  webSearch: 'Web Search',
+};
+
+const toHumanReadable = (str: string) => {
+  return humanReadableActionTypes[str] || str;
+};
+
 export const PromptActionTypeSelector: React.FC<PromptActionTypeSelectorProps> = ({ value, onChange, disabled }) => {
   const [options, setOptions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,10 +72,10 @@ export const PromptActionTypeSelector: React.FC<PromptActionTypeSelectorProps> =
         onChange={handleChange}
         disabled={disabled || isLoading || error !== null}
       >
-        <option value="">Select Action Type</option>
+        <option value="">Auto mode</option>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {toHumanReadable(option)}
           </option>
         ))}
       </Select>

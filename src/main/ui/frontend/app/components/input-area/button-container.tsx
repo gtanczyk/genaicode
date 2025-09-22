@@ -3,11 +3,13 @@ import styled from 'styled-components';
 import { AiServiceSelector } from './ai-service-selector';
 import { AiServiceType, CodegenOptions } from '../../../../../codegen-types';
 import { UploadIcon } from '../icons';
+import { PromptActionTypeSelector } from '../prompt-action-type-selector.js';
 
 interface ButtonContainerProps {
   onSubmit: () => void;
   onUploadClick: () => void;
   onAiServiceChange: (aiService: AiServiceType) => void;
+  onInitialActionTypeChange: (value: string | undefined) => void;
   options: CodegenOptions;
   disabled: boolean;
 }
@@ -16,6 +18,7 @@ export const ButtonContainer: React.FC<ButtonContainerProps> = ({
   onSubmit,
   onUploadClick,
   onAiServiceChange,
+  onInitialActionTypeChange,
   options,
   disabled,
 }) => {
@@ -28,6 +31,10 @@ export const ButtonContainer: React.FC<ButtonContainerProps> = ({
         <UploadIcon />
       </Button>
       <AiServiceSelector value={options.aiService} onChange={onAiServiceChange} />
+      <PromptActionTypeSelector
+        value={options.initialActionType}
+        onChange={(v) => onInitialActionTypeChange(v || undefined)}
+      />
     </ButtonContainerWrapper>
   );
 };
@@ -41,7 +48,6 @@ const Button = styled.button`
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s ease;
-  margin-right: 10px;
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.buttonHoverBg};
@@ -70,4 +76,5 @@ const ButtonContainerWrapper = styled.div`
   display: flex;
   justify-content: flex-start;
   margin-top: 10px;
+  gap: 10px;
 `;
