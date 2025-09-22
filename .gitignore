@@ -16,8 +16,7 @@ coverage
 
 src/prompt-debug/current-prompt.js
 
-# Generated videos
-videos/
+
 
 # Editor directories and files
 .vscode
