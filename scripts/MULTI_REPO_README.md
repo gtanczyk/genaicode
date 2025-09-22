@@ -31,13 +31,13 @@ Edit the `REPOSITORIES` array in the script to include your repositories:
 
 ```bash
 REPOSITORIES=(
-    "https://github.com/username/repo1:repo1:#FF6B6B"
-    "https://github.com/username/repo2:repo2:#4ECDC4"
-    "https://github.com/username/repo3:repo3:#45B7D1"
+    "https://github.com/username/repo1|repo1|#FF6B6B"
+    "https://github.com/username/repo2|repo2|#4ECDC4"
+    "https://github.com/username/repo3|repo3|#45B7D1"
 )
 ```
 
-Format: `"URL:NAME:COLOR"`
+Format: `"URL|NAME|COLOR"`
 - **URL**: GitHub repository URL
 - **NAME**: Short name for the repository (used in file paths)
 - **COLOR**: Hex color code for visual distinction

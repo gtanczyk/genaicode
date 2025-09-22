@@ -17,10 +17,10 @@ FPS="60"
 SECONDS_PER_DAY="0.1"
 
 # Repository configuration
-# Add repositories in the format: "URL:NAME:COLOR"
+# Add repositories in the format: "URL|NAME|COLOR"
 REPOSITORIES=(
-    "https://github.com/gtanczyk/genaicode:genaicode:#FF6B6B"
-    "https://github.com/gamedevpl/www.gamedev.pl:gamedev:#4ECDC4"
+    "https://github.com/gtanczyk/genaicode|genaicode|#FF6B6B"
+    "https://github.com/gamedevpl/www.gamedev.pl|gamedev|#4ECDC4"
 )
 
 # Colors and styling
@@ -75,7 +75,15 @@ clone_and_generate_log() {
 get_date_range() {
     cd "/home/runner/work/genaicode/genaicode"
     
-    # Get the earliest and latest commit dates
+    # Ensure we have full history
+    if git rev-parse --is-shallow-repository >/dev/null 2>&1; then
+        IS_SHALLOW=$(git rev-parse --is-shallow-repository)
+        if [ "$IS_SHALLOW" = "true" ]; then
+            git fetch --unshallow > /dev/null 2>&1
+        fi
+    fi
+    
+    # Get the earliest and latest commit dates from the full history
     EARLIEST_DATE=$(git log --reverse --format="%ai" | head -1 | cut -d' ' -f1)
     LATEST_DATE=$(git log --format="%ai" | head -1 | cut -d' ' -f1)
     
@@ -121,7 +129,7 @@ echo "🗓️ Using date range: $START_DATE to $END_DATE"
 
 # Process each repository
 for repo_config in "${REPOSITORIES[@]}"; do
-    IFS=':' read -r repo_url repo_name repo_color <<< "$repo_config"
+    IFS='|' read -r repo_url repo_name repo_color <<< "$repo_config"
     
     # Clean up any extra slashes or formatting issues
     repo_url=$(echo "$repo_url" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
@@ -172,7 +180,7 @@ xvfb-run -a gource \
     --stop-at-end \
     --font-size 22 \
     --output-framerate "$FPS" \
-    --$RESOLUTION \
+    --${RESOLUTION} \
     --start-date "$START_DATE" \
     --stop-date "$END_DATE" \
     --output-ppm-stream - \
