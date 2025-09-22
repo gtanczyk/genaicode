@@ -30,6 +30,17 @@ if [ ! -d ".git" ]; then
     exit 1
 fi
 
+# Ensure we have full Git history (unshallow if needed)
+echo "🔍 Checking Git history completeness..."
+if git rev-parse --is-shallow-repository >/dev/null 2>&1; then
+    IS_SHALLOW=$(git rev-parse --is-shallow-repository)
+    if [ "$IS_SHALLOW" = "true" ]; then
+        echo "📚 Repository is shallow, fetching full history..."
+        git fetch --unshallow
+        echo "✅ Full history fetched"
+    fi
+fi
+
 echo "📊 Repository has $(git log --oneline | wc -l) commits"
 
 # Create smaller logo if it doesn't exist

@@ -73,10 +73,17 @@ You can modify the script to customize various aspects:
 
 The script works by:
 
-1. Setting up a virtual display using Xvfb for headless operation
-2. Running Gource to generate PPM frame stream
-3. Piping the output directly to FFmpeg for H.264 encoding
-4. Cleaning up temporary processes
+1. Checking Git repository state and ensuring full history is available
+2. Automatically fetching complete history if repository is shallow
+3. Creating optimally-sized logo for video overlay (if needed)
+4. Setting up a virtual display using Xvfb for headless operation
+5. Running Gource to generate PPM frame stream
+6. Piping the output directly to FFmpeg for H.264 encoding
+7. Cleaning up temporary processes
+
+### Full History Support
+
+The script automatically detects shallow Git repositories and fetches the complete history to ensure comprehensive visualization. This means you'll always get a video showing the full development timeline, regardless of how the repository was cloned.
 
 ## Troubleshooting
 
