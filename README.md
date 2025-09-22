@@ -72,6 +72,25 @@ GenAIcode supports various command-line options to customize its behavior:
 - `--disable-cache`: Disables caching for the application, which can be useful if caching is causing issues or if you want to ensure fresh data is used for each operation.
 - `--help`: Displays the help message with all available options.
 
+## Video Generation
+
+GenAIcode includes a built-in tool to generate animated visualization videos of your repository's development history using [Gource](https://gource.io/).
+
+To generate a video showing the evolution of your project:
+
+```bash
+npm run generate-video
+```
+
+This creates a high-quality MP4 video (`./videos/genaicode-development-history.mp4`) showing:
+
+- Animated file creation, modification, and deletion
+- Developer activity over time
+- Project structure evolution
+- Timeline with dates
+
+The generated video is perfect for presentations, documentation, or understanding project development patterns. See [scripts/README.md](scripts/README.md) for detailed information and customization options.
+
 ## Configuration (.genaicoderc)
 
 The `.genaicoderc` file allows you to configure various aspects of GenAIcode's behavior. Here are the available options:

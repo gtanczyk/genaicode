@@ -55,7 +55,8 @@
     "type-check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json && npm run build-frontend",
     "build-frontend": "vite build src/main/ui/frontend",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "generate-video": "./scripts/generate-gource-video.sh"
   },
   "devDependencies": {
     "@inquirer/type": "^1.5.5",
