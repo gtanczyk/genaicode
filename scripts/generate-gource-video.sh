@@ -12,7 +12,7 @@ TEMP_FILE="/tmp/gource_output.ppm"
 
 # Colors and styling
 USER_IMAGE_DIR="./media"
-LOGO_IMAGE="./media/logo.png"
+LOGO_IMAGE="./media/logo-small.png"
 
 # Video settings
 RESOLUTION="1920x1080"
@@ -31,6 +31,18 @@ if [ ! -d ".git" ]; then
 fi
 
 echo "📊 Repository has $(git log --oneline | wc -l) commits"
+
+# Create smaller logo if it doesn't exist
+if [ ! -f "$LOGO_IMAGE" ] && [ -f "./media/logo.png" ]; then
+    echo "🖼️  Creating smaller logo for video overlay..."
+    if command -v convert > /dev/null 2>&1; then
+        convert "./media/logo.png" -resize 300x171 "$LOGO_IMAGE"
+        echo "✅ Created smaller logo: $LOGO_IMAGE"
+    else
+        echo "⚠️  ImageMagick not found. Using original logo (may appear large)."
+        LOGO_IMAGE="./media/logo.png"
+    fi
+fi
 
 # Generate the video
 echo "🎨 Creating visualization..."
