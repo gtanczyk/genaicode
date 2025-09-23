@@ -39,6 +39,7 @@ vi.mock('../cli/cli-params.js', () => ({
   cheap: false,
   taskFile: undefined,
   askQuestion: false,
+  initialActionType: undefined,
   disableContextOptimization: true,
   geminiBlockNone: undefined,
   contentMask: undefined,
