@@ -166,7 +166,7 @@ echo "🎨 Creating multi-repository visualization..."
 # Use xvfb-run for headless operation
 xvfb-run -a gource \
     "$COMBINED_LOG" \
-    --title "Multi-Repository Development History" \
+    --title "github.com/gtanczyk" \
     --logo "$LOGO_IMAGE" \
     --date-format "%Y-%m-%d" \
     --seconds-per-day "$SECONDS_PER_DAY" \
