@@ -38,6 +38,7 @@ import { getCompoundActionDef } from './function-defs/compound-action.js';
 import { runContainerTaskDef } from './function-defs/run-container-task.js';
 import { getRunProjectCommandDef } from './function-defs/run-project-command.js';
 import { webSearchDef } from './function-defs/web-search.js';
+import { getRunBashCommandDef } from './function-defs/run-bash-command.js';
 
 /**
  * Function definitions for function calling feature
@@ -80,6 +81,7 @@ export function getFunctionDefs(): FunctionDef[] {
     getCompoundActionDef(),
     runContainerTaskDef,
     getRunProjectCommandDef(),
+    getRunBashCommandDef(),
     webSearchDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {

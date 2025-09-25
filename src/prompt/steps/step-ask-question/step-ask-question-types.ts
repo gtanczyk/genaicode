@@ -33,6 +33,7 @@ export type ActionType =
   | 'runContainerTask'
   | 'compoundAction'
   | 'runProjectCommand'
+  | 'runBashCommand'
   | 'webSearch'
   | PluginActionType;
 
@@ -207,6 +208,13 @@ export type CompoundActionListArgs = {
 export type RunProjectCommandArgs = {
   name: string;
   args?: string[];
+  env?: Record<string, string>;
+  workingDirOverride?: string;
+  truncMode?: 'first' | 'last' | 'summarize' | 'full';
+};
+
+export type RunBashCommandArgs = {
+  command: string;
   env?: Record<string, string>;
   workingDirOverride?: string;
   truncMode?: 'first' | 'last' | 'summarize' | 'full';

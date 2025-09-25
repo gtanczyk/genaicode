@@ -39,6 +39,7 @@ import './handlers/handle-request-git-context.js';
 import './handlers/handle-web-search.js';
 import './handlers/handle-compound-action.js';
 import './handlers/handle-project-command.js';
+import './handlers/handle-run-bash-command.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,

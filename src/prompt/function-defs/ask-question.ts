@@ -38,6 +38,7 @@ ${
 - conversationGraph: Use for complex conversations needing multiple steps and decisions.
 - compoundAction: Use when the user's request implies multiple *distinct*, *predefined* file operations (create, update, delete, move) or image manipulations that can be batched as a single logical step *within* the conversation flow. This action triggers an internal AI call to generate a list of specific operations based on the user's request, which is then shown to the user for confirmation before execution. **Important**: This is *not* for complex feature implementation or tasks requiring significant analysis and intertwined code generation (use **confirmCodeGeneration** for those instead).
 - runProjectCommand: Execute a named project command (from .genaicoderc projectCommands or auto-discovered scripts, available commands: ${Object.keys(rcConfig.projectCommands || {}).join(', ')}). Supports arguments and environment variables.
+- runBashCommand: Execute a bash command. Supports arguments and environment variables.
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 - reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
@@ -68,6 +69,7 @@ export function getActionTypeOptions(): readonly ActionType[] {
     'requestFilesFragments',
     ...(rcConfig.featuresEnabled?.appContext ? (['pullAppContext', 'pushAppContext'] as const) : []),
     'runProjectCommand',
+    'runBashCommand',
     ...(rcConfig.featuresEnabled?.containerTask ? (['runContainerTask'] as const) : []),
     ...Array.from(getRegisteredActionHandlers().keys()),
     'genaicodeHelp',
