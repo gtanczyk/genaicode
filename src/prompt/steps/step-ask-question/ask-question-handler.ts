@@ -1,7 +1,6 @@
 import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handlers } from './step-ask-question-handlers.js';
-import { ActionHandler } from './step-ask-question-types';
-import { ActionType } from '../../../ai-service/common-types.js';
+import { ActionHandler, ActionType } from './step-ask-question-types';
 
 export function getActionHandler(actionType: ActionType): ActionHandler {
   // First, check if there's a plugin-provided handler for this action type

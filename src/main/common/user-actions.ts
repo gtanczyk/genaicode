@@ -1,4 +1,5 @@
-import { ActionType, PromptItemImage } from '../../ai-service/common-types';
+import { ActionType } from '../..';
+import { PromptItemImage } from '../../ai-service/common-types';
 import { CodegenOptions } from '../codegen-types';
 
 export type InputHandlerResponse = {
