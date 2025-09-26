@@ -1,5 +1,5 @@
-import { ActionType } from '../..';
 import { PromptItemImage } from '../../ai-service/common-types';
+import { ActionType } from '../../prompt/steps/step-ask-question/step-ask-question-types';
 import { CodegenOptions } from '../codegen-types';
 
 export type InputHandlerResponse = {
