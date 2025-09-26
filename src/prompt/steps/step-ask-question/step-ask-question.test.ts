@@ -33,6 +33,7 @@ describe('step-ask-question', () => {
       runContainerTask: true,
       compoundAction: true,
       runProjectCommand: true,
+      runBashCommand: true,
       webSearch: true,
     };
 

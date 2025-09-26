@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-142] 2025-09-25: Update ask-question test to include runBashCommand action type.
 - [x] [GEN-141] 2025-09-21: Action Selector
 - [x] [GEN-140] 2025-09-17: Git context: working copy changes and diffs support.
 - [x] [GEN-139] 2025-09-16: Project commands
