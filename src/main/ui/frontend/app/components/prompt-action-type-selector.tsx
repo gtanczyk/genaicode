@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getActionTypeOptions } from '../api/api-client.js';
+import { ActionType } from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 interface PromptActionTypeSelectorProps {
   value: string | undefined;
@@ -8,12 +9,13 @@ interface PromptActionTypeSelectorProps {
   disabled?: boolean;
 }
 
-const humanReadableActionTypes: Record<string, string> = {
+const humanReadableActionTypes: Record<ActionType, string> = {
   sendMessage: 'Send Message',
   updateFile: 'Update File',
   createFile: 'Create File',
   confirmCodeGeneration: 'Generate Code',
   runProjectCommand: 'Run Command',
+  runBashCommand: 'Run Bash Command',
   searchCode: 'Search Code',
   requestFilesContent: 'Request Files',
   endConversation: 'End Conversation',
@@ -31,14 +33,19 @@ const humanReadableActionTypes: Record<string, string> = {
   removeFilesFromContext: 'Remove Files from Context',
   requestGitContext: 'Request Git Context',
   webSearch: 'Web Search',
+  codeGeneration: 'Code Generation',
+  contextCompression: 'Compress Context',
+  pullAppContext: 'Pull App Context',
+  pushAppContext: 'Push App Context',
+  requestFilesFragments: 'Request Files Fragments',
 };
 
-const toHumanReadable = (str: string) => {
+const toHumanReadable = (str: ActionType) => {
   return humanReadableActionTypes[str] || str;
 };
 
 export const PromptActionTypeSelector: React.FC<PromptActionTypeSelectorProps> = ({ value, onChange, disabled }) => {
-  const [options, setOptions] = useState<string[]>([]);
+  const [options, setOptions] = useState<ActionType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

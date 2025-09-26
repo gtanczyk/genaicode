@@ -9,6 +9,7 @@ import {
   ServiceConfigUpdate,
 } from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common-types.js';
+import { ActionType } from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 const API_BASE_URL = '/api';
 
@@ -280,7 +281,7 @@ export const getAvailableAiServices = async (): Promise<AiServiceType[]> => {
   return response.data.services as AiServiceType[];
 };
 
-export const getActionTypeOptions = async (): Promise<string[]> => {
+export const getActionTypeOptions = async (): Promise<ActionType[]> => {
   const response = await api.get('/action-type-options');
   return response.data.options;
 };
