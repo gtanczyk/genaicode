@@ -1,4 +1,5 @@
-import { ActionType, ActionHandler } from './step-ask-question-types.js';
+import { ActionHandler } from './step-ask-question-types.js';
+import { ActionType } from '../../../ai-service/common-types.js';
 
 export const handlers: Partial<Record<ActionType, ActionHandler>> = {};
 

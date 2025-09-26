@@ -1,7 +1,8 @@
 import { GenerateContentFunction } from '../ai-service/common-types.js';
 import { FunctionCall, GenerateContentHook } from '../ai-service/common-types.js';
 import { FunctionDef } from '../ai-service/common-types.js';
-import { ActionHandler, ActionType } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionType } from '../ai-service/common-types.js';
 import { AiServiceType, ServiceConfig } from '../ai-service/service-configurations-types.js';
 export { type AiServiceType, type ServiceConfig } from '../ai-service/service-configurations-types.js';
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import './step-ask-question.js';
 import { handlers } from './step-ask-question-handlers.js';
-import { ActionType } from './step-ask-question-types.js';
+import { ActionType } from '../../../ai-service/common-types.js';
 
 describe('step-ask-question', () => {
   it('should have handlers registered for all action types', () => {

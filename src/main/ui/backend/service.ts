@@ -15,7 +15,7 @@ import { FunctionCall, PromptImageMediaType, PromptItemImage } from '../../../ai
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
-import { ActionType } from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionType } from '../../../ai-service/common-types.js';
 
 export interface ImageData {
   buffer: Buffer;

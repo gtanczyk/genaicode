@@ -1,3 +1,5 @@
+import { PluginActionType } from './service-configurations-types';
+
 export enum ModelType {
   /** Default model, typically the most capable but also most expensive */
   DEFAULT = 'default',
@@ -114,3 +116,34 @@ export type GenerateImageFunction = (
   size: { width: number; height: number },
   modelType: ModelType.DEFAULT | ModelType.CHEAP,
 ) => Promise<string>;
+
+export type ActionType =
+  | 'codeGeneration'
+  | 'sendMessage'
+  | 'generateImage'
+  | 'requestPermissions'
+  | 'readExternalFiles'
+  | 'requestFilesContent'
+  | 'removeFilesFromContext'
+  | 'exploreExternalDirectories'
+  | 'confirmCodeGeneration'
+  | 'endConversation'
+  | 'contextOptimization'
+  | 'contextCompression'
+  | 'searchCode'
+  | 'updateFile'
+  | 'performAnalysis'
+  | 'createFile'
+  | 'pullAppContext'
+  | 'genaicodeHelp'
+  | 'pushAppContext'
+  | 'reasoningInference'
+  | 'requestFilesFragments'
+  | 'requestGitContext'
+  | 'conversationGraph'
+  | 'runContainerTask'
+  | 'compoundAction'
+  | 'runProjectCommand'
+  | 'runBashCommand'
+  | 'webSearch'
+  | PluginActionType;

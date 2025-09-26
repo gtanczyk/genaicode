@@ -16,7 +16,7 @@ import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { PromptImageMediaType } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
-import { ActionType } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionType } from '../ai-service/common-types.js';
 import { MOCK_SOURCE_CODE_SUMMARIES_LARGE } from './data/mock-source-code-summaries-large.js';
 import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-contents-large.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
