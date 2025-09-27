@@ -1,5 +1,4 @@
 import { test, expect, beforeEach, afterEach, describe } from 'vitest';
-import { ChildProcess } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 
