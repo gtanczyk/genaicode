@@ -9,4 +9,9 @@ const project = path.resolve('./tsconfig.json');
 (await import('ts-node')).register({ project });
 
 const codegen = await import('../src/main/codegen.ts');
-await codegen.runCodegen(true);
+try {
+  await codegen.runCodegen(true);
+} catch (error) {
+  console.error(error);
+  process.exit(1);
+}
