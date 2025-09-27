@@ -50,7 +50,6 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: mockRcConfig,
       configFile: mockRcFilePath,
-      sources: [{ filepath: mockRcFilePath }],
     });
     vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
     vi.mocked(path.dirname).mockReturnValue('/project');
@@ -64,17 +63,27 @@ describe('loadConfiguration', () => {
   });
 
   it('should throw an error if no config is found in a non-interactive session', async () => {
-    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    vi.mocked(loadConfig).mockResolvedValue(null as never);
     setIsTTY(false);
 
     await expect(loadConfiguration()).rejects.toThrow('No GenAIcode config found in any parent directory.');
   });
 
   it('should prompt to create a config if none is found in an interactive session and user confirms', async () => {
-    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    vi.mocked(loadConfig).mockResolvedValue(null as never);
     setIsTTY(true);
     vi.mocked(confirm).mockResolvedValue(true);
-    vi.mocked(detectAndConfigureProfile).mockResolvedValue({ profile: { id: 'test', name: 'Test' } as any });
+    vi.mocked(detectAndConfigureProfile).mockResolvedValue({
+      profile: {
+        id: 'test',
+        name: 'Test',
+        extensions: ['.js', '.ts'],
+        ignorePaths: ['node_modules'],
+        detectionWeight: 1,
+        detect: vi.fn().mockResolvedValue(true),
+      },
+      weight: 1,
+    });
     vi.mocked(path.join).mockReturnValue(`${mockCwd}/.genaicoderc`);
     vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
     vi.mocked(path.dirname).mockReturnValue(mockCwd);
@@ -87,7 +96,7 @@ describe('loadConfiguration', () => {
   });
 
   it('should throw an error if user declines to create a config in an interactive session', async () => {
-    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    vi.mocked(loadConfig).mockResolvedValue(null as never);
     setIsTTY(true);
     vi.mocked(confirm).mockResolvedValue(false);
 
@@ -98,7 +107,6 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: {} as RcConfig, // Missing rootDir
       configFile: mockRcFilePath,
-      sources: [{ filepath: mockRcFilePath }],
     });
 
     await expect(loadConfiguration()).rejects.toThrow(/instance requires property "rootDir"/);
@@ -108,7 +116,6 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: mockRcConfig,
       configFile: mockRcFilePath,
-      sources: [{ filepath: mockRcFilePath }],
     });
     vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
     vi.mocked(path.dirname).mockReturnValue('/project');
