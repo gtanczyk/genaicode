@@ -17,7 +17,13 @@ if (devMode && !forceDist) {
     },
   });
 
-  import('./genaicode-dev.js').catch((e) => console.error(e));
+  import('./genaicode-dev.js').catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 } else {
-  import('../dist/main/codegen.js').then(({ runCodegen }) => runCodegen());
+  import('../dist/main/codegen.js').then(({ runCodegen }) => runCodegen()).catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 }
