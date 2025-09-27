@@ -74,7 +74,7 @@ GenAIcode supports various command-line options to customize its behavior:
 
 ## Configuration (.genaicoderc)
 
-The `.genaicoderc` file allows you to configure various aspects of GenAIcode's behavior. Here are the available options:
+The `.genaicoderc`(or `genaicode.config.ts` + js/mts etc.) file allows you to configure various aspects of GenAIcode's behavior. Here are the available options:
 
 ```json
 {

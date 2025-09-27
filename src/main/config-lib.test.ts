@@ -1,82 +1,119 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { confirm } from '@inquirer/prompts';
+import { loadConfig } from 'c12';
 import { isAncestorDirectory } from '../files/file-utils.js';
-import { findRcFile, parseRcFile } from './config-lib.js';
+import { loadConfiguration } from './config-lib.js';
+import { detectAndConfigureProfile } from '../project-profiles/index.js';
+import { RcConfig } from './config-types.js';
 
+// Mock dependencies
 vi.mock('fs');
 vi.mock('path');
+vi.mock('c12', () => ({
+  loadConfig: vi.fn(),
+}));
+vi.mock('@inquirer/prompts');
 vi.mock('../files/file-utils.js');
+vi.mock('../project-profiles/index.js');
 
-const CODEGENRC_FILENAME = '.genaicoderc';
+const mockCwd = '/project';
+const mockRcFilePath = '/project/.genaicoderc';
+const mockRcConfig: RcConfig = { rootDir: '.' };
 
-// Mock data
-const mockRcContent = JSON.stringify({ rootDir: 'src' });
-const mockRootDir = '/project/src';
-const mockRcFilePath = `/project/${CODEGENRC_FILENAME}`;
+describe('loadConfiguration', () => {
+  let originalIsTTY: boolean | undefined;
 
-// Helper function to mock fs.existsSync
-function mockExistsSync(paths: string[]) {
-  return (p: string | Buffer | URL) => paths.includes(p as string);
-}
-
-// Tests
-
-// Test for findRcFile
-describe('findRcFile', () => {
-  it('should find .genaicoderc in the current or parent directories', async () => {
-    vi.mocked(fs).existsSync.mockImplementation(mockExistsSync([mockRcFilePath]));
-    vi.mocked(path).dirname.mockImplementation((p) => (p === '/project' ? '/' : '/project'));
-    vi.mocked(path).join.mockImplementation((...args) => args.join('/'));
-
-    const result = await findRcFile();
-    expect(result).toBe(mockRcFilePath);
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(process, 'cwd').mockReturnValue(mockCwd);
+    originalIsTTY = process.stdout.isTTY;
+    process.argv = []; // Reset argv for each test
   });
 
-  it('should throw an error if .genaicoderc is not found', () => {
-    vi.mocked(fs).existsSync.mockReturnValue(false);
-    vi.mocked(path).dirname.mockImplementation((p) => (p === '/' ? '/' : '/project'));
-
-    expect(findRcFile()).rejects.toThrowError(`${CODEGENRC_FILENAME} not found in any parent directory`);
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: originalIsTTY,
+      writable: true,
+    });
   });
-});
 
-// Test for parseRcFile
-describe('parseRcFile', () => {
-  it('should parse .genaicoderc and return config with rootDir', () => {
-    vi.mocked(fs).existsSync.mockReturnValue(true);
-    vi.mocked(fs).readFileSync.mockReturnValue(mockRcContent);
-    vi.mocked(path).resolve.mockImplementation((...args) => args.join('/'));
-    vi.mocked(path).dirname.mockReturnValue('/project');
+  const setIsTTY = (value: boolean) => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value,
+      writable: true,
+    });
+  };
+
+  it('should return config when found by c12', async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      config: mockRcConfig,
+      configFile: mockRcFilePath,
+      sources: [{ filepath: mockRcFilePath }],
+    });
+    vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
+    vi.mocked(path.dirname).mockReturnValue('/project');
     vi.mocked(isAncestorDirectory).mockReturnValue(true);
 
-    const result = parseRcFile(mockRcFilePath);
-    expect(result).toEqual({ ...JSON.parse(mockRcContent), rootDir: mockRootDir });
+    const { rcConfig, configFilePath } = await loadConfiguration();
+
+    expect(rcConfig).toEqual({ ...mockRcConfig, rootDir: '/project/.' });
+    expect(configFilePath).toBe(mockRcFilePath);
+    expect(isAncestorDirectory).toHaveBeenCalledWith('/project', '/project/.');
   });
 
-  it('should throw an error if .genaicoderc is missing', () => {
-    vi.mocked(fs).existsSync.mockReturnValue(false);
+  it('should throw an error if no config is found in a non-interactive session', async () => {
+    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    setIsTTY(false);
 
-    expect(() => parseRcFile(mockRcFilePath)).toThrowError(`${CODEGENRC_FILENAME} not found`);
+    await expect(loadConfiguration()).rejects.toThrow('No GenAIcode config found in any parent directory.');
   });
 
-  it('should throw an error if rootDir is not configured', () => {
-    const invalidContent = JSON.stringify({});
-    vi.mocked(fs).existsSync.mockReturnValue(true);
-    vi.mocked(fs).readFileSync.mockReturnValue(invalidContent);
+  it('should prompt to create a config if none is found in an interactive session and user confirms', async () => {
+    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    setIsTTY(true);
+    vi.mocked(confirm).mockResolvedValue(true);
+    vi.mocked(detectAndConfigureProfile).mockResolvedValue({ profile: { id: 'test', name: 'Test' } as any });
+    vi.mocked(path.join).mockReturnValue(`${mockCwd}/.genaicoderc`);
+    vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
+    vi.mocked(path.dirname).mockReturnValue(mockCwd);
 
-    expect(() => parseRcFile(mockRcFilePath)).toThrowError(
-      'Invalid .genaicoderc configuration: instance requires property "rootDir"',
-    );
+    const { configFilePath } = await loadConfiguration();
+
+    expect(confirm).toHaveBeenCalled();
+    expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockCwd}/.genaicoderc`, expect.any(String));
+    expect(configFilePath).toBe(`${mockCwd}/.genaicoderc`);
   });
 
-  it('should throw an error if rootDir is not located inside project directory', () => {
-    vi.mocked(fs).existsSync.mockReturnValue(true);
-    vi.mocked(fs).readFileSync.mockReturnValue(mockRcContent);
-    vi.mocked(path).resolve.mockImplementation((...args) => args.join('/'));
-    vi.mocked(path).dirname.mockReturnValue('/project');
+  it('should throw an error if user declines to create a config in an interactive session', async () => {
+    vi.mocked(loadConfig).mockResolvedValue(undefined);
+    setIsTTY(true);
+    vi.mocked(confirm).mockResolvedValue(false);
+
+    await expect(loadConfiguration()).rejects.toThrow('No GenAIcode config found in any parent directory.');
+  });
+
+  it('should throw an error for invalid config (missing rootDir)', async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      config: {} as RcConfig, // Missing rootDir
+      configFile: mockRcFilePath,
+      sources: [{ filepath: mockRcFilePath }],
+    });
+
+    await expect(loadConfiguration()).rejects.toThrow(/instance requires property "rootDir"/);
+  });
+
+  it('should throw an error if rootDir is outside the project directory', async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      config: mockRcConfig,
+      configFile: mockRcFilePath,
+      sources: [{ filepath: mockRcFilePath }],
+    });
+    vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
+    vi.mocked(path.dirname).mockReturnValue('/project');
     vi.mocked(isAncestorDirectory).mockReturnValue(false);
 
-    expect(() => parseRcFile(mockRcFilePath)).toThrowError('Root dir is not located inside project directory');
+    await expect(loadConfiguration()).rejects.toThrow('Root dir is not located inside project directory');
   });
 });

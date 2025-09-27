@@ -1,16 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
-import { RcConfig, ImportantContext, ModelOverrides, ProjectCommand } from './config-types.js';
-import { findRcFile, parseRcFile, CODEGENRC_FILENAME } from './config-lib.js';
+import { ImportantContext, ModelOverrides, ProjectCommand } from './config-types.js';
+import { loadConfiguration } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
 import { SCHEMA_VIRTUAL_FILE_NAME } from './config-schema.js';
 import { checkDockerAvailability } from '../prompt/steps/step-ask-question/handlers/container-task/utils/docker-check.js';
 
 // Read and parse the configuration
-const rcFilePath: string = await findRcFile();
-export const rcConfig: RcConfig = parseRcFile(rcFilePath);
+const { rcConfig, configFilePath } = await loadConfiguration();
 
 // Initialize popularDependencies with defaults if not present
 if (rcConfig.popularDependencies === undefined) {
@@ -49,7 +48,7 @@ export const IMAGE_ASSET_EXTENSIONS: string[] = ['.png', '.jpg', '.jpeg', '.gif'
 
 export const ignorePaths: string[] = rcConfig.ignorePaths ?? [...DEFAULT_IGNORE_PATHS.JS];
 
-export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext);
+export const importantContext: ImportantContext = processImportantContext(rcConfig.importantContext, configFilePath);
 
 // modelOverrides is directly assigned. Downstream code in service-configurations.ts handles the structure.
 export const modelOverrides: ModelOverrides = rcConfig.modelOverrides ?? {};
@@ -104,20 +103,22 @@ try {
 export const getProjectCommands = (): Map<string, ResolvedProjectCommand> => projectCommandsMap;
 export const getProjectCommand = (name: string): ResolvedProjectCommand | undefined => projectCommandsMap.get(name);
 
-function processImportantContext(context: ImportantContext | undefined): ImportantContext {
+function processImportantContext(context: ImportantContext | undefined, configFilePath: string): ImportantContext {
   if (!context) {
-    return { systemPrompt: [], files: [] };
+    return { systemPrompt: [], files: [configFilePath] };
   }
 
-  // Always include .genaicoderc in important files
-  const files = context.files || [];
-  if (!files.includes(CODEGENRC_FILENAME)) {
-    files.push(CODEGENRC_FILENAME);
+  // Resolve user-defined important files relative to the rootDir
+  const resolvedUserFiles = (context.files || []).map((file) => path.resolve(rcConfig.rootDir, file));
+
+  // Ensure the absolute path to the config file is included
+  if (!resolvedUserFiles.includes(configFilePath)) {
+    resolvedUserFiles.push(configFilePath);
   }
 
   return {
     systemPrompt: context.systemPrompt || [],
-    files: files.map((file) => path.resolve(rcConfig.rootDir, file)),
+    files: resolvedUserFiles,
   };
 }
 
@@ -126,3 +127,5 @@ console.log('Root dir:', rcConfig.rootDir);
 console.log('Important context:', importantContext);
 console.log('Model overrides:', modelOverrides);
 console.log('Project commands:', projectCommandsMap);
+
+export { rcConfig, configFilePath };

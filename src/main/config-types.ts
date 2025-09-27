@@ -101,3 +101,7 @@ export interface RcConfig {
     containerTask?: boolean;
   };
 }
+
+export function defineConfig(config: RcConfig): RcConfig {
+  return config;
+}

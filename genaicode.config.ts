@@ -1,0 +1,89 @@
+import { defineConfig } from './src/index.js';
+
+export default defineConfig({
+  rootDir: '.',
+  ignorePaths: [
+    'examples/python_hello_world',
+    'examples/golang_hello_world',
+    'examples/java_hello_world',
+    'examples/arcanoid_game',
+    'examples/vision_example',
+    'examples/image-operations',
+    'node_modules',
+    'dist',
+    '.github',
+    '.husky',
+    'coverage',
+    'package-lock.json',
+    '.vscode',
+    'src/eval',
+    'src/prompt-debug/current-prompt.js',
+    'src/prompt-debug/prompt-debug.test.ts',
+  ],
+  featuresEnabled: {
+    containerTask: true,
+  },
+  projectCommands: {
+    test: {
+      command: 'npm test',
+      description: 'Run unit tests',
+    },
+    build: {
+      command: 'npm run build',
+      description: 'Build the project',
+    },
+    format: {
+      command: 'npm run format',
+      description: 'Format the codebase',
+    },
+    'type-check': {
+      command: 'npm run type-check',
+      description: 'Run type checking',
+    },
+    lint: {
+      command: 'npm run lint',
+      description: 'Run linting',
+    },
+  },
+  importantContext: {
+    files: ['./.prettierrc', './.eslintrc.cjs'],
+    systemPrompt: [
+      'GenAIcode is an AI-powered code generation and management tool designed to streamline software development. It leverages various AI services (Vertex AI, AI Studio, OpenAI, Anthropic) to generate, modify, and analyze code. The project features a modular architecture with components for AI services, CLI operations, file handling, and image processing. It supports interactive and UI modes, allowing developers to execute code generation tasks, manage prompts, and visualize outputs. GenAIcode offers customizable options for code generation, including file operations, context optimization, and temperature settings. The tool aims to enhance developer productivity by automating repetitive coding tasks and providing AI-assisted code improvements.',
+      "When making changes to the codebase, it is important to follow the project's coding standards and conventions. This includes adhering to the linting rules, maintaining consistent formatting, and writing clear and concise code. It is also recommended to document the changes made, including the purpose of the modifications, any dependencies added or removed, and any potential impact on the project. By following these guidelines, developers can ensure that the codebase remains clean, readable, and maintainable.",
+    ],
+  },
+  plugins: [
+    './examples/genaicode_plugins/genaicode_tracker.js',
+    './examples/genaicode_plugins/fake_ai_service.js',
+    './examples/genaicode_plugins/grok_ai_service.js',
+    './examples/genaicode_plugins/deepseek_ai_service.js',
+    './examples/genaicode_plugins/nonsense_action_handler.js',
+    './examples/genaicode_plugins/nonsense_operation.js',
+    './examples/genaicode_plugins/vitest_runner.js',
+    './src/prompt-debug/current-prompt-plugin.js',
+  ],
+  modelOverrides: {
+    aiStudio: {
+      default: 'gemini-2.5-pro',
+      cheap: 'gemini-flash-latest',
+      lite: 'gemini-flash-lite-latest',
+      modelSpecificSettings: {
+        'gemini-2.5-pro-exp-03-25': {
+          systemInstruction: [
+            'Please do not generate excessive amount of comments in the code. Use them only when necessary.',
+            'Modify only the necessary parts of the code accordingly to the users intention.',
+            'When coding in typescript, do not use double quotes for strings if not needed.',
+            'Adhere to the coding standards and conventions of the project. Respect settings from .prettierrc and .eslintrc.cjs files.',
+            'Make sure you are using the correct escape sequences for the programming language you are working with.',
+            'Make sure you do not break the code by using incorrect escape sequences.',
+            'Make sure you are using the correct syntax for the programming language you are working with.',
+          ],
+          outputTokenLimit: 16384,
+        },
+        'gemini-2.5-flash': {
+          outputTokenLimit: 16384,
+        },
+      },
+    },
+  },
+});
