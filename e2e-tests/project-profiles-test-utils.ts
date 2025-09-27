@@ -84,7 +84,7 @@ export async function runGenaicode(cwd: string): Promise<void> {
         genAICodeProcess.kill();
         resolve();
       } else if (
-        stdoutData.includes('would you like to create one') &&
+        stdoutData.includes('ould you like to create') &&
         !stdoutData.includes('with detected project profile')
       ) {
         // Respond to the prompt to create .genaicoderc

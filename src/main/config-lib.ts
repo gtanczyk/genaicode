@@ -55,7 +55,7 @@ export async function loadConfiguration(): Promise<{ rcConfig: RcConfig; configF
     },
   });
 
-  if (result) {
+  if (result && result.layers?.length) {
     const rcConfig = result.config;
     const configFilePath = result.configFile;
 

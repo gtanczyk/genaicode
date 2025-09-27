@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { confirm } from '@inquirer/prompts';
-import { loadConfig } from 'c12';
+import { ConfigLayer, loadConfig } from 'c12';
 import { isAncestorDirectory } from '../files/file-utils.js';
 import { loadConfiguration } from './config-lib.js';
 import { detectAndConfigureProfile } from '../project-profiles/index.js';
@@ -50,6 +50,7 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: mockRcConfig,
       configFile: mockRcFilePath,
+      layers: [{} as ConfigLayer],
     });
     vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
     vi.mocked(path.dirname).mockReturnValue('/project');
@@ -107,6 +108,7 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: {} as RcConfig, // Missing rootDir
       configFile: mockRcFilePath,
+      layers: [{} as ConfigLayer],
     });
 
     await expect(loadConfiguration()).rejects.toThrow(/instance requires property "rootDir"/);
@@ -116,6 +118,7 @@ describe('loadConfiguration', () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: mockRcConfig,
       configFile: mockRcFilePath,
+      layers: [{} as ConfigLayer],
     });
     vi.mocked(path.resolve).mockImplementation((...args) => args.join('/'));
     vi.mocked(path.dirname).mockReturnValue('/project');
