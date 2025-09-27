@@ -17,7 +17,6 @@ import {
 
 describe('project profile detection', () => {
   let tempDir: string;
-  let genAICodeProcess: ChildProcess;
 
   beforeEach(async () => {
     // Create a fresh temporary directory for each test
@@ -25,11 +24,6 @@ describe('project profile detection', () => {
   });
 
   afterEach(async () => {
-    // Kill the genaicode process if it's still running
-    if (genAICodeProcess) {
-      genAICodeProcess.kill();
-    }
-
     // Clean up the temporary directory
     await cleanupTempDir(tempDir);
   });
