@@ -3,7 +3,6 @@
 - option to regenerate an assistant message (with different model)
 - prompt for api key on failure
 - schema corner case -> proper virtual files
-- askquestioncall in lint does not make sense?
 - diff view with file browser on the left instead of linear
 - make the prompt from codegensummary more exhaustive
 - button to manually apply old/new from diff
