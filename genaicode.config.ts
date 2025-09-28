@@ -36,10 +36,6 @@ export default defineConfig({
       description: 'Build the project',
       autoApprove: true,
     },
-    format: {
-      command: 'npm run format',
-      description: 'Format the codebase',
-    },
     'type-check': {
       command: 'npm run type-check',
       description: 'Run type checking',
@@ -71,6 +67,7 @@ export default defineConfig({
       name: 'example-inline-plugin',
       generateContentHook: async (args, result) => {
         if (Math.random() > 1) {
+          // noop, just example
           console.log('Example Inline Plugin generateContent hook', args, result);
         }
       },
