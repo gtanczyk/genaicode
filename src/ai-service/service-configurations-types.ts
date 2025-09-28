@@ -1,5 +1,3 @@
-import { ModelSpecificSettings } from '../main/config-types.js';
-
 /**
  * Full service configuration interface.
  * This interface includes sensitive data and should only be used internally.
@@ -81,3 +79,19 @@ export type AiServiceType =
   | 'anthropic'
   | 'github-models'
   | PluginAiServiceType;
+/**
+ * Configuration for specific model settings within a service.
+ */
+
+export interface ModelSpecificSettings {
+  /** System instructions specific to this model */
+  systemInstruction?: string[];
+  /** Maximum number of tokens to generate in the output specific to this model */
+  outputTokenLimit?: number;
+  /** Whether the model should use 'thinking' mode if available */
+  thinkingEnabled?: boolean;
+  /** The token budget for 'thinking' mode */
+  thinkingBudget?: number;
+  /** Temperature unsupported */
+  temperatureUnsupported?: boolean;
+}

@@ -1,24 +1,9 @@
+import { ModelSpecificSettings } from '../ai-service/service-configurations-types.js';
 import { Plugin } from './codegen-types.js';
 
 export interface ImportantContext {
   systemPrompt?: string[];
   files?: string[];
-}
-
-/**
- * Configuration for specific model settings within a service.
- */
-export interface ModelSpecificSettings {
-  /** System instructions specific to this model */
-  systemInstruction?: string[];
-  /** Maximum number of tokens to generate in the output specific to this model */
-  outputTokenLimit?: number;
-  /** Whether the model should use 'thinking' mode if available */
-  thinkingEnabled?: boolean;
-  /** The token budget for 'thinking' mode */
-  thinkingBudget?: number;
-  /** Temperature unsupported */
-  temperatureUnsupported?: boolean;
 }
 
 /**
