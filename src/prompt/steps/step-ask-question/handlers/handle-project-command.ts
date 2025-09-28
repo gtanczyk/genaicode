@@ -101,6 +101,7 @@ export async function handleRunProjectCommand({
       putSystemMessage(`Auto-approving project command "${name}" (autoApprove: true).`);
     } else if (typeof command.autoApprove === 'string') {
       const approved = await evaluateAutoApproveCondition(
+        prompt,
         generateContentFn,
         options,
         command.autoApprove,
@@ -248,6 +249,7 @@ export async function handleRunProjectCommand({
 }
 
 async function evaluateAutoApproveCondition(
+  prompt: PromptItem[],
   generateContentFn: ActionHandlerProps['generateContentFn'],
   options: ActionHandlerProps['options'],
   condition: string,
@@ -265,7 +267,7 @@ Command:
 - args: ${JSON.stringify(args)}
 `;
 
-  const evalPrompt: PromptItem[] = [{ type: 'user', text: evalPromptText }];
+  const evalPrompt: PromptItem[] = [...prompt, { type: 'user', text: evalPromptText }];
 
   const evalRequest: GenerateContentArgs = [
     evalPrompt,
