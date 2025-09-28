@@ -13,6 +13,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 - [x] [GEN-143] 2024-07-26: Refactor configuration system to support `.genaicoderc`, `genaicode.config.js`, and `genaicode.config.ts`/`.mts` files, with on-the-fly TypeScript transpilation. (Switched to `c12` for loading).
 - [x] [GEN-142] 2025-09-25: Update ask-question test to include runBashCommand action type.
+- [-] [GEN-144] 2025-09-26: Enhance project configuration: add `autoApprove` for project commands (boolean or natural language condition) and allow inline or imported plugin definitions.
 - [x] [GEN-141] 2025-09-21: Action Selector
 - [x] [GEN-140] 2025-09-17: Git context: working copy changes and diffs support.
 - [x] [GEN-139] 2025-09-16: Project commands

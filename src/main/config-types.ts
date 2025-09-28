@@ -1,3 +1,5 @@
+import { Plugin } from './codegen-types.js';
+
 export interface ImportantContext {
   systemPrompt?: string[];
   files?: string[];
@@ -67,6 +69,13 @@ export interface ProjectCommand {
   workingDir?: string;
   /** Optional aliases for the command name. */
   aliases?: string[];
+  /**
+   * Determines if the command should be executed without user confirmation.
+   * - If `true`, the command is always executed.
+   * - If a `string`, it's a natural language condition evaluated by the AI.
+   *   If the condition is met, the command is executed without a prompt.
+   */
+  autoApprove?: boolean | string;
 }
 
 /**
@@ -85,7 +94,13 @@ export interface RcConfig {
   };
   importantContext?: ImportantContext;
   modelOverrides?: ModelOverrides;
-  plugins?: string[];
+  /**
+   * An array of plugins to load. Each item can be:
+   * - A `string` representing a file path to a plugin.
+   * - A `PluginSpec` object for importing a plugin from a module.
+   * - An inline `Plugin` object (only in JS/TS config files).
+   */
+  plugins?: (string | Plugin)[];
   /**
    * A map of named project-specific commands that can be executed.
    * @example

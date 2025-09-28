@@ -93,45 +93,79 @@ export async function handleRunProjectCommand({
     return { breakLoop: false, items: [] };
   }
 
-  const confirmation = await askUserForConfirmationWithAnswer(
-    `Do you want to run the project command "${name}"?`,
-    'Run command',
-    'Reject',
-    true,
-    options,
-  );
-
-  if (confirmation.answer) {
-    putUserMessage(confirmation.answer);
-  }
-
-  if (!confirmation.confirmed) {
-    putSystemMessage(`Project command "${name}" cancelled by user.`);
-    prompt.push(
-      {
-        type: 'assistant',
-        text: askQuestionCall.args!.message,
-        functionCalls: [
-          { name: 'runProjectCommand', id: askQuestionCall.id + '_runProjectCommand', args: { name, args } },
-        ],
-      },
-      {
-        type: 'user',
-        text:
-          `I reject running the project command "${name}".` + (confirmation.answer ? ` ${confirmation.answer}` : ''),
-        functionResponses: [
-          {
-            name: 'runProjectCommand',
-            call_id: askQuestionCall.id + '_runProjectCommand',
-            content: JSON.stringify({ error: 'User rejected command execution.' }),
-            isError: true,
-          },
-        ],
-      },
+  // Auto-approval logic
+  let skipConfirmation = false;
+  try {
+    if (command.autoApprove === true) {
+      skipConfirmation = true;
+      putSystemMessage(`Auto-approving project command "${name}" (autoApprove: true).`);
+    } else if (typeof command.autoApprove === 'string') {
+      const approved = await evaluateAutoApproveCondition(
+        generateContentFn,
+        options,
+        command.autoApprove,
+        name,
+        args,
+        command.description,
+      );
+      if (approved) {
+        skipConfirmation = true;
+        putSystemMessage(`Auto-approving project command "${name}" based on condition: ${command.autoApprove}`);
+      } else {
+        putSystemMessage(
+          `Auto-approval condition did not pass for command "${name}". Proceeding with user confirmation.`,
+        );
+      }
+    }
+  } catch (error) {
+    putSystemMessage(
+      `Failed to evaluate auto-approval condition for command "${name}". Falling back to user confirmation.`,
+      { error: (error as Error).message },
     );
-    return { breakLoop: true, items: [] };
   }
 
+  if (!skipConfirmation) {
+    const confirmation = await askUserForConfirmationWithAnswer(
+      `Do you want to run the project command "${name}"?`,
+      'Run command',
+      'Reject',
+      true,
+      options,
+    );
+
+    if (confirmation.answer) {
+      putUserMessage(confirmation.answer);
+    }
+
+    if (!confirmation.confirmed) {
+      putSystemMessage(`Project command "${name}" cancelled by user.`);
+      prompt.push(
+        {
+          type: 'assistant',
+          text: askQuestionCall.args!.message,
+          functionCalls: [
+            { name: 'runProjectCommand', id: askQuestionCall.id + '_runProjectCommand', args: { name, args } },
+          ],
+        },
+        {
+          type: 'user',
+          text:
+            `I reject running the project command "${name}".` + (confirmation.answer ? ` ${confirmation.answer}` : ''),
+          functionResponses: [
+            {
+              name: 'runProjectCommand',
+              call_id: askQuestionCall.id + '_runProjectCommand',
+              content: JSON.stringify({ error: 'User rejected command execution.' }),
+              isError: true,
+            },
+          ],
+        },
+      );
+      return { breakLoop: true, items: [] };
+    }
+  }
+
+  // Proceed with execution if confirmed/auto-approved
   const finalArgs = [...(command.defaultArgs || []), ...args];
   const fullCommand = [command.command, ...finalArgs].join(' ');
   const cwd = workingDirOverride || command.workingDir || rcConfig.rootDir;
@@ -143,6 +177,7 @@ export async function handleRunProjectCommand({
     args: finalArgs,
     truncMode,
     workingDirOverride,
+    autoApproved: skipConfirmation,
   });
 
   let result: ProjectCommandResult;
@@ -210,6 +245,52 @@ export async function handleRunProjectCommand({
     breakLoop: false,
     items: [],
   };
+}
+
+async function evaluateAutoApproveCondition(
+  generateContentFn: ActionHandlerProps['generateContentFn'],
+  options: ActionHandlerProps['options'],
+  condition: string,
+  name: string,
+  args: string[],
+  description?: string,
+): Promise<boolean> {
+  const evalPromptText = `You are a strict decision engine. Evaluate the following natural-language condition against the provided project command context. Reply with ONLY YES or NO (uppercase), without any explanation.
+
+Condition: ${condition}
+
+Command:
+- name: ${name}
+- description: ${description ?? 'n/a'}
+- args: ${JSON.stringify(args)}
+`;
+
+  const evalPrompt: PromptItem[] = [{ type: 'user', text: evalPromptText }];
+
+  const evalRequest: GenerateContentArgs = [
+    evalPrompt,
+    {
+      modelType: ModelType.LITE,
+      temperature: 0,
+      expectedResponseType: { text: true, functionCall: false, media: false },
+    },
+    options,
+  ];
+
+  try {
+    const evalResult = await generateContentFn(...evalRequest);
+    const text = evalResult
+      .find((p) => p.type === 'text')
+      ?.text?.trim()
+      .toUpperCase();
+    if (text === 'YES') return true;
+    if (text === 'NO') return false;
+    // Any other unexpected output -> not approved
+    return false;
+  } catch (e) {
+    // On error, do not auto-approve
+    return false;
+  }
 }
 
 const MAX_OUTPUT_LENGTH = 2000;

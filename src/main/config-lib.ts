@@ -8,6 +8,7 @@ import { isAncestorDirectory } from '../files/file-utils.js';
 import { detectAndConfigureProfile, npmProfile } from '../project-profiles/index.js';
 import { RcConfig } from './config-types.js';
 import { validateRcConfig } from './config-schema.js';
+import { isPluginObject } from './plugin-loader.js';
 
 const DEFAULT_CONFIG_FILENAME = '.genaicoderc';
 
@@ -75,7 +76,10 @@ export async function loadConfiguration(): Promise<{ rcConfig: RcConfig; configF
     if (rcConfig.plugins) {
       assert(Array.isArray(rcConfig.plugins), 'Plugins must be an array of strings');
       rcConfig.plugins.forEach((plugin, index) => {
-        assert(typeof plugin === 'string', `Plugin at index ${index} must be a string`);
+        assert(
+          typeof plugin === 'string' || isPluginObject(plugin),
+          `Plugin at index ${index} must be a string or Plugin type`,
+        );
       });
     }
 

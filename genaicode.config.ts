@@ -1,5 +1,7 @@
 import { defineConfig } from './src/index.js';
 
+import currentPromptPlugin from './src/prompt-debug/current-prompt-plugin.js';
+
 export default defineConfig({
   rootDir: '.',
   ignorePaths: [
@@ -27,10 +29,12 @@ export default defineConfig({
     test: {
       command: 'npm test',
       description: 'Run unit tests',
+      autoApprove: true,
     },
     build: {
       command: 'npm run build',
       description: 'Build the project',
+      autoApprove: true,
     },
     format: {
       command: 'npm run format',
@@ -39,10 +43,12 @@ export default defineConfig({
     'type-check': {
       command: 'npm run type-check',
       description: 'Run type checking',
+      autoApprove: true,
     },
     lint: {
       command: 'npm run lint',
       description: 'Run linting',
+      autoApprove: true,
     },
   },
   importantContext: {
@@ -60,7 +66,15 @@ export default defineConfig({
     './examples/genaicode_plugins/nonsense_action_handler.js',
     './examples/genaicode_plugins/nonsense_operation.js',
     './examples/genaicode_plugins/vitest_runner.js',
-    './src/prompt-debug/current-prompt-plugin.js',
+    currentPromptPlugin,
+    {
+      name: 'example-inline-plugin',
+      generateContentHook: async (args, result) => {
+        if (Math.random() > 1) {
+          console.log('Example Inline Plugin generateContent hook', args, result);
+        }
+      },
+    },
   ],
   modelOverrides: {
     aiStudio: {

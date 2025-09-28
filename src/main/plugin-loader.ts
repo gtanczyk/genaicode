@@ -162,6 +162,10 @@ export async function registerPlugin(plugin: Plugin, pluginPath?: string): Promi
   }
 }
 
+export function isPluginObject(entry: unknown): entry is Plugin {
+  return !!entry && typeof entry === 'object' && 'name' in (entry as Record<string, unknown>);
+}
+
 /**
  * Loads plugins from configuration with idempotency checks
  */
@@ -171,14 +175,35 @@ export async function loadPlugins(rcConfig: RcConfig): Promise<void> {
     return;
   }
 
-  for (let pluginPath of rcConfig.plugins) {
+  for (const item of rcConfig.plugins) {
     try {
-      pluginPath = path.isAbsolute(pluginPath) ? pluginPath : path.join(rcConfig.rootDir, pluginPath);
-      console.log('Loading plugin:', pluginPath);
-      const plugin = (await import(pluginPath)).default as Plugin;
-      await registerPlugin(plugin, pluginPath);
+      // Case 1: string path/module
+      if (typeof item === 'string') {
+        let pluginPath = item;
+        // Resolve relative paths against project root
+        if (!path.isAbsolute(pluginPath) && (pluginPath.startsWith('./') || pluginPath.startsWith('../'))) {
+          pluginPath = path.join(rcConfig.rootDir, pluginPath);
+        }
+        console.log('Loading plugin:', pluginPath);
+        const mod = await import(pluginPath);
+        const plugin = (mod?.default ?? mod) as Plugin;
+        await registerPlugin(plugin, pluginPath);
+        continue;
+      }
+
+      // Case 2: direct inline plugin object
+      if (isPluginObject(item)) {
+        console.log('Registering inline plugin (direct object):', (item as Plugin).name ?? '<unnamed>');
+        await registerPlugin(item as Plugin, '<inline-plugin>');
+        continue;
+      }
+
+      // Unknown entry type
+      console.error('Unsupported plugin entry format:', item);
+      throw new Error('Unsupported plugin entry in configuration.');
     } catch (error) {
-      console.error(`Failed to load plugin: ${pluginPath}`, error);
+      console.error('Failed to load plugin entry:', item);
+      console.error(error);
       throw error; // Re-throw to handle the error at a higher level
     }
   }
