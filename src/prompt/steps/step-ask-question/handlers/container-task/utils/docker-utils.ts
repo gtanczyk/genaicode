@@ -344,8 +344,20 @@ export async function extractTarStreamToDirectory(
   const extract = tar.extract();
 
   extract.on('entry', (header, stream, next) => {
-    const filePath = path.join(destinationHostPath, header.name);
+    // Normalize and construct the absolute destination file path
+    const destDir = path.resolve(destinationHostPath);
+    const filePath = path.resolve(destDir, header.name);
     const dir = path.dirname(filePath);
+
+    // Security: Prevent "Zip Slip" by ensuring filePath is within destinationHostPath
+    if (!filePath.startsWith(destDir + path.sep)) {
+      const errorMessage = `Skipped suspicious path outside extraction dir: ${filePath}`;
+      putContainerLog('error', errorMessage, undefined, 'copy');
+      // Pass an error to next() to skip extraction of this entry
+      stream.on('end', () => next(new Error(errorMessage)));
+      stream.resume();
+      return;
+    }
 
     if (!pathValidator(filePath)) {
       const errorMessage = `Refusing to write outside project root: ${filePath}`;
