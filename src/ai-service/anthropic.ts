@@ -57,7 +57,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     const defaultModel =
       modelType === ModelType.CHEAP || modelType === ModelType.LITE
         ? 'claude-3-5-haiku-20241022'
-        : 'claude-sonnet-4-20250514';
+        : 'claude-sonnet-4-5-20250929';
     const modelOverrides = serviceConfig?.modelOverrides;
     let model =
       modelType === ModelType.CHEAP

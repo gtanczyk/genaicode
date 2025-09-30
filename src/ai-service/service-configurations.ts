@@ -28,10 +28,10 @@ const configurations: ServiceConfigurations = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
     modelOverrides: {
-      default: modelOverrides.anthropic?.default ?? 'claude-sonnet-4-20250514',
+      default: modelOverrides.anthropic?.default ?? 'claude-sonnet-4-5-20250929',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
       lite: modelOverrides.anthropic?.lite ?? 'claude-3-5-haiku-20241022',
-      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-sonnet-4-20250514',
+      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-sonnet-4-5-20250929',
       modelSpecificSettings: modelOverrides.anthropic?.modelSpecificSettings ?? {},
     },
   },
