@@ -20,7 +20,7 @@ export async function handleGenerateImage({
   if (!options.imagen) {
     putSystemMessage('Image generation is not enabled. Please enable it using --imagen parameter.');
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -57,7 +57,7 @@ export async function handleGenerateImage({
 
   if (!generateImageCall?.args) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -66,7 +66,7 @@ export async function handleGenerateImage({
   if (!generateImageCall.args.prompt) {
     putSystemMessage('Image generation request with prompt is required for sendMessageWithImage action.');
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -81,7 +81,7 @@ export async function handleGenerateImage({
   if (!downloadFileCall.args?.downloadUrl) {
     putSystemMessage('Failed to generate image for the question.');
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -100,7 +100,7 @@ export async function handleGenerateImage({
   if (!buffer) {
     putSystemMessage('Failed to generate image for the question.');
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

@@ -203,7 +203,7 @@ export const handleCompoundAction: ActionHandler = async ({
     const contextResult = await executeStepEnsureContext(prompt, contextAssuranceCall, options);
     if (contextResult === StepResult.BREAK) {
       putSystemMessage('Error: Context ensuring failed during compound action. Aborting.');
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     }
   }
 

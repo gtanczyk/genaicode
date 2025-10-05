@@ -51,6 +51,6 @@ export async function handleContextCompression({
     return { breakLoop: result === StepResult.BREAK, items: [] };
   } catch (error) {
     putSystemMessage('Error during context compression', { error });
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 }

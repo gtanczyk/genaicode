@@ -60,7 +60,7 @@ export async function handleRunProjectCommand({
         text: 'No runProjectCommand call found in the assistant response.',
       },
     );
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 
   const { name, args = [], env: envOverride, workingDirOverride, truncMode = 'summarize' } = RunProjectCommandCall.args;
@@ -162,7 +162,7 @@ export async function handleRunProjectCommand({
           ],
         },
       );
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     }
   }
 

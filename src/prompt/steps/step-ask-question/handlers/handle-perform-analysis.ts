@@ -44,7 +44,7 @@ export async function handlePerformAnalysis({
 
     if (!performAnalysisRequest?.args) {
       putSystemMessage('Failed to get valid performAnalysis request');
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     }
 
     prompt.slice(-1)[0].functionCalls = [performAnalysisRequest];
@@ -61,7 +61,7 @@ export async function handlePerformAnalysis({
 
     if (!analysisResultCall) {
       putSystemMessage('Failed to get valid analysis results');
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     }
 
     putAssistantMessage(analysisResultCall.args?.message ?? '', {
@@ -90,7 +90,7 @@ export async function handlePerformAnalysis({
     };
   } catch (error) {
     putSystemMessage(`Error during analysis: ${error instanceof Error ? error.message : String(error)}`);
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 }
 

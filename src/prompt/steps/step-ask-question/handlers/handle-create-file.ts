@@ -89,7 +89,7 @@ export async function handleCreateFile({
 
   if (!createFileCall || !createFileCall.args) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

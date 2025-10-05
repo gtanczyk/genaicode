@@ -37,7 +37,7 @@ export async function handleRequestFilesContent({
 
   if (!requestFilesContentCall) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -98,7 +98,7 @@ export async function handleRequestFilesContent({
 
     if (!requestFilesContentCall) {
       return {
-        breakLoop: true,
+        breakLoop: false,
         items: [],
       };
     }

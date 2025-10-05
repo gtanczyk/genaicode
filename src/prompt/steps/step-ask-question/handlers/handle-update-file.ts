@@ -104,7 +104,7 @@ export async function handleUpdateFile({
 
   if (!updateFileCall || !updateFileCall.args) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

@@ -33,7 +33,7 @@ export async function runContainerTaskOrchestrator({
   if (abortController?.signal.aborted) {
     putContainerLog('warn', 'Container task aborted before start.');
     putSystemMessage('Container task aborted before start.');
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 
   try {
@@ -144,7 +144,7 @@ export async function runContainerTaskOrchestrator({
     if (abortController?.signal.aborted) {
       putContainerLog('warn', 'Container task aborted before pulling image.');
       putSystemMessage('Container task aborted by user.');
-      return { breakLoop: true, items: [] };
+      return { breakLoop: false, items: [] };
     }
 
     try {

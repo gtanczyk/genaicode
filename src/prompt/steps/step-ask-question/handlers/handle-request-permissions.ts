@@ -46,7 +46,7 @@ export async function handleRequestPermissions({
 
   if (!requestPermissionsCall) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

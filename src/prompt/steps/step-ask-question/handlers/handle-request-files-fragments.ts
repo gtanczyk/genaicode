@@ -38,7 +38,7 @@ export async function handleRequestFilesFragments({
 
   if (!requestFilesFragmentsCall) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -47,7 +47,7 @@ export async function handleRequestFilesFragments({
   if (!fragmentPrompt) {
     putSystemMessage('No fragment prompt provided');
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }
@@ -96,7 +96,7 @@ export async function handleRequestFilesFragments({
 
     if (!requestFilesFragmentsCall) {
       return {
-        breakLoop: true,
+        breakLoop: false,
         items: [],
       };
     }

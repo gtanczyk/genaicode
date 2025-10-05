@@ -153,7 +153,7 @@ export async function handleReasoningInference({
 
     return {
       // TODO: rather do a retry here?
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

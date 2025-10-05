@@ -46,7 +46,7 @@ export async function handleRemoveFilesFromContext({
 
   if (!removeFilesFromContextCall) {
     return {
-      breakLoop: true,
+      breakLoop: false,
       items: [],
     };
   }

@@ -56,7 +56,7 @@ export async function handleRunBashCommand({
         text: 'No runBashCommand call found in the assistant response.',
       },
     );
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 
   const { command, env: envOverride, workingDirOverride, truncMode = 'summarize' } = runBashCommandCall.args;
@@ -95,7 +95,7 @@ export async function handleRunBashCommand({
         ],
       },
     );
-    return { breakLoop: true, items: [] };
+    return { breakLoop: false, items: [] };
   }
 
   const cwd = workingDirOverride || rcConfig.rootDir;
