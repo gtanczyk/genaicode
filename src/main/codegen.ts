@@ -116,6 +116,11 @@ export async function runCodegenIteration(
         putSystemMessage(
           'Rate limit exceeded. Consider switching to a different AI service or waiting before retrying.',
         );
+      } else if (error.message.includes('API token not configured')) {
+        // Configuration errors should cause the CLI to exit with non-zero code
+        putSystemMessage(`An error occurred during codegen: ${error.message}`);
+        console.error('Error details:', error);
+        throw error;
       } else {
         putSystemMessage(`An error occurred during codegen: ${error.message}`);
       }
