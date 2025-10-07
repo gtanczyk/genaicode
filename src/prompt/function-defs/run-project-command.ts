@@ -4,6 +4,9 @@ import { rcConfig } from '../../main/config.js';
 export const getRunProjectCommandDef = (): FunctionDef => {
   const commands = rcConfig.projectCommands;
   const names = commands ? Object.keys(commands) : [];
+  if (names.length === 0) {
+    names.push('UNSUPPORTED_no_commands_defined');
+  }
   return {
     name: 'runProjectCommand',
     description: `Execute a named project command (from .genaicoderc projectCommands or auto-discovered package.json scripts). Supports passing args and env.
