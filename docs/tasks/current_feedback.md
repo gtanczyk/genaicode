@@ -27,3 +27,4 @@
 - add lint to codegen summary
 - thought signature
 - reset to auto mode after handler
+- compound action previw
