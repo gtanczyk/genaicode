@@ -12,6 +12,7 @@ import {
 import { CodegenPlanningView, isCodegenPlanningData } from './codegen-planning-view.js';
 import { CodegenSummaryView, isCodegenSummaryData } from './codegen-summary-view.js';
 import { FileUpdatesView, FileUpdateView, isFileUpdateData, isFileUpdatesData } from './file-update-view.js';
+import { InferredActionsView, isInferredActionsData } from './inferred-actions-view.js';
 
 export interface SystemMessageBlock extends Omit<ChatMessage, 'type'> {
   type: ChatMessageType.SYSTEM;
@@ -98,7 +99,8 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
       isCodegenPlanningData(part.data) ||
       isCodegenSummaryData(part.data) ||
       isFileUpdateData(part.data) ||
-      isFileUpdatesData(part.data)
+      isFileUpdatesData(part.data) ||
+      isInferredActionsData(part.data)
     ) {
       // Add the codegen view section
       const codegenView = isCodegenPlanningData(part.data) ? (
@@ -109,6 +111,8 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
         <FileUpdateView key={`file-update-${part.id}`} data={part.data} />
       ) : isFileUpdatesData(part.data) ? (
         <FileUpdatesView data={part.data} />
+      ) : isInferredActionsData(part.data) ? (
+        <InferredActionsView data={part.data} />
       ) : null;
 
       sections.push({

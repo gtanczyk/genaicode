@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-145] 2025-09-26: Display inferred actions for compound actions directly in the UI to improve user experience.
 - [x] [GEN-143] 2024-07-26: Refactor configuration system to support `.genaicoderc`, `genaicode.config.js`, and `genaicode.config.ts`/`.mts` files, with on-the-fly TypeScript transpilation. (Switched to `c12` for loading).
 - [x] [GEN-142] 2025-09-25: Update ask-question test to include runBashCommand action type.
 - [-] [GEN-144] 2025-09-26: Enhance project configuration: add `autoApprove` for project commands (boolean or natural language condition) and allow inline or imported plugin definitions.

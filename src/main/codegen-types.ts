@@ -67,6 +67,17 @@ export type CodegenSummaryArgs = {
   fileUpdates: FileUpdate[];
 };
 
+/** Arguments for compound action's inferred actions */
+export type CompoundActionArgs = {
+  summary: string;
+  actions: {
+    name: string;
+    dependsOn: string[];
+    filePath: string;
+    id: string;
+  }[];
+};
+
 /** Arguments of the codegen execution function call */
 export interface FileUpdate {
   id: string;

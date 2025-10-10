@@ -35,7 +35,7 @@ export const getCompoundActionDef: () => FunctionDef = () => ({
               description: 'The absolute path of the file to be acted upon, if applicable.',
             },
           },
-          required: ['id', 'name'],
+          required: ['id', 'name', 'filePath'],
         },
       },
       summary: {
