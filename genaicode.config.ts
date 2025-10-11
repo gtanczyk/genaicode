@@ -79,18 +79,6 @@ export default defineConfig({
       cheap: 'gemini-flash-latest',
       lite: 'gemini-flash-lite-latest',
       modelSpecificSettings: {
-        'gemini-2.5-pro-exp-03-25': {
-          systemInstruction: [
-            'Please do not generate excessive amount of comments in the code. Use them only when necessary.',
-            'Modify only the necessary parts of the code accordingly to the users intention.',
-            'When coding in typescript, do not use double quotes for strings if not needed.',
-            'Adhere to the coding standards and conventions of the project. Respect settings from .prettierrc and .eslintrc.cjs files.',
-            'Make sure you are using the correct escape sequences for the programming language you are working with.',
-            'Make sure you do not break the code by using incorrect escape sequences.',
-            'Make sure you are using the correct syntax for the programming language you are working with.',
-          ],
-          outputTokenLimit: 16384,
-        },
         'gemini-2.5-flash': {
           outputTokenLimit: 16384,
         },
