@@ -47,6 +47,7 @@ export const AppHandlers = ({ codegenOptions }: AppHandlersProps) => {
 
       // Execute codegen API call
       await executeCodegen(prompt, codegenOptions, images.length > 0 ? images : undefined);
+      setCodegenOptions({ ...codegenOptions, initialActionType: undefined }); // Clear initial action type after execution
       // Polling in ChatStateContext should update the status, but set to executing optimistically
       setExecutionStatus('executing');
     } catch (error) {
