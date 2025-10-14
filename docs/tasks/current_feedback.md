@@ -26,4 +26,3 @@
 - 0 after action name in codegen summary
 - add lint to codegen summary
 - thought signature
-- reset to auto mode after handler
