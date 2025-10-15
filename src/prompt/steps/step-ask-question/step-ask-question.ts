@@ -73,6 +73,7 @@ export async function executeStepAskQuestion(
             id: 'forced-action',
             args: {
               actionType: forcedActionType,
+              message: `I'm going to execute the action: ${forcedActionType}`,
             } as AskQuestionCall['args'],
           }
         : await getAskQuestionCall(generateContentFn, prompt, functionDefs, temperature, options);
@@ -82,7 +83,7 @@ export async function executeStepAskQuestion(
         break;
       }
 
-      if (askQuestionCall.args?.message) {
+      if (askQuestionCall.args?.message && askQuestionCall.id !== 'forced-action') {
         putAssistantMessage(askQuestionCall.args.message, { ...askQuestionCall.args, contextSize: totalTokens });
       }
 

@@ -29,8 +29,8 @@ const configurations: ServiceConfigurations = {
     apiKey: process.env.ANTHROPIC_API_KEY,
     modelOverrides: {
       default: modelOverrides.anthropic?.default ?? 'claude-sonnet-4-5-20250929',
-      cheap: modelOverrides.anthropic?.cheap ?? 'claude-3-5-haiku-20241022',
-      lite: modelOverrides.anthropic?.lite ?? 'claude-3-5-haiku-20241022',
+      cheap: modelOverrides.anthropic?.cheap ?? 'claude-haiku-4-5-20251001',
+      lite: modelOverrides.anthropic?.lite ?? 'claude-haiku-4-5-20251001',
       reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-sonnet-4-5-20250929',
       modelSpecificSettings: modelOverrides.anthropic?.modelSpecificSettings ?? {},
     },
