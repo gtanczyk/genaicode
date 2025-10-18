@@ -70,8 +70,16 @@ describe.concurrent('vite genaicode', () => {
     }
 
     // Stop the GenAIcode process
-    if (genAICodeProcess.pid) {
-      process.kill(-genAICodeProcess.pid);
+    if (genAICodeProcess && !genAICodeProcess.killed) {
+      try {
+        // Try to kill the process group first
+        if (genAICodeProcess.pid) {
+          process.kill(-genAICodeProcess.pid);
+        }
+      } catch (error) {
+        // If killing the process group fails, try killing the process directly
+        genAICodeProcess.kill();
+      }
     }
   });
 });
