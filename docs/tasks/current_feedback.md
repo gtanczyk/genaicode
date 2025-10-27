@@ -1,5 +1,4 @@
 - summary of file changes, option to revert file change
-- fix programmatic usage problems
 - option to regenerate an assistant message (with different model)
 - prompt for api key on failure
 - schema corner case -> proper virtual files
