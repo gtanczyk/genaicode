@@ -3,7 +3,6 @@
 - prompt for api key on failure
 - schema corner case -> proper virtual files
 - diff view with file browser on the left instead of linear
-- make the prompt from codegensummary more exhaustive
 - button to manually apply old/new from diff
 - codegen summary sorted by dependencies
 - no idea what permissions are requested
