@@ -1,9 +1,6 @@
 - summary of file changes, option to revert file change
 - option to regenerate an assistant message (with different model)
-- prompt for api key on failure
 - schema corner case -> proper virtual files
-- diff view with file browser on the left instead of linear
-- button to manually apply old/new from diff
 - codegen summary sorted by dependencies
 - no idea what permissions are requested
 - asset file type
