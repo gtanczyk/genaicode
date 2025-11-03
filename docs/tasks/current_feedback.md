@@ -7,7 +7,6 @@
 - optimize context not working, returning all files on gemini
 - misuse of request filest content with external path
 - recover from tool misuse?
-- codegen plan/summary/explanations are too long
 - codegen plan/summary editing
 - multiple sessions
 - external file access message too long
