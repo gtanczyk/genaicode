@@ -21,3 +21,4 @@
 - thought signature
 - auto approve
 - vite: console logs
+- forms
