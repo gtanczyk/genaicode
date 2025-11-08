@@ -76,6 +76,7 @@ export function getActionTypeOptions(): readonly ActionType[] {
     'reasoningInference',
     'conversationGraph',
     'compoundAction',
+    'pullConsoleLogs',
   ] as const;
 }
 

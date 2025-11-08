@@ -5,6 +5,7 @@ import { PromptItemImage } from '../../../ai-service/common-types.js';
 import { FunctionCall } from '../../../ai-service/common-types.js';
 import { CodegenOptions } from '../../../main/codegen-types.js';
 import { PluginActionType } from '../../../ai-service/service-configurations-types.js';
+import { ConsoleLogLevel, ConsoleLogMode } from '../../../vite-genaicode/vite-genaicode-types.js';
 
 export type ActionType =
   | 'codeGeneration'
@@ -24,6 +25,7 @@ export type ActionType =
   | 'performAnalysis'
   | 'createFile'
   | 'pullAppContext'
+  | 'pullConsoleLogs'
   | 'genaicodeHelp'
   | 'pushAppContext'
   | 'reasoningInference'
@@ -72,6 +74,15 @@ export type PushAppContextArgs = {
   reason: string;
   key: string;
   value: string;
+};
+
+/**
+ * Arguments for pullConsoleLogs action
+ */
+export type PullConsoleLogsArgs = {
+  mode: ConsoleLogMode;
+  lines?: number;
+  level?: ConsoleLogLevel;
 };
 
 export type GenerateImageArgs = {

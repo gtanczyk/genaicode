@@ -39,6 +39,7 @@ import { runContainerTaskDef } from './function-defs/run-container-task.js';
 import { getRunProjectCommandDef } from './function-defs/run-project-command.js';
 import { webSearchDef } from './function-defs/web-search.js';
 import { getRunBashCommandDef } from './function-defs/run-bash-command.js';
+import { pullConsoleLogs } from './function-defs/pull-console-logs.js';
 
 /**
  * Function definitions for function calling feature
@@ -64,6 +65,7 @@ export function getFunctionDefs(): FunctionDef[] {
     performAnalysis,
     analysisResult,
     pullAppContext,
+    pullConsoleLogs,
     pushAppContext,
     genaicodeHelpDef,
     reasoningInference,

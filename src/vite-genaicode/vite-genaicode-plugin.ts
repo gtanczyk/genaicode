@@ -17,7 +17,7 @@ const GENAICODE_PORT = 1338;
 
 export default function viteGenaicode(
   options?: Partial<CodegenOptions>,
-  config?: { plugins: Plugin[]; genaicodePort?: number },
+  config?: { plugins: Plugin[]; genaicodePort?: number; logBufferMaxSize?: number },
 ) {
   let codegenService: Service;
   let codegenServer: Server;
@@ -98,6 +98,7 @@ export default function viteGenaicode(
     },
 
     transformIndexHtml(html: string) {
+      const logBufferMaxSize = config?.logBufferMaxSize ?? 1000;
       return html.replace(
         '</body>',
         `<script type="module" 
@@ -106,7 +107,8 @@ export default function viteGenaicode(
   ${
     appContextEnabled
       ? `data-genaicode-token="${codegenService.getToken()}"
-    data-genaicode-app-context-enabled="true"`
+    data-genaicode-app-context-enabled="true"
+    data-genaicode-log-buffer-max-size="${logBufferMaxSize}"`
       : ``
   }          
 >

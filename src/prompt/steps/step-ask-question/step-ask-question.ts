@@ -40,6 +40,7 @@ import './handlers/handle-web-search.js';
 import './handlers/handle-compound-action.js';
 import './handlers/handle-project-command.js';
 import './handlers/handle-run-bash-command.js';
+import './handlers/handle-pull-console-logs.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,

@@ -1,3 +1,5 @@
+import type { ConsoleLogLevel, ConsoleLogEntry, ConsoleLogMode } from '../main/common/console-types.js';
+
 /**
  * Event types for cross-window notification communication
  */
@@ -26,3 +28,5 @@ export interface NotificationEvent {
   source?: 'genaicode';
   origin?: string;
 }
+
+export type { ConsoleLogLevel, ConsoleLogEntry, ConsoleLogMode };

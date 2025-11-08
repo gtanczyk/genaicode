@@ -22,6 +22,7 @@ describe('step-ask-question', () => {
       performAnalysis: true,
       createFile: true,
       pullAppContext: true,
+      pullConsoleLogs: true,
       genaicodeHelp: true,
       pushAppContext: true,
       reasoningInference: true,
