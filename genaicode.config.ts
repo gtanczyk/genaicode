@@ -76,8 +76,8 @@ export default defineConfig({
   modelOverrides: {
     aiStudio: {
       default: 'gemini-2.5-pro',
-      cheap: 'gemini-flash-latest',
-      lite: 'gemini-flash-lite-latest',
+      // cheap: 'gemini-flash-latest',
+      // lite: 'gemini-flash-lite-latest',
       modelSpecificSettings: {
         'gemini-2.5-flash': {
           outputTokenLimit: 16384,
