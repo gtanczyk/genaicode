@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useEffect } from 'react';
 import { ThemeProvider } from 'styled-components';
 import { lightTheme, darkTheme } from './theme/theme.js';
 import { AppLayout } from './components/app-layout.js';
@@ -18,6 +18,8 @@ import { SuggestionGenerator } from './components/suggestion-generator.js';
 import { ConversationGraphVisualiser } from './components/chat/conversation-graph-visualiser.js';
 import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js'; // Ensure this import is present
 import { TerminalView } from './components/chat/terminal-view.js';
+import { ConsoleInterceptor } from './utils/console-interceptor.js';
+import { setAppContext } from './api/api-client.js';
 
 const GenAIcodeAppContent = () => {
   // Consume the context to get state and actions
@@ -46,6 +48,24 @@ const GenAIcodeAppContent = () => {
   const currentTerminalEvents = (currentIterationId && terminalEvents[currentIterationId]) || [];
 
   // Polling is handled within the context provider
+
+  // Initialize console interception in dev mode
+  useEffect(() => {
+    if (!codegenOptions?.isDev) {
+      return;
+    }
+
+    const maxSize = 1000;
+    new ConsoleInterceptor(maxSize, async (logs) => {
+      try {
+        await setAppContext('__console_logs', logs);
+      } catch (error) {
+        console.warn('Failed to push console logs to app context:', error);
+      }
+    });
+
+    console.log('GenAIcode: Console log interception enabled in dev mode.');
+  }, [codegenOptions?.isDev]);
 
   const handlePauseResume = () => {
     if (executionStatus === 'paused') {

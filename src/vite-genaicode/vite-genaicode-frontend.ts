@@ -1,66 +1,7 @@
 import logo from '../../media/logo.png';
-import { NotificationEvent, NotificationEventType, ConsoleLogLevel, ConsoleLogEntry } from './vite-genaicode-types.js';
+import { NotificationEvent, NotificationEventType } from './vite-genaicode-types.js';
 import { contextManager } from './vite-genaicode-context.js';
-
-/**
- * Intercepts console methods and pushes them to the GenAIcode app context.
- */
-class ConsoleInterceptor {
-  private buffer: ConsoleLogEntry[] = [];
-  private readonly maxBufferSize: number;
-
-  constructor(maxBufferSize = 1000) {
-    this.maxBufferSize = maxBufferSize;
-    this._wrapConsoleMethods();
-  }
-
-  private _wrapConsoleMethods() {
-    const methodsToWrap: ConsoleLogLevel[] = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'assert'];
-
-    methodsToWrap.forEach((level) => {
-      const originalMethod = console[level as keyof Console] as (...args: unknown[]) => void;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (console as any)[level] = (...args: unknown[]) => {
-        this._addToBuffer(level, args);
-        originalMethod.apply(console, args);
-      };
-    });
-  }
-
-  private _formatMessage(args: unknown[]): string {
-    return args
-      .map((arg) => {
-        if (typeof arg === 'string') return arg;
-        try {
-          return JSON.stringify(arg);
-        } catch {
-          return String(arg);
-        }
-      })
-      .join(' ');
-  }
-
-  private _addToBuffer(level: ConsoleLogLevel, args: unknown[]) {
-    const entry: ConsoleLogEntry = {
-      timestamp: Date.now(),
-      level,
-      message: this._formatMessage(args),
-      args,
-    };
-
-    this.buffer.push(entry);
-
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.shift(); // Maintain circular buffer
-    }
-
-    // Push the updated buffer to the app context
-    contextManager.setContext('__console_logs', this.buffer).catch((error) => {
-      console.warn('GenAIcode: Failed to set console logs in context:', error);
-    });
-  }
-}
+import { ConsoleInterceptor } from '../main/ui/frontend/app/utils/console-interceptor.js';
 
 interface GenAICodeOverlayState {
   isExpanded: boolean;
@@ -432,6 +373,8 @@ document.body.appendChild(document.createElement('genaicode-overlay'));
 const scriptTag = document.querySelector('[data-genaicode-app-context-enabled]') as HTMLElement;
 if (scriptTag?.dataset['genaicodeAppContextEnabled'] === 'true') {
   const maxSize = parseInt(scriptTag.dataset['genaicodeLogBufferMaxSize'] || '1000', 10);
-  new ConsoleInterceptor(maxSize);
+  new ConsoleInterceptor(maxSize, async (logs) => {
+    await contextManager.setContext('__console_logs', logs);
+  });
   console.log('GenAIcode: Console log interception enabled.');
 }

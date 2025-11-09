@@ -81,6 +81,7 @@ export type PushAppContextArgs = {
  */
 export type PullConsoleLogsArgs = {
   mode: ConsoleLogMode;
+  prompt?: string;
   lines?: number;
   level?: ConsoleLogLevel;
 };

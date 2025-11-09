@@ -23,4 +23,4 @@ export interface ConsoleLogEntry {
 /**
  * Mode for retrieving console logs.
  */
-export type ConsoleLogMode = 'suffix' | 'prefix' | 'full' | 'summary';
+export type ConsoleLogMode = 'suffix' | 'prefix' | 'summary';

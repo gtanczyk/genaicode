@@ -271,6 +271,15 @@ export const getRcConfig = async (): Promise<RcConfig> => {
   return response.data.rcConfig;
 };
 
+/**
+ * Set a value in the app context
+ * @param key - The context key
+ * @param value - The value to store
+ */
+export const setAppContext = async <T = unknown>(key: string, value: T): Promise<void> => {
+  await api.post(`/app-context/${key}`, { value });
+};
+
 // New API method to delete an iteration
 export const deleteIteration = async (iterationId: string): Promise<void> => {
   await api.delete(`/delete-iteration/${iterationId}`);
