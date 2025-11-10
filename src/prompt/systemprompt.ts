@@ -22,6 +22,7 @@ export function getSystemPrompt(
 
   const gitContextEnabled = featuresEnabled?.gitContext !== false;
   const dockerTaskEnabled = featuresEnabled?.containerTask !== false;
+  const appContextEnabled = featuresEnabled?.appContext !== false;
 
   console.log('Generate system prompt');
 
@@ -63,6 +64,26 @@ Please limit any changes to the root directory of my application, which is \`${r
 - ${allowFileMove ? 'You are allowed to move files.' : 'Do not move files.'}
 - ${vision ? 'You are allowed to analyze image assets.' : 'Do not analyze image assets.'}
 - ${imagen ? 'You are allowed to generate images.' : 'You are not allowed to generate images.'}
+
+## Your allowed operations
+
+You have access to the following file and image operations that can be used during code generation:
+
+**File Operations:**
+- \`createDirectory\`: Create a new directory at the specified path
+- \`createFile\`: Create a new file with the provided content
+- \`updateFile\`: Replace the entire content of an existing file
+- \`patchFile\`: Apply targeted changes to specific parts of a file (preferred for large files)
+- \`deleteFile\`: Delete a file at the specified path
+- \`moveFile\`: Move or rename a file from one path to another
+- \`downloadFile\`: Download a file from a URL to a specified path
+
+**Image Operations:**
+- \`splitImage\`: Split an image into multiple tiles or sections
+- \`resizeImage\`: Resize an image to specified dimensions
+- \`imglyRemoveBackground\`: Remove the background from an image
+
+These operations are used within the code generation workflow and are executed after user confirmation. They should be specified in the \`fileUpdates\` array when generating code changes.
 `;
 
   if (askQuestion && (interactive || ui)) {
@@ -109,9 +130,16 @@ Example use cases of action types:
 - Simple visual analysis of an image, which is already present in the context -> **sendMessage**
 - Need to reduce size of the context, and content of some files is not needed anymore -> **removeFilesFromContext**
 - Need to reorganize the context of the conversation, or reduce its size -> **contextOptimization**
+- Need to compress the conversation history while maintaining essential information -> **contextCompression**
 - Generate an image -> **generateImage**
 - Search for a keyword/phrase over the codebase of the project -> **searchCode**
 - Run project commands (lint, test, build, or custom) with parameters -> **runProjectCommand**
+- Run a bash command directly -> **runBashCommand**
+- Search the web for information to ground your answer with URLs -> **webSearch**
+- Need to request specific fragments or sections of files based on a prompt, rather than full file content -> **requestFilesFragments**
+${appContextEnabled ? '- Retrieve application context values for use in the conversation -> **pullAppContext**' : ''}
+${appContextEnabled ? '- Update application context values based on conversation outcomes -> **pushAppContext**' : ''}
+${appContextEnabled ? '- Pull console logs from the application for debugging or analysis -> **pullConsoleLogs**' : ''}
 - End the conversation -> **endConversation**
 - The user needs help with GenAIcode itself, encountered a problem, or needs guidance -> **genaicodeHelp**
 - Perform inference on a AI model with reasoning capabilities -> **reasoningInference**
