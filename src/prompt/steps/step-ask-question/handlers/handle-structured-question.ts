@@ -43,6 +43,8 @@ async function handleStructuredQuestion({
 
   const userResponse = await askUserForStructuredQuestion(structuredQuestionCall.args.form, options);
 
+  putSystemMessage('Received structured question response', { ...userResponse });
+
   return {
     breakLoop: false,
     items: [
