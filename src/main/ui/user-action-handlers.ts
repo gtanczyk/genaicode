@@ -1,4 +1,9 @@
-import { registerConfirmHandler, registerInputHandler, registerSecretHandler } from '../common/user-actions.js';
+import {
+  registerConfirmHandler,
+  registerInputHandler,
+  registerSecretHandler,
+  registerStructuredQuestionHandler,
+} from '../common/user-actions.js';
 import { Service } from './backend/service.js';
 
 export function registerUserActionHandlers(service: Service) {
@@ -21,5 +26,19 @@ export function registerUserActionHandlers(service: Service) {
       secret: true,
     });
     return res?.answer || undefined;
+  });
+  registerStructuredQuestionHandler(async (form) => {
+    const questionId = Date.now().toString();
+    const currentQuestion = await service.getCurrentQuestion();
+
+    // Set up the structured question
+    if (!currentQuestion || currentQuestion.id !== questionId) {
+      return await service.askStructuredQuestion('Please complete the form', form);
+    }
+
+    return {
+      submitted: false,
+      values: {},
+    };
   });
 }

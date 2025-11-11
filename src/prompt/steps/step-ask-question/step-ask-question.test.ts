@@ -36,6 +36,7 @@ describe('step-ask-question', () => {
       runProjectCommand: true,
       runBashCommand: true,
       webSearch: true,
+      structuredQuestion: true,
     };
 
     // Check if each action type has a registered handler

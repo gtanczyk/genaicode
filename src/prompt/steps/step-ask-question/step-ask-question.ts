@@ -19,28 +19,29 @@ import './handlers/handle-context-optimization.js';
 import './handlers/handle-conversation-graph.js';
 import './handlers/handle-create-file.js';
 import './handlers/handle-end-conversation.js';
+import './handlers/handle-explore-external-directories.js';
 import './handlers/handle-genaicode-help.js';
 import './handlers/handle-generate-image.js';
 import './handlers/handle-perform-analysis.js';
+import './handlers/handle-project-command.js';
 import './handlers/handle-pull-app-context.js';
+import './handlers/handle-pull-console-logs.js';
 import './handlers/handle-push-app-context.js';
+import './handlers/handle-read-external-files.js';
 import './handlers/handle-reasoning-inference.js';
 import './handlers/handle-remove-files-from-context.js';
 import './handlers/handle-request-files-content.js';
 import './handlers/handle-request-files-fragments.js';
+import './handlers/handle-request-git-context.js';
 import './handlers/handle-request-permissions.js';
+import './handlers/handle-run-bash-command.js';
 import './handlers/handle-run-container-task.js';
 import './handlers/handle-search-code.js';
 import './handlers/handle-send-message.js';
+import './handlers/handle-structured-question.js';
 import './handlers/handle-update-file.js';
-import './handlers/handle-read-external-files.js';
-import './handlers/handle-explore-external-directories.js';
-import './handlers/handle-request-git-context.js';
 import './handlers/handle-web-search.js';
 import './handlers/handle-compound-action.js';
-import './handlers/handle-project-command.js';
-import './handlers/handle-run-bash-command.js';
-import './handlers/handle-pull-console-logs.js';
 
 export async function executeStepAskQuestion(
   generateContentFn: GenerateContentFunction,

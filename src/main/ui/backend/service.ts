@@ -15,7 +15,11 @@ import { FunctionCall, PromptImageMediaType, PromptItemImage } from '../../../ai
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
-import { ActionType } from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import {
+  ActionType,
+  StructuredQuestionForm,
+  StructuredQuestionResponse,
+} from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 export interface ImageData {
   buffer: Buffer;
@@ -31,6 +35,7 @@ interface AskQuestionConversationItem {
   confirmation: ConfirmationProps;
   images?: PromptItemImage[];
   selectedActionType?: ActionType | undefined;
+  structuredResponse?: StructuredQuestionResponse;
 }
 
 export class Service implements AppContextProvider {
@@ -285,6 +290,28 @@ export class Service implements AppContextProvider {
     return { answer, confirmed, images, options: this.codegenOptions, selectedActionType };
   }
 
+  async askStructuredQuestion(question: string, form: StructuredQuestionForm): Promise<StructuredQuestionResponse> {
+    const questionId = Date.now().toString();
+    this.currentQuestion = {
+      id: questionId,
+      text: question,
+      confirmation: {},
+      structuredForm: form,
+    };
+
+    await this.waitForQuestionAnswer();
+
+    console.log('Structured question answer wait finished.');
+    const conversationItem = this.askQuestionConversation.find((q) => q.id === questionId);
+
+    if (!conversationItem || !conversationItem.structuredResponse) {
+      // Should ideally not happen if waitForQuestionAnswer resolved correctly
+      throw new Error(`Conversation item or structured response not found for question ID: ${questionId}`);
+    }
+
+    return conversationItem.structuredResponse;
+  }
+
   async answerQuestion(
     questionId: string,
     answer: string,
@@ -292,6 +319,7 @@ export class Service implements AppContextProvider {
     images?: ImageData[], // Accept raw image data from the endpoint
     options?: CodegenOptions,
     selectedActionType?: ActionType | undefined,
+    structuredResponse?: StructuredQuestionResponse,
   ): Promise<void> {
     if (this.currentQuestion && this.currentQuestion.id === questionId) {
       // Update codegenOptions if provided
@@ -314,6 +342,7 @@ export class Service implements AppContextProvider {
         confirmation: this.currentQuestion.confirmation,
         images: processedImages, // Store the processed images
         selectedActionType,
+        structuredResponse,
       });
 
       // Clear the current question now that it's answered

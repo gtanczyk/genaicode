@@ -1,4 +1,5 @@
 import { type ServiceConfig } from '../../../ai-service/service-configurations-types.js';
+import { StructuredQuestionForm } from '../../../prompt/steps/step-ask-question/step-ask-question-types';
 export { type ServiceConfig } from '../../../ai-service/service-configurations-types.js';
 import { AiServiceType } from '../../../ai-service/service-configurations-types.js';
 import { UsageMetrics } from '../../common/cost-collector.js';
@@ -27,6 +28,7 @@ export interface Question {
   id: string;
   text: string;
   confirmation: ConfirmationProps;
+  structuredForm?: StructuredQuestionForm;
 }
 
 /**

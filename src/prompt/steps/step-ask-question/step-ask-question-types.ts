@@ -37,6 +37,7 @@ export type ActionType =
   | 'runProjectCommand'
   | 'runBashCommand'
   | 'webSearch'
+  | 'structuredQuestion'
   | PluginActionType;
 
 export type AskQuestionArgs = {
@@ -286,3 +287,34 @@ export type ActionHandlerProps = {
 };
 
 export type ActionHandler = (props: ActionHandlerProps) => Promise<ActionResult>;
+
+export type StructuredQuestionFieldType = 'text' | 'checkbox' | 'radio' | 'select' | 'textarea' | 'number' | 'email';
+
+export interface StructuredQuestionField {
+  id: string;
+  label: string;
+  type: StructuredQuestionFieldType;
+  required?: boolean;
+  placeholder?: string;
+  options?: { value: string; label: string }[]; // For radio, checkbox, select
+  defaultValue?: string | string[]; // For checkbox can be array
+  validation?: { pattern?: string; minLength?: number; maxLength?: number };
+}
+
+export interface StructuredQuestionForm {
+  title: string;
+  description?: string;
+  fields: StructuredQuestionField[];
+  submitLabel?: string;
+  cancelLabel?: string;
+}
+
+export type StructuredQuestionArgs = {
+  message: string;
+  form: StructuredQuestionForm;
+};
+
+export type StructuredQuestionResponse = {
+  submitted: boolean;
+  values: Record<string, string | string[] | boolean>;
+};

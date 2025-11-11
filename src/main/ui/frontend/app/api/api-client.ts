@@ -9,7 +9,10 @@ import {
   ServiceConfigUpdate,
 } from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common-types.js';
-import { ActionType } from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import {
+  ActionType,
+  StructuredQuestionResponse,
+} from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 const API_BASE_URL = '/api';
 
@@ -229,6 +232,7 @@ export const answerQuestion = async (
   options?: CodegenOptions,
   images?: File[],
   selectedActionType?: string,
+  structuredResponse?: StructuredQuestionResponse,
 ): Promise<void> => {
   const formData = new FormData();
   formData.append('questionId', questionId);
@@ -247,6 +251,9 @@ export const answerQuestion = async (
   }
   if (selectedActionType) {
     formData.append('selectedActionType', selectedActionType);
+  }
+  if (structuredResponse) {
+    formData.append('structuredResponse', JSON.stringify(structuredResponse));
   }
 
   await api.post('/answer-question', formData, {

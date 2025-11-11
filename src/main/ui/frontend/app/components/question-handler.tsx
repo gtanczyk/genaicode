@@ -8,6 +8,8 @@ import { AiServiceSelector } from './input-area/ai-service-selector';
 import { ImageUpload } from './input-area/image-upload'; // Import ImageUpload
 import { UploadIcon } from './icons';
 import { PromptActionTypeSelector } from './prompt-action-type-selector.js';
+import { StructuredQuestionFormComponent } from './structured-question/structured-question-form.js';
+import { StructuredQuestionResponse } from '../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 interface QuestionHandlerProps {
   onSubmit: (
@@ -16,6 +18,7 @@ interface QuestionHandlerProps {
     confirmed?: boolean,
     aiService?: AiServiceType,
     selectedActionType?: string,
+    structuredResponse?: StructuredQuestionResponse,
   ) => void;
   onInterrupt: () => void;
   onPauseResume: () => void;
@@ -24,14 +27,14 @@ interface QuestionHandlerProps {
   executionStatus: 'idle' | 'executing' | 'paused';
 }
 
-export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
+export const QuestionHandler = ({
   onSubmit,
   onInterrupt,
   onPauseResume,
   question,
   codegenOptions,
   executionStatus,
-}) => {
+}: QuestionHandlerProps) => {
   const [answer, setAnswer] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -101,6 +104,34 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
     }
   };
 
+  const handleStructuredSubmit = async (values: Record<string, string | string[] | boolean>) => {
+    try {
+      const response: StructuredQuestionResponse = {
+        submitted: true,
+        values,
+      };
+      await onSubmit('', undefined, undefined, aiService, selectedActionType, response);
+      setError(null);
+    } catch (err) {
+      console.error('Error submitting structured question:', err);
+      setError('Failed to submit the form. Please try again.');
+    }
+  };
+
+  const handleStructuredCancel = async () => {
+    try {
+      const response: StructuredQuestionResponse = {
+        submitted: false,
+        values: {},
+      };
+      await onSubmit('', undefined, undefined, aiService, selectedActionType, response);
+      setError(null);
+    } catch (err) {
+      console.error('Error cancelling structured question:', err);
+      setError('Failed to cancel the form. Please try again.');
+    }
+  };
+
   const handleSuggestionClick = (suggestion: string) => {
     setAnswer(suggestion);
     setIsDropdownOpen(false);
@@ -123,101 +154,109 @@ export const QuestionHandler: React.FC<QuestionHandlerProps> = ({
   return (
     <HandlerContainer>
       {question ? (
-        <AnswerForm onSubmit={handleSubmit}>
-          <p>{question.text}</p>
-          {question.confirmation?.secret ? (
-            <StyledPasswordInput
-              type="password"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Enter secret"
-              autoFocus
-            />
-          ) : (
-            question.confirmation?.includeAnswer !== false && (
-              <>
-                <StyledTextarea
-                  value={answer}
-                  onChange={setAnswer}
-                  placeholder="Enter your answer here or select a suggestion"
-                  maxViewportHeight={0.3}
-                  onImagePaste={handleImagePaste}
-                />
-                <ImageUpload
-                  images={images}
-                  onImagesChange={setImages}
-                  error={imageError}
-                  setError={setImageError}
-                  fileInputRef={fileInputRef}
-                />
-              </>
-            )
-          )}
-          {question.confirmation?.secret ? (
-            <ButtonGroup>
-              <SubmitButton type="submit" disabled={!answer.trim()}>
-                Submit
-              </SubmitButton>
-              <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-                Decline
-              </ConfirmButton>
-              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
-            </ButtonGroup>
-          ) : isRegularQuestion ? (
-            <ButtonGroup>
-              <SubmitButton type="submit" disabled={!answer.trim() && images.length === 0}>
-                Submit Answer
-              </SubmitButton>
-              <UploadButton type="button" onClick={handleUploadClick} title="Upload Images">
-                <UploadIcon />
-              </UploadButton>
-              <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
-              {question.confirmation?.promptActionType && (
-                <PromptActionTypeSelector
-                  value={selectedActionType}
-                  onChange={setSelectedActionType}
-                  disabled={false}
-                />
-              )}
-              {suggestions && suggestions.length > 0 && (
-                <DropdownWrapper ref={dropdownRef}>
-                  <DropdownButton type="button" onClick={toggleDropdown}>
-                    {suggestions[0]}
-                    {suggestions.length > 1 && <Arrow> ▼</Arrow>}
-                  </DropdownButton>
-                  {isDropdownOpen && (
-                    <DropdownContainer>
-                      {suggestions.map((suggestion, index) => (
-                        <DropdownItem key={index} onClick={() => handleSuggestionClick(suggestion)}>
-                          {suggestion}
-                        </DropdownItem>
-                      ))}
-                    </DropdownContainer>
-                  )}
-                </DropdownWrapper>
-              )}
-              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
-            </ButtonGroup>
-          ) : (
-            <ButtonGroup>
-              <ConfirmButton onClick={() => handleConfirmation(true)}>
-                {question.confirmation?.confirmLabel}
-              </ConfirmButton>
-              <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
-                {question.confirmation?.declineLabel}
-              </ConfirmButton>
-              <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
-              {question.confirmation?.promptActionType && (
-                <PromptActionTypeSelector
-                  value={selectedActionType}
-                  onChange={setSelectedActionType}
-                  disabled={false}
-                />
-              )}
-              <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
-            </ButtonGroup>
-          )}
-        </AnswerForm>
+        question.structuredForm ? (
+          <StructuredQuestionFormComponent
+            form={question.structuredForm}
+            onSubmit={handleStructuredSubmit}
+            onCancel={handleStructuredCancel}
+          />
+        ) : (
+          <AnswerForm onSubmit={handleSubmit}>
+            <p>{question.text}</p>
+            {question.confirmation?.secret ? (
+              <StyledPasswordInput
+                type="password"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Enter secret"
+                autoFocus
+              />
+            ) : (
+              question.confirmation?.includeAnswer !== false && (
+                <>
+                  <StyledTextarea
+                    value={answer}
+                    onChange={setAnswer}
+                    placeholder="Enter your answer here or select a suggestion"
+                    maxViewportHeight={0.3}
+                    onImagePaste={handleImagePaste}
+                  />
+                  <ImageUpload
+                    images={images}
+                    onImagesChange={setImages}
+                    error={imageError}
+                    setError={setImageError}
+                    fileInputRef={fileInputRef}
+                  />
+                </>
+              )
+            )}
+            {question.confirmation?.secret ? (
+              <ButtonGroup>
+                <SubmitButton type="submit" disabled={!answer.trim()}>
+                  Submit
+                </SubmitButton>
+                <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+                  Decline
+                </ConfirmButton>
+                <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+              </ButtonGroup>
+            ) : isRegularQuestion ? (
+              <ButtonGroup>
+                <SubmitButton type="submit" disabled={!answer.trim() && images.length === 0}>
+                  Submit Answer
+                </SubmitButton>
+                <UploadButton type="button" onClick={handleUploadClick} title="Upload Images">
+                  <UploadIcon />
+                </UploadButton>
+                <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
+                {question.confirmation?.promptActionType && (
+                  <PromptActionTypeSelector
+                    value={selectedActionType}
+                    onChange={setSelectedActionType}
+                    disabled={false}
+                  />
+                )}
+                {suggestions && suggestions.length > 0 && (
+                  <DropdownWrapper ref={dropdownRef}>
+                    <DropdownButton type="button" onClick={toggleDropdown}>
+                      {suggestions[0]}
+                      {suggestions.length > 1 && <Arrow> ▼</Arrow>}
+                    </DropdownButton>
+                    {isDropdownOpen && (
+                      <DropdownContainer>
+                        {suggestions.map((suggestion, index) => (
+                          <DropdownItem key={index} onClick={() => handleSuggestionClick(suggestion)}>
+                            {suggestion}
+                          </DropdownItem>
+                        ))}
+                      </DropdownContainer>
+                    )}
+                  </DropdownWrapper>
+                )}
+                <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+              </ButtonGroup>
+            ) : (
+              <ButtonGroup>
+                <ConfirmButton onClick={() => handleConfirmation(true)}>
+                  {question.confirmation?.confirmLabel}
+                </ConfirmButton>
+                <ConfirmButton onClick={() => handleConfirmation(false)} data-secondary="true">
+                  {question.confirmation?.declineLabel}
+                </ConfirmButton>
+                <AiServiceSelector value={aiService} onChange={setAiService} disabled={false} />
+                {question.confirmation?.promptActionType && (
+                  <PromptActionTypeSelector
+                    value={selectedActionType}
+                    onChange={setSelectedActionType}
+                    disabled={false}
+                  />
+                )}
+                <InterruptButton onClick={onInterrupt}>Interrupt</InterruptButton>
+              </ButtonGroup>
+            )}
+          </AnswerForm>
+        )
       ) : (
         <ButtonGroup>
           <PauseResumeButton onClick={onPauseResume} isPaused={isPaused}>

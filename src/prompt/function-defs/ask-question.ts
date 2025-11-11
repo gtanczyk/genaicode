@@ -77,6 +77,7 @@ export function getActionTypeOptions(): readonly ActionType[] {
     'conversationGraph',
     'compoundAction',
     'pullConsoleLogs',
+    'structuredQuestion',
   ] as const;
 }
 

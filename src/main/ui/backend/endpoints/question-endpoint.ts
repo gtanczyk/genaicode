@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { CodegenOptions } from '../../../codegen-types.js';
+import { StructuredQuestionResponse } from '../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { registerEndpoint } from '../api-handlers.js';
 import { validateCodegenOptions } from '../api-utils.js';
 import { ImageData } from '../service.js'; // Import ImageData type
@@ -38,6 +39,9 @@ registerEndpoint((router, service) => {
       const confirmed = req.body.confirmed ? req.body.confirmed === 'true' : undefined;
       // Parse options if present
       const options = req.body.options ? JSON.parse(req.body.options) : undefined;
+      const structuredResponse = req.body.structuredResponse
+        ? (JSON.parse(req.body.structuredResponse) as StructuredQuestionResponse)
+        : undefined;
 
       // Access uploaded files via req.files
       const files = req.files as Express.Multer.File[];
@@ -72,6 +76,7 @@ registerEndpoint((router, service) => {
         images, // Pass the processed image data
         options as CodegenOptions, // Pass CodegenOptions
         selectedActionType,
+        structuredResponse,
       );
 
       res.json({ message: 'Question answered successfully' });

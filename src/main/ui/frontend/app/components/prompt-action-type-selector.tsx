@@ -39,6 +39,7 @@ const humanReadableActionTypes: Record<ActionType, string> = {
   pushAppContext: 'Push App Context 🔼',
   requestFilesFragments: 'Request Files Fragments 🧩',
   pullConsoleLogs: 'Pull Console Logs 🖥️',
+  structuredQuestion: 'Structured Question ❓',
 };
 
 const toHumanReadable = (str: ActionType) => {

@@ -1,5 +1,9 @@
 import { PromptItemImage } from '../../ai-service/common-types';
-import { ActionType } from '../../prompt/steps/step-ask-question/step-ask-question-types';
+import {
+  ActionType,
+  StructuredQuestionForm,
+  StructuredQuestionResponse,
+} from '../../prompt/steps/step-ask-question/step-ask-question-types';
 import { CodegenOptions } from '../codegen-types';
 
 export type InputHandlerResponse = {
@@ -28,6 +32,10 @@ export type ConfirmHandlerProps = {
 
 type ConfirmHandler = (props: ConfirmHandlerProps) => Promise<ConfirmHandlerResponse>;
 type SecretHandler = (prompt: string) => Promise<string | undefined>;
+type StructuredQuestionHandler = (
+  form: StructuredQuestionForm,
+  options: CodegenOptions,
+) => Promise<StructuredQuestionResponse>;
 
 export async function askUserForInput(
   prompt: string,
@@ -83,9 +91,20 @@ export async function askUserForSecret(prompt: string): Promise<string | undefin
   return await secretHandler(prompt);
 }
 
+export async function askUserForStructuredQuestion(
+  form: StructuredQuestionForm,
+  options: CodegenOptions,
+): Promise<StructuredQuestionResponse> {
+  if (!structuredQuestionHandler) {
+    throw new Error('Structured question handler not registered');
+  }
+  return await structuredQuestionHandler(form, options);
+}
+
 let inputHandler: InputHandler;
 let confirmHandler: ConfirmHandler;
 let secretHandler: SecretHandler;
+let structuredQuestionHandler: StructuredQuestionHandler;
 
 export function registerInputHandler(handler: InputHandler) {
   inputHandler = handler;
@@ -97,6 +116,10 @@ export function registerConfirmHandler(handler: ConfirmHandler) {
 
 export function registerSecretHandler(handler: SecretHandler) {
   secretHandler = handler;
+}
+
+export function registerStructuredQuestionHandler(handler: StructuredQuestionHandler) {
+  structuredQuestionHandler = handler;
 }
 
 function handleOptionsUpdate<T extends { options?: CodegenOptions }>(response: T, options: CodegenOptions): T {
