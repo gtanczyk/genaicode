@@ -1,20 +1,24 @@
 import React from 'react';
-import styled from 'styled-components';
 import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { FieldContainer, Label, Select, ErrorMessage } from './structured-question-styles';
 
 interface SelectFieldProps {
   field: StructuredQuestionField;
   value: string;
   onChange: (value: string) => void;
+  error?: string;
 }
 
-export const SelectField: React.FC<SelectFieldProps> = ({ field, value, onChange }) => {
+export const SelectField: React.FC<SelectFieldProps> = ({ field, value, onChange, error }) => {
   return (
     <FieldContainer>
-      <Label htmlFor={field.id}>{field.label}{field.required && ' *'}</Label>
-      <StyledSelect
+      <Label htmlFor={field.id}>
+        {field.label}
+        {field.required && <span style={{ color: 'var(--error-color, #f44336)', marginLeft: '4px' }}>*</span>}
+      </Label>
+      <Select
         id={field.id}
-        value={value}
+        value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         required={field.required}
       >
@@ -24,33 +28,8 @@ export const SelectField: React.FC<SelectFieldProps> = ({ field, value, onChange
             {option.label}
           </option>
         ))}
-      </StyledSelect>
+      </Select>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
     </FieldContainer>
   );
 };
-
-const FieldContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 16px;
-`;
-
-const Label = styled.label`
-  margin-bottom: 8px;
-  font-weight: bold;
-  color: ${({ theme }) => theme.colors.text};
-`;
-
-const StyledSelect = styled.select`
-  padding: 10px;
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: 4px;
-  background-color: ${({ theme }) => theme.colors.inputBg};
-  color: ${({ theme }) => theme.colors.inputText};
-  font-size: 1rem;
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;

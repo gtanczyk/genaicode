@@ -1,51 +1,37 @@
 import React from 'react';
-import styled from 'styled-components';
 import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types';
+import { FieldContainer, Label, OptionGroup, OptionLabel, ErrorMessage } from './structured-question-styles';
 
 interface RadioGroupProps {
   field: StructuredQuestionField;
   value: string;
   onChange: (value: string) => void;
+  error?: string;
 }
 
-export const RadioGroup: React.FC<RadioGroupProps> = ({ field, value, onChange }) => {
+export const RadioGroup: React.FC<RadioGroupProps> = ({ field, value, onChange, error }) => {
   return (
-    <RadioGroupContainer>
-      <label>{field.label}</label>
-      {field.options?.map((option) => (
-        <RadioOption key={option.value}>
-          <input
-            type="radio"
-            id={`${field.id}-${option.value}`}
-            name={field.id}
-            value={option.value}
-            checked={value === option.value}
-            onChange={() => onChange(option.value)}
-          />
-          <label htmlFor={`${field.id}-${option.value}`}>{option.label}</label>
-        </RadioOption>
-      ))}
-    </RadioGroupContainer>
+    <FieldContainer>
+      <Label>
+        {field.label}
+        {field.required && <span style={{ color: 'var(--error-color, #f44336)', marginLeft: '4px' }}>*</span>}
+      </Label>
+      <OptionGroup>
+        {field.options?.map((option) => (
+          <OptionLabel key={option.value}>
+            <input
+              type="radio"
+              id={`${field.id}-${option.value}`}
+              name={field.id}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+            />
+            {option.label}
+          </OptionLabel>
+        ))}
+      </OptionGroup>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+    </FieldContainer>
   );
 };
-
-const RadioGroupContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 1rem;
-
-  > label {
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-  }
-`;
-
-const RadioOption = styled.div`
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.5rem;
-
-  input[type='radio'] {
-    margin-right: 0.5rem;
-  }
-`;

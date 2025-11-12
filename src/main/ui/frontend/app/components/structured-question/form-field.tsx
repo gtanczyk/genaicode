@@ -1,6 +1,6 @@
 import React from 'react';
-import styled from 'styled-components';
 import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { Input, Textarea, FieldContainer, Label, ErrorMessage } from './structured-question-styles';
 
 interface FormFieldProps {
   field: StructuredQuestionField;
@@ -24,12 +24,12 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, er
 
     switch (type) {
       case 'textarea':
-        return <StyledTextarea {...commonProps} rows={4} />;
+        return <Textarea {...commonProps} rows={4} />;
       case 'number':
       case 'email':
       case 'text':
       default:
-        return <StyledInput type={type} {...commonProps} />;
+        return <Input type={type} {...commonProps} />;
     }
   };
 
@@ -37,59 +37,10 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, er
     <FieldContainer>
       <Label htmlFor={id}>
         {label}
-        {required && <RequiredIndicator>*</RequiredIndicator>}
+        {required && <span style={{ color: 'var(--error-color, #f44336)', marginLeft: '4px' }}>*</span>}
       </Label>
       {renderInput()}
       {error && <ErrorMessage>{error}</ErrorMessage>}
     </FieldContainer>
   );
 };
-
-const FieldContainer = styled.div`
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-`;
-
-const Label = styled.label`
-  margin-bottom: 8px;
-  font-weight: bold;
-  color: ${({ theme }) => theme.colors.text};
-`;
-
-const RequiredIndicator = styled.span`
-  color: ${({ theme }) => theme.colors.error};
-  margin-left: 4px;
-`;
-
-const inputStyles = `
-  width: 100%;
-  padding: 10px;
-  border: 1px solid ${({ theme }) => theme.colors.inputBorder};
-  border-radius: 4px;
-  background-color: ${({ theme }) => theme.colors.inputBg};
-  color: ${({ theme }) => theme.colors.inputText};
-  font-family: inherit;
-  font-size: 14px;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;
-
-const StyledInput = styled.input`
-  ${inputStyles}
-`;
-
-const StyledTextarea = styled.textarea`
-  ${inputStyles}
-  resize: vertical;
-`;
-
-const ErrorMessage = styled.span`
-  color: ${({ theme }) => theme.colors.error};
-  font-size: 12px;
-  margin-top: 4px;
-`;

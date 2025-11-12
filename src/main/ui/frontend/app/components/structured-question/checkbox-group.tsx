@@ -1,14 +1,15 @@
 import React from 'react';
-import styled from 'styled-components';
 import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types';
+import { FieldContainer, Label, OptionGroup, OptionLabel, ErrorMessage } from './structured-question-styles';
 
 interface CheckboxGroupProps {
   field: StructuredQuestionField;
   value: string[];
   onChange: (value: string[]) => void;
+  error?: string;
 }
 
-export const CheckboxGroup: React.FC<CheckboxGroupProps> = ({ field, value, onChange }) => {
+export const CheckboxGroup: React.FC<CheckboxGroupProps> = ({ field, value, onChange, error }) => {
   const handleChange = (optionValue: string) => {
     const newValue = value.includes(optionValue)
       ? value.filter((v) => v !== optionValue)
@@ -17,41 +18,25 @@ export const CheckboxGroup: React.FC<CheckboxGroupProps> = ({ field, value, onCh
   };
 
   return (
-    <CheckboxGroupContainer>
-      <label>{field.label}</label>
-      {field.options?.map((option) => (
-        <CheckboxLabel key={option.value}>
-          <input
-            type="checkbox"
-            value={option.value}
-            checked={value.includes(option.value)}
-            onChange={() => handleChange(option.value)}
-          />
-          {option.label}
-        </CheckboxLabel>
-      ))}
-    </CheckboxGroupContainer>
+    <FieldContainer>
+      <Label>
+        {field.label}
+        {field.required && <span style={{ color: 'var(--error-color, #f44336)', marginLeft: '4px' }}>*</span>}
+      </Label>
+      <OptionGroup>
+        {field.options?.map((option) => (
+          <OptionLabel key={option.value}>
+            <input
+              type="checkbox"
+              value={option.value}
+              checked={value.includes(option.value)}
+              onChange={() => handleChange(option.value)}
+            />
+            {option.label}
+          </OptionLabel>
+        ))}
+      </OptionGroup>
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+    </FieldContainer>
   );
 };
-
-const CheckboxGroupContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 1rem;
-
-  label {
-    margin-bottom: 0.5rem;
-    font-weight: bold;
-  }
-`;
-
-const CheckboxLabel = styled.label`
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-
-  input {
-    margin-right: 0.5rem;
-  }
-`;
