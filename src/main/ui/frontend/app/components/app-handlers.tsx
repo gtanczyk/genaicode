@@ -8,7 +8,7 @@ import {
   interruptExecution,
 } from '../api/api-client.js';
 import { ChatStateContext } from '../contexts/chat-state-context.js'; // Import the context
-import { StructuredQuestionResponse } from '../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { StructuredQuestionResponse } from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 
 // Remove props related to state setters, they will come from context
 interface AppHandlersProps {
