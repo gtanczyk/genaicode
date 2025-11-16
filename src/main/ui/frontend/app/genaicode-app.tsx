@@ -18,7 +18,7 @@ import { SuggestionGenerator } from './components/suggestion-generator.js';
 import { ConversationGraphVisualiser } from './components/chat/conversation-graph-visualiser.js';
 import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js'; // Ensure this import is present
 import { TerminalView } from './components/chat/terminal-view.js';
-import { ConsoleInterceptor } from './utils/console-interceptor.js';
+import { ConsoleInterceptor } from '../../../../vite-genaicode/console-interceptor.js';
 import { setAppContext } from './api/api-client.js';
 
 const GenAIcodeAppContent = () => {

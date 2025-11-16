@@ -1,7 +1,7 @@
 import logo from '../../media/logo.png';
 import { NotificationEvent, NotificationEventType } from './vite-genaicode-types.js';
 import { contextManager } from './vite-genaicode-context.js';
-import { ConsoleInterceptor } from '../main/ui/frontend/app/utils/console-interceptor.js';
+import { ConsoleInterceptor } from './console-interceptor.js';
 
 interface GenAICodeOverlayState {
   isExpanded: boolean;

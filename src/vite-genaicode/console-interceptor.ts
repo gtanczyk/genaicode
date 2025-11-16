@@ -1,4 +1,4 @@
-import { ConsoleLogEntry, ConsoleLogLevel } from '../../../../../main/common/console-types.js';
+import { ConsoleLogEntry, ConsoleLogLevel } from '../main/common/console-types.js';
 
 /**
  * Callback function type for handling console log updates
