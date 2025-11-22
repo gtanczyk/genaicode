@@ -145,6 +145,8 @@ export async function internalGoogleGenerateContent(
                 name: call.name,
                 args: call.args ?? {},
               },
+              // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures
+              thoughtSignature: 'skip_thought_signature_validator',
             })),
           ],
         };
