@@ -82,7 +82,7 @@ describe('prompt-debug', () => {
   it('Gemini Pro', async () => {
     updateServiceConfig('ai-studio', {
       modelOverrides: {
-        default: 'gemini-exp-1206',
+        default: 'gemini-3-pro-preview',
       },
       apiKey: process.env.API_KEY,
     });
