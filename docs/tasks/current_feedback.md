@@ -3,7 +3,6 @@
 - schema corner case -> proper virtual files
 - codegen summary sorted by dependencies
 - no idea what permissions are requested
-- optimize context not working, returning all files on gemini
 - misuse of request filest content with external path
 - recover from tool misuse?
 - codegen plan/summary editing
