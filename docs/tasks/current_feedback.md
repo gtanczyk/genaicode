@@ -20,3 +20,4 @@
 - auto approve
 - thinking level
 - drop imagen
+- anthropic lazy tool loading + context
