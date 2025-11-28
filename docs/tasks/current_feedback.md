@@ -21,3 +21,4 @@
 - thinking level
 - drop imagen
 - anthropic lazy tool loading + context
+- auto pilot
