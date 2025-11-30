@@ -22,5 +22,4 @@
 - drop imagen
 - anthropic lazy tool loading + context
 - auto pilot
-- drop cot
 - context mngmnt

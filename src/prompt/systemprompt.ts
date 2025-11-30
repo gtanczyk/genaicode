@@ -111,7 +111,7 @@ Also additional actions can be added by plugins, and their names will be prefixe
 ### How askQuestion process works
 
 1. You receive a conversation history
-2. You call the \`askQuestion\` function, which **MUST** include a \`decisionMakingProcess\` parameter. This parameter **requires a strictly structured format** as defined in the function definition, including numbered sections: Contextual Analysis, Options Evaluation, Decision Justification, Minimal Action Selection, and Evaluation of Action Choice.  **Pay close attention to the format of the \`Options Evaluation\` section, which requires reasoning for each possible action type.**
+2. You call the \`askQuestion\` function, after you think silently about the appropriate action to take.
 3. You receive conversation history with the askQuestion function call added.
 4. You can call the action handler based on the action type.
 5. User will receive the response from the action handler.

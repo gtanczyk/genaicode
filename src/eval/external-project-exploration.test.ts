@@ -133,7 +133,6 @@ describe.each([
       expect(askExploreCall?.args?.actionType).toBe('exploreExternalDirectories');
       expect(askExploreCall?.args?.message).toMatch(/explore|look into|check/i); // Expect message about exploring
       expect(askExploreCall?.args?.message).toContain(externalDir);
-      expect(askExploreCall?.args?.decisionMakingProcess).toBeDefined();
 
       console.log(`Test 1 (${modelType} - ${service}): Passed - Correctly decided to explore.`);
     });
@@ -173,7 +172,7 @@ describe.each([
             {
               id: 'mock_explore_call_id', // ID for the explore call
               name: 'askQuestion',
-              args: { actionType: 'exploreExternalDirectories', message: '...', decisionMakingProcess: '...' },
+              args: { actionType: 'exploreExternalDirectories', message: '...' },
             },
           ],
         },
@@ -206,7 +205,6 @@ describe.each([
       // Check if the message mentions the specific files found
       expect(askReadCall?.args?.message).toContain('config.json');
       expect(askReadCall?.args?.message).toContain('settings.yaml');
-      expect(askReadCall?.args?.decisionMakingProcess).toBeDefined();
 
       console.log(`Test 2 (${modelType} - ${service}): Passed - Correctly decided to read discovered files.`);
     });
@@ -246,7 +244,7 @@ describe.each([
             {
               id: 'mock_explore_call_id_2', // ID for the initial explore call
               name: 'askQuestion',
-              args: { actionType: 'exploreExternalDirectories', message: '...', decisionMakingProcess: '...' },
+              args: { actionType: 'exploreExternalDirectories', message: '...' },
             },
           ],
         },
@@ -277,7 +275,6 @@ describe.each([
       expect(askExploreDeeperCall?.args?.actionType).toBe('exploreExternalDirectories');
       expect(askExploreDeeperCall?.args?.message).toMatch(/explore/i);
       expect(askExploreDeeperCall?.args?.message).toContain(deeperDir); // Check if it mentions the target 'src' dir
-      expect(askExploreDeeperCall?.args?.decisionMakingProcess).toBeDefined();
 
       console.log(
         `Test 3 (${modelType} - ${service}): Passed - Correctly decided to explore deeper based on synthesis.`,
@@ -318,7 +315,6 @@ describe.each([
       // Check if the model suggests using a conversation graph for this multi-step task
       expect(askGraphCall.args?.actionType).toBe('conversationGraph');
       expect(askGraphCall.args?.message).toMatch(/plan|steps|structured approach|graph/i); // Check message suggests planning
-      expect(askGraphCall.args?.decisionMakingProcess).toBeDefined();
 
       console.log(`Test 4 (${modelType} - ${service}): Passed - Correctly suggested conversationGraph.`);
     });
@@ -460,7 +456,6 @@ describe.each([
               args: {
                 actionType: 'exploreExternalDirectories',
                 message: `Exploring ${externalDir}...`,
-                decisionMakingProcess: 'Graph node: exploreLogs', // Simplified DMP for test
               },
             },
           ],
@@ -581,7 +576,6 @@ describe.each([
               args: {
                 actionType: 'readExternalFiles',
                 message: `Reading ${logFiles.join(', ')}...`,
-                decisionMakingProcess: 'Graph node: read', // Simplified DMP
               },
             },
           ],

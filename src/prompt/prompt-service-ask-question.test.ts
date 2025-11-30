@@ -84,7 +84,6 @@ describe('promptService with askQuestion', () => {
         functionCall: {
           name: 'askQuestion',
           args: {
-            decisionMakingProcess: '',
             message: 'Do you want to proceed with code generation?',
             actionType: 'confirmCodeGeneration',
           },
@@ -97,7 +96,6 @@ describe('promptService with askQuestion', () => {
         functionCall: {
           name: 'askQuestion',
           args: {
-            decisionMakingProcess: '',
             message: 'Ok lets go',
             actionType: 'confirmCodeGeneration',
           },
@@ -173,7 +171,6 @@ describe('promptService with askQuestion', () => {
         functionCall: {
           name: 'askQuestion',
           args: {
-            decisionMakingProcess: '',
             message: 'Stopping code generation as requested.',
             actionType: 'endConversation',
           },

@@ -43,8 +43,6 @@ export type ActionType =
 export type AskQuestionArgs = {
   actionType?: ActionType;
   message?: string;
-  decisionMakingProcess?: string;
-  [key: string]: unknown; // Allow other properties for specific actions
 };
 
 /**

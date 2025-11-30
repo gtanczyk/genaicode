@@ -43,8 +43,7 @@ ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 - reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
 ${rcConfig.featuresEnabled?.containerTask ? '- runContainerTask: Use to perform a complex task inside a Docker container. Before task is started, the user will be asked for confirmation. During the task, the user will be kept informed about the progress and any issues that arise. The user can also interrupt the task, and provide input if needed. User can be asked for feedback on the task at any time.' : ''}
-
-This value must be derived from the value of \`decisionMakingProcess\` parameter, and must be one of the above values.`;
+`;
 }
 
 export function getActionTypeOptions(): readonly ActionType[] {
@@ -90,8 +89,6 @@ export function getActionTypeOptions(): readonly ActionType[] {
 export const getAskQuestionDef = (): FunctionDef => ({
   name: 'askQuestion',
   description: `Use this function to interact with the user for various purposes.
-The \`decisionMakingProcess\` must be provided as first parameter to ensure clarity in decision-making, and impact on selection of \`actionType\` and \`message\`.
-The \`decisionMakingProcess\` value must contain the following sections: Contextual Analysis, Options Evaluation, Decision Justification, Minimal Action Selection, Evaluation of Action Choice
 The \`actionType\` must be chosen based on the decision-making process, and the desired outcome.
 The \`message\` property must align with the chosen \`actionType\`.
 
@@ -102,39 +99,6 @@ The \`message\` property must align with the chosen \`actionType\`.
   parameters: {
     type: 'object',
     properties: {
-      decisionMakingProcess: {
-        type: 'string',
-        description: `A detailed reasoning framework describing how you chose the action.
-The decisionMakingProcess value **MUST** be provided in the following **EXACT** format:
-
-\`\`\`
-1. **Contextual Analysis**:
-    Assess the current information, including available permissions,
-    the current context, and task requirements. Identify any missing elements
-    that are critical to task completion.
-  
-2. **Options Evaluation**:
-    For every action type think how this action can help in the current context. Provide reasoning for each action type in such format:
-    \`\`\`
-${getActionTypeOptions()
-  .map((actionType) => `      - ${actionType}: <reasoning>`)
-  .join('\n')}
-    \`\`\`
-
-3. **Decision Justification**:
-    State the reasoning for the proposed action, considering whether planning,
-    clarification, or a direct action is required. If there's any ambiguity,
-    prefer a confirmatory action (e.g., "confirmCodeGeneration").
-
-4. **Minimal Action Selection**:
-    Determine the minimal action that can make progress toward the task goal.
-    Avoid requesting unnecessary permissions or context that isn't strictly needed.
-
-5. **Evaluation of Action Choice**:
-    Double-check if the selected action aligns with the task requirements
-    and the user-provided constraints.
-  \`\`\``,
-      },
       actionType: {
         type: 'string',
         enum: getActionTypeOptions(),
@@ -145,7 +109,7 @@ ${getActionTypeOptions()
         description: 'The message to display to the user.',
       },
     },
-    required: ['decisionMakingProcess', 'actionType', 'message'],
+    required: ['actionType', 'message'],
   },
 });
 

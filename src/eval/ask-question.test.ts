@@ -358,11 +358,5 @@ describe.each([
     if (expectedMessageContent) {
       expect(askQuestionCall.args!.message).toEqual(expectedMessageContent);
     }
-
-    // Verify decision making process is present and meaningful
-    expect(askQuestionCall.args!.decisionMakingProcess).toBeDefined();
-    expect(askQuestionCall.args!.decisionMakingProcess).toContain('Contextual Analysis');
-    expect(askQuestionCall.args!.decisionMakingProcess).toContain('Options Evaluation');
-    expect(askQuestionCall.args!.decisionMakingProcess).toContain('Decision Justification');
   });
 });
