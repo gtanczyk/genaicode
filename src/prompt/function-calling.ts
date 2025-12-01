@@ -46,7 +46,7 @@ import { structuredQuestionDef } from './function-defs/structured-question.js';
  * Function definitions for function calling feature
  */
 export function getFunctionDefs(): FunctionDef[] {
-  return [
+  const fds = [
     getSourceCode,
     getImageAssets,
     getCodegenSummaryDef(),
@@ -101,4 +101,7 @@ export function getFunctionDefs(): FunctionDef[] {
 
     return fd;
   });
+
+  // deep clone, because later modifications are done to function defs
+  return JSON.parse(JSON.stringify(fds));
 }
