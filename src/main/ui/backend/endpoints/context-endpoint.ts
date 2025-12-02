@@ -100,4 +100,30 @@ registerEndpoint((router, service) => {
       return res.status(500).json({ error: 'Failed to remove context files' });
     }
   });
+
+  // Get all project files
+  router.get('/all-project-files', async (_req, res) => {
+    try {
+      const files = await service.getAllProjectFiles();
+      return res.json({ files });
+    } catch (error) {
+      console.error('Error getting all project files:', error);
+      return res.status(500).json({ error: 'Failed to get all project files' });
+    }
+  });
+
+  // Add files to context
+  router.post('/context-files/add', async (req, res) => {
+    try {
+      const { filePaths } = req.body;
+      if (!Array.isArray(filePaths)) {
+        return res.status(400).json({ error: 'filePaths must be an array' });
+      }
+      const added = await service.addFilesToContext(filePaths);
+      return res.json({ success: true, added });
+    } catch (error) {
+      console.error('Error adding context files:', error);
+      return res.status(500).json({ error: 'Failed to add context files' });
+    }
+  });
 });

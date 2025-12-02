@@ -67,7 +67,7 @@ const createMockSummary = (
 
 // Generate large mock dataset
 const generateMockSummaries = () => {
-  const summaries: Record<string, any> = {};
+  const summaries: Record<string, ReturnType<typeof createMockSummary>> = {};
   const fileArray = Object.entries(fileIds);
 
   for (let i = 0; i < fileArray.length; i++) {

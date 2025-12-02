@@ -17,9 +17,10 @@ import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaico
 import { version } from '../../../../../../package.json';
 import { ToggleButton } from './toggle-button.js';
 import { GraphToggleButtonWrapper } from './chat/graph-toggle-button.js';
-import { ContextManagerIcon, ContextManagerModal } from './context-manager/context-manager-modal.js';
+import { ContextManagerModal } from './context-manager/context-manager-modal.js';
 import { ContextManagerToggleButtonWrapper } from './chat/context-manager-toggle-button.js';
 import { useChatState } from '../contexts/chat-state-context.js';
+import { ContextManagerIcon } from './context-manager/context-manager-icon.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;

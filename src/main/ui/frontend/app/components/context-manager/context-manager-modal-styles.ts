@@ -228,3 +228,64 @@ export const StatsDetail = styled.div`
   gap: 4px;
   font-size: 0.85rem;
 `;
+
+export const SearchInput = styled.input`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  border-radius: 4px;
+  background-color: ${(props) => props.theme.colors.inputBg};
+  color: ${(props) => props.theme.colors.text};
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+
+  &:focus {
+    outline: none;
+    border-color: ${(props) => props.theme.colors.primary};
+  }
+`;
+
+export const CollapseIcon = styled.span`
+  cursor: pointer;
+  display: inline-flex;
+  width: 16px;
+  color: ${(props) => props.theme.colors.textSecondary};
+  &:hover {
+    color: ${(props) => props.theme.colors.text};
+  }
+`;
+
+export const NodeLabelContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-grow: 1;
+  overflow: hidden;
+`;
+
+export const ContextBadge = styled.span`
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: ${(props) => props.theme.colors.success || '#4CAF50'};
+  color: white;
+  font-weight: 500;
+  margin-left: 8px;
+`;
+
+export const FilterBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+`;
+
+export const FilterLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: ${(props) => props.theme.colors.text};
+  user-select: none;
+`;

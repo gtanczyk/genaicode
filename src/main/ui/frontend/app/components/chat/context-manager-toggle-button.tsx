@@ -42,12 +42,16 @@ const ContextManagerToggleButton = styled(ToggleButton)<{ isActive: boolean }>`
 `;
 
 export const ContextManagerToggleButtonWrapper: React.FC = () => {
-  const { toggleContextManager, isContextManagerOpen, messages } = useChatState();
+  const { toggleContextManager, isContextManagerOpen, messages, executionStatus } = useChatState();
   const { contextSize } = useContextSize(messages);
   const sizeCategory = contextSize ? getSizeCategory(contextSize) : 'small';
   
   // Extract just the number/unit part (e.g. "2.5K" from "2.5K tokens")
   const formattedSize = contextSize ? formatTokenCount(contextSize).split(' ')[0] : 'N/A';
+
+  if (executionStatus === 'idle') {
+    return null;
+  }
 
   return (
     <FixedButtonContainer>

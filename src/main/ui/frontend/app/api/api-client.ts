@@ -333,6 +333,16 @@ export const removeContextFiles = async (filePaths: string[]): Promise<{ success
   return response.data;
 };
 
+export const getAllProjectFiles = async (): Promise<string[]> => {
+  const response = await api.get('/all-project-files');
+  return response.data.files as string[];
+};
+
+export const addContextFiles = async (filePaths: string[]): Promise<{ success: boolean; added: number }> => {
+  const response = await api.post('/context-files/add', { filePaths });
+  return response.data;
+};
+
 // Error handling middleware
 api.interceptors.response.use(
   (response) => response,

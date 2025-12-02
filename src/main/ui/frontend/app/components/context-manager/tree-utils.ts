@@ -8,6 +8,10 @@ export type TreeNode = {
   tokenCount?: number;
   aggregatedTokenCount?: number;
   formattedSize?: string;
+  collapsed?: boolean;
+  visible?: boolean;
+  inContext?: boolean;
+  containsContext?: boolean;
 };
 
 /**
@@ -90,6 +94,9 @@ export function buildTree(paths: string[], tokenMap?: Record<string, number>): T
           children: isFile ? undefined : [],
           checked: false,
           indeterminate: false,
+          collapsed: false,
+          visible: true,
+          inContext: false,
         };
         currentNode.children = currentNode.children || [];
         currentNode.children.push(child);
@@ -108,6 +115,80 @@ export function buildTree(paths: string[], tokenMap?: Record<string, number>): T
   }
 
   return nodes;
+}
+
+/**
+ * Toggles the collapsed state of a folder node.
+ */
+export function toggleCollapse(node: TreeNode): void {
+  if (node.type === 'folder') {
+    node.collapsed = !node.collapsed;
+  }
+}
+
+/**
+ * Filters the tree nodes based on a search query and context status.
+ * Sets the 'visible' property of each node.
+ */
+export function filterTree(nodes: TreeNode[], searchQuery: string, showOnlyInContext: boolean = false): void {
+  const query = searchQuery.toLowerCase();
+
+  for (const node of nodes) {
+    // 1. Determine if node itself matches criteria
+    const nameMatches = !searchQuery || node.name.toLowerCase().includes(query);
+    const contextMatches = !showOnlyInContext || (node.type === 'file' && !!node.inContext);
+
+    if (node.children) {
+      // Recurse
+      filterTree(node.children, searchQuery, showOnlyInContext);
+      const anyChildVisible = node.children.some((c) => c.visible);
+
+      if (showOnlyInContext) {
+        // If filtering by context, folder is visible only if it has visible children.
+        node.visible = anyChildVisible;
+      } else {
+        // Normal search: visible if name matches OR children match
+        node.visible = nameMatches || anyChildVisible;
+      }
+    } else {
+      // File
+      node.visible = nameMatches && contextMatches;
+    }
+  }
+}
+
+/**
+ * Auto-expands folders that contain matching descendants.
+ * Returns true if the subtree contains visible nodes.
+ */
+export function expandParentsOfMatches(nodes: TreeNode[], searchQuery: string): boolean {
+  // If we are filtering (either by search or context), we generally want to expand to show results.
+  // This function is named expandParentsOfMatches but effectively expands parents of visible nodes.
+  // We can rely on 'visible' property set by filterTree.
+
+  let subtreeHasVisible = false;
+
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      if (node.visible) {
+        subtreeHasVisible = true;
+      }
+    } else {
+      // Folder
+      if (node.children) {
+        const childrenHasVisible = expandParentsOfMatches(node.children, searchQuery);
+        if (childrenHasVisible) {
+          node.collapsed = false;
+          subtreeHasVisible = true;
+        }
+        // If the folder itself is visible (matched name), it contributes to parent visibility
+        if (node.visible) {
+          subtreeHasVisible = true;
+        }
+      }
+    }
+  }
+  return subtreeHasVisible;
 }
 
 /**
@@ -175,4 +256,53 @@ export function collectCheckedFiles(nodes: TreeNode[]): string[] {
   }
 
   return files;
+}
+
+/**
+ * Recursively determines if folders contain any "in context" files.
+ * Sets `containsContext` property on folder nodes.
+ */
+export function propagateContextStatus(nodes: TreeNode[]): void {
+  for (const node of nodes) {
+    if (node.children) {
+      propagateContextStatus(node.children);
+      // Folder contains context if any child is in context or contains context
+      node.containsContext = node.children.some((c) => c.inContext || c.containsContext);
+    }
+  }
+}
+
+/**
+ * Sorts the tree nodes.
+ * Priority:
+ * 1. In Context / Contains Context (true first)
+ * 2. Folder vs File (Folders first)
+ * 3. Name (Alphabetical)
+ */
+export function sortTree(nodes: TreeNode[]): void {
+  // Sort children
+  nodes.sort((a, b) => {
+    // Priority 1: In Context / Contains Context
+    const aHasContext = a.inContext || a.containsContext;
+    const bHasContext = b.inContext || b.containsContext;
+
+    if (aHasContext !== bHasContext) {
+      return aHasContext ? -1 : 1;
+    }
+
+    // Priority 2: Folder vs File (Folders first)
+    if (a.type !== b.type) {
+      return a.type === 'folder' ? -1 : 1;
+    }
+
+    // Priority 3: Name
+    return a.name.localeCompare(b.name);
+  });
+
+  // Recurse
+  for (const node of nodes) {
+    if (node.children) {
+      sortTree(node.children);
+    }
+  }
 }

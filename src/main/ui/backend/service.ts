@@ -538,4 +538,56 @@ export class Service implements AppContextProvider {
 
     return removedFiles.size;
   }
+
+  /**
+   * Get all project files (not just those in context)
+   * @returns Array of file paths
+   */
+  async getAllProjectFiles(): Promise<string[]> {
+    const { getSourceFiles } = await import('../../../files/find-files.js');
+    return getSourceFiles();
+  }
+
+  /**
+   * Add files to the conversation context by fetching their content
+   * @param filePaths Array of file paths to add
+   * @returns Number of files added
+   */
+  async addFilesToContext(filePaths: string[]): Promise<number> {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return 0;
+    }
+
+    const { getSourceCode } = await import('../../../files/read-files.js');
+    const { putSystemMessage } = await import('../../common/content-bus.js');
+
+    try {
+      // Fetch the content of the requested files
+      const sourceCode = getSourceCode({ filterPaths: filePaths, forceAll: true }, this.codegenOptions);
+
+      // Create a getSourceCode function response and inject it into the context
+      const functionResponse = {
+        name: 'getSourceCode',
+        content: JSON.stringify(sourceCode),
+      };
+
+      // Find the most recent prompt item in the context to attach the response
+      const contextItems = this.getContext();
+      if (contextItems.length > 0) {
+        const lastItem = contextItems[contextItems.length - 1];
+        if (!lastItem.functionResponses) {
+          lastItem.functionResponses = [];
+        }
+        lastItem.functionResponses.push(functionResponse);
+      }
+
+      const addedCount = filePaths.length;
+      putSystemMessage('Files added to context', { added: filePaths });
+
+      return addedCount;
+    } catch (error) {
+      console.error('Failed to add files to context:', error);
+      throw error;
+    }
+  }
 }

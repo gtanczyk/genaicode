@@ -16,6 +16,7 @@ export interface CodegenResult {
 export interface ContextFile {
   path: string;
   tokenCount: number;
+  inContext?: boolean;
 }
 
 export type ConfirmationProps =
