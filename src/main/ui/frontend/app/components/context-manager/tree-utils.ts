@@ -64,24 +64,49 @@ export function calculateNodeSizes(node: TreeNode, tokenMap: Record<string, numb
 
 /**
  * Builds a hierarchical tree structure from a list of absolute file paths.
- * Assumes paths are absolute and use '/' as separator.
- * Optionally accepts a map of file paths to token counts to populate size information.
+ * Automatically strips the common root directory to avoid unnecessary indentation.
+ * Returns the tree nodes and the detected root path.
  */
-export function buildTree(paths: string[], tokenMap?: Record<string, number>): TreeNode[] {
+export function buildTree(paths: string[], tokenMap?: Record<string, number>): { nodes: TreeNode[]; rootPath: string } {
   const root: TreeNode = { name: 'root', path: '', type: 'folder', children: [] };
 
   // Sort paths to ensure deterministic tree structure
   const sortedPaths = [...paths].sort();
 
-  for (const filePath of sortedPaths) {
-    // Remove leading slash for splitting, but keep full path for node
-    const parts = filePath.split('/').filter((p) => p.length > 0);
-    let currentNode = root;
-    let currentPath = '';
+  // 1. Find common prefix
+  const splitPaths = sortedPaths.map((p) => p.split('/').filter((x) => x.length > 0));
+  let commonPrefix: string[] = [];
 
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      const isFile = i === parts.length - 1;
+  if (splitPaths.length > 0) {
+    commonPrefix = [...splitPaths[0]];
+    // Assume the last part of the first path is a file, so it can't be a common folder prefix
+    commonPrefix.pop();
+
+    for (let i = 1; i < splitPaths.length; i++) {
+      const parts = splitPaths[i];
+      let j = 0;
+      while (j < commonPrefix.length && j < parts.length - 1 && parts[j] === commonPrefix[j]) {
+        j++;
+      }
+      commonPrefix = commonPrefix.slice(0, j);
+      if (commonPrefix.length === 0) break;
+    }
+  }
+
+  const prefixPath = commonPrefix.length > 0 ? '/' + commonPrefix.join('/') : '';
+
+  // 2. Build tree using relative paths
+  for (let i = 0; i < sortedPaths.length; i++) {
+    const parts = splitPaths[i];
+    // Skip common prefix parts
+    const relativeParts = parts.slice(commonPrefix.length);
+
+    let currentNode = root;
+    let currentPath = prefixPath;
+
+    for (let j = 0; j < relativeParts.length; j++) {
+      const part = relativeParts[j];
+      const isFile = j === relativeParts.length - 1;
       currentPath += '/' + part;
 
       let child = currentNode.children?.find((c) => c.name === part);
@@ -89,7 +114,7 @@ export function buildTree(paths: string[], tokenMap?: Record<string, number>): T
       if (!child) {
         child = {
           name: part,
-          path: currentPath,
+          path: currentPath, // Preserves the full absolute path
           type: isFile ? 'file' : 'folder',
           children: isFile ? undefined : [],
           checked: false,
@@ -114,7 +139,7 @@ export function buildTree(paths: string[], tokenMap?: Record<string, number>): T
     }
   }
 
-  return nodes;
+  return { nodes, rootPath: prefixPath };
 }
 
 /**
@@ -193,8 +218,11 @@ export function expandParentsOfMatches(nodes: TreeNode[], searchQuery: string): 
 
 /**
  * Toggles the checked state of a node and propagates it to all descendants.
+ * Only affects visible nodes.
  */
 export function toggleNode(node: TreeNode, checked: boolean): void {
+  if (node.visible === false) return;
+
   node.checked = checked;
   node.indeterminate = false;
 
@@ -208,6 +236,7 @@ export function toggleNode(node: TreeNode, checked: boolean): void {
 /**
  * Updates the checked/indeterminate state of a node based on its children.
  * Should be called after modifying children states.
+ * Only considers visible children.
  * Returns the updated node state.
  */
 export function updateNodeState(node: TreeNode): void {
@@ -218,6 +247,7 @@ export function updateNodeState(node: TreeNode): void {
   let allChecked = true;
   let someChecked = false;
   let someIndeterminate = false;
+  let visibleChildrenCount = 0;
 
   for (const child of node.children) {
     // Recursively update children first (bottom-up)
@@ -225,13 +255,18 @@ export function updateNodeState(node: TreeNode): void {
       updateNodeState(child);
     }
 
+    if (child.visible === false) continue;
+    visibleChildrenCount++;
+
     if (!child.checked) allChecked = false;
     if (child.checked) someChecked = true;
     if (child.indeterminate) someIndeterminate = true;
   }
 
-  node.checked = allChecked;
-  node.indeterminate = !allChecked && (someChecked || someIndeterminate);
+  if (visibleChildrenCount > 0) {
+    node.checked = allChecked;
+    node.indeterminate = !allChecked && (someChecked || someIndeterminate);
+  }
 }
 
 /**

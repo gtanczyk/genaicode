@@ -52,6 +52,7 @@ export const ContextManagerModal: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyInContext, setShowOnlyInContext] = useState(true);
   const [, setAllProjectFiles] = useState<string[]>([]);
+  const [rootPath, setRootPath] = useState<string>('');
 
   const fetchContextFiles = useCallback(async () => {
     setLoading(true);
@@ -78,8 +79,9 @@ export const ContextManagerModal: React.FC = () => {
 
       setTotalTokens(calculatedTotal);
 
-      // Build tree with ALL project files
-      const newTree = buildTree(projectFiles, tokenMap);
+      // Build tree with ALL project files - now returns { nodes, rootPath }
+      const { nodes: newTree, rootPath: detectedRootPath } = buildTree(projectFiles, tokenMap);
+      setRootPath(detectedRootPath);
 
       // Mark files as inContext
       const markContextFiles = (nodes: TreeNode[]) => {
@@ -290,14 +292,12 @@ export const ContextManagerModal: React.FC = () => {
                 {node.name}
               </NodeLabel>
               {node.type === 'file' && node.inContext && !showOnlyInContext && <ContextBadge>In Context</ContextBadge>}
-              {node.type === 'file' &&
-                node.inContext &&
-                node.aggregatedTokenCount !== undefined &&
-                node.aggregatedTokenCount > 0 && (
-                  <SizeIndicator category={getSizeCategory(node.aggregatedTokenCount)}>
-                    ({node.formattedSize})
-                  </SizeIndicator>
-                )}
+              {/* Display size for files AND folders if they have content */}
+              {node.aggregatedTokenCount !== undefined && node.aggregatedTokenCount > 0 && (
+                <SizeIndicator category={getSizeCategory(node.aggregatedTokenCount)}>
+                  ({node.formattedSize})
+                </SizeIndicator>
+              )}
             </NodeLabelContainer>
           </TreeNodeItem>
           {node.children && !node.collapsed && renderTreeNodes(node.children, level + 1)}
@@ -341,7 +341,10 @@ export const ContextManagerModal: React.FC = () => {
     <ModalOverlay onClick={handleClose}>
       <ModalContainer onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
-          <h2>Manage Context Files</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <h2>Manage Context Files</h2>
+            {rootPath && <span style={{ fontSize: '0.8rem', opacity: 0.7, fontFamily: 'monospace' }}>{rootPath}</span>}
+          </div>
           <CloseButton onClick={handleClose}>&times;</CloseButton>
         </ModalHeader>
         <ModalContent>
