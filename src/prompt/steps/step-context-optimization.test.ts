@@ -36,7 +36,7 @@ vi.mock('../../main/config.js', () => ({
   sourceExtensions: ['.ts'],
 }));
 
-const FILE_ID = 'id1' as FileId;
+const FILE_ID = 1 as FileId;
 
 describe('executeStepContextOptimization', () => {
   const mockGenerateContentFn = vi.fn();
@@ -147,7 +147,7 @@ describe('executeStepContextOptimization', () => {
       const mockSourceCode: SourceCodeMap = {
         '/test/file1.ts': { fileId: FILE_ID, content: 'content1' + Array.from(Array(10000).keys()).join(',') },
       };
-      const oldSourceCode = { '/test/old-file.ts': { fileId: 'old_id' as FileId, content: 'old content' } };
+      const oldSourceCode = { '/test/old-file.ts': { fileId: 1234 as FileId, content: 'old content' } };
 
       vi.mocked(getSourceCode).mockReturnValue(mockSourceCode);
 
@@ -196,7 +196,7 @@ describe('executeStepContextOptimization', () => {
 
       // Verify that previous responses maintain structure but clear content for irrelevant files
       const expectedStructure = {
-        '/test/old-file.ts': { fileId: 'old_id', content: null }, // Content cleared as it's irrelevant
+        '/test/old-file.ts': { fileId: 1234 as FileId, content: null }, // Content cleared as it's irrelevant
       };
       expect(JSON.parse(prompt[0].functionResponses![0].content!)).toEqual(expectedStructure);
 

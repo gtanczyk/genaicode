@@ -271,7 +271,7 @@ describe.each([
     },
   ])(
     '$dataset, $userMessage',
-    async ({ rootDir, sourceCode, userMessage, expectedOptimizedFiles, optionalOptimizedFiles }) => {
+    async ({ rootDir, sourceCode, userMessage, expectedOptimizedFiles, optionalOptimizedFiles = [] }) => {
       // Prepare prompt items for optimization
       const prompt: PromptItem[] = [
         {

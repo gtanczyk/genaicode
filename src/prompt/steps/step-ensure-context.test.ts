@@ -29,7 +29,7 @@ vi.mock('../../main/config.js', () => ({
   },
 }));
 
-const FILE_ID = 'id1' as FileId;
+const FILE_ID = 1 as FileId;
 
 describe('executeStepEnsureContext', () => {
   const mockOptions: CodegenOptions = {

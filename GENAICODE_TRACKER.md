@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-151] 2025-11-11: Fix build errors by updating FileId to number and fixing mock data structures.
 - [x] [GEN-150] 2025-01-11: Enhanced Context Manager with token size indicators - Added visual indicators showing token counts for individual files and aggregated totals for folders, plus context size badge on toggle button with color-coded categories (small/medium/large). Implemented backend support for context file token counts.
 - [x] [GEN-146] 2025-10-16: Implement `pullConsoleLogs` action to capture and retrieve console logs. (Supports both Vite and non-Vite environments). Updated 2025-10-16: Refined to only activate in GenAIcode development mode, fixed build errors by extracting shared console types.
 - [x] [GEN-147] 2025-11-11: Implement Context Manager toggle button in the UI (floating button above the graph toggle).

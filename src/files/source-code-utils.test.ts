@@ -33,7 +33,7 @@ function createTestSourceCodeMap(
       fileId,
       ...(rawMap[filePath].content !== undefined ? { content: rawMap[filePath].content ?? null } : {}),
       ...(rawMap[filePath].summary !== undefined ? { summary: rawMap[filePath].summary } : {}),
-    } as FileContent;
+    } as { fileId: FileId } & FileContent;
     fileIDtoPathMap.set(fileId, filePath);
     pathToIdMap.set(filePath, fileId);
   }
@@ -47,7 +47,7 @@ function createTestSourceCodeMap(
       for (const dep of deps) {
         if (dep.type === 'local') {
           const depFileId = pathToIdMap.get(dep.path);
-          if (depFileId) {
+          if (depFileId !== undefined) {
             localDeps.push(depFileId);
           }
         } else {
@@ -102,7 +102,7 @@ describe('getContextSourceCode', () => {
     const rawMockSourceCode = {
       '/path/to/file.ts': {
         content: 'import { helper } from "./helper";',
-        dependencies: [{ path: '/path/to/helper.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/helper.ts', type: 'local' as const }],
       },
       '/path/to/helper.ts': { content: 'export const helper = () => {};' },
     };
@@ -120,8 +120,8 @@ describe('getContextSourceCode', () => {
       '/path/to/file.ts': {
         content: 'import stuff',
         dependencies: [
-          { path: '/path/to/helper1.ts', type: 'local' },
-          { path: '/path/to/helper2.ts', type: 'local' },
+          { path: '/path/to/helper1.ts', type: 'local' as const },
+          { path: '/path/to/helper2.ts', type: 'local' as const },
         ],
       },
       '/path/to/helper1.ts': { content: 'helper1 content' },
@@ -141,11 +141,11 @@ describe('getContextSourceCode', () => {
       '/path/to/file.ts': { content: 'export const util = () => {};' },
       '/path/to/dependent1.ts': {
         content: 'import { util } from "./file";',
-        dependencies: [{ path: '/path/to/file.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/file.ts', type: 'local' as const }],
       },
       '/path/to/dependent2.ts': {
         content: 'import { util } from "./file";',
-        dependencies: [{ path: '/path/to/file.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/file.ts', type: 'local' as const }],
       },
     };
     const { sourceCodeMap } = createTestSourceCodeMap(rawMockSourceCode);
@@ -161,11 +161,11 @@ describe('getContextSourceCode', () => {
     const rawMockSourceCode = {
       '/path/to/file1.ts': {
         content: 'file1 content',
-        dependencies: [{ path: '/path/to/shared.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/shared.ts', type: 'local' as const }],
       },
       '/path/to/file2.ts': {
         content: 'file2 content',
-        dependencies: [{ path: '/path/to/shared.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/shared.ts', type: 'local' as const }],
       },
       '/path/to/shared.ts': { content: 'shared content' },
     };
@@ -185,13 +185,13 @@ describe('getContextSourceCode', () => {
       '/path/to/dependent1.ts': {
         content: 'dependent1 content',
         dependencies: [
-          { path: '/path/to/utils1.ts', type: 'local' },
-          { path: '/path/to/utils2.ts', type: 'local' },
+          { path: '/path/to/utils1.ts', type: 'local' as const },
+          { path: '/path/to/utils2.ts', type: 'local' as const },
         ],
       },
       '/path/to/dependent2.ts': {
         content: 'dependent2 content',
-        dependencies: [{ path: '/path/to/utils1.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/utils1.ts', type: 'local' as const }],
       },
     };
     const { sourceCodeMap } = createTestSourceCodeMap(rawMockSourceCode);
@@ -222,11 +222,11 @@ describe('getContextSourceCode', () => {
     const rawMockSourceCode = {
       '/path/to/file1.ts': {
         content: 'file1 content',
-        dependencies: [{ path: '/path/to/file2.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/file2.ts', type: 'local' as const }],
       },
       '/path/to/file2.ts': {
         content: 'file2 content',
-        dependencies: [{ path: '/path/to/file1.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/file1.ts', type: 'local' as const }],
       },
     };
     const { sourceCodeMap } = createTestSourceCodeMap(rawMockSourceCode);
@@ -242,7 +242,7 @@ describe('getContextSourceCode', () => {
     const rawMockSourceCode = {
       '/path/to/file.ts': {
         summary: 'File summary',
-        dependencies: [{ path: '/path/to/dep.ts', type: 'local' }],
+        dependencies: [{ path: '/path/to/dep.ts', type: 'local' as const }],
       },
       '/path/to/dep.ts': { content: 'dep content' },
     };
@@ -269,11 +269,11 @@ describe('computePopularDependencies', () => {
       'file1.ts': {
         content: 'File 1 content',
         dependencies: [
-          { path: 'dep1.ts', type: 'local' },
-          { path: 'dep2.ts', type: 'local' },
+          { path: 'dep1.ts', type: 'local' as const },
+          { path: 'dep2.ts', type: 'local' as const },
         ],
       },
-      'file2.ts': { content: 'File 2 content', dependencies: [{ path: 'dep1.ts', type: 'local' }] },
+      'file2.ts': { content: 'File 2 content', dependencies: [{ path: 'dep1.ts', type: 'local' as const }] },
       'dep1.ts': { content: 'Dep 1 content' },
       'dep2.ts': { content: 'Dep 2 content' },
     };
@@ -305,9 +305,9 @@ describe('computePopularDependencies', () => {
     const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
 
     for (let i = 0; i < 10; i++) {
-      rawSourceCode[`file${i}.ts`] = { dependencies: [{ path: 'popular.ts', type: 'local' }] };
+      rawSourceCode[`file${i}.ts`] = { dependencies: [{ path: 'popular.ts', type: 'local' as const }] };
     }
-    rawSourceCode['another.ts'] = { dependencies: [{ path: 'less-popular.ts', type: 'local' }] };
+    rawSourceCode['another.ts'] = { dependencies: [{ path: 'less-popular.ts', type: 'local' as const }] };
     rawSourceCode['popular.ts'] = { content: 'popular content' };
     rawSourceCode['less-popular.ts'] = { content: 'less popular content' };
 
@@ -342,8 +342,8 @@ describe('computePopularDependencies', () => {
     for (let i = 0; i < 30; i++) {
       rawSourceCode[`file${i}.ts`] = {
         dependencies: [
-          { path: 'popular.ts', type: 'local' },
-          { path: 'npm-package', type: 'external' },
+          { path: 'popular.ts', type: 'local' as const },
+          { path: 'npm-package', type: 'external' as const },
         ],
       };
     }
@@ -374,13 +374,13 @@ describe('computePopularDependencies', () => {
     const summaryCache: SummaryCache = { _version: '1' } as SummaryCache;
 
     for (let i = 0; i < 5; i++) {
-      rawSourceCode[`fileA${i}.ts`] = { dependencies: [{ path: 'depA.ts', type: 'local' }] };
+      rawSourceCode[`fileA${i}.ts`] = { dependencies: [{ path: 'depA.ts', type: 'local' as const }] };
     }
     for (let i = 0; i < 10; i++) {
-      rawSourceCode[`fileB${i}.ts`] = { dependencies: [{ path: 'depB.ts', type: 'local' }] };
+      rawSourceCode[`fileB${i}.ts`] = { dependencies: [{ path: 'depB.ts', type: 'local' as const }] };
     }
     for (let i = 0; i < 3; i++) {
-      rawSourceCode[`fileC${i}.ts`] = { dependencies: [{ path: 'depC.ts', type: 'local' }] };
+      rawSourceCode[`fileC${i}.ts`] = { dependencies: [{ path: 'depC.ts', type: 'local' as const }] };
     }
     rawSourceCode['depA.ts'] = { content: 'depA content' };
     rawSourceCode['depB.ts'] = { content: 'depB content' };
