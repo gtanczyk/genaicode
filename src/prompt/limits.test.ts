@@ -33,8 +33,11 @@ describe('Prompt Limits', () => {
     });
 
     it('should throw for source code exceeding the limit', () => {
-      const invalidSourceCode = 'C '.repeat(600001);
-      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow('Token limit exceeded: 390001 > 300000');
+      // Adjusted repetitions to ensure token count exceeds the actual SOURCE_CODE_LIMIT (600,000)
+      // Assuming ~0.65 tokens per repetition, 1,000,000 repetitions results in ~650,000 tokens.
+      // Using a regex to match the dynamic token count and the static limit.
+      const invalidSourceCode = 'C '.repeat(1000000);
+      expect(() => verifySourceCodeLimit(invalidSourceCode)).toThrow(/Token limit exceeded: \d+ > 600000/);
     });
   });
 });

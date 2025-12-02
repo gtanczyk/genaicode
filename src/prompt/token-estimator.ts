@@ -17,7 +17,7 @@ export function estimateTokenCount(input: string): number {
   const words = trimmedInput.split(/\s+/);
 
   // Use average tokens per word based on content type
-  const averageTokensPerWord = isCode ? 1.25 : 0.65;
+  const averageTokensPerWord = isCode ? 3.0 : 0.65;
 
   // Estimate token count
   const tokenCount = Math.ceil(words.length * averageTokensPerWord);

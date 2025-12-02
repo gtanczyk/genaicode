@@ -11,7 +11,7 @@ export const getSourceCode: FunctionDef = {
   [filePath: string]: {
     content?: string | null,
     summary?: string,
-    fileId?: string;
+    fileId?: number;
   }
 }
 \`\`\`
@@ -21,8 +21,8 @@ Some keys may not provide content. Some keys may provide a short summary of cont
 Here is an example of the returned object:
 \`\`\`
 {
-  '/path/to/directory/file1.js': {content: 'console.log('Hello, World!');', fileId: 'axb123'},
-  '/path/to/directory/sub1/sub2/file2.js': {summary: 'This file contains a simple log statement.', fileId: 'cde456'},
+  '/path/to/directory/file1.js': {content: 'console.log('Hello, World!');', fileId: 123},
+  '/path/to/directory/sub1/sub2/file2.js': {summary: 'This file contains a simple log statement.', fileId: 456},
 }
 \`\`\`
 

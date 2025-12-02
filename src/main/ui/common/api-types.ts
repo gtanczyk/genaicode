@@ -13,6 +13,11 @@ export interface CodegenResult {
   message?: string;
 }
 
+export interface ContextFile {
+  path: string;
+  tokenCount: number;
+}
+
 export type ConfirmationProps =
   | {
       includeAnswer?: boolean;

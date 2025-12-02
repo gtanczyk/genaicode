@@ -74,4 +74,30 @@ registerEndpoint((router, service) => {
       return res.status(500).json({ error: 'Failed to clear context' });
     }
   });
+
+  // Get list of files in context
+  router.get('/context-files', async (_req, res) => {
+    try {
+      const files = await service.getContextFiles();
+      return res.json({ files });
+    } catch (error) {
+      console.error('Error getting context files:', error);
+      return res.status(500).json({ error: 'Failed to get context files' });
+    }
+  });
+
+  // Remove files from context
+  router.post('/context-files/remove', async (req, res) => {
+    try {
+      const { filePaths } = req.body;
+      if (!Array.isArray(filePaths)) {
+        return res.status(400).json({ error: 'filePaths must be an array' });
+      }
+      const removed = await service.removeFilesFromContext(filePaths);
+      return res.json({ success: true, removed });
+    } catch (error) {
+      console.error('Error removing context files:', error);
+      return res.status(500).json({ error: 'Failed to remove context files' });
+    }
+  });
 });

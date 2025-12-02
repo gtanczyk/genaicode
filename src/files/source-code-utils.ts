@@ -23,14 +23,20 @@ export function getContextSourceCode(contextPaths: string[], options: CodegenOpt
   const resultSourceCodeMap: SourceCodeMap = {};
   const dependencyPaths: Set<string> = new Set();
   const reverseDependencyPaths: Set<string> = new Set();
+  const fileIDtoPathMap = getFileIDtoPathMap(allSourceCodeMap);
 
   // Add context paths and their first-level dependencies
   for (const contextPath of contextPaths) {
     if (allSourceCodeMap[contextPath]) {
       resultSourceCodeMap[contextPath] = allSourceCodeMap[contextPath];
-      const dependencies = (allSourceCodeMap[contextPath] as FileContent | FileSummary)?.dependencies;
-      if (dependencies) {
-        dependencies.forEach((dep) => dependencyPaths.add(dep.path));
+      const localDeps = (allSourceCodeMap[contextPath] as FileContent | FileSummary)?.localDeps;
+      if (localDeps) {
+        for (const depFileId of localDeps) {
+          const depPath = fileIDtoPathMap.get(depFileId);
+          if (depPath) {
+            dependencyPaths.add(depPath);
+          }
+        }
       }
     }
   }
@@ -45,10 +51,11 @@ export function getContextSourceCode(contextPaths: string[], options: CodegenOpt
   // Find reverse dependencies
   for (const filePath of Object.keys(allSourceCodeMap)) {
     const fileContent = allSourceCodeMap[filePath] as FileContent | FileSummary;
-    const dependencies = fileContent?.dependencies;
-    if (dependencies) {
-      for (const dep of dependencies) {
-        if (contextPaths.includes(dep.path)) {
+    const localDeps = fileContent?.localDeps;
+    if (localDeps) {
+      for (const depFileId of localDeps) {
+        const depPath = fileIDtoPathMap.get(depFileId);
+        if (depPath && contextPaths.includes(depPath)) {
           reverseDependencyPaths.add(filePath);
           break; // Add the file only once if it depends on any context path
         }
@@ -93,17 +100,24 @@ export function getExpandedContextPaths(contextPaths: string[], options: Codegen
  * @param threshold The minimum number of times a file must be depended on to be considered popular.
  * @returns A Set of file paths for popular dependencies.
  */
-export function computePopularDependencies(summaryCache: SummaryCache, threshold = 25): Set<string> {
+export function computePopularDependencies(
+  sourceCode: SourceCodeMap,
+  summaryCache: SummaryCache,
+  threshold = 25,
+): Set<string> {
   const dependencyCounts = new Map<string, number>();
+
+  const fileIDtoPathMap = getFileIDtoPathMap(sourceCode);
 
   // Count occurrences of each dependency
   for (const key in summaryCache) {
     if (key === '_version') continue;
     const fileInfo = summaryCache[key];
-    if (fileInfo.dependencies) {
-      for (const dep of fileInfo.dependencies) {
-        if (dep.type === 'local') {
-          dependencyCounts.set(dep.path, (dependencyCounts.get(dep.path) || 0) + 1);
+    if (fileInfo.localDeps) {
+      for (const depFileId of fileInfo.localDeps) {
+        const depPath = fileIDtoPathMap.get(depFileId);
+        if (depPath) {
+          dependencyCounts.set(depPath, (dependencyCounts.get(depPath) || 0) + 1);
         }
       }
     }
@@ -121,4 +135,14 @@ export function computePopularDependencies(summaryCache: SummaryCache, threshold
   }
 
   return popular;
+}
+
+export function getFileIDtoPathMap(sourceCode: SourceCodeMap): Map<number, string> {
+  const fileIDtoPathMap: Map<number, string> = new Map();
+  for (const [filePath, fileData] of Object.entries(sourceCode)) {
+    if (fileData.fileId) {
+      fileIDtoPathMap.set(fileData.fileId, filePath);
+    }
+  }
+  return fileIDtoPathMap;
 }

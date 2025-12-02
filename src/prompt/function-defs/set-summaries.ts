@@ -16,6 +16,10 @@ export const setSummaries: FunctionDef = {
         items: {
           type: 'object',
           properties: {
+            fileID: {
+              type: 'number',
+              description: 'The unique file ID of the analyzed file, as per getSourceCode function response.',
+            },
             filePath: {
               type: 'string',
               description: 'The absolute file path of the analyzed file.',
@@ -38,7 +42,7 @@ export const setSummaries: FunctionDef = {
                       'Type of dependency - local (belongs to the project) or external (not belongs to the project, package/library/module).',
                   },
                   fileId: {
-                    type: 'string',
+                    type: 'number',
                     description:
                       'Unique identifier for the dependent file. For local dependencies, use the value for the fileId field in the getSourceCode function response. Use empty string for external dependencies.',
                   },
@@ -52,7 +56,7 @@ export const setSummaries: FunctionDef = {
               },
             },
           },
-          required: ['filePath', 'summary', 'dependencies'],
+          required: ['fileID', 'filePath', 'summary', 'dependencies'],
         },
       },
     },

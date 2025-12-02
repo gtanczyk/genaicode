@@ -48,7 +48,8 @@ function readSourceFiles(
         sourceCode[file] = {
           fileId: generateFileId(file),
           content,
-          dependencies: summary?.dependencies,
+          localDeps: summary?.localDeps,
+          externalDeps: summary?.externalDeps,
         };
         continue;
       }
@@ -61,9 +62,10 @@ function readSourceFiles(
             ? {
                 fileId: generateFileId(file),
                 summary: summary.summary,
-                ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
+                ...(summary.localDeps?.length ? { localDeps: summary.localDeps } : {}),
+                ...(summary.externalDeps?.length ? { externalDeps: summary.externalDeps } : {}),
               }
-            : { fileId: generateFileId(file), content: null };
+            : { fileId: generateFileId(file) };
 
           continue;
         }
@@ -75,15 +77,17 @@ function readSourceFiles(
             ? {
                 fileId: generateFileId(file),
                 summary: summary.summary,
-                ...(summary.dependencies?.length ? { dependencies: summary.dependencies } : {}),
+                ...(summary.localDeps?.length ? { localDeps: summary.localDeps } : {}),
+                ...(summary.externalDeps?.length ? { externalDeps: summary.externalDeps } : {}),
               }
-            : { fileId: generateFileId(file), content: null };
+            : { fileId: generateFileId(file) };
       } else {
         const content = readFileContent(file);
         sourceCode[file] = {
           fileId: generateFileId(file),
           content,
-          dependencies: summary?.dependencies,
+          ...(summary?.localDeps ? { localDeps: summary.localDeps } : {}),
+          ...(summary?.externalDeps ? { externalDeps: summary.externalDeps } : {}),
         };
       }
     }

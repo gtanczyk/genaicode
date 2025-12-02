@@ -118,3 +118,13 @@ export function editMessage(content: ContentProps, newContent: string) {
 export function registerContentHandler(handler: ContentHandler) {
   contentHandler = handler;
 }
+
+let currentContext: PromptItem[] = [];
+
+export function registerContext(prompt: PromptItem[]) {
+  currentContext = prompt;
+}
+
+export function getContextProvider(): () => PromptItem[] {
+  return () => currentContext;
+}

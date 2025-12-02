@@ -3,8 +3,7 @@ import { PromptItem } from '../../ai-service/common-types.js';
 import { FunctionCall } from '../../ai-service/common-types.js';
 import { ModelType } from '../../ai-service/common-types.js';
 import { CodegenOptions } from '../../main/codegen-types.js';
-import { FileId, SourceCodeMap } from '../../files/source-code-types.js';
-import { DependencyInfo } from '../../files/source-code-types.js';
+import { FileId, DependencyInfo, SourceCodeMap } from '../../files/source-code-types.js';
 import { getFunctionDefs } from '../function-calling.js';
 import { md5, writeCache } from '../../files/cache-file.js';
 import { putSystemMessage } from '../../main/common/content-bus.js';
@@ -63,7 +62,7 @@ export function getSummarizationPrefix(
         {
           name: 'getSourceCode',
           content: JSON.stringify(
-            Object.fromEntries(allFilePaths.map((path) => [path, { fileId: generateFileId(path), content: null }])),
+            Object.fromEntries(allFilePaths.map((path) => [path, { fileId: generateFileId(path) }])),
           ),
         },
       ],
@@ -114,7 +113,8 @@ export async function summarizeSourceCode(
   const items = Object.entries(sourceCode).map(([path, file]) => ({
     path,
     content: 'content' in file ? file.content : null,
-    dependencies: 'dependencies' in file ? file.dependencies : undefined,
+    localDeps: 'localDeps' in file ? file.localDeps : undefined,
+    externalDeps: 'externalDeps' in file ? file.externalDeps : undefined,
     fileId: file.fileId,
   }));
 
@@ -123,7 +123,7 @@ export async function summarizeSourceCode(
   // Compute and store popular dependencies
   const computedPopularDeps =
     rcConfig.popularDependencies?.enabled !== false
-      ? computePopularDependencies(summaryCache, rcConfig.popularDependencies?.threshold ?? 25)
+      ? computePopularDependencies(sourceCode, summaryCache, rcConfig.popularDependencies?.threshold ?? 25)
       : new Set<string>();
   popularDependencies.clear();
   computedPopularDeps.forEach((dep) => popularDependencies.add(dep));
@@ -139,7 +139,7 @@ export async function summarizeSourceCode(
 
 async function summarizeBatch(
   generateContentFn: GenerateContentFunction,
-  items: { path: string; content: string | null; dependencies?: DependencyInfo[]; fileId: FileId }[],
+  items: { path: string; content: string | null; localDeps?: number[]; externalDeps?: string[]; fileId: FileId }[],
   allSourceCodeMap: SourceCodeMap,
   options: CodegenOptions,
 ): Promise<void> {
@@ -172,7 +172,7 @@ async function summarizeBatch(
           functionDefs: getFunctionDefs(),
           requiredFunctionName: 'setSummaries',
           temperature: 0.2,
-          modelType: ModelType.LITE,
+          modelType: ModelType.CHEAP,
           expectedResponseType: { text: false, functionCall: true, media: false },
         },
         options,
@@ -185,19 +185,14 @@ async function summarizeBatch(
       batchSummaries.forEach((file) => {
         const item = items.find((item) => item.path === file.filePath);
         const content = item?.content ?? '';
-        const dependencies = (file.dependencies ?? item?.dependencies ?? []).map((dep) => ({
-          path: dep.type === 'local' ? parseLocalPath(dep, allSourceCodeMap) : dep.path,
-          type: dep.type,
-          fileId: dep.fileId,
-        }));
-        const uniqueDependencies = Array.from(new Set(dependencies.map((dep) => JSON.stringify(dep)))).map((dep) =>
-          JSON.parse(dep),
-        );
+        const localDeps = file.dependencies?.filter((dep) => dep.type === 'local').map((dep) => dep.fileId!);
+        const externalDeps = file.dependencies?.filter((dep) => dep.type === 'external').map((dep) => dep.path);
         summaryCache[file.filePath] = {
           tokenCount: estimateTokenCount(content),
           summary: file.summary,
           checksum: md5(content),
-          dependencies: uniqueDependencies,
+          ...(localDeps && { localDeps: [...new Set(localDeps)] }),
+          ...(externalDeps && { externalDeps: [...new Set(externalDeps)] }),
         };
       });
 
@@ -214,14 +209,4 @@ function parseSummarizationResult(result: FunctionCall[]): (SummaryInfo & { depe
     throw new Error('Invalid summarization result');
   }
   return result[0].args.summaries;
-}
-
-function parseLocalPath(file: DependencyInfo, allSourceCodeMap: SourceCodeMap): string {
-  if (allSourceCodeMap[file.path]) {
-    return file.path;
-  } else {
-    return (
-      Object.entries(allSourceCodeMap).find(([, sourceFile]) => sourceFile.fileId === file.fileId)?.[0] ?? file.path
-    );
-  }
 }

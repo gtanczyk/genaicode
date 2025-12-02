@@ -16,10 +16,11 @@ import { GenAIcodeNotifications } from './notifications/genaicode-notifications.
 import { ChatStateProvider, ChatStateContext } from './contexts/chat-state-context.js';
 import { SuggestionGenerator } from './components/suggestion-generator.js';
 import { ConversationGraphVisualiser } from './components/chat/conversation-graph-visualiser.js';
-import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js'; // Ensure this import is present
+import { ConversationGraphStateHandler } from './components/chat/conversation-graph-state-handler.js';
 import { TerminalView } from './components/chat/terminal-view.js';
 import { ConsoleInterceptor } from '../../../../vite-genaicode/console-interceptor.js';
 import { setAppContext } from './api/api-client.js';
+import { ContextManagerModal } from './components/context-manager/context-manager-modal.js';
 
 const GenAIcodeAppContent = () => {
   // Consume the context to get state and actions
@@ -129,6 +130,7 @@ const GenAIcodeAppContent = () => {
       <RcConfigModal rcConfig={rcConfig} />
       {/* Pass setCodegenOptions directly if GenaicodeConfigModal modifies options */}
       <GenaicodeConfigModal options={codegenOptions} onOptionsChange={setCodegenOptions} />
+      <ContextManagerModal />
       <GenAIcodeNotifications messages={messages} muteNotifications={codegenOptions.muteNotifications} />
       <ConversationGraphVisualiser />
       <ConversationGraphStateHandler />

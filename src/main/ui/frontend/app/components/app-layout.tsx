@@ -17,6 +17,9 @@ import { GenaicodeConfigIcon, dispatchGenaicodeConfigModalOpen } from './genaico
 import { version } from '../../../../../../package.json';
 import { ToggleButton } from './toggle-button.js';
 import { GraphToggleButtonWrapper } from './chat/graph-toggle-button.js';
+import { ContextManagerIcon, ContextManagerModal } from './context-manager/context-manager-modal.js';
+import { ContextManagerToggleButtonWrapper } from './chat/context-manager-toggle-button.js';
+import { useChatState } from '../contexts/chat-state-context.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -30,6 +33,7 @@ const GITHUB_ISSUES_URL = 'https://github.com/gtanczyk/genaicode/issues';
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface, inputArea, usage, toggleTheme }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { toggleContextManager } = useChatState();
 
   const menuItems: MenuItem[] = [
     {
@@ -49,6 +53,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
       ariaLabel: 'Content Generation',
       key: 'content-gen',
       onClick: dispatchContentGenerationModelOpen,
+    },
+    {
+      content: <ContextManagerIcon />,
+      ariaLabel: 'Manage Context',
+      key: 'manage-context',
+      onClick: toggleContextManager,
     },
     {
       content: <GenaicodeConfigIcon />,
@@ -105,6 +115,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
         <ChatContainer>{chatInterface}</ChatContainer>
         <InputContainer>{inputArea}</InputContainer>
         <GraphToggleButtonWrapper />
+        <ContextManagerToggleButtonWrapper />
+        <ContextManagerModal />
       </MainContent>
     </AppContainer>
   );

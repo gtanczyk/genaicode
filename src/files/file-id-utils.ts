@@ -23,7 +23,7 @@ export function generateFileId(filePath: string): FileId {
   }
 
   // Generate a new ID, pad it with zeros for consistent length
-  const newId = String(nextId++).padStart(6, '0') as FileId;
+  const newId = nextId++ as FileId;
   fileIdMap.set(filePath, newId);
   return newId;
 }

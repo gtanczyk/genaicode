@@ -35,6 +35,7 @@ interface ChatState {
   isGraphVisualiserOpen: boolean; // Added for visualiser visibility
   terminalEvents: Record<string, TerminalEvent[]>;
   isTerminalOpen: boolean;
+  isContextManagerOpen: boolean;
 }
 
 // Define the shape of the context actions/setters
@@ -54,6 +55,7 @@ interface ChatActions {
   setConversationGraphState: React.Dispatch<React.SetStateAction<ConversationGraphState | null>>;
   toggleGraphVisualiser: () => void;
   toggleTerminal: () => void;
+  toggleContextManager: () => void;
   clearTerminalEvents: (iterationId: string) => void;
 }
 
@@ -74,6 +76,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   isGraphVisualiserOpen: false,
   terminalEvents: {},
   isTerminalOpen: false,
+  isContextManagerOpen: false,
   setMessages: () => {},
   setExecutionStatus: () => {},
   setCurrentQuestion: () => {},
@@ -89,6 +92,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   setConversationGraphState: () => {}, // Default setter
   toggleGraphVisualiser: () => {}, // Default toggle
   toggleTerminal: () => {},
+  toggleContextManager: () => {},
   clearTerminalEvents: () => {},
 });
 
@@ -122,6 +126,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   // New state for terminal view
   const [terminalEvents, setTerminalEvents] = useState<Record<string, TerminalEvent[]>>({});
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [isContextManagerOpen, setIsContextManagerOpen] = useState(false);
   const [autoScrollTerminal, setAutoScrollTerminal] = useState(true);
 
   // Actions migrated/adapted from AppState
@@ -141,6 +146,10 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   // New actions for terminal view
   const toggleTerminal = useCallback(() => {
     setIsTerminalOpen((prev) => !prev);
+  }, []);
+
+  const toggleContextManager = useCallback(() => {
+    setIsContextManagerOpen((prev) => !prev);
   }, []);
 
   const toggleAutoScrollTerminal = useCallback(() => {
@@ -390,6 +399,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       isGraphVisualiserOpen,
       terminalEvents,
       isTerminalOpen,
+      isContextManagerOpen,
       autoScrollTerminal,
       setMessages,
       setExecutionStatus,
@@ -406,6 +416,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       setConversationGraphState,
       toggleGraphVisualiser,
       toggleTerminal,
+      toggleContextManager,
       toggleAutoScrollTerminal,
       setAutoScrollTerminal,
       clearTerminalEvents,
@@ -426,6 +437,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       isGraphVisualiserOpen,
       terminalEvents,
       isTerminalOpen,
+      isContextManagerOpen,
       autoScrollTerminal,
       toggleTheme,
       setCodegenOptions,
@@ -435,6 +447,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       handleResumeExecution,
       toggleGraphVisualiser,
       toggleTerminal,
+      toggleContextManager,
       toggleAutoScrollTerminal,
       clearTerminalEvents,
     ],

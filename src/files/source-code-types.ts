@@ -7,7 +7,7 @@ export interface DependencyInfo {
   /** Type of dependency */
   type: 'local' | 'external';
   /** Unique identifier for the dependent file */
-  fileId?: string;
+  fileId?: FileId;
 }
 
 /**
@@ -17,7 +17,9 @@ export interface FileContent {
   /** The actual content of the file */
   content: string | null;
   /** Optional list of dependencies */
-  dependencies?: DependencyInfo[];
+  localDeps?: FileId[];
+  /** Optional list of external dependencies */
+  externalDeps?: string[];
 }
 
 /**
@@ -26,8 +28,10 @@ export interface FileContent {
 export interface FileSummary {
   /** Summary of the file content */
   summary?: string;
-  /** Optional list of dependencies */
-  dependencies?: DependencyInfo[];
+  /** Optional list of local dependencies */
+  localDeps?: FileId[];
+  /** Optional list of external dependencies */
+  externalDeps?: string[];
 }
 
 /**
@@ -38,7 +42,7 @@ export interface FileFragments extends FileSummary {
   fragments: string[];
 }
 
-export type FileId = string & { readonly __fileId: true };
+export type FileId = number & { readonly __fileId: true };
 
 /**
  * Maps file paths to their content, summary, or fragments

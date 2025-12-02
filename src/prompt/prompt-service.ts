@@ -22,8 +22,9 @@ import { executeStepCodegenPlanning } from './steps/step-codegen-planning.js';
 import { getRegisteredGenerateContentHooks } from '../main/plugin-loader.js';
 import { generateCodegenSummary } from './steps/step-generate-codegen-summary.js';
 import { processFileUpdates } from './steps/step-process-file-updates.js';
-import { putSystemMessage, putUserMessage } from '../main/common/content-bus.js';
+import { putSystemMessage, putUserMessage, registerContext } from '../main/common/content-bus.js';
 import { rcConfig } from '../main/config.js';
+import { optimizeSourceCodeForPrompt } from './source-code-optimize.js';
 
 /** A function that communicates with model using */
 export async function promptService(
@@ -32,13 +33,14 @@ export async function promptService(
   codegenPrompt: CodegenPrompt,
   waitIfPaused: () => Promise<void> = () => Promise.resolve(),
 ): Promise<FunctionCall[]> {
-  const generateContentFn: GenerateContentFunction = async (...args) => {
+  const generateContentFn: GenerateContentFunction = async (prompt, ...args) => {
+    prompt = optimizeSourceCodeForPrompt(rcConfig.rootDir, prompt);
     // Get the base result from the AI service
-    const result = await handleAiServiceFallback(generateContentFns, codegenPrompt.options, ...args);
+    const result = await handleAiServiceFallback(generateContentFns, codegenPrompt.options, prompt, ...args);
 
     // Get registered hooks for the current AI service
     for (const hook of getRegisteredGenerateContentHooks()) {
-      await hook(args, result);
+      await hook([prompt, ...args], result);
     }
 
     return result;
@@ -97,6 +99,8 @@ async function executePromptService(
       ],
     },
   ];
+
+  registerContext(prompt);
 
   const getSourceCodeResponse: PromptItem = {
     type: 'user',

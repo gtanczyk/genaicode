@@ -7,6 +7,7 @@ import {
   Usage,
   SanitizedServiceConfigurations,
   ServiceConfigUpdate,
+  ContextFile,
 } from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common-types.js';
 import {
@@ -320,6 +321,16 @@ export const getServiceConfigurations = async (): Promise<SanitizedServiceConfig
  */
 export const updateServiceConfiguration = async (update: ServiceConfigUpdate): Promise<void> => {
   await api.post('/service-configuration', update);
+};
+
+export const getContextFiles = async (): Promise<ContextFile[]> => {
+  const response = await api.get('/context-files');
+  return response.data.files as ContextFile[];
+};
+
+export const removeContextFiles = async (filePaths: string[]): Promise<{ success: boolean; removed: number }> => {
+  const response = await api.post('/context-files/remove', { filePaths });
+  return response.data;
 };
 
 // Error handling middleware

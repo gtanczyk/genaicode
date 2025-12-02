@@ -33,20 +33,25 @@ describe('getSystemPrompt', () => {
     const systemPrompt = getSystemPrompt({ rootDir: '/mocked/root/dir' }, { askQuestion: false });
 
     expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
-    expect(systemPrompt).toContain('You should parse my application source code');
-    expect(systemPrompt).toContain(
-      'Please limit any changes to the root directory of my application, which is `/mocked/root/dir`',
-    );
-    expect(systemPrompt).toContain('absolute file paths exactly');
+    expect(systemPrompt).toContain('Target Root Directory (ROOT_DIR): `/mocked/root/dir`');
+    expect(systemPrompt).toContain('## CORE GUIDELINES');
+    expect(systemPrompt).toContain('## PERMISSIONS');
+    expect(systemPrompt).toContain('## CONFIGURATION');
   });
 
   it('verifies system prompt limit', () => {
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    getSystemPrompt({ rootDir: '/mocked/root/dir' }, { verbose: true, askQuestion: false });
+    const systemPrompt = getSystemPrompt({ rootDir: '/mocked/root/dir' }, { verbose: true, askQuestion: false });
 
-    expect(consoleSpy).toHaveBeenCalledWith('System prompt:');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('You are GenAIcode, a code generation assistant'));
+    // Verify that console.log was called with 'Generate system prompt'
+    expect(consoleSpy).toHaveBeenCalledWith('Generate system prompt');
+
+    // Verify that when verbose is true, the system prompt is logged
+    expect(consoleSpy).toHaveBeenCalledWith('System prompt:', expect.stringContaining('You are GenAIcode'));
+
+    // Verify the system prompt contains expected content
+    expect(systemPrompt).toContain('You are GenAIcode, a code generation assistant');
 
     consoleSpy.mockRestore();
   });

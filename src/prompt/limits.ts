@@ -3,7 +3,7 @@ import { estimateTokenCount } from './token-estimator.js';
 
 const SYSTEM_PROMPT_LIMIT = 3500;
 const CODEGEN_PROMPT_LIMIT = 1600;
-const SOURCE_CODE_LIMIT = 300000;
+const SOURCE_CODE_LIMIT = 600000;
 
 function verifyPromptLimit(promptType: string, prompt: string, limit: number): number {
   const tokenCount = estimateTokenCount(prompt);

@@ -163,7 +163,7 @@ export async function internalGoogleGenerateContent(
   if (functionDefs.length > 0) {
     req.config!.tools = [
       {
-        functionDeclarations: functionDefs as unknown as FunctionDeclaration[],
+        functionDeclarations: JSON.parse(JSON.stringify(functionDefs)) as unknown as FunctionDeclaration[],
       },
     ];
   }

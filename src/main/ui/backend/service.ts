@@ -3,7 +3,7 @@ import { rcConfig } from '../../config.js';
 import { CodegenOptions } from '../../codegen-types.js';
 import { AiServiceType } from '../../../ai-service/service-configurations-types.js';
 import { RcConfig } from '../../config-types.js';
-import { ServiceConfigUpdate, SanitizedServiceConfigurations } from '../common/api-types.js';
+import { ServiceConfigUpdate, SanitizedServiceConfigurations, ContextFile } from '../common/api-types.js';
 import { runCodegenWorker } from '../../interactive/codegen-worker.js';
 import { abortController } from '../../common/abort-controller.js';
 import { ContentProps } from '../../common/content-bus-types.js';
@@ -11,7 +11,7 @@ import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { editMessage, putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
 import { getGenerateContentFunctions } from '../../codegen.js';
-import { FunctionCall, PromptImageMediaType, PromptItemImage } from '../../../ai-service/common-types.js';
+import { FunctionCall, PromptImageMediaType, PromptItem, PromptItemImage } from '../../../ai-service/common-types.js';
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';
 import { AppContextProvider } from '../../common/app-context-bus.js';
@@ -20,6 +20,8 @@ import {
   StructuredQuestionForm,
   StructuredQuestionResponse,
 } from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { SourceCodeMap } from '../../../files/source-code-types.js';
+import { estimateTokenCount } from '../../../prompt/token-estimator.js';
 
 export interface ImageData {
   buffer: Buffer;
@@ -46,13 +48,15 @@ export class Service implements AppContextProvider {
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
   private securityToken: string;
+  private getContext: () => PromptItem[] = () => [];
 
   // Context storage for managing application context
   private contextStorage: Map<string, unknown> = new Map();
 
-  constructor(codegenOptions: CodegenOptions) {
+  constructor(codegenOptions: CodegenOptions, getContext: () => PromptItem[]) {
     this.codegenOptions = codegenOptions;
     this.securityToken = this.generateToken();
+    this.getContext = getContext;
   }
 
   /**
@@ -452,5 +456,86 @@ export class Service implements AppContextProvider {
    */
   async clearAllContext(): Promise<void> {
     this.contextStorage.clear();
+  }
+
+  /**
+   * Get list of files currently in the conversation context
+   * @returns Array of unique file paths
+   */
+  async getContextFiles(): Promise<ContextFile[]> {
+    const contextFilesMap = new Map<string, number>();
+
+    for (const item of this.getContext()) {
+      for (const response of item.functionResponses ?? []) {
+        if (response.name === 'getSourceCode' && response.content) {
+          try {
+            const sourceCode = JSON.parse(response.content);
+            for (const [filePath, fileData] of Object.entries(sourceCode)) {
+              if (fileData && typeof fileData === 'object' && 'content' in fileData && fileData.content !== null) {
+                const content = String(fileData.content);
+                const tokenCount = estimateTokenCount(content);
+                contextFilesMap.set(filePath, tokenCount);
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to parse getSourceCode response while fetching context files:', error);
+          }
+        }
+      }
+    }
+
+    return Array.from(contextFilesMap.entries())
+      .map(([path, tokenCount]) => ({ path, tokenCount }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /**
+   * Remove files from the conversation context by setting their content to null
+   * @param filePaths Array of file paths to remove
+   * @returns Number of files removed
+   */
+  async removeFilesFromContext(filePaths: string[]): Promise<number> {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return 0;
+    }
+
+    const filesToRemove = new Set(filePaths);
+    const removedFiles = new Set<string>();
+
+    for (const item of this.getContext()) {
+      for (const response of item.functionResponses ?? []) {
+        if (response.name === 'getSourceCode' && response.content) {
+          try {
+            const sourceCode = JSON.parse(response.content) as SourceCodeMap;
+            let modified = false;
+
+            for (const filePath of filesToRemove) {
+              if (
+                sourceCode[filePath] &&
+                typeof sourceCode[filePath] === 'object' &&
+                'content' in sourceCode[filePath] &&
+                sourceCode[filePath].content !== null
+              ) {
+                sourceCode[filePath].content = null;
+                removedFiles.add(filePath);
+                modified = true;
+              }
+            }
+
+            if (modified) {
+              response.content = JSON.stringify(sourceCode);
+            }
+          } catch (error) {
+            console.warn('Failed to parse getSourceCode response while removing context files:', error);
+          }
+        }
+      }
+    }
+
+    if (removedFiles.size > 0) {
+      putSystemMessage('Context reduction applied', { removed: Array.from(removedFiles) });
+    }
+
+    return removedFiles.size;
   }
 }

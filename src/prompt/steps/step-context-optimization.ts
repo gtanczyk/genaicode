@@ -305,8 +305,10 @@ function optimizeSourceCode(
     const summary = getSummary(path);
     const content =
       (fullSourceCode[path] && 'content' in fullSourceCode[path] ? fullSourceCode[path]?.content : undefined) ?? null;
-    const dependencies =
-      fullSourceCode[path] && 'dependencies' in fullSourceCode[path] ? fullSourceCode[path]?.dependencies : undefined;
+    const localDeps =
+      fullSourceCode[path] && 'localDeps' in fullSourceCode[path] ? fullSourceCode[path]?.localDeps : undefined;
+    const externalDeps =
+      fullSourceCode[path] && 'externalDeps' in fullSourceCode[path] ? fullSourceCode[path]?.externalDeps : undefined;
 
     if (
       isRequired &&
@@ -317,14 +319,16 @@ function optimizeSourceCode(
       optimizedSourceCode[path] = {
         fileId: generateFileId(path),
         content,
-        ...(dependencies && !isIrrelevant && { dependencies }),
+        ...(localDeps && !isIrrelevant && { localDeps }),
+        ...(externalDeps && !isIrrelevant && { externalDeps }),
       };
     } else if (summary && !isIrrelevant) {
       summaryTokenCount += estimateTokenCount(summary.summary);
       optimizedSourceCode[path] = {
         fileId: generateFileId(path),
         ...summary,
-        ...(dependencies && { dependencies }),
+        ...(localDeps && !isIrrelevant && { localDeps }),
+        ...(externalDeps && !isIrrelevant && { externalDeps }),
       };
     }
   }

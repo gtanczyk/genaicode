@@ -35,7 +35,7 @@ describe('read-files', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(cliParams).contentMask = undefined;
-    vi.mocked(getSummary).mockImplementation((file) => ({ summary: `Summary of ${file}`, dependencies: [] }));
+    vi.mocked(getSummary).mockImplementation((file) => ({ summary: `Summary of ${file}` }));
   });
 
   afterEach(() => {
@@ -54,11 +54,11 @@ describe('read-files', () => {
 
       expect(result).toEqual({
         '/home/project/file1.js': {
-          fileId: '000001',
+          fileId: generateFileId('/home/project/file1.js'),
           summary: 'Summary of /home/project/file1.js',
         },
         '/home/project/file2.js': {
-          fileId: '000002',
+          fileId: generateFileId('/home/project/file2.js'),
           summary: 'Summary of /home/project/file2.js',
         },
       });
