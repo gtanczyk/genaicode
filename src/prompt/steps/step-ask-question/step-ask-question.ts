@@ -11,6 +11,7 @@ import { ActionType, AskQuestionCall } from './step-ask-question-types.js';
 import { getUsageMetrics } from '../../../main/common/cost-collector.js';
 import { getActionHandler } from './ask-question-handler.js';
 import { executeStepAutoContextRefresh, getFilesState } from '../step-auto-context-refresh.js';
+import { getFilesContextSizeFromPrompt } from '../../context-utils.js';
 
 import './handlers/handle-code-generation.js';
 import './handlers/handle-confirm-code-generation.js';
@@ -86,7 +87,12 @@ export async function executeStepAskQuestion(
       }
 
       if (askQuestionCall.args?.message && askQuestionCall.id !== 'forced-action') {
-        putAssistantMessage(askQuestionCall.args.message, { ...askQuestionCall.args, contextSize: totalTokens });
+        const filesContextSize = getFilesContextSizeFromPrompt(prompt);
+        putAssistantMessage(askQuestionCall.args.message, {
+          ...askQuestionCall.args,
+          contextSize: totalTokens,
+          filesContextSize,
+        });
       }
 
       const actionType = askQuestionCall.args?.actionType;

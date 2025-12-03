@@ -1,3 +1,18 @@
-import React from 'react';
+import styled from 'styled-components';
 
-export const ContextManagerIcon = () => <span role="img" aria-label="Context Manager">📂</span>;
+const IconWrapper = styled.span`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+export const ContextManagerIcon = () => {
+  return (
+    <IconWrapper>
+      <span role="img" aria-label="Context Manager">
+        📂
+      </span>
+    </IconWrapper>
+  );
+};

@@ -43,12 +43,11 @@ const ContextManagerToggleButton = styled(ToggleButton)<{ isActive: boolean }>`
 
 export const ContextManagerToggleButtonWrapper: React.FC = () => {
   const { toggleContextManager, isContextManagerOpen, messages, executionStatus } = useChatState();
-  const { contextSize } = useContextSize(messages);
-  const sizeCategory = contextSize ? getSizeCategory(contextSize) : 'small';
-  
-  // Extract just the number/unit part (e.g. "2.5K" from "2.5K tokens")
-  const formattedSize = contextSize ? formatTokenCount(contextSize).split(' ')[0] : 'N/A';
+  const { filesOnlyContextSize } = useContextSize(messages);
+  const sizeCategory = filesOnlyContextSize ? getSizeCategory(filesOnlyContextSize) : 'small';
 
+  // Extract just the number/unit part (e.g. "2.5K" from "2.5K tokens")
+  const formattedSize = filesOnlyContextSize ? formatTokenCount(filesOnlyContextSize).split(' ')[0] : 'N/A';
   if (executionStatus === 'idle') {
     return null;
   }
@@ -64,8 +63,8 @@ export const ContextManagerToggleButtonWrapper: React.FC = () => {
         >
           <ContextManagerIcon />
         </ContextManagerToggleButton>
-        {contextSize !== undefined && (
-          <SizeBadge category={sizeCategory} title={`Context size: ${formatTokenCount(contextSize)}`}>
+        {filesOnlyContextSize !== undefined && (
+          <SizeBadge category={sizeCategory} title={`Context size: ${formatTokenCount(filesOnlyContextSize)}`}>
             {formattedSize}
           </SizeBadge>
         )}

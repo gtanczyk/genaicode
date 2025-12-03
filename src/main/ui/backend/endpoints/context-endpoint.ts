@@ -1,4 +1,5 @@
 import { registerEndpoint } from '../api-handlers.js';
+import { estimateTokenCount } from '../../../../prompt/token-estimator.js';
 
 /**
  * Context value storage type
@@ -124,6 +125,56 @@ registerEndpoint((router, service) => {
     } catch (error) {
       console.error('Error adding context files:', error);
       return res.status(500).json({ error: 'Failed to add context files' });
+    }
+  });
+
+  // Trigger context optimization
+  router.post('/context-optimization', async (_req, res) => {
+    try {
+      // Check if the service has the optimizeContext method
+      if (typeof service.optimizeContext !== 'function') {
+        console.error('optimizeContext method not available on service');
+        return res.status(501).json({
+          error: 'Context optimization is not implemented',
+          message: 'The optimization feature requires an active codegen session',
+        });
+      }
+
+      const result = await service.optimizeContext();
+      return res.json({ success: true, result });
+    } catch (error) {
+      console.error('Error optimizing context:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return res.status(500).json({
+        error: 'Failed to optimize context',
+        message: errorMessage,
+      });
+    }
+  });
+
+  // Get context preview
+  router.get('/context-preview', async (_req, res) => {
+    try {
+      if (typeof service.getContextPreview !== 'function') {
+        return res.status(501).json({ error: 'Context preview not implemented' });
+      }
+      const result = await service.getContextPreview();
+      return res.json(result);
+    } catch (error) {
+      console.error('Error getting context preview:', error);
+      return res.status(500).json({ error: 'Failed to get context preview' });
+    }
+  });
+
+  // Get full prompt context and total token count
+  router.get('/prompt', async (_req, res) => {
+    try {
+      const promptItems = service.getPromptContext();
+      const totalTokens = estimateTokenCount(JSON.stringify(promptItems));
+      return res.json({ promptItems, totalTokens });
+    } catch (error) {
+      console.error('Error getting prompt context:', error);
+      return res.status(500).json({ error: 'Failed to get prompt context' });
     }
   });
 });

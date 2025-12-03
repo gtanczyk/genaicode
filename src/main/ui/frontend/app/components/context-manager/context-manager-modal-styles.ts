@@ -289,3 +289,32 @@ export const FilterLabel = styled.label`
   color: ${(props) => props.theme.colors.text};
   user-select: none;
 `;
+
+export const ErrorMessage = styled.div`
+  color: ${(props) => props.theme.colors.error};
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid ${(props) => props.theme.colors.error};
+  border-radius: 4px;
+  background-color: rgba(255, 0, 0, 0.1);
+`;
+
+export const SuccessMessage = styled.div`
+  color: ${(props) => props.theme.colors.success || '#4CAF50'};
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid ${(props) => props.theme.colors.success || '#4CAF50'};
+  border-radius: 4px;
+  background-color: rgba(0, 255, 0, 0.1);
+`;
+
+export const ConfirmationContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  gap: 20px;
+  height: 100%;
+`;

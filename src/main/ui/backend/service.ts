@@ -22,6 +22,9 @@ import {
 } from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
 import { SourceCodeMap } from '../../../files/source-code-types.js';
 import { estimateTokenCount } from '../../../prompt/token-estimator.js';
+import { executeStepContextOptimization } from '../../../prompt/steps/step-context-optimization.js';
+import { executeStepContextCompression } from '../../../prompt/steps/step-context-compression.js';
+import { getFilesContextSizeFromPrompt } from '../../../prompt/context-utils.js';
 
 export interface ImageData {
   buffer: Buffer;
@@ -57,6 +60,13 @@ export class Service implements AppContextProvider {
     this.codegenOptions = codegenOptions;
     this.securityToken = this.generateToken();
     this.getContext = getContext;
+  }
+
+  /**
+   * Expose the current prompt context items (PromptItem[])
+   */
+  public getPromptContext(): PromptItem[] {
+    return this.getContext();
   }
 
   /**
@@ -253,6 +263,152 @@ export class Service implements AppContextProvider {
         this.pausePromiseResolve = null;
       }
     }
+  }
+
+  /**
+   * Optimize the current context
+   */
+  async optimizeContext(): Promise<{
+    success: boolean;
+    message?: string;
+    stats?: { tokensBefore: number; tokensAfter: number; savings: number; percentage: number };
+  }> {
+    try {
+      const prompt = this.getContext();
+      const generateContentFns = getGenerateContentFunctions();
+      const generateContentFn = generateContentFns[this.codegenOptions.aiService];
+
+      if (!generateContentFn) {
+        throw new Error(`AI service ${this.codegenOptions.aiService} is not available`);
+      }
+
+      // Estimate tokens before
+      const tokensBefore = estimateTokenCount(JSON.stringify(prompt));
+
+      // Execute optimization
+      await executeStepContextOptimization(generateContentFn, prompt, this.codegenOptions);
+
+      // Estimate tokens after
+      const tokensAfter = estimateTokenCount(JSON.stringify(prompt));
+      const filesContextSize = getFilesContextSizeFromPrompt(prompt);
+      putSystemMessage('Context optimization applied', { filesContextSize, contextSize: tokensAfter });
+
+      return {
+        success: true,
+        stats: {
+          tokensBefore,
+          tokensAfter,
+          savings: tokensBefore - tokensAfter,
+          percentage: tokensBefore > 0 ? Math.round(((tokensBefore - tokensAfter) / tokensBefore) * 100) : 0,
+        },
+      };
+    } catch (error) {
+      console.error('Error optimizing context:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error during context optimization',
+      };
+    }
+  }
+
+  /**
+   * Compress the current context
+   */
+  async compressContext(): Promise<{
+    success: boolean;
+    message?: string;
+    stats?: { tokensBefore: number; tokensAfter: number; savings: number; percentage: number };
+  }> {
+    try {
+      const prompt = this.getContext();
+      const generateContentFns = getGenerateContentFunctions();
+      const generateContentFn = generateContentFns[this.codegenOptions.aiService];
+
+      if (!generateContentFn) {
+        throw new Error(`AI service ${this.codegenOptions.aiService} is not available`);
+      }
+
+      // Estimate tokens before
+      const tokensBefore = estimateTokenCount(JSON.stringify(prompt));
+
+      // Execute compression
+      await executeStepContextCompression(generateContentFn, prompt, this.codegenOptions);
+
+      // Estimate tokens after
+      const tokensAfter = estimateTokenCount(JSON.stringify(prompt));
+      const filesContextSize = getFilesContextSizeFromPrompt(prompt);
+      putSystemMessage('Context compression applied', {
+        tokensBefore,
+        tokensAfter,
+        filesContextSize,
+        contextSize: tokensAfter,
+      });
+
+      return {
+        success: true,
+        stats: {
+          tokensBefore,
+          tokensAfter,
+          savings: tokensBefore - tokensAfter,
+          percentage: tokensBefore > 0 ? Math.round(((tokensBefore - tokensAfter) / tokensBefore) * 100) : 0,
+        },
+      };
+    } catch (error) {
+      console.error('Error compressing context:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error during context compression',
+      };
+    }
+  }
+
+  async getContextPreview(): Promise<{
+    preview: {
+      type: string;
+      summary: string;
+      tokenCount: number;
+    }[];
+    totalTokens: number;
+  }> {
+    const prompt = this.getContext();
+    const preview = prompt.map((item) => {
+      let summary = '';
+
+      if (item.type === 'user') {
+        const text = item.text ?? '';
+        summary = text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : 'User Input';
+        if (Array.isArray(item.images) && item.images.length > 0) {
+          summary += ` [${item.images.length} images]`;
+        }
+        if (item.functionResponses?.length) {
+          const name = item.functionResponses.map((fr) => fr.name).join(', ') as string | undefined;
+          summary += ` Function Response${name ? `: ${name}` : ''}`;
+        }
+      } else if (item.type === 'assistant') {
+        // assistant may contain text and/or functionCalls
+        const text = item.text as string | undefined;
+        if (text) {
+          summary = text.substring(0, 100) + (text.length > 100 ? '...' : '');
+        } else if (Array.isArray(item.functionCalls)) {
+          const names = item.functionCalls.map((fc) => fc?.name).filter(Boolean);
+          summary = names.length ? `Assistant: ${names.join(', ')}` : 'Assistant';
+        } else {
+          summary = 'Assistant';
+        }
+      } else if (item.type === 'systemPrompt') {
+        const text = item.text as string | undefined;
+        summary = text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : 'System Prompt';
+      }
+
+      return {
+        type: item.type,
+        summary,
+        tokenCount: estimateTokenCount(JSON.stringify(item)),
+      };
+    });
+
+    const totalTokens = estimateTokenCount(JSON.stringify(prompt));
+    return { preview, totalTokens };
   }
 
   async getExecutionStatus(): Promise<string> {
@@ -533,7 +689,8 @@ export class Service implements AppContextProvider {
     }
 
     if (removedFiles.size > 0) {
-      putSystemMessage('Context reduction applied', { removed: Array.from(removedFiles) });
+      const filesContextSize = getFilesContextSizeFromPrompt(this.getContext());
+      putSystemMessage('Context reduction applied', { removed: Array.from(removedFiles), filesContextSize });
     }
 
     return removedFiles.size;
@@ -582,7 +739,8 @@ export class Service implements AppContextProvider {
       }
 
       const addedCount = filePaths.length;
-      putSystemMessage('Files added to context', { added: filePaths });
+      const filesContextSize = getFilesContextSizeFromPrompt(this.getContext());
+      putSystemMessage('Files added to context', { added: filePaths, filesContextSize });
 
       return addedCount;
     } catch (error) {

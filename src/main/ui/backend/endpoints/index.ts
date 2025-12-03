@@ -10,3 +10,4 @@ import './usage-endpoint.js';
 import './config-endpoint.js';
 import './iteration-endpoint.js';
 import './context-endpoint.js';
+import './compress-context-endpoint.js';

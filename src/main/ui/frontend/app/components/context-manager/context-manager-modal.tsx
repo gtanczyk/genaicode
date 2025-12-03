@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getContextFiles, removeContextFiles, getAllProjectFiles, addContextFiles } from '../../api/api-client.js';
+import {
+  getContextFiles,
+  removeContextFiles,
+  getAllProjectFiles,
+  addContextFiles,
+  optimizeContext,
+} from '../../api/api-client.js';
 import {
   ModalOverlay,
   ModalContainer,
@@ -22,6 +28,9 @@ import {
   ContextBadge,
   FilterBar,
   FilterLabel,
+  ErrorMessage,
+  SuccessMessage,
+  ConfirmationContainer,
 } from './context-manager-modal-styles.js';
 import {
   buildTree,
@@ -39,6 +48,12 @@ import {
 } from './tree-utils.js';
 import { useChatState } from '../../contexts/chat-state-context.js';
 
+type ConfirmationState = {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+} | null;
+
 export const ContextManagerModal: React.FC = () => {
   const { isContextManagerOpen, toggleContextManager } = useChatState();
   const [tree, setTree] = useState<TreeNode[]>([]);
@@ -53,10 +68,15 @@ export const ContextManagerModal: React.FC = () => {
   const [showOnlyInContext, setShowOnlyInContext] = useState(true);
   const [, setAllProjectFiles] = useState<string[]>([]);
   const [rootPath, setRootPath] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>(null);
 
   const fetchContextFiles = useCallback(async () => {
     setLoading(true);
     setLoadingMessage('Fetching files...');
+    setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       const [contextFiles, projectFiles] = await Promise.all([getContextFiles(), getAllProjectFiles()]);
 
@@ -112,6 +132,7 @@ export const ContextManagerModal: React.FC = () => {
       setSelectedCount(0);
     } catch (error) {
       console.error('Failed to fetch context files:', error);
+      setErrorMessage('Failed to fetch context files. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -126,6 +147,9 @@ export const ContextManagerModal: React.FC = () => {
   const handleClose = () => {
     setSearchQuery(''); // Clear search on close
     setShowOnlyInContext(true); // Reset filter on close to default
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setConfirmation(null);
     toggleContextManager();
   };
 
@@ -183,7 +207,7 @@ export const ContextManagerModal: React.FC = () => {
   const handleAddSelected = async () => {
     const checkedFiles = collectCheckedFiles(tree);
     // Filter for files NOT in context
-    const filesToAdd = [];
+    const filesToAdd: string[] = [];
     const findNode = (nodes: TreeNode[], path: string): TreeNode | undefined => {
       for (const node of nodes) {
         if (node.path === path) return node;
@@ -204,28 +228,36 @@ export const ContextManagerModal: React.FC = () => {
 
     if (filesToAdd.length === 0) return;
 
-    if (!confirm(`Are you sure you want to add ${filesToAdd.length} files to the context?`)) {
-      return;
-    }
-
-    setLoading(true);
-    setLoadingMessage('Adding files...');
-    try {
-      const result = await addContextFiles(filesToAdd);
-      console.log('Context addition result:', result);
-      await fetchContextFiles();
-    } catch (error) {
-      console.error('Failed to add context files:', error);
-      alert('Failed to add files. Check console for details.');
-    } finally {
-      setLoading(false);
-    }
+    setConfirmation({
+      message: `Are you sure you want to add ${filesToAdd.length} file${filesToAdd.length > 1 ? 's' : ''} to the context?`,
+      onConfirm: async () => {
+        setConfirmation(null);
+        setLoading(true);
+        setLoadingMessage('Adding files...');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        try {
+          const result = await addContextFiles(filesToAdd);
+          console.log('Context addition result:', result);
+          setSuccessMessage(`Successfully added ${result.added} file${result.added > 1 ? 's' : ''} to context.`);
+          await fetchContextFiles();
+        } catch (error) {
+          console.error('Failed to add context files:', error);
+          setErrorMessage('Failed to add files. Check console for details.');
+        } finally {
+          setLoading(false);
+        }
+      },
+      onCancel: () => {
+        setConfirmation(null);
+      },
+    });
   };
 
   const handleRemoveSelected = async () => {
     const checkedFiles = collectCheckedFiles(tree);
     // Filter for files IN context
-    const filesToRemove = [];
+    const filesToRemove: string[] = [];
     const findNode = (nodes: TreeNode[], path: string): TreeNode | undefined => {
       for (const node of nodes) {
         if (node.path === path) return node;
@@ -246,22 +278,64 @@ export const ContextManagerModal: React.FC = () => {
 
     if (filesToRemove.length === 0) return;
 
-    if (!confirm(`Are you sure you want to remove ${filesToRemove.length} files from the context?`)) {
-      return;
-    }
+    setConfirmation({
+      message: `Are you sure you want to remove ${filesToRemove.length} file${filesToRemove.length > 1 ? 's' : ''} from the context?`,
+      onConfirm: async () => {
+        setConfirmation(null);
+        setLoading(true);
+        setLoadingMessage('Removing files...');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        try {
+          const result = await removeContextFiles(filesToRemove);
+          console.log('Context removal result:', result);
+          setSuccessMessage(
+            `Successfully removed ${result.removed} file${result.removed > 1 ? 's' : ''} from context.`,
+          );
+          await fetchContextFiles();
+        } catch (error) {
+          console.error('Failed to remove context files:', error);
+          setErrorMessage('Failed to remove files. Check console for details.');
+        } finally {
+          setLoading(false);
+        }
+      },
+      onCancel: () => {
+        setConfirmation(null);
+      },
+    });
+  };
 
-    setLoading(true);
-    setLoadingMessage('Removing files...');
-    try {
-      const result = await removeContextFiles(filesToRemove);
-      console.log('Context removal result:', result);
-      await fetchContextFiles();
-    } catch (error) {
-      console.error('Failed to remove context files:', error);
-      alert('Failed to remove files. Check console for details.');
-    } finally {
-      setLoading(false);
-    }
+  const handleOptimize = async () => {
+    setConfirmation({
+      message: 'This will analyze your context and remove files that are less relevant. Continue?',
+      onConfirm: async () => {
+        setConfirmation(null);
+        setLoading(true);
+        setLoadingMessage('Optimizing context...');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        try {
+          const result = await optimizeContext();
+
+          if (result.success) {
+            setSuccessMessage('Context optimization complete.');
+            // Refresh the context files to reflect changes
+            await fetchContextFiles();
+          } else {
+            setErrorMessage('Context optimization failed. Please try again.');
+          }
+        } catch (error) {
+          console.error('Failed to optimize context:', error);
+          setErrorMessage('Failed to optimize context. Check console for details.');
+        } finally {
+          setLoading(false);
+        }
+      },
+      onCancel: () => {
+        setConfirmation(null);
+      },
+    });
   };
 
   const renderTreeNodes = (nodes: TreeNode[], level = 0) => {
@@ -337,6 +411,31 @@ export const ContextManagerModal: React.FC = () => {
 
   if (!isContextManagerOpen) return null;
 
+  // Render confirmation dialog if active
+  if (confirmation) {
+    return (
+      <ModalOverlay onClick={() => setConfirmation(null)}>
+        <ModalContainer onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <ModalHeader>
+            <h2>Confirm Action</h2>
+            <CloseButton onClick={() => setConfirmation(null)}>&times;</CloseButton>
+          </ModalHeader>
+          <ModalContent>
+            <ConfirmationContainer>
+              <p>{confirmation.message}</p>
+              <ButtonGroup>
+                <Button onClick={confirmation.onCancel}>Cancel</Button>
+                <Button variant="primary" onClick={confirmation.onConfirm}>
+                  Confirm
+                </Button>
+              </ButtonGroup>
+            </ConfirmationContainer>
+          </ModalContent>
+        </ModalContainer>
+      </ModalOverlay>
+    );
+  }
+
   return (
     <ModalOverlay onClick={handleClose}>
       <ModalContainer onClick={(e) => e.stopPropagation()}>
@@ -348,6 +447,9 @@ export const ContextManagerModal: React.FC = () => {
           <CloseButton onClick={handleClose}>&times;</CloseButton>
         </ModalHeader>
         <ModalContent>
+          {errorMessage && <ErrorMessage>{errorMessage}</ErrorMessage>}
+          {successMessage && <SuccessMessage>{successMessage}</SuccessMessage>}
+
           <StatsBar>
             <span>Total Project Files: {projectFilesCount}</span>
             <span>In Context: {contextFilesCount}</span>
@@ -377,6 +479,9 @@ export const ContextManagerModal: React.FC = () => {
           <ButtonGroup>
             <Button onClick={fetchContextFiles} disabled={loading}>
               Refresh
+            </Button>
+            <Button onClick={handleOptimize} disabled={loading} title="Optimize Context (Remove less relevant files)">
+              Optimize...
             </Button>
             <Button variant="primary" onClick={handleAddSelected} disabled={loading || notInContextCount === 0}>
               Add Selected

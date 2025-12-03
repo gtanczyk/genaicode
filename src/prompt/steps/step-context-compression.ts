@@ -189,6 +189,11 @@ export async function executeStepContextCompression(
       return StepResult.BREAK;
     }
 
+    if (!compressContextCall.args) {
+      putSystemMessage('Context compression returned invalid result (missing args)');
+      return StepResult.BREAK;
+    }
+
     // Replace the initial prompt with the context compression call response
     prompt.splice(initialPromptIndex, prompt.length - initialPromptIndex);
 
@@ -196,7 +201,7 @@ export async function executeStepContextCompression(
     prompt.push({
       type: 'user',
       itemId: 'INITIAL_PROMPT',
-      text: 'This is summary of our conversation:\n\n' + compressContextCall.args!.conversationSummary,
+      text: 'This is summary of our conversation:\n\n' + compressContextCall.args.conversationSummary,
     });
 
     // Ensure context
@@ -207,6 +212,7 @@ export async function executeStepContextCompression(
     return StepResult.CONTINUE;
   } catch (error) {
     putSystemMessage('An unexpected error occurred during context compression', { error });
+    console.error('Context compression error details:', error);
     return StepResult.BREAK;
   }
 }

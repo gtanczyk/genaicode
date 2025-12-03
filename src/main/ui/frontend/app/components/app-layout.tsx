@@ -21,6 +21,8 @@ import { ContextManagerModal } from './context-manager/context-manager-modal.js'
 import { ContextManagerToggleButtonWrapper } from './chat/context-manager-toggle-button.js';
 import { useChatState } from '../contexts/chat-state-context.js';
 import { ContextManagerIcon } from './context-manager/context-manager-icon.js';
+import { ContextCompressionModal } from './context-compression-modal.js';
+import { CompressionToggleButtonWrapper } from './chat/compression-toggle-button.js';
 
 interface AppLayoutProps {
   themeToggle: ReactNode;
@@ -116,8 +118,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ themeToggle, chatInterface
         <ChatContainer>{chatInterface}</ChatContainer>
         <InputContainer>{inputArea}</InputContainer>
         <GraphToggleButtonWrapper />
+
+        <CompressionToggleButtonWrapper />
         <ContextManagerToggleButtonWrapper />
+
         <ContextManagerModal />
+        <ContextCompressionModal />
       </MainContent>
     </AppContainer>
   );

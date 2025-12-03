@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-153] 2025-12-02: Implement backend prompt context endpoint and frontend hook integration - Added prompt context endpoint and frontend hook support to fetch and display accurate token counts.
 - [x] [GEN-152] 2025-01-11: Enhanced Context Manager with search filter, folder collapse/expand, and ability to add files to context - Users can now search/filter files, collapse folders for better navigation, and add files that aren't currently in context.
 - [x] [GEN-151] 2025-11-11: Fix build errors by updating FileId to number and fixing mock data structures.
 - [x] [GEN-150] 2025-01-11: Enhanced Context Manager with token size indicators - Added visual indicators showing token counts for individual files and aggregated totals for folders, plus context size badge on toggle button with color-coded categories (small/medium/large). Implemented backend support for context file token counts.
@@ -23,7 +24,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [-] [GEN-142] 2025-09-25: Update ask-question test to include runBashCommand action type.
 - [-] [GEN-144] 2025-09-26: Enhance project configuration: add `autoApprove` for project commands (boolean or natural language condition) and allow inline or imported plugin definitions.
 - [x] [GEN-141] 2025-09-21: Action Selector
-- [x] [GEN-140] 2025-09-17: Git context: working copy changes and diffs support.
+- [x] [GEN-140] 2025-09-16: Project commands
 - [x] [GEN-139] 2025-09-16: Project commands
 - [-] [GEN-138] 2025-09-07: Refactor Google GenAI services: share internal implementation in ai-studio.ts and delegate vertex-ai.ts to it.
 - [x] [GEN-135] 2024-08-08: Enhanced AI service selection - Improved error message to display available AI services and their required environment variables.
@@ -76,4 +77,71 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [-] [GEN-089] 2024-08-09: Fix multiple failing unit tests across various test suites.
 - [-] [GEN-088] 2024-08-08: Fixed TypeScript errors in multiple test files
 - [-] [GEN-087] 2024-08-07: Refactor Plugin AI Services (Grok, Deepseek, Fake) to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent` to use the new interface.
-- [-] [GEN-086] 2024-08-07: Refactor Local LLM service to align with updated `internalGenerateContent` signature from `openai.ts`.\\n- [-] [GEN-085] 2024-08-07: Refactor OpenAI service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`, `internalGenerateContent`, and `internalGenerateToolCalls`.\\n- [-] [GEN-084] 2024-08-07: Refactor Vertex AI Claude service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`.\\n- [-] [GEN-083] 2024-08-07: Refactor Vertex AI service to support GenerateContentNewFunction signature. Implemented `generateContentNew`, refactored `generateContent`, `getGenModel`, and `recoverFunctionCall`.\\n- [x] [GEN-082] 2024-08-07 (Updated 2025-04-05): Refactor AI Studio service to support GenerateContentNewFunction signature. Completed migration to `@google/genai`, refactored `recoverFunctionCall`, and implemented `expectedResponseType` handling for `functionCall: false` in `ai-studio.ts`.\\n- [-] [GEN-081] 2024-08-05: Add systemInstruction override - Allow injecting service-specific system instructions via .genaicoderc modelOverrides.\\n- [x] [GEN-080] 2024-08-05: Enhanced UI - Replaced 'Upload Images' text with icon in button components\\n- [-] [GEN-079] 2024-08-04: Implement image pasting in Question Handler\\n- [ ] [GEN-078] 2024-08-04: Implement image upload for question answers\\n- [-] [GEN-077] 2024-08-03: Fixed type error and polling issue in ChatStateContext\\n- [-] [GEN-076] 2024-08-03: Refactored AppState - Migrated state management logic to ChatStateContext to centralize state and remove prop drilling.\\n- [-] [GEN-075] 2024-08-02: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling\\n- [-] [GEN-074] 2024-08-02: Enhanced Suggestion Generation - Suggestions now utilize more conversational context for improved relevance instead of only the last message\\n- [x] [GEN-073] 2024-08-01: Fixed suggestion generation hook in ChatInterface.tsx - Optimized dependency array to prevent continuous execution by depending on specific message properties instead of the entire messages array\\n- [-] [GEN-072] 2024-07-29 (Updated 2024-07-30): Implement suggestion chips using browser-side AI (Moved chips to QuestionHandler to fix bug)\\n- [-] [GEN-071] 2024-07-20: Local LLM AI Service Integration - Added Local LLM as a new AI service with OpenAI-compatible API support, custom base URL configuration, and model overrides for different model types.\\n- [x] [GEN-070] 2024-02-21: Enhanced Diff View - Extracted CopyToClipboard component with individual state management. Improved UI with icon button in top-right corner. Fixed shared state issue in side-by-side view. Includes success/failure states, styled consistently with existing UI.\\n- [-] [GEN-069] 2024-02-17: Enhanced Conversation Graph Edge Evaluation - Implemented LLM-based edge evaluation with condition handling, user input consideration, and traversal control.\\n- [-] [GEN-068] 2024-02-14: Conversation Graph Implementation - Added conversation graph functionality with directed graph traversal, node action execution, and edge condition handling. Includes cycle detection and error handling.\\n- [x] [GEN-067] 2024-02-13: Enhanced Multi-File Fragment Extraction - Improved fragment extraction to handle multiple files in a single LLM call, added file path tracking, and enhanced type safety\\n- [x] [GEN-066] 2024-02-12: Refactored File Request Handlers - extracted common functions into file-request-utils.ts to reduce code duplication and improve maintainability\\n- [x] [GEN-065] 2024-02-09: Request Files Fragments - Enhanced implementation with structured fragment extraction, improved documentation, and better type safety\\n- [x] [GEN-063] 2024-02-09: Token Usage Optimization - Replace MD5 with numeric file IDs\\n- [-] [GEN-064] 2024-02-09: Context Size Display - add token count next to timestamp in assistant messages\\n- [-] [GEN-062] 2024-02-09: Context Size Display - iteration header shows token count\\n- [x] [GEN-061] 2024-02-05: Enhanced Context Compression - autonomous compression, user confirmation\\n- [-] [GEN-060] 2024-02-04: Enhanced Context Compression - file dependencies, token management\\n- [-] [GEN-058] 2024-02-01: Context Compression Feature - conversation context compression\\n- [-] [GEN-059] 2024-02-03: Improved Context Compression - conversation history analysis\\n- [x] [GEN-055] 2024-01-28: Enhanced CLI Parameter Handling - positional arguments\\n- [x] [GEN-054] 2024-01-28: Enhanced Model Type Selection - model type dropdown\\n- [-] [GEN-050] 2024-01-23: Enhanced Diff View - patch operations UI\\n- [-] [GEN-049] 2024-01-22: AI Service Selection - dialog system enhancement\\n- [x] [GEN-048] 2024-01-21: Enhanced Cross-Context Notifications\\n- [x] [GEN-047] 2024-01-20: Enhanced Notifications System\\n- [-] [GEN-045] 2024-01-19: Reasoning Model Support - model type system\\n- [ ] [GEN-044] 2024-01-18: Enhanced AI Service Selector - model info display\\n- [ ] [GEN-043] 2024-01-17: Enhanced File Operation Handlers - content generation confirmation\\n- [ ] [GEN-041] 2024-01-16: Help System Implementation - in-context documentation\\n- [x] [GEN-040] 2024-01-15: Context Management Implementation - content-bus system\\n- [ ] [GEN-039] 2024-01-14: App Context Integration - context management in conversations\\n- [ ] [GEN-035] 2024-01-13: Contributing Guidelines - development setup, code style\\n- [x] [GEN-034] 2024-01-11: Add performAnalysis Action Type - complex tasks\\n- [x] [GEN-031] 2024-01-10: Add Retry Mechanism - AI service failures\\n- [ ] [GEN-030] 2024-01-09: Enhanced Long Explanation Test\\n- [ ] [GEN-028] 2024-01-08: Create code-generation test suite\\n- [ ] [GEN-027] 2024-01-07: Implement Ask Question Test Suite\\n- [ ] [GEN-026] 2024-01-05: Generate large mock-source-code-summaries dataset\\n- [ ] [GEN-025] 2024-01-04: Implement Context Optimization Test\\n- [ ] [GEN-024] 2024-0103: Decompose backend/service.ts\\n- [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details\\n- [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle\\n- [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts\\n- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts\\n- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature\\n- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature\\n- [x] [GEN-014] 2023-12-27: Add old content handling to file updates\\n- [x] [GEN-013] 2023-12-26: Add FileUpdateView component\\n- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal\\n- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration\\n- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates\\n- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement\\n- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration\\n- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook\\n- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance\\n- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc\\n- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry\\n- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display\\n
+- [-] [GEN-086] 2024-08-07: Refactor Local LLM service to align with updated `internalGenerateContent` signature from `openai.ts`.
+- [-] [GEN-085] 2024-08-07: Refactor OpenAI service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`, `internalGenerateContent`, and `internalGenerateToolCalls`.
+- [-] [GEN-084] 2024-08-07: Refactor Vertex AI Claude service to support GenerateContentNewFunction signature. Implemented `generateContentNew` and refactored `generateContent`.
+- [-] [GEN-083] 2024-08-07: Refactor Vertex AI service to support GenerateContentNewFunction signature. Implemented `generateContentNew`, refactored `generateContent`, `getGenModel`, and `recoverFunctionCall`.
+- [x] [GEN-082] 2024-08-07 (Updated 2025-04-05): Refactor AI Studio service to support GenerateContentNewFunction signature. Completed migration to `@google/genai`, refactored `recoverFunctionCall`, and implemented `expectedResponseType` handling for `functionCall: false` in `ai-studio.ts`.
+- [-] [GEN-081] 2024-08-05: Add systemInstruction override - Allow injecting service-specific system instructions via .genaicoderc modelOverrides.
+- [x] [GEN-080] 2024-08-05: Enhanced UI - Replaced 'Upload Images' text with icon in button components
+- [-] [GEN-079] 2024-08-04: Implement image pasting in Question Handler
+- [ ] [GEN-078] 2024-08-04: Implement image upload for question answers
+- [-] [GEN-077] 2024-08-03: Fixed type error and polling issue in ChatStateContext
+- [-] [GEN-076] 2024-08-03: Refactored AppState - Migrated state management logic to ChatStateContext to centralize state and remove prop drilling.
+- [-] [GEN-075] 2024-08-02: Refactored Suggestion Generation - Implemented React Context to manage chat state and suggestions, removing prop drilling
+- [-] [GEN-074] 2024-08-02: Enhanced Suggestion Generation - Suggestions now utilize more conversational context for improved relevance instead of only the last message
+- [x] [GEN-073] 2024-08-01: Fixed suggestion generation hook in ChatInterface.tsx - Optimized dependency array to prevent continuous execution by depending on specific message properties instead of the entire messages array
+- [-] [GEN-072] 2024-07-29 (Updated 2024-07-30): Implement suggestion chips using browser-side AI (Moved chips to QuestionHandler to fix bug)
+- [-] [GEN-071] 2024-07-20: Local LLM AI Service Integration - Added Local LLM as a new AI service with OpenAI-compatible API support, custom base URL configuration, and model overrides for different model types.
+- [x] [GEN-070] 2024-02-21: Enhanced Diff View - Extracted CopyToClipboard component with individual state management. Improved UI with icon button in top-right corner. Fixed shared state issue in side-by-side view. Includes success/failure states, styled consistently with existing UI.
+- [-] [GEN-069] 2024-02-17: Enhanced Conversation Graph Edge Evaluation - Implemented LLM-based edge evaluation with condition handling, user input consideration, and traversal control.
+- [-] [GEN-068] 2024-02-14: Conversation Graph Implementation - Added conversation graph functionality with directed graph traversal, node action execution, and edge condition handling. Includes cycle detection and error handling.
+- [x] [GEN-067] 2024-02-13: Enhanced Multi-File Fragment Extraction - Improved fragment extraction to handle multiple files in a single LLM call, added file path tracking, and enhanced type safety
+- [x] [GEN-066] 2024-02-12: Refactored File Request Handlers - extracted common functions into file-request-utils.ts to reduce code duplication and improve maintainability
+- [x] [GEN-065] 2024-02-09: Request Files Fragments - Enhanced implementation with structured fragment extraction, improved documentation, and better type safety
+- [x] [GEN-063] 2024-02-09: Token Usage Optimization - Replace MD5 with numeric file IDs
+- [-] [GEN-064] 2024-02-09: Context Size Display - add token count next to timestamp in assistant messages
+- [-] [GEN-062] 2024-02-09: Context Size Display - iteration header shows token count
+- [x] [GEN-061] 2024-02-05: Enhanced Context Compression - autonomous compression, user confirmation
+- [-] [GEN-060] 2024-02-04: Enhanced Context Compression - file dependencies, token management
+- [-] [GEN-058] 2024-02-01: Context Compression Feature - conversation context compression
+- [-] [GEN-059] 2024-02-03: Improved Context Compression - conversation history analysis
+- [x] [GEN-055] 2024-01-28: Enhanced CLI Parameter Handling - positional arguments
+- [x] [GEN-054] 2024-01-28: Enhanced Model Type Selection - model type dropdown
+- [-] [GEN-050] 2024-01-23: Enhanced Diff View - patch operations UI
+- [-] [GEN-049] 2024-01-22: AI Service Selection - dialog system enhancement
+- [x] [GEN-048] 2024-01-21: Enhanced Cross-Context Notifications
+- [x] [GEN-047] 2024-01-20: Enhanced Notifications System
+- [-] [GEN-045] 2024-01-19: Reasoning Model Support - model type system
+- [ ] [GEN-044] 2024-01-18: Enhanced AI Service Selector - model info display
+- [ ] [GEN-043] 2024-01-17: Enhanced File Operation Handlers - content generation confirmation
+- [ ] [GEN-041] 2024-01-16: Help System Implementation - in-context documentation
+- [x] [GEN-040] 2024-01-15: Context Management Implementation - content-bus system
+- [ ] [GEN-039] 2024-01-14: App Context Integration - context management in conversations
+- [ ] [GEN-035] 2024-01-13: Contributing Guidelines - development setup, code style
+- [x] [GEN-034] 2024-01-11: Add performAnalysis Action Type - complex tasks
+- [x] [GEN-031] 2024-01-10: Add Retry Mechanism - AI service failures
+- [ ] [GEN-030] 2024-01-09: Enhanced Long Explanation Test
+- [ ] [GEN-028] 2024-01-08: Create code-generation test suite
+- [ ] [GEN-027] 2024-01-07: Implement Ask Question Test Suite
+- [ ] [GEN-026] 2024-01-05: Generate large mock-source-code-summaries dataset
+- [ ] [GEN-025] 2024-01-04: Implement Context Optimization Test
+- [ ] [GEN-024] 2024-0103: Decompose backend/service.ts
+- [x] [GEN-020] 2024-01-02: Refactor CodegenSummaryView - update details
+- [x] [GEN-019] 2024-01-01: Enhanced FileUpdateView - explanation toggle
+- [x] [GEN-018] 2023-12-31: Refactor utility-endpoint.ts
+- [x] [GEN-017] 2023-12-30: Decompose remaining endpoints in api.ts
+- [ ] [GEN-015] 2023-12-29: Prompt suggestions feature
+- [ ] [GEN-016] 2023-12-28: Input-area autocomplete feature
+- [x] [GEN-014] 2023-12-27: Add old content handling to file updates
+- [x] [GEN-013] 2023-12-26: Add FileUpdateView component
+- [x] [GEN-012] 2023-12-25: Convert codegen-options-form to Config modal
+- [x] [GEN-011] 2023-12-24: Plugins in Vite Genaicode - registration
+- [x] [GEN-010] 2023-12-23: GenAIcode Tracker Enhancement - keys and dates
+- [x] [GEN-001] 2023-12-22: File Updates Processing Enhancement
+- [x] [GEN-002] 2023-12-21: Update AI Studio Models Configuration
+- [x] [GEN-003] 2023-12-20: Implement code planning plugin hook
+- [x] [GEN-004] 2023-12-19: Add .genaicoderc configuration assistance
+- [x] [GEN-005] 2023-12-18: Add JSON Schema Support for .genaicoderc
+- [x] [GEN-006] 2023-12-16: Add unit test for content generation retry
+- [x] [GEN-007] 2023-12-14: Enhanced UI for Codegen Data Display

@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { ChatMessage } from '../../../../../common/content-bus-types.js';
-import { useContextSize } from '../../hooks/use-context-size.js';
+import { useContextSize, formatContextSize } from '../../hooks/use-context-size.js';
 
 const ContextSizeContainer = styled.span`
   font-size: 12px;
@@ -19,7 +19,10 @@ export const ContextSizeDisplay: React.FC<ContextSizeDisplayProps> = ({ messages
     return null;
   }
 
-  const { formattedSize } = useContextSize(messages);
+  const { formattedSize, totalTokens } = useContextSize(messages);
 
-  return <ContextSizeContainer className={className}>{formattedSize}</ContextSizeContainer>;
+  // Prefer backend-derived totalTokens if available; otherwise use message-based formatted size
+  const displayText = typeof totalTokens === 'number' ? formatContextSize(totalTokens) : formattedSize;
+
+  return <ContextSizeContainer className={className}>{displayText}</ContextSizeContainer>;
 };

@@ -36,6 +36,7 @@ interface ChatState {
   terminalEvents: Record<string, TerminalEvent[]>;
   isTerminalOpen: boolean;
   isContextManagerOpen: boolean;
+  isCompressionModalOpen: boolean;
 }
 
 // Define the shape of the context actions/setters
@@ -56,6 +57,7 @@ interface ChatActions {
   toggleGraphVisualiser: () => void;
   toggleTerminal: () => void;
   toggleContextManager: () => void;
+  toggleCompressionModal: () => void;
   clearTerminalEvents: (iterationId: string) => void;
 }
 
@@ -77,6 +79,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   terminalEvents: {},
   isTerminalOpen: false,
   isContextManagerOpen: false,
+  isCompressionModalOpen: false,
   setMessages: () => {},
   setExecutionStatus: () => {},
   setCurrentQuestion: () => {},
@@ -93,6 +96,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   toggleGraphVisualiser: () => {}, // Default toggle
   toggleTerminal: () => {},
   toggleContextManager: () => {},
+  toggleCompressionModal: () => {},
   clearTerminalEvents: () => {},
 });
 
@@ -127,6 +131,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
   const [terminalEvents, setTerminalEvents] = useState<Record<string, TerminalEvent[]>>({});
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isContextManagerOpen, setIsContextManagerOpen] = useState(false);
+  const [isCompressionModalOpen, setIsCompressionModalOpen] = useState(false);
   const [autoScrollTerminal, setAutoScrollTerminal] = useState(true);
 
   // Actions migrated/adapted from AppState
@@ -150,6 +155,10 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
 
   const toggleContextManager = useCallback(() => {
     setIsContextManagerOpen((prev) => !prev);
+  }, []);
+
+  const toggleCompressionModal = useCallback(() => {
+    setIsCompressionModalOpen((prev) => !prev);
   }, []);
 
   const toggleAutoScrollTerminal = useCallback(() => {
@@ -400,6 +409,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       terminalEvents,
       isTerminalOpen,
       isContextManagerOpen,
+      isCompressionModalOpen,
       autoScrollTerminal,
       setMessages,
       setExecutionStatus,
@@ -417,6 +427,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleGraphVisualiser,
       toggleTerminal,
       toggleContextManager,
+      toggleCompressionModal,
       toggleAutoScrollTerminal,
       setAutoScrollTerminal,
       clearTerminalEvents,
@@ -438,6 +449,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       terminalEvents,
       isTerminalOpen,
       isContextManagerOpen,
+      isCompressionModalOpen,
       autoScrollTerminal,
       toggleTheme,
       setCodegenOptions,
@@ -448,6 +460,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleGraphVisualiser,
       toggleTerminal,
       toggleContextManager,
+      toggleCompressionModal,
       toggleAutoScrollTerminal,
       clearTerminalEvents,
     ],

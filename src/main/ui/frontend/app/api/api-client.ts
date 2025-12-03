@@ -343,6 +343,37 @@ export const addContextFiles = async (filePaths: string[]): Promise<{ success: b
   return response.data;
 };
 
+export const optimizeContext = async (): Promise<{
+  success: boolean;
+  tokensBefore: number;
+  tokensAfter: number;
+  filesRemoved: string[];
+}> => {
+  const response = await api.post('/context-optimization');
+  return response.data;
+};
+
+export const getContextPreview = async (): Promise<{
+  preview: {
+    type: string;
+    summary: string;
+    tokenCount: number;
+  }[];
+  totalTokens: number;
+}> => {
+  const response = await api.get('/context-preview');
+  return response.data;
+};
+
+export const compressContext = async (): Promise<{
+  success: boolean;
+  tokensBefore: number;
+  tokensAfter: number;
+}> => {
+  const response = await api.post('/compress-context');
+  return response.data;
+};
+
 // Error handling middleware
 api.interceptors.response.use(
   (response) => response,
