@@ -23,3 +23,9 @@
 - anthropic lazy tool loading + context
 - auto pilot
 - context mngmnt
+- seek for rc in parent broken
+- anthropic bug
+- media resolution ai studio
+- log payload too big / lagging
+- rename ask question
+- remove reasoning inference
