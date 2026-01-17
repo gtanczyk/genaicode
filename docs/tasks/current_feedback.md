@@ -5,7 +5,7 @@
 - no idea what permissions are requested
 - misuse of request filest content with external path
 - recover from tool misuse?
-- codegen plan/summary editing
+- codegen plan/summary editing (CRUD)
 - multiple sessions
 - external file access message too long
 - thinking tokens in context size
