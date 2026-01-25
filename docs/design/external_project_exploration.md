@@ -58,7 +58,7 @@ The multi-step, conditional nature of this refined workflow makes it an ideal ca
   - **Edge:** Call `readExternalFiles` with selected paths.
 - **Node 2b (Process Synthesis):** LLM decides next step (explore deeper, ask user, potentially infer standard file).
   - **Edge (Explore Deeper):** Call `exploreExternalDirectories` with refined parameters (back to Node 1 logic).
-  - **Edge (Ask User):** Call `askQuestion` (`sendMessage`).
+  - **Edge (Ask User):** Call `iterate` (`sendMessage`).
   - **Edge (Read Inferred):** Call `readExternalFiles` (carefully).
 - **Node 3 (Process Read Results):** LLM receives `readExternalFiles` response.
   - **Edge:** Integrate content, proceed with analysis, potentially loop back for more reading/exploration if needed.

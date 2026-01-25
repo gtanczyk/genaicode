@@ -1,5 +1,5 @@
 import React from 'react';
-import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { StructuredQuestionField } from '../../../../../../prompt/steps/step-iterate/step-iterate-types.js';
 import { Input, Textarea, FieldContainer, Label, ErrorMessage } from './structured-question-styles';
 
 interface FormFieldProps {

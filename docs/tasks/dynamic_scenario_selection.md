@@ -31,7 +31,7 @@ This document outlines the specification for implementing dynamic scenario selec
 
 - **Token Usage**: Ensure that the new system prompt does not exceed token limits.
 - **Error Handling**: Implement proper error handling in case the LLM fails to infer a scenario.
-- **User Feedback**: Allow the user to correct or override the inferred scenario if necessary. This could be implemented via `askQuestion` action type.
+- **User Feedback**: Allow the user to correct or override the inferred scenario if necessary. This could be implemented via `iterate` action type.
 
 ## Example Scenarios\*\*
 
@@ -48,7 +48,7 @@ This document outlines the specification for implementing dynamic scenario selec
 
 1. Implement the system prompt updates to enable the LLM to infer task scenario.
 2. Remove the CLI parameter and its validation.
-3. Implement the dynamic scenario selection logic using the askQuestion action type if necessary.
+3. Implement the dynamic scenario selection logic using the iterate action type if necessary.
 4. Test the changes thoroughly to ensure that it works seamlessly with other parameters.
 5. Update documentation to reflect the new changes.
 

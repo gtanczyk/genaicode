@@ -6,7 +6,7 @@ import { loadConfiguration } from './config-lib.js';
 import { loadPlugins } from './plugin-loader.js';
 import { DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATHS } from '../project-profiles/index.js';
 import { SCHEMA_VIRTUAL_FILE_NAME } from './config-schema.js';
-import { checkDockerAvailability } from '../prompt/steps/step-ask-question/handlers/container-task/utils/docker-check.js';
+import { checkDockerAvailability } from '../prompt/steps/step-iterate/handlers/container-task/utils/docker-check.js';
 
 // Read and parse the configuration
 const { rcConfig, configFilePath } = await loadConfiguration();

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { getActionTypeOptions } from '../api/api-client.js';
-import { ActionType } from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionType } from '../../../../../prompt/steps/step-iterate/step-iterate-types.js';
 
 interface PromptActionTypeSelectorProps {
   value: string | undefined;

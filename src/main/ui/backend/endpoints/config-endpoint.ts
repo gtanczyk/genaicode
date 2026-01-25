@@ -1,7 +1,7 @@
 import { registerEndpoint } from '../api-handlers.js';
 import { rcConfig as globalRcConfig } from '../../../config.js';
 import { getSupportedAiServices } from '../../../codegen-utils.js';
-import { getActionTypeOptions } from '../../../../prompt/function-defs/ask-question.js';
+import { getActionTypeOptions } from '../../../../prompt/function-defs/iterate.js';
 
 registerEndpoint((router, service) => {
   // Get default CodegenOptions

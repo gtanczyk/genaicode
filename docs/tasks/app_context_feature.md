@@ -163,7 +163,7 @@ window.genAIcode = {
 1. Add Action Type
 
 ```typescript
-// src/prompt/steps/step-ask-question/step-ask-question-types.ts
+// src/prompt/steps/step-iterate/step-iterate-types.ts
 export type ActionType =
   | 'pullAppContext'
   | /* existing types */;
@@ -172,7 +172,7 @@ export type ActionType =
 2. Implement Handler
 
 ```typescript
-// src/prompt/steps/step-ask-question/handlers/handle-pull-app-context.ts
+// src/prompt/steps/step-iterate/handlers/handle-pull-app-context.ts
 export async function handlePullAppContext(key?: string): Promise<Record<string, unknown>> {
   return key ? { [key]: await contextStore.get(key) } : await contextStore.getAll();
 }
@@ -207,7 +207,7 @@ Assistant: Let me check the current application configuration.
 
 <function_call>
 {
-  "name": "askQuestion",
+  "name": "iterate",
   "args": {
     "actionType": "pullAppContext",
     "key": "userConfig"

@@ -5,8 +5,8 @@ import { generateContent as generateContentOpenAI } from '../ai-service/openai.j
 import { generateContent as generateContentGitHub } from '../ai-service/github-models.js';
 import { PromptItem } from '../ai-service/common-types.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
-import { handleRunContainerTask } from '../prompt/steps/step-ask-question/handlers/handle-run-container-task.js';
-import { ActionHandlerProps } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { handleRunContainerTask } from '../prompt/steps/step-iterate/handlers/handle-run-container-task.js';
+import { ActionHandlerProps } from '../prompt/steps/step-iterate/step-iterate-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { validateLLMContent } from './test-utils/llm-content-validate.js';
 
@@ -115,8 +115,8 @@ describe.each([
 
     // Step 2: Execute the run container task handler with real LLM
     const handlerProps: ActionHandlerProps = {
-      askQuestionCall: {
-        name: 'askQuestion',
+      iterateCall: {
+        name: 'iterate',
         args: {
           actionType: 'runContainerTask',
           message: 'I will use a container to fulfill your request',
@@ -176,8 +176,8 @@ describe.each([
     }
 
     const handlerProps: ActionHandlerProps = {
-      askQuestionCall: {
-        name: 'askQuestion',
+      iterateCall: {
+        name: 'iterate',
         args: {
           actionType: 'runContainerTask',
           message: 'Run a container task to check system information',

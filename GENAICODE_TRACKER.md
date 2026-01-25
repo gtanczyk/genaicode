@@ -33,7 +33,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-133] 2025-08-29: Merged Execution Plan visualiser into Terminal View as a new tab and fixed terminal auto-scroll bug.
 - [-] [GEN-132] 2025-08-28: Implement `requestSecret` container command for secure secret collection in CLI and UI modes.
 - [-] [GEN-131] 2025-08-27: Add webSearch tool (container command and top-level action) returning grounded results with source URLs.
-- [-] [GEN-130] 2025-08-25: Implement per-command interrupt for container tasks with optional post-interrupt messaging, enhancing user control over long-running processes (related to GEN-127, GEN-128). Immediate interrupt now triggers a server-side `askQuestion` to capture a reason and confirm whether to stop the entire task.
+- [-] [GEN-130] 2025-08-25: Implement per-command interrupt for container tasks with optional post-interrupt messaging, enhancing user control over long-running processes (related to GEN-127, GEN-128). Immediate interrupt now triggers a server-side `iterate` to capture a reason and confirm whether to stop the entire task.
 - [-] [GEN-129] 2025-08-23: Introduce `checkContext` command in container tasks to replace implicit `pushContextMetrics`, improving model-driven context management.
 - [x] [GEN-128] 2025-08-23: Refactor TerminalView and its toggle button out of ChatInterface to the main app layout for better component structure.
 - [x] [GEN-127] 2025-08-23: Implement dedicated terminal view for runContainerTask logs; added terminal event channel, backend support, and frontend UI.
@@ -60,7 +60,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [ ] [GEN-108] 2025-06-22: Fix browser-side suggestion generation due to `window.ai` API changes.
 - [-] [GEN-107] 2025-05-15: Add test suite for compoundAction handler (`src/eval/compound-action.test.ts`).
 - [-] [GEN-106] 2025-05-10: Refactor `handleCompoundAction` for multi-step inference (plan, then params per action).
-- [x] [GEN-105] 2025-05-10: Refactor `handleCompoundAction` to use full conversation context for action inference instead of `askQuestionCall.args.message`.
+- [x] [GEN-105] 2025-05-10: Refactor `handleCompoundAction` to use full conversation context for action inference instead of `iterateCall.args.message`.
 - [x] [GEN-104] 2025-05-06: Implement compoundAction - Allow AI to propose a batch of actions (create, update files) for single user confirmation.
 - [x] [GEN-103] 2025-05-01: Refactored Conversation Graph Toggle Button into dedicated component (`graph-toggle-button.tsx`)
 - [-] [GEN-102] 2025-05-01: Relocate Conversation Graph Visualiser toggle button to bottom-right, make it larger, add pulsing animation, and ensure visibility only during active graph traversal.

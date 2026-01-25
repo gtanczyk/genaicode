@@ -3,7 +3,7 @@ import {
   ActionType,
   StructuredQuestionForm,
   StructuredQuestionResponse,
-} from '../../prompt/steps/step-ask-question/step-ask-question-types';
+} from '../../prompt/steps/step-iterate/step-iterate-types';
 import { CodegenOptions } from '../codegen-types';
 
 export type InputHandlerResponse = {

@@ -135,7 +135,7 @@ The GenAIcode tool offers a comprehensive set of features designed to enhance co
   - Request recent commit history.
   - Request commit history for specific files.
   - Request `git blame` output for specific files (and optionally commits).
-- **Usage**: The AI uses the `requestGitContext` action via the `askQuestion` function.
+- **Usage**: The AI uses the `requestGitContext` action via the `iterate` function.
 - **Benefits**:
   - Provides the AI with deeper understanding of code evolution.
   - Improves the AI's ability to reason about changes and maintain consistency.

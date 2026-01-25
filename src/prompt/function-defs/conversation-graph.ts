@@ -1,6 +1,6 @@
 import { FunctionCall, FunctionDef } from '../../ai-service/common-types.js';
-import { ActionType } from '../steps/step-ask-question/step-ask-question-types.js';
-import { getActionTypeOptions } from './ask-question.js';
+import { ActionType } from '../steps/step-iterate/step-iterate-types.js';
+import { getActionTypeOptions } from './iterate.js';
 
 // Function definitions for conversation graph
 

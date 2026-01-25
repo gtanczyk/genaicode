@@ -1,5 +1,5 @@
 import { type ServiceConfig } from '../../../ai-service/service-configurations-types.js';
-import { StructuredQuestionForm } from '../../../prompt/steps/step-ask-question/step-ask-question-types';
+import { StructuredQuestionForm } from '../../../prompt/steps/step-iterate/step-iterate-types';
 export { type ServiceConfig } from '../../../ai-service/service-configurations-types.js';
 import { AiServiceType } from '../../../ai-service/service-configurations-types.js';
 import { UsageMetrics } from '../../common/cost-collector.js';

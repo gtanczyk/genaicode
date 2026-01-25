@@ -10,10 +10,7 @@ import {
   ContextFile,
 } from '../../../common/api-types.js';
 import { FunctionCall } from '../../../../../ai-service/common-types.js';
-import {
-  ActionType,
-  StructuredQuestionResponse,
-} from '../../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionType, StructuredQuestionResponse } from '../../../../../prompt/steps/step-iterate/step-iterate-types.js';
 
 const API_BASE_URL = '/api';
 

@@ -25,7 +25,7 @@ import { MOCK_SOURCE_CODE_CONTENTS_LARGE } from './data/mock-source-code-content
 import {
   constructCompoundActionPlanningPrompt,
   constructCompoundActionParameterInferencePrompt,
-} from '../prompt/steps/step-ask-question/handlers/handle-compound-action.js';
+} from '../prompt/steps/step-iterate/handlers/handle-compound-action.js';
 
 vi.setConfig({ testTimeout: 5 * 60000 }); // Increased timeout for live AI calls
 

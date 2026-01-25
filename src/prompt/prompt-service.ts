@@ -9,7 +9,7 @@ import { PromptItem } from '../ai-service/common-types.js';
 import { FunctionCall } from '../ai-service/common-types.js';
 import { ImagenType } from '../main/codegen-types.js';
 import { AiServiceType } from '../ai-service/service-configurations-types.js';
-import { executeStepAskQuestion } from './steps/step-ask-question/step-ask-question.js';
+import { executeStepIterate } from './steps/step-iterate/step-iterate.js';
 import { executeStepContextOptimization } from './steps/step-context-optimization.js';
 import { StepResult } from './steps/steps-types.js';
 import { CodegenPrompt } from './prompt-codegen.js';
@@ -156,9 +156,9 @@ async function executePromptService(
     }
   }
 
-  // Execute the ask question step
+  // Execute the iterate step
   if (codegenPrompt.options.askQuestion !== false && (codegenPrompt.options.interactive || codegenPrompt.options.ui)) {
-    const askQuestionResult = await executeStepAskQuestion(
+    const iterateResult = await executeStepIterate(
       generateContentFn,
       generateImageFn,
       prompt,
@@ -168,12 +168,12 @@ async function executePromptService(
       codegenPrompt.options,
     );
 
-    // Summary based on the ask-question conversation history (may be different from the initial summary)
+    // Summary based on the iterate conversation history (may be different from the initial summary)
     await executeStepGenerateSummary(generateContentFn, prompt, codegenPrompt.options);
 
-    return { result: askQuestionResult, prompt };
+    return { result: iterateResult, prompt };
   } else if (codegenPrompt.options.askQuestion === false) {
-    console.log('Ask question is not enabled.');
+    console.log('Iterate step is not enabled.');
     // Also there is no need to generate conversation summary
 
     const planningResult = await executeStepCodegenPlanning(generateContentFn, prompt, codegenPrompt.options);

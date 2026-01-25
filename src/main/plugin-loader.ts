@@ -2,7 +2,7 @@ import path from 'path';
 import { Operation, Plugin, PlanningPreHook, PlanningPostHook } from './codegen-types.js';
 import { PluginActionType, PluginAiServiceType } from '../ai-service/service-configurations-types.js';
 import { GenerateContentFunction, GenerateContentHook } from '../ai-service/common-types.js';
-import { ActionHandler } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { ActionHandler } from '../prompt/steps/step-iterate/step-iterate-types.js';
 import { RcConfig } from './config-types.js';
 import { ProjectProfile, ProjectProfilePlugin } from '../project-profiles/types.js';
 import { registerProfile } from '../project-profiles/index.js';

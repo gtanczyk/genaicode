@@ -1,5 +1,5 @@
 import { registerEndpoint } from '../api-handlers.js';
-import { requestInterrupt } from '../../../../prompt/steps/step-ask-question/handlers/container-task/commands/interrupt-controller.js';
+import { requestInterrupt } from '../../../../prompt/steps/step-iterate/handlers/container-task/commands/interrupt-controller.js';
 
 registerEndpoint((router, service) => {
   router.post('/interrupt-execution', async (req, res) => {

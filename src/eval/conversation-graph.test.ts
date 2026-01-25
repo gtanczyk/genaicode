@@ -18,7 +18,7 @@ import {
   GRAPH_ANALYSIS_PROMPT_TEXT, // Import analysis prompt
   GRAPH_REVISION_PROMPT_TEXT, // Import revision prompt
   getEdgeEvaluationPrompt,
-} from '../prompt/steps/step-ask-question/handlers/handle-conversation-graph.js';
+} from '../prompt/steps/step-iterate/handlers/handle-conversation-graph.js';
 import {
   ConversationNodeId,
   ConversationGraphArgs,

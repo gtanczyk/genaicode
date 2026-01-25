@@ -6,8 +6,8 @@ import { generateContent as generateContentLocalLllm } from '../ai-service/local
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import { PromptItem, ModelType } from '../ai-service/common-types.js';
 import { validateAndRecoverSingleResult } from '../prompt/steps/step-validate-recover.js';
-import { GIT_CONTEXT_INSTRUCTION_PROMPT } from '../prompt/steps/step-ask-question/handlers/handle-request-git-context.js';
-import { RequestGitContextArgs } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { GIT_CONTEXT_INSTRUCTION_PROMPT } from '../prompt/steps/step-iterate/handlers/handle-request-git-context.js';
+import { RequestGitContextArgs } from '../prompt/steps/step-iterate/step-iterate-types.js';
 import { retryGenerateContent } from './test-utils/generate-content-retry.js';
 import { getSystemPrompt } from '../prompt/systemprompt.js';
 

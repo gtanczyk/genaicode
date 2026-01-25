@@ -1,5 +1,5 @@
 import React from 'react';
-import { StructuredQuestionField } from '../../../../../../prompt/steps/step-ask-question/step-ask-question-types';
+import { StructuredQuestionField } from '../../../../../../prompt/steps/step-iterate/step-iterate-types';
 import { FieldContainer, Label, OptionGroup, OptionLabel, ErrorMessage } from './structured-question-styles';
 
 interface CheckboxGroupProps {

@@ -59,7 +59,7 @@ describe.each([{ model: 'Gemini Flash', generateContent: generateContentAiStudio
           functionCalls: [
             {
               id: 'ask_q_1',
-              name: 'askQuestion',
+              name: 'iterate',
               args: {
                 actionType: 'exploreExternalDirectories',
                 message: assistantMessage,
