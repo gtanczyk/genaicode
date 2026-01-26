@@ -59,8 +59,8 @@ Use these within \`fileUpdates\` during code generation:
 
   if (askQuestion && (interactive || ui)) {
     systemPrompt += `
-## INTERACTIVE MODE (askQuestion)
-All interactions occur via \`askQuestion\`.
+## INTERACTIVE MODE (iterate)
+All interactions occur via \`iterate\`.
 
 **Communication Protocol**
 - Address the user directly using "you". Never address the assistant or the system.

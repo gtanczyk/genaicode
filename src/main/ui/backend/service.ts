@@ -19,7 +19,7 @@ import {
   ActionType,
   StructuredQuestionForm,
   StructuredQuestionResponse,
-} from '../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+} from '../../../prompt/steps/step-iterate/step-iterate-types.js';
 import { SourceCodeMap } from '../../../files/source-code-types.js';
 import { estimateTokenCount } from '../../../prompt/token-estimator.js';
 import { executeStepContextOptimization } from '../../../prompt/steps/step-context-optimization.js';
@@ -32,7 +32,7 @@ export interface ImageData {
   originalname: string;
 }
 
-interface AskQuestionConversationItem {
+interface IterateConversationItem {
   id: string;
   question: string;
   answer: string;
@@ -46,7 +46,7 @@ interface AskQuestionConversationItem {
 export class Service implements AppContextProvider {
   private executionStatus: 'idle' | 'executing' | 'paused' | 'interrupted' = 'idle';
   private currentQuestion: Question | null = null;
-  private askQuestionConversation: AskQuestionConversationItem[] = [];
+  private iterateConversation: IterateConversationItem[] = [];
   private codegenOptions: CodegenOptions;
   private content: ContentProps[] = [];
   private pausePromiseResolve: (() => void) | null = null;
@@ -439,7 +439,7 @@ export class Service implements AppContextProvider {
     await this.waitForQuestionAnswer();
 
     console.log('Question answer wait finished.');
-    const conversationItem = this.askQuestionConversation.find((q) => q.id === questionId);
+    const conversationItem = this.iterateConversation.find((q) => q.id === questionId);
 
     if (!conversationItem) {
       // Should ideally not happen if waitForQuestionAnswer resolved correctly
@@ -462,7 +462,7 @@ export class Service implements AppContextProvider {
     await this.waitForQuestionAnswer();
 
     console.log('Structured question answer wait finished.');
-    const conversationItem = this.askQuestionConversation.find((q) => q.id === questionId);
+    const conversationItem = this.iterateConversation.find((q) => q.id === questionId);
 
     if (!conversationItem || !conversationItem.structuredResponse) {
       // Should ideally not happen if waitForQuestionAnswer resolved correctly
@@ -494,7 +494,7 @@ export class Service implements AppContextProvider {
       }));
 
       // Store the answer and processed images in the conversation history
-      this.askQuestionConversation.push({
+      this.iterateConversation.push({
         id: this.currentQuestion.id,
         question: this.currentQuestion.text,
         answer: answer,

@@ -25,8 +25,8 @@ import {
 import {
   CONVERSATION_GRAPH_PROMPT, // Import the prompt guide
   getEdgeEvaluationPrompt,
-} from '../prompt/steps/step-ask-question/handlers/handle-conversation-graph.js';
-import { AskQuestionCall } from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+} from '../prompt/steps/step-iterate/handlers/handle-conversation-graph.js';
+import { IterateCall } from '../prompt/steps/step-iterate/step-iterate-types.js';
 
 vi.setConfig({
   // Increased timeout for real AI calls
@@ -113,7 +113,7 @@ describe.each([
         currentPrompt,
         {
           functionDefs: getFunctionDefs(),
-          requiredFunctionName: 'askQuestion', // Expecting askQuestion to trigger the action
+          requiredFunctionName: 'iterate', // Expecting askQuestion to trigger the action
           modelType,
           temperature: 0.2,
         },
@@ -122,12 +122,12 @@ describe.each([
 
       // Make the actual LLM call to get the askQuestion decision
       const result = await generateContent(...generateContentArgs);
-      const askQuestionCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
+      const iterateCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
         .filter((item) => item.type === 'functionCall')
         .map((item) => item.functionCall);
 
-      expect(askQuestionCalls.length).toBe(1);
-      const askExploreCall = askQuestionCalls[0];
+      expect(iterateCalls.length).toBe(1);
+      const askExploreCall = iterateCalls[0];
 
       expect(askExploreCall).toBeDefined();
       expect(askExploreCall?.args?.actionType).toBe('exploreExternalDirectories');
@@ -171,7 +171,7 @@ describe.each([
           functionCalls: [
             {
               id: 'mock_explore_call_id', // ID for the explore call
-              name: 'askQuestion',
+              name: 'iterate',
               args: { actionType: 'exploreExternalDirectories', message: '...' },
             },
           ],
@@ -183,7 +183,7 @@ describe.each([
         currentPrompt,
         {
           functionDefs: getFunctionDefs(),
-          requiredFunctionName: 'askQuestion', // Expecting askQuestion to trigger the next action
+          requiredFunctionName: 'iterate', // Expecting askQuestion to trigger the next action
           modelType,
           temperature: 0.2,
         },
@@ -192,12 +192,12 @@ describe.each([
 
       // Make the actual LLM call to get the next askQuestion decision
       const result = await generateContent(...generateContentArgs);
-      const askQuestionCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
+      const iterateCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
         .filter((item) => item.type === 'functionCall')
         .map((item) => item.functionCall);
 
-      expect(askQuestionCalls.length).toBe(1);
-      const askReadCall = askQuestionCalls[0];
+      expect(iterateCalls.length).toBe(1);
+      const askReadCall = iterateCalls[0];
 
       expect(askReadCall).toBeDefined();
       expect(askReadCall?.args?.actionType).toBe('readExternalFiles');
@@ -243,7 +243,7 @@ describe.each([
           functionCalls: [
             {
               id: 'mock_explore_call_id_2', // ID for the initial explore call
-              name: 'askQuestion',
+              name: 'iterate',
               args: { actionType: 'exploreExternalDirectories', message: '...' },
             },
           ],
@@ -255,7 +255,7 @@ describe.each([
         currentPrompt,
         {
           functionDefs: getFunctionDefs(),
-          requiredFunctionName: 'askQuestion', // Expecting askQuestion to trigger the next action
+          requiredFunctionName: 'iterate', // Expecting askQuestion to trigger the next action
           modelType,
           temperature: 0.2,
         },
@@ -264,12 +264,12 @@ describe.each([
 
       // Make the actual LLM call
       const result = await generateContent(...generateContentArgs);
-      const askQuestionCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
+      const iterateCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
         .filter((item) => item.type === 'functionCall')
         .map((item) => item.functionCall);
 
-      expect(askQuestionCalls.length).toBe(1);
-      const askExploreDeeperCall = askQuestionCalls[0];
+      expect(iterateCalls.length).toBe(1);
+      const askExploreDeeperCall = iterateCalls[0];
 
       expect(askExploreDeeperCall).toBeDefined();
       expect(askExploreDeeperCall?.args?.actionType).toBe('exploreExternalDirectories');
@@ -294,7 +294,7 @@ describe.each([
         currentPrompt,
         {
           functionDefs: getFunctionDefs(),
-          requiredFunctionName: 'askQuestion', // Expecting the initial response to be askQuestion
+          requiredFunctionName: 'iterate', // Expecting the initial response to be askQuestion
           modelType,
           temperature: 0.2,
         },
@@ -302,12 +302,12 @@ describe.each([
       ];
 
       const result = await generateContent(...generateContentArgs);
-      const askQuestionCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
+      const iterateCalls = (await validateAndRecoverSingleResult(generateContentArgs, result, generateContent))
         .filter((item) => item.type === 'functionCall')
-        .map((item) => item.functionCall as AskQuestionCall);
+        .map((item) => item.functionCall as IterateCall);
 
-      expect(askQuestionCalls.length).toBe(1);
-      const askGraphCall = askQuestionCalls[0];
+      expect(iterateCalls.length).toBe(1);
+      const askGraphCall = iterateCalls[0];
 
       console.log(JSON.stringify(askGraphCall, null, 2));
 
@@ -452,7 +452,7 @@ describe.each([
           functionCalls: [
             {
               id: 'mock_graph_explore_call_id', // ID for the explore call triggered by the graph node
-              name: 'askQuestion', // The graph node action translates to an askQuestion call
+              name: 'iterate', // The graph node action translates to an askQuestion call
               args: {
                 actionType: 'exploreExternalDirectories',
                 message: `Exploring ${externalDir}...`,
@@ -572,7 +572,7 @@ describe.each([
           functionCalls: [
             {
               id: 'mock_graph_read_call_id', // ID for the read call
-              name: 'askQuestion',
+              name: 'iterate',
               args: {
                 actionType: 'readExternalFiles',
                 message: `Reading ${logFiles.join(', ')}...`,

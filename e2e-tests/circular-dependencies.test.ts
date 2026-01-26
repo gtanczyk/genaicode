@@ -23,7 +23,7 @@ describe('Circular Dependencies', () => {
 
     // Known circular dependencies that are currently in the codebase
     const knownCircularDeps = [
-      ['main/codegen-types.ts', 'prompt/steps/step-ask-question/step-ask-question-types.ts'],
+      ['main/codegen-types.ts', 'prompt/steps/step-iterate/step-iterate-types.ts'],
       ['main/codegen-non-interactive.ts', 'main/codegen.ts'],
       [
         'main/codegen.ts',

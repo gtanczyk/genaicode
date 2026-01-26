@@ -1,6 +1,6 @@
 import multer from 'multer';
 import { CodegenOptions } from '../../../codegen-types.js';
-import { StructuredQuestionResponse } from '../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { StructuredQuestionResponse } from '../../../../prompt/steps/step-iterate/step-iterate-types.js';
 import { registerEndpoint } from '../api-handlers.js';
 import { validateCodegenOptions } from '../api-utils.js';
 import { ImageData } from '../service.js'; // Import ImageData type

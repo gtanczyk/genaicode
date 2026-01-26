@@ -9,7 +9,7 @@ import {
   stopContainer,
   copyToContainer,
   copyFromContainer,
-} from '../src/prompt/steps/step-ask-question/handlers/container-task/utils/docker-utils.js';
+} from '../src/prompt/steps/step-iterate/handlers/container-task/utils/docker-utils.js';
 import type { AllowedDockerImage } from '../src/prompt/function-defs/run-container-task.js';
 import { rcConfig } from '../src/main/config.js';
 

@@ -6,7 +6,7 @@ import { getCodegenSummaryDef } from './function-defs/codegen-summary.js';
 import { explanation } from './function-defs/explanation.js';
 import { generateImage } from './function-defs/generate-image.js';
 import {
-  getAskQuestionDef,
+  getIterateDef,
   requestPermissions,
   requestFilesContent,
   removeFilesFromContext,
@@ -17,7 +17,7 @@ import {
   requestFilesFragments,
   sendMessage,
   requestGitContextDef,
-} from './function-defs/ask-question.js';
+} from './function-defs/iterate.js';
 import { optimizeContext } from './function-defs/optimize-context.js';
 import { setSummaries } from './function-defs/set-summaries.js';
 import { updateHistory } from './function-defs/update-history.js';
@@ -53,7 +53,7 @@ export function getFunctionDefs(): FunctionDef[] {
     getCodegenPlanningDef(),
     explanation,
     generateImage,
-    getAskQuestionDef(),
+    getIterateDef(),
     requestPermissions,
     searchCode,
     requestFilesContent,

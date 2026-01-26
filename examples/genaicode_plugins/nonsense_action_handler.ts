@@ -9,17 +9,17 @@ const nonsenseActionHandler: Plugin = {
       handler: async (props: ActionHandlerProps): Promise<ActionResult> => {
         const { putSystemMessage, askUserForInput } = await import('../../src/index.js');
 
-        putSystemMessage('Custom action handler executed', props.askQuestionCall.args);
+        putSystemMessage('Custom action handler executed', props.iterateCall.args);
 
         // Example implementation that echoes the content back
         const assistantItem = {
           type: 'assistant' as const,
-          text: `Custom action handler received: ${props.askQuestionCall.args?.message}`,
+          text: `Custom action handler received: ${props.iterateCall.args?.message}`,
         };
 
         const userItem = {
           type: 'user' as const,
-          text: (await askUserForInput('Your answer', props.askQuestionCall.args?.message ?? '', props.options)).answer,
+          text: (await askUserForInput('Your answer', props.iterateCall.args?.message ?? '', props.options)).answer,
         };
 
         return {

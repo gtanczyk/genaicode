@@ -9,7 +9,7 @@ import { ImageUpload } from './input-area/image-upload'; // Import ImageUpload
 import { UploadIcon } from './icons';
 import { PromptActionTypeSelector } from './prompt-action-type-selector.js';
 import { StructuredQuestionFormComponent } from './structured-question/structured-question-form.js';
-import { StructuredQuestionResponse } from '../../../../prompt/steps/step-ask-question/step-ask-question-types.js';
+import { StructuredQuestionResponse } from '../../../../prompt/steps/step-iterate/step-iterate-types.js';
 
 interface QuestionHandlerProps {
   onSubmit: (

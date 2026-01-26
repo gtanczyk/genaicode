@@ -9,7 +9,7 @@ import { getSystemPrompt } from '../prompt/systemprompt.js';
 import {
   ReasoningInferenceArgs,
   ReasoningInferenceResponseArgs,
-} from '../prompt/steps/step-ask-question/step-ask-question-types.js';
+} from '../prompt/steps/step-iterate/step-iterate-types.js';
 import { getFunctionDefs } from '../prompt/function-calling.js';
 import {
   INITIAL_GREETING,

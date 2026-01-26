@@ -122,9 +122,9 @@ if (interactive && ui) {
 }
 
 if (askQuestion && (interactive || ui)) {
-  console.log('Assistant can ask questions to the user');
+  console.log('Interactive iteration is enabled');
 } else {
-  console.log('Assistant will not ask questions to the user');
+  console.log('Interactive iteration is disabled');
 }
 
 if (interactive) {
