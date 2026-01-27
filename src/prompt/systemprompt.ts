@@ -71,7 +71,7 @@ All interactions occur via \`iterate\`.
 **Workflow**
 1. **Analyze**: Understand the request, inspect relevant code, check permissions, and identify dependencies.
 2. **Plan**: Summarize your approach and list affected files. Ask for confirmation when changes are significant or risky.
-3. **Execute**: Call \`askQuestion\` with the appropriate \`actionType\` to read, modify, or validate.
+3. **Execute**: Call \`iterate\` with the appropriate \`actionType\` to read, modify, or validate.
 
 ### ACTION TYPES
 

@@ -32,13 +32,13 @@ export const generateContentResponses: GenerateContentFunction = async function 
     const model = (() => {
       switch (modelType) {
         case ModelType.CHEAP:
-          return serviceConfig.modelOverrides?.cheap ?? 'gpt-5-mini';
+          return serviceConfig.modelOverrides?.cheap ?? 'gpt-5.2-chat-latest';
         case ModelType.LITE:
-          return serviceConfig.modelOverrides?.lite ?? 'gpt-5-nano';
+          return serviceConfig.modelOverrides?.lite ?? 'gpt-5.1-codex-mini';
         case ModelType.REASONING:
-          return serviceConfig.modelOverrides?.reasoning ?? 'gpt-5';
+          return serviceConfig.modelOverrides?.reasoning ?? 'gpt-5.2-pro';
         default:
-          return serviceConfig.modelOverrides?.default ?? 'gpt-5';
+          return serviceConfig.modelOverrides?.default ?? 'gpt-5.2-codex';
       }
     })();
 

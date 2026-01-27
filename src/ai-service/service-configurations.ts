@@ -39,18 +39,21 @@ const configurations: ServiceConfigurations = {
     apiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL,
     modelOverrides: {
-      default: modelOverrides.openai?.default ?? 'gpt-5',
-      cheap: modelOverrides.openai?.cheap ?? 'gpt-5-mini',
-      lite: modelOverrides.openai?.lite ?? 'gpt-5-nano',
-      reasoning: modelOverrides.openai?.reasoning ?? 'gpt-5',
+      default: modelOverrides.openai?.default ?? 'gpt-5.2-codex',
+      cheap: modelOverrides.openai?.cheap ?? 'gpt-5.2-chat-latest',
+      lite: modelOverrides.openai?.lite ?? 'gpt-5.1-codex-mini',
+      reasoning: modelOverrides.openai?.reasoning ?? 'gpt-5.2-pro',
       modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {
-        'gpt-5': {
+        'gpt-5.2-pro': {
           temperatureUnsupported: true,
         },
-        'gpt-5-mini': {
+        'gpt-5.1-codex-mini': {
           temperatureUnsupported: true,
         },
-        'gpt-5-nano': {
+        'gpt-5.2-chat-latest': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5.2-codex': {
           temperatureUnsupported: true,
         },
       },
@@ -59,18 +62,21 @@ const configurations: ServiceConfigurations = {
   'github-models': {
     apiKey: process.env.GITHUB_TOKEN,
     modelOverrides: {
-      default: modelOverrides.githubModels?.default ?? 'gpt-5',
-      cheap: modelOverrides.githubModels?.cheap ?? 'gpt-5-mini',
-      lite: modelOverrides.githubModels?.lite ?? 'gpt-5-nano',
-      reasoning: modelOverrides.githubModels?.reasoning ?? 'o1-mini',
+      default: modelOverrides.githubModels?.default ?? 'gpt-5.2-codex',
+      cheap: modelOverrides.githubModels?.cheap ?? 'gpt-5.2-chat-latest',
+      lite: modelOverrides.githubModels?.lite ?? 'gpt-5.1-codex-mini',
+      reasoning: modelOverrides.githubModels?.reasoning ?? 'gpt-5.2-pro',
       modelSpecificSettings: modelOverrides.githubModels?.modelSpecificSettings ?? {
-        'gpt-5': {
+        'gpt-5.2-codex': {
           temperatureUnsupported: true,
         },
-        'gpt-5-mini': {
+        'gpt-5.1-codex-mini': {
           temperatureUnsupported: true,
         },
-        'gpt-5-nano': {
+        'gpt-5.2-chat-latest': {
+          temperatureUnsupported: true,
+        },
+        'gpt-5.2-pro': {
           temperatureUnsupported: true,
         },
       },
