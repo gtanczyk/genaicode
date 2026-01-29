@@ -15,7 +15,7 @@ vi.setConfig({
 
 describe('prompt-debug', () => {
   const prompt = DEBUG_CURRENT_PROMPT as PromptItem[];
-  const requiredFunctionName = 'setSummaries';
+  const requiredFunctionName = 'iterate';
   const temperature = 0.2;
   const functionDefs = getFunctionDefs();
   const baseOptions = {
@@ -102,7 +102,7 @@ describe('prompt-debug', () => {
       functionDefs,
       requiredFunctionName,
       temperature,
-      modelType: ModelType.DEFAULT,
+      modelType: ModelType.CHEAP,
     };
     const options: GenerateContentArgs[2] = { ...baseOptions };
     const result = await generateContentGPT(prompt, config, options);
