@@ -26,7 +26,6 @@
 - seek for rc in parent broken
 - anthropic bug
 - media resolution ai studio
-- log payload too big / lagging
 - remove reasoning inference
 - structured question not appearing
 - request files content to also remove files from context
