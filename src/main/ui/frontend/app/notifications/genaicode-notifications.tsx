@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatMessage } from '../../../../common/content-bus-types.js';
 import { NotificationEventType, NotificationEvent } from '../../../../../vite-genaicode/vite-genaicode-types.js';
 import { soundEngine } from '../sounds/sound-engine.js';
+import { Question } from '../../../common/api-types.js';
 
 interface GenAIcodeNotificationsProps {
   messages: ChatMessage[];
+  currentQuestion: Question | null;
   muteNotifications?: boolean;
 }
 
@@ -23,9 +25,11 @@ interface GenAIcodeNotificationsProps {
  *   - Handles focus state through cross-window communication
  */
 export const GenAIcodeNotifications: React.FC<GenAIcodeNotificationsProps> = ({
+  currentQuestion,
   messages,
   muteNotifications = false,
 }) => {
+  const lastQuestionIdRef = useRef<string | null>(currentQuestion?.id ?? null);
   const lastMessageCountRef = useRef(messages.length);
   const isWindowFocusedRef = useRef(document.hasFocus());
   const originalTitle = useRef(document.title);
@@ -141,15 +145,27 @@ export const GenAIcodeNotifications: React.FC<GenAIcodeNotificationsProps> = ({
         // First-party context: update title and play sound
         const newUnreadCount = unreadCount + newMessagesCount;
         setUnreadCount(newUnreadCount);
-        document.title = `(${newUnreadCount}) ${originalTitle.current}`;
+        
+        const displayCount = newUnreadCount > 99 ? '99+' : newUnreadCount;
+        document.title = `(${displayCount}) ${originalTitle.current}`;
       }
+    }
+    
+    // Update ref to current length to avoid accumulation errors
+    lastMessageCountRef.current = messages.length;
+  }, [messages, unreadCount]);
 
+  // Handle new questions (play sound)
+  useEffect(() => {
+    if (currentQuestion && currentQuestion.id !== lastQuestionIdRef.current) {
       if (!isWindowFocusedRef.current && !muteNotifications) {
         soundEngine.playBark(0.5);
       }
+      lastQuestionIdRef.current = currentQuestion.id;
+    } else if (!currentQuestion) {
+      lastQuestionIdRef.current = null;
     }
-    lastMessageCountRef.current = messages.length;
-  }, [messages, unreadCount, muteNotifications]);
+  }, [currentQuestion, muteNotifications]);
 
   // This component doesn't render anything
   return null;

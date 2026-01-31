@@ -129,7 +129,7 @@ const GenAIcodeAppContent = () => {
       <RcConfigModal rcConfig={rcConfig} />
       {/* Pass setCodegenOptions directly if GenaicodeConfigModal modifies options */}
       <GenaicodeConfigModal options={codegenOptions} onOptionsChange={setCodegenOptions} />
-      <GenAIcodeNotifications messages={messages} muteNotifications={codegenOptions.muteNotifications} />
+      <GenAIcodeNotifications currentQuestion={currentQuestion} messages={messages} />
       <ConversationGraphVisualiser />
       <ConversationGraphStateHandler />
     </ThemeProvider>
