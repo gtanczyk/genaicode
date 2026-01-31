@@ -235,7 +235,11 @@ describe('Docker Utils E2E Tests', () => {
       const files = output
         .split('\n')
         .map((f) => f.trim())
+        .filter((f) => f.length > 0)
         .sort();
+
+      // Log actual files for debugging in case of flaky failures
+      console.log('Files found in container:', JSON.stringify(files, null, 2));
 
       expect(files).toContain('/data/root.txt');
       expect(files).toContain('/data/nested/nested.txt');
