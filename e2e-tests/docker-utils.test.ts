@@ -238,9 +238,6 @@ describe('Docker Utils E2E Tests', () => {
         .filter((f) => f.length > 0)
         .sort();
 
-      // Log actual files for debugging in case of flaky failures
-      console.log('Files found in container:', JSON.stringify(files, null, 2));
-
       expect(files).toContain('/data/root.txt');
       expect(files).toContain('/data/nested/nested.txt');
       // Note: Empty directories are included in the transfer
