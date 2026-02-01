@@ -29,10 +29,10 @@ export class ConsoleInterceptor {
 
   /**
    * Creates a new ConsoleInterceptor instance
-   * @param maxBufferSize - Maximum number of log entries to keep in buffer (default: 1000)
+   * @param maxBufferSize - Maximum number of log entries to keep in buffer (default: 50)
    * @param callback - Function to call with NEW logs (delta) when available
    */
-  constructor(maxBufferSize = 1000, callback: ConsoleLogCallback) {
+  constructor(maxBufferSize = 50, callback: ConsoleLogCallback) {
     this.maxBufferSize = maxBufferSize;
     this.callback = callback;
     this._wrapConsoleMethods();

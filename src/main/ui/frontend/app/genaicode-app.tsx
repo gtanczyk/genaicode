@@ -55,7 +55,7 @@ const GenAIcodeAppContent = () => {
       return;
     }
 
-    const maxSize = 1000;
+    const maxSize = 50;
     new ConsoleInterceptor(maxSize, async (logs) => {
       try {
         await setAppContext('__console_logs', logs);

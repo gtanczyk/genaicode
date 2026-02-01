@@ -372,7 +372,7 @@ document.body.appendChild(document.createElement('genaicode-overlay'));
 // Initialize console interception if app context is enabled
 const scriptTag = document.querySelector('[data-genaicode-app-context-enabled]') as HTMLElement;
 if (scriptTag?.dataset['genaicodeAppContextEnabled'] === 'true') {
-  const maxSize = parseInt(scriptTag.dataset['genaicodeLogBufferMaxSize'] || '1000', 10);
+  const maxSize = parseInt(scriptTag.dataset['genaicodeLogBufferMaxSize'] || '50', 10);
   new ConsoleInterceptor(maxSize, async (logs) => {
     await contextManager.setContext('__console_logs', logs);
   });
