@@ -15,8 +15,17 @@ import {
   DropdownTrigger,
   DropdownContent,
 } from './styles/codegen-view-styles.js';
+import {
+  EditableContent,
+  EditControls,
+  EditButton,
+  SaveButton,
+  CancelButton,
+  LoadingSpinner,
+} from './styles/message-container-styles.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { editMessage } from '../../api/api-client.js';
 
 interface FileUpdate {
   id: string;
@@ -37,15 +46,20 @@ interface CodegenSummaryData {
 }
 
 interface CodegenSummaryViewProps {
+  messageId: string;
   data: CodegenSummaryData;
 }
 
-export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) => {
+export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ messageId, data }) => {
   const [sectionsState, setSectionsState] = useState<{ [key: string]: boolean }>({
     explanation: true,
     updates: true,
     context: false,
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<CodegenSummaryData['args']>({ ...data.args });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const toggleSection = (section: string) => {
     setSectionsState((prev) => ({
@@ -54,8 +68,57 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
     }));
   };
 
+  const handleEditClick = () => {
+    setEditData({ ...data.args });
+    setIsEditing(true);
+    setError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditData({ ...data.args });
+    setError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await editMessage(messageId, '', { ...data, args: editData });
+      setIsEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateFileUpdatePrompt = (index: number, prompt: string) => {
+    const newFileUpdates = [...editData.fileUpdates];
+    newFileUpdates[index] = { ...newFileUpdates[index], prompt };
+    setEditData({ ...editData, fileUpdates: newFileUpdates });
+  };
+
   return (
     <ViewContainer>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+        {!isEditing ? (
+          <EditButton onClick={handleEditClick} title="Edit summary">
+            ✎ Edit
+          </EditButton>
+        ) : (
+          <EditControls>
+            <SaveButton onClick={handleSaveEdit} disabled={isLoading}>
+              {isLoading ? <LoadingSpinner /> : 'Save'}
+            </SaveButton>
+            <CancelButton onClick={handleCancelEdit} disabled={isLoading}>
+              Cancel
+            </CancelButton>
+          </EditControls>
+        )}
+      </div>
+      {error && <div style={{ color: 'red', fontSize: '0.8em', marginBottom: '8px' }}>{error}</div>}
+
       <Section>
         <SectionHeader onClick={() => toggleSection('explanation')}>
           <CollapsibleButton expanded={sectionsState.explanation}>
@@ -65,7 +128,16 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
         </SectionHeader>
         {sectionsState.explanation && (
           <SectionContent>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.explanation}</ReactMarkdown>
+            {isEditing ? (
+              <EditableContent
+                value={editData.explanation}
+                onChange={(e) => setEditData({ ...editData, explanation: e.target.value })}
+                placeholder="Explanation..."
+                rows={5}
+              />
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.explanation}</ReactMarkdown>
+            )}
           </SectionContent>
         )}
       </Section>
@@ -80,7 +152,7 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
         {sectionsState.updates && (
           <SectionContent>
             <FileList>
-              {data.args.fileUpdates.map((update, index) => (
+              {(isEditing ? editData.fileUpdates : data.args.fileUpdates).map((update, index) => (
                 <FileItem key={index} id={'file-update-' + update.id}>
                   <FileDetailsRow>
                     <UpdateType variant={update.updateToolName}>{update.updateToolName}</UpdateType>
@@ -110,9 +182,19 @@ export const CodegenSummaryView: React.FC<CodegenSummaryViewProps> = ({ data }) 
                       ))}
                     </DropdownContent>
                   )}
-                  <FilePrompt title="Prompt">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{update.prompt}</ReactMarkdown>
-                  </FilePrompt>
+                  {isEditing ? (
+                    <EditableContent
+                      value={update.prompt}
+                      onChange={(e) => updateFileUpdatePrompt(index, e.target.value)}
+                      placeholder="Prompt..."
+                      rows={3}
+                      style={{ marginTop: '8px' }}
+                    />
+                  ) : (
+                    <FilePrompt title="Prompt">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{update.prompt}</ReactMarkdown>
+                    </FilePrompt>
+                  )}
                 </FileItem>
               ))}
             </FileList>
