@@ -11,8 +11,6 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [x] [GEN-155] 2025-11-11: Refine sound notifications to play only when user input is required (prompt is visible).
-- [x] [GEN-154] 2025-11-11: Implement editable codegen planning and summary in the UI - Users can now edit problem analysis, code changes, and file update prompts before accepting them.
 - [x] [GEN-153] 2025-12-02: Implement backend prompt context endpoint and frontend hook integration - Added prompt context endpoint and frontend hook support to fetch and display accurate token counts.
 - [x] [GEN-152] 2025-01-11: Enhanced Context Manager with search filter, folder collapse/expand, and ability to add files to context - Users can now search/filter files, collapse folders for better navigation, and add files that aren't currently in context.
 - [x] [GEN-151] 2025-11-11: Fix build errors by updating FileId to number and fixing mock data structures.

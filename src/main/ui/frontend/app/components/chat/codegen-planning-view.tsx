@@ -15,37 +15,23 @@ import {
   DropdownTrigger,
   DropdownContent,
 } from './styles/codegen-view-styles.js';
-import {
-  EditableContent,
-  EditControls,
-  EditButton,
-  SaveButton,
-  CancelButton,
-  LoadingSpinner,
-} from './styles/message-container-styles.js';
 import { CodegenPlanningArgs } from '../../../../../codegen-types.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { editMessage } from '../../api/api-client.js';
 
 interface CodegenPlanningViewProps {
-  messageId: string;
   data: {
     args: CodegenPlanningArgs;
   };
 }
 
-export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messageId, data }) => {
+export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ data }) => {
   const [sectionsState, setSectionsState] = useState({
     analysis: true,
     changes: true,
     files: true,
   });
   const [expandedDependencies, setExpandedDependencies] = useState<Record<string, boolean>>({});
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<CodegenPlanningArgs>({ ...data.args });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const toggleSection = (section: keyof typeof sectionsState) => {
     setSectionsState((prev) => ({
@@ -61,57 +47,8 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messag
     }));
   };
 
-  const handleEditClick = () => {
-    setEditData({ ...data.args });
-    setIsEditing(true);
-    setError(null);
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    setEditData({ ...data.args });
-    setError(null);
-  };
-
-  const handleSaveEdit = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await editMessage(messageId, undefined, { ...data, args: editData });
-      setIsEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save changes');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateAffectedFileReason = (index: number, reason: string) => {
-    const newAffectedFiles = [...editData.affectedFiles];
-    newAffectedFiles[index] = { ...newAffectedFiles[index], reason };
-    setEditData({ ...editData, affectedFiles: newAffectedFiles });
-  };
-
   return (
     <ViewContainer>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-        {!isEditing ? (
-          <EditButton onClick={handleEditClick} title="Edit planning">
-            ✎ Edit
-          </EditButton>
-        ) : (
-          <EditControls>
-            <SaveButton onClick={handleSaveEdit} disabled={isLoading}>
-              {isLoading ? <LoadingSpinner /> : 'Save'}
-            </SaveButton>
-            <CancelButton onClick={handleCancelEdit} disabled={isLoading}>
-              Cancel
-            </CancelButton>
-          </EditControls>
-        )}
-      </div>
-      {error && <div style={{ color: 'red', fontSize: '0.8em', marginBottom: '8px' }}>{error}</div>}
-
       <Section>
         <SectionHeader onClick={() => toggleSection('analysis')}>
           <CollapsibleButton expanded={sectionsState.analysis}>
@@ -121,16 +58,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messag
         </SectionHeader>
         {sectionsState.analysis && (
           <SectionContent>
-            {isEditing ? (
-              <EditableContent
-                value={editData.problemAnalysis}
-                onChange={(e) => setEditData({ ...editData, problemAnalysis: e.target.value })}
-                placeholder="Problem Analysis..."
-                rows={5}
-              />
-            ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.problemAnalysis}</ReactMarkdown>
-            )}
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.problemAnalysis}</ReactMarkdown>
           </SectionContent>
         )}
       </Section>
@@ -144,16 +72,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messag
         </SectionHeader>
         {sectionsState.changes && (
           <SectionContent>
-            {isEditing ? (
-              <EditableContent
-                value={editData.codeChanges}
-                onChange={(e) => setEditData({ ...editData, codeChanges: e.target.value })}
-                placeholder="Implementation Plan..."
-                rows={10}
-              />
-            ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.codeChanges}</ReactMarkdown>
-            )}
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.args.codeChanges}</ReactMarkdown>
           </SectionContent>
         )}
       </Section>
@@ -168,7 +87,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messag
         {sectionsState.files && (
           <SectionContent>
             <FileList>
-              {(isEditing ? editData.affectedFiles : data.args.affectedFiles).map((file, index) => (
+              {data.args.affectedFiles.map((file, index) => (
                 <FileItem key={index}>
                   <FilePath>
                     {file.filePath}
@@ -188,17 +107,7 @@ export const CodegenPlanningView: React.FC<CodegenPlanningViewProps> = ({ messag
                       </FileDependencies>
                     </DropdownContent>
                   )}
-                  {isEditing ? (
-                    <EditableContent
-                      value={file.reason}
-                      onChange={(e) => updateAffectedFileReason(index, e.target.value)}
-                      placeholder="Reason..."
-                      rows={2}
-                      style={{ marginTop: '4px' }}
-                    />
-                  ) : (
-                    <FileReason>{file.reason}</FileReason>
-                  )}
+                  <FileReason>{file.reason}</FileReason>
                 </FileItem>
               ))}
             </FileList>

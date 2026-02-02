@@ -104,9 +104,9 @@ function splitMessageParts(parts: ChatMessage[]): MessageSection[] {
     ) {
       // Add the codegen view section
       const codegenView = isCodegenPlanningData(part.data) ? (
-        <CodegenPlanningView key={`planning-${part.id}`} messageId={part.id} data={part.data} />
+        <CodegenPlanningView key={`planning-${part.id}`} data={part.data} />
       ) : isCodegenSummaryData(part.data) ? (
-        <CodegenSummaryView key={`summary-${part.id}`} messageId={part.id} data={part.data} />
+        <CodegenSummaryView key={`summary-${part.id}`} data={part.data} />
       ) : isFileUpdateData(part.data) ? (
         <FileUpdateView key={`file-update-${part.id}`} data={part.data} />
       ) : isFileUpdatesData(part.data) ? (

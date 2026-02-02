@@ -73,14 +73,13 @@ export class Service implements AppContextProvider {
    * Edit a message in the conversation
    * @param messageId ID of the message to edit
    * @param newContent New content for the message
-   * @param newData New data for the message (optional)
    * @returns true if the message was successfully edited, false otherwise
    * @throws Error if the message ID is invalid or if editing is not allowed
    */
-  async editMessage(messageId: string, newContent: string, newData?: any): Promise<boolean> {
+  async editMessage(messageId: string, newContent: string): Promise<boolean> {
     // Basic input validation
-    if (!messageId || (newContent === undefined && newData === undefined)) {
-      throw new Error('Invalid message ID, content or data');
+    if (!messageId || !newContent.trim()) {
+      throw new Error('Invalid message ID or content');
     }
 
     // Find the message in the content array
@@ -89,53 +88,24 @@ export class Service implements AppContextProvider {
       throw new Error('Message not found');
     }
 
+    // Check if editing is allowed for this message type
+    if (contentItem.message.type === 'system') {
+      throw new Error('System messages cannot be edited');
+    }
+
     // Check if the message is from an ongoing iteration
     const currentIterationId = this.getCurrentIterationId();
     if (contentItem.message.iterationId !== currentIterationId || this.executionStatus === 'idle') {
       throw new Error('Can only edit messages from the currently ongoing iteration');
     }
 
-    // Prevent editing after submit (when no question is active)
-    if (!this.currentQuestion) {
-      throw new Error('Cannot edit message after it has been submitted or when no question is active');
-    }
-
-    // Apply newData if provided
-    if (newData !== undefined && contentItem.message) {
-      // Validate codegenPlanning data structure
-      if (newData.name === 'codegenPlanning') {
-        const args = newData.args;
-        if (
-          !args ||
-          typeof args.problemAnalysis !== 'string' ||
-          typeof args.codeChanges !== 'string' ||
-          !Array.isArray(args.affectedFiles)
-        ) {
-          throw new Error('Invalid codegenPlanning data structure');
-        }
-      }
-      // Validate codegenSummary data structure
-      else if (newData.name === 'codegenSummary') {
-        const args = newData.args;
-        if (
-          !args ||
-          typeof args.explanation !== 'string' ||
-          !Array.isArray(args.fileUpdates) ||
-          !Array.isArray(args.contextPaths)
-        ) {
-          throw new Error('Invalid codegenSummary data structure');
-        }
-      }
-
-      contentItem.message.data = newData;
-    }
-
     // Try to edit the message using content bus
-    const success = editMessage(contentItem, newContent !== undefined ? newContent : contentItem.message.content);
+    const success = editMessage(contentItem, newContent);
     return success;
   }
 
   /**
+   * Get service configurations in a safe format that excludes sensitive data.
    * This method is used by external API endpoints.
    */
   public getServiceConfigurations(): SanitizedServiceConfigurations {

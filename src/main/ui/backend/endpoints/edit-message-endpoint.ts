@@ -3,28 +3,24 @@ import { registerEndpoint } from '../api-handlers.js';
 registerEndpoint((router, service) => {
   router.post('/edit-message', async (req, res) => {
     try {
-      const { messageId, newContent, newData } = req.body as {
+      const { messageId, newContent } = req.body as {
         messageId: string;
         newContent: string;
-        newData?: any;
       };
 
       if (!messageId || typeof messageId !== 'string') {
         return res.status(400).json({ error: 'Invalid message ID' });
       }
 
-      if (newContent === undefined && newData === undefined) {
-        return res.status(400).json({ error: 'Invalid message content or data' });
+      if (!newContent || typeof newContent !== 'string') {
+        return res.status(400).json({ error: 'Invalid message content' });
       }
 
-      // Allow empty content if newData is present (e.g. updating planning data)
-      if (newContent !== undefined && (typeof newContent !== 'string' || newContent.trim().length === 0)) {
-        if (!newData) {
-          return res.status(400).json({ error: 'Message content cannot be empty' });
-        }
+      if (newContent.trim().length === 0) {
+        return res.status(400).json({ error: 'Message content cannot be empty' });
       }
 
-      const success = await service.editMessage(messageId, newContent, newData);
+      const success = await service.editMessage(messageId, newContent);
 
       if (success) {
         res.json({ message: 'Message edited successfully' });

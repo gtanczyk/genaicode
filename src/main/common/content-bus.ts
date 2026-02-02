@@ -105,24 +105,10 @@ function putMessage(
     promptItem,
   });
 }
-export function editMessage(content: ContentProps, newContent: string, newData?: unknown) {
+export function editMessage(content: ContentProps, newContent: string) {
   if (content.message && content.promptItem) {
-    if (newContent) {
-      content.message.content = newContent;
-      content.promptItem.text = newContent;
-    }
-
-    if (newData) {
-      content.message.data = newData as Record<string, unknown>;
-
-      if (content.promptItem.functionCalls) {
-        for (const call of content.promptItem.functionCalls) {
-          if (call.name === 'codegenPlanning') {
-            call.args = newData as any;
-          }
-        }
-      }
-    }
+    content.message.content = newContent;
+    content.promptItem.text = newContent;
     return true;
   } else {
     return false;

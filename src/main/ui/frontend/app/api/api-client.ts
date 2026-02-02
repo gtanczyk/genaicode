@@ -73,20 +73,18 @@ api.interceptors.response.use(
  * Edit a message in the conversation
  * @param messageId - The ID of the message to edit
  * @param newContent - The new content for the message
- * @param newData - Optional new data for the message
  * @throws Error if the message editing fails
  */
-export const editMessage = async (messageId: string, newContent: string, newData?: any): Promise<void> => {
+export const editMessage = async (messageId: string, newContent: string): Promise<void> => {
   try {
     // Validate input
-    if (!messageId || (newContent === undefined && newData === undefined)) {
-      throw new Error('Invalid message ID, content or data');
+    if (!messageId || !newContent.trim()) {
+      throw new Error('Invalid message ID or content');
     }
 
     const response = await api.post('/edit-message', {
       messageId,
       newContent,
-      newData,
     });
 
     if (response.status !== 200) {

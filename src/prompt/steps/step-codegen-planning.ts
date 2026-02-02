@@ -87,21 +87,10 @@ export async function executeStepCodegenPlanning(
         return StepResult.BREAK;
       }
 
-      const planningResponseItem: PromptItem = {
-        type: 'assistant',
-        functionCalls: planningResult,
-      };
-
-      putSystemMessage(
-        'Planning phase completed successfully',
-        codegenPlanningRequest,
-        undefined,
-        undefined,
-        planningResponseItem,
-      );
+      putSystemMessage('Planning phase completed successfully', codegenPlanningRequest);
 
       // Store the planning response in conversation history
-      prompt.push(planningResponseItem);
+      prompt.push({ type: 'assistant', functionCalls: planningResult });
       prompt.push({
         type: 'user',
         functionResponses: planningResult.map((call) => ({ name: call.name, call_id: call.id })),
