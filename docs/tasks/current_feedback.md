@@ -29,4 +29,3 @@
 - remove reasoning inference
 - structured question not appearing
 - request files content to also remove files from context
-- sound only on interactive
