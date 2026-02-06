@@ -116,9 +116,10 @@ export function editMessage(content: ContentProps, newContent: string, newData?:
       content.message.data = newData as Record<string, unknown>;
 
       if (content.promptItem.functionCalls) {
+        const dataWithArgs = newData as { name?: string; args?: Record<string, unknown> };
         for (const call of content.promptItem.functionCalls) {
-          if (call.name === 'codegenPlanning') {
-            call.args = newData as unknown as Record<string, unknown>;
+          if ((call.name === 'codegenPlanning' || call.name === 'codegenSummary') && dataWithArgs.args) {
+            call.args = dataWithArgs.args;
           }
         }
       }
