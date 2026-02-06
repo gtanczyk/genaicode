@@ -22,6 +22,7 @@ import { ContextSizeDisplay } from './context-size-display.js';
 import styled from 'styled-components';
 import { editMessage } from '../../api/api-client.js';
 import { FileUpdateView, isFileUpdateData } from './file-update-view.js';
+import { useChatState } from '../../contexts/chat-state-context.js';
 
 const ImageGrid = styled.div`
   display: grid;
@@ -59,6 +60,7 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
   visibleDataIds,
   toggleDataVisibility,
 }) => {
+  const { updateMessage } = useChatState();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +111,7 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
 
     try {
       await editMessage(message.id, editContent);
+      updateMessage(message.id, { content: editContent });
       setIsEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');

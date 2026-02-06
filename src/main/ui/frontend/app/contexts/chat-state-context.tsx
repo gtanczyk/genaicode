@@ -59,6 +59,7 @@ interface ChatActions {
   toggleContextManager: () => void;
   toggleCompressionModal: () => void;
   clearTerminalEvents: (iterationId: string) => void;
+  updateMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
 }
 
 // Create the context with a default value
@@ -98,6 +99,7 @@ export const ChatStateContext = createContext<ChatState & ChatActions>({
   toggleContextManager: () => {},
   toggleCompressionModal: () => {},
   clearTerminalEvents: () => {},
+  updateMessage: () => {},
 });
 
 // Define the props for the provider
@@ -167,6 +169,12 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
 
   const clearTerminalEvents = useCallback((iterationId: string) => {
     setTerminalEvents((prev) => ({ ...prev, [iterationId]: [] }));
+  }, []);
+
+  const updateMessage = useCallback((messageId: string, updates: Partial<ChatMessage>) => {
+    setMessages((prevMessages) =>
+      prevMessages.map((msg) => (msg.id === messageId ? { ...msg, ...updates } : msg))
+    );
   }, []);
 
   const fetchInitialData = useCallback(async () => {
@@ -431,6 +439,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleAutoScrollTerminal,
       setAutoScrollTerminal,
       clearTerminalEvents,
+      updateMessage,
     }),
     [
       messages,
@@ -463,6 +472,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({ children }
       toggleCompressionModal,
       toggleAutoScrollTerminal,
       clearTerminalEvents,
+      updateMessage,
     ],
   );
 
