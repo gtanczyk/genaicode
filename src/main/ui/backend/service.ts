@@ -132,7 +132,11 @@ export class Service implements AppContextProvider {
     }
 
     // Try to edit the message using content bus
-    const success = editMessage(contentItem, newContent !== undefined ? newContent : contentItem.message.content);
+    const success = editMessage(
+      contentItem,
+      newContent !== undefined ? newContent : contentItem.message.content,
+      newData,
+    );
     return success;
   }
 
