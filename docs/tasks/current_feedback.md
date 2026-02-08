@@ -28,4 +28,3 @@
 - media resolution ai studio
 - remove reasoning inference
 - structured question not appearing
-- request files content to also remove files from context

@@ -138,7 +138,8 @@ ${legitimateFiles.map((path) => `- ${path}`).join('\n')}`) +
       (illegitimateFiles.length > 0
         ? `\n\nSome files are not legitimate and their content cannot be provided:
 ${illegitimateFiles.map((path) => `- ${path}`).join('\n')}`
-        : ''),
+        : '') +
+      '\n\nPlease consider removing files that are no longer needed from the context using `removeFilesFromContext`.',
     data: { legitimateFiles, illegitimateFiles },
     functionResponses: [
       {
