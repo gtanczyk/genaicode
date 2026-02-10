@@ -77,7 +77,7 @@ export class Service implements AppContextProvider {
    * @returns true if the message was successfully edited, false otherwise
    * @throws Error if the message ID is invalid or if editing is not allowed
    */
-  async editMessage(messageId: string, newContent: string, newData?: any): Promise<boolean> {
+  async editMessage(messageId: string, newContent: string, newData?: Record<string, unknown>): Promise<boolean> {
     // Basic input validation
     if (!messageId || (newContent === undefined && newData === undefined)) {
       throw new Error('Invalid message ID, content or data');
@@ -104,7 +104,7 @@ export class Service implements AppContextProvider {
     if (newData !== undefined && contentItem.message) {
       // Validate codegenPlanning data structure
       if (newData.name === 'codegenPlanning') {
-        const args = newData.args;
+        const args = newData.args as Record<string, unknown>;
         if (
           !args ||
           typeof args.problemAnalysis !== 'string' ||
@@ -116,7 +116,7 @@ export class Service implements AppContextProvider {
       }
       // Validate codegenSummary data structure
       else if (newData.name === 'codegenSummary') {
-        const args = newData.args;
+        const args = newData.args as Record<string, unknown>;
         if (
           !args ||
           typeof args.explanation !== 'string' ||

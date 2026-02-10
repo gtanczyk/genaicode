@@ -6,7 +6,7 @@ registerEndpoint((router, service) => {
       const { messageId, newContent, newData } = req.body as {
         messageId: string;
         newContent: string;
-        newData?: any;
+        newData?: Record<string, unknown>;
       };
 
       if (!messageId || typeof messageId !== 'string') {

@@ -76,7 +76,11 @@ api.interceptors.response.use(
  * @param newData - Optional new data for the message
  * @throws Error if the message editing fails
  */
-export const editMessage = async (messageId: string, newContent: string, newData?: any): Promise<void> => {
+export const editMessage = async (
+  messageId: string,
+  newContent: string,
+  newData?: Record<string, unknown>,
+): Promise<void> => {
   try {
     // Validate input
     if (!messageId || (newContent === undefined && newData === undefined)) {
