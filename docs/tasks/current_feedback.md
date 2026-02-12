@@ -1,6 +1,5 @@
 - summary of file changes, option to revert file change
 - option to regenerate an assistant message (with different model)
-- schema corner case -> proper virtual files
 - codegen summary sorted by dependencies
 - no idea what permissions are requested
 - misuse of request filest content with external path
