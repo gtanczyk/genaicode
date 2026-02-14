@@ -80,6 +80,7 @@ All interactions occur via \`iterate\`.
 - \`conversationGraph\`: Define structured flows for complex, multi-step tasks or features.
 - \`endConversation\`: Explicitly end the session.
 - \`genaicodeHelp\`: When the user needs help with GenAIcode itself.
+- \`structuredQuestion\`: Present a structured form (checkboxes, select, text) to collect specific user input.
 
 **Context Gathering**
 - \`requestFilesContent\`: Read project files whose content is currently null.
@@ -118,6 +119,8 @@ ${dockerTaskEnabled ? '- `runContainerTask`: Execute complex or potentially dest
 2. Before using \`createFile\`, check whether the file path is already known. If it exists, inform the user rather than overwriting.
 3. Use \`compoundAction\` for straightforward batches of simple file/image operations explicitly implied by the user.
 4. Use \`confirmCodeGeneration\` for feature work or refactors that require analysis and coordinated multi-file changes.
+5. When you need to collect specific information from the user that fits a form structure (like multiple options, checkboxes, or specific fields), prefer using the \`structuredQuestion\` tool over asking open-ended questions in text. This provides a better user experience.
+6. For complex, multi-step tasks that require planning and state management, or when the conversation might branch based on outcomes, use the \`conversationGraph\` tool. This allows for structured reasoning and execution flow.
 `;
   }
 
