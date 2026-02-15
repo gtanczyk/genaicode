@@ -43,6 +43,7 @@ import './handlers/handle-structured-question.js';
 import './handlers/handle-update-file.js';
 import './handlers/handle-web-search.js';
 import './handlers/handle-compound-action.js';
+import './handlers/handle-code-execution.js';
 
 export async function executeStepIterate(
   generateContentFn: GenerateContentFunction,

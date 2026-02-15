@@ -8,7 +8,9 @@ import {
   GoogleGenAI,
   HarmBlockThreshold,
   HarmCategory,
+  Language,
   Schema,
+  Outcome,
 } from '@google/genai';
 import axios from 'axios';
 import assert from 'node:assert';
@@ -43,6 +45,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
+      codeExecution?: boolean;
     };
   },
   options: {
@@ -68,6 +71,7 @@ export async function internalGoogleGenerateContent(
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
+      codeExecution?: boolean;
     };
   },
   options: {
@@ -148,6 +152,26 @@ export async function internalGoogleGenerateContent(
               // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures
               thoughtSignature: 'skip_thought_signature_validator',
             })),
+            ...(item.executableCode
+              ? [
+                  {
+                    executableCode: {
+                      language: item.executableCode.language as Language,
+                      code: item.executableCode.code,
+                    },
+                  },
+                ]
+              : []),
+            ...(item.codeExecutionResult
+              ? [
+                  {
+                    codeExecutionResult: {
+                      outcome: item.codeExecutionResult.outcome as Outcome,
+                      output: item.codeExecutionResult.output,
+                    },
+                  },
+                ]
+              : []),
           ],
         };
         return content;
@@ -189,6 +213,29 @@ export async function internalGoogleGenerateContent(
       },
     ];
     delete req.config!.toolConfig;
+  }
+  if (expectedResponseType.codeExecution) {
+    req.config!.tools = [
+      ...(req.config!.tools ?? []),
+      {
+        codeExecution: {},
+      },
+    ];
+    // Code execution usually works best without forced function calling mode restrictions,
+    // or at least it needs to be allowed.
+    // If functionCall is false, we already set mode to NONE, which might block code execution tool use?
+    // Actually, codeExecution is a tool. If mode is NONE, tools are disabled.
+    // So if codeExecution is requested, we should probably ensure tool use is allowed.
+    if (expectedResponseType.functionCall === false) {
+      // If the user explicitly disabled function calls but enabled code execution,
+      // we should probably allow tools but maybe restrict to code execution?
+      // For now, let's assume if codeExecution is true, we don't force NONE.
+      // But the logic above sets NONE if functionCall is false.
+      // Let's override it if codeExecution is true.
+      if (req.config!.toolConfig?.functionCallingConfig?.mode === FunctionCallingConfigMode.NONE) {
+        delete req.config!.toolConfig;
+      }
+    }
   }
 
   const result = await internalGoogleModelsCall(
@@ -369,6 +416,26 @@ export async function internalGoogleGenerateContent(
           type: 'webSearch',
           text: text,
           urls: Object.keys(urls),
+        });
+      }
+    }
+  }
+
+  // Handle code execution parts
+  for (const candidate of result.candidates) {
+    for (const part of candidate.content?.parts ?? []) {
+      if (part.executableCode) {
+        resultParts.push({
+          type: 'executableCode',
+          code: part.executableCode.code!,
+          language: part.executableCode.language!,
+        });
+      }
+      if (part.codeExecutionResult) {
+        resultParts.push({
+          type: 'codeExecutionResult',
+          outcome: part.codeExecutionResult.outcome as 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED',
+          output: part.codeExecutionResult.output!,
         });
       }
     }

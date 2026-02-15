@@ -139,11 +139,27 @@ export async function internalGenerateContent(
         const message: ChatCompletionMessageParam = {
           role: 'assistant' as const,
           content:
-            item.text && !item.images && !item.functionCalls // Only text content if no images or function calls
+            item.text && !item.images && !item.functionCalls && !item.executableCode && !item.codeExecutionResult // Only text content if no images or function calls or code execution parts
               ? item.text
               : ([
                   // Otherwise, build content array
                   ...(item.text ? [{ type: 'text', text: item.text } as const] : []),
+                  ...(item.executableCode
+                    ? [
+                        {
+                          type: 'text',
+                          text: `Executable Code:\n\`\`\`${item.executableCode.language}\n${item.executableCode.code}\n\`\`\``,
+                        } as const,
+                      ]
+                    : []),
+                  ...(item.codeExecutionResult
+                    ? [
+                        {
+                          type: 'text',
+                          text: `Code Execution Result (${item.codeExecutionResult.outcome}):\n\`\`\`\n${item.codeExecutionResult.output}\n\`\`\``,
+                        } as const,
+                      ]
+                    : []),
                   // Currently broken: https://github.com/openai/openai-node/issues/1030
                   // ...(item.images ?? []).map((image) => ({
                   //   type: 'image_url' as const,
@@ -194,6 +210,20 @@ export async function internalGenerateContent(
       toolChoice = 'required';
     } else if (expectedResponseType.functionCall === false) {
       toolChoice = 'none';
+    }
+  }
+
+  if (expectedResponseType.codeExecution) {
+    const codeToolType = serviceType === 'openai' ? 'code_interpreter' : 'code_execution';
+    tools = [
+      ...(tools ?? []),
+      {
+        type: codeToolType,
+      } as unknown as ChatCompletionTool,
+    ];
+    // If code execution is requested, we should allow tool use
+    if (toolChoice === 'none') {
+      toolChoice = undefined;
     }
   }
 
@@ -292,29 +322,79 @@ export async function internalGenerateContent(
 
   const result: GenerateContentResult = [];
 
-  if (responseMessage.tool_calls && expectedResponseType.functionCall) {
-    result.push(
-      ...responseMessage.tool_calls
-        .filter((call) => call.type === 'function')
-        .map((call) => {
-          const name = call.function.name;
-          let parsedArgs: Record<string, unknown> | undefined;
-          try {
-            parsedArgs = JSON.parse(call.function.arguments);
-          } catch (e) {
-            console.warn(`Failed to parse arguments for function call ${name}: ${call.function.arguments}`);
-            parsedArgs = { _raw_args: call.function.arguments }; // Keep raw args if parsing fails
+  if (responseMessage.tool_calls) {
+    // Handle function calls
+    if (expectedResponseType.functionCall) {
+      result.push(
+        ...responseMessage.tool_calls
+          .filter((call) => call.type === 'function')
+          .map((call) => {
+            const name = call.function.name;
+            let parsedArgs: Record<string, unknown> | undefined;
+            try {
+              parsedArgs = JSON.parse(call.function.arguments);
+            } catch (e) {
+              console.warn(`Failed to parse arguments for function call ${name}: ${call.function.arguments}`);
+              parsedArgs = { _raw_args: call.function.arguments }; // Keep raw args if parsing fails
+            }
+            return {
+              type: 'functionCall' as const,
+              functionCall: {
+                id: call.id,
+                name,
+                args: parsedArgs,
+              },
+            };
+          }),
+      );
+    }
+
+    // Handle code execution tool calls
+    if (expectedResponseType.codeExecution) {
+      const codeToolType = serviceType === 'openai' ? 'code_interpreter' : 'code_execution';
+
+      // Actually, let's filter manually without strict type checks first
+      const allToolCalls = responseMessage.tool_calls as unknown as Array<{
+        type: string;
+        code_interpreter?: { input: string };
+        code_execution?: { input?: string; code?: string };
+        function?: { name: string; arguments: string };
+      }>;
+      const relevantCalls = allToolCalls.filter((call) => call.type === codeToolType);
+
+      for (const call of relevantCalls) {
+        let code = '';
+        let language = 'python'; // Default to python
+
+        if (serviceType === 'openai' && call.type === 'code_interpreter') {
+          code = call.code_interpreter?.input || '';
+        }
+
+        // For Grok or generic 'code_execution'
+        if (serviceType !== 'openai') {
+          if (call.type === 'code_execution') {
+            code = call.code_execution?.input ?? call.code_execution?.code ?? '';
+          } else if (call.type === 'function' && call.function?.name === 'code_execution') {
+            // Fallback: sometimes it might appear as a function call
+            try {
+              const args = JSON.parse(call.function.arguments);
+              code = args.code || args.input;
+              language = args.language || 'python';
+            } catch (e) {
+              // ignore
+            }
           }
-          return {
-            type: 'functionCall' as const,
-            functionCall: {
-              id: call.id,
-              name,
-              args: parsedArgs,
-            },
-          };
-        }),
-    );
+        }
+
+        if (code) {
+          result.push({
+            type: 'executableCode',
+            code,
+            language,
+          });
+        }
+      }
+    }
   }
 
   if (responseMessage.content && expectedResponseType.text) {

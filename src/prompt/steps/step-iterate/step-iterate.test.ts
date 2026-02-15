@@ -37,6 +37,7 @@ describe('step-iterate', () => {
       runBashCommand: true,
       webSearch: true,
       structuredQuestion: true,
+      codeExecution: true,
     };
 
     // Check if each action type has a registered handler

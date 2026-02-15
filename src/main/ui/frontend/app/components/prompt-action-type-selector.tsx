@@ -40,6 +40,7 @@ const humanReadableActionTypes: Record<ActionType, string> = {
   requestFilesFragments: 'Request Files Fragments 🧩',
   pullConsoleLogs: 'Pull Console Logs 🖥️',
   structuredQuestion: 'Structured Question ❓',
+  codeExecution: 'Code Execution ▶️',
 };
 
 const toHumanReadable = (str: ActionType) => {

@@ -22,6 +22,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
       text?: boolean;
       functionCall?: boolean;
       media?: boolean;
+      codeExecution?: boolean;
     };
   },
 ): Promise<GenerateContentResult> {
@@ -51,6 +52,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
     config,
     model,
     openai,
+    'grok' as any, // Pass 'grok' as serviceType to enable specific tool handling
   );
 };
 

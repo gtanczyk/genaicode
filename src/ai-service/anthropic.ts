@@ -24,6 +24,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
+      codeExecution?: boolean;
     };
   },
   options: {
@@ -42,11 +43,17 @@ export const generateContent: GenerateContentFunction = async function generateC
   try {
     const serviceConfig = getServiceConfig('anthropic');
     assert(serviceConfig?.apiKey, 'Anthropic API key not configured, use ANTHROPIC_API_KEY environment variable.');
+
+    let betaHeaders = 'max-tokens-3-5-sonnet-2024-07-15' + (!options.disableCache ? ',prompt-caching-2024-07-31' : '');
+
+    if (expectedResponseType.codeExecution) {
+      betaHeaders += ',code-execution-2025-08-25';
+    }
+
     const anthropic = new Anthropic({
       apiKey: serviceConfig?.apiKey,
       defaultHeaders: {
-        'anthropic-beta':
-          'max-tokens-3-5-sonnet-2024-07-15' + (!options.disableCache ? ',prompt-caching-2024-07-31' : ''),
+        'anthropic-beta': betaHeaders,
       },
     });
 
@@ -157,6 +164,22 @@ export const generateContent: GenerateContentFunction = async function generateC
               input: call.args ?? {},
               type: 'tool_use' as const,
             })),
+            ...(item.executableCode
+              ? [
+                  {
+                    type: 'text' as const,
+                    text: `Executable Code:\n\`\`\`${item.executableCode.language}\n${item.executableCode.code}\n\`\`\``,
+                  },
+                ]
+              : []),
+            ...(item.codeExecutionResult
+              ? [
+                  {
+                    type: 'text' as const,
+                    text: `Code Execution Result (${item.codeExecutionResult.outcome}):\n\`\`\`\n${item.codeExecutionResult.output}\n\`\`\``,
+                  },
+                ]
+              : []),
           ];
 
           if (item.images) {
@@ -207,6 +230,15 @@ export const generateContent: GenerateContentFunction = async function generateC
           name: 'web_search',
           max_uses: 5,
         },
+      ];
+    }
+    if (expectedResponseType.codeExecution) {
+      tools = [
+        ...(tools ?? []),
+        {
+          type: 'code_execution_20250825',
+          name: 'code_execution_20250825',
+        } as unknown as Anthropic.Messages.ToolUnion,
       ];
     }
 
@@ -343,10 +375,34 @@ export const generateContent: GenerateContentFunction = async function generateC
 
     if (expectedResponseType.functionCall) {
       for (const fc of functionCalls) {
+        // Filter out code execution tool calls from standard function calls
+        if (fc.name === 'code_execution_20250825') continue;
+
         result.push({
           type: 'functionCall',
           functionCall: fc,
         });
+      }
+    }
+
+    if (expectedResponseType.codeExecution) {
+      const codeCalls = functionCalls.filter((fc) => fc.name === 'code_execution_20250825');
+      for (const call of codeCalls) {
+        // Anthropic code execution input structure
+        // It usually has 'command' for bash or 'code' for python depending on the tool version
+        // The 20250825 version is likely bash/command based or supports multiple languages
+        // Let's assume it has a 'command' or 'code' field.
+        // Based on docs, it might be 'command' for bash.
+        const code = (call.args.command as string) || (call.args.code as string);
+        const language = (call.args.language as string) || 'bash'; // Default to bash for this tool version if not specified
+
+        if (code) {
+          result.push({
+            type: 'executableCode',
+            code,
+            language,
+          });
+        }
       }
     }
 

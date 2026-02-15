@@ -38,6 +38,7 @@ export type ActionType =
   | 'runBashCommand'
   | 'webSearch'
   | 'structuredQuestion'
+  | 'codeExecution'
   | PluginActionType;
 
 export type IterateArgs = {
@@ -238,6 +239,10 @@ export type ProjectCommandResult = {
   stderr: string;
 };
 
+export type CodeExecutionArgs = {
+  message: string;
+};
+
 export type IterateCall = FunctionCall<IterateArgs>;
 export type PerformAnalysisCall = FunctionCall<PerformAnalysisArgs>;
 export type AnalysisResultCall = FunctionCall<AnalysisResultArgs>;
@@ -247,6 +252,14 @@ export interface AssistantItem {
   type: 'assistant';
   text: string;
   functionCalls?: FunctionCall[];
+  executableCode?: {
+    language: string;
+    code: string;
+  };
+  codeExecutionResult?: {
+    outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
+    output: string;
+  };
   images?: PromptItemImage[];
   cache?: true;
 }

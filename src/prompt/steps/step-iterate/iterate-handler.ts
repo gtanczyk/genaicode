@@ -2,6 +2,7 @@ import { getRegisteredActionHandlers } from '../../../main/plugin-loader.js';
 import { handlers } from './step-iterate-handlers.js';
 import { ActionHandler, ActionType } from './step-iterate-types.js';
 import './handlers/handle-structured-question.js';
+import './handlers/handle-code-execution.js';
 
 export function getActionHandler(actionType: ActionType): ActionHandler {
   // First, check if there's a plugin-provided handler for this action type

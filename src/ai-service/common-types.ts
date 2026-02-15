@@ -56,6 +56,14 @@ export interface PromptItem {
   images?: PromptItemImage[];
   functionCalls?: FunctionCall[];
   cache?: boolean;
+  executableCode?: {
+    language: string;
+    code: string;
+  };
+  codeExecutionResult?: {
+    outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
+    output: string;
+  };
 } /** Hook function type for generateContent hooks */
 
 export type GenerateContentResultPart =
@@ -78,6 +86,16 @@ export type GenerateContentResultPart =
       type: 'webSearch';
       text: string;
       urls: string[];
+    }
+  | {
+      type: 'executableCode';
+      code: string;
+      language: string;
+    }
+  | {
+      type: 'codeExecutionResult';
+      outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
+      output: string;
     };
 
 export type GenerateContentResult = GenerateContentResultPart[];
@@ -96,6 +114,7 @@ export type GenerateContentArgs = [
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
+      codeExecution?: boolean;
     };
   },
   options: {
