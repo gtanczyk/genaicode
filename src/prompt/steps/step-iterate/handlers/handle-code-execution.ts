@@ -13,14 +13,14 @@ const handleCodeExecution: ActionHandler = async ({
   const args = iterateCall.args as CodeExecutionArgs | undefined;
 
   // 1. Upload files if specified via the Files API
-  const uploadedFiles: FileUploadResult[] = [];
+  const uploadedFiles: Array<{ result: FileUploadResult; originalPath: string }> = [];
   const filesApi = getFilesApiProvider(options.aiService);
 
   if (args?.filePaths && args.filePaths.length > 0 && filesApi) {
     for (const filePath of args.filePaths) {
       try {
         const result = await filesApi.uploadFile(filePath);
-        uploadedFiles.push(result);
+        uploadedFiles.push({ result, originalPath: filePath });
         putSystemMessage(`Uploaded file for code execution: ${filePath} → ${result.fileId}`);
       } catch (error) {
         putSystemMessage(`Failed to upload ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
@@ -29,11 +29,11 @@ const handleCodeExecution: ActionHandler = async ({
   }
 
   // 2. Call AI with code execution enabled + file references
-  const fileIds = uploadedFiles.map((f) => f.fileId);
-  const uploadedFilesMeta = uploadedFiles.map((f, idx) => ({
-    fileId: f.fileId,
-    filename: f.filename,
-    originalPath: args?.filePaths?.[idx] ?? f.filename,
+  const fileIds = uploadedFiles.map((f) => f.result.fileId);
+  const uploadedFilesMeta = uploadedFiles.map((f) => ({
+    fileId: f.result.fileId,
+    filename: f.result.filename,
+    originalPath: f.originalPath,
   }));
 
   const result = await generateContentFn(
@@ -73,7 +73,7 @@ const handleCodeExecution: ActionHandler = async ({
   if (filesApi && uploadedFiles.length > 0) {
     for (const file of uploadedFiles) {
       try {
-        await filesApi.deleteFile(file.fileId);
+        await filesApi.deleteFile(file.result.fileId);
       } catch {
         // Best-effort cleanup, don't fail the action
       }

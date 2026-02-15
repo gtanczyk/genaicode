@@ -63,7 +63,7 @@ const filesApiProviders = new Map<string, () => FilesApiProvider>();
 /**
  * Register a Files API provider factory for a given AI service type.
  */
-export function registerFilesApiProvider(serviceType: string, factory: () => FilesApiProvider): void {
+export function registerFilesApiProvider(serviceType: AiServiceType | string, factory: () => FilesApiProvider): void {
   filesApiProviders.set(serviceType, factory);
 }
 
