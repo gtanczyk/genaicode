@@ -1,56 +1,28 @@
 import { registerActionHandler } from '../step-iterate-handlers.js';
-import { ActionHandler, ActionHandlerProps, ActionResult, CodeExecutionArgs } from '../step-iterate-types.js';
+import { ActionHandler, ActionHandlerProps, ActionResult } from '../step-iterate-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
-import { getFilesApiProvider, FileUploadResult } from '../../../../ai-service/files-api.js';
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
 
 const handleCodeExecution: ActionHandler = async ({
-  iterateCall,
   prompt,
   options,
   generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> => {
-  const args = iterateCall.args as CodeExecutionArgs | undefined;
-
-  // 1. Upload files if specified via the Files API
-  const uploadedFiles: Array<{ result: FileUploadResult; originalPath: string }> = [];
-  const filesApi = getFilesApiProvider(options.aiService);
-
-  if (args?.filePaths && args.filePaths.length > 0 && filesApi) {
-    for (const filePath of args.filePaths) {
-      try {
-        const result = await filesApi.uploadFile(filePath);
-        uploadedFiles.push({ result, originalPath: filePath });
-        putSystemMessage(`Uploaded file for code execution: ${filePath} → ${result.fileId}`);
-      } catch (error) {
-        putSystemMessage(`Failed to upload ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
-
-  // 2. Call AI with code execution enabled + file references
-  const fileIds = uploadedFiles.map((f) => f.result.fileId);
-  const uploadedFilesMeta = uploadedFiles.map((f) => ({
-    fileId: f.result.fileId,
-    filename: f.result.filename,
-    originalPath: f.originalPath,
-  }));
-
+  // Call AI with code execution enabled
   const result = await generateContentFn(
     prompt,
     {
-      modelType: ModelType.DEFAULT,
+      modelType: ModelType.DEFAULT, // Use default (usually capable) model
       expectedResponseType: {
         text: true,
         codeExecution: true,
-        functionCall: false,
+        functionCall: false, // Disable other tools to focus on code exec
       },
-      ...(fileIds.length > 0 ? { fileIds, uploadedFiles: uploadedFilesMeta } : {}),
     },
     options,
   );
 
-  // 3. Extract executable code and execution results
+  // Parse result into AssistantItem
+  // We need to extract text, executableCode, and codeExecutionResult
   const textParts = result
     .filter((p) => p.type === 'text')
     .map((p) => p.text)
@@ -59,28 +31,6 @@ const handleCodeExecution: ActionHandler = async ({
   const executableCodePart = result.find((p) => p.type === 'executableCode');
   const codeExecutionResultPart = result.find((p) => p.type === 'codeExecutionResult');
 
-  // 4. Download output files if any were generated
-  const outputFiles =
-    codeExecutionResultPart?.type === 'codeExecutionResult' ? codeExecutionResultPart.outputFiles : undefined;
-
-  if (outputFiles && outputFiles.length > 0 && filesApi) {
-    for (const file of outputFiles) {
-      putSystemMessage(`Code execution produced output file: ${file.filename} (${file.size} bytes)`);
-    }
-  }
-
-  // 5. Cleanup uploaded files
-  if (filesApi && uploadedFiles.length > 0) {
-    for (const file of uploadedFiles) {
-      try {
-        await filesApi.deleteFile(file.result.fileId);
-      } catch {
-        // Best-effort cleanup, don't fail the action
-      }
-    }
-  }
-
-  // 6. Build response
   return {
     breakLoop: false,
     items: [
@@ -100,13 +50,12 @@ const handleCodeExecution: ActionHandler = async ({
               ? {
                   outcome: codeExecutionResultPart.outcome,
                   output: codeExecutionResultPart.output,
-                  outputFiles: codeExecutionResultPart.outputFiles,
                 }
               : undefined,
         },
         user: {
           type: 'user',
-          text: '',
+          text: '', // No user input needed immediately after, or maybe just empty to continue loop
         },
       },
     ],

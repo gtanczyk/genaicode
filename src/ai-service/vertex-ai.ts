@@ -17,14 +17,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
-      codeExecution?: boolean;
     };
-    fileIds?: string[];
-    uploadedFiles?: Array<{
-      fileId: string;
-      filename: string;
-      originalPath: string;
-    }>;
   },
   options: {
     geminiBlockNone?: boolean;

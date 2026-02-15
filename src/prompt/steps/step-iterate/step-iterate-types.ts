@@ -241,8 +241,6 @@ export type ProjectCommandResult = {
 
 export type CodeExecutionArgs = {
   message: string;
-  /** Optional file paths to upload for code execution access */
-  filePaths?: string[];
 };
 
 export type IterateCall = FunctionCall<IterateArgs>;
@@ -261,12 +259,6 @@ export interface AssistantItem {
   codeExecutionResult?: {
     outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
     output: string;
-    outputFiles?: Array<{
-      fileId: string;
-      filename: string;
-      size: number;
-      mimeType?: string;
-    }>;
   };
   images?: PromptItemImage[];
   cache?: true;
