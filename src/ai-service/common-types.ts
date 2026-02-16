@@ -63,6 +63,12 @@ export interface PromptItem {
   codeExecutionResult?: {
     outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
     output: string;
+    outputFiles?: Array<{
+      fileId: string;
+      filename: string;
+      size: number;
+      mimeType?: string;
+    }>;
   };
 } /** Hook function type for generateContent hooks */
 
@@ -96,6 +102,12 @@ export type GenerateContentResultPart =
       type: 'codeExecutionResult';
       outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
       output: string;
+      outputFiles?: Array<{
+        fileId: string;
+        filename: string;
+        size: number;
+        mimeType?: string;
+      }>;
     };
 
 export type GenerateContentResult = GenerateContentResultPart[];
@@ -116,6 +128,12 @@ export type GenerateContentArgs = [
       webSearch?: boolean;
       codeExecution?: boolean;
     };
+    fileIds?: string[];
+    uploadedFiles?: Array<{
+      fileId: string;
+      filename: string;
+      originalPath: string;
+    }>;
   },
   options: {
     geminiBlockNone?: boolean;

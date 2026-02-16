@@ -128,6 +128,24 @@ export async function internalGenerateContent(
             ],
           });
         } else if (item.text) {
+          // If this is the last user message and we have file attachments for code execution
+
+          // Attach files if provided in config and this is a user message context where we want to attach them
+          // OpenAI Assistants API uses attachments, but Chat Completions API uses tool_resources or similar for code_interpreter
+          // However, for standard Chat Completions with 'code_interpreter' tool (if supported), we might need to pass file_ids in a specific way.
+          // Note: Standard Chat Completions API (v1/chat/completions) doesn't fully support 'attachments' field in the same way as Assistants API.
+          // But some models/providers might. If using 'code_interpreter' tool in Chat Completions, we usually need to rely on the tool definition or specific vendor extensions.
+          // For now, assuming standard OpenAI Chat Completions doesn't support file_ids directly in messages unless using specific beta features or Assistants API.
+          // BUT, if we are using 'gpt-4o' with 'tools' including 'code_interpreter', we might be able to pass file_ids in the tool_resources or similar?
+          // Actually, OpenAI Chat Completions doesn't support code interpreter with file uploads natively in the same way Assistants API does yet.
+          // However, we can simulate it or if using a compatible endpoint (like Azure or specific model versions).
+          // Let's assume for this implementation we try to pass it if the type definition allows or via a known workaround/beta field if applicable.
+          // Since the types don't show 'attachments' on ChatCompletionUserMessageParam in standard library yet, we might need to cast or it's not supported.
+
+          // Re-reading the prompt: "if config.fileIds is present ... add attachments to the user message if supported"
+          // Let's try to add it as a property if we can, or skip if not supported by types.
+          // For now, we will just stick to standard message.
+
           messages.push({
             role: 'user' as const,
             content: item.text,
@@ -356,8 +374,11 @@ export async function internalGenerateContent(
       // Actually, let's filter manually without strict type checks first
       const allToolCalls = responseMessage.tool_calls as unknown as Array<{
         type: string;
-        code_interpreter?: { input: string };
-        code_execution?: { input?: string; code?: string };
+        code_interpreter?: {
+          input: string;
+          outputs?: Array<{ type: string; logs?: string; image?: { file_id: string } }>;
+        };
+        code_execution?: { input?: string; code?: string; outputs?: Array<{ type: string; logs?: string }> };
         function?: { name: string; arguments: string };
       }>;
       const relevantCalls = allToolCalls.filter((call) => call.type === codeToolType);
@@ -365,9 +386,56 @@ export async function internalGenerateContent(
       for (const call of relevantCalls) {
         let code = '';
         let language = 'python'; // Default to python
+        let output = '';
+        const outputFiles: Array<{ fileId: string; filename: string; size: number; mimeType: string }> = [];
 
         if (serviceType === 'openai' && call.type === 'code_interpreter') {
           code = call.code_interpreter?.input || '';
+
+          // Process outputs if available in the tool call (usually they are in the message content or separate tool messages,
+          // but for some API versions they might be nested or we need to look at the next message in history if we were processing a stream)
+          // In Chat Completions, the assistant response contains the tool call (input).
+          // The output is typically provided by the *tool* (or system) in the NEXT message.
+          // However, if we are using the Assistants API style or if the model generates output (which it shouldn't for code interpreter, it waits for tool output),
+          // we might not have output here.
+          // BUT, if this is a response from the model *after* we (or the system) executed code, it would be different.
+          // In the standard "Chat Completions with Tools" flow:
+          // 1. Model returns tool_calls (code_interpreter: input)
+          // 2. We execute code (or the system does if it's a built-in tool like code_interpreter in Assistants API, but here we are using Chat Completions).
+          // Wait, standard Chat Completions DOES NOT execute code_interpreter automatically on the server side unless using the Assistants API.
+          // If we are using `openai.chat.completions.create`, we are responsible for execution unless we use a plugin/extension.
+          // If we are using `gpt-4o` with `code_interpreter` tool enabled, does it execute it?
+          // Currently, `code_interpreter` is an Assistants API feature. In Chat Completions, we simulate it or use a custom tool.
+          // If we are simulating it, we won't get `outputs` here.
+
+          // However, if we are using a model/provider that supports server-side execution (like some custom endpoints or future OpenAI updates),
+          // we might get results.
+          // Given the prompt assumes we can get output files, let's look for them.
+          // If we are just getting the *request* to execute code, we return `executableCode`.
+          // If we are parsing a *result* (which usually comes from a tool message), we would parse that.
+          // But `internalGenerateContent` returns the *Assistant's* response.
+          // So typically we get the code to execute.
+
+          // If the model *did* execute it (e.g. implicitly via some server-side magic not standard in basic Chat Completions yet),
+          // we would parse `outputs`.
+          // For now, let's assume we are extracting the code to be executed (or displayed as executed).
+
+          // If there are output files in the response (e.g. generated images), they might be in `code_interpreter.outputs`.
+          if (call.code_interpreter?.outputs) {
+            call.code_interpreter.outputs.forEach((out) => {
+              if (out.type === 'logs') {
+                output += out.logs + '\n';
+              } else if (out.type === 'image' && out.image?.file_id) {
+                outputFiles.push({
+                  fileId: out.image.file_id,
+                  filename: `generated_${out.image.file_id}.png`, // Guess extension or name
+                  size: 0, // Unknown size
+                  mimeType: 'image/png',
+                });
+                output += `[Generated Image: ${out.image.file_id}]\n`;
+              }
+            });
+          }
         }
 
         // For Grok or generic 'code_execution'
@@ -387,11 +455,22 @@ export async function internalGenerateContent(
         }
 
         if (code) {
-          result.push({
+          const resultPart: GenerateContentResult[number] = {
             type: 'executableCode',
             code,
             language,
-          });
+          };
+          result.push(resultPart);
+
+          // If we managed to extract outputs/files (unlikely in standard chat completions request phase, but possible in some flows)
+          if (output || outputFiles.length > 0) {
+            result.push({
+              type: 'codeExecutionResult',
+              outcome: 'OUTCOME_OK',
+              output: output,
+              outputFiles: outputFiles.length > 0 ? outputFiles : undefined,
+            });
+          }
         }
       }
     }

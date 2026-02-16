@@ -239,3 +239,56 @@ export const EditedIndicator = styled.span`
   margin-left: 8px;
   font-style: italic;
 `;
+
+// Code Execution Styles
+export const CodeExecutionBlock = styled.div`
+  margin: 12px 0;
+  border: 1px solid ${(props) => props.theme.colors.border};
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+export const CodeHeader = styled.div`
+  background-color: ${(props) => props.theme.colors.codeBackground};
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.9em;
+  border-bottom: 1px solid ${(props) => props.theme.colors.border};
+  color: ${(props) => props.theme.colors.text};
+`;
+
+export const CodeBlock = styled.div`
+  background-color: ${(props) => props.theme.colors.codeBackground};
+  padding: 12px;
+  overflow-x: auto;
+
+  pre {
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    background-color: transparent;
+    padding: 0;
+  }
+`;
+
+export const ExecutionResultBlock = styled.div<{ outcome?: string }>`
+  margin: 12px 0;
+  border: 1px solid
+    ${(props) => (props.outcome === 'OUTCOME_OK' ? props.theme.colors.success : props.theme.colors.error)};
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+export const ResultHeader = styled.div`
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.9em;
+  background-color: ${(props) => props.theme.colors.backgroundSecondary};
+`;
+
+export const ResultOutput = styled(MessageContent)`
+  padding: 12px;
+  background-color: ${(props) => props.theme.colors.background};
+  max-height: 400px;
+  overflow-y: auto;
+`;

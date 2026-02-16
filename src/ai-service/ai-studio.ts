@@ -47,6 +47,12 @@ export const generateContent: GenerateContentFunction = async function generateC
       webSearch?: boolean;
       codeExecution?: boolean;
     };
+    fileIds?: string[];
+    uploadedFiles?: Array<{
+      fileId: string;
+      filename: string;
+      originalPath: string;
+    }>;
   },
   options: {
     geminiBlockNone?: boolean;
@@ -73,6 +79,12 @@ export async function internalGoogleGenerateContent(
       webSearch?: boolean;
       codeExecution?: boolean;
     };
+    fileIds?: string[];
+    uploadedFiles?: Array<{
+      fileId: string;
+      filename: string;
+      originalPath: string;
+    }>;
   },
   options: {
     geminiBlockNone?: boolean;
@@ -120,6 +132,25 @@ export async function internalGoogleGenerateContent(
                   },
             ),
             ...(item.text ? [{ text: item.text }] : []),
+            // Add file references for code execution if provided in config and this is the last user message
+            ...(config.fileIds && config.fileIds.length > 0 && item === prompt[prompt.length - 1]
+              ? config.fileIds.map((fileId) => {
+                  // Find metadata if available to get mimeType
+                  const fileMeta = config.uploadedFiles?.find((f) => f.fileId === fileId);
+                  // Gemini uses fileUri for uploaded files via File API
+                  // fileId here is expected to be the full resource name (files/xxxx) or uri
+                  return {
+                    fileData: {
+                      fileUri: fileId.startsWith('files/')
+                        ? `https://generativelanguage.googleapis.com/v1beta/${fileId}`
+                        : fileId,
+                      mimeType: fileMeta
+                        ? mime.lookup(fileMeta.filename) || 'application/octet-stream'
+                        : 'application/octet-stream',
+                    } as FileData,
+                  };
+                })
+              : []),
           ],
         };
         return content;
@@ -436,6 +467,9 @@ export async function internalGoogleGenerateContent(
           type: 'codeExecutionResult',
           outcome: part.codeExecutionResult.outcome as 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED',
           output: part.codeExecutionResult.output!,
+          // Note: Gemini API currently returns inline images or files as separate parts or within the output text/artifacts.
+          // If the API evolves to return structured output files in codeExecutionResult, we should map them here.
+          // For now, inline images might appear as separate parts with mimeType image/*.
         });
       }
     }

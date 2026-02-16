@@ -26,6 +26,20 @@ export interface ChatMessage {
   timestamp: Date;
   data?: Record<string, unknown>;
   images?: ChatMessageImage[];
+  executableCode?: {
+    language: string;
+    code: string;
+  };
+  codeExecutionResult?: {
+    outcome: 'OUTCOME_OK' | 'OUTCOME_FAILED' | 'OUTCOME_DEADLINE_EXCEEDED';
+    output: string;
+    outputFiles?: Array<{
+      fileId: string;
+      filename: string;
+      size: number;
+      mimeType?: string;
+    }>;
+  };
 }
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug';

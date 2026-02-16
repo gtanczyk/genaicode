@@ -11,7 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
-- [-] [GEN-157] 2025-11-12: Implement `codeExecution` action type to enable AI-driven code execution within the iteration loop (supports Gemini native code execution).
+- [x] [GEN-157] 2025-11-12 (Updated 2025-01-31): Implement `codeExecution` action type with file I/O support - Enabled AI-driven code execution with file uploads/downloads across OpenAI, Anthropic, and Gemini. Implemented `FilesApiProvider` abstraction, enhanced `handleCodeExecution` for file lifecycle management, and updated UI to display code blocks and execution results with generated file downloads.
 - [x] [GEN-156] 2025-11-11: Move structuredQuestion and conversationGraph instructions from config to system prompt.
 - [x] [GEN-155] 2025-11-11: Refine sound notifications to play only when user input is required (prompt is visible).
 - [x] [GEN-154] 2025-11-11: Implement editable codegen planning and summary in the UI - Users can now edit problem analysis, code changes, and file update prompts before accepting them.

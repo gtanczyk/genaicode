@@ -17,6 +17,12 @@ import {
   SaveButton,
   CancelButton,
   LoadingSpinner,
+  CodeExecutionBlock,
+  CodeHeader,
+  CodeBlock,
+  ExecutionResultBlock,
+  ResultHeader,
+  ResultOutput,
 } from './styles/message-container-styles.js';
 import { ContextSizeDisplay } from './context-size-display.js';
 import styled from 'styled-components';
@@ -165,6 +171,36 @@ export const MessageContainer: React.FC<MessageContainerProps> = ({
           <MessageContent>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </MessageContent>
+        )}
+
+        {message.executableCode && (
+          <CodeExecutionBlock>
+            <CodeHeader>Executable Code ({message.executableCode.language})</CodeHeader>
+            <CodeBlock>
+              <pre>
+                <code>{message.executableCode.code}</code>
+              </pre>
+            </CodeBlock>
+          </CodeExecutionBlock>
+        )}
+
+        {message.codeExecutionResult && (
+          <ExecutionResultBlock outcome={message.codeExecutionResult.outcome}>
+            <ResultHeader>Execution Result: {message.codeExecutionResult.outcome}</ResultHeader>
+            <ResultOutput>
+              <pre>{message.codeExecutionResult.output}</pre>
+              {message.codeExecutionResult.outputFiles && message.codeExecutionResult.outputFiles.length > 0 && (
+                <div style={{ marginTop: '8px', fontSize: '0.9em' }}>
+                  <strong>Generated Files:</strong>
+                  <ul>
+                    {message.codeExecutionResult.outputFiles.map((file) => (
+                      <li key={file.fileId}>{file.filename}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </ResultOutput>
+          </ExecutionResultBlock>
         )}
 
         {message.images && message.images.length > 0 && (
