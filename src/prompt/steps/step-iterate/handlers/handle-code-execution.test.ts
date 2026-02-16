@@ -3,6 +3,9 @@ import { ActionHandlerProps } from '../step-iterate-types.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 import { GenerateContentResult } from '../../../../ai-service/common-types.js';
 
+type InputResponse = Awaited<ReturnType<typeof userActions.askUserForInput>>;
+type ConfirmResponse = Awaited<ReturnType<typeof userActions.askUserForConfirmation>>;
+
 // Mocks
 vi.mock('../../../../main/common/content-bus.js');
 vi.mock('../../../../main/common/user-actions.js');
@@ -64,7 +67,7 @@ describe('handleCodeExecution', () => {
     handleCodeExecution = handlers['codeExecution']!;
 
     // Default mock: askUserForInput returns empty answer
-    mockAskUserForInput.mockResolvedValue({ answer: '' } as ReturnType<typeof userActions.askUserForInput> extends Promise<infer T> ? T : never);
+    mockAskUserForInput.mockResolvedValue({ answer: '' } as InputResponse);
   });
 
   it('should be registered as a handler', () => {
@@ -199,7 +202,7 @@ describe('handleCodeExecution', () => {
       { type: 'text', text: 'Result text.' },
     ];
     mockGenerateContentFn.mockResolvedValue(aiResponse);
-    mockAskUserForInput.mockResolvedValue({ answer: 'thanks' } as ReturnType<typeof userActions.askUserForInput> extends Promise<infer T> ? T : never);
+    mockAskUserForInput.mockResolvedValue({ answer: 'thanks' } as InputResponse);
 
     const props = createProps();
     const result = await handleCodeExecution!(props);
@@ -258,7 +261,7 @@ describe('handleCodeExecution', () => {
       deleteFile: vi.fn(),
     };
     mockGetFilesApiProvider.mockReturnValue(mockFilesApiInstance);
-    mockAskUserForConfirmation.mockResolvedValue({ confirmed: true } as ReturnType<typeof userActions.askUserForConfirmation> extends Promise<infer T> ? T : never);
+    mockAskUserForConfirmation.mockResolvedValue({ confirmed: true } as ConfirmResponse);
 
     const aiResponse: GenerateContentResult = [
       { type: 'text', text: 'Generated a file.' },

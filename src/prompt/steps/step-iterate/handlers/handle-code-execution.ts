@@ -61,10 +61,13 @@ const handleCodeExecution: ActionHandler = async ({
           functionCall: false,
         },
         fileIds: uploadedFiles.map((f) => f.fileId),
-        uploadedFiles: uploadedFiles.map((f) => ({
+        uploadedFiles: uploadedFiles.map((f, index) => ({
           fileId: f.fileId,
           filename: path.basename(f.filename),
-          originalPath: filesToUpload.find((p) => path.basename(p) === path.basename(f.filename)) ?? f.filename,
+          originalPath:
+            filesToUpload.find((p) => path.basename(p) === path.basename(f.filename)) ??
+            filesToUpload[index] ??
+            f.filename,
         })),
       },
       options,
