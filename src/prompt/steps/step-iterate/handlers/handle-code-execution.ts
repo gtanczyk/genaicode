@@ -4,120 +4,144 @@ import { registerActionHandler } from '../step-iterate-handlers.js';
 import { ActionHandler, ActionHandlerProps, ActionResult } from '../step-iterate-types.js';
 import { ModelType } from '../../../../ai-service/common-types.js';
 import { askUserForConfirmation, askUserForInput } from '../../../../main/common/user-actions.js';
-import { putSystemMessage } from '../../../../main/common/content-bus.js';
+import { putAssistantMessage, putSystemMessage } from '../../../../main/common/content-bus.js';
 import { getFilesApiProvider, FileUploadResult, FilesApiProvider } from '../../../../ai-service/files-api.js';
 import { rcConfig } from '../../../../main/config.js';
 import { isProjectPath } from '../../../../files/path-utils.js';
 import { CodegenOptions } from '../../../../main/codegen-types.js';
 
 const handleCodeExecution: ActionHandler = async ({
+  iterateCall,
   prompt,
   options,
   generateContentFn,
 }: ActionHandlerProps): Promise<ActionResult> => {
-  // 1. Prompt user to select files for upload (optional)
-  const filesToUpload = await promptForFileSelection(options);
+  try {
+    const assistantMessage = iterateCall.args?.message ?? '';
 
-  // 2. Upload files via Files API
-  const uploadedFiles: FileUploadResult[] = [];
-  if (filesToUpload.length > 0) {
-    try {
-      const filesApi = getFilesApiProvider(options.aiService);
-      for (const filePath of filesToUpload) {
-        try {
-          putSystemMessage(`Uploading file: ${filePath}...`);
-          const result = await filesApi.uploadFile(filePath);
-          uploadedFiles.push(result);
-          putSystemMessage(`Uploaded file: ${path.basename(filePath)} → ${result.fileId}`);
-        } catch (error) {
-          putSystemMessage(`Failed to upload ${filePath}: ${(error as Error).message}`, { error });
+    // 1. Prompt user to select files for upload (optional)
+    const filesToUpload = await promptForFileSelection(options);
+
+    // 2. Upload files via Files API
+    const uploadedFiles: FileUploadResult[] = [];
+    if (filesToUpload.length > 0) {
+      try {
+        const filesApi = getFilesApiProvider(options.aiService);
+        for (const filePath of filesToUpload) {
+          try {
+            putSystemMessage(`Uploading file: ${filePath}...`);
+            const result = await filesApi.uploadFile(filePath);
+            uploadedFiles.push(result);
+            putSystemMessage(`Uploaded file: ${path.basename(filePath)} → ${result.fileId}`);
+          } catch (error) {
+            putSystemMessage(`Failed to upload ${filePath}: ${(error as Error).message}`, { error });
+          }
         }
+      } catch (error) {
+        putSystemMessage(
+          `Files API not supported or failed for service ${options.aiService}: ${(error as Error).message}`,
+        );
       }
-    } catch (error) {
-      putSystemMessage(
-        `Files API not supported or failed for service ${options.aiService}: ${(error as Error).message}`,
-      );
     }
-  }
 
-  // 3. Call AI with code execution enabled + file references
-  const result = await generateContentFn(
-    prompt,
-    {
-      modelType: ModelType.DEFAULT, // Use default (usually capable) model
-      expectedResponseType: {
-        text: true,
-        codeExecution: true,
-        functionCall: false, // Disable other tools to focus on code exec
-      },
-      fileIds: uploadedFiles.map((f) => f.fileId),
-      uploadedFiles: uploadedFiles.map((f) => ({
-        fileId: f.fileId,
-        filename: path.basename(f.filename),
-        originalPath: filesToUpload.find((p) => path.basename(p) === f.filename)!,
-      })),
-    },
-    options,
-  );
-
-  // Parse result into AssistantItem
-  // We need to extract text, executableCode, and codeExecutionResult
-  const textParts = result
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text)
-    .join('\n');
-
-  const executableCodePart = result.find((p) => p.type === 'executableCode');
-  const codeExecutionResultPart = result.find((p) => p.type === 'codeExecutionResult');
-
-  // 4. Handle output files (if any)
-  if (
-    codeExecutionResultPart &&
-    codeExecutionResultPart.type === 'codeExecutionResult' &&
-    codeExecutionResultPart.outputFiles &&
-    codeExecutionResultPart.outputFiles.length > 0
-  ) {
-    try {
-      const filesApi = getFilesApiProvider(options.aiService);
-      await handleOutputFiles(codeExecutionResultPart.outputFiles, options, filesApi);
-    } catch (error) {
-      putSystemMessage(`Failed to handle output files: ${(error as Error).message}`);
-    }
-  }
-
-  // 5. Cleanup uploaded files (optional, depending on retention policy, skipping for now to allow re-use in session if we cached IDs)
-  // TODO: Implement cleanup if needed.
-
-  return {
-    breakLoop: false,
-    items: [
-      {
-        assistant: {
+    // 3. Call AI with code execution enabled + file references
+    const result = await generateContentFn(
+      [
+        ...prompt,
+        {
           type: 'assistant',
-          text: textParts,
-          executableCode:
-            executableCodePart && executableCodePart.type === 'executableCode'
-              ? {
-                  language: executableCodePart.language,
-                  code: executableCodePart.code,
-                }
-              : undefined,
-          codeExecutionResult:
-            codeExecutionResultPart && codeExecutionResultPart.type === 'codeExecutionResult'
-              ? {
-                  outcome: codeExecutionResultPart.outcome,
-                  output: codeExecutionResultPart.output,
-                  outputFiles: codeExecutionResultPart.outputFiles,
-                }
-              : undefined,
+          text: assistantMessage,
         },
-        user: {
-          type: 'user',
-          text: '', // No user input needed immediately after, or maybe just empty to continue loop
+      ],
+      {
+        modelType: ModelType.DEFAULT,
+        expectedResponseType: {
+          text: true,
+          codeExecution: true,
+          functionCall: false,
         },
+        fileIds: uploadedFiles.map((f) => f.fileId),
+        uploadedFiles: uploadedFiles.map((f) => ({
+          fileId: f.fileId,
+          filename: path.basename(f.filename),
+          originalPath: filesToUpload.find((p) => path.basename(p) === path.basename(f.filename)) ?? f.filename,
+        })),
       },
-    ],
-  };
+      options,
+    );
+
+    // Parse result into AssistantItem
+    const textParts = result
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join('\n');
+
+    const executableCodePart = result.find((p) => p.type === 'executableCode');
+    const codeExecutionResultPart = result.find((p) => p.type === 'codeExecutionResult');
+
+    // 4. Handle output files (if any)
+    if (
+      codeExecutionResultPart &&
+      codeExecutionResultPart.type === 'codeExecutionResult' &&
+      codeExecutionResultPart.outputFiles &&
+      codeExecutionResultPart.outputFiles.length > 0
+    ) {
+      try {
+        const filesApi = getFilesApiProvider(options.aiService);
+        await handleOutputFiles(codeExecutionResultPart.outputFiles, options, filesApi);
+      } catch (error) {
+        putSystemMessage(`Failed to handle output files: ${(error as Error).message}`);
+      }
+    }
+
+    // 5. Display results to the user
+    const responseText = textParts || assistantMessage;
+    putAssistantMessage(responseText, {
+      executableCode: executableCodePart && executableCodePart.type === 'executableCode' ? executableCodePart : undefined,
+      codeExecutionResult:
+        codeExecutionResultPart && codeExecutionResultPart.type === 'codeExecutionResult'
+          ? codeExecutionResultPart
+          : undefined,
+    });
+
+    // 6. Ask user for input
+    const response = await askUserForInput('Your answer', '', options);
+
+    return {
+      breakLoop: false,
+      items: [
+        {
+          assistant: {
+            type: 'assistant',
+            text: responseText,
+            executableCode:
+              executableCodePart && executableCodePart.type === 'executableCode'
+                ? {
+                    language: executableCodePart.language,
+                    code: executableCodePart.code,
+                  }
+                : undefined,
+            codeExecutionResult:
+              codeExecutionResultPart && codeExecutionResultPart.type === 'codeExecutionResult'
+                ? {
+                    outcome: codeExecutionResultPart.outcome,
+                    output: codeExecutionResultPart.output,
+                    outputFiles: codeExecutionResultPart.outputFiles,
+                  }
+                : undefined,
+          },
+          user: {
+            type: 'user',
+            text: response.answer,
+          },
+        },
+      ],
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    putSystemMessage(`Error during code execution: ${errorMessage}`);
+    return { breakLoop: false, items: [] };
+  }
 };
 
 async function promptForFileSelection(options: CodegenOptions): Promise<string[]> {
