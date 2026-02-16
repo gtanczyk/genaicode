@@ -14,6 +14,7 @@ import {
 } from '@google/genai';
 import axios from 'axios';
 import assert from 'node:assert';
+import mime from 'mime-types';
 import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
 import {
   GenerateContentFunction,

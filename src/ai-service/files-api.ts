@@ -92,7 +92,7 @@ class OpenAIFilesApi implements FilesApiProvider {
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    await this.client.files.del(fileId);
+    await this.client.files.delete(fileId);
   }
 
   async listFiles(): Promise<FileUploadResult[]> {

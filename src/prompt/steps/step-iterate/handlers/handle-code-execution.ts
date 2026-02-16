@@ -14,7 +14,6 @@ const handleCodeExecution: ActionHandler = async ({
   prompt,
   options,
   generateContentFn,
-  iterateCall,
 }: ActionHandlerProps): Promise<ActionResult> => {
   // 1. Prompt user to select files for upload (optional)
   const filesToUpload = await promptForFileSelection(options);
@@ -185,10 +184,11 @@ async function handleOutputFiles(
   // Ask user for confirmation
   const confirmation = await askUserForConfirmation(
     `Save ${downloads.length} generated file(s) to project?\n` + downloads.map((d) => `  - ${d.filename}`).join('\n'),
+    true,
     options,
   );
 
-  if (!confirmation) {
+  if (!confirmation.confirmed) {
     putSystemMessage('User declined to save generated files.');
     return;
   }
