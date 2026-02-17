@@ -166,13 +166,13 @@ class AnthropicFilesApi implements FilesApiProvider {
     };
   }
 
-  async downloadFile(_fileId: string): Promise<FileDownloadResult> {
+  async downloadFile(_: string): Promise<FileDownloadResult> {
     // Anthropic API might not expose direct download for all file types yet,
     // but assuming symmetry with upload:
     throw new Error('Anthropic file download not fully supported in this version.');
   }
 
-  async deleteFile(_fileId: string): Promise<void> {
+  async deleteFile(_: string): Promise<void> {
     // Implementation for delete
     // await axios.delete(...)
   }
@@ -239,7 +239,7 @@ class GeminiFilesApi implements FilesApiProvider {
     };
   }
 
-  async downloadFile(_fileId: string): Promise<FileDownloadResult> {
+  async downloadFile(_: string): Promise<FileDownloadResult> {
     // Gemini Files API usually does not allow downloading the original content directly via simple GET
     // for all file types (mostly for processing).
     // However, generated output files from code execution might be different.
