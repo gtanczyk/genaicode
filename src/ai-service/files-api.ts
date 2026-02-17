@@ -68,20 +68,14 @@ class OpenAIFilesApi implements FilesApiProvider {
       fileId: response.id,
       filename: response.filename,
       size: response.bytes,
-      expiresAt: undefined, // OpenAI files don't strictly expire in the same way, or it's not returned here
+      expiresAt: undefined,
     };
   }
 
   async downloadFile(fileId: string): Promise<FileDownloadResult> {
-    // OpenAI SDK returns a readable stream or text depending on method
-    // files.content returns the content
     const response = await this.client.files.content(fileId);
-
-    // The response is a Response-like object in newer OpenAI SDKs, or we can get arrayBuffer
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-
-    // Retrieve file metadata to get filename
     const fileInfo = await this.client.files.retrieve(fileId);
 
     return {
@@ -118,25 +112,19 @@ class AnthropicFilesApi implements FilesApiProvider {
     this.apiKey = config.apiKey!;
   }
 
+  private get headers() {
+    return {
+      'x-api-key': this.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'files-2024-10-22',
+    };
+  }
+
   async uploadFile(filePath: string, purpose: string = 'batch'): Promise<FileUploadResult> {
-    // Note: As of late 2024/2025, Anthropic might have a Files API for prompt caching or batch processing.
-    // The 'code_execution' tool usually accepts text/code directly, but for large inputs/outputs,
-    // we might need to use their specific API if available.
-    // IMPORTANT: Anthropic's current public API for "Files" is primarily for PDF support in messages
-    // or Batch API. Code execution usually works with context.
-    // However, the prompt implies we should implement this.
-    // If the official Files API is for Batch, we might abuse it or use it if supported by code execution.
-    // Assuming a standard /v1/files endpoint exists similar to OpenAI for the sake of this abstraction,
-    // or utilizing the PDF support mechanism.
-
-    // For now, let's implement a generic upload if the endpoint exists,
-    // otherwise this might just mock or use a specific beta endpoint.
-    // Documentation reference (hypothetical or based on recent betas):
-    // POST /v1/files
-
     const formData = new FormData();
     const fileContent = fs.readFileSync(filePath);
-    const blob = new Blob([fileContent]);
+    // Convert Buffer to Uint8Array to satisfy BlobPart type constraint
+    const blob = new Blob([new Uint8Array(fileContent)]);
     const filename = path.basename(filePath);
 
     formData.append('file', blob, filename);
@@ -144,11 +132,7 @@ class AnthropicFilesApi implements FilesApiProvider {
 
     const response = await fetch(`${this.baseUrl}/files`, {
       method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'files-2024-10-22', // Example beta header
-      },
+      headers: this.headers,
       body: formData,
     });
 
@@ -166,15 +150,60 @@ class AnthropicFilesApi implements FilesApiProvider {
     };
   }
 
-  async downloadFile(_: string): Promise<FileDownloadResult> {
-    // Anthropic API might not expose direct download for all file types yet,
-    // but assuming symmetry with upload:
-    throw new Error('Anthropic file download not fully supported in this version.');
+  async downloadFile(fileId: string): Promise<FileDownloadResult> {
+    const response = await fetch(`${this.baseUrl}/files/${fileId}/content`, {
+      method: 'GET',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Anthropic download failed: ${response.status} ${text}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Try to get filename from Content-Disposition header
+    const contentDisposition = response.headers.get('content-disposition') ?? '';
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    const filename = filenameMatch ? filenameMatch[1] : fileId;
+    const mimeType = response.headers.get('content-type') ?? 'application/octet-stream';
+
+    return { filename, content: buffer, mimeType };
   }
 
-  async deleteFile(_: string): Promise<void> {
-    // Implementation for delete
-    // await axios.delete(...)
+  async deleteFile(fileId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/files/${fileId}`, {
+      method: 'DELETE',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Anthropic delete failed: ${response.status} ${text}`);
+    }
+  }
+
+  async listFiles(): Promise<FileUploadResult[]> {
+    const response = await fetch(`${this.baseUrl}/files`, {
+      method: 'GET',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Anthropic list files failed: ${response.status} ${text}`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await response.json()) as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data.data || []).map((f: any) => ({
+      fileId: f.id,
+      filename: f.filename,
+      size: f.bytes,
+    }));
   }
 }
 
@@ -239,22 +268,20 @@ class GeminiFilesApi implements FilesApiProvider {
     };
   }
 
-  async downloadFile(_: string): Promise<FileDownloadResult> {
-    // Gemini Files API usually does not allow downloading the original content directly via simple GET
-    // for all file types (mostly for processing).
-    // However, generated output files from code execution might be different.
-    // If this is for code execution output, we might need to handle it differently
-    // (e.g. it might be inline base64 in the response, not a file API download).
-    // But if we are implementing the interface:
+  async downloadFile(fileId: string): Promise<FileDownloadResult> {
+    // Gemini Files API does not support direct binary download of uploaded files.
+    // Code execution output files are returned inline in the response as base64.
+    // This method is provided for interface compliance but will throw for unsupported cases.
     throw new Error(
-      'Gemini file download via Files API is not supported. Output files are usually returned inline or via different mechanism.',
+      `Gemini file download via Files API is not supported for fileId: ${fileId}. ` +
+        'Code execution output files are returned inline in the API response.',
     );
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    // fileId format: files/xxxx
-    const url = `${this.baseUrl}/${fileId.replace('files/', '')}`;
-    await axios.delete(url, {
+    // fileId format: files/xxxx — strip prefix if present
+    const id = fileId.startsWith('files/') ? fileId.slice('files/'.length) : fileId;
+    await axios.delete(`${this.baseUrl}/${id}`, {
       params: { key: this.apiKey },
     });
   }
@@ -275,14 +302,14 @@ class GeminiFilesApi implements FilesApiProvider {
 }
 
 /**
- * Factory function to get the appropriate provider
+ * Factory function to get the appropriate Files API provider for the given AI service.
  */
 export function getFilesApiProvider(serviceType: string): FilesApiProvider {
   switch (serviceType) {
     case 'openai':
       return new OpenAIFilesApi();
     case 'ai-studio':
-    case 'vertex-ai': // Vertex might need different implementation using GoogleAuth, but sharing for now if compatible or fallback
+    case 'vertex-ai':
       return new GeminiFilesApi();
     case 'anthropic':
       return new AnthropicFilesApi();
