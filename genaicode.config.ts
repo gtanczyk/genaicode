@@ -76,7 +76,7 @@ export default defineConfig({
   modelOverrides: {
     aiStudio: {
       cheap: 'gemini-3-flash-preview',
-      default: 'gemini-3-pro-preview',
+      default: 'gemini-3.1-pro-preview',
     },
   },
 });
