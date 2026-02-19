@@ -41,6 +41,7 @@ import { webSearchDef } from './function-defs/web-search.js';
 import { getRunBashCommandDef } from './function-defs/run-bash-command.js';
 import { pullConsoleLogs } from './function-defs/pull-console-logs.js';
 import { structuredQuestionDef } from './function-defs/structured-question.js';
+import { codeExecutionDef } from './function-defs/code-execution.js';
 
 /**
  * Function definitions for function calling feature
@@ -87,6 +88,7 @@ export function getFunctionDefs(): FunctionDef[] {
     getRunBashCommandDef(),
     webSearchDef,
     structuredQuestionDef,
+    codeExecutionDef,
     ...getOperationDefs(),
   ].map((fd: FunctionDef) => {
     if (

@@ -116,7 +116,7 @@ class AnthropicFilesApi implements FilesApiProvider {
     return {
       'x-api-key': this.apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'files-2024-10-22',
+      'anthropic-beta': 'files-api-2025-04-14',
     };
   }
 

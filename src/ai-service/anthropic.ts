@@ -289,7 +289,7 @@ export const generateContent: GenerateContentFunction = async function generateC
         ...(tools ?? []),
         {
           type: 'code_execution_20250825',
-          name: 'code_execution_20250825',
+          name: 'code_execution',
         } as unknown as Anthropic.Messages.ToolUnion,
       ];
     }
@@ -438,23 +438,26 @@ export const generateContent: GenerateContentFunction = async function generateC
     }
 
     if (expectedResponseType.codeExecution) {
-      const codeCalls = functionCalls.filter((fc) => fc.name === 'code_execution_20250825');
-      for (const call of codeCalls) {
-        // Anthropic code execution input structure
-        // It usually has 'command' for bash or 'code' for python depending on the tool version
-        // The 20250825 version is likely bash/command based or supports multiple languages
-        // Let's assume it has a 'command' or 'code' field.
-        // Based on docs, it might be 'command' for bash.
-        const code = (call.args.command as string) || (call.args.code as string);
-        const language = (call.args.language as string) || 'bash'; // Default to bash for this tool version if not specified
-
-        if (code) {
-          result.push({
-            type: 'executableCode',
-            code,
-            language,
-          });
-        }
+      // Cast to any to handle beta/custom content block types not in SDK
+      const content = response?.content as any[];
+      const code = content
+        .filter((item) => item.type === 'server_tool_use' && item.name === 'bash_code_execution')
+        ?.reverse()?.[0]?.input as string;
+      const execResult = content.filter((item) => item.type === 'bash_code_execution_result')?.reverse()?.[0]
+        ?.stdout as string;
+      if (code) {
+        result.push({
+          type: 'executableCode',
+          code,
+          language: 'bash',
+        });
+      }
+      if (execResult) {
+        result.push({
+          type: 'codeExecutionResult',
+          outcome: 'OUTCOME_OK',
+          output: execResult,
+        });
       }
     }
 
