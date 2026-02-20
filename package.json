@@ -95,7 +95,7 @@
     "vitest": "^3.0.7"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.51.0",
+    "@anthropic-ai/sdk": "^0.74.0",
     "@fontsource/press-start-2p": "^5.1.0",
     "@google-cloud/aiplatform": "^3.34.0",
     "@google/genai": "^1.30.0",
@@ -124,7 +124,8 @@
     "sharp": "^0.33.4",
     "simple-git": "^3.27.0",
     "tar-stream": "^3.1.7",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "zod": "^3.25.0"
   },
   "lint-staged": {
     "*.{js,ts,css,md}": "prettier --write"
