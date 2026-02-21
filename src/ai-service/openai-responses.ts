@@ -206,16 +206,13 @@ export async function internalGenerateContentResponses(
   }
 
   if (expectedResponseType.codeExecution) {
-    const codeInterpreterTool: any = {
+    const codeInterpreterTool: Extract<Tool, { type: 'code_interpreter' }> = {
       type: 'code_interpreter',
-    };
-
-    if (config.fileIds && config.fileIds.length > 0) {
-      codeInterpreterTool.container = {
+      container: {
         type: 'auto',
-        file_ids: config.fileIds,
-      };
-    }
+        ...(config.fileIds && config.fileIds.length > 0 ? { file_ids: config.fileIds } : {}),
+      },
+    };
 
     tools.push(codeInterpreterTool);
   }
@@ -331,10 +328,13 @@ export async function internalGenerateContentResponses(
 
   // Handle code execution results
   if (expectedResponseType.codeExecution) {
-    const codeInterpreterCalls = responseMessage.filter((msg) => msg.type === 'code_interpreter_call');
+    const codeInterpreterCalls = responseMessage.filter((msg) => msg.type === 'code_interpreter_call') as Extract<
+      ResponseItem,
+      { type: 'code_interpreter_call' }
+    >[];
 
     for (const call of codeInterpreterCalls) {
-      const inputCode = (call as any).code_interpreter.input;
+      const inputCode = call.code;
       if (inputCode) {
         result.push({
           type: 'executableCode',
@@ -343,7 +343,7 @@ export async function internalGenerateContentResponses(
         });
       }
 
-      const outputs = (call as any).code_interpreter.outputs || [];
+      const outputs = call.outputs || [];
       let logs = '';
       const outputFiles: Array<{ fileId: string; filename: string; size: number; mimeType: string }> = [];
 
@@ -351,14 +351,19 @@ export async function internalGenerateContentResponses(
         if (output.type === 'logs') {
           logs += output.logs + '\n';
         } else if (output.type === 'image') {
-          const fileId = output.image.file_id;
-          outputFiles.push({
-            fileId: fileId,
-            filename: `generated_${fileId}.png`,
-            size: 0, // Unknown size
-            mimeType: 'image/png',
-          });
-          logs += `[Generated Image: ${fileId}]\n`;
+          // The SDK defines image output as having a 'url' property, not 'file_id'
+          // We will use the URL as the fileId for now, or extract it if it's a file path
+          const fileId = output.url;
+
+          if (fileId) {
+            outputFiles.push({
+              fileId: fileId,
+              filename: `generated_image.png`, // We don't have the original filename
+              size: 0, // Unknown size
+              mimeType: 'image/png',
+            });
+            logs += `[Generated Image: ${fileId}]\n`;
+          }
         }
       }
 
