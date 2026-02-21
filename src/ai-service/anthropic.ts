@@ -242,7 +242,7 @@ export const generateContent: GenerateContentFunction = async function generateC
         ...(tools ?? []),
         {
           type: 'code_execution_20250825',
-          name: 'code_execution',
+          name: 'bash_code_execution',
         } as unknown as Anthropic.Messages.ToolUnion,
       ];
     }
@@ -381,7 +381,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     if (expectedResponseType.functionCall) {
       for (const fc of functionCalls) {
         // Filter out code execution tool calls from standard function calls
-        if (fc.name === 'code_execution_20250825') continue;
+        if (fc.name === 'bash_code_execution') continue;
 
         result.push({
           type: 'functionCall',
@@ -398,12 +398,17 @@ export const generateContent: GenerateContentFunction = async function generateC
         | BetaBashCodeExecutionResultBlock
       )[];
 
-      const code = content
+      const codeInput = content
         .filter(
           (item): item is BetaServerToolUseBlock =>
             item.type === 'server_tool_use' && item.name === 'bash_code_execution',
         )
-        .reverse()[0]?.input as string;
+        .reverse()[0]?.input;
+
+      const code =
+        typeof codeInput === 'object' && codeInput !== null && 'command' in codeInput
+          ? (codeInput as { command: string }).command
+          : (codeInput as string);
 
       const execResult = content
         .filter((item): item is BetaBashCodeExecutionResultBlock => item.type === 'bash_code_execution_result')
