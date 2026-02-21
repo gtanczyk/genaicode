@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 import axios from 'axios';
 import assert from 'node:assert';
 import { getServiceConfig } from './service-configurations.js';
+import { AiServiceType } from './service-configurations-types.js';
 
 export interface FileUploadResult {
   fileId: string;
@@ -47,12 +48,12 @@ export interface FilesApiProvider {
 class OpenAIFilesApi implements FilesApiProvider {
   private client: OpenAI;
 
-  constructor() {
-    const config = getServiceConfig('openai');
-    assert(config?.apiKey, 'OpenAI API key not configured');
+  constructor(serviceType: AiServiceType = 'openai') {
+    const config = getServiceConfig(serviceType);
+    assert(config?.apiKey, `${serviceType} API key not configured`);
     this.client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: config.openaiBaseUrl,
+      baseURL: 'openaiBaseUrl' in config ? config.openaiBaseUrl : undefined,
     });
   }
 
@@ -308,12 +309,18 @@ export function getFilesApiProvider(serviceType: string): FilesApiProvider {
   switch (serviceType) {
     case 'openai':
       return new OpenAIFilesApi();
+    case 'github-models':
+      return new OpenAIFilesApi('github-models');
     case 'ai-studio':
     case 'vertex-ai':
       return new GeminiFilesApi();
     case 'anthropic':
       return new AnthropicFilesApi();
     default:
+      // Support plugin services that use OpenAI-compatible APIs
+      if (serviceType.startsWith('plugin:')) {
+        return new OpenAIFilesApi(serviceType as AiServiceType);
+      }
       throw new Error(`Files API not supported for service: ${serviceType}`);
   }
 }

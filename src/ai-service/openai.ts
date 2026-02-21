@@ -214,14 +214,14 @@ export async function internalGenerateContent(
   }
 
   if (expectedResponseType.codeExecution) {
-    const codeToolType = serviceType === 'openai' ? 'code_interpreter' : 'code_execution';
+    const codeToolType = 'code_execution';
     const codeTool: ChatCompletionTool = {
       type: codeToolType,
     } as unknown as ChatCompletionTool;
 
-    if (serviceType === 'openai' && config.fileIds && config.fileIds.length > 0) {
-      // @ts-expect-error - code_interpreter property is not yet in the official types but supported by API
-      codeTool.code_interpreter = {
+    if (config.fileIds && config.fileIds.length > 0) {
+      // @ts-expect-error - code_execution property is not in the official types but supported by various OpenAI-compatible APIs
+      codeTool.code_execution = {
         file_ids: config.fileIds,
       };
     }
@@ -357,9 +357,6 @@ export async function internalGenerateContent(
 
     // Handle code execution tool calls
     if (expectedResponseType.codeExecution) {
-      const codeToolType = serviceType === 'openai' ? 'code_interpreter' : 'code_execution';
-
-      // Actually, let's filter manually without strict type checks first
       const allToolCalls = responseMessage.tool_calls as unknown as Array<{
         type: string;
         code_interpreter?: {
@@ -369,7 +366,9 @@ export async function internalGenerateContent(
         code_execution?: { input?: string; code?: string; outputs?: Array<{ type: string; logs?: string }> };
         function?: { name: string; arguments: string };
       }>;
-      const relevantCalls = allToolCalls.filter((call) => call.type === codeToolType);
+      const relevantCalls = allToolCalls.filter(
+        (call) => call.type === 'code_interpreter' || call.type === 'code_execution',
+      );
 
       for (const call of relevantCalls) {
         let code = '';
@@ -377,47 +376,18 @@ export async function internalGenerateContent(
         let output = '';
         const outputFiles: Array<{ fileId: string; filename: string; size: number; mimeType: string }> = [];
 
-        if (serviceType === 'openai' && call.type === 'code_interpreter') {
-          code = call.code_interpreter?.input || '';
+        if (call.type === 'code_interpreter' && call.code_interpreter) {
+          code = call.code_interpreter.input || '';
 
-          // Process outputs if available in the tool call (usually they are in the message content or separate tool messages,
-          // but for some API versions they might be nested or we need to look at the next message in history if we were processing a stream)
-          // In Chat Completions, the assistant response contains the tool call (input).
-          // The output is typically provided by the *tool* (or system) in the NEXT message.
-          // However, if we are using the Assistants API style or if the model generates output (which it shouldn't for code interpreter, it waits for tool output),
-          // we might not have output here.
-          // BUT, if this is a response from the model *after* we (or the system) executed code, it would be different.
-          // In the standard "Chat Completions with Tools" flow:
-          // 1. Model returns tool_calls (code_interpreter: input)
-          // 2. We execute code (or the system does if it's a built-in tool like code_interpreter in Assistants API, but here we are using Chat Completions).
-          // Wait, standard Chat Completions DOES NOT execute code_interpreter automatically on the server side unless using the Assistants API.
-          // If we are using `openai.chat.completions.create`, we are responsible for execution unless we use a plugin/extension.
-          // If we are using `gpt-4o` with `code_interpreter` tool enabled, does it execute it?
-          // Currently, `code_interpreter` is an Assistants API feature. In Chat Completions, we simulate it or use a custom tool.
-          // If we are simulating it, we won't get `outputs` here.
-
-          // However, if we are using a model/provider that supports server-side execution (like some custom endpoints or future OpenAI updates),
-          // we might get results.
-          // Given the prompt assumes we can get output files, let's look for them.
-          // If we are just getting the *request* to execute code, we return `executableCode`.
-          // If we are parsing a *result* (which usually comes from a tool message), we would parse that.
-          // But `internalGenerateContent` returns the *Assistant's* response.
-          // So typically we get the code to execute.
-
-          // If the model *did* execute it (e.g. implicitly via some server-side magic not standard in basic Chat Completions yet),
-          // we would parse `outputs`.
-          // For now, let's assume we are extracting the code to be executed (or displayed as executed).
-
-          // If there are output files in the response (e.g. generated images), they might be in `code_interpreter.outputs`.
-          if (call.code_interpreter?.outputs) {
+          if (call.code_interpreter.outputs) {
             call.code_interpreter.outputs.forEach((out) => {
               if (out.type === 'logs') {
                 output += out.logs + '\n';
               } else if (out.type === 'image' && out.image?.file_id) {
                 outputFiles.push({
                   fileId: out.image.file_id,
-                  filename: `generated_${out.image.file_id}.png`, // Guess extension or name
-                  size: 0, // Unknown size
+                  filename: `generated_${out.image.file_id}.png`,
+                  size: 0,
                   mimeType: 'image/png',
                 });
                 output += `[Generated Image: ${out.image.file_id}]\n`;
@@ -426,19 +396,18 @@ export async function internalGenerateContent(
           }
         }
 
-        // For Grok or generic 'code_execution'
-        if (serviceType !== 'openai') {
-          if (call.type === 'code_execution') {
-            code = call.code_execution?.input ?? call.code_execution?.code ?? '';
-          } else if (call.type === 'function' && call.function?.name === 'code_execution') {
-            // Fallback: sometimes it might appear as a function call
-            try {
-              const args = JSON.parse(call.function.arguments);
-              code = args.code || args.input;
-              language = args.language || 'python';
-            } catch (e) {
-              // ignore
-            }
+        if (call.type === 'code_execution' && call.code_execution) {
+          code = call.code_execution.input ?? call.code_execution.code ?? '';
+        }
+
+        // Fallback: sometimes code execution might appear as a function call
+        if (!code && call.type === 'function' && call.function?.name === 'code_execution') {
+          try {
+            const args = JSON.parse(call.function.arguments);
+            code = args.code || args.input;
+            language = args.language || 'python';
+          } catch (e) {
+            // ignore
           }
         }
 
@@ -450,7 +419,6 @@ export async function internalGenerateContent(
           };
           result.push(resultPart);
 
-          // If we managed to extract outputs/files (unlikely in standard chat completions request phase, but possible in some flows)
           if (output || outputFiles.length > 0) {
             result.push({
               type: 'codeExecutionResult',
