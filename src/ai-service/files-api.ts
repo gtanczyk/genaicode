@@ -51,9 +51,11 @@ class OpenAIFilesApi implements FilesApiProvider {
   constructor(serviceType: AiServiceType = 'openai') {
     const config = getServiceConfig(serviceType);
     assert(config?.apiKey, `${serviceType} API key not configured`);
+    // Cast to access openaiBaseUrl which is available on openai, local-llm, and plugin service configs
+    const baseURL = (config as { openaiBaseUrl?: string }).openaiBaseUrl;
     this.client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: 'openaiBaseUrl' in config ? config.openaiBaseUrl : undefined,
+      baseURL,
     });
   }
 

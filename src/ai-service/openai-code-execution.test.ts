@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { internalGenerateContent } from './openai.js';
 import OpenAI from 'openai';
-import { ModelType } from './common-types.js';
 
 // Mock dependencies
 vi.mock('./common.js', () => ({
