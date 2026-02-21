@@ -405,10 +405,10 @@ export const generateContent: GenerateContentFunction = async function generateC
         )
         .reverse()[0]?.input;
 
-      const code =
-        typeof codeInput === 'object' && codeInput !== null && 'command' in codeInput
-          ? (codeInput as { command: string }).command
-          : (codeInput as string);
+      let code = '';
+      if (typeof codeInput === 'object' && codeInput !== null && 'command' in codeInput) {
+        code = (codeInput as { command: string }).command;
+      }
 
       const execResult = content
         .filter((item): item is BetaBashCodeExecutionResultBlock => item.type === 'bash_code_execution_result')
