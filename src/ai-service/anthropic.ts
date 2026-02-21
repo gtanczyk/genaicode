@@ -145,6 +145,21 @@ export const generateContent: GenerateContentFunction = async function generateC
             });
           }
 
+          // Attach uploaded files for code execution if this is the last user message
+          if (
+            config.fileIds &&
+            config.fileIds.length > 0 &&
+            expectedResponseType.codeExecution &&
+            item === prompt[prompt.length - 1]
+          ) {
+            for (const fileId of config.fileIds) {
+              content.push({
+                type: 'container_upload',
+                file_id: fileId,
+              } as unknown as Anthropic.TextBlockParam);
+            }
+          }
+
           const shouldAddCache = item.cache && !options.disableCache && cacheControlCount-- < 4;
           if (shouldAddCache) {
             content.slice(-1)[0].cache_control = { type: 'ephemeral' as const };

@@ -52,7 +52,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
     config,
     model,
     openai,
-    'grok' as any, // Pass 'grok' as serviceType to enable specific tool handling
+    'plugin:grok-ai-service', // Pass the plugin serviceType for proper model settings lookup
   );
 };
 

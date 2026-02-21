@@ -237,6 +237,7 @@ export async function internalGenerateContent(
       ...(tools ?? []),
       {
         type: codeToolType,
+        ...(config.fileIds && config.fileIds.length > 0 ? { file_ids: config.fileIds } : {}),
       } as unknown as ChatCompletionTool,
     ];
     // If code execution is requested, we should allow tool use

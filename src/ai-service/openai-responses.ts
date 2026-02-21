@@ -13,6 +13,7 @@ import {
   ResponseCreateParamsBase,
   ResponseInputItem,
   ResponseItem,
+  ResponseCodeInterpreterToolCall,
   Tool,
 } from 'openai/resources/responses/responses.js';
 
@@ -204,6 +205,17 @@ export async function internalGenerateContentResponses(
     tools.push({ type: 'web_search' });
   }
 
+  if (expectedResponseType.codeExecution) {
+    tools.push({
+      type: 'code_interpreter',
+      ...(config.fileIds && config.fileIds.length > 0 ? { file_ids: config.fileIds } : {}),
+    } as unknown as Tool);
+    // If code execution is requested, don't force tool_choice to 'none'
+    if (toolChoice === 'none') {
+      toolChoice = undefined;
+    }
+  }
+
   // For now, image generation will be a tool that can be called.
   // The actual image generation logic will be handled by a separate service/function.
   if (expectedResponseType.media) {
@@ -311,6 +323,43 @@ export async function internalGenerateContentResponses(
           };
         }),
     );
+  }
+
+  // Handle code execution results from the Responses API
+  if (expectedResponseType.codeExecution) {
+    const codeInterpreterCalls = responseMessage.filter(
+      (msg): msg is ResponseCodeInterpreterToolCall => msg.type === 'code_interpreter_call',
+    );
+
+    for (const call of codeInterpreterCalls) {
+      // Extract the code that was executed
+      if (call.code) {
+        result.push({
+          type: 'executableCode',
+          code: call.code,
+          language: 'python',
+        });
+      }
+
+      // Extract execution outputs
+      if (call.outputs && call.outputs.length > 0) {
+        let output = '';
+
+        for (const out of call.outputs) {
+          if (out.type === 'logs') {
+            output += out.logs + '\n';
+          } else if (out.type === 'image' && out.url) {
+            output += `[Generated Image: ${out.url}]\n`;
+          }
+        }
+
+        result.push({
+          type: 'codeExecutionResult',
+          outcome: call.status === 'failed' ? 'OUTCOME_FAILED' : 'OUTCOME_OK',
+          output: output.trimEnd(),
+        });
+      }
+    }
   }
 
   for (const part of responseMessage

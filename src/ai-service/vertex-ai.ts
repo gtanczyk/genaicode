@@ -17,6 +17,7 @@ export const generateContent: GenerateContentFunction = async function generateC
       functionCall?: boolean;
       media?: boolean;
       webSearch?: boolean;
+      codeExecution?: boolean;
     };
   },
   options: {
