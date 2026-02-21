@@ -24,6 +24,7 @@ import {
   FunctionCall,
   FunctionDef,
   ModelType,
+  GenerateContentArgs,
 } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 
@@ -35,64 +36,17 @@ import { getServiceConfig, getModelSettings } from './service-configurations.js'
  * This function generates content using the Google AI Studio models with the new interface.
  */
 export const generateContent: GenerateContentFunction = async function generateContent(
-  prompt: PromptItem[],
-  config: {
-    modelType?: ModelType;
-    temperature?: number;
-    functionDefs?: FunctionDef[];
-    requiredFunctionName?: string | null;
-    expectedResponseType?: {
-      text?: boolean;
-      functionCall?: boolean;
-      media?: boolean;
-      webSearch?: boolean;
-      codeExecution?: boolean;
-    };
-    fileIds?: string[];
-    uploadedFiles?: Array<{
-      fileId: string;
-      filename: string;
-      originalPath: string;
-    }>;
-  },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
+  ...args: GenerateContentArgs
 ): Promise<GenerateContentResult> {
+  const [prompt, config, options = {}] = args;
   return internalGoogleGenerateContent('ai-studio', prompt, config, options);
 };
 
 export async function internalGoogleGenerateContent(
   serviceType: 'ai-studio' | 'vertex-ai',
   prompt: PromptItem[],
-  config: {
-    modelType?: ModelType;
-    temperature?: number;
-    functionDefs?: FunctionDef[];
-    requiredFunctionName?: string | null;
-    expectedResponseType?: {
-      text?: boolean;
-      functionCall?: boolean;
-      media?: boolean;
-      webSearch?: boolean;
-      codeExecution?: boolean;
-    };
-    fileIds?: string[];
-    uploadedFiles?: Array<{
-      fileId: string;
-      filename: string;
-      originalPath: string;
-    }>;
-  },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
+  config: GenerateContentArgs[1],
+  options: GenerateContentArgs[2] = {},
 ): Promise<GenerateContentResult> {
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;

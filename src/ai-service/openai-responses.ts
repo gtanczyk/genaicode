@@ -77,6 +77,7 @@ export async function internalGenerateContentResponses(
     functionCall: true,
     media: false,
     webSearch: false,
+    codeExecution: false,
   };
 
   const messages: Array<ResponseInputItem> = prompt
@@ -204,6 +205,21 @@ export async function internalGenerateContentResponses(
     tools.push({ type: 'web_search' });
   }
 
+  if (expectedResponseType.codeExecution) {
+    const codeInterpreterTool: any = {
+      type: 'code_interpreter',
+    };
+
+    if (config.fileIds && config.fileIds.length > 0) {
+      codeInterpreterTool.container = {
+        type: 'auto',
+        file_ids: config.fileIds,
+      };
+    }
+
+    tools.push(codeInterpreterTool);
+  }
+
   // For now, image generation will be a tool that can be called.
   // The actual image generation logic will be handled by a separate service/function.
   if (expectedResponseType.media) {
@@ -311,6 +327,50 @@ export async function internalGenerateContentResponses(
           };
         }),
     );
+  }
+
+  // Handle code execution results
+  if (expectedResponseType.codeExecution) {
+    const codeInterpreterCalls = responseMessage.filter((msg) => msg.type === 'code_interpreter_call');
+
+    for (const call of codeInterpreterCalls) {
+      const inputCode = (call as any).code_interpreter.input;
+      if (inputCode) {
+        result.push({
+          type: 'executableCode',
+          code: inputCode,
+          language: 'python', // Default for code interpreter
+        });
+      }
+
+      const outputs = (call as any).code_interpreter.outputs || [];
+      let logs = '';
+      const outputFiles: Array<{ fileId: string; filename: string; size: number; mimeType: string }> = [];
+
+      for (const output of outputs) {
+        if (output.type === 'logs') {
+          logs += output.logs + '\n';
+        } else if (output.type === 'image') {
+          const fileId = output.image.file_id;
+          outputFiles.push({
+            fileId: fileId,
+            filename: `generated_${fileId}.png`,
+            size: 0, // Unknown size
+            mimeType: 'image/png',
+          });
+          logs += `[Generated Image: ${fileId}]\n`;
+        }
+      }
+
+      if (logs || outputFiles.length > 0) {
+        result.push({
+          type: 'codeExecutionResult',
+          outcome: 'OUTCOME_OK',
+          output: logs,
+          outputFiles: outputFiles.length > 0 ? outputFiles : undefined,
+        });
+      }
+    }
   }
 
   for (const part of responseMessage

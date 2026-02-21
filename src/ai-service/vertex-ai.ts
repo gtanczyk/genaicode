@@ -1,4 +1,4 @@
-import { GenerateContentFunction, GenerateContentResult, ModelType, PromptItem, FunctionDef } from './common-types.js';
+import { GenerateContentFunction, GenerateContentResult, GenerateContentArgs } from './common-types.js';
 import { internalGoogleGenerateContent } from './ai-studio.js';
 
 /**
@@ -6,26 +6,9 @@ import { internalGoogleGenerateContent } from './ai-studio.js';
  * It now delegates to a shared implementation in ai-studio.ts.
  */
 export const generateContent: GenerateContentFunction = async function generateContent(
-  prompt: PromptItem[],
-  config: {
-    modelType?: ModelType;
-    temperature?: number;
-    functionDefs?: FunctionDef[];
-    requiredFunctionName?: string | null;
-    expectedResponseType?: {
-      text?: boolean;
-      functionCall?: boolean;
-      media?: boolean;
-      webSearch?: boolean;
-    };
-  },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
+  ...args: GenerateContentArgs
 ): Promise<GenerateContentResult> {
+  const [prompt, config, options = {}] = args;
   try {
     return await internalGoogleGenerateContent('vertex-ai', prompt, config, options);
   } catch (error) {

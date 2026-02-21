@@ -1,8 +1,7 @@
 import assert from 'node:assert';
 import Anthropic from '@anthropic-ai/sdk';
 import { optimizeFunctionDefs, printTokenUsageAndCost } from './common.js';
-import { GenerateContentFunction, GenerateContentResult, PromptItem } from './common-types.js';
-import { FunctionDef } from './common-types.js';
+import { GenerateContentFunction, GenerateContentResult, GenerateContentArgs } from './common-types.js';
 import { ModelType } from './common-types.js';
 import { abortController } from '../main/common/abort-controller.js';
 import { putSystemMessage } from '../main/common/content-bus.js';
@@ -14,33 +13,9 @@ import { BetaBashCodeExecutionResultBlock, BetaServerToolUseBlock } from '@anthr
  * This function generates content using the Anthropic Claude model.
  */
 export const generateContent: GenerateContentFunction = async function generateContent(
-  prompt: PromptItem[],
-  config: {
-    modelType?: ModelType;
-    temperature?: number;
-    functionDefs?: FunctionDef[];
-    requiredFunctionName?: string | null;
-    expectedResponseType?: {
-      text?: boolean;
-      functionCall?: boolean;
-      media?: boolean;
-      webSearch?: boolean;
-      codeExecution?: boolean;
-    };
-    fileIds?: string[];
-    uploadedFiles?: Array<{
-      fileId: string;
-      filename: string;
-      originalPath: string;
-    }>;
-  },
-  options: {
-    geminiBlockNone?: boolean;
-    disableCache?: boolean;
-    aiService?: string;
-    askQuestion?: boolean;
-  } = {},
+  ...args: GenerateContentArgs
 ): Promise<GenerateContentResult> {
+  const [prompt, config, options = {}] = args;
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;
   let functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
@@ -54,7 +29,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     let betaHeaders = 'max-tokens-3-5-sonnet-2024-07-15' + (!options.disableCache ? ',prompt-caching-2024-07-31' : '');
 
     if (expectedResponseType.codeExecution) {
-      betaHeaders += ',code-execution-2025-08-25';
+      betaHeaders += ',code-execution-2025-08-25,files-api-2025-04-14';
     }
 
     const anthropic = new Anthropic({
@@ -101,13 +76,14 @@ export const generateContent: GenerateContentFunction = async function generateC
     let cacheControlCount = prompt.filter((item) => item.cache).length;
     const messages: Anthropic.MessageParam[] = prompt
       .filter((item) => item.type !== 'systemPrompt')
-      .map((item) => {
+      .map((item, index, filteredPrompt) => {
         if (item.type === 'user') {
           const content: Array<
             | Anthropic.TextBlockParam
             | Anthropic.ImageBlockParam
             | Anthropic.ToolUseBlockParam
             | Anthropic.ToolResultBlockParam
+            | { type: 'container_upload'; file_id: string }
           > = [];
           if (item.functionResponses) {
             content.push(
@@ -145,13 +121,29 @@ export const generateContent: GenerateContentFunction = async function generateC
             });
           }
 
+          // Attach files to the last user message if code execution is enabled
+          if (
+            expectedResponseType.codeExecution &&
+            config.fileIds &&
+            config.fileIds.length > 0 &&
+            index === filteredPrompt.length - 1
+          ) {
+            config.fileIds.forEach((fileId) => {
+              content.push({
+                type: 'container_upload',
+                file_id: fileId,
+              });
+            });
+          }
+
           const shouldAddCache = item.cache && !options.disableCache && cacheControlCount-- < 4;
           if (shouldAddCache) {
+            // @ts-expect-error - cache_control might not be on all block types in strict mode
             content.slice(-1)[0].cache_control = { type: 'ephemeral' as const };
           }
           const message: Anthropic.MessageParam = {
             role: 'user',
-            content,
+            content: content as Anthropic.MessageParam['content'],
           };
           return message;
         } else {

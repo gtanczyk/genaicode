@@ -11,6 +11,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-161] 2025-11-12: Fix TypeScript build errors in AI services - Fixed unused imports in Anthropic service and type compatibility issues in OpenAI Responses service regarding `code_interpreter` tool and tool calls.
+- [x] [GEN-160] 2025-11-12: Fix AI Service Code Execution & File Attachments - Added support for `code_interpreter` with file attachments in OpenAI Responses API, `container_upload` in Anthropic, and `file_ids` in OpenAI Chat Completions. Fixed Grok plugin service type.
 - [x] [GEN-159] 2025-05-06: Refactor handleCodeExecution to follow webSearch pattern - Use dedicated codeExecution function def to infer filePaths, objective, and desiredResult from context. Remove all user interactions (askUserForInput, askUserForConfirmation, putAssistantMessage). Push function call + response to prompt directly. Return empty items array. System messages only for status reporting.
 - [x] [GEN-157] 2025-11-12 (Updated 2025-01-31): Implement `codeExecution` action type with file I/O support - Enabled AI-driven code execution with file uploads/downloads across OpenAI, Anthropic, and Gemini. Implemented `FilesApiProvider` abstraction, enhanced `handleCodeExecution` for file lifecycle management, and updated UI to display code blocks and execution results with generated file downloads.
 - [x] [GEN-158] 2025-01-31: Refactor handleCodeExecution to infer file paths from conversation context instead of prompting user - Removed promptForFileSelection and replaced with AI-inferred file paths using generateRequestFilesContentCall, getExpandedContextPaths, and categorizeLegitimateFiles.
@@ -32,7 +34,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 - [x] [GEN-141] 2025-09-21: Action Selector
 - [x] [GEN-140] 2025-09-16: Project commands
 - [x] [GEN-139] 2025-09-16: Project commands
-- [-] [GEN-138] 2025-09-07: Refactor Google GenAI services: share internal implementation in ai-studio.ts and delegate vertex-ai.ts to it.
+- [x] [GEN-138] 2025-09-07: Refactor Google GenAI services: share internal implementation in ai-studio.ts and delegate vertex-ai.ts to it.
 - [x] [GEN-135] 2024-08-08: Enhanced AI service selection - Improved error message to display available AI services and their required environment variables.
 - [x] [GEN-136] 2024-08-08: UI as default interaction model - Always prompt for .genaicoderc creation in interactive TTY sessions if the file is missing.
 - [-] [GEN-134] 2025-08-08: Implement code changes summary for `copyFromContainer` command, ensuring it handles both files and directories correctly using a tar-based approach for the final copy.

@@ -128,24 +128,6 @@ export async function internalGenerateContent(
             ],
           });
         } else if (item.text) {
-          // If this is the last user message and we have file attachments for code execution
-
-          // Attach files if provided in config and this is a user message context where we want to attach them
-          // OpenAI Assistants API uses attachments, but Chat Completions API uses tool_resources or similar for code_interpreter
-          // However, for standard Chat Completions with 'code_interpreter' tool (if supported), we might need to pass file_ids in a specific way.
-          // Note: Standard Chat Completions API (v1/chat/completions) doesn't fully support 'attachments' field in the same way as Assistants API.
-          // But some models/providers might. If using 'code_interpreter' tool in Chat Completions, we usually need to rely on the tool definition or specific vendor extensions.
-          // For now, assuming standard OpenAI Chat Completions doesn't support file_ids directly in messages unless using specific beta features or Assistants API.
-          // BUT, if we are using 'gpt-4o' with 'tools' including 'code_interpreter', we might be able to pass file_ids in the tool_resources or similar?
-          // Actually, OpenAI Chat Completions doesn't support code interpreter with file uploads natively in the same way Assistants API does yet.
-          // However, we can simulate it or if using a compatible endpoint (like Azure or specific model versions).
-          // Let's assume for this implementation we try to pass it if the type definition allows or via a known workaround/beta field if applicable.
-          // Since the types don't show 'attachments' on ChatCompletionUserMessageParam in standard library yet, we might need to cast or it's not supported.
-
-          // Re-reading the prompt: "if config.fileIds is present ... add attachments to the user message if supported"
-          // Let's try to add it as a property if we can, or skip if not supported by types.
-          // For now, we will just stick to standard message.
-
           messages.push({
             role: 'user' as const,
             content: item.text,
@@ -233,12 +215,18 @@ export async function internalGenerateContent(
 
   if (expectedResponseType.codeExecution) {
     const codeToolType = serviceType === 'openai' ? 'code_interpreter' : 'code_execution';
-    tools = [
-      ...(tools ?? []),
-      {
-        type: codeToolType,
-      } as unknown as ChatCompletionTool,
-    ];
+    const codeTool: ChatCompletionTool = {
+      type: codeToolType,
+    } as unknown as ChatCompletionTool;
+
+    if (serviceType === 'openai' && config.fileIds && config.fileIds.length > 0) {
+      // @ts-expect-error - code_interpreter property is not yet in the official types but supported by API
+      codeTool.code_interpreter = {
+        file_ids: config.fileIds,
+      };
+    }
+
+    tools = [...(tools ?? []), codeTool];
     // If code execution is requested, we should allow tool use
     if (toolChoice === 'none') {
       toolChoice = undefined;
