@@ -7,6 +7,7 @@ import { CodegenOptions, CodegenSummaryArgs } from '../../main/codegen-types.js'
 import { getSourceCode } from '../../files/read-files.js';
 import fs from 'fs';
 import * as diff from 'diff';
+import { setCurrentIterationId } from '../../main/common/content-bus.js';
 
 // Mock dependencies
 vi.mock('../../files/find-files.js', () => ({
@@ -35,6 +36,7 @@ vi.mock('../../main/config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 describe('processFileUpdates', () => {
@@ -92,6 +94,7 @@ describe('processFileUpdates', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setCurrentIterationId();
     mockWaitIfPaused.mockResolvedValue(undefined);
     vi.mocked(getSourceCode).mockReturnValue({});
     vi.mocked(fs.readFileSync).mockReturnValue('original content');

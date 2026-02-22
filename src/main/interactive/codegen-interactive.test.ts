@@ -16,7 +16,7 @@ import { runInteractiveMode } from './codegen-interactive.js';
 vi.mock('../../cli/cli-params.js', () => ({
   disableExplanations: true,
 }));
-vi.mock('../config.js', () => ({ rcConfig: {}, sourceExtensions: [] }));
+vi.mock('../config.js', () => ({ rcConfig: {}, sourceExtensions: [], modelOverrides: {} }));
 vi.mock('./common');
 vi.mock('../../files/cache-file.js');
 vi.mock('../../files/find-files.js', () => ({}));

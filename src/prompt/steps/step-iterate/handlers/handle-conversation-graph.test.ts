@@ -84,6 +84,7 @@ describe('handleConversationGraph', () => {
   let initialPrompt: PromptItem[];
 
   beforeEach(() => {
+    contentBus.setCurrentIterationId();
     vi.clearAllMocks();
     initialPrompt = [{ type: 'user', text: 'Initial user prompt' }];
     props = {

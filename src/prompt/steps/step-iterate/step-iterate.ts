@@ -29,7 +29,6 @@ import './handlers/handle-pull-app-context.js';
 import './handlers/handle-pull-console-logs.js';
 import './handlers/handle-push-app-context.js';
 import './handlers/handle-read-external-files.js';
-import './handlers/handle-reasoning-inference.js';
 import './handlers/handle-remove-files-from-context.js';
 import './handlers/handle-request-files-content.js';
 import './handlers/handle-request-files-fragments.js';

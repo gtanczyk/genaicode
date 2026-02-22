@@ -63,7 +63,7 @@ describe('extractTarStreamToDirectory', () => {
     const validator = (filePath: string) => filePath.startsWith(destPath);
 
     await expect(extractTarStreamToDirectory(tarStream, destPath, validator)).rejects.toThrow(
-      'Refusing to write outside project root: /malicious.txt',
+      /Refusing to write outside project root/,
     );
 
     // Verify the malicious file was not created

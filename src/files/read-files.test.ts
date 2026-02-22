@@ -29,6 +29,7 @@ vi.mock('../main/config.js', () => ({
   rcConfig: { rootDir: '/home/project' },
   importantContext: {},
   rcConfigSchemaFilePath: '/path/to/rcConfigSchema.json',
+  modelOverrides: {},
 }));
 
 describe('read-files', () => {

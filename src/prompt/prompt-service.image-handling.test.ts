@@ -16,6 +16,7 @@ import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
 import { ModelType } from '../ai-service/common-types.js';
 import { mockData, mockResponses, testConfigs } from './prompt-service.test-utils.js';
+import { setCurrentIterationId } from '../main/common/content-bus.js';
 
 // Mock all external dependencies
 vi.mock('../ai-service/vertex-ai.js', () => ({ generateContent: vi.fn() }));
@@ -57,6 +58,7 @@ vi.mock('../main/config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 const GENERATE_CONTENT_FNS: Record<AiServiceType, GenerateContentFunction> = {
@@ -75,6 +77,7 @@ const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
 
 describe('promptService - Image Handling', () => {
   beforeEach(() => {
+    setCurrentIterationId();
     vi.resetAllMocks();
     vi.mocked(cliParams).dryRun = false;
     vi.mocked(cliParams).vision = false;

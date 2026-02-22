@@ -34,6 +34,7 @@ vi.mock('../../main/config.js', () => ({
   },
   importantContext: { files: [] }, // Initialize with empty important files
   sourceExtensions: ['.ts'],
+  modelOverrides: {},
 }));
 
 const FILE_ID = 1 as FileId;

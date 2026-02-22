@@ -19,6 +19,7 @@ vi.mock('../../main/config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
 }));
 
 describe('generateCodegenSummary', () => {

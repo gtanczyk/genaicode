@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeStepEnsureContext } from './step-ensure-context';
 import { getSourceCode } from '../../files/read-files';
-import { putSystemMessage } from '../../main/common/content-bus';
+import { putSystemMessage, setCurrentIterationId } from '../../main/common/content-bus';
 import { StepResult } from './steps-types';
 import { CodegenOptions } from '../../main/codegen-types';
 import '../../files/find-files.js';
@@ -27,6 +27,7 @@ vi.mock('../../main/config.js', () => ({
   importantContext: {
     files: ['/test/important.ts'],
   },
+  modelOverrides: {},
 }));
 
 const FILE_ID = 1 as FileId;
@@ -40,6 +41,7 @@ describe('executeStepEnsureContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     importantContext.files = ['/test/important.ts'];
+    setCurrentIterationId();
   });
 
   describe('Path extraction from codegenSummary', () => {

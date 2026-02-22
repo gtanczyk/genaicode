@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleRequestSecret, registerSecret, sanitizePrompt } from './request-secret.js';
 import { askUserForSecret } from '../../../../../../main/common/user-actions.js';
 import { executeCommand } from '../utils/docker-utils.js';
-import { putContainerLog } from '../../../../../../main/common/content-bus.js';
+import { putContainerLog, setCurrentIterationId } from '../../../../../../main/common/content-bus.js';
 import { CommandHandlerBaseProps } from '../container-commands-types.js';
 import { PromptItem } from '../../../../../../ai-service/common-types.js';
 import Dockerode from 'dockerode';
@@ -19,6 +19,7 @@ vi.mock('../../../../../../main/common/content-bus.js', () => ({
   putContainerLog: vi.fn(),
   putSystemMessage: vi.fn(),
   putAssistantMessage: vi.fn(),
+  setCurrentIterationId: vi.fn(),
 }));
 
 describe('sanitizePrompt', () => {
@@ -46,6 +47,7 @@ describe('handleRequestSecret', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setCurrentIterationId();
     taskExecutionPrompt = [];
     props = {
       generateContentFn: vi.fn(),

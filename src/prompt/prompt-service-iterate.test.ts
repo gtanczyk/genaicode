@@ -54,6 +54,8 @@ vi.mock('../main/config.js', () => ({
     extensions: ['.js', '.ts', '.tsx', '.jsx'],
   },
   importantContext: {},
+  modelOverrides: {},
+  sourceExtensions: [],
 }));
 
 vi.mock('../main/common/cost-collector.js', () => ({

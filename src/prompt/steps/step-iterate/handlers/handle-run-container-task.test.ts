@@ -11,6 +11,7 @@ vi.mock('../../../../main/common/content-bus.js', () => ({
   putSystemMessage: vi.fn(),
   putAssistantMessage: vi.fn(),
   putContainerLog: vi.fn(),
+  setCurrentIterationId: vi.fn(),
 }));
 
 vi.mock('./container-task/utils/docker-utils.js');
@@ -18,6 +19,11 @@ vi.mock('../../../../main/common/user-actions.js');
 
 vi.mock('../../../../prompt/function-calling.js', () => ({
   getFunctionDefs: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../../../../main/config.js', () => ({
+  rcConfig: { rootDir: '/test' },
+  modelOverrides: {},
 }));
 
 const mockPullImage = vi.mocked(dockerUtils.pullImage);

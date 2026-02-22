@@ -1,4 +1,5 @@
-import { vi, describe, it, expect, Mock, afterEach } from 'vitest';
+import { vi, describe, it, expect, Mock, afterEach, beforeEach } from 'vitest';
+import { setCurrentIterationId } from '../main/common/content-bus';
 import { handleAiServiceFallback } from './ai-service-fallback';
 import {
   GenerateContentFunction,
@@ -18,6 +19,10 @@ vi.mock('./steps/step-validate-recover', () => ({
   validateAndRecoverSingleResult: vi.fn(),
 }));
 
+vi.mock('../main/config.js', () => ({
+  modelOverrides: {},
+}));
+
 describe('handleAiServiceFallback', () => {
   const mockGenerateContent: GenerateContentFunction = vi.fn();
   const mockOptions: CodegenOptions = {
@@ -30,6 +35,10 @@ describe('handleAiServiceFallback', () => {
   const mockPrompt: PromptItem[] = [];
   const mockConfig: GenerateContentArgs[1] = {};
   const mockInternalOptions: GenerateContentArgs[2] = {};
+
+  beforeEach(() => {
+    setCurrentIterationId();
+  });
 
   afterEach(() => {
     vi.resetAllMocks();
