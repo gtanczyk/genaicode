@@ -86,7 +86,7 @@ export async function processFileUpdates(
       }
     } catch (error) {
       // Re-throw assertion errors (e.g., from validation recovery failures)
-      if (error instanceof Error && error.constructor.name === 'AssertionError') {
+      if (error instanceof Error && error.name === 'AssertionError') {
         throw error;
       }
       putSystemMessage(`Unexpected error processing update for ${file.filePath}`, { error });
@@ -204,7 +204,7 @@ async function processFileUpdate(
     };
   } catch (error) {
     // Re-throw assertion errors (e.g., from validation recovery failures)
-    if (error instanceof Error && error.constructor.name === 'AssertionError') {
+    if (error instanceof Error && error.name === 'AssertionError') {
       throw error;
     }
     return {
