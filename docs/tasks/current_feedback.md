@@ -25,5 +25,3 @@
 - seek for rc in parent broken
 - anthropic bug
 - media resolution ai studio
-- remove reasoning inference
-- structured question not appearing (cfg -> SI)

@@ -36,8 +36,6 @@ export function printTokenUsageAndCost(costInfo: CostInfo): void {
     switch (modelType) {
       case ModelType.CHEAP:
         return 0.1;
-      case ModelType.REASONING:
-        return 2; // Reasoning models are very expensive
       default:
         return 1.0;
     }

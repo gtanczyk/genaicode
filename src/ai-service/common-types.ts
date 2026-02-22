@@ -5,8 +5,6 @@ export enum ModelType {
   CHEAP = 'cheap',
   /** Lite, even cheaper model for simple tasks like summarization */
   LITE = 'lite',
-  /** Specialized model for reasoning tasks */
-  REASONING = 'reasoning',
 }
 
 export interface TokenUsage {

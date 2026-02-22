@@ -240,21 +240,18 @@ export class Service implements AppContextProvider {
           },
         ],
         {
-          functionDefs:
-            modelType === ModelType.REASONING
-              ? []
-              : [
-                  {
-                    name: 'printMessage',
-                    description: 'Print a message',
-                    parameters: {
-                      type: 'object',
-                      properties: { message: { type: 'string' } },
-                      required: ['message'],
-                    },
-                  },
-                ],
-          requiredFunctionName: modelType === ModelType.REASONING ? 'reasoningInferenceResponse' : 'printMessage',
+          functionDefs: [
+            {
+              name: 'printMessage',
+              description: 'Print a message',
+              parameters: {
+                type: 'object',
+                properties: { message: { type: 'string' } },
+                required: ['message'],
+              },
+            },
+          ],
+          requiredFunctionName: 'printMessage',
           temperature,
           modelType,
           expectedResponseType: {

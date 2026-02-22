@@ -42,7 +42,6 @@ ${
 ${pluginDescriptions}
 - genaicodeHelp: Use to provide help to the user on how to use GenAIcode. The response will be grounded in the content of GenAIcode's documentation.
 - codeExecution: Use to execute code using the AI service's built-in code execution capabilities (if available). This is useful for performing calculations, data analysis, or running simple scripts to answer questions. This action triggers a sub-loop where the AI generates and runs code.
-- reasoningInference: Use to perform an inference on a reasoning model. Should be used when a in-depth reasoning is needed for a specific problem.
 ${rcConfig.featuresEnabled?.containerTask ? '- runContainerTask: Use to perform a complex task inside a Docker container. Before task is started, the user will be asked for confirmation. During the task, the user will be kept informed about the progress and any issues that arise. The user can also interrupt the task, and provide input if needed. User can be asked for feedback on the task at any time.' : ''}
 `;
 }
@@ -73,7 +72,6 @@ export function getActionTypeOptions(): readonly ActionType[] {
     ...(rcConfig.featuresEnabled?.containerTask ? (['runContainerTask'] as const) : []),
     ...Array.from(getRegisteredActionHandlers().keys()),
     'genaicodeHelp',
-    'reasoningInference',
     'conversationGraph',
     'compoundAction',
     'pullConsoleLogs',

@@ -61,9 +61,7 @@ const generateContent: GenerateContentFunction = async function generateContent(
     const model =
       modelType === ModelType.CHEAP
         ? (serviceConfig.modelOverrides?.cheap ?? 'deepseek-chat')
-        : modelType === ModelType.REASONING
-          ? 'deepseek-reasoner'
-          : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat');
+        : (serviceConfig.modelOverrides?.default ?? 'deepseek-chat');
 
     const toolCalls = (
       await internalGenerateContent(modifiedPrompt, config, model, openai, 'plugin:deepseek-ai-service')
@@ -119,7 +117,6 @@ const deepseekAiService: Plugin = {
         modelOverrides: {
           default: 'deepseek-chat',
           cheap: 'deepseek-chat',
-          reasoning: 'deepseek-reasoner',
         },
       },
     },

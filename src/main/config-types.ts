@@ -11,7 +11,6 @@ export interface ImportantContext {
  * Each service can have different model types:
  * - default: Standard model, typically most capable but expensive
  * - cheap: Cost-effective model with potentially lower quality
- * - reasoning: Specialized model for reasoning tasks
  * Specific settings like system instructions or token limits can be defined per model.
  */
 export interface ServiceModelConfig {
@@ -21,8 +20,6 @@ export interface ServiceModelConfig {
   lite?: string;
   /** Model ID for standard operations (default model) */
   default?: string;
-  /** Model ID for reasoning-specific tasks */
-  reasoning?: string;
   /** Specific settings for individual models within this service */
   modelSpecificSettings?: {
     [modelName: string]: ModelSpecificSettings;

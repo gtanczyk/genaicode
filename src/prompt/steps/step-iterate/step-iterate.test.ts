@@ -25,7 +25,6 @@ describe('step-iterate', () => {
       pullConsoleLogs: true,
       genaicodeHelp: true,
       pushAppContext: true,
-      reasoningInference: true,
       requestFilesFragments: true,
       conversationGraph: true,
       readExternalFiles: true,

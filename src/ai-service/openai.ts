@@ -35,8 +35,6 @@ export const generateContent: GenerateContentFunction = async function generateC
           return serviceConfig.modelOverrides?.cheap ?? 'gpt-5.2-chat-latest';
         case ModelType.LITE:
           return serviceConfig.modelOverrides?.lite ?? 'gpt-5.1-codex-mini';
-        case ModelType.REASONING:
-          return serviceConfig.modelOverrides?.reasoning ?? 'gpt-5.2-pro';
         default:
           return serviceConfig.modelOverrides?.default ?? 'gpt-5.2-codex';
       }
@@ -89,10 +87,7 @@ export async function internalGenerateContent(
         }
 
         return {
-          role:
-            modelType === ModelType.REASONING && serviceType === 'openai'
-              ? ('developer' as const)
-              : ('system' as const),
+          role: 'system' as const,
           content: systemPrompt,
         };
       } else if (item.type === 'user') {
@@ -234,9 +229,7 @@ export async function internalGenerateContent(
   }
 
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined = undefined;
-  if (modelType === ModelType.REASONING) {
-    reasoningEffort = 'high';
-  } else if (typeof thinkingEnabled === 'boolean') {
+  if (typeof thinkingEnabled === 'boolean') {
     reasoningEffort =
       typeof thinkingBudget === 'number'
         ? thinkingBudget <= 1024
@@ -256,8 +249,8 @@ export async function internalGenerateContent(
           messages,
           ...(tools ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
-          ...(modelType !== ModelType.REASONING && !temperatureUnsupported ? { temperature } : {}),
-          ...(outputTokenLimit && modelType !== ModelType.REASONING ? { max_tokens: outputTokenLimit } : {}),
+          ...(!temperatureUnsupported ? { temperature } : {}),
+          ...(outputTokenLimit ? { max_tokens: outputTokenLimit } : {}),
         },
         { signal: abortController?.signal },
       );
@@ -306,25 +299,6 @@ export async function internalGenerateContent(
   });
 
   const responseMessage = response.choices[0].message;
-
-  if (modelType === ModelType.REASONING) {
-    // Special handling for reasoning models if their response structure differs
-    // Assuming the reasoning result is packed into a specific function call format
-    return [
-      {
-        type: 'functionCall',
-        functionCall: {
-          id: 'reasoning_inference_response',
-          name: 'reasoningInferenceResponse',
-          args: {
-            // Adapt based on actual reasoning model output structure
-            ...('reasoning_content' in responseMessage ? { reasoning: responseMessage.reasoning_content } : {}),
-            response: responseMessage.content,
-          },
-        },
-      },
-    ];
-  }
 
   const result: GenerateContentResult = [];
 

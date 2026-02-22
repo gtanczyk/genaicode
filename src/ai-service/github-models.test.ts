@@ -49,15 +49,11 @@ describe('GitHub Models Service', () => {
         default: 'custom-gpt-4o',
         cheap: 'custom-gpt-4o-mini',
         lite: 'custom-gpt-4o-mini',
-        reasoning: 'custom-o1-mini',
       },
     };
     vi.mocked(serviceConfigurations.getServiceConfig).mockReturnValue(mockConfig);
 
     // Test that different model types don't throw errors during setup
     expect(() => generateContent([{ type: 'user', text: 'test' }], { modelType: ModelType.CHEAP }, {})).not.toThrow();
-    expect(() =>
-      generateContent([{ type: 'user', text: 'test' }], { modelType: ModelType.REASONING }, {}),
-    ).not.toThrow();
   });
 });

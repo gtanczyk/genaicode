@@ -104,9 +104,6 @@ ${dockerTaskEnabled ? '- `runContainerTask`: Execute complex or potentially dest
 
 **Advanced Analysis**
 - \`performAnalysis\`: Internal computation or structured analysis returning specific findings.
-- \`reasoningInference\`: Use a reasoning-capable model.
-  - Step 1: Tell the user you will run deeper reasoning.
-  - Step 2: Call \`reasoningInference\` with a detailed, self-contained prompt (problem, context, constraints, assumptions, relevant code).
 - \`generateImage\`: Request image generation (only if allowed).
 
 **Context Management**

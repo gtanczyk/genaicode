@@ -16,7 +16,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.aiStudio?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.aiStudio?.cheap ?? 'gemini-2.5-flash',
       lite: modelOverrides.aiStudio?.lite ?? 'gemini-2.5-flash-lite',
-      reasoning: modelOverrides.aiStudio?.reasoning ?? 'gemini-2.5-pro',
       modelSpecificSettings: Object.assign({}, modelOverrides.aiStudio?.modelSpecificSettings ?? {}, {
         'gemini-2.5-flash-lite': {
           thinkingBudget: 24576,
@@ -31,7 +30,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.anthropic?.default ?? 'claude-sonnet-4-6',
       cheap: modelOverrides.anthropic?.cheap ?? 'claude-haiku-4-5-20251001',
       lite: modelOverrides.anthropic?.lite ?? 'claude-haiku-4-5-20251001',
-      reasoning: modelOverrides.anthropic?.reasoning ?? 'claude-sonnet-4-6',
       modelSpecificSettings: modelOverrides.anthropic?.modelSpecificSettings ?? {},
     },
   },
@@ -42,7 +40,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.openai?.default ?? 'gpt-5.2-codex',
       cheap: modelOverrides.openai?.cheap ?? 'gpt-5.2-chat-latest',
       lite: modelOverrides.openai?.lite ?? 'gpt-5.1-codex-mini',
-      reasoning: modelOverrides.openai?.reasoning ?? 'gpt-5.2-pro',
       modelSpecificSettings: modelOverrides.openai?.modelSpecificSettings ?? {
         'gpt-5.2-pro': {
           temperatureUnsupported: true,
@@ -65,7 +62,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.githubModels?.default ?? 'gpt-5.2-codex',
       cheap: modelOverrides.githubModels?.cheap ?? 'gpt-5.2-chat-latest',
       lite: modelOverrides.githubModels?.lite ?? 'gpt-5.1-codex-mini',
-      reasoning: modelOverrides.githubModels?.reasoning ?? 'gpt-5.2-pro',
       modelSpecificSettings: modelOverrides.githubModels?.modelSpecificSettings ?? {
         'gpt-5.2-codex': {
           temperatureUnsupported: true,
@@ -89,7 +85,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.localLlm?.default ?? 'gemma3:12b',
       cheap: modelOverrides.localLlm?.cheap ?? 'gemma3:12b',
       lite: modelOverrides.localLlm?.lite ?? 'gemma3:12b',
-      reasoning: modelOverrides.localLlm?.reasoning ?? 'gemma3:12b',
       modelSpecificSettings: modelOverrides.localLlm?.modelSpecificSettings ?? {},
     },
   },
@@ -100,7 +95,6 @@ const configurations: ServiceConfigurations = {
       default: modelOverrides.vertexAi?.default ?? 'gemini-2.5-pro',
       cheap: modelOverrides.vertexAi?.cheap ?? 'gemini-2.5-flash',
       lite: modelOverrides.vertexAi?.lite ?? 'gemini-2.5-flash-lite',
-      reasoning: modelOverrides.vertexAi?.reasoning ?? 'gemini-2.5-pro',
       modelSpecificSettings: modelOverrides.vertexAi?.modelSpecificSettings ?? {},
     },
   },
@@ -264,7 +258,6 @@ function sanitizeServiceConfig<T extends AiServiceType>(
       default: config.modelOverrides?.default,
       cheap: config.modelOverrides?.cheap,
       lite: config.modelOverrides?.lite,
-      reasoning: config.modelOverrides?.reasoning,
       // Indicate if any model-specific settings exist, but don't expose them
       hasModelSpecificSettings,
     },

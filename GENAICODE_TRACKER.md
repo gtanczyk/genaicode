@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-162] 2025-11-12: Remove reasoningInference action type and reasoning model setting - Removed unused reasoningInference action and the REASONING model type from the codebase, including updates to AI service configurations and type definitions.
 - [x] [GEN-161] 2025-11-12: Fix TypeScript build errors in AI services - Fixed unused imports in Anthropic service and type compatibility issues in OpenAI Responses service regarding `code_interpreter` tool and tool calls.
 - [x] [GEN-160] 2025-11-12: Fix AI Service Code Execution & File Attachments - Added support for `code_interpreter` with file attachments in OpenAI Responses API, `container_upload` in Anthropic, and `file_ids` in OpenAI Chat Completions. Fixed Grok plugin service type.
 - [x] [GEN-159] 2025-05-06: Refactor handleCodeExecution to follow webSearch pattern - Use dedicated codeExecution function def to infer filePaths, objective, and desiredResult from context. Remove all user interactions (askUserForInput, askUserForConfirmation, putAssistantMessage). Push function call + response to prompt directly. Return empty items array. System messages only for status reporting.

@@ -28,7 +28,6 @@ export type ActionType =
   | 'pullConsoleLogs'
   | 'genaicodeHelp'
   | 'pushAppContext'
-  | 'reasoningInference'
   | 'requestFilesFragments'
   | 'requestGitContext'
   | 'conversationGraph'
@@ -107,7 +106,7 @@ export type RequestFilesContentArgs = {
 export type RequestFilesFragmentsArgs = {
   /** Array of file paths to extract fragments from */
   filePaths: string[];
-  /** Prompt describing what information should be extracted from the files */
+  /** Prompt describing what information should be extracted from the extracted files */
   fragmentPrompt: string;
 };
 
@@ -164,26 +163,6 @@ export type SearchCodeArgs = {
   maxResults?: number;
   /** Number of context lines to include around content matches */
   contextLines?: number;
-};
-
-/**
- * Arguments for the reasoningInference action
- */
-export type ReasoningInferenceArgs = {
-  /** The prompt to send to the reasoning model */
-  prompt: string;
-  /** The context paths to provide to the reasoning model */
-  contextPaths: string[];
-};
-
-/**
- * Results from the reasoning model
- */
-export type ReasoningInferenceResponseArgs = {
-  /** The generated response text */
-  response: string;
-  /** The reasoning tokens provided by the model */
-  reasoning: string;
 };
 
 export type RequestGitContextArgs = {
@@ -246,7 +225,6 @@ export type CodeExecutionArgs = {
 export type IterateCall = FunctionCall<IterateArgs>;
 export type PerformAnalysisCall = FunctionCall<PerformAnalysisArgs>;
 export type AnalysisResultCall = FunctionCall<AnalysisResultArgs>;
-export type ReasoningInferenceCall = FunctionCall<ReasoningInferenceArgs>;
 
 export interface AssistantItem {
   type: 'assistant';

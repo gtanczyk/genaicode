@@ -18,8 +18,8 @@ export const generateContent: GenerateContentFunction = async function generateC
   const [prompt, config, options = {}] = args;
   const modelType = config.modelType ?? ModelType.DEFAULT;
   const temperature = config.temperature ?? 0.7;
-  let functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
-  let requiredFunctionName = config.requiredFunctionName ?? null;
+  const functionDefs = optimizeFunctionDefs(prompt, config.functionDefs, config.requiredFunctionName ?? undefined);
+  const requiredFunctionName = config.requiredFunctionName ?? null;
   const expectedResponseType = config.expectedResponseType ?? { text: false, functionCall: true, media: false };
 
   try {
@@ -51,9 +51,7 @@ export const generateContent: GenerateContentFunction = async function generateC
         ? (modelOverrides?.cheap ?? defaultModel)
         : modelType === ModelType.LITE
           ? (modelOverrides?.lite ?? defaultModel)
-          : modelType === ModelType.REASONING
-            ? (modelOverrides?.reasoning ?? defaultModel)
-            : (modelOverrides?.default ?? defaultModel);
+          : (modelOverrides?.default ?? defaultModel);
 
     // Get model-specific settings
     const {
@@ -66,11 +64,6 @@ export const generateContent: GenerateContentFunction = async function generateC
     // Combine base system prompt with model-specific instructions if available
     if (modelSystemInstruction?.length) {
       baseSystemPrompt += `\n${modelSystemInstruction.join('\n')}`;
-    }
-
-    if (modelType === ModelType.REASONING) {
-      functionDefs = [];
-      requiredFunctionName = null;
     }
 
     let cacheControlCount = prompt.filter((item) => item.cache).length;
@@ -206,7 +199,7 @@ export const generateContent: GenerateContentFunction = async function generateC
     let response;
 
     // Set max_tokens based on model-specific setting or defaults
-    const maxTokens = outputTokenLimit ?? (modelType === ModelType.REASONING ? 8192 * 2 : 8192);
+    const maxTokens = outputTokenLimit ?? 8192;
 
     let tools: Anthropic.Messages.ToolUnion[] | undefined = undefined;
     if (expectedResponseType.functionCall !== false) {
@@ -247,28 +240,20 @@ export const generateContent: GenerateContentFunction = async function generateC
             system: baseSystemPrompt,
             messages: messages,
             tools: tools,
-            tool_choice:
-              requiredFunctionName && modelType !== ModelType.REASONING
-                ? { type: 'tool' as const, name: requiredFunctionName }
-                : functionDefs.length > 0 &&
-                    modelType !== ModelType.REASONING &&
-                    expectedResponseType.functionCall !== false
-                  ? { type: 'any' as const }
-                  : undefined,
+            tool_choice: requiredFunctionName
+              ? { type: 'tool' as const, name: requiredFunctionName }
+              : functionDefs.length > 0 && expectedResponseType.functionCall !== false
+                ? { type: 'any' as const }
+                : undefined,
             max_tokens: maxTokens,
-            temperature: modelType !== ModelType.REASONING ? temperature : 1,
+            temperature: temperature,
             thinking:
               thinkingEnabled && thinkingBudget
                 ? {
                     type: 'enabled',
                     budget_tokens: thinkingBudget,
                   }
-                : modelType === ModelType.REASONING
-                  ? {
-                      type: 'enabled',
-                      budget_tokens: 8192,
-                    }
-                  : undefined,
+                : undefined,
           },
           {
             signal: abortController?.signal,
@@ -340,25 +325,6 @@ export const generateContent: GenerateContentFunction = async function generateC
     });
 
     const responseMessages = response!.content.filter((item) => item.type !== 'tool_use');
-
-    if (modelType === ModelType.REASONING) {
-      const thinking = responseMessages.find((item) => item.type === 'thinking')?.thinking;
-      const responseMessage = responseMessages.find((item) => item.type === 'text')?.text;
-
-      return [
-        {
-          type: 'functionCall',
-          functionCall: {
-            id: 'reasoning_inference_response',
-            name: 'reasoningInferenceResponse',
-            args: {
-              ...(thinking ? { reasoning: thinking } : {}),
-              response: responseMessage,
-            },
-          },
-        },
-      ];
-    }
 
     const result: GenerateContentResult = [];
 

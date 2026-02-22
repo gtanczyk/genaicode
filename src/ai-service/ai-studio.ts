@@ -283,38 +283,6 @@ export async function internalGoogleGenerateContent(
     });
   }
 
-  // Handle reasoning model special case
-  if (modelType === ModelType.REASONING) {
-    // Add the reasoning text if available
-    if (result.candidates[0].content?.parts?.length === 2) {
-      resultParts.push({
-        type: 'text',
-        text: result.candidates[0].content?.parts.slice(-2)[0].text ?? '',
-      });
-    }
-
-    // Add the response text
-    resultParts.push({
-      type: 'text',
-      text: result.candidates[0].content?.parts?.slice(-1)[0].text ?? '',
-    });
-
-    // Add the special function call for reasoning inference response
-    resultParts.push({
-      type: 'functionCall',
-      functionCall: {
-        name: 'reasoningInferenceResponse',
-        args: {
-          reasoning:
-            result.candidates[0].content?.parts?.length === 2
-              ? result.candidates[0].content?.parts.slice(-2)[0].text
-              : undefined,
-          response: result.candidates[0].content?.parts?.slice(-1)[0].text,
-        },
-      },
-    });
-  }
-
   // Handle text response if no function calls were returned
   if (functionCalls.length === 0 && expectedResponseType.text !== true && expectedResponseType.functionCall === true) {
     const textResponse =
@@ -464,8 +432,6 @@ function internalGoogleModelsCall(
         return serviceConfig.modelOverrides?.cheap ?? 'gemini-2.5-flash';
       case ModelType.LITE:
         return serviceConfig.modelOverrides?.lite ?? 'gemini-2.5-flash-lite';
-      case ModelType.REASONING:
-        return serviceConfig.modelOverrides?.reasoning ?? 'gemini-2.5-pro';
       default:
         return serviceConfig.modelOverrides?.default ?? 'gemini-2.5-pro';
     }

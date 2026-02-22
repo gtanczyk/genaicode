@@ -35,8 +35,6 @@ export const generateContentResponses: GenerateContentFunction = async function 
           return serviceConfig.modelOverrides?.cheap ?? 'gpt-5.2-chat-latest';
         case ModelType.LITE:
           return serviceConfig.modelOverrides?.lite ?? 'gpt-5.1-codex-mini';
-        case ModelType.REASONING:
-          return serviceConfig.modelOverrides?.reasoning ?? 'gpt-5.2-pro';
         default:
           return serviceConfig.modelOverrides?.default ?? 'gpt-5.2-codex';
       }
@@ -91,10 +89,7 @@ export async function internalGenerateContentResponses(
         }
 
         return {
-          role:
-            modelType === ModelType.REASONING && serviceType === 'openai'
-              ? ('developer' as const)
-              : ('system' as const),
+          role: 'system' as const,
           content: systemPrompt,
         };
       } else if (item.type === 'user') {
@@ -224,11 +219,7 @@ export async function internalGenerateContentResponses(
   }
 
   let reasoning: Reasoning | undefined = undefined;
-  if (modelType === ModelType.REASONING) {
-    reasoning = {
-      effort: 'high',
-    };
-  } else if (typeof thinkingEnabled === 'boolean') {
+  if (typeof thinkingEnabled === 'boolean') {
     reasoning = {
       effort:
         typeof thinkingBudget === 'number'
@@ -251,8 +242,8 @@ export async function internalGenerateContentResponses(
           input: messages,
           ...(tools.length > 0 ? { tools } : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
-          ...(modelType !== ModelType.REASONING && !temperatureUnsupported ? { temperature } : {}),
-          ...(outputTokenLimit && modelType !== ModelType.REASONING ? { max_tokens: outputTokenLimit } : {}),
+          ...(!temperatureUnsupported ? { temperature } : {}),
+          ...(outputTokenLimit ? { max_tokens: outputTokenLimit } : {}),
         },
         { signal: abortController?.signal },
       );

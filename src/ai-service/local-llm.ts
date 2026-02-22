@@ -35,10 +35,6 @@ export const generateContent: GenerateContentFunction = async function generateC
       switch (modelType) {
         case ModelType.CHEAP:
           return serviceConfig.modelOverrides?.cheap ?? 'gemma3:12b';
-        case ModelType.REASONING:
-          // Local LLM doesn't have a standard reasoning model, fallback to default
-          console.warn('Reasoning model type requested for local-llm, falling back to default model.');
-          return serviceConfig.modelOverrides?.default ?? 'gemma3:12b';
         default:
           return serviceConfig.modelOverrides?.default ?? 'gemma3:12b';
       }

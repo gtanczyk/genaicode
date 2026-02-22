@@ -24,7 +24,6 @@ const humanReadableActionTypes: Record<ActionType, string> = {
   requestPermissions: 'Request Permissions 🔒',
   performAnalysis: 'Perform Analysis 🔬',
   contextOptimization: 'Optimize Context ✨',
-  reasoningInference: 'Reasoning Inference 🤔',
   genaicodeHelp: 'GenAIcode Help ❓',
   conversationGraph: 'Conversation Graph 📊',
   generateImage: 'Generate Image 🎨',
