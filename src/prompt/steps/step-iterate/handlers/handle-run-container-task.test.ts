@@ -24,6 +24,14 @@ vi.mock('../../../../prompt/function-calling.js', () => ({
 vi.mock('../../../../main/config.js', () => ({
   rcConfig: { rootDir: '/test' },
   modelOverrides: {},
+  sourceExtensions: ['.js', '.ts', '.tsx', '.jsx'],
+}));
+
+vi.mock('../../../../files/find-files.js', () => ({
+  getSourceFiles: () => [],
+  getImageAssetFiles: () => [],
+  refreshFiles: vi.fn(),
+  isIgnoredPath: vi.fn().mockReturnValue(false),
 }));
 
 const mockPullImage = vi.mocked(dockerUtils.pullImage);

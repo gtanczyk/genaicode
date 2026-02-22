@@ -205,6 +205,10 @@ async function executePromptService(
       return { result, prompt };
     } catch (error) {
       putSystemMessage('Error during code generation', { error });
+      // Re-throw assertion errors (e.g., from validation recovery failures)
+      if (error instanceof Error && error.constructor.name === 'AssertionError') {
+        throw error;
+      }
       return { result: [], prompt };
     }
   } else {

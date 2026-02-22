@@ -85,6 +85,10 @@ export async function processFileUpdates(
         break;
       }
     } catch (error) {
+      // Re-throw assertion errors (e.g., from validation recovery failures)
+      if (error instanceof Error && error.constructor.name === 'AssertionError') {
+        throw error;
+      }
       putSystemMessage(`Unexpected error processing update for ${file.filePath}`, { error });
     }
   }
@@ -199,6 +203,10 @@ async function processFileUpdate(
       functionCalls: partialResult,
     };
   } catch (error) {
+    // Re-throw assertion errors (e.g., from validation recovery failures)
+    if (error instanceof Error && error.constructor.name === 'AssertionError') {
+      throw error;
+    }
     return {
       success: false,
       functionCalls: [],
