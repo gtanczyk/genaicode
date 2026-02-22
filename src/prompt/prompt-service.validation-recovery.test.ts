@@ -162,9 +162,12 @@ describe('promptService - Validation and Recovery', () => {
         .mockResolvedValueOnce(mockRepeatedInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc })))
         .mockResolvedValueOnce(mockInvalidCall.map((fc) => ({ type: 'functionCall', functionCall: fc }))); // Last attempt also fails
 
-      await expect(
-        promptService(GENERATE_CONTENT_FNS, GENERATE_IMAGE_FNS, getCodeGenPrompt(testConfigs.baseConfig)),
-      ).rejects.toThrow();
+      const result = await promptService(
+        GENERATE_CONTENT_FNS,
+        GENERATE_IMAGE_FNS,
+        getCodeGenPrompt(testConfigs.baseConfig),
+      );
+      expect(result).toEqual([]); // Expect empty result after failed recovery
 
       // Planning, Summary, UpdateAttempt1, UpdateAttempt2, UpdateAttempt3
       expect(vertexAi.generateContent).toHaveBeenCalledTimes(5);
