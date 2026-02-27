@@ -11,7 +11,7 @@ interface ContentGenerationModalProps {
   currentService: AiServiceType;
 }
 
-type ModelType = 'default' | 'cheap' | 'reasoning';
+type ModelType = 'default' | 'cheap' | 'lite';
 
 export function dispatchContentGenerationModelOpen() {
   dispatchCustomEvent('openContentGenerationModel');
@@ -124,7 +124,6 @@ export const ContentGenerationModal: React.FC<ContentGenerationModalProps> = ({ 
               <option value="default">Default</option>
               <option value="cheap">Cheap</option>
               <option value="lite">Lite</option>
-              <option value="reasoning">Reasoning</option>
             </Select>
           </Label>
 

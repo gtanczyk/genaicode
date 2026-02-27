@@ -8,7 +8,7 @@ registerEndpoint((router, service) => {
       const { prompt, temperature, modelType, options } = req.body as {
         prompt: string;
         temperature: number;
-        modelType: 'default' | 'cheap' | 'reasoning';
+        modelType: 'default' | 'cheap' | 'lite';
         options: CodegenOptions;
       };
 
@@ -20,10 +20,8 @@ registerEndpoint((router, service) => {
         return res.status(400).json({ error: 'Invalid temperature: must be a number between 0 and 2' });
       }
 
-      if (!['default', 'cheap', 'reasoning', 'lite'].includes(modelType)) {
-        return res
-          .status(400)
-          .json({ error: 'Invalid modelType parameter: must be one of: default, cheap, reasoning' });
+      if (!['default', 'cheap', 'lite'].includes(modelType)) {
+        return res.status(400).json({ error: 'Invalid modelType parameter: must be one of: default, cheap, lite' });
       }
 
       const result = await service.generateContent(prompt, temperature, modelType as ModelType, options);
