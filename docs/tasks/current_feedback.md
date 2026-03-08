@@ -26,3 +26,4 @@
 - anthropic bug
 - media resolution ai studio
 - streaming
+- reload config
