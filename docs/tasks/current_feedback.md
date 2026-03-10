@@ -7,7 +7,6 @@
 - codegen plan/summary editing (CRUD)
 - multiple sessions
 - external file access message too long
-- thinking tokens in context size
 - codegen like compound parallel when possible
 - sort imports automatically
 - run knip on each commit
@@ -27,4 +26,4 @@
 - media resolution ai studio
 - streaming
 - reload config
-- loader
+- loader / vite
