@@ -11,6 +11,8 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-164] 2025-11-12: Refactored vite-genaicode-plugin.ts by decomposing it into smaller modules (constants, server-manager, code-transformer, html-injector) to improve maintainability and follow SRP.
+- [ ] [GEN-163] 2025-11-12: Implement dynamicFunction generation in Vite plugin - Added support for dynamicFunction calls in source code, intercepted by Vite transform hook, generated via AI service, and saved to physical file `src/genaicode-generated.ts`.
 - [x] [GEN-162] 2025-11-12: Remove reasoningInference action type and reasoning model setting - Removed unused reasoningInference action and the REASONING model type from the codebase, including updates to AI service configurations and type definitions.
 - [x] [GEN-161] 2025-11-12: Fix TypeScript build errors in AI services - Fixed unused imports in Anthropic service and type compatibility issues in OpenAI Responses service regarding `code_interpreter` tool and tool calls.
 - [x] [GEN-160] 2025-11-12: Fix AI Service Code Execution & File Attachments - Added support for `code_interpreter` with file attachments in OpenAI Responses API, `container_upload` in Anthropic, and `file_ids` in OpenAI Chat Completions. Fixed Grok plugin service type.
