@@ -25,6 +25,7 @@ import { estimateTokenCount } from '../../../prompt/token-estimator.js';
 import { executeStepContextOptimization } from '../../../prompt/steps/step-context-optimization.js';
 import { executeStepContextCompression } from '../../../prompt/steps/step-context-compression.js';
 import { getFilesContextSizeFromPrompt } from '../../../prompt/context-utils.js';
+import { generateDynamicFunction } from '../../../prompt/dynamic-function-generator.js';
 
 export interface ImageData {
   buffer: Buffer;
@@ -268,6 +269,22 @@ export class Service implements AppContextProvider {
       console.error('Error in generateContent:', error);
       throw error;
     }
+  }
+
+  async generateDynamicFunction(
+    prompt: string,
+    argsLength: number,
+    functionName: string,
+    callingFilePath?: string,
+  ): Promise<string> {
+    return generateDynamicFunction(
+      prompt,
+      argsLength,
+      functionName,
+      this.codegenOptions.aiService,
+      this.codegenOptions,
+      callingFilePath,
+    );
   }
 
   async interruptExecution(): Promise<void> {
