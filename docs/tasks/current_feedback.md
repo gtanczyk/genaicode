@@ -26,4 +26,3 @@
 - media resolution ai studio
 - streaming
 - reload config
-- loader / vite
