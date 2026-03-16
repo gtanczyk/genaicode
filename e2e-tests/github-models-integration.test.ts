@@ -70,22 +70,24 @@ describe('GitHub Models Integration E2E Tests', () => {
     const command = `node "${CLI_PATH}" --ai-service=github-models --explicit-prompt="${prompt}" --dry-run`;
 
     try {
-      const { stderr } = await execAsync(command, {
+      const { stdout, stderr } = await execAsync(command, {
         env: {
           ...process.env,
           GITHUB_TOKEN: '', // Explicitly unset the token
         },
-        timeout: 10000,
+        timeout: 60000, // Increased timeout since the command takes time to load plugins and scan files
       });
 
       // Should show error message when no token is provided
-      // Note: The command may exit with code 0 or non-zero, but the error message should be in stderr
-      expect(stderr).toContain('GitHub Models API token not configured');
+      // Note: The error message may appear in stdout (via console output) or stderr
+      const combinedOutput = stdout + stderr;
+      expect(combinedOutput).toContain('GitHub Models API token not configured');
     } catch (error: unknown) {
       const execError = error as { code?: unknown; stdout?: string; stderr?: string };
 
-      // If the command fails, the error message should still be in stderr
-      expect(execError.stderr).toContain('GitHub Models API token not configured');
+      // If the command fails, the error message should be in either stdout or stderr
+      const combinedOutput = (execError.stdout || '') + (execError.stderr || '');
+      expect(combinedOutput).toContain('GitHub Models API token not configured');
     }
   });
 });

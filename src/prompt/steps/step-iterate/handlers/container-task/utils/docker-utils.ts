@@ -206,15 +206,18 @@ function addDirectoryToPack(pack: tar.Pack, directoryPath: string, relativeTo: s
   const items = fs.readdirSync(directoryPath);
   const dirStats = fs.lstatSync(directoryPath);
 
-  pack.entry(
-    {
-      name: relativeTo.endsWith('/') ? relativeTo : relativeTo + '/',
-      type: 'directory',
-      mode: dirStats.mode & 0o777,
-      mtime: dirStats.mtime,
-    },
-    () => {},
-  );
+  // Only add directory entry if not the root (to avoid creating a '/' entry which can cause issues)
+  if (relativeTo !== '') {
+    pack.entry(
+      {
+        name: relativeTo.endsWith('/') ? relativeTo : relativeTo + '/',
+        type: 'directory',
+        mode: dirStats.mode & 0o777,
+        mtime: dirStats.mtime,
+      },
+      () => {},
+    );
+  }
 
   for (const item of items) {
     const fullPath = path.join(directoryPath, item);

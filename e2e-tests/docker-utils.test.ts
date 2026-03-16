@@ -235,6 +235,7 @@ describe('Docker Utils E2E Tests', () => {
       const files = output
         .split('\n')
         .map((f) => f.trim())
+        .filter((f) => f.length > 0)
         .sort();
 
       expect(files).toContain('/data/root.txt');
