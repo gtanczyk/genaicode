@@ -11,6 +11,7 @@ Issues are automatically tracked with unique identifiers (GEN-XXX) and dates. Ea
 
 ## Issues
 
+- [x] [GEN-165] 2025-11-12: Fix dynamicFunction generating TypeScript in .js files - Updated system prompt to strictly enforce pure JavaScript generation without type annotations, and updated the default fallback path to use .js extension in the Vite plugin.
 - [x] [GEN-164] 2025-11-12: Refactored vite-genaicode-plugin.ts by decomposing it into smaller modules (constants, server-manager, code-transformer, html-injector) to improve maintainability and follow SRP.
 - [ ] [GEN-163] 2025-11-12: Implement dynamicFunction generation in Vite plugin - Added support for dynamicFunction calls in source code, intercepted by Vite transform hook, generated via AI service, and saved to physical file `src/genaicode-generated.ts`.
 - [x] [GEN-162] 2025-11-12: Remove reasoningInference action type and reasoning model setting - Removed unused reasoningInference action and the REASONING model type from the codebase, including updates to AI service configurations and type definitions.
