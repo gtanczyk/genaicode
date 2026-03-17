@@ -12,9 +12,11 @@ import { injectGenaicodeScript } from './html-injector.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+let codeTransformerWarningLogged = false;
+
 export default function viteGenaicode(
   options?: Partial<CodegenOptions>,
-  config?: { plugins?: Plugin[]; genaicodePort?: number; logBufferMaxSize?: number },
+  config?: { plugins?: Plugin[]; genaicodePort?: number; logBufferMaxSize?: number; codeTransformer?: boolean },
 ) {
   const serverManager = new GenaicodeServerManager(options, config, __filename);
 
@@ -47,6 +49,16 @@ export default function viteGenaicode(
     },
 
     async transform(code: string, id: string) {
+      if (config?.codeTransformer !== true) {
+        if (!codeTransformerWarningLogged) {
+          console.info(
+            '[GenAIcode] Code transformer is disabled by default. Enable it by passing `codeTransformer: true` in the viteGenaicode plugin config.',
+          );
+          codeTransformerWarningLogged = true;
+        }
+        return null;
+      }
+
       await serverManager.ensureService();
       const service = serverManager.service;
       if (!service) return null;
