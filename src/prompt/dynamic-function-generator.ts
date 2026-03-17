@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { getGenerateContentFunctions } from '../main/codegen.js';
+import { getGenerateContentFunctions } from '../main/generate-content-functions.js';
 import { ModelType } from '../ai-service/common-types.js';
 import { AiServiceType, CodegenOptions } from '../main/codegen-types.js';
 import { getSystemPrompt } from './systemprompt.js';

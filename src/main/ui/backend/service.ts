@@ -10,7 +10,7 @@ import { ContentProps } from '../../common/content-bus-types.js';
 import { getUsageMetrics, UsageMetrics } from '../../common/cost-collector.js';
 import { editMessage, putSystemMessage } from '../../common/content-bus.js';
 import { CodegenResult, ConfirmationProps, Question } from '../common/api-types.js';
-import { getGenerateContentFunctions } from '../../codegen.js';
+import { getGenerateContentFunctions } from '../../generate-content-functions.js';
 import { FunctionCall, PromptImageMediaType, PromptItem, PromptItemImage } from '../../../ai-service/common-types.js';
 import { ModelType } from '../../../ai-service/common-types.js';
 import { getSanitizedServiceConfigurations, updateServiceConfig } from '../../../ai-service/service-configurations.js';

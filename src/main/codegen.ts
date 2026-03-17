@@ -1,25 +1,18 @@
 import * as cliParams from '../cli/cli-params.js';
 import { validateCliParams } from '../cli/validate-cli-params.js';
-import { generateContent as generateContentVertexAi } from '../ai-service/vertex-ai.js';
-import { generateContent as generateContentGPT } from '../ai-service/openai.js';
-import { generateContent as generateContentAnthropic } from '../ai-service/anthropic.js';
-import { generateContent as generateContentAiStudio } from '../ai-service/ai-studio.js';
-import { generateContent as generateContentLocalLllm } from '../ai-service/local-llm.js';
-import { generateContent as generateContentGitHubModels } from '../ai-service/github-models.js';
 import { generateImage as generateImageDallE } from '../ai-service/dall-e.js';
 import { generateImage as generateImageVertexAi } from '../ai-service/vertex-ai-imagen.js';
 
 import { promptService } from '../prompt/prompt-service.js';
 import { CodegenOptions, ImagenType } from './codegen-types.js';
-import { AiServiceType } from '../ai-service/service-configurations-types.js';
 import { printHelpMessage } from '../cli/cli-options.js';
-import { GenerateContentFunction, GenerateImageFunction } from '../ai-service/common-types.js';
+import { GenerateImageFunction } from '../ai-service/common-types.js';
 import { getCodeGenPrompt } from '../prompt/prompt-codegen.js';
 
 import { putSystemMessage, setCurrentIterationId, unsetCurrentIterationId } from './common/content-bus.js';
 import { refreshFiles } from '../files/find-files.js';
-import { getRegisteredAiServices } from './plugin-loader.js';
 import { stringToAiServiceType } from './codegen-utils.js';
+import { getGenerateContentFunctions } from './generate-content-functions.js';
 
 /** Executes codegen */
 export async function runCodegen(isDev = false): Promise<void> {
@@ -128,19 +121,7 @@ export async function runCodegenIteration(
   }
 }
 
-// helper functions and consts
-
-export function getGenerateContentFunctions(): Record<AiServiceType, GenerateContentFunction> {
-  return {
-    'vertex-ai': generateContentVertexAi,
-    'ai-studio': generateContentAiStudio,
-    anthropic: generateContentAnthropic,
-    openai: generateContentGPT,
-    'local-llm': generateContentLocalLllm,
-    'github-models': generateContentGitHubModels,
-    ...Object.fromEntries([...getRegisteredAiServices().entries()].map(([key, value]) => [key, value.generateContent])),
-  };
-}
+export { getGenerateContentFunctions } from './generate-content-functions.js';
 
 const GENERATE_IMAGE_FNS: Record<ImagenType, GenerateImageFunction> = {
   'dall-e': generateImageDallE,
