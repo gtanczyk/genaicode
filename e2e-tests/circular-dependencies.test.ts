@@ -31,14 +31,6 @@ describe('Circular Dependencies', () => {
         'main/interactive/task-file.ts',
         'main/interactive/codegen-worker.ts',
       ],
-      [
-        'main/codegen.ts',
-        'main/ui/codegen-ui.ts',
-        'main/ui/backend/server.ts',
-        'main/ui/backend/api.ts',
-        'main/ui/backend/api-handlers.ts',
-        'main/ui/backend/service.ts',
-      ],
     ];
 
     // Helper function to check if a circular dependency is known
