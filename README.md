@@ -19,13 +19,6 @@
 
 </div>
 
----
-
-> [!WARNING]
-> 🚧 GenAIcode is under development, use at own risk, feedback is welcomed! 🚧
-
----
-
 The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with analysis, and modification of code, and image assets. Works on any code base, can modify multiple files. Can be used via web browser, as a interactive or non-interactive CLI command, as a node.js library, or as [vite plugin](./src/vite-genaicode/README.md).
 
 ## Quick Start
