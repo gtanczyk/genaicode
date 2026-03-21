@@ -18,7 +18,7 @@ export default defineConfig({
         ],
         // codeTransformer is disabled by default. Set to true to enable AI-powered
         // dynamic function generation via the `dynamicFunction` import from 'genaicode:generator'.
-        codeTransformer: true,
+        // codeTransformer: true,
       },
     ),
   ],
