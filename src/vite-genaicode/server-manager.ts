@@ -22,7 +22,7 @@ export class GenaicodeServerManager {
     this.genaicodePort = config?.genaicodePort ?? GENAICODE_PORT;
   }
 
-  private async start(port?: number) {
+  private async start(port: number) {
     try {
       // Register inline plugins if provided
       for (const plugin of this.config?.plugins ?? []) {
@@ -75,7 +75,7 @@ export class GenaicodeServerManager {
     }
   }
 
-  public async ensureService(port?: number) {
+  public async ensureService(port: number) {
     if (!this.initPromise) {
       this.initPromise = this.start(port);
     }

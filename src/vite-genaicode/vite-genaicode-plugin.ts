@@ -19,6 +19,7 @@ export default function viteGenaicode(
   config?: { plugins?: Plugin[]; genaicodePort?: number; logBufferMaxSize?: number; codeTransformer?: boolean },
 ) {
   const serverManager = new GenaicodeServerManager(options, config, __filename);
+  let port: number;
 
   return {
     name: 'vite-genaicode',
@@ -33,6 +34,7 @@ export default function viteGenaicode(
     configureServer(server: ViteDevServer) {
       server.httpServer?.once('listening', () => {
         const address = server.httpServer!.address() as AddressInfo;
+        port = address.port;
         serverManager.ensureService(address.port).catch((error) => {
           console.error('Failed to start GenAIcode server:', error);
           server.close();
@@ -45,7 +47,11 @@ export default function viteGenaicode(
     },
 
     async buildStart() {
-      await serverManager.ensureService();
+      if (port) {
+        await serverManager.ensureService(port);
+      } else {
+        console.warn('[GenAIcode] Could not determine dev server port. GenAIcode server may not start correctly.');
+      }
     },
 
     async transform(code: string, id: string) {
@@ -59,7 +65,11 @@ export default function viteGenaicode(
         return null;
       }
 
-      await serverManager.ensureService();
+      if (!port) {
+        console.warn('[GenAIcode] Dev server port not available yet. Skipping code transformation for:', id);
+        return null;
+      }
+      await serverManager.ensureService(port);
       const service = serverManager.service;
       if (!service) return null;
 
