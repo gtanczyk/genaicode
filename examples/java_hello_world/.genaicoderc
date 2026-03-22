@@ -1,0 +1,7 @@
+{
+  "rootDir": ".",
+  "extensions": [
+    ".md",
+    ".java"
+  ]
+}

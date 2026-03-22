@@ -1,0 +1,8 @@
+{
+  "rootDir": ".",
+  "extensions": [
+    ".go",
+    ".md",
+    ".mod"
+  ]
+}
