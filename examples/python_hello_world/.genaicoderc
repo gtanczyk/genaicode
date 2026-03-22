@@ -1,6 +1,0 @@
-{
-  "rootDir": ".",
-  "ignorePaths": [
-    "venv"
-  ]
-}
