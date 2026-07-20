@@ -94,6 +94,12 @@
     "vite-plugin-checker": "^0.8.0",
     "vitest": "^3.0.7"
   },
+  "overrides": {
+    "picomatch": "2.3.2",
+    "lodash": "^4.18.0",
+    "zod": "^3.25.0",
+    "uuid": "^11.1.1"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@fontsource/press-start-2p": "^5.1.0",
