@@ -99,4 +99,36 @@ describe('Google converter', () => {
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 3 },
     });
   });
+
+  it('uses tool names when optional Google call ids are missing', () => {
+    expect(
+      toGoogleContents([
+        {
+          type: 'assistant',
+          toolCalls: [{ name: 'lookup', arguments: { id: 7 } }],
+        },
+        {
+          type: 'user',
+          toolResults: [{ name: 'lookup', content: '{"ok":true}' }],
+        },
+      ]),
+    ).toEqual([
+      {
+        role: 'model',
+        parts: [{ functionCall: { id: 'lookup', name: 'lookup', args: { id: 7 } } }],
+      },
+      {
+        role: 'user',
+        parts: [
+          {
+            functionResponse: {
+              id: 'lookup',
+              name: 'lookup',
+              response: { ok: true },
+            },
+          },
+        ],
+      },
+    ]);
+  });
 });

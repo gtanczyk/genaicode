@@ -50,7 +50,7 @@ export function toGoogleContents(prompt: PromptItem[]): Content[] {
         parts.push(
           ...(item.toolResults ?? []).map((result) => ({
             functionResponse: {
-              id: result.callId,
+              id: result.callId ?? result.name,
               name: result.name,
               response: parseToolResult(result.content, result.isError),
             },
@@ -62,7 +62,7 @@ export function toGoogleContents(prompt: PromptItem[]): Content[] {
       if (item.type === 'assistant') {
         parts.push(
           ...(item.toolCalls ?? []).map((call) => ({
-            functionCall: { id: call.id, name: call.name, args: call.arguments },
+            functionCall: { id: call.id ?? call.name, name: call.name, args: call.arguments },
           })),
         );
       }

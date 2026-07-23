@@ -88,4 +88,40 @@ describe('genaicode client', () => {
     await expect(chain.text('question')).rejects.toThrow('network failed');
     expect(chain.history()).toEqual([{ type: 'systemPrompt', systemPrompt: 'rules' }]);
   });
+
+  it('resets safely while turns are in flight or queued', async () => {
+    let finishGeneration: ((result: GenerationResult) => void) | undefined;
+    const requests: GenerationRequest[] = [];
+    const provider: ModelProvider = {
+      name: 'delayed',
+      generate: (request) => {
+        requests.push(request);
+        if (requests.length === 1) {
+          return new Promise<GenerationResult>((resolve) => {
+            finishGeneration = resolve;
+          });
+        }
+        return Promise.resolve({ parts: [{ type: 'text', text: 'fresh answer' }] });
+      },
+    };
+    const chain = genaicode(provider).chain('old context');
+    const inFlight = chain.text('old question');
+    const queued = chain.text('new question');
+
+    await Promise.resolve();
+    chain.reset('new context');
+    finishGeneration?.({ parts: [{ type: 'text', text: 'stale answer' }] });
+
+    await expect(inFlight).resolves.toBe('stale answer');
+    await expect(queued).resolves.toBe('fresh answer');
+    expect(requests[1].prompt).toEqual([
+      { type: 'user', text: 'new context' },
+      { type: 'user', text: 'new question' },
+    ]);
+    expect(chain.history()).toEqual([
+      { type: 'user', text: 'new context' },
+      { type: 'user', text: 'new question' },
+      { type: 'assistant', text: 'fresh answer', images: [], toolCalls: [] },
+    ]);
+  });
 });

@@ -139,6 +139,7 @@ class RequestBuilderImpl implements RequestBuilder {
 class ConversationImpl implements Conversation {
   private items: PromptItem[];
   private queue: Promise<void> = Promise.resolve();
+  private generation = 0;
 
   constructor(
     initial: PromptItem[],
@@ -150,8 +151,11 @@ class ConversationImpl implements Conversation {
   ask(input: PromptInput, configure: ConfigureRequest = (request) => request): Promise<GenerationResult> {
     const execute = async () => {
       const additions = toPromptItems(input);
+      const generation = this.generation;
       const result = await configure(this.createRequest(this.items, additions)).run();
-      this.items = [...this.items, ...additions, resultToPromptItem(result)];
+      if (generation === this.generation) {
+        this.items = [...this.items, ...additions, resultToPromptItem(result)];
+      }
       return result;
     };
     const operation = this.queue.then(execute);
@@ -179,6 +183,7 @@ class ConversationImpl implements Conversation {
   }
 
   reset(...initial: PromptInput[]): void {
+    this.generation += 1;
     this.items = prompt(...initial);
   }
 }
