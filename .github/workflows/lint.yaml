@@ -12,19 +12,11 @@ jobs:
     permissions:
       contents: read
       models: read
-    strategy:
-      fail-fast: false
-      matrix:
-        nodejs: [20]
-
     steps:
       - uses: actions/checkout@v4
-      # https://github.com/actions/setup-node
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.nodejs }}
-      - run: npm install
-      - run: npm run build
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run test:e2e
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
