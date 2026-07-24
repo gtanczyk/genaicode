@@ -248,6 +248,24 @@ const provider: ModelProvider = {
 All Anthropic, Google, and OpenAI conversion functions are public from
 `genaicode/providers`, so gateways and tests can reuse them without instantiating clients.
 
+## Provider E2E tests
+
+Run real-provider E2E tests locally with:
+
+```bash
+npm run test:e2e
+```
+
+These tests are credential-gated and run only when provider-specific environment variables
+are set:
+
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`
+- Anthropic: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
+- Gemini: `GEMINI_API_KEY`, `GEMINI_MODEL`
+
+CI/CD is configured in `.github/workflows/provider-e2e.yaml`. Each provider runs in its own
+job and only starts when both required secrets are configured in GitHub Actions.
+
 ## Plugins and hooks
 
 A provider plugin no longer needs registration in global configuration. It exports the

@@ -45,6 +45,7 @@
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "lint": "eslint . --ext js,ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest --config vitest.unit.config.ts --run",
+    "test:e2e": "vitest --config vitest.e2e.config.ts --run",
     "test:watch": "vitest --config vitest.unit.config.ts",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint && npm test && npm run build",
