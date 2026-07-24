@@ -1,139 +1,71 @@
 {
   "name": "genaicode",
-  "version": "1.0.1",
+  "version": "2.0.0",
+  "description": "A small, provider-neutral TypeScript toolkit for calling LLMs from backend code.",
   "author": "Grzegorz Tańczyk",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gtanczyk/genaicode.git"
   },
   "keywords": [
-    "generate",
-    "code",
+    "llm",
     "ai",
-    "vite-plugin"
+    "openai",
+    "backend",
+    "prompt",
+    "toolkit"
   ],
   "type": "module",
-  "bin": "./bin/genaicode.cjs",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "license": "Apache-2.0",
+  "sideEffects": false,
   "files": [
-    "bin",
     "dist",
-    "media",
+    "docs",
     "README.md",
     "LICENSE"
   ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
     },
-    "./vite-plugin": {
-      "types": "./dist/vite-genaicode/vite-genaicode-plugin.d.ts",
-      "default": "./dist/vite-genaicode/vite-genaicode-plugin.js"
-    },
-    "./vite-context": {
-      "types": "./dist/vite-genaicode/vite-genaicode-context.d.ts",
-      "default": "./dist/vite-genaicode/vite-genaicode-context.js"
-    },
-    "./*": "./dist/*"
+    "./providers": {
+      "types": "./dist/providers.d.ts",
+      "import": "./dist/providers.js"
+    }
   },
   "scripts": {
-    "cli": "node ./bin/genaicode.cjs",
-    "interactive-cli": "node ./bin/genaicode.cjs --interactive",
-    "ui": "node ./bin/genaicode.cjs --ui",
-    "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test:watch": "vitest  --config vitest.unit.config.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint . --ext js,ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest --config vitest.unit.config.ts --run",
-    "test:ci": "vitest run --config vitest.unit.config.ts --reporter=json",
-    "test:e2e": "vitest --config vitest.e2e.config.ts",
-    "test:eval": "vitest --config vitest.eval.config.ts",
-    "coverage": "vitest run --coverage",
-    "prepare": "husky install || true",
+    "test:watch": "vitest --config vitest.unit.config.ts",
     "type-check": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json && npm run build-frontend",
-    "build-frontend": "vite build src/main/ui/frontend",
-    "prepublishOnly": "npm run build"
-  },
-  "devDependencies": {
-    "@inquirer/type": "^1.5.5",
-    "@types/cors": "^2.8.13",
-    "@types/dockerode": "^3.3.42",
-    "@types/express": "^4.17.21",
-    "@types/helmet": "^4.0.0",
-    "@types/mock-fs": "^4.13.4",
-    "@types/multer": "^1.4.12",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
-    "@types/tar-stream": "^3.1.4",
-    "@types/xml2js": "^0.4.14",
-    "@typescript-eslint/eslint-plugin": "^7.17.0",
-    "@uiw/react-json-view": "^2.0.0-alpha.30",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "^3.0.7",
-    "@vitest/ui": "^3.0.7",
-    "eslint": "^8.54.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-plugin-import": "^2.29.0",
-    "husky": "^9.1.1",
-    "lint-staged": "^15.2.7",
-    "madge": "^8.0.0",
-    "mock-fs": "^5.5.0",
-    "prettier": "^3.1.0",
-    "puppeteer": "^22.15.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "styled-components": "^6.1.13",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.0.0",
-    "vite": "^6.4.1",
-    "vite-plugin-checker": "^0.8.0",
-    "vitest": "^3.0.7"
-  },
-  "overrides": {
-    "picomatch": "2.3.2",
-    "lodash": "^4.18.0",
-    "zod": "^3.25.0",
-    "uuid": "^11.1.1"
+    "check": "npm run type-check && npm run lint && npm test && npm run build",
+    "prepublishOnly": "npm run check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
-    "@fontsource/press-start-2p": "^5.1.0",
-    "@google-cloud/aiplatform": "^3.34.0",
     "@google/genai": "^1.30.0",
-    "@imgly/background-removal-node": "^1.4.5",
-    "@inquirer/prompts": "^7.8.4",
-    "@types/diff": "^5.2.1",
-    "@types/mime-types": "^2.1.4",
-    "@types/node": "^18.0.0",
-    "@types/styled-components": "^5.1.34",
-    "axios": "^1.13.5",
-    "c12": "^3.3.3",
-    "cors": "^2.8.5",
-    "diff": "^5.2.2",
-    "dockerode": "^4.0.7",
-    "express": "^4.22.1",
-    "find-cache-dir": "^5.0.0",
-    "glob-regex": "^0.3.2",
-    "helmet": "^7.1.0",
-    "image-size": "^1.2.1",
-    "inquirer-file-selector": "^0.4.0",
-    "jsonschema": "^1.4.1",
-    "mime-types": "^2.1.35",
-    "multer": "^2.1.1",
-    "openai": "^5.16.0",
-    "please-upgrade-node": "^3.2.0",
-    "sharp": "^0.33.4",
-    "simple-git": "^3.32.3",
-    "tar-stream": "^3.1.7",
-    "xml2js": "^0.6.2",
-    "zod": "^3.25.0"
+    "openai": "^5.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.17.0",
+    "@typescript-eslint/parser": "^7.17.0",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "husky": "^9.1.1",
+    "lint-staged": "^15.2.7",
+    "prettier": "^3.1.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.4.1",
+    "vitest": "^3.0.7"
   },
   "lint-staged": {
-    "*.{js,ts,css,md}": "prettier --write"
+    "*.{js,ts,md}": "prettier --write"
   }
 }

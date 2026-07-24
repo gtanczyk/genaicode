@@ -1,32 +1,23 @@
 {
   "compilerOptions": {
-    "allowJs": true,
     "target": "ES2022",
-    "module": "es2022",
-    "moduleResolution": "node",
-    "lib": ["ES2023", "dom"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
     "declaration": true,
     "sourceMap": true,
     "noEmit": false,
-    "allowImportingTsExtensions": false,
-    "types": ["vitest/globals"],
-    "jsx": "react-jsx",
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node", "vitest/globals"]
   },
-  "ts-node": {
-    "esm": true,
-    "compiler": "typescript",
-    "experimentalSpecifierResolution": "node"
-  },
-  "include": ["src/**/*.ts", "src/main/interactive/worker-script.ts"],
-  "exclude": ["node_modules", "src/main/ui/frontend/**/*"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
