@@ -64,7 +64,7 @@ and in the 1.x npm line.
 - Cover normalization, immutability, structured output, tools, and chains with unit tests.
 - Mark 2.0 as a major-version migration with no 1.x compatibility shim.
 
-### Phase 2: provider breadth — implemented on the pivot branch
+### Phase 2: provider breadth — implemented
 
 - Extract Anthropic and Google converters from the proven 1.x implementations.
 - Support OpenAI, OpenAI-compatible APIs, Anthropic, Gemini AI Studio, and Vertex AI.
@@ -73,13 +73,13 @@ and in the 1.x npm line.
 
 ### Phase 3: backend ergonomics — in progress
 
-- Streaming with a provider-neutral event IR.
-- Middleware for observability, rate limiting, caching, and fallback.
+- Streaming with a provider-neutral event IR. *(pending)*
+- Composable `GenAIPlugin` middleware for observability, rate limiting, caching, and fallback — implemented.
 - First-class schema adapters without requiring a specific validation library — implemented.
-- Small framework examples for HTTP handlers, queues, and cron jobs.
-- Re-evaluate separate provider packages if dependency size becomes material.
+- Small framework examples for HTTP handlers, queues, and cron jobs. *(pending)*
+- Re-evaluate separate provider packages if dependency size becomes material. *(pending)*
 
-### Phase 4: hardening
+### Phase 4: hardening — not started
 
 - Provider capability metadata.
 - Retry classification and idempotency guidance.
