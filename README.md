@@ -14,6 +14,20 @@ It sits between raw provider SDKs and full agent frameworks: one prompt represen
 thin provider adapters, a convenient request API, and lightweight conversation chains.
 It does not inspect repositories, execute shell commands, edit files, or run an agent UI.
 
+## GenAIcode 2.0 is a new direction
+
+GenAIcode 1.x was a coding agent. Version 2.0 deliberately replaces that product with a
+small backend LLM toolkit: a jQuery-like layer for portable prompts, provider adapters,
+conversation chains, and plugins.
+
+The coding-agent CLI, browser UI, repository tools, shell execution, and agent
+orchestration are not deprecated compatibility features; they have been removed from
+2.0. The original implementation remains available in Git history and in the 1.x npm
+releases. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
+continue here in a smaller and more focused form.
+
+See [the pivot plan](docs/pivot.md) for the full scope and migration decisions.
+
 ## Install
 
 ```bash
