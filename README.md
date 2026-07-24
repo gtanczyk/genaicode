@@ -129,6 +129,22 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
 
 The application owns validation, attempt limits, and failure policy.
 
+## Schema adapters
+
+`json(...)` and `parseJsonResult(...)` accept either a parser function or a schema adapter
+with a `parse(value)` method. This keeps schema validation library-agnostic:
+
+```ts
+const value = await ai('Return {"count": 3}.').json({
+  parse(input) {
+    if (typeof input !== 'object' || input === null || typeof input.count !== 'number') {
+      throw new Error('Invalid shape');
+    }
+    return input;
+  },
+});
+```
+
 ## PromptItem: the portable prompt IR
 
 `PromptItem` is GenAIcode's provider-neutral intermediate representation:
