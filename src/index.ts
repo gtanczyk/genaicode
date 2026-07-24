@@ -1,12 +1,7 @@
-export * from './main/codegen-types.js';
-export * from './ai-service/common-types.js';
-export * from './prompt/steps/step-iterate/step-iterate-types.js';
-export * from './main/common/content-bus.js';
-export * from './prompt/steps/steps-types.js';
-export * from './main/common/user-actions.js';
-export { defineConfig } from './main/config-types.js';
-
-export async function getRcConfig() {
-  const { rcConfig } = await import('./main/config.js');
-  return rcConfig;
-}
+export { genaicode } from './core/client.js';
+export type { ConfigureRequest, Conversation, GenAIClient, GenAIClientOptions, RequestBuilder } from './core/client.js';
+export { definePlugin, withPlugins } from './core/plugins.js';
+export type { GenAIPlugin, GenerateNext } from './core/plugins.js';
+export { asPrompt, assistant, image, prompt, system, toolResults, toPromptItems, user } from './core/prompt.js';
+export { parseJsonResult, resultText, resultToPromptItem, resultToolCalls } from './core/result.js';
+export * from './core/types.js';

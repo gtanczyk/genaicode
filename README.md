@@ -6,121 +6,294 @@
   </picture>
 </p>
 
-<div align="center">
+# GenAIcode
 
-# Programming on steroids
+GenAIcode is a small TypeScript toolkit for using LLMs in backend code.
 
-  <a href="https://www.npmjs.com/package/genaicode">
-    <img alt="npm version" src="https://img.shields.io/npm/v/genaicode.svg?style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/genaicode">
-    <img alt="weekly downloads from npm" src="https://img.shields.io/npm/dw/genaicode.svg?style=flat-square"></a>
-  <a href="https://github.com/gtanczyk/genaicode/actions?query=branch%3Amaster">
-    <img alt="Github Actions Build Status" src="https://img.shields.io/github/actions/workflow/status/gtanczyk/genaicode/lint.yaml?label=Tests&style=flat-square"></a>
+It sits between raw provider SDKs and full agent frameworks: one prompt representation,
+thin provider adapters, a convenient request API, and lightweight conversation chains.
+It does not inspect repositories, execute shell commands, edit files, or run an agent UI.
 
-</div>
+## GenAIcode 2.0 is a new direction
 
-The GenAIcode tool is designed to automate code generation tasks using various AI models. This tool enhances developer productivity by assisting with analysis, and modification of code, and image assets. Works on any code base, can modify multiple files. Can be used via web browser, as a interactive or non-interactive CLI command, as a node.js library, or as [vite plugin](./src/vite-genaicode/README.md).
+GenAIcode 1.x was a coding agent. Version 2.0 deliberately replaces that product with a
+small backend LLM toolkit: a jQuery-like layer for portable prompts, provider adapters,
+conversation chains, and plugins.
 
-## Quick Start
+The coding-agent CLI, browser UI, repository tools, shell execution, and agent
+orchestration are not deprecated compatibility features; they have been removed from
+2.0. The original implementation remains available in Git history and in the 1.x npm
+releases. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
+continue here in a smaller and more focused form.
 
-In your project root directory, run:
+See [the pivot plan](docs/pivot.md) for the full scope and migration decisions.
+
+## Install
 
 ```bash
-npx genaicode --ui
-open http://localhost:1337
+npm install genaicode
 ```
 
-This will start the GenAIcode web server and open the browser with the UI.
+Node.js 20 or newer is required.
 
-Here is how it looks like:
+## A prompt in three lines
 
-<img width="1284" alt="image" src="https://github.com/user-attachments/assets/82fae142-f2df-43c9-871a-50e526f37c83" />
+```ts
+import { genaicode } from 'genaicode';
+import { openai } from 'genaicode/providers';
 
-## CLI Features
+const ai = genaicode(openai({ model: 'your-model-name' }));
+const answer = await ai('Explain why the sky is blue in two sentences.').text();
+```
 
-GenAIcode supports various command-line options to customize its behavior:
+The client is callable on purpose. Like jQuery, the common case starts with one small
+function and becomes more specific through chaining:
 
-- `--ai-service=<ai service>`: Pick an ai service/model that will be used for code generation
-- `--ui`: Run the tool as a web server, and use it via browser
-- `--ui-port=<port>`: Specify the port for the web server when using --ui (default: 1337)
-- `--interactive`: Run the tool in interactive mode
-- `--dry-run`: Runs the tool without making any changes to the files.
-- `--disallow-file-create`: Disallows the tool to create new files (file creation is allowed by default).
-- `--disallow-file-delete`: Disallows the tool to delete files (file deletion is allowed by default).
-- `--disallow-directory-create`: Disallows the tool to create directories (directory creation is allowed by default).
-- `--disallow-file-move`: Disallows the tool to move files within the project structure (file moving is allowed by default).
-- `--explicit-prompt=<prompt>`: Provides an explicit prompt for code generation.
-- `--task-file=<file>`: Specifies a file with a task description for code generation.
-- `--verbose-prompt`: Prints the prompt used for code generation.
-- `--disable-explanations`: Disables explanations for code generation operations. By default, explanations are enabled, as it improves response quality.
-- `--disable-context-optimization`: Disables the optimization that uses context paths for more efficient code generation.
-- `--gemini-block-none`: Disables safety settings for Gemini Pro model (requires whitelisted Cloud project).
-- `--temperature=<value>`: Sets the temperature parameter for the AI model (default: 0.7).
-- `--vision`: Enables vision capabilities for processing image inputs.
-- `--imagen`: Enables image generation capabilities using AI models.
-- `--cheap`: Uses a cheaper, faster model for code generation, which may provide lower quality results but is more cost-effective for simpler tasks.
-- `--content-mask=<path>`: Applies a content mask to limit the initial source code files included in the request. The value should be a prefix of the path relative to rootDir.
-- `--ignore-pattern="glob/regex"`: Specify a pattern of files to ignore during the initial source code fetching. This saves initial token usage.
-- `--disable-ask-question`: Disable the default behavior of AI assistant to ask questions for clarification during the code generation process.
-- `--disable-cache`: Disables caching for the application, which can be useful if caching is causing issues or if you want to ensure fresh data is used for each operation.
-- `--help`: Displays the help message with all available options.
+```ts
+const result = await ai('Create a release note from these commits')
+  .system('You are a concise technical writer.')
+  .temperature(0.2)
+  .maxOutputTokens(500)
+  .text();
+```
 
-## Configuration (.genaicoderc)
+Builders are immutable, so a configured base request can be safely reused.
 
-The `.genaicoderc`(or `genaicode.config.ts` + js/mts etc.) file allows you to configure various aspects of GenAIcode's behavior. Here are the available options:
+## Chaining prompts
 
-```json
-{
-  "rootDir": ".",
-  "extensions": [".md", ".js", ".ts", ".tsx", ".css"],
-  "ignorePaths": ["node_modules", "build", "dist", "package-lock.json", "coverage"],
-  "lintCommand": "npm run lint",
-  "plugins": ["plugins/custom_tools.ts"],
-  "importantContext": {
-    "systemPrompt": ["IMPORTANT: Always use typescript"],
-    "files": ["code_style.md"]
+A chain remembers successful user and assistant turns. Each new prompt sees the complete
+history:
+
+```ts
+import { system } from 'genaicode';
+
+const chain = ai.chain(system('You are helping refine an API design.'));
+
+const answer1 = await chain.text('Prompt 1: propose a minimal endpoint.');
+const answer2 = await chain.text('Prompt 2: add idempotency to that design.');
+const answer3 = await chain.text('Prompt 3: summarize the final contract.');
+```
+
+This is `prompt1 → response1 → prompt2 → response2 → prompt3 → response3`. The history
+is available as portable `PromptItem[]` through `chain.history()`.
+
+## Using a chain in a loop
+
+A chain is ordinary application state, so normal control flow works:
+
+```ts
+const chain = ai.chain(system('Improve the draft while preserving its meaning.'));
+let draft = 'The deployment had a problem and we fixed it.';
+
+for (const instruction of ['Make it specific.', 'Make it concise.', 'Use a professional tone.']) {
+  draft = await chain.text(`${instruction}\n\nCurrent draft:\n${draft}`);
+}
+```
+
+Calls on one chain are serialized, even if application code starts them concurrently.
+Failed provider calls are not added to history.
+
+Validation and repair are also plain loops rather than a special agent abstraction:
+
+```ts
+import { parseJsonResult, resultText, system } from 'genaicode';
+
+const repair = ai.chain(system('Return only valid JSON with a non-negative count.'));
+let count: number | undefined;
+
+for (let attempt = 1; attempt <= 3; attempt += 1) {
+  const result = await repair.ask(
+    attempt === 1 ? 'Count the actionable items in this text: ...' : 'Correct the previous response.',
+  );
+
+  try {
+    const value = parseJsonResult<{ count: number }>(result);
+    if (value.count < 0) throw new Error('count must be non-negative');
+    count = value.count;
+    break;
+  } catch (error) {
+    if (attempt === 3) throw error;
+    console.warn('Invalid model response:', resultText(result));
   }
 }
 ```
 
-- `rootDir`: Specifies the root directory of your project (required).
-- `extensions`: An array of file extensions to be considered by the tool (optional, defaults to a predefined list).
-- `ignorePaths`: An array of paths to be ignored by the tool (optional).
-- `lintCommand`: Specifies a lint command to be run before and after code generation (optional).
-- `modelOverrides`: Allows overriding the default AI models used for each service (optional).
-- `plugins`: Specify plugins to be loaded (see [example plugins](./examples/genaicode_plugins/))
-- `importantContext`: Add your custom instructions to the `systemPrompt`. Force specific `files` to be always included in the context
+The application owns validation, attempt limits, and failure policy.
 
-## Usage
+## PromptItem: the portable prompt IR
 
-To use GenAIcode, run the command with your desired options:
+`PromptItem` is GenAIcode's provider-neutral intermediate representation:
 
-```bash
-npx genaicode [options]
+```ts
+import { image, prompt, system, toolResults, user } from 'genaicode';
+
+const items = prompt(
+  system('Return a one-sentence caption.'),
+  user('Describe this image.', {
+    images: [image(base64Png, 'image/png')],
+  }),
+  toolResults({
+    callId: 'lookup-1',
+    name: 'lookup',
+    content: JSON.stringify({ locale: 'pl-PL' }),
+  }),
+);
+
+const caption = await ai(items).text();
 ```
 
-For example:
+Applications can make domain objects prompt-aware without coupling them to a provider:
 
-```bash
-npx genaicode --explicit-prompt="Add a new utility function for string manipulation"
+```ts
+import { asPrompt, system, user } from 'genaicode';
+
+const supportTicket = (ticket: Ticket) =>
+  asPrompt(() => [system('Triage support tickets.'), user(JSON.stringify(ticket))]);
+
+await ai(supportTicket(ticket)).text();
 ```
 
-To run GenAIcode with the web UI on a specific port:
+## Tools
 
-```bash
-npx genaicode --ui --ui-port=8080
+```ts
+const calls = await ai('What is the weather in Warsaw?')
+  .tools([
+    {
+      name: 'weather',
+      description: 'Get current weather',
+      parameters: {
+        type: 'object',
+        properties: { city: { type: 'string' } },
+        required: ['city'],
+        additionalProperties: false,
+      },
+    },
+  ])
+  .toolCalls();
 ```
 
-This will start the web server on port 8080 instead of the default 1337.
+GenAIcode normalizes tool calls but deliberately does not execute them. The application
+owns permissions, retries, and side effects.
 
-## Examples
+## Providers
 
-For practical examples of using GenAIcode, visit our [Examples](examples/README.md) page.
+Models are provided in the adapter, through `.model(...)`, or with environment variables:
 
-## More Information
+| Adapter                | Factory              | Environment defaults                                               |
+| ---------------------- | -------------------- | ------------------------------------------------------------------ |
+| OpenAI                 | `openai()`           | `OPENAI_API_KEY`, `OPENAI_MODEL`                                   |
+| Anthropic              | `anthropic()`        | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`                             |
+| Gemini API / AI Studio | `gemini()`           | `GEMINI_API_KEY` or `API_KEY`, `GEMINI_MODEL`                      |
+| Vertex AI              | `vertexAI()`         | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `VERTEX_AI_MODEL` |
+| OpenAI-compatible      | `openaiCompatible()` | Explicit options; OpenAI defaults also work                        |
 
-For in-depth details about GenAIcode's features, supported AI models, file operations, and advanced usage, please refer to our comprehensive [Design Document](docs/design/genaicode_design_doc.md).
+```ts
+import { anthropic, gemini, openai, vertexAI } from 'genaicode/providers';
 
-## Feedback and Contributions
+const viaOpenAI = genaicode(openai({ model: 'your-openai-model' }));
+const viaClaude = genaicode(anthropic({ model: 'your-claude-model' }));
+const viaGemini = genaicode(gemini({ model: 'your-gemini-model' }));
+const viaVertex = genaicode(
+  vertexAI({
+    project: 'my-google-cloud-project',
+    location: 'global',
+    model: 'your-vertex-model',
+  }),
+);
+```
 
-We welcome your feedback and contributions! Please feel free to open issues or submit pull requests on our GitHub repository.
+Provider-specific options stay at provider construction. For example, Anthropic exposes
+thinking and output-token defaults, while Gemini and Vertex expose SDK HTTP, auth, API
+version, and generation configuration options.
+
+GitHub Models, Ollama, vLLM, and other compatible gateways use the OpenAI-compatible
+adapter:
+
+```ts
+import { openaiCompatible } from 'genaicode/providers';
+
+const local = genaicode(
+  openaiCompatible({
+    name: 'local',
+    baseURL: 'http://localhost:11434/v1',
+    apiKey: 'local',
+    model: 'qwen3',
+  }),
+);
+```
+
+Implementing a provider directly is intentionally small:
+
+```ts
+import type { ModelProvider } from 'genaicode';
+
+const provider: ModelProvider = {
+  name: 'internal-gateway',
+  async generate(request) {
+    // Convert request.prompt to your API and normalize the response.
+    return { parts: [{ type: 'text', text: 'response' }] };
+  },
+};
+```
+
+All Anthropic, Google, and OpenAI conversion functions are public from
+`genaicode/providers`, so gateways and tests can reuse them without instantiating clients.
+
+## Plugins and hooks
+
+A provider plugin no longer needs registration in global configuration. It exports the
+same small `ModelProvider` contract as a built-in adapter:
+
+```ts
+// @acme/genaicode-bedrock
+import type { ModelProvider } from 'genaicode';
+
+export const bedrock = (options: BedrockOptions): ModelProvider => ({
+  name: 'bedrock',
+  async generate(request) {
+    // Convert PromptItem[], call Bedrock, and return GenerationResult.
+    return { parts: [{ type: 'text', text: 'response' }] };
+  },
+});
+```
+
+Hook-style plugins use middleware. They can observe or rewrite requests and results,
+handle errors, implement caches or fallbacks, and intentionally short-circuit a call:
+
+```ts
+import { definePlugin, genaicode } from 'genaicode';
+import { openai } from 'genaicode/providers';
+
+const timing = definePlugin({
+  name: 'timing',
+  async generate(request, next) {
+    const startedAt = performance.now();
+    try {
+      return await next(request);
+    } finally {
+      console.log('LLM request took', performance.now() - startedAt, 'ms');
+    }
+  },
+});
+
+const ai = genaicode(openai({ model: 'your-model-name' }), {
+  plugins: [timing],
+});
+```
+
+Plugins run in registration order, and each plugin may call `next()` once. This keeps the
+extension mechanism compatible with npm packages and ordinary imports without restoring
+the 1.x runtime TypeScript loader or process-global plugin registry.
+
+## Design boundaries
+
+- Backend library, not a coding agent.
+- Provider-neutral core with no global configuration.
+- Explicit models and credentials; environment variables are only provider defaults.
+- Immutable request builders.
+- Conversation history is explicit; loops remain ordinary application code.
+- No hidden tool execution or hidden retries.
+- Third-party providers and middleware use stable TypeScript contracts.
+- Provider SDKs stay behind the `genaicode/providers` subpath.
+
+See [the pivot plan](docs/pivot.md) for product scope, migration decisions, and the roadmap.
