@@ -13,10 +13,12 @@ defaults:
 
 jobs:
   openai:
-    if: ${{ secrets.OPENAI_API_KEY != '' && secrets.OPENAI_MODEL != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,16 +26,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:e2e
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      - if: ${{ env.OPENAI_API_KEY != '' && env.OPENAI_MODEL != '' }}
+        run: npm run test:e2e
+      - if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_MODEL == '' }}
+        run: echo "Skipping OpenAI E2E: required secrets are missing."
 
   anthropic:
-    if: ${{ secrets.ANTHROPIC_API_KEY != '' && secrets.ANTHROPIC_MODEL != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,16 +45,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:e2e
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+      - if: ${{ env.ANTHROPIC_API_KEY != '' && env.ANTHROPIC_MODEL != '' }}
+        run: npm run test:e2e
+      - if: ${{ env.ANTHROPIC_API_KEY == '' || env.ANTHROPIC_MODEL == '' }}
+        run: echo "Skipping Anthropic E2E: required secrets are missing."
 
   gemini:
-    if: ${{ secrets.GEMINI_API_KEY != '' && secrets.GEMINI_MODEL != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,7 +64,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:e2e
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+      - if: ${{ env.GEMINI_API_KEY != '' && env.GEMINI_MODEL != '' }}
+        run: npm run test:e2e
+      - if: ${{ env.GEMINI_API_KEY == '' || env.GEMINI_MODEL == '' }}
+        run: echo "Skipping Gemini E2E: required secrets are missing."
