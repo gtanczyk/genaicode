@@ -22,9 +22,18 @@ conversation chains, and plugins.
 
 The coding-agent CLI, browser UI, repository tools, shell execution, and agent
 orchestration are not deprecated compatibility features; they have been removed from
-2.0. The original implementation remains available in Git history and in the 1.x npm
-releases. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
+2.0. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
 continue here in a smaller and more focused form.
+
+The original coding agent remains available from the preserved
+[`1.x` branch](https://github.com/gtanczyk/genaicode/tree/1.x) and the 1.x npm releases:
+
+```bash
+npx genaicode@1
+```
+
+Running `npx genaicode` with version 2.x prints this migration guidance instead of
+starting the old agent.
 
 See [the pivot plan](docs/pivot.md) for the full scope and migration decisions.
 
