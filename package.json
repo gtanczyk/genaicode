@@ -16,6 +16,9 @@
     "toolkit"
   ],
   "type": "module",
+  "bin": {
+    "genaicode": "./dist/cli.js"
+  },
   "engines": {
     "node": ">=20"
   },
