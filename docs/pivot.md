@@ -71,11 +71,11 @@ and in the 1.x npm line.
 - Add converter contract tests with multimodal and tool-call fixtures.
 - Keep provider SDKs isolated behind the `genaicode/providers` export.
 
-### Phase 3: backend ergonomics
+### Phase 3: backend ergonomics — in progress
 
 - Streaming with a provider-neutral event IR.
 - Middleware for observability, rate limiting, caching, and fallback.
-- First-class schema adapters without requiring a specific validation library.
+- First-class schema adapters without requiring a specific validation library — implemented.
 - Small framework examples for HTTP handlers, queues, and cron jobs.
 - Re-evaluate separate provider packages if dependency size becomes material.
 

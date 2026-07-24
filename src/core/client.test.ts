@@ -89,6 +89,27 @@ describe('genaicode client', () => {
     expect(chain.history()).toEqual([{ type: 'systemPrompt', systemPrompt: 'rules' }]);
   });
 
+  it('accepts schema adapters for JSON parsing', async () => {
+    const { provider } = sequenceProvider([{ parts: [{ type: 'text', text: '{"count":2}' }] }]);
+    const ai = genaicode(provider);
+
+    await expect(
+      ai('count items').json({
+        parse(value) {
+          if (
+            typeof value !== 'object' ||
+            value === null ||
+            !('count' in value) ||
+            typeof value.count !== 'number'
+          ) {
+            throw new Error('Invalid payload');
+          }
+          return value.count;
+        },
+      }),
+    ).resolves.toBe(2);
+  });
+
   it('resets safely while turns are in flight or queued', async () => {
     let finishGeneration: ((result: GenerationResult) => void) | undefined;
     const requests: GenerationRequest[] = [];

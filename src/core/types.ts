@@ -92,6 +92,12 @@ export interface GenerationResult {
   raw?: unknown;
 }
 
+export interface SchemaAdapter<T = unknown> {
+  parse(value: unknown): T;
+}
+
+export type JsonResultParser<T = unknown> = ((value: unknown) => T) | SchemaAdapter<T>;
+
 export type ToolChoice = 'auto' | 'none' | 'required' | { name: string };
 
 export interface GenerationRequest {

@@ -5,6 +5,7 @@ import type {
   GenerationDefaults,
   GenerationRequest,
   GenerationResult,
+  JsonResultParser,
   ModelProvider,
   PromptInput,
   PromptItem,
@@ -24,7 +25,7 @@ export interface RequestBuilder {
   signal(signal: AbortSignal): RequestBuilder;
   run(): Promise<GenerationResult>;
   text(): Promise<string>;
-  json<T = unknown>(parse?: (value: unknown) => T): Promise<T>;
+  json<T = unknown>(parse?: JsonResultParser<T>): Promise<T>;
   toolCalls(): Promise<ToolCall[]>;
   inspect(): GenerationRequest;
 }
@@ -34,7 +35,7 @@ export type ConfigureRequest = (request: RequestBuilder) => RequestBuilder;
 export interface Conversation {
   ask(input: PromptInput, configure?: ConfigureRequest): Promise<GenerationResult>;
   text(input: PromptInput, configure?: ConfigureRequest): Promise<string>;
-  json<T = unknown>(input: PromptInput, parse?: (value: unknown) => T, configure?: ConfigureRequest): Promise<T>;
+  json<T = unknown>(input: PromptInput, parse?: JsonResultParser<T>, configure?: ConfigureRequest): Promise<T>;
   toolCalls(input: PromptInput, configure?: ConfigureRequest): Promise<ToolCall[]>;
   history(): PromptItem[];
   reset(...initial: PromptInput[]): void;
@@ -126,7 +127,7 @@ class RequestBuilderImpl implements RequestBuilder {
     return resultText(await this.run());
   }
 
-  async json<T = unknown>(parse?: (value: unknown) => T): Promise<T> {
+  async json<T = unknown>(parse?: JsonResultParser<T>): Promise<T> {
     const result = await this.run();
     return parseJsonResult(result, parse);
   }
@@ -170,7 +171,7 @@ class ConversationImpl implements Conversation {
     return resultText(await this.ask(input, configure));
   }
 
-  async json<T = unknown>(input: PromptInput, parse?: (value: unknown) => T, configure?: ConfigureRequest): Promise<T> {
+  async json<T = unknown>(input: PromptInput, parse?: JsonResultParser<T>, configure?: ConfigureRequest): Promise<T> {
     return parseJsonResult(await this.ask(input, configure), parse);
   }
 

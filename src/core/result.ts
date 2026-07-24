@@ -1,4 +1,4 @@
-import type { GenerationResult, PromptItem, ToolCall } from './types.js';
+import type { GenerationResult, JsonResultParser, PromptItem, ToolCall } from './types.js';
 
 export function resultText(result: GenerationResult): string {
   return result.parts
@@ -22,9 +22,13 @@ export function resultToPromptItem(result: GenerationResult): PromptItem {
 
 export function parseJsonResult<T = unknown>(
   result: GenerationResult,
-  parse: (value: unknown) => T = (value) => value as T,
+  parse: JsonResultParser<T> = (value) => value as T,
 ): T {
   const text = resultText(result).trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(text);
-  return parse(JSON.parse(fenced?.[1] ?? text) as unknown);
+  const parsedValue = JSON.parse(fenced?.[1] ?? text) as unknown;
+  if (typeof parse === 'function') {
+    return parse(parsedValue);
+  }
+  return parse.parse(parsedValue);
 }
