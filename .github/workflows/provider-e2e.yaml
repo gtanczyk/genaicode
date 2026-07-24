@@ -26,10 +26,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - if: ${{ env.OPENAI_API_KEY != '' && env.OPENAI_MODEL != '' }}
-        run: npm run test:e2e
-      - if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_MODEL == '' }}
-        run: echo "Skipping OpenAI E2E: required secrets are missing."
+      - run: |
+          if [ -z "${OPENAI_API_KEY:-}" ] || [ -z "${OPENAI_MODEL:-}" ]; then
+            echo "Skipping OpenAI E2E: required secrets are missing."
+            exit 0
+          fi
+          npm run test:e2e
 
   anthropic:
     runs-on: ubuntu-latest
@@ -45,10 +47,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - if: ${{ env.ANTHROPIC_API_KEY != '' && env.ANTHROPIC_MODEL != '' }}
-        run: npm run test:e2e
-      - if: ${{ env.ANTHROPIC_API_KEY == '' || env.ANTHROPIC_MODEL == '' }}
-        run: echo "Skipping Anthropic E2E: required secrets are missing."
+      - run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ -z "${ANTHROPIC_MODEL:-}" ]; then
+            echo "Skipping Anthropic E2E: required secrets are missing."
+            exit 0
+          fi
+          npm run test:e2e
 
   gemini:
     runs-on: ubuntu-latest
@@ -64,7 +68,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - if: ${{ env.GEMINI_API_KEY != '' && env.GEMINI_MODEL != '' }}
-        run: npm run test:e2e
-      - if: ${{ env.GEMINI_API_KEY == '' || env.GEMINI_MODEL == '' }}
-        run: echo "Skipping Gemini E2E: required secrets are missing."
+      - run: |
+          if [ -z "${GEMINI_API_KEY:-}" ] || [ -z "${GEMINI_MODEL:-}" ]; then
+            echo "Skipping Gemini E2E: required secrets are missing."
+            exit 0
+          fi
+          npm run test:e2e
