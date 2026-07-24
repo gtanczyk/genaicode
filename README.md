@@ -14,28 +14,12 @@ It sits between raw provider SDKs and full agent frameworks: one prompt represen
 thin provider adapters, a convenient request API, and lightweight conversation chains.
 It does not inspect repositories, execute shell commands, edit files, or run an agent UI.
 
-## GenAIcode 2.0 is a new direction
+**Like jQuery**, the common case starts with one small function and becomes more specific
+through chaining—configure a request, follow up across multiple prompts, and keep history
+portable without adopting a full agent framework.
 
-GenAIcode 1.x was a coding agent. Version 2.0 deliberately replaces that product with a
-small backend LLM toolkit: a jQuery-like layer for portable prompts, provider adapters,
-conversation chains, and plugins.
-
-The coding-agent CLI, browser UI, repository tools, shell execution, and agent
-orchestration are not deprecated compatibility features; they have been removed from
-2.0. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
-continue here in a smaller and more focused form.
-
-The original coding agent remains available from the preserved
-[`1.x` branch](https://github.com/gtanczyk/genaicode/tree/1.x) and the 1.x npm releases:
-
-```bash
-npx genaicode@1
-```
-
-Running `npx genaicode` with version 2.x prints this migration guidance instead of
-starting the old agent.
-
-See [the pivot plan](docs/pivot.md) for the full scope and migration decisions.
+GenAIcode 1.x was a coding agent; see [Migration from 1.x](#migration-from-1x) if you need
+the old product or the 2.0 scope decisions.
 
 ## Install
 
@@ -55,8 +39,9 @@ const ai = genaicode(openai({ model: 'your-model-name' }));
 const answer = await ai('Explain why the sky is blue in two sentences.').text();
 ```
 
-The client is callable on purpose. Like jQuery, the common case starts with one small
-function and becomes more specific through chaining:
+The client is callable on purpose. Configuration is ordinary method chaining—system
+instructions, temperature, token limits, and more—without a separate options object or
+framework setup:
 
 ```ts
 const result = await ai('Create a release note from these commits')
@@ -66,12 +51,21 @@ const result = await ai('Create a release note from these commits')
   .text();
 ```
 
-Builders are immutable, so a configured base request can be safely reused.
+Builders are immutable, so a configured base request can be safely reused:
+
+```ts
+const releaseNote = ai('Create a release note from these commits')
+  .system('You are a concise technical writer.')
+  .temperature(0.2);
+
+const short = await releaseNote.maxOutputTokens(200).text();
+const long = await releaseNote.maxOutputTokens(800).text();
+```
 
 ## Chaining prompts
 
 A chain remembers successful user and assistant turns. Each new prompt sees the complete
-history:
+history, so multi-step work stays in ordinary application code:
 
 ```ts
 import { system } from 'genaicode';
@@ -406,4 +400,26 @@ Framework-shaped examples live under `examples/` (`http-handler`, `queue-worker`
 - Third-party providers and middleware use stable TypeScript contracts.
 - Provider SDKs stay behind the `genaicode/providers` subpath.
 
-See [the pivot plan](docs/pivot.md) for product scope, migration decisions, and the roadmap.
+## Migration from 1.x
+
+GenAIcode 1.x was a coding agent. Version 2.0 deliberately replaces that product with a
+small backend LLM toolkit: a jQuery-like layer for portable prompts, provider adapters,
+conversation chains, and plugins.
+
+The coding-agent CLI, browser UI, repository tools, shell execution, and agent
+orchestration are not deprecated compatibility features; they have been removed from
+2.0. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
+continue here in a smaller and more focused form.
+
+The original coding agent remains available from the preserved
+[`1.x` branch](https://github.com/gtanczyk/genaicode/tree/1.x) and the 1.x npm releases:
+
+```bash
+npx genaicode@1
+```
+
+Running `npx genaicode` with version 2.x prints this migration guidance instead of
+starting the old agent.
+
+See [the pivot plan](docs/pivot.md) for the full scope, migration decisions, and the
+roadmap.
