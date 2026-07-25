@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A small, provider-neutral TypeScript toolkit for calling LLMs from backend code.",
   "author": "Grzegorz Tańczyk",
   "repository": {
@@ -27,6 +27,7 @@
   "files": [
     "dist",
     "docs",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
