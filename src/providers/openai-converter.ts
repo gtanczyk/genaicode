@@ -4,6 +4,8 @@ import type {
   GenerationResult,
   PromptItem,
   ResultPart,
+  StreamEvent,
+  TokenUsage,
   ToolChoice,
   ToolDefinition,
 } from '../core/types.js';
@@ -128,4 +130,92 @@ export function toOpenAIRequest(request: GenerationRequest, defaultModel: string
     tools: toOpenAITools(request.tools),
     tool_choice: toOpenAIToolChoice(request.toolChoice),
   } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+}
+
+export function toOpenAIStreamRequest(request: GenerationRequest, defaultModel: string) {
+  return {
+    ...toOpenAIRequest(request, defaultModel),
+    stream: true as const,
+    stream_options: { include_usage: true },
+  } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+}
+
+/**
+ * Accumulate OpenAI chat completion chunks into StreamEvents.
+ * Tool-call argument fragments are emitted as `tool-call-delta` and finalized on `done`.
+ */
+export async function* fromOpenAIStream(
+  chunks: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+): AsyncGenerator<StreamEvent> {
+  let text = '';
+  const toolCalls = new Map<number, { id?: string; name?: string; arguments: string }>();
+  let model: string | undefined;
+  let finishReason: string | undefined;
+  let usage: TokenUsage | undefined;
+  let raw: OpenAI.Chat.Completions.ChatCompletionChunk | undefined;
+
+  for await (const chunk of chunks) {
+    raw = chunk;
+    model = chunk.model ?? model;
+    if (chunk.usage) {
+      usage = {
+        inputTokens: chunk.usage.prompt_tokens,
+        outputTokens: chunk.usage.completion_tokens,
+        totalTokens: chunk.usage.total_tokens,
+        cachedInputTokens: chunk.usage.prompt_tokens_details?.cached_tokens,
+      };
+      yield { type: 'usage', usage };
+    }
+
+    const choice = chunk.choices[0];
+    if (!choice) continue;
+    finishReason = choice.finish_reason ?? finishReason;
+
+    const delta = choice.delta;
+    if (delta.content) {
+      text += delta.content;
+      yield { type: 'text-delta', text: delta.content };
+    }
+
+    for (const call of delta.tool_calls ?? []) {
+      const current = toolCalls.get(call.index) ?? { arguments: '' };
+      if (call.id) current.id = call.id;
+      if (call.function?.name) current.name = call.function.name;
+      if (call.function?.arguments) {
+        current.arguments += call.function.arguments;
+        yield {
+          type: 'tool-call-delta',
+          id: current.id,
+          name: current.name,
+          argumentsDelta: call.function.arguments,
+        };
+      }
+      toolCalls.set(call.index, current);
+    }
+  }
+
+  const parts: ResultPart[] = [];
+  if (text) parts.push({ type: 'text', text });
+
+  for (const call of toolCalls.values()) {
+    if (!call.name) continue;
+    const toolCall = {
+      id: call.id,
+      name: call.name,
+      arguments: parseArguments(call.arguments),
+    };
+    parts.push({ type: 'toolCall', toolCall });
+    yield { type: 'tool-call', toolCall };
+  }
+
+  yield {
+    type: 'done',
+    result: {
+      parts,
+      model,
+      finishReason: finishReason ?? undefined,
+      usage,
+      raw,
+    },
+  };
 }

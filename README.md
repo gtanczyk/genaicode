@@ -200,6 +200,68 @@ const calls = await ai('What is the weather in Warsaw?')
 GenAIcode normalizes tool calls but deliberately does not execute them. The application
 owns permissions, retries, and side effects.
 
+## Streaming
+
+Providers that support native streaming expose a provider-neutral `StreamEvent` IR.
+Request builders and chains offer `.stream()` and `.streamText()`. If a provider has no
+`stream` method, GenAIcode synthesizes a short stream from `generate`.
+
+```ts
+for await (const event of ai('Write a haiku about queues.').stream()) {
+  if (event.type === 'text-delta') process.stdout.write(event.text);
+  if (event.type === 'done') console.log('\n', event.result.usage);
+}
+```
+
+Built-in adapters declare capability metadata:
+
+```ts
+ai.provider.capabilities;
+// { streaming: true, tools: true, images: 'input', systemPrompt: true }
+```
+
+## Middleware
+
+Hook-style plugins remain the extension point. Built-in helpers cover common backend
+needs without restoring a global registry:
+
+```ts
+import {
+  cachePlugin,
+  fallbackPlugin,
+  genaicode,
+  rateLimitPlugin,
+  timingPlugin,
+} from 'genaicode';
+import { anthropic, openai } from 'genaicode/providers';
+
+const ai = genaicode(openai({ model: 'your-model-name' }), {
+  plugins: [
+    timingPlugin(),
+    rateLimitPlugin({ concurrency: 2, minIntervalMs: 50 }),
+    cachePlugin({ maxEntries: 64 }),
+    fallbackPlugin({ providers: [anthropic({ model: 'your-claude-model' })] }),
+  ],
+});
+```
+
+## Retries
+
+Retries stay in application code. Use `classifyError`, `isRetryable`, and `withRetry`
+when you want shared classification without hidden policy:
+
+```ts
+import { withRetry } from 'genaicode';
+
+const text = await withRetry(() => ai('Summarize the deploy notes.').text(), {
+  attempts: 3,
+  delayMs: 250,
+});
+```
+
+See [retry guidance](docs/retry.md), [semver policy](docs/semver.md), and the
+[provider package evaluation](docs/provider-packages.md).
+
 ## Providers
 
 Models are provided in the adapter, through `.model(...)`, or with environment variables:
@@ -293,6 +355,7 @@ import type { ModelProvider } from 'genaicode';
 
 export const bedrock = (options: BedrockOptions): ModelProvider => ({
   name: 'bedrock',
+  capabilities: { streaming: false, tools: true, systemPrompt: true },
   async generate(request) {
     // Convert PromptItem[], call Bedrock, and return GenerationResult.
     return { parts: [{ type: 'text', text: 'response' }] };
@@ -301,7 +364,8 @@ export const bedrock = (options: BedrockOptions): ModelProvider => ({
 ```
 
 Hook-style plugins use middleware. They can observe or rewrite requests and results,
-handle errors, implement caches or fallbacks, and intentionally short-circuit a call:
+handle errors, implement caches or fallbacks, and intentionally short-circuit a call.
+Optional `stream` middleware follows the same registration order.
 
 ```ts
 import { definePlugin, genaicode } from 'genaicode';
@@ -327,6 +391,9 @@ const ai = genaicode(openai({ model: 'your-model-name' }), {
 Plugins run in registration order, and each plugin may call `next()` once. This keeps the
 extension mechanism compatible with npm packages and ordinary imports without restoring
 the 1.x runtime TypeScript loader or process-global plugin registry.
+
+Framework-shaped examples live under `examples/` (`http-handler`, `queue-worker`,
+`cron-job`).
 
 ## Design boundaries
 
