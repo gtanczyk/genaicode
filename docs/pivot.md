@@ -96,6 +96,12 @@ and in the 1.x npm line.
 - Stable extension contracts and a written semver policy — implemented
   ([semver.md](./semver.md)).
 
+### Release status
+
+- `2.0.0` on npm shipped the Phase 1–2 kernel and provider adapters.
+- `2.1.0` publishes Phases 3–4 (streaming, middleware, capabilities, retry
+  helpers, fixtures, examples, and related docs). See [CHANGELOG.md](../CHANGELOG.md).
+
 ## Success measures
 
 - A first model call needs fewer than ten lines of application code.
