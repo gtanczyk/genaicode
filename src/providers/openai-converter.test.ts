@@ -1,30 +1,14 @@
 import OpenAI from 'openai';
 import { describe, expect, it } from 'vitest';
+import { multimodalToolRoundTripPrompt, sampleTools } from './fixtures/multimodal-tool-roundtrip.js';
 import { fromOpenAICompletion, toOpenAIMessages, toOpenAIRequest } from './openai-converter.js';
 
 describe('OpenAI converter', () => {
   it('converts multimodal prompts and tool round trips', () => {
-    const messages = toOpenAIMessages([
-      { type: 'systemPrompt', systemPrompt: 'rules' },
-      {
-        type: 'assistant',
-        text: 'checking',
-        toolCalls: [{ id: 'call-1', name: 'lookup', arguments: { id: 7 } }],
-      },
-      {
-        type: 'user',
-        toolResults: [{ callId: 'call-1', name: 'lookup', content: '{"ok":true}' }],
-        text: 'continue',
-      },
-      {
-        type: 'user',
-        text: 'caption',
-        images: [{ mediaType: 'image/png', data: 'aGVsbG8=' }],
-      },
-    ]);
+    const messages = toOpenAIMessages(multimodalToolRoundTripPrompt);
 
     expect(messages).toMatchObject([
-      { role: 'system', content: 'rules' },
+      { role: 'system', content: 'Return captions and call tools when needed.' },
       { role: 'assistant', tool_calls: [{ id: 'call-1', function: { name: 'lookup' } }] },
       { role: 'tool', tool_call_id: 'call-1' },
       { role: 'user', content: 'continue' },
@@ -43,7 +27,7 @@ describe('OpenAI converter', () => {
       toOpenAIRequest(
         {
           prompt: [{ type: 'user', text: 'hello' }],
-          tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
+          tools: sampleTools.map((tool) => ({ ...tool, name: 'answer', description: 'Answer' })),
           toolChoice: { name: 'answer' },
         },
         'model-a',

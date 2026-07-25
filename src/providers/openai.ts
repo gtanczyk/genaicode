@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ModelProvider } from '../core/types.js';
-import { fromOpenAICompletion, toOpenAIRequest } from './openai-converter.js';
+import { fromOpenAICompletion, fromOpenAIStream, toOpenAIRequest, toOpenAIStreamRequest } from './openai-converter.js';
 
 export interface OpenAIProviderOptions {
   apiKey?: string;
@@ -21,6 +21,12 @@ export function openai(options: OpenAIProviderOptions = {}): ModelProvider {
 
   return {
     name: 'openai',
+    capabilities: {
+      streaming: true,
+      tools: true,
+      images: 'input',
+      systemPrompt: true,
+    },
     async generate(request) {
       const model = request.model ?? defaultModel;
       if (!model) {
@@ -30,6 +36,16 @@ export function openai(options: OpenAIProviderOptions = {}): ModelProvider {
         signal: request.signal,
       });
       return fromOpenAICompletion(completion);
+    },
+    async *stream(request) {
+      const model = request.model ?? defaultModel;
+      if (!model) {
+        throw new Error('No OpenAI model configured. Pass `model` to openai() or the request builder.');
+      }
+      const chunks = await client.chat.completions.create(toOpenAIStreamRequest(request, model), {
+        signal: request.signal,
+      });
+      yield* fromOpenAIStream(chunks);
     },
   };
 }

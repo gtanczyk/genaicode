@@ -21,8 +21,10 @@ export { openai, openaiCompatible } from './providers/openai.js';
 export type { OpenAICompatibleProviderOptions, OpenAIProviderOptions } from './providers/openai.js';
 export {
   fromOpenAICompletion,
+  fromOpenAIStream,
   toOpenAIMessages,
   toOpenAIRequest,
+  toOpenAIStreamRequest,
   toOpenAIToolChoice,
   toOpenAITools,
 } from './providers/openai-converter.js';

@@ -1,6 +1,7 @@
 import { assistant, prompt, system, toPromptItems } from './prompt.js';
 import { withPlugins, type GenAIPlugin } from './plugins.js';
 import { parseJsonResult, resultText, resultToPromptItem, resultToolCalls } from './result.js';
+import { providerStream, streamTextDeltas } from './stream.js';
 import type {
   GenerationDefaults,
   GenerationRequest,
@@ -9,6 +10,7 @@ import type {
   ModelProvider,
   PromptInput,
   PromptItem,
+  StreamEvent,
   ToolCall,
   ToolChoice,
   ToolDefinition,
@@ -27,6 +29,10 @@ export interface RequestBuilder {
   text(): Promise<string>;
   json<T = unknown>(parse?: JsonResultParser<T>): Promise<T>;
   toolCalls(): Promise<ToolCall[]>;
+  /** Provider-neutral streaming events (native when available, synthesized otherwise). */
+  stream(): AsyncIterable<StreamEvent>;
+  /** Convenience: yield only text deltas. */
+  streamText(): AsyncIterable<string>;
   inspect(): GenerationRequest;
 }
 
@@ -37,6 +43,8 @@ export interface Conversation {
   text(input: PromptInput, configure?: ConfigureRequest): Promise<string>;
   json<T = unknown>(input: PromptInput, parse?: JsonResultParser<T>, configure?: ConfigureRequest): Promise<T>;
   toolCalls(input: PromptInput, configure?: ConfigureRequest): Promise<ToolCall[]>;
+  stream(input: PromptInput, configure?: ConfigureRequest): AsyncIterable<StreamEvent>;
+  streamText(input: PromptInput, configure?: ConfigureRequest): AsyncIterable<string>;
   history(): PromptItem[];
   reset(...initial: PromptInput[]): void;
 }
@@ -135,6 +143,14 @@ class RequestBuilderImpl implements RequestBuilder {
   async toolCalls(): Promise<ToolCall[]> {
     return resultToolCalls(await this.run());
   }
+
+  stream(): AsyncIterable<StreamEvent> {
+    return providerStream(this.provider, this.inspect());
+  }
+
+  streamText(): AsyncIterable<string> {
+    return streamTextDeltas(this.stream());
+  }
 }
 
 class ConversationImpl implements Conversation {
@@ -177,6 +193,78 @@ class ConversationImpl implements Conversation {
 
   async toolCalls(input: PromptInput, configure?: ConfigureRequest): Promise<ToolCall[]> {
     return resultToolCalls(await this.ask(input, configure));
+  }
+
+  stream(input: PromptInput, configure: ConfigureRequest = (request) => request): AsyncIterable<StreamEvent> {
+    return this.iterateStream(input, configure);
+  }
+
+  private async *iterateStream(
+    input: PromptInput,
+    configure: ConfigureRequest,
+  ): AsyncGenerator<StreamEvent> {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const previous = this.queue;
+    this.queue = previous.then(() => gate);
+    await previous;
+
+    try {
+      const additions = toPromptItems(input);
+      const generation = this.generation;
+      const events = configure(this.createRequest(this.items, additions)).stream();
+      let text = '';
+      const toolCalls: ToolCall[] = [];
+      const images: GenerationResult['parts'] = [];
+      let usage: GenerationResult['usage'];
+      let doneResult: GenerationResult | undefined;
+
+      for await (const event of events) {
+        yield event;
+        switch (event.type) {
+          case 'text-delta':
+            text += event.text;
+            break;
+          case 'tool-call':
+            toolCalls.push(event.toolCall);
+            break;
+          case 'image':
+            images.push({ type: 'image', image: event.image });
+            break;
+          case 'usage':
+            usage = event.usage;
+            break;
+          case 'done':
+            doneResult = event.result;
+            break;
+          default:
+            break;
+        }
+      }
+
+      const result =
+        doneResult ??
+        ({
+          parts: [
+            ...(text ? [{ type: 'text' as const, text }] : []),
+            ...toolCalls.map((toolCall) => ({ type: 'toolCall' as const, toolCall })),
+            ...images,
+          ],
+          usage,
+        } satisfies GenerationResult);
+
+      if (generation === this.generation) {
+        this.items = [...this.items, ...additions, resultToPromptItem(result)];
+      }
+    } finally {
+      release();
+    }
+  }
+
+  streamText(input: PromptInput, configure?: ConfigureRequest): AsyncIterable<string> {
+    return streamTextDeltas(this.stream(input, configure));
   }
 
   history(): PromptItem[] {

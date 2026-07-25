@@ -71,20 +71,30 @@ and in the 1.x npm line.
 - Add converter contract tests with multimodal and tool-call fixtures.
 - Keep provider SDKs isolated behind the `genaicode/providers` export.
 
-### Phase 3: backend ergonomics — in progress
+### Phase 3: backend ergonomics — implemented
 
-- Streaming with a provider-neutral event IR.
-- Middleware for observability, rate limiting, caching, and fallback.
+- Streaming with a provider-neutral event IR — implemented (`StreamEvent`,
+  `RequestBuilder.stream` / `streamText`, native provider streams with generate
+  fallback).
+- Middleware for observability, rate limiting, caching, and fallback —
+  implemented (`timingPlugin`, `rateLimitPlugin`, `cachePlugin`, `fallbackPlugin`,
+  `fallbackProvider`).
 - First-class schema adapters without requiring a specific validation library — implemented.
-- Small framework examples for HTTP handlers, queues, and cron jobs.
-- Re-evaluate separate provider packages if dependency size becomes material.
+- Small framework examples for HTTP handlers, queues, and cron jobs — implemented
+  under `examples/`.
+- Re-evaluate separate provider packages if dependency size becomes material —
+  evaluated; keep bundled for 2.x (see [provider-packages.md](./provider-packages.md)).
 
-### Phase 4: hardening
+### Phase 4: hardening — implemented
 
-- Provider capability metadata.
-- Retry classification and idempotency guidance.
-- Compatibility fixtures for multimodal and tool-call round trips.
-- Stable extension contracts and a written semver policy.
+- Provider capability metadata — implemented (`ProviderCapabilities` on
+  `ModelProvider`).
+- Retry classification and idempotency guidance — implemented
+  (`classifyError` / `withRetry` + [retry.md](./retry.md)).
+- Compatibility fixtures for multimodal and tool-call round trips — implemented
+  under `src/providers/fixtures/`.
+- Stable extension contracts and a written semver policy — implemented
+  ([semver.md](./semver.md)).
 
 ## Success measures
 

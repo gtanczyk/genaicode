@@ -111,9 +111,41 @@ export interface GenerationRequest {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Provider-neutral streaming event IR.
+ *
+ * Providers may emit deltas as they arrive. Consumers that only need the final
+ * answer can ignore intermediate events and wait for `done`.
+ */
+export type StreamEvent =
+  | { type: 'text-delta'; text: string }
+  | { type: 'tool-call-delta'; id?: string; name?: string; argumentsDelta?: string }
+  | { type: 'tool-call'; toolCall: ToolCall }
+  | { type: 'image'; image: PromptImage }
+  | { type: 'usage'; usage: TokenUsage }
+  | { type: 'error'; error: unknown }
+  | { type: 'done'; result: GenerationResult };
+
+export interface ProviderCapabilities {
+  /** Native token streaming via `ModelProvider.stream`. */
+  streaming?: boolean;
+  /** Function/tool calling. */
+  tools?: boolean;
+  /** Image input, output, both, or none. */
+  images?: false | 'input' | 'output' | 'both';
+  /** First-class system prompt / instruction support. */
+  systemPrompt?: boolean;
+}
+
 export interface ModelProvider {
   readonly name: string;
+  readonly capabilities?: ProviderCapabilities;
   generate(request: GenerationRequest): Promise<GenerationResult>;
+  /**
+   * Optional native streaming. When omitted, GenAIcode synthesizes a short
+   * stream from `generate` (single text snapshot + `done`).
+   */
+  stream?(request: GenerationRequest): AsyncIterable<StreamEvent>;
 }
 
 export interface GenerationDefaults {

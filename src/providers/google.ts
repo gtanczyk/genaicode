@@ -1,5 +1,5 @@
 import { GoogleGenAI, type GenerateContentConfig, type GoogleGenAIOptions } from '@google/genai';
-import type { ModelProvider } from '../core/types.js';
+import type { ModelProvider, StreamEvent } from '../core/types.js';
 import { fromGoogleResponse, toGoogleRequest, type GoogleRequestDefaults } from './google-converter.js';
 
 type GoogleGenerationDefaults = Omit<
@@ -34,6 +34,12 @@ function googleProvider(
   const client = new GoogleGenAI(clientOptions);
   return {
     name,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      images: 'both',
+      systemPrompt: true,
+    },
     async generate(request) {
       const selectedModel = request.model ?? model;
       if (!selectedModel) {
@@ -42,6 +48,65 @@ function googleProvider(
       const defaults: GoogleRequestDefaults = { model: selectedModel, config: generationConfig };
       const response = await client.models.generateContent(toGoogleRequest(request, defaults));
       return fromGoogleResponse(response);
+    },
+    async *stream(request): AsyncGenerator<StreamEvent> {
+      const selectedModel = request.model ?? model;
+      if (!selectedModel) {
+        throw new Error(`No ${name} model configured. Pass a model to the provider or the request builder.`);
+      }
+      const defaults: GoogleRequestDefaults = { model: selectedModel, config: generationConfig };
+      const googleRequest = toGoogleRequest(request, defaults);
+      const stream = await client.models.generateContentStream({
+        ...googleRequest,
+        config: {
+          ...googleRequest.config,
+          abortSignal: request.signal,
+        },
+      });
+
+      let text = '';
+      let lastResponse: Parameters<typeof fromGoogleResponse>[0] | undefined;
+
+      for await (const chunk of stream) {
+        lastResponse = chunk;
+        const piece = chunk.text ?? '';
+        if (piece) {
+          // Google SDK `text` is cumulative per stream chunk in some versions; prefer delta when possible.
+          const delta = piece.startsWith(text) ? piece.slice(text.length) : piece;
+          if (delta) {
+            text += delta;
+            yield { type: 'text-delta', text: delta };
+          }
+        }
+      }
+
+      if (!lastResponse) {
+        yield { type: 'done', result: { parts: text ? [{ type: 'text', text }] : [] } };
+        return;
+      }
+
+      const result = fromGoogleResponse(lastResponse);
+      // If the final chunk only had partial text, prefer accumulated streamed text when present.
+      if (text && result.parts.every((part) => part.type !== 'text')) {
+        result.parts = [{ type: 'text', text }, ...result.parts];
+      } else if (text) {
+        const textPart = result.parts.find((part) => part.type === 'text');
+        if (textPart && textPart.type === 'text' && textPart.text.length < text.length) {
+          textPart.text = text;
+        }
+      }
+
+      for (const part of result.parts) {
+        if (part.type === 'toolCall') {
+          yield { type: 'tool-call', toolCall: part.toolCall };
+        } else if (part.type === 'image') {
+          yield { type: 'image', image: part.image };
+        }
+      }
+      if (result.usage) {
+        yield { type: 'usage', usage: result.usage };
+      }
+      yield { type: 'done', result };
     },
   };
 }
