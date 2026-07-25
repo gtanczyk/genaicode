@@ -83,11 +83,11 @@ export function anthropic(options: AnthropicProviderOptions = {}): ModelProvider
             }
           }
         } else if (event.type === 'message_delta' && event.usage) {
+          // message_delta only reports output tokens; omit total until finalMessage.
           yield {
             type: 'usage',
             usage: {
               outputTokens: event.usage.output_tokens,
-              totalTokens: event.usage.output_tokens,
             },
           };
         }

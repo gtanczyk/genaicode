@@ -48,8 +48,10 @@ export function rateLimitPlugin(options: RateLimitPluginOptions = {}): GenAIPlug
   const pump = () => {
     while (active < concurrency && waiters.length > 0) {
       const now = Date.now();
-      const waitMs = Math.max(0, minIntervalMs - (now - lastStartedAt));
-      if (waitMs > 0 && active > 0) {
+      // Enforce spacing between starts even when no call is currently in flight
+      // (important for concurrency=1 + minIntervalMs).
+      const waitMs = lastStartedAt === 0 ? 0 : Math.max(0, minIntervalMs - (now - lastStartedAt));
+      if (waitMs > 0) {
         setTimeout(pump, waitMs);
         return;
       }
@@ -174,11 +176,11 @@ export function fallbackProvider(providers: readonly ModelProvider[], name = 'fa
   if (providers.length === 0) {
     throw new Error('fallbackProvider requires at least one provider.');
   }
-  const [primary] = providers;
+  const streamProvider = providers.find((provider) => Boolean(provider.stream)) ?? providers[0];
   return {
     name,
     capabilities: {
-      streaming: providers.every((provider) => provider.capabilities?.streaming || Boolean(provider.stream)),
+      streaming: providers.some((provider) => provider.capabilities?.streaming || Boolean(provider.stream)),
       tools: providers.every((provider) => provider.capabilities?.tools !== false),
       systemPrompt: providers.every((provider) => provider.capabilities?.systemPrompt !== false),
     },
@@ -194,8 +196,8 @@ export function fallbackProvider(providers: readonly ModelProvider[], name = 'fa
       throw lastError instanceof Error ? lastError : new Error(String(lastError));
     },
     stream(request) {
-      // Stream from the first provider that exposes streaming; otherwise synthesize.
-      return providerStream(primary, request);
+      // Prefer the first provider with a native stream implementation.
+      return providerStream(streamProvider, request);
     },
   };
 }

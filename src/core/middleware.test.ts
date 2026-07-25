@@ -124,6 +124,22 @@ describe('middleware plugins', () => {
     expect(maxActive).toBe(1);
   });
 
+  it('enforces minIntervalMs between successive starts', async () => {
+    const startedAt: number[] = [];
+    const provider: ModelProvider = {
+      name: 'fast',
+      async generate() {
+        startedAt.push(Date.now());
+        return { parts: [{ type: 'text', text: 'ok' }] };
+      },
+    };
+    const ai = genaicode(provider, { plugins: [rateLimitPlugin({ concurrency: 1, minIntervalMs: 40 })] });
+    await ai('a').text();
+    await ai('b').text();
+    expect(startedAt).toHaveLength(2);
+    expect(startedAt[1]! - startedAt[0]!).toBeGreaterThanOrEqual(35);
+  });
+
   it('falls back to alternate providers', async () => {
     const primary: ModelProvider = {
       name: 'primary',
@@ -144,6 +160,33 @@ describe('middleware plugins', () => {
     ).resolves.toMatchObject({
       parts: [{ type: 'text', text: 'fallback' }],
     });
+  });
+
+  it('streams from the first provider that implements stream()', async () => {
+    const generateOnly: ModelProvider = {
+      name: 'generate-only',
+      async generate() {
+        return { parts: [{ type: 'text', text: 'generate' }] };
+      },
+    };
+    const streaming: ModelProvider = {
+      name: 'streaming',
+      async generate() {
+        return { parts: [{ type: 'text', text: 'unused' }] };
+      },
+      async *stream() {
+        yield { type: 'text-delta', text: 'native' };
+        yield { type: 'done', result: { parts: [{ type: 'text', text: 'native' }] } };
+      },
+    };
+
+    const events: string[] = [];
+    for await (const event of fallbackProvider([generateOnly, streaming]).stream!({
+      prompt: [{ type: 'user', text: 'q' }],
+    })) {
+      if (event.type === 'text-delta') events.push(event.text);
+    }
+    expect(events).toEqual(['native']);
   });
 });
 
