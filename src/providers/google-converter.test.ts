@@ -74,7 +74,14 @@ describe('Google converter', () => {
         { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
         { model: 'gemini-test' },
       ).config,
-    ).toMatchObject({ thinkingConfig: { thinkingBudget: 0 } });
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: 'MINIMAL' } });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: { budgetTokens: 128 } },
+        { model: 'gemini-test' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingBudget: 128 } });
 
     const response = {
       modelVersion: 'gemini-test',

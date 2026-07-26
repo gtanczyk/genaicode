@@ -120,8 +120,10 @@ const googleThinkingLevels = {
 
 function toGoogleThinkingConfig(thinking: ThinkingConfig | undefined): GenerateContentConfig['thinkingConfig'] {
   if (thinking === undefined) return undefined;
+  // Gemini 3 rejects `thinkingBudget: 0` (INVALID_ARGUMENT). `MINIMAL` is the
+  // supported "keep it cheap / effectively off" setting for those models.
   if (thinking === false || thinking.budgetTokens === 0) {
-    return { thinkingBudget: 0 };
+    return { thinkingLevel: ThinkingLevel.MINIMAL };
   }
   if (thinking.level) {
     return { thinkingLevel: googleThinkingLevels[thinking.level] };

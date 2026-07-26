@@ -15,6 +15,9 @@
 
 - Additive only; provider `generationConfig` / Anthropic `thinking` factory options still
   work as escape hatches for vendor-only knobs.
+- On Google, `thinking: false` and `budgetTokens: 0` map to `thinkingLevel: MINIMAL`
+  (Gemini 3 rejects `thinkingBudget: 0`).
+- Provider E2E covers JSON response format and thinking knobs when credentials are set.
 
 ## 2.1.0 — 2026-07-25
 

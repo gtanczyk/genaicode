@@ -179,6 +179,8 @@ const verdict = await ai(promptText)
   `{ type: 'json_schema', name, schema, strict? }`.
 - `thinking`: `false` to disable, or `{ budgetTokens?, level? }` (`minimal` |
   `low` | `medium` | `high`). Prefer one of budget or level — some providers reject both.
+  On Google/Gemini, `false` and `budgetTokens: 0` map to `thinkingLevel: MINIMAL`
+  because Gemini 3 rejects `thinkingBudget: 0`.
 
 Providers map what they support and ignore the rest. `ProviderCapabilities.jsonResponse`
 and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as
@@ -379,6 +381,9 @@ are set:
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`
 - Anthropic: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 - Gemini: `GEMINI_API_KEY`, `GEMINI_MODEL`
+
+Beyond the smoke call, E2E also covers portable `responseFormat: { type: 'json' }`
+(OpenAI, Gemini) and `thinking` (Anthropic disable; Gemini disable / `level: 'minimal'`).
 
 CI/CD is configured in `.github/workflows/provider-e2e.yaml`. Each provider runs in its own
 job and only starts when both required secrets are configured in GitHub Actions.
