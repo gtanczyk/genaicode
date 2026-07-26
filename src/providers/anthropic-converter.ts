@@ -5,6 +5,7 @@ import type {
   PromptImage,
   PromptItem,
   ResultPart,
+  ThinkingConfig,
   ToolChoice,
 } from '../core/types.js';
 
@@ -81,6 +82,21 @@ export interface AnthropicRequestDefaults {
   thinking?: Anthropic.ThinkingConfigParam;
 }
 
+function toAnthropicThinking(
+  thinking: ThinkingConfig | undefined,
+  fallback: Anthropic.ThinkingConfigParam | undefined,
+): Anthropic.ThinkingConfigParam | undefined {
+  if (thinking === undefined) return fallback;
+  if (thinking === false || thinking.budgetTokens === 0) {
+    return { type: 'disabled' };
+  }
+  if (thinking.budgetTokens !== undefined) {
+    return { type: 'enabled', budget_tokens: thinking.budgetTokens };
+  }
+  // Anthropic has no qualitative level; ignore `level` and keep the provider default.
+  return fallback;
+}
+
 export function toAnthropicRequest(
   request: GenerationRequest,
   defaults: AnthropicRequestDefaults,
@@ -97,7 +113,7 @@ export function toAnthropicRequest(
       input_schema: { ...tool.parameters, type: 'object' as const },
     })),
     tool_choice: request.tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined,
-    thinking: defaults.thinking,
+    thinking: toAnthropicThinking(request.thinking, defaults.thinking),
   };
 }
 

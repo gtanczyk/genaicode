@@ -90,7 +90,7 @@ describe('genaicode client', () => {
   });
 
   it('accepts schema adapters for JSON parsing', async () => {
-    const { provider } = sequenceProvider([{ parts: [{ type: 'text', text: '{"count":2}' }] }]);
+    const { provider, requests } = sequenceProvider([{ parts: [{ type: 'text', text: '{"count":2}' }] }]);
     const ai = genaicode(provider);
 
     await expect(
@@ -108,6 +108,22 @@ describe('genaicode client', () => {
         },
       }),
     ).resolves.toBe(2);
+    expect(requests[0].responseFormat).toEqual({ type: 'json' });
+  });
+
+  it('carries portable responseFormat and thinking on the request', async () => {
+    const { provider, requests } = sequenceProvider([{ parts: [{ type: 'text', text: '{}' }] }]);
+    const ai = genaicode(provider);
+
+    await ai('classify')
+      .responseFormat({ type: 'json' })
+      .thinking({ level: 'minimal' })
+      .text();
+
+    expect(requests[0]).toMatchObject({
+      responseFormat: { type: 'json' },
+      thinking: { level: 'minimal' },
+    });
   });
 
   it('resets safely while turns are in flight or queued', async () => {

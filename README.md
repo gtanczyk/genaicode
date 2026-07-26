@@ -158,6 +158,32 @@ const value = await ai('Return {"count": 3}.').json({
 });
 ```
 
+Calling `.json()` also sets `responseFormat: { type: 'json' }` on the request when you have
+not already chosen a format, so providers that support JSON mode (OpenAI, Gemini/Vertex)
+are asked for JSON rather than free text.
+
+## Response format and thinking
+
+Portable request fields cover the two knobs backends usually poke through provider-specific
+config:
+
+```ts
+const verdict = await ai(promptText)
+  .responseFormat({ type: 'json' })
+  .thinking({ level: 'minimal' }) // or { budgetTokens: 0 } / false to disable
+  .temperature(0)
+  .json((value) => VerdictSchema.parse(value));
+```
+
+- `responseFormat`: `{ type: 'text' | 'json' }` or
+  `{ type: 'json_schema', name, schema, strict? }`.
+- `thinking`: `false` to disable, or `{ budgetTokens?, level? }` (`minimal` |
+  `low` | `medium` | `high`). Prefer one of budget or level — some providers reject both.
+
+Providers map what they support and ignore the rest. `ProviderCapabilities.jsonResponse`
+and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as
+Vertex `generationConfig` remain available for anything not covered here.
+
 ## PromptItem: the portable prompt IR
 
 `PromptItem` is GenAIcode's provider-neutral intermediate representation:

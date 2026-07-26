@@ -8,6 +8,7 @@ These are covered by minor/patch compatibility within 2.x:
 
 - `genaicode()` client, immutable request builders, and conversation chains
 - `PromptItem`, `GenerationRequest`, `GenerationResult`, `StreamEvent`
+- `ResponseFormat`, `ThinkingConfig`, and related capability flags
 - `ModelProvider` and `GenAIPlugin` interfaces
 - Prompt helpers (`prompt`, `system`, `user`, `assistant`, `asPrompt`, …)
 - Result helpers (`resultText`, `parseJsonResult`, …)

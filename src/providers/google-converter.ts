@@ -1,5 +1,6 @@
 import {
   FunctionCallingConfigMode,
+  ThinkingLevel,
   type Content,
   type GenerateContentConfig,
   type GenerateContentParameters,
@@ -11,7 +12,9 @@ import type {
   GenerationResult,
   PromptImage,
   PromptItem,
+  ResponseFormat,
   ResultPart,
+  ThinkingConfig,
   ToolChoice,
 } from '../core/types.js';
 
@@ -97,16 +100,52 @@ export interface GoogleRequestDefaults {
   >;
 }
 
+function toGoogleResponseFormat(format: ResponseFormat | undefined): Partial<GenerateContentConfig> {
+  if (!format || format.type === 'text') return {};
+  if (format.type === 'json') {
+    return { responseMimeType: 'application/json' };
+  }
+  return {
+    responseMimeType: 'application/json',
+    responseJsonSchema: format.schema,
+  };
+}
+
+const googleThinkingLevels = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+} as const;
+
+function toGoogleThinkingConfig(thinking: ThinkingConfig | undefined): GenerateContentConfig['thinkingConfig'] {
+  if (thinking === undefined) return undefined;
+  if (thinking === false || thinking.budgetTokens === 0) {
+    return { thinkingBudget: 0 };
+  }
+  if (thinking.level) {
+    return { thinkingLevel: googleThinkingLevels[thinking.level] };
+  }
+  if (thinking.budgetTokens !== undefined) {
+    return { thinkingBudget: thinking.budgetTokens };
+  }
+  return undefined;
+}
+
 export function toGoogleRequest(
   request: GenerationRequest,
   defaults: GoogleRequestDefaults,
 ): GenerateContentParameters {
   const hasTools = Boolean(request.tools?.length);
+  const responseFormat = toGoogleResponseFormat(request.responseFormat);
+  const thinkingConfig = toGoogleThinkingConfig(request.thinking);
   return {
     model: request.model ?? defaults.model,
     contents: toGoogleContents(request.prompt),
     config: {
       ...defaults.config,
+      ...responseFormat,
+      ...(thinkingConfig !== undefined ? { thinkingConfig } : {}),
       abortSignal: request.signal,
       systemInstruction: toGoogleSystemInstruction(request.prompt),
       temperature: request.temperature,

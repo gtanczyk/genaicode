@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.0 — 2026-07-26
+
+### Added
+
+- Portable `responseFormat` on `GenerationRequest` / request builders
+  (`text` | `json` | `json_schema`), mapped by OpenAI and Google adapters
+- Portable `thinking` controls (`false` | `{ budgetTokens?, level? }`), mapped by
+  Anthropic (budget / disable) and Google (budget or level)
+- `.json()` sets `responseFormat: { type: 'json' }` when no format was already chosen
+- Capability flags: `jsonResponse`, `thinking`
+
+### Notes
+
+- Additive only; provider `generationConfig` / Anthropic `thinking` factory options still
+  work as escape hatches for vendor-only knobs.
+
 ## 2.1.0 — 2026-07-25
 
 Publishes the Phase 3–4 work already on `master`. npm `2.0.0` shipped the 2.0
