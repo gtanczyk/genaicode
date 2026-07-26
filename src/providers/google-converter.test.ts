@@ -71,6 +71,16 @@ describe('Google converter', () => {
 
     expect(
       toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
+        { model: 'gemini-test' },
+      ).config,
+    ).toMatchObject({
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: 'MINIMAL' },
+    });
+
+    expect(
+      toGoogleRequest(
         { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
         { model: 'gemini-test' },
       ).config,

@@ -140,7 +140,14 @@ export function toGoogleRequest(
 ): GenerateContentParameters {
   const hasTools = Boolean(request.tools?.length);
   const responseFormat = toGoogleResponseFormat(request.responseFormat);
-  const thinkingConfig = toGoogleThinkingConfig(request.thinking);
+  const wantsJson =
+    request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
+  // Gemini 3 defaults to heavy dynamic thinking; with a small maxOutputTokens budget that
+  // can yield an empty visible answer under JSON mode. Prefer MINIMAL when the caller did
+  // not set thinking explicitly.
+  const thinkingConfig =
+    toGoogleThinkingConfig(request.thinking) ??
+    (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
   return {
     model: request.model ?? defaults.model,
     contents: toGoogleContents(request.prompt),

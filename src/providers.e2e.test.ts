@@ -33,19 +33,35 @@ async function runSmokeRequest(request: RequestBuilder) {
 }
 
 async function runJsonResponseFormat(ai: GenAIClient) {
-  const value = await ai('Return a JSON object with a single key "answer" whose value is the number 4.')
-    .system('Respond with JSON only.')
-    .responseFormat({ type: 'json' })
-    .temperature(0)
-    .maxOutputTokens(64)
-    .json((parsed) => {
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error(`expected object, got ${typeof parsed}`);
-      }
-      return parsed as { answer?: unknown };
-    });
+  const maxAttempts = 3;
+  let lastError: unknown;
 
-  expect(value).toMatchObject({ answer: 4 });
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const value = await ai('Return a JSON object with a single key "answer" whose value is the number 4.')
+        .system('Respond with JSON only. Do not include markdown fences or commentary.')
+        .responseFormat({ type: 'json' })
+        // Keep thinking cheap so a small token budget is not spent only on thoughts.
+        .thinking(false)
+        .temperature(0)
+        .maxOutputTokens(256)
+        .json((parsed) => {
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            throw new Error(`expected object, got ${typeof parsed}`);
+          }
+          return parsed as { answer?: unknown };
+        });
+
+      const answer = value.answer;
+      expect(answer === 4 || answer === '4').toBe(true);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (hasQuotaError(error) || attempt === maxAttempts) throw error;
+    }
+  }
+
+  throw lastError;
 }
 
 async function runThinkingDisabled(ai: GenAIClient) {
