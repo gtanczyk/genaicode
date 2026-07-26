@@ -35,7 +35,7 @@ Provider SDKs are the right tool when you call one vendor and own every request 
 yourself. The cost shows up when the same backend needs a second provider, a test double,
 or shared policy (timeouts, JSON parsing, rate limits, fallback) without copying glue.
 
-GenAicode is that thin shared layer:
+GenAIcode is that thin shared layer:
 
 - One portable prompt/tool IR (`PromptItem`) instead of OpenAI messages vs Anthropic
   blocks vs Gemini contents.
