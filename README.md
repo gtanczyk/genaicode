@@ -29,6 +29,25 @@ npm install genaicode
 
 Node.js 20 or newer is required.
 
+## Why this vs a raw SDK
+
+Provider SDKs are the right tool when you call one vendor and own every request shape
+yourself. The cost shows up when the same backend needs a second provider, a test double,
+or shared policy (timeouts, JSON parsing, rate limits, fallback) without copying glue.
+
+GenAicode is that thin shared layer:
+
+- One portable prompt/tool IR (`PromptItem`) instead of OpenAI messages vs Anthropic
+  blocks vs Gemini contents.
+- One request API (`.text()`, `.json()`, `.stream()`, chains) over those adapters.
+- A tiny `ModelProvider` seam so tests and custom gateways do not mock vendor HTTP.
+- Opt-in middleware and retry helpers—no hidden tool runners, no silent retries, no
+  agent loop.
+
+If you are happy importing one SDK and never swapping models or providers, stay on the
+SDK. If you want the call site to look the same while the edge stays replaceable, use
+GenAIcode.
+
 ## A prompt in three lines
 
 ```ts
