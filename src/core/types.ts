@@ -100,6 +100,31 @@ export type JsonResultParser<T = unknown> = ((value: unknown) => T) | SchemaAdap
 
 export type ToolChoice = 'auto' | 'none' | 'required' | { name: string };
 
+/**
+ * Portable response-shape hint. Providers map what they support; unsupported
+ * variants are ignored rather than rejected.
+ */
+export type ResponseFormat =
+  | { type: 'text' }
+  | { type: 'json' }
+  | { type: 'json_schema'; name: string; schema: JsonSchema; strict?: boolean };
+
+export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
+/**
+ * Portable thinking / reasoning controls.
+ *
+ * - `false` disables thinking when the provider allows it.
+ * - `budgetTokens: 0` is treated as disabled on providers that use a token budget.
+ * - Prefer either `level` or `budgetTokens` — some providers reject both at once.
+ */
+export type ThinkingConfig =
+  | false
+  | {
+      budgetTokens?: number;
+      level?: ThinkingLevel;
+    };
+
 export interface GenerationRequest {
   prompt: PromptItem[];
   model?: string;
@@ -107,6 +132,8 @@ export interface GenerationRequest {
   maxOutputTokens?: number;
   tools?: ToolDefinition[];
   toolChoice?: ToolChoice;
+  responseFormat?: ResponseFormat;
+  thinking?: ThinkingConfig;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }
@@ -135,6 +162,10 @@ export interface ProviderCapabilities {
   images?: false | 'input' | 'output' | 'both';
   /** First-class system prompt / instruction support. */
   systemPrompt?: boolean;
+  /** Honors `GenerationRequest.responseFormat` (`json` / `json_schema`). */
+  jsonResponse?: boolean;
+  /** Honors `GenerationRequest.thinking`. */
+  thinking?: boolean;
 }
 
 export interface ModelProvider {
@@ -154,5 +185,7 @@ export interface GenerationDefaults {
   maxOutputTokens?: number;
   tools?: ToolDefinition[];
   toolChoice?: ToolChoice;
+  responseFormat?: ResponseFormat;
+  thinking?: ThinkingConfig;
   metadata?: Record<string, unknown>;
 }

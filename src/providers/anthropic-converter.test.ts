@@ -50,6 +50,7 @@ describe('Anthropic converter', () => {
         prompt: [{ type: 'user', text: 'hello' }],
         tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
         toolChoice: { name: 'answer' },
+        thinking: { budgetTokens: 1024 },
       },
       { model: 'claude-test', maxOutputTokens: 4000 },
     );
@@ -57,7 +58,15 @@ describe('Anthropic converter', () => {
       model: 'claude-test',
       max_tokens: 4000,
       tool_choice: { type: 'tool', name: 'answer' },
+      thinking: { type: 'enabled', budget_tokens: 1024 },
     });
+
+    expect(
+      toAnthropicRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
+        { model: 'claude-test', thinking: { type: 'enabled', budget_tokens: 2048 } },
+      ).thinking,
+    ).toEqual({ type: 'disabled' });
 
     const message = {
       id: 'message-1',

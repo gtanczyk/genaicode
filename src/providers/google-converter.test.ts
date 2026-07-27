@@ -53,17 +53,45 @@ describe('Google converter', () => {
         prompt: [{ type: 'user', text: 'hello' }],
         tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
         toolChoice: { name: 'answer' },
+        responseFormat: { type: 'json' },
+        thinking: { level: 'minimal' },
       },
       { model: 'gemini-test' },
     );
     expect(request).toMatchObject({
       model: 'gemini-test',
       config: {
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingLevel: 'MINIMAL' },
         toolConfig: {
           functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['answer'] },
         },
       },
     });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
+        { model: 'gemini-test' },
+      ).config,
+    ).toMatchObject({
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: 'MINIMAL' },
+    });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
+        { model: 'gemini-test' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: 'MINIMAL' } });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: { budgetTokens: 128 } },
+        { model: 'gemini-test' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingBudget: 128 } });
 
     const response = {
       modelVersion: 'gemini-test',

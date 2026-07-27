@@ -29,6 +29,7 @@ export function anthropic(options: AnthropicProviderOptions = {}): ModelProvider
       tools: true,
       images: 'input',
       systemPrompt: true,
+      thinking: true,
     },
     async generate(request) {
       const model = request.model ?? options.model ?? process.env.ANTHROPIC_MODEL;

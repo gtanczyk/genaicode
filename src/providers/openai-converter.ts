@@ -121,6 +121,23 @@ export function fromOpenAICompletion(completion: OpenAI.Chat.Completions.ChatCom
   };
 }
 
+function toOpenAIResponseFormat(
+  format: GenerationRequest['responseFormat'],
+): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming['response_format'] | undefined {
+  if (!format || format.type === 'text') return undefined;
+  if (format.type === 'json') {
+    return { type: 'json_object' };
+  }
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: format.name,
+      schema: format.schema,
+      strict: format.strict,
+    },
+  };
+}
+
 export function toOpenAIRequest(request: GenerationRequest, defaultModel: string) {
   return {
     model: request.model ?? defaultModel,
@@ -129,6 +146,7 @@ export function toOpenAIRequest(request: GenerationRequest, defaultModel: string
     max_completion_tokens: request.maxOutputTokens,
     tools: toOpenAITools(request.tools),
     tool_choice: toOpenAIToolChoice(request.toolChoice),
+    response_format: toOpenAIResponseFormat(request.responseFormat),
   } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
 }
 

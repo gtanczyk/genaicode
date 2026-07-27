@@ -39,6 +39,8 @@ function googleProvider(
       tools: true,
       images: 'both',
       systemPrompt: true,
+      jsonResponse: true,
+      thinking: true,
     },
     async generate(request) {
       const selectedModel = request.model ?? model;

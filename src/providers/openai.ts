@@ -26,6 +26,7 @@ export function openai(options: OpenAIProviderOptions = {}): ModelProvider {
       tools: true,
       images: 'input',
       systemPrompt: true,
+      jsonResponse: true,
     },
     async generate(request) {
       const model = request.model ?? defaultModel;

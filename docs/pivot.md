@@ -100,7 +100,10 @@ and in the 1.x npm line.
 
 - `2.0.0` on npm shipped the Phase 1–2 kernel and provider adapters.
 - `2.1.0` publishes Phases 3–4 (streaming, middleware, capabilities, retry
-  helpers, fixtures, examples, and related docs). See [CHANGELOG.md](../CHANGELOG.md).
+  helpers, fixtures, examples, and related docs).
+- `2.2.0` adds portable `responseFormat` and `thinking` request fields (so apps
+  need fewer provider-specific `generationConfig` casts). See
+  [CHANGELOG.md](../CHANGELOG.md).
 
 ## Success measures
 

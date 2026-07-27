@@ -10,7 +10,9 @@ import type {
   ModelProvider,
   PromptInput,
   PromptItem,
+  ResponseFormat,
   StreamEvent,
+  ThinkingConfig,
   ToolCall,
   ToolChoice,
   ToolDefinition,
@@ -24,6 +26,10 @@ export interface RequestBuilder {
   temperature(temperature: number): RequestBuilder;
   maxOutputTokens(maxOutputTokens: number): RequestBuilder;
   tools(tools: ToolDefinition[], choice?: ToolChoice): RequestBuilder;
+  /** Ask the provider for JSON (or a JSON schema) when supported. */
+  responseFormat(format: ResponseFormat): RequestBuilder;
+  /** Portable thinking / reasoning controls when the provider supports them. */
+  thinking(thinking: ThinkingConfig): RequestBuilder;
   signal(signal: AbortSignal): RequestBuilder;
   run(): Promise<GenerationResult>;
   text(): Promise<string>;
@@ -110,6 +116,14 @@ class RequestBuilderImpl implements RequestBuilder {
     return this.copy({ tools, toolChoice });
   }
 
+  responseFormat(responseFormat: ResponseFormat): RequestBuilder {
+    return this.copy({ responseFormat });
+  }
+
+  thinking(thinking: ThinkingConfig): RequestBuilder {
+    return this.copy({ thinking });
+  }
+
   signal(signal: AbortSignal): RequestBuilder {
     return this.copy({ signal });
   }
@@ -122,6 +136,8 @@ class RequestBuilderImpl implements RequestBuilder {
       maxOutputTokens: this.state.maxOutputTokens,
       tools: this.state.tools,
       toolChoice: this.state.toolChoice,
+      responseFormat: this.state.responseFormat,
+      thinking: this.state.thinking,
       signal: this.state.signal,
       metadata: this.state.metadata,
     };
@@ -136,8 +152,8 @@ class RequestBuilderImpl implements RequestBuilder {
   }
 
   async json<T = unknown>(parse?: JsonResultParser<T>): Promise<T> {
-    const result = await this.run();
-    return parseJsonResult(result, parse);
+    const builder = this.state.responseFormat ? this : this.copy({ responseFormat: { type: 'json' } });
+    return parseJsonResult(await builder.run(), parse);
   }
 
   async toolCalls(): Promise<ToolCall[]> {
@@ -188,7 +204,13 @@ class ConversationImpl implements Conversation {
   }
 
   async json<T = unknown>(input: PromptInput, parse?: JsonResultParser<T>, configure?: ConfigureRequest): Promise<T> {
-    return parseJsonResult(await this.ask(input, configure), parse);
+    return parseJsonResult(
+      await this.ask(input, (request) => {
+        const withJson = request.inspect().responseFormat ? request : request.responseFormat({ type: 'json' });
+        return (configure ?? ((value) => value))(withJson);
+      }),
+      parse,
+    );
   }
 
   async toolCalls(input: PromptInput, configure?: ConfigureRequest): Promise<ToolCall[]> {

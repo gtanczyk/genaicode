@@ -29,12 +29,32 @@ describe('OpenAI converter', () => {
           prompt: [{ type: 'user', text: 'hello' }],
           tools: sampleTools.map((tool) => ({ ...tool, name: 'answer', description: 'Answer' })),
           toolChoice: { name: 'answer' },
+          responseFormat: { type: 'json' },
         },
         'model-a',
       ),
     ).toMatchObject({
       model: 'model-a',
       tool_choice: { type: 'function', function: { name: 'answer' } },
+      response_format: { type: 'json_object' },
+    });
+
+    expect(
+      toOpenAIRequest(
+        {
+          prompt: [{ type: 'user', text: 'hello' }],
+          responseFormat: {
+            type: 'json_schema',
+            name: 'answer',
+            schema: { type: 'object', properties: { value: { type: 'number' } } },
+            strict: true,
+          },
+        },
+        'model-a',
+      ).response_format,
+    ).toMatchObject({
+      type: 'json_schema',
+      json_schema: { name: 'answer', strict: true },
     });
 
     const completion = {

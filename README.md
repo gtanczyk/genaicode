@@ -158,6 +158,35 @@ const value = await ai('Return {"count": 3}.').json({
 });
 ```
 
+Calling `.json()` also sets `responseFormat: { type: 'json' }` on the request when you have
+not already chosen a format, so providers that support JSON mode (OpenAI, Gemini/Vertex)
+are asked for JSON rather than free text.
+
+## Response format and thinking
+
+Portable request fields cover the two knobs backends usually poke through provider-specific
+config:
+
+```ts
+const verdict = await ai(promptText)
+  .responseFormat({ type: 'json' })
+  .thinking({ level: 'minimal' }) // or { budgetTokens: 0 } / false to disable
+  .temperature(0)
+  .json((value) => VerdictSchema.parse(value));
+```
+
+- `responseFormat`: `{ type: 'text' | 'json' }` or
+  `{ type: 'json_schema', name, schema, strict? }`.
+- `thinking`: `false` to disable, or `{ budgetTokens?, level? }` (`minimal` |
+  `low` | `medium` | `high`). Prefer one of budget or level — some providers reject both.
+  On Google/Gemini, `false` and `budgetTokens: 0` map to `thinkingLevel: MINIMAL`
+  because Gemini 3 rejects `thinkingBudget: 0`. JSON `responseFormat` without an
+  explicit `thinking` setting also defaults Google to `MINIMAL`.
+
+Providers map what they support and ignore the rest. `ProviderCapabilities.jsonResponse`
+and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as
+Vertex `generationConfig` remain available for anything not covered here.
+
 ## PromptItem: the portable prompt IR
 
 `PromptItem` is GenAIcode's provider-neutral intermediate representation:
@@ -353,6 +382,9 @@ are set:
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`
 - Anthropic: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 - Gemini: `GEMINI_API_KEY`, `GEMINI_MODEL`
+
+Beyond the smoke call, E2E also covers portable `responseFormat: { type: 'json' }`
+(OpenAI, Gemini) and `thinking` (Anthropic disable; Gemini disable / `level: 'minimal'`).
 
 CI/CD is configured in `.github/workflows/provider-e2e.yaml`. Each provider runs in its own
 job and only starts when both required secrets are configured in GitHub Actions.

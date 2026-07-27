@@ -101,6 +101,8 @@ function defaultCacheKey(request: GenerationRequest): string {
     maxOutputTokens: request.maxOutputTokens,
     tools: request.tools,
     toolChoice: request.toolChoice,
+    responseFormat: request.responseFormat,
+    thinking: request.thinking,
     metadata: request.metadata,
   });
 }
