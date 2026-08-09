@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type {
+  Citation,
   GenerationRequest,
   GenerationResult,
   PromptImage,
@@ -8,6 +9,12 @@ import type {
   ThinkingConfig,
   ToolChoice,
 } from '../core/types.js';
+
+const WEB_SEARCH_TOOL: Anthropic.WebSearchTool20250305 = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+  max_uses: 5,
+};
 
 function toAnthropicImage(image: PromptImage): Anthropic.ImageBlockParam {
   return {
@@ -101,17 +108,21 @@ export function toAnthropicRequest(
   request: GenerationRequest,
   defaults: AnthropicRequestDefaults,
 ): Anthropic.MessageCreateParamsNonStreaming {
+  // Unlike Google, Anthropic allows the web_search server tool alongside function tools.
+  const tools: Anthropic.ToolUnion[] = (request.tools ?? []).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: { ...tool.parameters, type: 'object' as const },
+  }));
+  if (request.search) tools.push(WEB_SEARCH_TOOL);
+
   return {
     model: request.model ?? defaults.model,
     max_tokens: request.maxOutputTokens ?? defaults.maxOutputTokens ?? 8192,
     system: toAnthropicSystem(request.prompt),
     messages: toAnthropicMessages(request.prompt),
     temperature: request.temperature,
-    tools: request.tools?.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: { ...tool.parameters, type: 'object' as const },
-    })),
+    tools: tools.length ? tools : undefined,
     tool_choice: request.tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined,
     thinking: toAnthropicThinking(request.thinking, defaults.thinking),
   };
@@ -125,6 +136,7 @@ function normalizeArguments(value: unknown): Record<string, unknown> {
 
 export function fromAnthropicMessage(message: Anthropic.Message): GenerationResult {
   const parts: ResultPart[] = [];
+  const citations: Citation[] = [];
   for (const block of message.content) {
     if (block.type === 'text') {
       parts.push({ type: 'text', text: block.text });
@@ -137,6 +149,8 @@ export function fromAnthropicMessage(message: Anthropic.Message): GenerationResu
           arguments: normalizeArguments(block.input),
         },
       });
+    } else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+      citations.push(...block.content.map((result) => ({ url: result.url, title: result.title })));
     }
   }
 
@@ -155,6 +169,7 @@ export function fromAnthropicMessage(message: Anthropic.Message): GenerationResu
         cacheTokens,
       cachedInputTokens: cacheTokens,
     },
+    ...(citations.length ? { citations } : {}),
     raw: message,
   };
 }

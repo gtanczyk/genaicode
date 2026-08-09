@@ -8,6 +8,7 @@ import {
   type Part,
 } from '@google/genai';
 import type {
+  Citation,
   GenerationRequest,
   GenerationResult,
   PromptImage,
@@ -94,12 +95,9 @@ function toGoogleToolConfig(choice: ToolChoice | undefined): GenerateContentConf
 
 export interface GoogleRequestDefaults {
   model: string;
-  // 'tools' stays available: it's how a provider wires in built-in Gemini tools
-  // (Google Search grounding, etc). Request-level function tools still take priority
-  // and replace it outright.
   config?: Omit<
     GenerateContentConfig,
-    'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'toolConfig'
+    'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'tools' | 'toolConfig'
   >;
 }
 
@@ -160,6 +158,8 @@ export function toGoogleRequest(
       systemInstruction: toGoogleSystemInstruction(request.prompt),
       temperature: request.temperature,
       maxOutputTokens: request.maxOutputTokens,
+      // Function tools and googleSearch grounding are mutually exclusive on this API —
+      // function tools win, matching toolChoice below applying only to them.
       tools: hasTools
         ? [
             {
@@ -170,7 +170,9 @@ export function toGoogleRequest(
               })),
             },
           ]
-        : defaults.config?.tools,
+        : request.search
+          ? [{ googleSearch: {} }]
+          : undefined,
       toolConfig: hasTools ? toGoogleToolConfig(request.toolChoice) : undefined,
     },
   };
@@ -213,6 +215,11 @@ export function fromGoogleResponse(response: GenerateContentResponse): Generatio
   }
 
   const usage = response.usageMetadata;
+  const citations: Citation[] = [];
+  for (const chunk of candidate?.groundingMetadata?.groundingChunks ?? []) {
+    if (chunk.web?.uri) citations.push({ url: chunk.web.uri, ...(chunk.web.title ? { title: chunk.web.title } : {}) });
+  }
+
   return {
     parts,
     model: response.modelVersion,
@@ -225,6 +232,7 @@ export function fromGoogleResponse(response: GenerateContentResponse): Generatio
           cachedInputTokens: usage.cachedContentTokenCount,
         }
       : undefined,
+    ...(citations.length ? { citations } : {}),
     raw: response,
   };
 }

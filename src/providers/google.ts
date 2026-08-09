@@ -2,11 +2,9 @@ import { GoogleGenAI, type GenerateContentConfig, type GoogleGenAIOptions } from
 import type { ModelProvider, StreamEvent } from '../core/types.js';
 import { fromGoogleResponse, toGoogleRequest, type GoogleRequestDefaults } from './google-converter.js';
 
-// 'tools' stays available for built-in tools like Google Search grounding — see
-// GoogleRequestDefaults in google-converter.ts.
 type GoogleGenerationDefaults = Omit<
   GenerateContentConfig,
-  'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'toolConfig'
+  'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'tools' | 'toolConfig'
 >;
 
 export interface GeminiProviderOptions {
@@ -43,6 +41,7 @@ function googleProvider(
       systemPrompt: true,
       jsonResponse: true,
       thinking: true,
+      search: true,
     },
     async generate(request) {
       const selectedModel = request.model ?? model;

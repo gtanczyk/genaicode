@@ -125,27 +125,54 @@ describe('Google converter', () => {
     });
   });
 
-  it('carries a provider-configured built-in tool (e.g. Google Search grounding) through when the request has no function tools', () => {
-    const withGrounding = toGoogleRequest(
-      { prompt: [{ type: 'user', text: 'hello' }] },
-      { model: 'gemini-test', config: { tools: [{ googleSearch: {} }] } },
+  it('maps `search` to the googleSearch built-in tool, and lets function tools win when both are set', () => {
+    const withSearch = toGoogleRequest(
+      { prompt: [{ type: 'user', text: 'hello' }], search: true },
+      { model: 'gemini-test' },
     );
-    expect(withGrounding.config).toMatchObject({ tools: [{ googleSearch: {} }] });
+    expect(withSearch.config).toMatchObject({ tools: [{ googleSearch: {} }] });
 
-    // Request-level function tools always win: the API rejects functionDeclarations
-    // alongside a built-in tool like googleSearch in the same call.
-    const withFunctionTools = toGoogleRequest(
+    // The API rejects functionDeclarations alongside a built-in tool like googleSearch
+    // in the same call, so function tools take priority when a request sets both.
+    const withBoth = toGoogleRequest(
       {
         prompt: [{ type: 'user', text: 'hello' }],
         tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
+        search: true,
       },
-      { model: 'gemini-test', config: { tools: [{ googleSearch: {} }] } },
+      { model: 'gemini-test' },
     );
-    expect(withFunctionTools.config).toMatchObject({
+    expect(withBoth.config).toMatchObject({
       tools: [
         { functionDeclarations: [{ name: 'answer', description: 'Answer', parametersJsonSchema: { type: 'object' } }] },
       ],
     });
+  });
+
+  it('extracts citations from grounding metadata', () => {
+    const response = {
+      modelVersion: 'gemini-test',
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: { role: 'model', parts: [{ text: 'Brawl Stars is a MOBA.' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://example.com/brawl-stars', title: 'Brawl Stars' } },
+              { web: {} }, // no uri: dropped, not surfaced as a broken citation
+            ],
+          },
+        },
+      ],
+    } as GenerateContentResponse;
+
+    expect(fromGoogleResponse(response).citations).toEqual([
+      { url: 'https://example.com/brawl-stars', title: 'Brawl Stars' },
+    ]);
+    expect(
+      fromGoogleResponse({ modelVersion: 'gemini-test', candidates: [] } as unknown as GenerateContentResponse)
+        .citations,
+    ).toBeUndefined();
   });
 
   it('uses tool names when optional Google call ids are missing', () => {
