@@ -94,12 +94,9 @@ function toGoogleToolConfig(choice: ToolChoice | undefined): GenerateContentConf
 
 export interface GoogleRequestDefaults {
   model: string;
-  // 'tools' stays available here (unlike toolConfig): it is how a provider wires in
-  // built-in Gemini tools — Google Search grounding, URL context — that the
-  // provider-neutral GenerationRequest has no concept of. Request-level function
-  // tools (below) still take priority and replace it outright: the API does not
-  // accept functionDeclarations alongside a built-in tool like googleSearch in the
-  // same call.
+  // 'tools' stays available: it's how a provider wires in built-in Gemini tools
+  // (Google Search grounding, etc). Request-level function tools still take priority
+  // and replace it outright.
   config?: Omit<
     GenerateContentConfig,
     'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'toolConfig'
