@@ -94,9 +94,15 @@ function toGoogleToolConfig(choice: ToolChoice | undefined): GenerateContentConf
 
 export interface GoogleRequestDefaults {
   model: string;
+  // 'tools' stays available here (unlike toolConfig): it is how a provider wires in
+  // built-in Gemini tools — Google Search grounding, URL context — that the
+  // provider-neutral GenerationRequest has no concept of. Request-level function
+  // tools (below) still take priority and replace it outright: the API does not
+  // accept functionDeclarations alongside a built-in tool like googleSearch in the
+  // same call.
   config?: Omit<
     GenerateContentConfig,
-    'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'tools' | 'toolConfig'
+    'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'toolConfig'
   >;
 }
 
@@ -140,14 +146,12 @@ export function toGoogleRequest(
 ): GenerateContentParameters {
   const hasTools = Boolean(request.tools?.length);
   const responseFormat = toGoogleResponseFormat(request.responseFormat);
-  const wantsJson =
-    request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
+  const wantsJson = request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
   // Gemini 3 defaults to heavy dynamic thinking; with a small maxOutputTokens budget that
   // can yield an empty visible answer under JSON mode. Prefer MINIMAL when the caller did
   // not set thinking explicitly.
   const thinkingConfig =
-    toGoogleThinkingConfig(request.thinking) ??
-    (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
+    toGoogleThinkingConfig(request.thinking) ?? (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
   return {
     model: request.model ?? defaults.model,
     contents: toGoogleContents(request.prompt),
@@ -169,7 +173,7 @@ export function toGoogleRequest(
               })),
             },
           ]
-        : undefined,
+        : defaults.config?.tools,
       toolConfig: hasTools ? toGoogleToolConfig(request.toolChoice) : undefined,
     },
   };

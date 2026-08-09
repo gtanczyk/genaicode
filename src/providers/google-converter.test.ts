@@ -80,10 +80,7 @@ describe('Google converter', () => {
     });
 
     expect(
-      toGoogleRequest(
-        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
-        { model: 'gemini-test' },
-      ).config,
+      toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model: 'gemini-test' }).config,
     ).toMatchObject({ thinkingConfig: { thinkingLevel: 'MINIMAL' } });
 
     expect(
@@ -125,6 +122,29 @@ describe('Google converter', () => {
         { type: 'image', image: { mediaType: 'image/png', data: 'aGVsbG8=' } },
       ],
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 3 },
+    });
+  });
+
+  it('carries a provider-configured built-in tool (e.g. Google Search grounding) through when the request has no function tools', () => {
+    const withGrounding = toGoogleRequest(
+      { prompt: [{ type: 'user', text: 'hello' }] },
+      { model: 'gemini-test', config: { tools: [{ googleSearch: {} }] } },
+    );
+    expect(withGrounding.config).toMatchObject({ tools: [{ googleSearch: {} }] });
+
+    // Request-level function tools always win: the API rejects functionDeclarations
+    // alongside a built-in tool like googleSearch in the same call.
+    const withFunctionTools = toGoogleRequest(
+      {
+        prompt: [{ type: 'user', text: 'hello' }],
+        tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
+      },
+      { model: 'gemini-test', config: { tools: [{ googleSearch: {} }] } },
+    );
+    expect(withFunctionTools.config).toMatchObject({
+      tools: [
+        { functionDeclarations: [{ name: 'answer', description: 'Answer', parametersJsonSchema: { type: 'object' } }] },
+      ],
     });
   });
 

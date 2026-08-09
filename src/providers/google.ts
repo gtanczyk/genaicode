@@ -2,9 +2,13 @@ import { GoogleGenAI, type GenerateContentConfig, type GoogleGenAIOptions } from
 import type { ModelProvider, StreamEvent } from '../core/types.js';
 import { fromGoogleResponse, toGoogleRequest, type GoogleRequestDefaults } from './google-converter.js';
 
+// 'tools' stays available (unlike toolConfig): see the matching comment on
+// GoogleRequestDefaults in google-converter.ts for why a provider needs to set it —
+// built-in Gemini tools such as Google Search grounding have no provider-neutral
+// equivalent, and request-level function tools always take priority over it.
 type GoogleGenerationDefaults = Omit<
   GenerateContentConfig,
-  'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'tools' | 'toolConfig'
+  'abortSignal' | 'systemInstruction' | 'temperature' | 'maxOutputTokens' | 'toolConfig'
 >;
 
 export interface GeminiProviderOptions {
