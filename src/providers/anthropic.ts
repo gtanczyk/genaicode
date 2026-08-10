@@ -1,10 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ModelProvider, StreamEvent } from '../core/types.js';
-import {
-  fromAnthropicMessage,
-  toAnthropicRequest,
-  type AnthropicRequestDefaults,
-} from './anthropic-converter.js';
+import { fromAnthropicMessage, toAnthropicRequest, type AnthropicRequestDefaults } from './anthropic-converter.js';
 
 export interface AnthropicProviderOptions {
   apiKey?: string;
@@ -30,6 +26,7 @@ export function anthropic(options: AnthropicProviderOptions = {}): ModelProvider
       images: 'input',
       systemPrompt: true,
       thinking: true,
+      search: true,
     },
     async generate(request) {
       const model = request.model ?? options.model ?? process.env.ANTHROPIC_MODEL;

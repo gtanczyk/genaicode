@@ -97,4 +97,50 @@ describe('Anthropic converter', () => {
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 20, cachedInputTokens: 3 },
     });
   });
+
+  it('adds the web_search tool alongside function tools, and extracts citations', () => {
+    const request = toAnthropicRequest(
+      {
+        prompt: [{ type: 'user', text: 'hello' }],
+        tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
+        search: true,
+      },
+      { model: 'claude-test' },
+    );
+    expect(request.tools).toMatchObject([
+      { name: 'answer' },
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+    ]);
+
+    const message = {
+      id: 'message-1',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-test',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      content: [
+        { type: 'server_tool_use', id: 'search-1', name: 'web_search', input: { query: 'Brawl Stars' } },
+        {
+          type: 'web_search_tool_result',
+          tool_use_id: 'search-1',
+          content: [
+            {
+              type: 'web_search_result',
+              url: 'https://example.com/brawl-stars',
+              title: 'Brawl Stars',
+              encrypted_content: '',
+              page_age: null,
+            },
+          ],
+        },
+        { type: 'text', text: 'Brawl Stars is a MOBA.', citations: null },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    } as unknown as Anthropic.Message;
+
+    expect(fromAnthropicMessage(message).citations).toEqual([
+      { url: 'https://example.com/brawl-stars', title: 'Brawl Stars' },
+    ]);
+  });
 });

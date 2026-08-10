@@ -80,10 +80,7 @@ describe('Google converter', () => {
     });
 
     expect(
-      toGoogleRequest(
-        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
-        { model: 'gemini-test' },
-      ).config,
+      toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model: 'gemini-test' }).config,
     ).toMatchObject({ thinkingConfig: { thinkingLevel: 'MINIMAL' } });
 
     expect(
@@ -126,6 +123,56 @@ describe('Google converter', () => {
       ],
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 3 },
     });
+  });
+
+  it('maps `search` to the googleSearch built-in tool, and lets function tools win when both are set', () => {
+    const withSearch = toGoogleRequest(
+      { prompt: [{ type: 'user', text: 'hello' }], search: true },
+      { model: 'gemini-test' },
+    );
+    expect(withSearch.config).toMatchObject({ tools: [{ googleSearch: {} }] });
+
+    // The API rejects functionDeclarations alongside a built-in tool like googleSearch
+    // in the same call, so function tools take priority when a request sets both.
+    const withBoth = toGoogleRequest(
+      {
+        prompt: [{ type: 'user', text: 'hello' }],
+        tools: [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }],
+        search: true,
+      },
+      { model: 'gemini-test' },
+    );
+    expect(withBoth.config).toMatchObject({
+      tools: [
+        { functionDeclarations: [{ name: 'answer', description: 'Answer', parametersJsonSchema: { type: 'object' } }] },
+      ],
+    });
+  });
+
+  it('extracts citations from grounding metadata', () => {
+    const response = {
+      modelVersion: 'gemini-test',
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: { role: 'model', parts: [{ text: 'Brawl Stars is a MOBA.' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://example.com/brawl-stars', title: 'Brawl Stars' } },
+              { web: {} }, // no uri: dropped, not surfaced as a broken citation
+            ],
+          },
+        },
+      ],
+    } as GenerateContentResponse;
+
+    expect(fromGoogleResponse(response).citations).toEqual([
+      { url: 'https://example.com/brawl-stars', title: 'Brawl Stars' },
+    ]);
+    expect(
+      fromGoogleResponse({ modelVersion: 'gemini-test', candidates: [] } as unknown as GenerateContentResponse)
+        .citations,
+    ).toBeUndefined();
   });
 
   it('uses tool names when optional Google call ids are missing', () => {

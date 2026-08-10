@@ -30,6 +30,8 @@ export interface RequestBuilder {
   responseFormat(format: ResponseFormat): RequestBuilder;
   /** Portable thinking / reasoning controls when the provider supports them. */
   thinking(thinking: ThinkingConfig): RequestBuilder;
+  /** Ground the answer in the provider's own built-in web search, where supported. */
+  search(enabled?: boolean): RequestBuilder;
   signal(signal: AbortSignal): RequestBuilder;
   run(): Promise<GenerationResult>;
   text(): Promise<string>;
@@ -124,6 +126,10 @@ class RequestBuilderImpl implements RequestBuilder {
     return this.copy({ thinking });
   }
 
+  search(enabled = true): RequestBuilder {
+    return this.copy({ search: enabled });
+  }
+
   signal(signal: AbortSignal): RequestBuilder {
     return this.copy({ signal });
   }
@@ -138,6 +144,7 @@ class RequestBuilderImpl implements RequestBuilder {
       toolChoice: this.state.toolChoice,
       responseFormat: this.state.responseFormat,
       thinking: this.state.thinking,
+      search: this.state.search,
       signal: this.state.signal,
       metadata: this.state.metadata,
     };
@@ -221,10 +228,7 @@ class ConversationImpl implements Conversation {
     return this.iterateStream(input, configure);
   }
 
-  private async *iterateStream(
-    input: PromptInput,
-    configure: ConfigureRequest,
-  ): AsyncGenerator<StreamEvent> {
+  private async *iterateStream(input: PromptInput, configure: ConfigureRequest): AsyncGenerator<StreamEvent> {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;

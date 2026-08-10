@@ -8,6 +8,7 @@ import {
   type Part,
 } from '@google/genai';
 import type {
+  Citation,
   GenerationRequest,
   GenerationResult,
   PromptImage,
@@ -140,14 +141,12 @@ export function toGoogleRequest(
 ): GenerateContentParameters {
   const hasTools = Boolean(request.tools?.length);
   const responseFormat = toGoogleResponseFormat(request.responseFormat);
-  const wantsJson =
-    request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
+  const wantsJson = request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
   // Gemini 3 defaults to heavy dynamic thinking; with a small maxOutputTokens budget that
   // can yield an empty visible answer under JSON mode. Prefer MINIMAL when the caller did
   // not set thinking explicitly.
   const thinkingConfig =
-    toGoogleThinkingConfig(request.thinking) ??
-    (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
+    toGoogleThinkingConfig(request.thinking) ?? (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
   return {
     model: request.model ?? defaults.model,
     contents: toGoogleContents(request.prompt),
@@ -159,6 +158,8 @@ export function toGoogleRequest(
       systemInstruction: toGoogleSystemInstruction(request.prompt),
       temperature: request.temperature,
       maxOutputTokens: request.maxOutputTokens,
+      // Function tools and googleSearch grounding are mutually exclusive on this API —
+      // function tools win, matching toolChoice below applying only to them.
       tools: hasTools
         ? [
             {
@@ -169,7 +170,9 @@ export function toGoogleRequest(
               })),
             },
           ]
-        : undefined,
+        : request.search
+          ? [{ googleSearch: {} }]
+          : undefined,
       toolConfig: hasTools ? toGoogleToolConfig(request.toolChoice) : undefined,
     },
   };
@@ -212,6 +215,11 @@ export function fromGoogleResponse(response: GenerateContentResponse): Generatio
   }
 
   const usage = response.usageMetadata;
+  const citations: Citation[] = [];
+  for (const chunk of candidate?.groundingMetadata?.groundingChunks ?? []) {
+    if (chunk.web?.uri) citations.push({ url: chunk.web.uri, ...(chunk.web.title ? { title: chunk.web.title } : {}) });
+  }
+
   return {
     parts,
     model: response.modelVersion,
@@ -224,6 +232,7 @@ export function fromGoogleResponse(response: GenerateContentResponse): Generatio
           cachedInputTokens: usage.cachedContentTokenCount,
         }
       : undefined,
+    ...(citations.length ? { citations } : {}),
     raw: response,
   };
 }

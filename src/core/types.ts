@@ -84,11 +84,19 @@ export interface ImageResultPart {
 
 export type ResultPart = TextResultPart | ToolCallResultPart | ImageResultPart;
 
+/** A source URL a provider's built-in web search cited while grounding its answer. */
+export interface Citation {
+  url: string;
+  title?: string;
+}
+
 export interface GenerationResult {
   parts: ResultPart[];
   model?: string;
   finishReason?: string;
   usage?: TokenUsage;
+  /** Present when `search` was requested and the provider grounded its answer. */
+  citations?: Citation[];
   raw?: unknown;
 }
 
@@ -134,6 +142,13 @@ export interface GenerationRequest {
   toolChoice?: ToolChoice;
   responseFormat?: ResponseFormat;
   thinking?: ThinkingConfig;
+  /**
+   * Ground the answer in the provider's own built-in web search (Google Search,
+   * Anthropic's/OpenAI's web search tool — never a user-supplied `tools` function).
+   * Ignored on providers without `capabilities.search`, same as an unsupported
+   * `responseFormat` variant.
+   */
+  search?: boolean;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }
@@ -166,6 +181,8 @@ export interface ProviderCapabilities {
   jsonResponse?: boolean;
   /** Honors `GenerationRequest.thinking`. */
   thinking?: boolean;
+  /** Honors `GenerationRequest.search`. */
+  search?: boolean;
 }
 
 export interface ModelProvider {
@@ -187,5 +204,6 @@ export interface GenerationDefaults {
   toolChoice?: ToolChoice;
   responseFormat?: ResponseFormat;
   thinking?: ThinkingConfig;
+  search?: boolean;
   metadata?: Record<string, unknown>;
 }

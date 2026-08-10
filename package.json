@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "A small, provider-neutral TypeScript toolkit for calling LLMs from backend code.",
   "author": "Grzegorz Tańczyk",
   "repository": {
@@ -50,7 +50,8 @@
     "test:watch": "vitest --config vitest.unit.config.ts",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint && npm test && npm run build",
-    "prepublishOnly": "npm run check"
+    "prepublishOnly": "npm run check",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
