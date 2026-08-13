@@ -118,6 +118,56 @@ describe('Google converter', () => {
       ).config,
     ).toMatchObject({ thinkingConfig: { thinkingBudget: 128 } });
 
+    // Model-aware thinking level floor: Gemini 3.7 and Gemini 3+ Pro models floor to LOW
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
+        { model: 'gemini-3.7-flash' },
+      ).config,
+    ).toMatchObject({
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+    });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
+        { model: 'gemini-3.7-flash' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: { budgetTokens: 0 } },
+        { model: 'gemini-3.7-flash' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
+        { model: 'gemini-3.1-pro-preview' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
+        { model: 'gemini-3.6-flash' },
+      ).config,
+    ).toMatchObject({
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+    });
+
+    // Explicit request thinking level is always respected even if caller asks for minimal on 3.7
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: { level: 'minimal' } },
+        { model: 'gemini-3.7-flash' },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } });
+
     const response = {
       modelVersion: 'gemini-test',
       candidates: [
