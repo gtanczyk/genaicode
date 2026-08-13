@@ -119,18 +119,30 @@ const googleThinkingLevels = {
   high: ThinkingLevel.HIGH,
 } as const;
 
-function toGoogleThinkingConfig(thinking: ThinkingConfig | undefined): GenerateContentConfig['thinkingConfig'] {
-  if (thinking === undefined) return undefined;
-  // Gemini 3 rejects `thinkingBudget: 0` (INVALID_ARGUMENT). `MINIMAL` is the
-  // supported "keep it cheap / effectively off" setting for those models.
-  if (thinking === false || thinking.budgetTokens === 0) {
+function toGoogleThinkingConfig(
+  thinking: ThinkingConfig | undefined,
+  fallback: GenerateContentConfig['thinkingConfig'] | undefined,
+  wantsJson: boolean,
+): GenerateContentConfig['thinkingConfig'] {
+  if (thinking === false || thinking?.budgetTokens === 0) {
+    // Gemini 3 rejects `thinkingBudget: 0` (INVALID_ARGUMENT). `MINIMAL` is the
+    // supported "keep it cheap / effectively off" setting for those models.
     return { thinkingLevel: ThinkingLevel.MINIMAL };
   }
-  if (thinking.level) {
+  if (thinking?.level) {
     return { thinkingLevel: googleThinkingLevels[thinking.level] };
   }
-  if (thinking.budgetTokens !== undefined) {
+  if (thinking?.budgetTokens !== undefined) {
     return { thinkingBudget: thinking.budgetTokens };
+  }
+  if (fallback !== undefined) {
+    return fallback;
+  }
+  if (wantsJson) {
+    // Gemini 3 defaults to heavy dynamic thinking; with a small maxOutputTokens budget that
+    // can yield an empty visible answer under JSON mode. Prefer MINIMAL when neither the caller
+    // nor the provider set thinking explicitly.
+    return { thinkingLevel: ThinkingLevel.MINIMAL };
   }
   return undefined;
 }
@@ -142,11 +154,7 @@ export function toGoogleRequest(
   const hasTools = Boolean(request.tools?.length);
   const responseFormat = toGoogleResponseFormat(request.responseFormat);
   const wantsJson = request.responseFormat?.type === 'json' || request.responseFormat?.type === 'json_schema';
-  // Gemini 3 defaults to heavy dynamic thinking; with a small maxOutputTokens budget that
-  // can yield an empty visible answer under JSON mode. Prefer MINIMAL when the caller did
-  // not set thinking explicitly.
-  const thinkingConfig =
-    toGoogleThinkingConfig(request.thinking) ?? (wantsJson ? { thinkingLevel: ThinkingLevel.MINIMAL } : undefined);
+  const thinkingConfig = toGoogleThinkingConfig(request.thinking, defaults.config?.thinkingConfig, wantsJson);
   return {
     model: request.model ?? defaults.model,
     contents: toGoogleContents(request.prompt),

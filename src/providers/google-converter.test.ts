@@ -1,4 +1,4 @@
-import type { GenerateContentResponse } from '@google/genai';
+import { ThinkingLevel, type GenerateContentResponse } from '@google/genai';
 import { describe, expect, it } from 'vitest';
 import {
   fromGoogleResponse,
@@ -78,6 +78,34 @@ describe('Google converter', () => {
       responseMimeType: 'application/json',
       thinkingConfig: { thinkingLevel: 'MINIMAL' },
     });
+
+    // Provider defaults.config.thinkingConfig is preserved when request has no explicit thinking
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
+        { model: 'gemini-test', config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } },
+      ).config,
+    ).toMatchObject({
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+    });
+
+    // Request-level thinking overrides provider defaults.config.thinkingConfig
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: { level: 'high' } },
+        { model: 'gemini-test', config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } },
+      ).config,
+    ).toMatchObject({
+      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+    });
+
+    expect(
+      toGoogleRequest(
+        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
+        { model: 'gemini-test', config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } },
+      ).config,
+    ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } });
 
     expect(
       toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model: 'gemini-test' }).config,

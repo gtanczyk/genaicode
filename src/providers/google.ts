@@ -12,6 +12,10 @@ export interface GeminiProviderOptions {
   model?: string;
   apiVersion?: string;
   httpOptions?: GoogleGenAIOptions['httpOptions'];
+  /**
+   * Default generation parameters passed to `@google/genai` `config`.
+   * Request-level settings take precedence over values provided here.
+   */
   generationConfig?: GoogleGenerationDefaults;
 }
 
@@ -22,6 +26,10 @@ export interface VertexAIProviderOptions {
   apiVersion?: string;
   googleAuthOptions?: GoogleGenAIOptions['googleAuthOptions'];
   httpOptions?: GoogleGenAIOptions['httpOptions'];
+  /**
+   * Default generation parameters passed to `@google/genai` `config`.
+   * Request-level settings take precedence over values provided here.
+   */
   generationConfig?: GoogleGenerationDefaults;
 }
 

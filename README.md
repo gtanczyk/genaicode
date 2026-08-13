@@ -181,7 +181,8 @@ const verdict = await ai(promptText)
   `low` | `medium` | `high`). Prefer one of budget or level — some providers reject both.
   On Google/Gemini, `false` and `budgetTokens: 0` map to `thinkingLevel: MINIMAL`
   because Gemini 3 rejects `thinkingBudget: 0`. JSON `responseFormat` without an
-  explicit `thinking` setting also defaults Google to `MINIMAL`.
+  explicit `thinking` setting or provider `generationConfig.thinkingConfig` default also
+  defaults Google to `MINIMAL`.
 
 Providers map what they support and ignore the rest. `ProviderCapabilities.jsonResponse`
 and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as
