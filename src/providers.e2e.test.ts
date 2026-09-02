@@ -23,34 +23,34 @@ async function withQuotaSkip(run: () => Promise<void>): Promise<void> {
   }
 }
 
-async function runSmokeRequest(request: RequestBuilder) {
-  const result = await request
+async function runSmokeRequest(request: RequestBuilder, temperature?: number) {
+  let configuredRequest = request
     .system('Return plain text only and follow the user instruction exactly.')
-    .temperature(0)
-    .maxOutputTokens(50)
-    .run();
+    .maxOutputTokens(50);
+  if (temperature !== undefined) configuredRequest = configuredRequest.temperature(temperature);
+  const result = await configuredRequest.run();
   expect(Array.isArray(result.parts)).toBe(true);
 }
 
-async function runJsonResponseFormat(ai: GenAIClient) {
+async function runJsonResponseFormat(ai: GenAIClient, temperature?: number) {
   const maxAttempts = 3;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const value = await ai('Return a JSON object with a single key "answer" whose value is the number 4.')
+      let request = ai('Return a JSON object with a single key "answer" whose value is the number 4.')
         .system('Respond with JSON only. Do not include markdown fences or commentary.')
         .responseFormat({ type: 'json' })
         // Keep thinking cheap so a small token budget is not spent only on thoughts.
         .thinking(false)
-        .temperature(0)
-        .maxOutputTokens(256)
-        .json((parsed) => {
-          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-            throw new Error(`expected object, got ${typeof parsed}`);
-          }
-          return parsed as { answer?: unknown };
-        });
+        .maxOutputTokens(256);
+      if (temperature !== undefined) request = request.temperature(temperature);
+      const value = await request.json((parsed) => {
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error(`expected object, got ${typeof parsed}`);
+        }
+        return parsed as { answer?: unknown };
+      });
 
       const answer = value.answer;
       expect(answer === 4 || answer === '4').toBe(true);
@@ -106,7 +106,7 @@ describe('provider e2e', () => {
         model: process.env.ANTHROPIC_MODEL,
       }),
     );
-    await runSmokeRequest(ai('What is 2 + 2? Reply with exactly "4".'));
+    await runSmokeRequest(ai('What is 2 + 2? Reply with exactly "4".'), 0);
   });
 
   itIf(hasAnthropic)('Anthropic accepts thinking disabled', { timeout: 60_000 }, async () => {
@@ -126,7 +126,7 @@ describe('provider e2e', () => {
         model: process.env.GEMINI_MODEL,
       }),
     );
-    await runSmokeRequest(ai('What is 2 + 2? Reply with exactly "4".'));
+    await runSmokeRequest(ai('What is 2 + 2? Reply with exactly "4".'), 0);
   });
 
   itIf(hasGemini)('Gemini honors responseFormat json', { timeout: 60_000 }, async () => {
@@ -136,7 +136,7 @@ describe('provider e2e', () => {
         model: process.env.GEMINI_MODEL,
       }),
     );
-    await runJsonResponseFormat(ai);
+    await runJsonResponseFormat(ai, 0);
   });
 
   itIf(hasGemini)('Gemini accepts thinking disabled', { timeout: 60_000 }, async () => {

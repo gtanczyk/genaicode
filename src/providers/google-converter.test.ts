@@ -122,11 +122,11 @@ describe('Google converter', () => {
     expect(
       toGoogleRequest(
         { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
-        { model: 'gemini-3.7-flash' },
+        { model: 'gemini-3.8-flash' },
       ).config,
     ).toMatchObject({
       responseMimeType: 'application/json',
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     });
 
     expect(
@@ -160,11 +160,11 @@ describe('Google converter', () => {
       thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     });
 
-    // Explicit request thinking level is always respected even if caller asks for minimal on 3.7
+    // Explicit request thinking level is always respected even if caller asks for minimal on 3.8
     expect(
       toGoogleRequest(
         { prompt: [{ type: 'user', text: 'hello' }], thinking: { level: 'minimal' } },
-        { model: 'gemini-3.7-flash' },
+        { model: 'gemini-3.8-flash' },
       ).config,
     ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } });
 
