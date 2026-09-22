@@ -36,10 +36,11 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
 }
 
 export function claudeArgs(task: AgentTask, options: ClaudeAgentOptions = {}): string[] {
-  const args = ['-p', '--verbose', '--output-format', 'stream-json'];
-  args.push('--permission-mode', options.permissionMode ?? 'acceptEdits');
+  const args = ['-p', '--verbose'];
+  // Tool lists take several values, so a single-value flag must follow them before the prompt.
   if (options.allowedTools?.length) args.push('--allowedTools', options.allowedTools.join(','));
   if (options.disallowedTools?.length) args.push('--disallowedTools', options.disallowedTools.join(','));
+  args.push('--output-format', 'stream-json', '--permission-mode', options.permissionMode ?? 'acceptEdits');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
