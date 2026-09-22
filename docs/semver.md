@@ -17,6 +17,11 @@ These are covered by minor/patch compatibility within 2.x:
 - Error helpers (`classifyError`, `isRetryable`, `withRetry`)
 - Provider factories and converter functions exported from `genaicode/providers`
 
+## Experimental
+
+- `genaicode/agents` (coding-agent drivers, `AgentEvent`, `CodingAgent`) may change in a
+  minor release until this section lists it as stable. See [agents.md](./agents.md).
+
 ## Additive changes (minor)
 
 Safe in a minor release:
