@@ -15,5 +15,15 @@ export type {
   AgentRun,
   AgentStatus,
   AgentTask,
+  ApprovalDecision,
+  ApprovalRequest,
   CodingAgent,
 } from './agents/types.js';
+export { liveAgent, uuidv7 } from './agents/live-agent.js';
+export type { LiveAgentDefinition, LiveSession } from './agents/live-agent.js';
+export { RpcError, RpcPeer } from './agents/rpc.js';
+export type { RpcHandlers } from './agents/rpc.js';
+export { codexLive, codexNotification } from './agents/drivers/codex-live.js';
+export type { CodexLiveOptions } from './agents/drivers/codex-live.js';
+export { museLive, museNotification } from './agents/drivers/muse-live.js';
+export type { MuseLiveOptions } from './agents/drivers/muse-live.js';

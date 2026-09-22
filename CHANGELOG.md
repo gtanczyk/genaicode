@@ -9,6 +9,9 @@
   `AgentEvent` stream and `AgentResult`; abort, timeout and process-group kill;
   `detectAgents` / `findExecutable`; `cliAgent()` for custom drivers. See
   [docs/agents.md](docs/agents.md).
+- Live agent sessions over JSON-RPC: `codexLive()` (`codex app-server`) and `museLive()`
+  (`muse serve`) with `AgentRun.steer()` and `AgentTask.onApproval`; `liveAgent()` and
+  `RpcPeer` for custom live drivers; `approval-resolved` event.
 
 ### Notes
 

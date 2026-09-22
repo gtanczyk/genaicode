@@ -199,7 +199,7 @@ describe('muse driver', () => {
       { payload_type: 'run.terminal.cancelled', payload: { reason: 'user' } },
     ]);
     expect(events).toEqual([
-      { type: 'approval-request', detail: { tool: 'shell' } },
+      { type: 'approval-request', request: { id: 'approval', kind: 'other', detail: { tool: 'shell' } } },
       { type: 'error', message: 'Muse run cancelled: user' },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: false, error: 'Muse run cancelled: user' });
