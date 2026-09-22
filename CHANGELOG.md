@@ -16,6 +16,8 @@
   secrets stay out of argv. Drivers can set up and clean up per task via `prepare`.
 - `scrubEnv`, `withoutProviderCredentials` and `PROVIDER_CREDENTIAL_VARS` for child
   environments; `runWithVerify` verify-and-repair loop.
+- Drivers `gemini()`, `cursor()` and `opencode()`; `hostedAgent()` adapts a
+  `HostedAgentProvider` (start / poll / send / cancel) to `CodingAgent`.
 
 ### Notes
 
