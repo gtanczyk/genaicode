@@ -25,18 +25,18 @@ describe('claude driver', () => {
       '5',
       'fix it',
     ]);
-    expect(claudeArgs({ prompt: '-x', cwd: '.' }, { permissionMode: 'plan', allowedTools: ['Read', 'Grep'] })).toEqual([
+    expect(claudeArgs({ prompt: 'hi', cwd: '.' }, { permissionMode: 'plan', allowedTools: ['Read', 'Grep'] })).toEqual([
       '-p',
       '--verbose',
+      '--allowedTools',
+      'Read,Grep',
       '--output-format',
       'stream-json',
       '--permission-mode',
       'plan',
-      '--allowedTools',
-      'Read,Grep',
-      '--',
-      '-x',
+      'hi',
     ]);
+    expect(claudeArgs({ prompt: '-x', cwd: '.' }).slice(-2)).toEqual(['--', '-x']);
   });
 
   it('decodes stream-json into agent events', () => {
