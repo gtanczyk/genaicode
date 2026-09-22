@@ -1,5 +1,6 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import { isHttpServer, type PreparedRun } from '../prepare.js';
+import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -18,8 +19,9 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true },
+    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, mcp: true },
     args: (task) => codexArgs(task, options),
+    prepare: (task) => withCodexMcp(task, codexArgs(task, options)),
     createParser: createCodexParser,
   });
 }
@@ -31,6 +33,48 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   return [...args, ...positionalPrompt(task.prompt)];
+}
+
+/** Prefix `args` with the task's MCP servers as `-c mcp_servers.*` config overrides. */
+export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
+  if (!task.mcpServers?.length) return { args };
+  const mcp = codexMcpOverrides(task.mcpServers);
+  return { args: [...mcp.args, ...args], env: mcp.env };
+}
+
+/**
+ * Config overrides for Codex MCP servers. HTTP header values travel in environment
+ * variables (`env_http_headers`), never on the command line.
+ */
+export function codexMcpOverrides(servers: readonly McpServer[]): { args: string[]; env: Record<string, string> } {
+  const args: string[] = [];
+  const env: Record<string, string> = {};
+  const set = (key: string, value: string) => args.push('-c', `${key}=${value}`);
+  servers.forEach((server, index) => {
+    const key = `mcp_servers.${server.name}`;
+    if (isHttpServer(server)) {
+      set(`${key}.url`, JSON.stringify(server.url));
+      const headers = Object.entries(server.headers ?? {});
+      if (headers.length) {
+        const table = headers.map(([header, value], headerIndex) => {
+          const variable = `GENAICODE_MCP_${index}_HEADER_${headerIndex}`;
+          env[variable] = value;
+          return `${JSON.stringify(header)} = ${JSON.stringify(variable)}`;
+        });
+        set(`${key}.env_http_headers`, `{ ${table.join(', ')} }`);
+      }
+    } else {
+      set(`${key}.command`, JSON.stringify(server.command));
+      set(`${key}.args`, JSON.stringify(server.args ?? []));
+      const entries = Object.entries(server.env ?? {});
+      if (entries.length)
+        set(
+          `${key}.env`,
+          `{ ${entries.map(([name, value]) => `${JSON.stringify(name)} = ${JSON.stringify(value)}`).join(', ')} }`,
+        );
+    }
+  });
+  return { args, env };
 }
 
 export function createCodexParser(): AgentOutputParser {

@@ -18,6 +18,7 @@ export type {
   ApprovalDecision,
   ApprovalRequest,
   CodingAgent,
+  McpServer,
 } from './agents/types.js';
 export { liveAgent, uuidv7 } from './agents/live-agent.js';
 export type { LiveAgentDefinition, LiveSession } from './agents/live-agent.js';
@@ -27,3 +28,10 @@ export { codexLive, codexNotification } from './agents/drivers/codex-live.js';
 export type { CodexLiveOptions } from './agents/drivers/codex-live.js';
 export { museLive, museNotification } from './agents/drivers/muse-live.js';
 export type { MuseLiveOptions } from './agents/drivers/muse-live.js';
+export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from './agents/env.js';
+export type { ScrubEnvOptions } from './agents/env.js';
+export { runWithVerify } from './agents/verify.js';
+export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
+export type { PreparedRun } from './agents/prepare.js';
+export { claudeMcpConfig } from './agents/drivers/claude.js';
+export { codexMcpOverrides } from './agents/drivers/codex.js';

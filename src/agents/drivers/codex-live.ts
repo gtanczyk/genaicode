@@ -1,7 +1,7 @@
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import type { AgentOutcome } from '../runtime.js';
 import type { AgentEvent, ApprovalRequest, CodingAgent } from '../types.js';
-import type { CodexSandbox } from './codex.js';
+import { withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -21,8 +21,9 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   return liveAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, approvals: true },
+    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, approvals: true, mcp: true },
     args: (task) => [...(task.extraArgs ?? []), 'app-server'],
+    prepare: (task) => withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']),
     drive: (session) => driveCodex(session, options),
   });
 }
