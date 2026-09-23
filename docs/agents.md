@@ -47,6 +47,11 @@ await `result`. `abort()` or the task's `signal` stops the agent, and `result` t
 settles with `status: 'aborted'`. `result` never rejects: spawn failures, a missing `cwd`,
 timeouts, and agent-reported failures all come back as `status` with an `error` string.
 
+Buffered events are bounded. Before you iterate, a run keeps only its newest events (about
+8 MiB, at most 1,000). While you iterate, nothing is dropped: if you fall more than about
+8 MiB behind, the agent's output stops being read until you catch up, so the agent waits for
+you. Stopping iteration early discards the rest; `result` still settles.
+
 `result.ok` is true only when the process exited 0 and the agent did not report a
 failure of its own. A zero exit alone is not treated as success.
 
