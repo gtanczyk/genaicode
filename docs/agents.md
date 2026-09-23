@@ -78,7 +78,7 @@ Vendor events that have no mapping are dropped.
 | `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)  |
 | `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`. Approval requests are reported, then denied                                 |
 | `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`  |
-| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force` unless `force: false`                                                        |
+| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` unless turned off; `partialOutput` streams text deltas        |
 | `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
 | `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns      |
 

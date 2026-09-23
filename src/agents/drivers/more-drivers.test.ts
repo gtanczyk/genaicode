@@ -60,9 +60,56 @@ describe('cursor driver', () => {
       '--output-format',
       'stream-json',
       '--force',
+      '--approve-mcps',
       '--model',
       'm',
       'go',
+    ]);
+    expect(cursorArgs({ prompt: 'go', cwd: '.' }, { force: false, approveMcps: false, partialOutput: true })).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--stream-partial-output',
+      'go',
+    ]);
+  });
+
+  it('decodes function tool calls', () => {
+    const parser = createCursorParser();
+    const events = feed(parser, [
+      {
+        type: 'tool_call',
+        subtype: 'started',
+        call_id: 'f1',
+        tool_call: { function: { name: 'grep', arguments: '{"pattern":"x"}' } },
+      },
+      {
+        type: 'tool_call',
+        subtype: 'completed',
+        call_id: 'f1',
+        tool_call: { function: { name: 'grep', arguments: '{"pattern":"x"}' } },
+      },
+    ]);
+    expect(events).toEqual([
+      { type: 'tool-start', id: 'f1', name: 'grep', input: { pattern: 'x' } },
+      { type: 'tool-end', id: 'f1', name: 'grep', isError: false },
+    ]);
+  });
+
+  it('streams partial output and skips flushes that repeat it', () => {
+    const parser = createCursorParser({ partialOutput: true });
+    const text = (value: string) => ({ role: 'assistant', content: [{ type: 'text', text: value }] });
+    const events = feed(parser, [
+      { type: 'assistant', message: text('Hel'), timestamp_ms: 1 },
+      { type: 'assistant', message: text('lo'), timestamp_ms: 2 },
+      { type: 'assistant', message: text('Hello'), timestamp_ms: 3, model_call_id: 'mc1' },
+      { type: 'assistant', message: text('Hello') },
+      { type: 'result', subtype: 'success', is_error: false, result: 'Hello' },
+    ]);
+    expect(events).toEqual([
+      { type: 'text-delta', text: 'Hel' },
+      { type: 'text-delta', text: 'lo' },
+      { type: 'message', text: 'Hello' },
     ]);
   });
 
