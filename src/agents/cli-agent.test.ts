@@ -109,6 +109,17 @@ console.log(JSON.stringify({ say: 'bye' }));
     expect(await run.result).toMatchObject({ ok: true, text: 'end' });
   });
 
+  it('settles an abort awaited from inside a loop that fell behind', async () => {
+    const run = fakeAgent({ args: () => [bulk] }).run({ prompt: 'hi', cwd: dir, env: env({ FAKE_BULK: '64' }) });
+    for await (const event of run) {
+      if (event.type !== 'raw') continue;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      run.abort();
+      expect(await run.result).toMatchObject({ status: 'aborted' });
+      break;
+    }
+  });
+
   it('streams parsed events and folds them into the result', async () => {
     const run = fakeAgent().run({
       prompt: 'hi',
