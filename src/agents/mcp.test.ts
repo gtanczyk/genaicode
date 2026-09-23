@@ -79,9 +79,9 @@ describe('MCP servers', () => {
       '-c',
       'mcp_servers.fs.args=["--root","."]',
       '-c',
-      'mcp_servers.fs.env={ "LOG" = "1" }',
+      'mcp_servers.fs.env_vars=["LOG"]',
     ]);
-    expect(env).toEqual({ GENAICODE_MCP_0_HEADER_0: 'Bearer secret' });
+    expect(env).toEqual({ GENAICODE_MCP_0_HEADER_0: 'Bearer secret', LOG: '1' });
 
     const result = await codex({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
     const report = JSON.parse(result.text!);
@@ -89,6 +89,16 @@ describe('MCP servers', () => {
     expect(report.args.indexOf('exec')).toBe(10);
     expect(report.args.join(' ')).not.toContain('secret');
     expect(report.header).toBe('Bearer secret');
+  });
+
+  it('refuses two codex stdio servers that need different values for one variable', async () => {
+    const clash = [
+      { name: 'a', command: 'mcp-a', env: { TOKEN: 'one' } },
+      { name: 'b', command: 'mcp-b', env: { TOKEN: 'two' } },
+    ];
+    expect(() => codexMcpOverrides(clash)).toThrow(/different values for TOKEN/);
+    const result = await codex({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: clash }).result;
+    expect(result).toMatchObject({ status: 'failed', exitCode: null });
   });
 
   it('refuses servers a driver cannot attach, and bad names', async () => {

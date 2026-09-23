@@ -92,9 +92,13 @@ function runHosted(provider: HostedAgentProvider, task: AgentTask, pollIntervalM
         poll = await provider.poll(taskId, cursor, controller.signal);
       } catch (error) {
         if (stopReason) break;
+        // Do not leave a task running (and billing) that nobody watches any more.
+        await provider.cancel(taskId).catch(() => undefined);
         const message = error instanceof Error ? error.message : String(error);
         return { exit: exit('closed'), outcome: { ok: false, error: `Polling ${provider.name} failed: ${message}` } };
       }
+      // Aborted while the poll was in flight: cancel, whatever state it reported.
+      if (stopReason) break;
       for (const event of poll.events ?? []) recorder.emit(event);
       cursor = poll.cursor ?? cursor;
       if (TERMINAL.has(poll.state)) {

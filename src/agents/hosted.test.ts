@@ -56,6 +56,30 @@ describe('hostedAgent', () => {
     expect(slow.calls.at(-1)).toBe('cancel:r-1');
   });
 
+  it('cancels when aborted during a poll that then reports completed', async () => {
+    let release: (() => void) | undefined;
+    const { impl, calls } = provider([], {
+      poll: () => new Promise<HostedPoll>((resolve) => (release = () => resolve({ state: 'completed' }))),
+    });
+    const run = hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    run.abort();
+    release!();
+    expect(await run.result).toMatchObject({ status: 'aborted' });
+    expect(calls.at(-1)).toBe('cancel:r-1');
+  });
+
+  it('cancels the remote task when polling fails', async () => {
+    const { impl, calls } = provider([], {
+      poll: async () => {
+        throw new Error('network down');
+      },
+    });
+    const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'Polling remote failed: network down' });
+    expect(calls.at(-1)).toBe('cancel:r-1');
+  });
+
   it('fails cleanly when the task cannot start, and steers through send', async () => {
     const broken = provider([], {
       start: async () => {
