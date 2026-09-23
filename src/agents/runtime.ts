@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
+import { approximateSize, EventQueue } from './event-queue.js';
 import type { ProcessExit } from './process.js';
 import type { AgentEvent, AgentResult } from './types.js';
 
@@ -12,7 +13,7 @@ export interface AgentOutcome {
 
 /** Collects events for iteration and folds them into the pieces of an `AgentResult`. */
 export class RunRecorder {
-  readonly events = new EventQueue<AgentEvent>();
+  readonly events = new EventQueue<AgentEvent>(approximateSize);
   private sessionId?: string;
   private text?: string;
   private usage?: AgentResult['usage'];
@@ -94,45 +95,4 @@ function spawnMessage(name: string, command: string, error: Error | undefined): 
   if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT')
     return `${command} was not found. Install ${name} or pass its path as \`command\`.`;
   return error?.message ?? `${name} could not start.`;
-}
-
-/** Unbounded single-consumer queue bridging callbacks to `for await`. */
-/** Events kept for a run nobody iterates yet. Older ones are dropped past this. */
-const UNREAD_EVENT_LIMIT = 1000;
-
-export class EventQueue<T> {
-  private readonly items: T[] = [];
-  private closed = false;
-  private wake: (() => void) | undefined;
-  private claimed = false;
-
-  push(item: T): void {
-    if (this.closed) return;
-    this.items.push(item);
-    // A run awaited only through `result` must not hold every event of a long task.
-    if (!this.claimed && this.items.length > UNREAD_EVENT_LIMIT) this.items.shift();
-    this.wake?.();
-  }
-
-  close(): void {
-    this.closed = true;
-    this.wake?.();
-  }
-
-  async *iterate(): AsyncGenerator<T> {
-    if (this.claimed) throw new Error('An AgentRun can be iterated only once.');
-    this.claimed = true;
-    for (;;) {
-      const item = this.items.shift();
-      if (item !== undefined) {
-        yield item;
-        continue;
-      }
-      if (this.closed) return;
-      await new Promise<void>((resolve) => {
-        this.wake = resolve;
-      });
-      this.wake = undefined;
-    }
-  }
 }

@@ -11,7 +11,7 @@ const dir = mkdtempSync(join(tmpdir(), 'genaicode-live-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 // A stand-in JSON-RPC server. argv: 'app-server' behaves like Codex, 'serve' like Muse.
-// FAKE_MODE: 'basic' | 'approval' | 'steer' | 'exit-early'.
+// FAKE_MODE: 'basic' | 'approval' | 'steer' | 'exit-early' | 'flood' (12 MiB of messages, then waits for a steer).
 const server = join(dir, 'fake-server.mjs');
 writeFileSync(
   server,
@@ -43,6 +43,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     send({ method: 'turn/completed', params: { threadId: 'other', sessionId: 'other', turn: { id: 'x', status: 'failed' }, terminal: 'failed' } });
     note('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'ls' } });
     if (mode === 'exit-early') process.exit(0);
+    if (mode === 'flood') for (let i = 0; i < 12; i++) note('item/completed', { item: { id: 'f' + i, type: 'agentMessage', text: 'x'.repeat(1024 * 1024) } });
     if (mode === 'approval') {
       if (codex) send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
       else send({ id: 99, method: 'approval/request', params: { sessionId: 'se-1', id: 'ap-1' } });
@@ -127,6 +128,18 @@ describe('codexLive', () => {
     const result = await run.result;
     expect(result).toMatchObject({ ok: true, text: 'steered:also add tests' });
     await expect(run.steer!('late')).rejects.toThrow(/not accepting input/);
+  });
+
+  it('steers from inside a slow loop while the agent is paused', async () => {
+    const run = codexLive({ command: codexBin }).run({ prompt: 'go', cwd: dir, env: env('flood') });
+    let count = 0;
+    for await (const event of run) {
+      count++;
+      if (event.type === 'message' && count === 4) await run.steer!('done flooding');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(count).toBeGreaterThan(12);
+    expect(await run.result).toMatchObject({ ok: true, text: 'steered:done flooding' });
   });
 
   it('fails when the server exits before the turn ends', async () => {
