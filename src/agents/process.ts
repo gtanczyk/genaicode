@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 
 const MAX_LINE_BYTES = 16 * 1024 * 1024;
+/** After the agent exits, how long a background child that inherited its pipes may keep them open. */
+const EXIT_DRAIN_MS = 500;
 
 export interface ProcessOptions {
   command: string;
@@ -61,8 +63,10 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       child.kill(name);
     }
   };
+  let closed = false;
+  // Stops still apply after the agent exits: a leftover child in its group can hold the pipes open.
   const stop = (why: ProcessExit['reason']) => {
-    if (reason !== 'exit' || child.exitCode !== null || child.signalCode !== null) return;
+    if (closed || reason !== 'exit') return;
     reason = why;
     signal('SIGTERM');
     escalation = setTimeout(() => signal('SIGKILL'), options.killGraceMs ?? 2_000);
@@ -94,7 +98,17 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       spawnError = error;
       reason = 'spawn-error';
     });
+    child.once('exit', () => {
+      // `close` waits for every holder of stdout/stderr. Stop waiting for the agent's leftovers.
+      const drain = setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }, EXIT_DRAIN_MS);
+      drain.unref?.();
+      child.once('close', () => clearTimeout(drain));
+    });
     child.once('close', (exitCode, exitSignal) => {
+      closed = true;
       clearTimeout(timer);
       clearTimeout(escalation);
       options.signal?.removeEventListener('abort', onAbort);
