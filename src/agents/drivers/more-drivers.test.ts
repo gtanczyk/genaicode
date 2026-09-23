@@ -69,78 +69,138 @@ describe('cursor driver', () => {
       '-p',
       '--output-format',
       'stream-json',
+      '--trust',
       '--stream-partial-output',
       'go',
     ]);
   });
 
-  it('decodes function tool calls', () => {
+  // Trimmed from a cursor-agent 2026.09.18 run: read, edit and shell tool calls.
+  const session = { session_id: 's-1' };
+  const read = { args: { path: '/w/a.py' } };
+  const edit = { args: { path: '/w/a.py', streamContent: 'x = 2' } };
+  const shell = { args: { command: "python3 -c 'print(1)'", timeout: 30000 }, description: 'Run python' };
+  const tool = (subtype: string, id: string, call: Record<string, unknown>) => ({
+    type: 'tool_call',
+    subtype,
+    call_id: id,
+    tool_call: call,
+    model_call_id: 'mc-1',
+    timestamp_ms: 1,
+    ...session,
+  });
+  const assistant = (text: string, extra: Record<string, unknown> = {}) => ({
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'text', text }] },
+    ...session,
+    ...extra,
+  });
+  const result = {
+    type: 'result',
+    subtype: 'success',
+    duration_ms: 13381,
+    is_error: false,
+    result: "I'll edit a.py.`a.py`: `x = 2`.",
+    ...session,
+    usage: { inputTokens: 31692, outputTokens: 423, cacheReadTokens: 27520, cacheWriteTokens: 0 },
+  };
+  const toolEvents = [
+    tool('started', 'k1', { readToolCall: read }),
+    tool('completed', 'k1', {
+      readToolCall: { ...read, result: { success: { content: 'x = 1\n', path: '/w/a.py', totalLines: 2 } } },
+    }),
+    tool('started', 'k2', { editToolCall: edit }),
+    tool('completed', 'k2', {
+      editToolCall: { ...edit, result: { success: { path: '/w/a.py', linesAdded: 1, message: 'Updated.' } } },
+    }),
+    tool('started', 'k3', { shellToolCall: shell }),
+    tool('completed', 'k3', {
+      shellToolCall: { ...shell, result: { success: { exitCode: 0, stdout: '1\n', interleavedOutput: '1\n' } } },
+    }),
+  ];
+  const decodedTools = [
+    { type: 'tool-start', id: 'k1', name: 'read', input: read.args },
+    { type: 'tool-end', id: 'k1', name: 'read', isError: false, output: 'x = 1\n' },
+    { type: 'tool-start', id: 'k2', name: 'edit', input: edit.args },
+    { type: 'tool-end', id: 'k2', name: 'edit', isError: false, output: 'Updated.' },
+    { type: 'file-change', paths: ['/w/a.py'] },
+    { type: 'tool-start', id: 'k3', name: 'shell', input: shell.args },
+    { type: 'tool-end', id: 'k3', name: 'shell', isError: false, output: '1\n' },
+  ];
+  const usage = {
+    type: 'usage',
+    usage: { inputTokens: 31692, outputTokens: 423, cachedInputTokens: 27520, totalTokens: 32115 },
+  };
+
+  it('decodes stream-json', () => {
     const parser = createCursorParser();
     const events = feed(parser, [
-      {
-        type: 'tool_call',
-        subtype: 'started',
-        call_id: 'f1',
-        tool_call: { function: { name: 'grep', arguments: '{"pattern":"x"}' } },
-      },
-      {
-        type: 'tool_call',
-        subtype: 'completed',
-        call_id: 'f1',
-        tool_call: { function: { name: 'grep', arguments: '{"pattern":"x"}' } },
-      },
+      { type: 'system', subtype: 'init', apiKeySource: 'login', model: 'Auto', permissionMode: 'default', ...session },
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'go' }] }, ...session },
+      { type: 'thinking', subtype: 'delta', text: 'The user wants', timestamp_ms: 1, ...session },
+      { type: 'thinking', subtype: 'completed', timestamp_ms: 2, ...session },
+      assistant("I'll edit a.py."),
+      ...toolEvents,
+      assistant('`a.py`: `x = 2`.'),
+      result,
     ]);
     expect(events).toEqual([
+      { type: 'session', sessionId: 's-1', model: 'Auto' },
+      { type: 'message', text: "I'll edit a.py." },
+      ...decodedTools,
+      { type: 'message', text: '`a.py`: `x = 2`.' },
+      usage,
+    ]);
+    expect(parser.outcome?.()).toEqual({ ok: true });
+  });
+
+  it('streams partial output as deltas and one message per segment', () => {
+    const parser = createCursorParser({ partialOutput: true });
+    const events = feed(parser, [
+      assistant("I'll", { timestamp_ms: 1 }),
+      assistant(' edit a.py.', { timestamp_ms: 2 }),
+      assistant('', { timestamp_ms: 3 }),
+      ...toolEvents.slice(2, 4),
+      assistant('`a.py`: ', { timestamp_ms: 4 }),
+      assistant('`x = 2`.', { timestamp_ms: 5 }),
+      result,
+    ]);
+    expect(events).toEqual([
+      { type: 'session', sessionId: 's-1' },
+      { type: 'text-delta', text: "I'll" },
+      { type: 'text-delta', text: ' edit a.py.' },
+      { type: 'message', text: "I'll edit a.py." },
+      ...decodedTools.slice(2, 5),
+      { type: 'text-delta', text: '`a.py`: ' },
+      { type: 'text-delta', text: '`x = 2`.' },
+      { type: 'message', text: '`a.py`: `x = 2`.' },
+      usage,
+    ]);
+  });
+
+  it('reports a failed shell command and function tool calls', () => {
+    const parser = createCursorParser();
+    const events = feed(parser, [
+      tool('completed', 'k4', {
+        shellToolCall: { ...shell, result: { success: { exitCode: 2, stdout: '', interleavedOutput: 'boom\n' } } },
+      }),
+      tool('started', 'f1', { function: { name: 'grep', arguments: '{"pattern":"x"}' } }),
+      tool('completed', 'f1', { function: { name: 'grep', arguments: '{"pattern":"x"}' } }),
+    ]);
+    expect(events).toEqual([
+      { type: 'session', sessionId: 's-1' },
+      { type: 'tool-end', id: 'k4', name: 'shell', isError: true, output: 'boom\n' },
       { type: 'tool-start', id: 'f1', name: 'grep', input: { pattern: 'x' } },
       { type: 'tool-end', id: 'f1', name: 'grep', isError: false },
     ]);
   });
 
-  it('streams partial output and skips flushes that repeat it', () => {
-    const parser = createCursorParser({ partialOutput: true });
-    const text = (value: string) => ({ role: 'assistant', content: [{ type: 'text', text: value }] });
-    const events = feed(parser, [
-      { type: 'assistant', message: text('Hel'), timestamp_ms: 1 },
-      { type: 'assistant', message: text('lo'), timestamp_ms: 2 },
-      { type: 'assistant', message: text('Hello'), timestamp_ms: 3, model_call_id: 'mc1' },
-      { type: 'assistant', message: text('Hello') },
-      { type: 'result', subtype: 'success', is_error: false, result: 'Hello' },
-    ]);
-    expect(events).toEqual([
-      { type: 'text-delta', text: 'Hel' },
-      { type: 'text-delta', text: 'lo' },
-      { type: 'message', text: 'Hello' },
-    ]);
-  });
-
-  it('decodes stream-json', () => {
+  it('keeps the result text when no assistant message came through', () => {
     const parser = createCursorParser();
-    const events = feed(parser, [
-      { type: 'system', subtype: 'init', session_id: 'c-1', model: 'auto' },
-      { type: 'assistant', session_id: 'c-1', message: { content: [{ type: 'text', text: 'Editing' }] } },
-      {
-        type: 'tool_call',
-        subtype: 'started',
-        call_id: 'k1',
-        tool_call: { writeToolCall: { args: { path: 'b.ts' } } },
-      },
-      {
-        type: 'tool_call',
-        subtype: 'completed',
-        call_id: 'k1',
-        tool_call: { writeToolCall: { args: { path: 'b.ts' }, result: { success: {} } } },
-      },
-      { type: 'result', subtype: 'success', is_error: false, result: 'All done' },
+    expect(feed(parser, [{ ...result, usage: undefined }])).toEqual([
+      { type: 'session', sessionId: 's-1' },
+      { type: 'message', text: result.result },
     ]);
-    expect(events).toEqual([
-      { type: 'session', sessionId: 'c-1', model: 'auto' },
-      { type: 'message', text: 'Editing' },
-      { type: 'tool-start', id: 'k1', name: 'write', input: { path: 'b.ts' } },
-      { type: 'tool-end', id: 'k1', name: 'write', isError: false },
-      { type: 'file-change', paths: ['b.ts'] },
-      { type: 'message', text: 'All done' },
-    ]);
-    expect(parser.outcome?.()).toEqual({ ok: true });
   });
 });
 
