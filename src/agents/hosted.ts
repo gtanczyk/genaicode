@@ -111,6 +111,8 @@ function runHosted(provider: HostedAgentProvider, task: AgentTask, pollIntervalM
               : { ok: false, error: poll.error ?? `${provider.name} task failed.` },
         };
       }
+      // A consumer that falls behind holds the next poll instead of buffering without bound.
+      await untilAborted(recorder.events.room(), controller.signal);
       await delay(pollIntervalMs, controller.signal);
     }
     await provider.cancel(taskId).catch(() => undefined);
@@ -147,5 +149,18 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
       signal.removeEventListener('abort', done);
       resolve();
     }
+  });
+}
+
+/** Resolve when `wait` does or `signal` aborts, whichever comes first. */
+function untilAborted(wait: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    signal.addEventListener('abort', done, { once: true });
+    void wait.then(done);
   });
 }
