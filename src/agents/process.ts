@@ -27,6 +27,10 @@ export interface ProcessExit {
 export interface ProcessHandle {
   exit: Promise<ProcessExit>;
   kill(): void;
+  /** Stop reading stdout and stderr, so the agent blocks once the pipes fill. */
+  pause(): void;
+  /** Read again after `pause()`. */
+  resume(): void;
 }
 
 /**
@@ -85,22 +89,33 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => options.onStderr(chunk));
 
+  // `close` waits for every holder of stdout/stderr. After the agent exits, stop waiting
+  // for its leftovers, but never while paused: the output still in the pipes is the agent's.
+  let exited = false;
+  let paused = false;
+  let drain: ReturnType<typeof setTimeout> | undefined;
+  const armDrain = () => {
+    clearTimeout(drain);
+    if (!exited || paused || closed) return;
+    drain = setTimeout(() => {
+      child.stdout.destroy();
+      child.stderr.destroy();
+    }, EXIT_DRAIN_MS);
+    drain.unref?.();
+  };
+
   const exit = new Promise<ProcessExit>((resolve) => {
     child.once('error', (error) => {
       spawnError = error;
       reason = 'spawn-error';
     });
     child.once('exit', () => {
-      // `close` waits for every holder of stdout/stderr. Stop waiting for the agent's leftovers.
-      const drain = setTimeout(() => {
-        child.stdout.destroy();
-        child.stderr.destroy();
-      }, EXIT_DRAIN_MS);
-      drain.unref?.();
-      child.once('close', () => clearTimeout(drain));
+      exited = true;
+      armDrain();
     });
     child.once('close', (exitCode, exitSignal) => {
       closed = true;
+      clearTimeout(drain);
       clearTimeout(timer);
       clearTimeout(escalation);
       options.signal?.removeEventListener('abort', onAbort);
@@ -114,5 +129,22 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   options.signal?.addEventListener('abort', onAbort, { once: true });
   if (options.signal?.aborted) onAbort();
 
-  return { exit, kill: () => stop('aborted') };
+  return {
+    exit,
+    kill: () => stop('aborted'),
+    pause() {
+      if (paused || closed) return;
+      paused = true;
+      clearTimeout(drain);
+      child.stdout.pause();
+      child.stderr.pause();
+    },
+    resume() {
+      if (!paused) return;
+      paused = false;
+      child.stdout.resume();
+      child.stderr.resume();
+      armDrain();
+    },
+  };
 }

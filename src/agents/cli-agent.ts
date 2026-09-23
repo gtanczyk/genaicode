@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
+import { approximateSize, EventQueue } from './event-queue.js';
 import { startProcess, type ProcessExit } from './process.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
@@ -43,7 +44,7 @@ export function cliAgent(definition: CliAgentDefinition): CodingAgent {
 }
 
 function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun {
-  const events = new EventQueue<AgentEvent>();
+  const events = new EventQueue<AgentEvent>(approximateSize);
   const parser = definition.createParser();
   const state: { sessionId?: string; text?: string; usage?: AgentResult['usage']; costUsd?: number; error?: string } =
     {};
@@ -96,6 +97,9 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
       emit({ type: 'stderr', text });
     },
   });
+
+  // A consumer that falls behind pauses the agent instead of buffering its output without bound.
+  events.onPressure = (paused) => (paused ? handle.pause() : handle.resume());
 
   return {
     result: handle.exit.then(finish),
@@ -154,45 +158,4 @@ function spawnMessage(definition: CliAgentDefinition, error: Error | undefined):
   if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT')
     return `${definition.command} was not found. Install ${definition.name} or pass its path as \`command\`.`;
   return error?.message ?? `${definition.name} could not start.`;
-}
-
-/** Unbounded single-consumer queue bridging callbacks to `for await`. */
-/** Events kept for a run nobody iterates yet. Older ones are dropped past this. */
-const UNREAD_EVENT_LIMIT = 1000;
-
-class EventQueue<T> {
-  private readonly items: T[] = [];
-  private closed = false;
-  private wake: (() => void) | undefined;
-  private claimed = false;
-
-  push(item: T): void {
-    if (this.closed) return;
-    this.items.push(item);
-    // A run awaited only through `result` must not hold every event of a long task.
-    if (!this.claimed && this.items.length > UNREAD_EVENT_LIMIT) this.items.shift();
-    this.wake?.();
-  }
-
-  close(): void {
-    this.closed = true;
-    this.wake?.();
-  }
-
-  async *iterate(): AsyncGenerator<T> {
-    if (this.claimed) throw new Error('An AgentRun can be iterated only once.');
-    this.claimed = true;
-    for (;;) {
-      const item = this.items.shift();
-      if (item !== undefined) {
-        yield item;
-        continue;
-      }
-      if (this.closed) return;
-      await new Promise<void>((resolve) => {
-        this.wake = resolve;
-      });
-      this.wake = undefined;
-    }
-  }
 }
