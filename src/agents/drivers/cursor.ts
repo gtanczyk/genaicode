@@ -7,6 +7,10 @@ export interface CursorAgentOptions {
   command?: string;
   /** Pass `--force` so commands run without asking. Default true (a headless run cannot ask). */
   force?: boolean;
+  /** Pass `--approve-mcps` so the user's configured MCP servers run without asking. Default true. */
+  approveMcps?: boolean;
+  /** Pass `--stream-partial-output` and report assistant text as `text-delta` events. Default false. */
+  partialOutput?: boolean;
 }
 
 /** Cursor's agent CLI in print mode (`cursor-agent -p --output-format stream-json`). */
@@ -16,22 +20,25 @@ export function cursor(options: CursorAgentOptions = {}): CodingAgent {
     command: options.command ?? 'cursor-agent',
     capabilities: {},
     args: (task) => cursorArgs(task, options),
-    createParser: createCursorParser,
+    createParser: () => createCursorParser({ partialOutput: options.partialOutput }),
   });
 }
 
 export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}): string[] {
   const args = ['-p', '--output-format', 'stream-json'];
   if (options.force ?? true) args.push('--force');
+  if (options.approveMcps ?? true) args.push('--approve-mcps');
+  if (options.partialOutput) args.push('--stream-partial-output');
   if (task.model) args.push('--model', task.model);
   if (task.extraArgs) args.push(...task.extraArgs);
   return [...args, ...positionalPrompt(task.prompt)];
 }
 
-export function createCursorParser(): AgentOutputParser {
+export function createCursorParser(options: { partialOutput?: boolean } = {}): AgentOutputParser {
   let outcome: AgentOutcome | undefined;
   let sessionSent = false;
   let lastMessage: string | undefined;
+  let streamed = '';
 
   return {
     outcome: () => outcome,
@@ -53,7 +60,12 @@ export function createCursorParser(): AgentOutputParser {
                 .filter((part): part is string => !!part)
                 .join('')
             : '';
-          if (text.trim()) {
+          if (options.partialOutput) {
+            // Deltas carry `timestamp_ms` without `model_call_id`; the rest repeat text already streamed.
+            if (value.timestamp_ms === undefined || value.model_call_id !== undefined || !text) break;
+            streamed += text;
+            events.push({ type: 'text-delta', text });
+          } else if (text.trim()) {
             lastMessage = text;
             events.push({ type: 'message', text });
           }
@@ -79,6 +91,7 @@ export function createCursorParser(): AgentOutputParser {
           outcome = failed ? { ok: false, error: text || 'Cursor agent failed.' } : { ok: true };
           if (failed) events.push({ type: 'error', message: outcome.error! });
           else if (text && text !== lastMessage) events.push({ type: 'message', text });
+          else if (!text && streamed.trim()) events.push({ type: 'message', text: streamed });
           break;
         }
       }
@@ -87,11 +100,26 @@ export function createCursorParser(): AgentOutputParser {
   };
 }
 
-/** `{ writeToolCall: { args, result } }` → `{ name: 'write', args, result }`. */
+/**
+ * `{ writeToolCall: { args, result } }` → `{ name: 'write', args, result }`. Other tools
+ * arrive as `{ function: { name, arguments } }`, with `arguments` a JSON string.
+ */
 function cursorToolCall(value: unknown): { name: string; args?: unknown; result?: unknown } | undefined {
   if (!isObject(value)) return undefined;
   const [key, body] = Object.entries(value)[0] ?? [];
   if (!key) return undefined;
+  if (key === 'function' && isObject(body)) {
+    return { name: stringField(body, 'name') ?? 'function', args: parseArguments(body.arguments), result: body.result };
+  }
   const name = key.replace(/ToolCall$/, '') || key;
   return isObject(body) ? { name, args: body.args, result: body.result } : { name };
+}
+
+function parseArguments(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
