@@ -95,7 +95,7 @@ export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, 
 export function createCopilotParser(): AgentOutputParser {
   const toolCalls = new Map<string, { name: string; path?: string }>();
   const changed = new Set<string>();
-  const usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, reported: false };
+  const usage = { outputTokens: 0, reported: false };
   let outcome: AgentOutcome | undefined;
   let sessionSent = false;
   let lastError: string | undefined;
@@ -128,13 +128,12 @@ export function createCopilotParser(): AgentOutputParser {
         case 'assistant.message': {
           const text = stringField(data, 'content');
           if (!nested && text?.trim()) events.push({ type: 'message', text });
-          break;
-        }
-        case 'assistant.usage': {
-          usage.reported = true;
-          usage.inputTokens += numberField(data, 'inputTokens') ?? 0;
-          usage.outputTokens += numberField(data, 'outputTokens') ?? 0;
-          usage.cachedInputTokens += numberField(data, 'cacheReadTokens') ?? 0;
+          // JSON output drops `assistant.usage`; each message still carries its output tokens.
+          const outputTokens = numberField(data, 'outputTokens');
+          if (outputTokens !== undefined) {
+            usage.reported = true;
+            usage.outputTokens += outputTokens;
+          }
           break;
         }
         case 'tool.execution_start': {
@@ -187,17 +186,7 @@ export function createCopilotParser(): AgentOutputParser {
             paths.forEach((path) => changed.add(path));
             events.push({ type: 'file-change', paths });
           }
-          if (usage.reported) {
-            events.push({
-              type: 'usage',
-              usage: {
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-                totalTokens: usage.inputTokens + usage.outputTokens,
-                ...(usage.cachedInputTokens ? { cachedInputTokens: usage.cachedInputTokens } : {}),
-              },
-            });
-          }
+          if (usage.reported) events.push({ type: 'usage', usage: { outputTokens: usage.outputTokens } });
           const exitCode = numberField(value, 'exitCode');
           const blocker = stringField(value, 'blocker');
           if (exitCode === 0 && value.outcome !== 'blocked') {

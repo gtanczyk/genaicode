@@ -81,7 +81,7 @@ describe('copilot driver', () => {
       envelope('session.start', { sessionId: 's-1', selectedModel: 'gpt-x', copilotVersion: '1.0.88' }),
       envelope('assistant.reasoning_delta', { deltaContent: 'thinking' }),
       envelope('assistant.message_delta', { messageId: 'm1', deltaContent: 'Editing ' }),
-      envelope('assistant.message', { messageId: 'm1', content: 'Editing a.py' }),
+      envelope('assistant.message', { messageId: 'm1', content: 'Editing a.py', outputTokens: 4 }),
       envelope('tool.execution_start', { toolCallId: 't1', toolName: 'edit', arguments: { path: 'a.py' } }),
       envelope('tool.execution_complete', { toolCallId: 't1', success: true, result: { content: 'ok' } }),
       envelope('tool.execution_start', { toolCallId: 't2', toolName: 'bash', arguments: { command: 'false' } }),
@@ -100,9 +100,7 @@ describe('copilot driver', () => {
       }),
       envelope('tool.execution_complete', { toolCallId: 't3', success: false, error: { message: 'denied' } }),
       envelope('assistant.message', { messageId: 'm2', content: 'sub', parentToolCallId: 't9' }),
-      envelope('assistant.usage', { model: 'gpt-x', inputTokens: 10, outputTokens: 4, cacheReadTokens: 6 }),
-      envelope('assistant.usage', { model: 'gpt-x', inputTokens: 5, outputTokens: 1 }),
-      envelope('assistant.message', { messageId: 'm3', content: 'Done.' }),
+      envelope('assistant.message', { messageId: 'm3', content: 'Done.', outputTokens: 5 }),
       {
         type: 'result',
         timestamp: '2026-09-23T00:00:01.000Z',
@@ -129,7 +127,7 @@ describe('copilot driver', () => {
       { type: 'tool-end', id: 't3', name: 'docs/search', isError: true, output: 'denied' },
       { type: 'message', text: 'Done.' },
       { type: 'file-change', paths: ['b.py'] },
-      { type: 'usage', usage: { inputTokens: 15, outputTokens: 5, totalTokens: 20, cachedInputTokens: 6 } },
+      { type: 'usage', usage: { outputTokens: 9 } },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: true });
   });
