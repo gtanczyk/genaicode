@@ -44,7 +44,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     note('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'ls' } });
     if (mode === 'exit-early') process.exit(0);
     if (mode === 'approval') {
-      if (codex) send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', command: 'rm -rf build' } });
+      if (codex) send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
       else send({ id: 99, method: 'approval/request', params: { sessionId: 'se-1', id: 'ap-1' } });
       return;
     }
@@ -102,8 +102,8 @@ describe('codexLive', () => {
       },
     });
     const events = await collect(run);
-    expect(seen).toMatchObject([{ id: 'c1', kind: 'command', summary: 'rm -rf build' }]);
-    expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1', decision: 'approve' });
+    expect(seen).toMatchObject([{ id: 'c1-a2', kind: 'command', summary: 'rm -rf build' }]);
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1-a2', decision: 'approve' });
     expect((await run.result).text).toBe('decision:{"decision":"accept"}');
   });
 

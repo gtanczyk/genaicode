@@ -97,6 +97,9 @@ function spawnMessage(name: string, command: string, error: Error | undefined): 
 }
 
 /** Unbounded single-consumer queue bridging callbacks to `for await`. */
+/** Events kept for a run nobody iterates yet. Older ones are dropped past this. */
+const UNREAD_EVENT_LIMIT = 1000;
+
 export class EventQueue<T> {
   private readonly items: T[] = [];
   private closed = false;
@@ -106,6 +109,8 @@ export class EventQueue<T> {
   push(item: T): void {
     if (this.closed) return;
     this.items.push(item);
+    // A run awaited only through `result` must not hold every event of a long task.
+    if (!this.claimed && this.items.length > UNREAD_EVENT_LIMIT) this.items.shift();
     this.wake?.();
   }
 

@@ -109,7 +109,8 @@ export interface AgentCapabilities {
 
 /**
  * A started task. Iterate it for events (once), or await `result` alone.
- * The process starts when `run()` is called, whether or not anyone iterates.
+ * The process starts when `run()` is called, whether or not anyone iterates. Until
+ * iteration starts, only the latest 1,000 events are kept.
  */
 export interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly result: Promise<AgentResult>;

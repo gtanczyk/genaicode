@@ -53,12 +53,18 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
     for (const event of codexNotification(method, params)) session.emit(event);
   });
 
+  let approvals = 0;
   session.onRequest(async (method, params) => {
     const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval';
     const kind = method.includes('commandExecution') || method === 'execCommandApproval' ? 'command' : 'file-change';
     if (!legacy && !method.endsWith('/requestApproval')) throw new Error(`${method} is not supported.`);
     const request: ApprovalRequest = {
-      id: stringField(params, 'itemId') ?? stringField(params, 'callId') ?? String(Date.now()),
+      // One item can raise several approvals (e.g. per shell subcommand); `approvalId` tells them apart.
+      id:
+        stringField(params, 'approvalId') ??
+        stringField(params, 'itemId') ??
+        stringField(params, 'callId') ??
+        `approval-${++approvals}`,
       kind,
       ...summaryOf(params),
       detail: params,
