@@ -68,10 +68,22 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
     }
   };
   let closed = false;
+  // Pausing holds the agent back only while it runs. Once it exits or is being stopped, the
+  // rest of its output is small, and a caller awaiting `exit` must not wait on the consumer.
+  let paused = false;
+  let pausable = true;
+  const release = () => {
+    pausable = false;
+    if (!paused) return;
+    paused = false;
+    child.stdout!.resume();
+    child.stderr!.resume();
+  };
   // Stops still apply after the agent exits: a leftover child in its group can hold the pipes open.
   const stop = (why: ProcessExit['reason']) => {
     if (closed || reason !== 'exit') return;
     reason = why;
+    release();
     signal('SIGTERM');
     escalation = setTimeout(() => signal('SIGKILL'), options.killGraceMs ?? 2_000);
     escalation.unref?.();
@@ -97,14 +109,10 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   child.stderr!.setEncoding('utf8');
   child.stderr!.on('data', (chunk: string) => options.onStderr(chunk));
 
-  // `close` waits for every holder of stdout/stderr. After the agent exits, stop waiting
-  // for its leftovers, but never while paused: the output still in the pipes is the agent's.
-  let exited = false;
-  let paused = false;
+  // `close` waits for every holder of stdout/stderr. After the agent exits, stop waiting for its leftovers.
   let drain: ReturnType<typeof setTimeout> | undefined;
   const armDrain = () => {
-    clearTimeout(drain);
-    if (!exited || paused || closed) return;
+    if (closed) return;
     drain = setTimeout(() => {
       child.stdout!.destroy();
       child.stderr!.destroy();
@@ -118,7 +126,7 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       reason = 'spawn-error';
     });
     child.once('exit', () => {
-      exited = true;
+      release();
       armDrain();
     });
     child.once('close', (exitCode, exitSignal) => {
@@ -150,9 +158,8 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       child.stdin.write(line.endsWith('\n') ? line : `${line}\n`);
     },
     pause() {
-      if (paused || closed) return;
+      if (paused || !pausable || closed) return;
       paused = true;
-      clearTimeout(drain);
       child.stdout!.pause();
       child.stderr!.pause();
     },
@@ -161,7 +168,6 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       paused = false;
       child.stdout!.resume();
       child.stderr!.resume();
-      armDrain();
     },
   };
 }
