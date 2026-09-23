@@ -46,6 +46,21 @@ async function collect(run: AsyncIterable<AgentEvent>) {
 }
 
 describe('cliAgent', () => {
+  it('settles when a background child keeps the output pipes open', async () => {
+    const leftover = join(dir, 'leftover-agent.mjs');
+    writeFileSync(
+      leftover,
+      `import { spawn } from 'node:child_process';
+spawn(process.execPath, ['-e', 'setTimeout(() => {}, 4000)'], { stdio: ['ignore', 'inherit', 'inherit'] }).unref();
+console.log(JSON.stringify({ say: 'bye' }));
+`,
+    );
+    const started = Date.now();
+    const result = await fakeAgent({ args: () => [leftover] }).run({ prompt: 'hi', cwd: dir }).result;
+    expect(result).toMatchObject({ ok: true, text: 'bye' });
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
   it('keeps only the latest events for a run awaited through result alone', async () => {
     const lines = Array.from({ length: 1500 }, (_, index) => ({ say: String(index) }));
     const run = fakeAgent().run({ prompt: 'hi', cwd: dir, env: env({ FAKE_LINES: JSON.stringify(lines) }) });
