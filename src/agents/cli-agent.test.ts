@@ -22,6 +22,16 @@ else process.exitCode = Number(process.env.FAKE_EXIT ?? 0);
 `,
 );
 
+// Writes FAKE_BULK lines of 1 MiB of plain text, then a final message.
+const bulk = join(dir, 'bulk-agent.mjs');
+writeFileSync(
+  bulk,
+  `const line = 'x'.repeat(1024 * 1024) + '\\n';
+for (let i = 0; i < Number(process.env.FAKE_BULK); i++) process.stdout.write(line);
+process.stdout.write(JSON.stringify({ say: 'end' }) + '\\n');
+`,
+);
+
 function fakeAgent(overrides: Partial<CliAgentDefinition> = {}) {
   return cliAgent({
     name: 'fake',
@@ -71,6 +81,32 @@ console.log(JSON.stringify({ say: 'bye' }));
     expect(events).toHaveLength(1000);
     expect(events.at(-1)?.type).toBe('done');
     expect(events.at(-2)).toEqual({ type: 'message', text: '1499' });
+  });
+
+  it('bounds the bytes kept for a run awaited through result alone', async () => {
+    const run = fakeAgent({ args: () => [bulk] }).run({ prompt: 'hi', cwd: dir, env: env({ FAKE_BULK: '24' }) });
+    const result = await run.result;
+    const events = await collect(run);
+
+    expect(result).toMatchObject({ ok: true, text: 'end' });
+    expect(events.filter((event) => event.type === 'raw').length).toBeLessThanOrEqual(8);
+    expect(events.slice(-2).map((event) => event.type)).toEqual(['message', 'done']);
+  });
+
+  it('pauses the agent for a slow consumer without losing output', async () => {
+    const run = fakeAgent({ args: () => [bulk] }).run({ prompt: 'hi', cwd: dir, env: env({ FAKE_BULK: '24' }) });
+    const events: AgentEvent[] = [];
+    let readWhenSettled = -1;
+    void run.result.then(() => (readWhenSettled = events.length));
+    for await (const event of run) {
+      events.push(event);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(events.filter((event) => event.type === 'raw')).toHaveLength(24);
+    // The agent could not finish while more than the high-water mark sat unread.
+    expect(readWhenSettled).toBeGreaterThanOrEqual(14);
+    expect(events.slice(-2).map((event) => event.type)).toEqual(['message', 'done']);
+    expect(await run.result).toMatchObject({ ok: true, text: 'end' });
   });
 
   it('streams parsed events and folds them into the result', async () => {

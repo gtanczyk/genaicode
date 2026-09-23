@@ -73,6 +73,9 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
     onStderr: (text) => recorder.emit({ type: 'stderr', text }),
   });
 
+  // A consumer that falls behind pauses the agent instead of buffering its output without bound.
+  recorder.events.onPressure = (paused) => (paused ? handle.pause() : handle.resume());
+
   return {
     result: handle.exit.then((exit) => {
       plan.cleanup();

@@ -58,8 +58,22 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   const recorder = new RunRecorder(definition.name, definition.command);
   const iterate = () => recorder.events.iterate();
   let steer: ((text: string) => Promise<void>) | undefined;
-  const steerRun = (text: string) =>
-    steer ? steer(text) : Promise.reject(new Error(`${definition.name} is not accepting input.`));
+  // A consumer that falls behind pauses the agent's output. A steer awaited from inside the
+  // loop needs its reply read, so output keeps flowing while one is in flight.
+  let pressure = false;
+  let steering = 0;
+  let flow: () => void = () => {};
+  const steerRun = async (text: string) => {
+    if (!steer) throw new Error(`${definition.name} is not accepting input.`);
+    steering++;
+    flow();
+    try {
+      await steer(text);
+    } finally {
+      steering--;
+      flow();
+    }
+  };
 
   const plan = planSpawn(definition, task, invalidCwd(task.cwd));
   if (!plan.ok) {
@@ -95,6 +109,11 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     },
     onStderr: (text) => recorder.emit({ type: 'stderr', text }),
   });
+  flow = () => (pressure && !steering ? handle.pause() : handle.resume());
+  recorder.events.onPressure = (paused) => {
+    pressure = paused;
+    flow();
+  };
   const rpc = new RpcPeer((line) => handle.write(line), {
     notification: (method, params) => notificationHandler(method, params),
     request: (method, params) => requestHandler(method, params),
