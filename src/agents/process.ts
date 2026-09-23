@@ -101,8 +101,8 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
     child.once('exit', () => {
       // `close` waits for every holder of stdout/stderr. Stop waiting for the agent's leftovers.
       const drain = setTimeout(() => {
-        child.stdout.destroy();
-        child.stderr.destroy();
+        child.stdout!.destroy();
+        child.stderr!.destroy();
       }, EXIT_DRAIN_MS);
       drain.unref?.();
       child.once('close', () => clearTimeout(drain));
