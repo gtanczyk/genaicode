@@ -13,8 +13,9 @@ GenAIcode is a small TypeScript toolkit for using LLMs in backend code.
 It sits between raw provider SDKs and full agent frameworks: one prompt representation,
 thin provider adapters, a convenient request API, and lightweight conversation chains.
 The core does not inspect repositories, execute shell commands, edit files, or run an agent UI.
-The opt-in [`genaicode/agents`](#coding-agents) subpath drives installed coding-agent CLIs
-(Claude Code, Codex, Muse) behind one task and event API.
+The opt-in [`genaicode/agents`](#coding-agents) subpath drives the coding-agent CLIs you
+already have (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI, opencode, Muse)
+behind one task and event API, so you can orchestrate them from backend code.
 
 **Like jQuery**, the common case starts with one small function and becomes more specific
 through chaining—configure a request, follow up across multiple prompts, and keep history
@@ -82,6 +83,53 @@ const releaseNote = ai('Create a release note from these commits')
 const short = await releaseNote.maxOutputTokens(200).text();
 const long = await releaseNote.maxOutputTokens(800).text();
 ```
+
+## Coding agents
+
+`genaicode/agents` turns the coding-agent CLIs installed on a machine into one API. Give
+any of them a task (a prompt and a working directory) and get back the same event stream
+and result, whichever agent does the work. It is how you script, compare, or chain coding
+agents from a job, a bot, or a CI step without writing a parser per vendor.
+
+```ts
+import { claude, codex, copilot, cursor, detectAgents } from 'genaicode/agents';
+
+const [found] = detectAgents([claude(), codex(), copilot(), cursor()]).filter(({ path }) => path);
+if (!found) throw new Error('No coding agent installed.');
+
+const run = found.agent.run({ prompt: 'Add a unit test for parseDate', cwd: '/path/to/repo', timeoutMs: 20 * 60_000 });
+for await (const event of run) {
+  if (event.type === 'tool-start') console.log('⚙', event.name);
+  if (event.type === 'file-change') console.log('edited', event.paths.join(', '));
+}
+const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
+```
+
+| Agent            | Driver                        | Extras                                     |
+| ---------------- | ----------------------------- | ------------------------------------------ |
+| Claude Code      | `claude()`                    | MCP servers, max turns, effort, cost       |
+| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals    |
+| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns      |
+| Cursor           | `cursor()`                    | streamed text deltas                       |
+| Gemini CLI       | `gemini()`                    | approval mode                              |
+| opencode         | `opencode()`                  | `provider/model` ids, variants             |
+| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`                 |
+| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent |
+
+On top of the drivers:
+
+- **Steer a running task** with `run.steer(text)`, and answer permission prompts with
+  `onApproval` (live drivers).
+- **Attach MCP servers per task** with `mcpServers`. Header secrets stay out of argv.
+- **Verify and repair**: `runWithVerify` runs your check (tests, lint) after the agent and
+  sends failures back for another attempt.
+- **Keep credentials apart**: `withoutProviderCredentials()` strips your app's LLM API keys
+  from the agent's environment, so it bills its own login.
+
+Importing `genaicode` never spawns anything; only `genaicode/agents` does. The agent uses
+its own credentials, billing, and permission settings. GenAIcode does not sandbox it,
+choose a model, or retry it. See [docs/agents.md](docs/agents.md) for events, options per
+driver, and writing your own driver.
 
 ## Chaining prompts
 
@@ -437,30 +485,6 @@ the 1.x runtime TypeScript loader or process-global plugin registry.
 
 Framework-shaped examples live under `examples/` (`http-handler`, `queue-worker`,
 `cron-job`).
-
-## Coding agents
-
-`genaicode/agents` runs a coding-agent CLI that is already installed and logged in as a
-child process. You get one task shape and one event stream for every agent. It is separate
-from the core: importing `genaicode` never spawns anything.
-
-```ts
-import { claude, codex, detectAgents } from 'genaicode/agents';
-
-const [found] = detectAgents([claude(), codex()]).filter(({ path }) => path);
-if (!found) throw new Error('No coding agent installed.');
-
-const run = found.agent.run({ prompt: 'Add a unit test for parseDate', cwd: '/path/to/repo', timeoutMs: 20 * 60_000 });
-for await (const event of run) {
-  if (event.type === 'tool-start') console.log('⚙', event.name);
-  if (event.type === 'file-change') console.log('edited', event.paths.join(', '));
-}
-const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
-```
-
-The agent uses its own credentials, billing, and permission settings. GenAIcode does not
-sandbox it, choose a model, or retry it. See [docs/agents.md](docs/agents.md) for events,
-drivers, and writing your own driver with `cliAgent()`.
 
 ## Design boundaries
 
