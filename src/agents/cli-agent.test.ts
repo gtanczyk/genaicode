@@ -46,6 +46,18 @@ async function collect(run: AsyncIterable<AgentEvent>) {
 }
 
 describe('cliAgent', () => {
+  it('keeps only the latest events for a run awaited through result alone', async () => {
+    const lines = Array.from({ length: 1500 }, (_, index) => ({ say: String(index) }));
+    const run = fakeAgent().run({ prompt: 'hi', cwd: dir, env: env({ FAKE_LINES: JSON.stringify(lines) }) });
+    const result = await run.result;
+    const events = await collect(run);
+
+    expect(result).toMatchObject({ ok: true, text: '1499' });
+    expect(events).toHaveLength(1000);
+    expect(events.at(-1)?.type).toBe('done');
+    expect(events.at(-2)).toEqual({ type: 'message', text: '1499' });
+  });
+
   it('streams parsed events and folds them into the result', async () => {
     const run = fakeAgent().run({
       prompt: 'hi',
