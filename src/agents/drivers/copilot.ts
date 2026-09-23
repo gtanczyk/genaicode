@@ -111,8 +111,9 @@ export function createCopilotParser(): AgentOutputParser {
     event(value) {
       if (!isObject(value)) return [];
       const data = isObject(value.data) ? value.data : {};
-      // Sub-agent traffic nests under a parent tool call; the parent's own events cover it.
-      const nested = stringField(data, 'parentToolCallId') !== undefined;
+      // Sub-agent traffic carries an envelope `agentId` (older CLIs: `data.parentToolCallId`);
+      // the parent's own events cover it.
+      const nested = stringField(value, 'agentId') !== undefined || stringField(data, 'parentToolCallId') !== undefined;
       const events: AgentEvent[] = [];
 
       switch (value.type) {

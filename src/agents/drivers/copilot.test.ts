@@ -100,6 +100,8 @@ describe('copilot driver', () => {
       }),
       envelope('tool.execution_complete', { toolCallId: 't3', success: false, error: { message: 'denied' } }),
       envelope('assistant.message', { messageId: 'm2', content: 'sub', parentToolCallId: 't9' }),
+      { ...envelope('assistant.message', { messageId: 'm4', content: 'sub-agent text' }), agentId: 'sa-1' },
+      { ...envelope('assistant.message_delta', { messageId: 'm4', deltaContent: 'sub' }), agentId: 'sa-1' },
       envelope('assistant.message', { messageId: 'm3', content: 'Done.', outputTokens: 5 }),
       {
         type: 'result',
