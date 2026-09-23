@@ -36,6 +36,25 @@ describe('hostedAgent', () => {
     expect(calls).toEqual(['start:fix:false', 'poll:r-1:-', 'poll:r-1:c1']);
   });
 
+  it('holds polling while a slow consumer is far behind', async () => {
+    const big = (): HostedPoll => ({
+      state: 'running',
+      events: [{ type: 'message', text: 'x'.repeat(5 * 1024 * 1024) }],
+    });
+    const { impl, calls } = provider([big(), big(), big(), big(), { state: 'completed' }]);
+    const run = hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' });
+    let pollsWhileStalled = 0;
+    for await (const event of run) {
+      if (event.type === 'session') {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        pollsWhileStalled = calls.filter((call) => call.startsWith('poll')).length;
+      }
+    }
+    expect(pollsWhileStalled).toBe(2);
+    expect(await run.result).toMatchObject({ status: 'completed' });
+    expect(calls.filter((call) => call.startsWith('poll'))).toHaveLength(5);
+  });
+
   it('reports a failed task', async () => {
     const { impl } = provider([{ state: 'failed', error: 'tests red' }]);
     const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
