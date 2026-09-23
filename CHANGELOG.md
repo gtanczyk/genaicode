@@ -18,6 +18,8 @@
   environments; `runWithVerify` verify-and-repair loop.
 - Drivers `gemini()`, `cursor()` and `opencode()`; `hostedAgent()` adapts a
   `HostedAgentProvider` (start / poll / send / cancel) to `CodingAgent`.
+- Driver `copilot()` for GitHub Copilot CLI (`--output-format json`), with MCP servers via
+  `--additional-mcp-config` and `allowTools` / `denyTools` permission patterns.
 
 ### Notes
 
