@@ -33,11 +33,17 @@ export function scrubEnv(env: NodeJS.ProcessEnv, options: ScrubEnvOptions): Node
   const result: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (names.some((match) => (typeof match === 'string' ? match === name : match.test(name)))) continue;
-    if (values.some((match) => match.test(value))) continue;
+    if (names.some((match) => (typeof match === 'string' ? match === name : matches(match, name)))) continue;
+    if (values.some((match) => matches(match, value))) continue;
     result[name] = value;
   }
   return result;
+}
+
+/** `test()` from the start every time: `/g` and `/y` patterns keep `lastIndex` between calls. */
+function matches(pattern: RegExp, text: string): boolean {
+  pattern.lastIndex = 0;
+  return pattern.test(text);
 }
 
 /** `env` without `PROVIDER_CREDENTIAL_VARS`: the agent falls back to its own login. */

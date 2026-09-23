@@ -141,8 +141,9 @@ await claude().run({
   cannot ask. Pass `allowMcpTools: false` to turn that off, or `strictMcpConfig: true` to
   ignore the user's own MCP config.
 - Codex gets `-c mcp_servers.<name>.*` overrides. HTTP header values go through environment
-  variables (`env_http_headers`), so they never appear in argv. The `env` values of a stdio
-  server do appear in argv.
+  variables (`env_http_headers`), so they never appear in argv. A stdio server's `env` is set
+  on Codex's own environment and forwarded by name (`env_vars`); two servers cannot use
+  different values for the same variable.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 

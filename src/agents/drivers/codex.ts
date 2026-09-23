@@ -43,8 +43,9 @@ export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
 }
 
 /**
- * Config overrides for Codex MCP servers. HTTP header values travel in environment
- * variables (`env_http_headers`), never on the command line.
+ * Config overrides for Codex MCP servers. Secrets never go on the command line: HTTP
+ * header values travel in environment variables (`env_http_headers`), and a stdio
+ * server's `env` is set on Codex's environment and forwarded by name (`env_vars`).
  */
 export function codexMcpOverrides(servers: readonly McpServer[]): { args: string[]; env: Record<string, string> } {
   const args: string[] = [];
@@ -66,12 +67,16 @@ export function codexMcpOverrides(servers: readonly McpServer[]): { args: string
     } else {
       set(`${key}.command`, JSON.stringify(server.command));
       set(`${key}.args`, JSON.stringify(server.args ?? []));
+      // Values go into Codex's own environment and are forwarded by name (`env_vars`), so no
+      // server secret ever reaches argv.
       const entries = Object.entries(server.env ?? {});
-      if (entries.length)
-        set(
-          `${key}.env`,
-          `{ ${entries.map(([name, value]) => `${JSON.stringify(name)} = ${JSON.stringify(value)}`).join(', ')} }`,
-        );
+      for (const [name, value] of entries) {
+        if (name in env && env[name] !== value) {
+          throw new Error(`MCP servers need different values for ${name}; Codex can forward only one.`);
+        }
+        env[name] = value;
+      }
+      if (entries.length) set(`${key}.env_vars`, JSON.stringify(entries.map(([name]) => name)));
     }
   });
   return { args, env };
