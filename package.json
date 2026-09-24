@@ -39,6 +39,10 @@
     "./providers": {
       "types": "./dist/providers.d.ts",
       "import": "./dist/providers.js"
+    },
+    "./agents": {
+      "types": "./dist/agents.d.ts",
+      "import": "./dist/agents.js"
     }
   },
   "scripts": {

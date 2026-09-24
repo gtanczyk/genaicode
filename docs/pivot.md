@@ -41,6 +41,10 @@ The following 1.x capabilities are intentionally removed:
 - agent-oriented plugin and action systems;
 - image-editing operations and coding evaluations.
 
+The 2.x `genaicode/agents` subpath does not restore these. It drives _external_
+coding-agent CLIs behind one task/event interface, the same way providers wrap model APIs,
+and it adds no agent loop, prompts, or repository tools of its own. See [agents.md](./agents.md).
+
 This is a major-version break. The old implementation remains available in git history
 and in the 1.x npm line.
 

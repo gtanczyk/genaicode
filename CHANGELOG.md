@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `genaicode/agents` subpath (experimental): run installed coding-agent CLIs behind one
+  `CodingAgent` interface. Drivers `claude()`, `codex()`, `muse()`; agent-neutral
+  `AgentEvent` stream and `AgentResult`; abort, timeout and process-group kill;
+  `detectAgents` / `findExecutable`; `cliAgent()` for custom drivers. See
+  [docs/agents.md](docs/agents.md).
+
+### Notes
+
+- The core `genaicode` entry is unchanged and still spawns nothing.
+
 ## 2.2.0 — 2026-07-26
 
 ### Added
