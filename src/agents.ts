@@ -49,3 +49,5 @@ export type {
   HostedTaskRequest,
   HostedTaskState,
 } from './agents/hosted.js';
+export { copilot, copilotArgs, copilotMcpConfig, createCopilotParser } from './agents/drivers/copilot.js';
+export type { CopilotAgentOptions } from './agents/drivers/copilot.js';

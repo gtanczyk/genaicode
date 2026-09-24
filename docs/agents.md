@@ -86,6 +86,7 @@ Vendor events that have no mapping are dropped.
 | `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`  |
 | `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`     |
 | `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
+| `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns      |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
@@ -129,7 +130,7 @@ protocol and resolves with `{ ok, error? }` when the turn ends.
 ## MCP servers
 
 `task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
-(`claude`, `codex`, `codexLive`):
+(`claude`, `codex`, `codexLive`, `copilot`):
 
 ```ts
 await claude().run({
@@ -150,6 +151,10 @@ await claude().run({
   variables (`env_http_headers`), so they never appear in argv. A stdio server's `env` is set
   on Codex's own environment and forwarded by name (`env_vars`); two servers cannot use
   different values for the same variable.
+- Copilot CLI gets a temporary `--additional-mcp-config @<file>` (mode 0600, removed after
+  the run), added to the user's own MCP config. `--allow-all-tools` already covers the
+  servers' tools; with `allowAllTools: false` each server is pre-allowed with
+  `--allow-tool=<name>` unless `allowMcpTools: false`.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 
@@ -261,4 +266,4 @@ way the built-in drivers are tested.
 2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies. Done.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
 4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`). Done.
-   A Copilot CLI driver is not included yet: its JSON output format is not specified here.
+5. A Copilot CLI driver (`copilot`). Done.
