@@ -11,7 +11,8 @@ const dir = mkdtempSync(join(tmpdir(), 'genaicode-live-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 // A stand-in JSON-RPC server. argv: 'app-server' behaves like Codex, 'serve' like Muse.
-// FAKE_MODE: 'basic' | 'approval' | 'steer' | 'exit-early' | 'flood' (12 MiB of messages, then waits for a steer).
+// FAKE_MODE: 'basic' | 'approval' | 'approval-stages' (Muse only) | 'steer' | 'exit-early' |
+// 'flood' (12 MiB of messages, then waits for a steer).
 const server = join(dir, 'fake-server.mjs');
 writeFileSync(
   server,
@@ -21,6 +22,27 @@ const mode = process.env.FAKE_MODE ?? 'basic';
 const send = (value) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\\n');
 const note = (method, params) => send({ method, params: codex ? { threadId: 'th-1', ...params } : { sessionId: 'se-1', ...params } });
 let started = {};
+let receipt;
+const decisions = [];
+let decidedAll = false;
+// The turn ends once the approval is decided and the server request has its receipt.
+const museFinish = () => {
+  if (decidedAll && receipt !== undefined) finishTurn('decided:' + decisions.join(',') + ' receipt:' + JSON.stringify(receipt));
+};
+const museChoices = [
+  { choiceId: 'allow-session', decision: 'approvedForSession', scope: 'session', label: 'Always' },
+  { choiceId: 'allow-once', decision: 'approved', scope: 'once', label: 'Allow' },
+  { choiceId: 'deny-once', decision: 'denied', scope: 'once', label: 'Deny' },
+].filter((choice) => process.env.FAKE_CHOICES !== 'session-only' || choice.choiceId !== 'allow-once');
+const museApproval = {
+  sessionId: 'se-1',
+  approvalId: 'ap-1',
+  itemId: 'c1',
+  toolName: 'shell',
+  subject: { kind: 'shell', command: 'rm -rf build' },
+  currentRequirementId: { approvalId: 'ap-1', sourceIndex: 0 },
+  availableChoices: museChoices,
+};
 const finishTurn = (text) => {
   if (codex) {
     note('item/completed', { item: { id: 'm1', type: 'agentMessage', text } });
@@ -33,7 +55,16 @@ const finishTurn = (text) => {
 };
 createInterface({ input: process.stdin }).on('line', (line) => {
   const msg = JSON.parse(line);
-  if (msg.id === 99) return finishTurn('decision:' + JSON.stringify(msg.result ?? msg.error?.code));
+  if (msg.id === 99 && codex) return finishTurn('decision:' + JSON.stringify(msg.result ?? msg.error?.code));
+  if (msg.id === 99) { receipt = msg.result ?? msg.error; return museFinish(); }
+  if (msg.method === 'approval/decide') {
+    decisions.push(msg.params.choiceId + '@' + msg.params.requirementId.sourceIndex);
+    const more = mode === 'approval-stages' && decisions.length === 1;
+    send({ id: msg.id, result: { approvalId: 'ap-1', commandId: msg.params.commandId, status: 'accepted', terminal: !more } });
+    if (more) return note('approval/updated', { approvalId: 'ap-1', change: { kind: 'stageResolved' }, availableChoices: museApproval.availableChoices, currentRequirementId: { approvalId: 'ap-1', sourceIndex: 1 }, subject: { kind: 'shell', command: 'git push' } });
+    decidedAll = true;
+    return museFinish();
+  }
   if (msg.method === 'initialize') return send({ id: msg.id, result: {} });
   if (msg.method === 'thread/start') { started = msg.params; return send({ id: msg.id, result: { thread: { id: 'th-1' } } }); }
   if (msg.method === 'session/start') { started = msg.params; return send({ id: msg.id, result: { session: { sessionId: 'se-1' } } }); }
@@ -44,9 +75,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     note('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'ls' } });
     if (mode === 'exit-early') process.exit(0);
     if (mode === 'flood') for (let i = 0; i < 12; i++) note('item/completed', { item: { id: 'f' + i, type: 'agentMessage', text: 'x'.repeat(1024 * 1024) } });
-    if (mode === 'approval') {
-      if (codex) send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
-      else send({ id: 99, method: 'approval/request', params: { sessionId: 'se-1', id: 'ap-1' } });
+    if (mode === 'approval' && codex) {
+      send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
+      return;
+    }
+    if (mode === 'approval' || mode === 'approval-stages') {
+      // Both forms of one approval: the view notification and the server request.
+      note('approval/requested', museApproval);
+      send({ id: 99, method: 'approval/request', params: museApproval });
       return;
     }
     if (mode === 'basic') finishTurn('started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
@@ -165,14 +201,59 @@ describe('museLive', () => {
     expect(await run.result).toMatchObject({ ok: true, sessionId: 'se-1', text: 'steered:more' });
   });
 
-  it('reports approval requests and declines them', async () => {
+  it('routes approvals to onApproval and decides through approval/decide', async () => {
+    const seen: unknown[] = [];
+    const run = museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('approval'),
+      onApproval: (request) => {
+        seen.push(request);
+        return 'approve';
+      },
+    });
+    const events = await collect(run);
+    expect(seen).toMatchObject([{ id: 'ap-1', kind: 'command', summary: 'rm -rf build' }]);
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'ap-1', decision: 'approve' });
+    // Decided once although both forms arrived; the server request got an empty receipt.
+    expect((await run.result).text).toBe('decided:allow-once@0 receipt:{}');
+  });
+
+  it('denies approvals without onApproval', async () => {
     const run = museLive({ command: museBin }).run({ prompt: 'go', cwd: dir, env: env('approval') });
     const events = await collect(run);
-    expect(events).toContainEqual({
-      type: 'approval-request',
-      request: { id: 'ap-1', kind: 'other', detail: { sessionId: 'se-1', id: 'ap-1' } },
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'ap-1', decision: 'deny' });
+    expect((await run.result).text).toBe('decided:deny-once@0 receipt:{}');
+  });
+
+  it('denies rather than approving for the whole session', async () => {
+    const run = museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...env('approval'), FAKE_CHOICES: 'session-only' },
+      onApproval: () => 'approve',
     });
-    expect((await run.result).text).toBe('decision:-32601');
+    const events = await collect(run);
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'Muse offered no one-time approval for ap-1; denying it.',
+    });
+    expect((await run.result).text).toBe('decided:deny-once@0 receipt:{}');
+  });
+
+  it('decides each stage of a multi-stage approval', async () => {
+    const seen: string[] = [];
+    const run = museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('approval-stages'),
+      onApproval: (request) => {
+        seen.push(`${request.id}:${request.summary}`);
+        return seen.length === 1 ? 'approve' : 'deny';
+      },
+    });
+    expect((await run.result).text).toBe('decided:allow-once@0,deny-once@1 receipt:{}');
+    expect(seen).toEqual(['ap-1:rm -rf build', 'ap-1/2:git push']);
   });
 });
 

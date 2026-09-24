@@ -116,7 +116,7 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 | opencode         | `opencode()`                  | `provider/model` ids, variants             |
 | Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price        |
 | Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                     |
-| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`                 |
+| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals      |
 | Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent |
 
 On top of the drivers:

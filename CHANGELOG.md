@@ -11,6 +11,12 @@
 
 - `codex()`: a failed MCP tool call's `tool-end` event carries the error message as `output`.
 
+### Fixed
+
+- `museLive()` now answers approvals: `onApproval` decides each request (and each stage of a
+  multi-stage one) through Muse's `approval/decide`. Before, requests were refused
+  unanswered and stayed pending.
+
 ## 2.4.1 — 2026-09-24
 
 ### Notes
