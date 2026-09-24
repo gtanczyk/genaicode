@@ -76,11 +76,16 @@ Vendor events that have no mapping are dropped.
 
 ## Drivers
 
-| Driver             | Command  | Mode                             | Notes                                                                          |
-| ------------------ | -------- | -------------------------------- | ------------------------------------------------------------------------------ |
-| `claude(options?)` | `claude` | `-p --output-format stream-json` | `permissionMode` defaults to `acceptEdits`; `allowedTools` / `disallowedTools` |
-| `codex(options?)`  | `codex`  | `exec --json`                    | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`   |
-| `muse(options?)`   | `muse`   | `exec --json --trust-workspace`  | `maxTurns` maps to `--max-model-steps`                                         |
+| Driver                | Command        | Mode                                     | Notes                                                                                  |
+| --------------------- | -------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `claude(options?)`    | `claude`       | `-p --output-format stream-json`         | `permissionMode` defaults to `acceptEdits`; `allowedTools` / `disallowedTools`         |
+| `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`           |
+| `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                 |
+| `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)  |
+| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`. Approval requests are reported, then denied                                 |
+| `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`  |
+| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`     |
+| `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
@@ -196,6 +201,30 @@ detectAgents([claude(), codex(), muse()]);
 Discovery checks only that the executable is present. Whether the agent is logged in, or
 supports a given flag, shows up when the run fails.
 
+## Hosted agents
+
+Tasks can also run on a vendor's machines instead of a local process. Implement
+`HostedAgentProvider` (`start`, `poll`, `cancel`, and optionally `send`) and wrap it with
+`hostedAgent()` to get the same `CodingAgent` API:
+
+```ts
+import { hostedAgent, type HostedAgentProvider } from 'genaicode/agents';
+
+const provider: HostedAgentProvider = {
+  name: 'my-cloud-agent',
+  start: (task, signal) => api.createTask({ repo: task.cwd, prompt: task.prompt }, { signal }),
+  poll: (id, cursor, signal) => api.getTask(id, { after: cursor, signal }), // { state, events?, cursor?, error? }
+  send: (id, text) => api.message(id, text),
+  cancel: (id) => api.cancel(id),
+};
+
+const run = hostedAgent(provider, { pollIntervalMs: 10_000 }).run({ prompt, cwd: 'org/repo' });
+```
+
+`cwd` is passed to the provider as its workspace reference, such as a repository or branch.
+`env`, `signal`, `timeoutMs` and `onApproval` stay local. Abort and timeout call `cancel`.
+`send` backs `steer()`.
+
 ## Writing a driver
 
 ```ts
@@ -231,4 +260,5 @@ way the built-in drivers are tested.
 1. Headless drivers for claude, codex, and muse, the event IR, and discovery. Done.
 2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies. Done.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
-4. More CLIs (gemini, copilot, cursor, opencode) and hosted coding-agent services.
+4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`). Done.
+   A Copilot CLI driver is not included yet: its JSON output format is not specified here.

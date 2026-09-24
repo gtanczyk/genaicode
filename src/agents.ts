@@ -35,3 +35,17 @@ export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport }
 export type { PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';
 export { codexMcpOverrides } from './agents/drivers/codex.js';
+export { createGeminiParser, gemini, geminiArgs } from './agents/drivers/gemini.js';
+export type { GeminiAgentOptions, GeminiApprovalMode } from './agents/drivers/gemini.js';
+export { createCursorParser, cursor, cursorArgs } from './agents/drivers/cursor.js';
+export type { CursorAgentOptions } from './agents/drivers/cursor.js';
+export { createOpencodeParser, opencode, opencodeArgs } from './agents/drivers/opencode.js';
+export type { OpencodeAgentOptions } from './agents/drivers/opencode.js';
+export { hostedAgent } from './agents/hosted.js';
+export type {
+  HostedAgentOptions,
+  HostedAgentProvider,
+  HostedPoll,
+  HostedTaskRequest,
+  HostedTaskState,
+} from './agents/hosted.js';
