@@ -14,8 +14,9 @@ It sits between raw provider SDKs and full agent frameworks: one prompt represen
 thin provider adapters, a convenient request API, and lightweight conversation chains.
 The core does not inspect repositories, execute shell commands, edit files, or run an agent UI.
 The opt-in [`genaicode/agents`](#coding-agents) subpath drives the coding-agent CLIs you
-already have (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI, opencode, Muse)
-behind one task and event API, so you can orchestrate them from backend code.
+already have (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI, opencode, Muse,
+Mistral Vibe, Antigravity) behind one task and event API, so you can orchestrate them from
+backend code.
 
 **Like jQuery**, the common case starts with one small function and becomes more specific
 through chaining—configure a request, follow up across multiple prompts, and keep history
@@ -113,6 +114,8 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 | Cursor           | `cursor()`                    | streamed text deltas                       |
 | Gemini CLI       | `gemini()`                    | approval mode                              |
 | opencode         | `opencode()`                  | `provider/model` ids, variants             |
+| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price        |
+| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                     |
 | Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals      |
 | Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent |
 

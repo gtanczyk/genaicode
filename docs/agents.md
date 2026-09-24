@@ -87,6 +87,8 @@ Vendor events that have no mapping are dropped.
 | `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`     |
 | `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
 | `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns      |
+| `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`         |
+| `antigravity(opts?)`  | `agy`          | `--output-format stream-json --print`    | `mode` defaults to `accept-edits`; `--sandbox` unless `sandbox: false`                 |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
