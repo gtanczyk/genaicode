@@ -23,7 +23,24 @@ export interface AgentTask {
   signal?: AbortSignal;
   /** Extra CLI arguments, inserted before the prompt. */
   extraArgs?: readonly string[];
+  /**
+   * Answer permission prompts from agents that ask over a live session
+   * (`capabilities.approvals`). Without it every request is declined.
+   */
+  onApproval?: (request: ApprovalRequest) => ApprovalDecision | Promise<ApprovalDecision>;
 }
+
+export interface ApprovalRequest {
+  id: string;
+  /** `command`: run a shell command; `file-change`: apply edits; `other`: anything else. */
+  kind: 'command' | 'file-change' | 'other';
+  /** Human-readable summary (the command, the paths, or the vendor's reason). */
+  summary?: string;
+  /** The vendor's request payload, unchanged. */
+  detail?: unknown;
+}
+
+export type ApprovalDecision = 'approve' | 'deny';
 
 /**
  * Agent-neutral event IR for a running task.
@@ -38,7 +55,8 @@ export type AgentEvent =
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
   | { type: 'file-change'; paths: string[] }
-  | { type: 'approval-request'; detail?: unknown }
+  | { type: 'approval-request'; request: ApprovalRequest }
+  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision }
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
@@ -69,6 +87,10 @@ export interface AgentCapabilities {
   maxTurns?: boolean;
   /** Reports token usage. */
   usage?: boolean;
+  /** `AgentRun.steer` can add input to a running task. */
+  steer?: boolean;
+  /** Permission prompts reach `AgentTask.onApproval`. */
+  approvals?: boolean;
 }
 
 /**
@@ -80,6 +102,11 @@ export interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly result: Promise<AgentResult>;
   /** Stop the agent. `result` settles with status `aborted`. */
   abort(): void;
+  /**
+   * Send more input to the task while it runs (`capabilities.steer`). Rejects once
+   * the task has ended, or when the agent did not acknowledge the input.
+   */
+  steer?(text: string): Promise<void>;
 }
 
 export interface CodingAgent {

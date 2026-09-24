@@ -66,7 +66,8 @@ export function createMuseParser(): AgentOutputParser {
           payload?.kind === 'approval' &&
           stringField(payload.event, 'kind') === 'requested')
       ) {
-        events.push({ type: 'approval-request', detail: payload });
+        // Headless exec cannot answer; museLive() can.
+        events.push({ type: 'approval-request', request: { id: approvalId(payload), kind: 'other', detail: payload } });
       } else if (type.startsWith(TERMINAL)) {
         const verdict = type.slice(TERMINAL.length);
         if (verdict === 'completed') {
@@ -83,4 +84,8 @@ export function createMuseParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+function approvalId(payload: Record<string, unknown> | undefined): string {
+  return stringField(payload, 'id') ?? stringField(payload, 'approvalId') ?? 'approval';
 }

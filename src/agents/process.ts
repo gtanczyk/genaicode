@@ -13,6 +13,8 @@ export interface ProcessOptions {
   signal?: AbortSignal;
   /** Time between SIGTERM and SIGKILL. */
   killGraceMs?: number;
+  /** Keep stdin open for `write()` (JSON-RPC agents). Default: stdin is closed. */
+  stdin?: boolean;
   onLine(line: string): void;
   onStderr(text: string): void;
 }
@@ -20,13 +22,19 @@ export interface ProcessOptions {
 export interface ProcessExit {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
-  reason: 'exit' | 'aborted' | 'timeout' | 'spawn-error' | 'overflow';
+  /** `closed`: the caller ended a long-lived agent with `close()` after its work was done. */
+  reason: 'exit' | 'closed' | 'aborted' | 'timeout' | 'spawn-error' | 'overflow';
   error?: Error;
 }
 
 export interface ProcessHandle {
   exit: Promise<ProcessExit>;
+  /** Stop the process as aborted. */
   kill(): void;
+  /** Stop the process as finished on purpose. */
+  close(): void;
+  /** Write one line to stdin. Requires `stdin: true`. */
+  write(line: string): void;
   /** Stop reading stdout and stderr, so the agent blocks once the pipes fill. */
   pause(): void;
   /** Read again after `pause()`. */
@@ -42,7 +50,7 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   const child = spawn(options.command, [...options.args], {
     cwd: options.cwd,
     env: options.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [options.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: groupKill,
   });
 
@@ -68,8 +76,8 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
     pausable = false;
     if (!paused) return;
     paused = false;
-    child.stdout.resume();
-    child.stderr.resume();
+    child.stdout!.resume();
+    child.stderr!.resume();
   };
   // Stops still apply after the agent exits: a leftover child in its group can hold the pipes open.
   const stop = (why: ProcessExit['reason']) => {
@@ -83,8 +91,8 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   const onAbort = () => stop('aborted');
 
   let buffered = '';
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => {
+  child.stdout!.setEncoding('utf8');
+  child.stdout!.on('data', (chunk: string) => {
     buffered += chunk;
     let end = buffered.indexOf('\n');
     while (end >= 0) {
@@ -98,16 +106,16 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
       stop('overflow');
     }
   });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => options.onStderr(chunk));
+  child.stderr!.setEncoding('utf8');
+  child.stderr!.on('data', (chunk: string) => options.onStderr(chunk));
 
   // `close` waits for every holder of stdout/stderr. After the agent exits, stop waiting for its leftovers.
   let drain: ReturnType<typeof setTimeout> | undefined;
   const armDrain = () => {
     if (closed) return;
     drain = setTimeout(() => {
-      child.stdout.destroy();
-      child.stderr.destroy();
+      child.stdout!.destroy();
+      child.stderr!.destroy();
     }, EXIT_DRAIN_MS);
     drain.unref?.();
   };
@@ -137,20 +145,29 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
   options.signal?.addEventListener('abort', onAbort, { once: true });
   if (options.signal?.aborted) onAbort();
 
+  child.stdin?.on('error', () => {
+    // The agent exited mid-write; its exit status reports why.
+  });
+
   return {
     exit,
     kill: () => stop('aborted'),
+    close: () => stop('closed'),
+    write(line) {
+      if (!child.stdin || child.stdin.destroyed) throw new Error(`${options.command} is not accepting input.`);
+      child.stdin.write(line.endsWith('\n') ? line : `${line}\n`);
+    },
     pause() {
       if (paused || !pausable || closed) return;
       paused = true;
-      child.stdout.pause();
-      child.stderr.pause();
+      child.stdout!.pause();
+      child.stderr!.pause();
     },
     resume() {
       if (!paused) return;
       paused = false;
-      child.stdout.resume();
-      child.stderr.resume();
+      child.stdout!.resume();
+      child.stderr!.resume();
     },
   };
 }

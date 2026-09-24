@@ -88,6 +88,39 @@ inserted before the prompt for flags that have no portable field.
 The agent uses whatever login it already has. For example, Claude Code bills an API key if
 `ANTHROPIC_API_KEY` is set in `task.env`. Pass an explicit `env` when that matters.
 
+## Live sessions: steering and approvals
+
+`codexLive()` and `museLive()` talk JSON-RPC to the agent's own server (`codex app-server`,
+`muse serve`) instead of running one headless command. The process stays up for the whole
+task, so you can add input while it works:
+
+```ts
+import { codexLive } from 'genaicode/agents';
+
+const run = codexLive().run({
+  prompt: 'Migrate the date helpers to Temporal',
+  cwd: '/work/repo',
+  onApproval: (request) => (request.kind === 'file-change' ? 'approve' : 'deny'),
+});
+
+setTimeout(() => run.steer?.('Keep the old exports as deprecated aliases.'), 60_000);
+const result = await run.result;
+```
+
+- `steer(text)` resolves once the agent acknowledges the input. It rejects after the task has
+  ended, and when no acknowledgement arrives (the input may or may not have reached the agent).
+- `onApproval` is asked for each permission request. It gets a `command`, `file-change` or
+  `other` request and returns `'approve'` or `'deny'`. If `onApproval` is missing or throws, the
+  request is denied. Codex runs with approval policy `never` when no `onApproval` is set.
+- `museLive()` reports approval requests as events but always denies them
+  (`capabilities.approvals` is false).
+- The task ends when the agent reports its turn complete. The server is then stopped. An exit
+  before that point is a failure, even with exit code 0.
+
+For other JSON-RPC agents, `liveAgent({ name, command, args, drive })` provides the process,
+an `RpcPeer`, event emission, the approval flow, and `setSteer()`. `drive(session)` runs the
+protocol and resolves with `{ ok, error? }` when the turn ends.
+
 ## Discovery
 
 ```ts
@@ -132,7 +165,7 @@ way the built-in drivers are tested.
 
 ## Roadmap
 
-1. Headless drivers for claude, codex, and muse, the event IR, and discovery. Done (this release).
-2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies.
+1. Headless drivers for claude, codex, and muse, the event IR, and discovery. Done.
+2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies. Done.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper.
 4. More CLIs (gemini, copilot, cursor, opencode) and hosted coding-agent services.
