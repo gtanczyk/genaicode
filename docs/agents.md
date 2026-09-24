@@ -82,7 +82,7 @@ Vendor events that have no mapping are dropped.
 | `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`           |
 | `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                 |
 | `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)  |
-| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`. Approval requests are reported, then denied                                 |
+| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`, approvals. See [Live sessions](#live-sessions-steering-and-approvals)       |
 | `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`  |
 | `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`     |
 | `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
@@ -118,8 +118,9 @@ const result = await run.result;
 - `onApproval` is asked for each permission request. It gets a `command`, `file-change` or
   `other` request and returns `'approve'` or `'deny'`. If `onApproval` is missing or throws, the
   request is denied. Codex runs with approval policy `never` when no `onApproval` is set.
-- `museLive()` reports approval requests as events but always denies them
-  (`capabilities.approvals` is false).
+- `museLive()` answers each approval with one of the choices Muse offers: the `once`
+  approve or deny choice where there is one. A multi-stage approval asks `onApproval` once
+  per stage; later stages get ids like `ap-1/2`.
 - The task ends when the agent reports its turn complete. The server is then stopped. An exit
   before that point is a failure, even with exit code 0.
 

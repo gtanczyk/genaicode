@@ -21,6 +21,12 @@
 - Driver `copilot()` for GitHub Copilot CLI (`--output-format json`), with MCP servers via
   `--additional-mcp-config` and `allowTools` / `denyTools` permission patterns.
 
+### Fixed
+
+- `museLive()` now answers approvals: `onApproval` decides each request (and each stage of a
+  multi-stage one) through Muse's `approval/decide`. Before, requests were refused
+  unanswered and stayed pending.
+
 ### Notes
 
 - The core `genaicode` entry is unchanged and still spawns nothing.
