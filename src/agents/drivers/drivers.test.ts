@@ -125,7 +125,14 @@ describe('codex driver', () => {
       { type: 'item.started', item: { id: 'i3', type: 'mcp_tool_call', server: 'docs', tool: 'search' } },
       {
         type: 'item.completed',
-        item: { id: 'i3', type: 'mcp_tool_call', server: 'docs', tool: 'search', status: 'failed' },
+        item: {
+          id: 'i3',
+          type: 'mcp_tool_call',
+          server: 'docs',
+          tool: 'search',
+          status: 'failed',
+          error: { message: 'denied' },
+        },
       },
       { type: 'item.completed', item: { id: 'i4', type: 'agent_message', text: 'All set.' } },
       { type: 'turn.completed', usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 3 } },
@@ -136,7 +143,7 @@ describe('codex driver', () => {
       { type: 'tool-end', id: 'i1', name: 'shell', isError: false, output: 'a\n' },
       { type: 'file-change', paths: ['a.ts'] },
       { type: 'tool-start', id: 'i3', name: 'docs/search', input: undefined },
-      { type: 'tool-end', id: 'i3', name: 'docs/search', isError: true },
+      { type: 'tool-end', id: 'i3', name: 'docs/search', isError: true, output: 'denied' },
       { type: 'message', text: 'All set.' },
       { type: 'usage', usage: { inputTokens: 7, outputTokens: 3, cachedInputTokens: 2, totalTokens: 10 } },
     ]);
