@@ -7,6 +7,10 @@
 - Drivers `vibe()` for Mistral Vibe (`--output streaming`) and `antigravity()` for the
   Antigravity CLI (`agy --output-format stream-json`).
 
+### Changed
+
+- `codex()`: a failed MCP tool call's `tool-end` event carries the error message as `output`.
+
 ## 2.4.1 — 2026-09-24
 
 ### Notes

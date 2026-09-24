@@ -120,11 +120,13 @@ export function createCodexParser(): AgentOutputParser {
             ...(output !== undefined ? { output } : {}),
           });
         } else if (itemType === 'mcp_tool_call') {
+          const error = stringField(item.error, 'message');
           events.push({
             type: 'tool-end',
             ...withId,
             name: mcpName(item),
             isError: item.status === 'failed' || item.error !== undefined,
+            ...(error ? { output: error } : {}),
           });
         } else if (itemType === 'file_change') {
           const paths = Array.isArray(item.changes)
