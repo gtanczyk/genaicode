@@ -121,6 +121,69 @@ For other JSON-RPC agents, `liveAgent({ name, command, args, drive })` provides 
 an `RpcPeer`, event emission, the approval flow, and `setSteer()`. `drive(session)` runs the
 protocol and resolves with `{ ok, error? }` when the turn ends.
 
+## MCP servers
+
+`task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
+(`claude`, `codex`, `codexLive`):
+
+```ts
+await claude().run({
+  prompt: 'Summarize open incidents',
+  cwd,
+  mcpServers: [
+    { name: 'tickets', url: 'https://mcp.example.com/tickets', headers: { Authorization: `Bearer ${token}` } },
+    { name: 'fs', command: 'mcp-fs', args: ['--root', cwd] },
+  ],
+}).result;
+```
+
+- Claude Code gets a temporary `--mcp-config` file (mode 0600, removed after the run). The
+  servers' tools are pre-allowed with `--allowedTools mcp__<name>`, because a headless run
+  cannot ask. Pass `allowMcpTools: false` to turn that off, or `strictMcpConfig: true` to
+  ignore the user's own MCP config.
+- Codex gets `-c mcp_servers.<name>.*` overrides. HTTP header values go through environment
+  variables (`env_http_headers`), so they never appear in argv. A stdio server's `env` is set
+  on Codex's own environment and forwarded by name (`env_vars`); two servers cannot use
+  different values for the same variable.
+- A driver without MCP support fails the task before spawning anything, instead of silently
+  dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
+
+## Environment
+
+The child inherits `task.env ?? process.env`. If your process holds model-provider keys that
+the agent should not bill, pass a scrubbed copy:
+
+```ts
+import { scrubEnv, withoutProviderCredentials } from 'genaicode/agents';
+
+claude().run({ prompt, cwd, env: withoutProviderCredentials() }); // agent uses its own login
+scrubEnv(process.env, { names: [/^MYAPP_/], values: [/^sk_live_/] });
+```
+
+## Verify and repair
+
+`runWithVerify` is an opt-in loop. It runs the task, then your check. If the check fails,
+it runs the agent again with the failure report, up to `maxRepairs` times (default 2):
+
+```ts
+import { runWithVerify } from 'genaicode/agents';
+
+const outcome = await runWithVerify(
+  codex(),
+  { prompt, cwd },
+  {
+    verify: async () => {
+      const { code, output } = await runTests(cwd); // your own check
+      return { ok: code === 0, detail: output.slice(-4000) };
+    },
+  },
+);
+// outcome: { ok, attempts: [{ prompt, result, report }], error? }
+```
+
+Every attempt is a fresh `run()` on the same working tree. The default repair prompt marks
+the report as tool output. Pass `repairPrompt` to write your own.
+
 ## Discovery
 
 ```ts
@@ -167,5 +230,5 @@ way the built-in drivers are tested.
 
 1. Headless drivers for claude, codex, and muse, the event IR, and discovery. Done.
 2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies. Done.
-3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper.
+3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
 4. More CLIs (gemini, copilot, cursor, opencode) and hosted coding-agent services.

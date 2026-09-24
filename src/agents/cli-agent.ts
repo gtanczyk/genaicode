@@ -1,3 +1,4 @@
+import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -18,6 +19,8 @@ export interface CliAgentDefinition {
   capabilities?: AgentCapabilities;
   /** Full argument list for a task, prompt included. */
   args(task: AgentTask): string[];
+  /** Replaces `args` when a task needs setup: extra env, temp files to clean up. */
+  prepare?(task: AgentTask): PreparedRun;
   createParser(): AgentOutputParser;
   /** Adjust the child environment (the caller's `task.env` or `process.env`). */
   env?(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
@@ -40,22 +43,21 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   const recorder = new RunRecorder(definition.name, definition.command);
   const iterate = () => recorder.events.iterate();
 
-  const invalid = invalidCwd(task.cwd);
-  if (invalid) {
+  const plan = planSpawn(definition, task, invalidCwd(task.cwd));
+  if (!plan.ok) {
     const result = recorder.finish(
-      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(invalid) },
+      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
       undefined,
     );
     return { result: Promise.resolve(result), abort() {}, [Symbol.asyncIterator]: iterate };
   }
 
   const parser = definition.createParser();
-  const baseEnv = task.env ?? process.env;
   const handle = startProcess({
     command: definition.command,
-    args: definition.args(task),
+    args: plan.args,
     cwd: task.cwd,
-    env: definition.env ? definition.env(baseEnv) : baseEnv,
+    env: plan.env,
     timeoutMs: task.timeoutMs,
     signal: task.signal,
     onLine(line) {
@@ -75,7 +77,10 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   recorder.events.onPressure = (paused) => (paused ? handle.pause() : handle.resume());
 
   return {
-    result: handle.exit.then((exit) => recorder.finish(exit, parser.outcome?.())),
+    result: handle.exit.then((exit) => {
+      plan.cleanup();
+      return recorder.finish(exit, parser.outcome?.());
+    }),
     abort: handle.kill,
     [Symbol.asyncIterator]: iterate,
   };

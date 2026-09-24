@@ -12,6 +12,10 @@
 - Live agent sessions over JSON-RPC: `codexLive()` (`codex app-server`) and `museLive()`
   (`muse serve`) with `AgentRun.steer()` and `AgentTask.onApproval`; `liveAgent()` and
   `RpcPeer` for custom live drivers; `approval-resolved` event.
+- `AgentTask.mcpServers` (HTTP and stdio) for `claude`, `codex` and `codexLive`; header
+  secrets stay out of argv. Drivers can set up and clean up per task via `prepare`.
+- `scrubEnv`, `withoutProviderCredentials` and `PROVIDER_CREDENTIAL_VARS` for child
+  environments; `runWithVerify` verify-and-repair loop.
 
 ### Notes
 

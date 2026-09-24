@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer } from './rpc.js';
 import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
@@ -33,6 +34,8 @@ export interface LiveAgentDefinition {
   capabilities?: AgentCapabilities;
   /** Arguments that start the agent's JSON-RPC server on stdio. */
   args(task: AgentTask): string[];
+  /** Replaces `args` when a task needs setup: extra env, temp files to clean up. */
+  prepare?(task: AgentTask): PreparedRun;
   env?(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
   /** Run one task over the session. Resolve with the agent's verdict when its turn ends. */
   drive(session: LiveSession): Promise<AgentOutcome>;
@@ -72,10 +75,10 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     }
   };
 
-  const invalid = invalidCwd(task.cwd);
-  if (invalid) {
+  const plan = planSpawn(definition, task, invalidCwd(task.cwd));
+  if (!plan.ok) {
     const result = recorder.finish(
-      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(invalid) },
+      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
       undefined,
     );
     return { result: Promise.resolve(result), abort() {}, steer: steerRun, [Symbol.asyncIterator]: iterate };
@@ -86,12 +89,11 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     throw new RpcError(`${method} is not supported by this client.`, -32601);
   };
 
-  const baseEnv = task.env ?? process.env;
   const handle = startProcess({
     command: definition.command,
-    args: definition.args(task),
+    args: plan.args,
     cwd: task.cwd,
-    env: definition.env ? definition.env(baseEnv) : baseEnv,
+    env: plan.env,
     timeoutMs: task.timeoutMs,
     signal: task.signal,
     stdin: true,
@@ -144,6 +146,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   };
 
   const exited = handle.exit.then((exit) => {
+    plan.cleanup();
     steer = undefined;
     rpc.fail(new Error(`${definition.name} exited before the task finished.`));
     return exit;

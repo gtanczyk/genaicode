@@ -23,12 +23,24 @@ export interface AgentTask {
   signal?: AbortSignal;
   /** Extra CLI arguments, inserted before the prompt. */
   extraArgs?: readonly string[];
+  /** MCP servers to attach for this task (`capabilities.mcp`). */
+  mcpServers?: readonly McpServer[];
   /**
    * Answer permission prompts from agents that ask over a live session
    * (`capabilities.approvals`). Without it every request is declined.
    */
   onApproval?: (request: ApprovalRequest) => ApprovalDecision | Promise<ApprovalDecision>;
 }
+
+/** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
+export type McpServer =
+  | { name: string; url: string; headers?: Readonly<Record<string, string>> }
+  | {
+      name: string;
+      command: string;
+      args?: readonly string[];
+      env?: Readonly<Record<string, string>>;
+    };
 
 export interface ApprovalRequest {
   id: string;
@@ -91,6 +103,8 @@ export interface AgentCapabilities {
   steer?: boolean;
   /** Permission prompts reach `AgentTask.onApproval`. */
   approvals?: boolean;
+  /** Honors `AgentTask.mcpServers`. */
+  mcp?: boolean;
 }
 
 /**
