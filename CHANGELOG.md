@@ -4,6 +4,20 @@
 
 ### Added
 
+- Drivers `vibe()` for Mistral Vibe (`--output streaming`) and `antigravity()` for the
+  Antigravity CLI (`agy --output-format stream-json`).
+
+## 2.4.1 — 2026-09-24
+
+### Notes
+
+- Releases are published from GitHub Actions when a version tag is pushed. See
+  [docs/releasing.md](docs/releasing.md).
+
+## 2.4.0 — 2026-09-24
+
+### Added
+
 - `genaicode/agents` subpath (experimental): run installed coding-agent CLIs behind one
   `CodingAgent` interface. Drivers `claude()`, `codex()`, `muse()`; agent-neutral
   `AgentEvent` stream and `AgentResult`; abort, timeout and process-group kill;

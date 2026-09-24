@@ -51,3 +51,7 @@ export type {
 } from './agents/hosted.js';
 export { copilot, copilotArgs, copilotMcpConfig, createCopilotParser } from './agents/drivers/copilot.js';
 export type { CopilotAgentOptions } from './agents/drivers/copilot.js';
+export { createVibeParser, vibe, vibeArgs } from './agents/drivers/vibe.js';
+export type { VibeAgentOptions } from './agents/drivers/vibe.js';
+export { antigravity, antigravityArgs, createAntigravityParser } from './agents/drivers/antigravity.js';
+export type { AntigravityAgentOptions } from './agents/drivers/antigravity.js';
