@@ -138,11 +138,19 @@ function toOpenAIResponseFormat(
   };
 }
 
+// Models that 400 on any temperature but their default. The request drops it for them.
+const FIXED_TEMPERATURE_MODELS = /(^|\/)gpt-6-luna(\b|$)/;
+
+export function acceptsTemperature(model: string): boolean {
+  return !FIXED_TEMPERATURE_MODELS.test(model);
+}
+
 export function toOpenAIRequest(request: GenerationRequest, defaultModel: string) {
+  const model = request.model ?? defaultModel;
   return {
-    model: request.model ?? defaultModel,
+    model,
     messages: toOpenAIMessages(request.prompt),
-    temperature: request.temperature,
+    temperature: acceptsTemperature(model) ? request.temperature : undefined,
     max_completion_tokens: request.maxOutputTokens,
     tools: toOpenAITools(request.tools),
     tool_choice: toOpenAIToolChoice(request.toolChoice),

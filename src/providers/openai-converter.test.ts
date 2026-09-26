@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { describe, expect, it } from 'vitest';
 import { multimodalToolRoundTripPrompt, sampleTools } from './fixtures/multimodal-tool-roundtrip.js';
-import { fromOpenAICompletion, toOpenAIMessages, toOpenAIRequest } from './openai-converter.js';
+import { acceptsTemperature, fromOpenAICompletion, toOpenAIMessages, toOpenAIRequest } from './openai-converter.js';
 
 describe('OpenAI converter', () => {
   it('converts multimodal prompts and tool round trips', () => {
@@ -93,5 +93,14 @@ describe('OpenAI converter', () => {
       ],
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
     });
+  });
+
+  it('drops temperature for Luna models, which reject anything but the default', () => {
+    const prompt = [{ type: 'user' as const, text: 'hello' }];
+    expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6-luna').temperature).toBeUndefined();
+    expect(toOpenAIRequest({ prompt, temperature: 0.2, model: 'openai/gpt-6-luna-2026-09-01' }, 'x').temperature).toBeUndefined();
+    expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6').temperature).toBe(0);
+    expect(acceptsTemperature('gpt-6-lunar')).toBe(true);
+    expect(acceptsTemperature('gpt-6-luna')).toBe(false);
   });
 });

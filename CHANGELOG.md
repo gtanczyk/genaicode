@@ -2,13 +2,22 @@
 
 ## Unreleased
 
-## 2.5.1 — 2026-09-24
+### Fixed
+
+- The OpenAI provider leaves out `temperature` for `gpt-6-luna` models, which reject any
+  value but their default. Before, `.temperature(0)` on Luna failed with a 400.
+
+## 2.5.2 — 2026-09-24
 
 ### Fixed
 
 - `museLive()` now answers approvals: `onApproval` decides each request (and each stage of a
   multi-stage one) through Muse's `approval/decide`. Before, requests were refused
   unanswered and stayed pending.
+
+### Notes
+
+- 2.5.1 was never published; this fix shipped as 2.5.2.
 
 ## 2.5.0 — 2026-09-24
 
