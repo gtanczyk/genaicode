@@ -28,4 +28,5 @@ jobs:
           fi
       - run: npm ci
       # prepublishOnly runs `npm run check` (type-check, lint, test, build).
-      - run: npm publish --provenance --access public
+      # An explicit `latest`: the accidental 3.0.0 stays on the registry and would block the default.
+      - run: npm publish --provenance --access public --tag latest
