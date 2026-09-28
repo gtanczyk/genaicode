@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.6.0 — 2026-09-28
 
 ### Added
 
@@ -13,12 +13,17 @@
 
 ### Fixed
 
-- The OpenAI provider leaves out `temperature` for `gpt-6-luna` models, which reject any
-  value but their default. Before, `.temperature(0)` on Luna failed with a 400.
 - `museLive()` reads tool items as `muse serve` sends them (`itemId`, `tool`), so
   `tool-start`/`tool-end` carry the item id and the tool name (`bash`) instead of `toolCall`.
 - `muse()` no longer reports Muse's internal reminder subagents (`reminder.child_run`) as
   tool calls, and names tools without the `tool:` prefix (`bash`, like `museLive()`).
+
+## 2.5.3 — 2026-09-26
+
+### Fixed
+
+- The OpenAI provider leaves out `temperature` for `gpt-6-luna` models, which reject any
+  value but their default. Before, `.temperature(0)` on Luna failed with a 400.
 
 ## 2.5.2 — 2026-09-24
 
