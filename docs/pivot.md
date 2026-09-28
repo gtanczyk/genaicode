@@ -35,7 +35,7 @@ The following 1.x capabilities are intentionally removed:
 
 - coding-agent orchestration and coding-specific prompts;
 - repository discovery, project profiles, file operations, and shell execution;
-- interactive CLI and browser UI;
+- the 1.x interactive CLI and browser UI;
 - Vite development plugin;
 - context compression and repository summarization;
 - agent-oriented plugin and action systems;
@@ -44,6 +44,9 @@ The following 1.x capabilities are intentionally removed:
 The 2.x `genaicode/agents` subpath does not restore these. It drives _external_
 coding-agent CLIs behind one task/event interface, the same way providers wrap model APIs,
 and it adds no agent loop, prompts, or repository tools of its own. See [agents.md](./agents.md).
+The `genaicode` bin (`npx genaicode run`) is a thin command-line front end to those drivers,
+under the same rule: it parses flags, prints events, and adds nothing the library does not
+already do.
 
 This is a major-version break. The old implementation remains available in git history
 and in the 1.x npm line.

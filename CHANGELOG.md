@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `npx genaicode` is a command-line front end to the `genaicode/agents` drivers.
+  `genaicode agents` lists which agent CLIs are installed, and `genaicode run <prompt>`
+  runs one task with the first installed agent (or `--agent <name>`), with `--cwd`,
+  `--model`, `--effort`, `--max-turns`, `--timeout`, `--json` event output, and a
+  `--verify <command>` repair loop. It replaces the 2.x notice the bin used to print;
+  `npx genaicode@1` still runs the legacy 1.x agent.
+
 ### Fixed
 
 - The OpenAI provider leaves out `temperature` for `gpt-6-luna` models, which reject any

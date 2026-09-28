@@ -13,7 +13,9 @@
     "openai",
     "backend",
     "prompt",
-    "toolkit"
+    "toolkit",
+    "coding-agent",
+    "cli"
   ],
   "type": "module",
   "bin": {
