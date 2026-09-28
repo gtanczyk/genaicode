@@ -237,14 +237,15 @@ function museApprovalRequest(params: Record<string, unknown>, id: string): Appro
 export function museNotification(method: string, params: unknown): AgentEvent[] {
   const item = isObject(params) && isObject(params.item) ? params.item : undefined;
   if (!item) return [];
-  const kind = stringField(item, 'type') ?? stringField(item, 'kind');
-  const id = stringField(item, 'id');
+  // `muse serve` sends `kind`/`itemId`/`tool`; `type`/`id`/`toolName` are the older spellings.
+  const kind = stringField(item, 'kind') ?? stringField(item, 'type');
+  const id = stringField(item, 'itemId') ?? stringField(item, 'id');
   if (method === 'item/completed' && kind === 'agentMessage') {
     const text = stringField(item, 'text');
     return text ? [{ type: 'message', text }] : [];
   }
   if (kind && TOOL_KINDS.has(kind)) {
-    const name = stringField(item, 'toolName') ?? kind;
+    const name = stringField(item, 'tool') ?? stringField(item, 'toolName') ?? kind;
     if (method === 'item/started') return [{ type: 'tool-start', ...(id ? { id } : {}), name }];
     if (method === 'item/completed')
       return [{ type: 'tool-end', ...(id ? { id } : {}), name, isError: item.status === 'failed' }];
