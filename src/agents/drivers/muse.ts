@@ -60,8 +60,9 @@ export function createMuseParser(): AgentOutputParser {
       } else if (type === 'task.lifecycle.side_effect_intent') {
         const operation = stringField(payload?.event, 'operation');
         // `model.*` is the model call itself; `reminder.*` runs Muse's internal reminder subagents.
+        // `tool:bash` names the same tool museLive() reports as `bash`.
         if (operation && !operation.startsWith('model.') && !operation.startsWith('reminder.'))
-          events.push({ type: 'tool-start', name: operation });
+          events.push({ type: 'tool-start', name: operation.replace(/^tool:/, '') });
       } else if (
         type === 'approval_wait.effect.started' ||
         (type === 'runtime.session' &&

@@ -187,6 +187,7 @@ describe('muse driver', () => {
       },
       { payload_type: 'task.lifecycle.side_effect_intent', payload: { event: { operation: 'reminder.child_run' } } },
       { payload_type: 'task.lifecycle.side_effect_intent', payload: { event: { operation: 'fs.write' } } },
+      { payload_type: 'task.lifecycle.side_effect_intent', payload: { event: { operation: 'tool:bash' } } },
       { payload_type: 'run.output.delta', payload: { text: 'Hello ' } },
       { payload_type: 'run.output.delta', payload: { text: 'world' } },
       { payload_type: 'run.terminal.completed', payload: {} },
@@ -194,6 +195,7 @@ describe('muse driver', () => {
     expect(events).toEqual([
       { type: 'session', sessionId: 'se-1' },
       { type: 'tool-start', name: 'fs.write' },
+      { type: 'tool-start', name: 'bash' },
       { type: 'text-delta', text: 'Hello ' },
       { type: 'text-delta', text: 'world' },
       { type: 'message', text: 'Hello world' },

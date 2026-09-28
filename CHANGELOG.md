@@ -9,7 +9,7 @@
 - `museLive()` reads tool items as `muse serve` sends them (`itemId`, `tool`), so
   `tool-start`/`tool-end` carry the item id and the tool name (`bash`) instead of `toolCall`.
 - `muse()` no longer reports Muse's internal reminder subagents (`reminder.child_run`) as
-  tool calls.
+  tool calls, and names tools without the `tool:` prefix (`bash`, like `museLive()`).
 
 ## 2.5.2 — 2026-09-24
 
