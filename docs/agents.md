@@ -74,6 +74,20 @@ failure of its own. A zero exit alone is not treated as success.
 
 Vendor events that have no mapping are dropped.
 
+## Follow-up turns
+
+`result.sessionId` names the agent's own session. Pass it as `resume` to continue that
+session with a new prompt; the agent keeps the earlier turns as context:
+
+```ts
+const agent = claude();
+const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
+const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
+```
+
+`claude`, `codex`, `cursor`, `opencode` and `copilot` support it (`capabilities.resume`).
+Other drivers fail the task before spawning anything rather than starting a fresh session.
+
 ## Drivers
 
 | Driver                | Command        | Mode                                     | Notes                                                                                  |

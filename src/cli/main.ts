@@ -46,6 +46,7 @@ Run options:
   -m, --model <id>        Model id passed to the agent CLI
       --effort <level>    Reasoning effort, in the agent's own vocabulary
       --max-turns <n>     Turn limit, where the agent supports one
+  -r, --resume <id>       Continue the agent session with this id (printed after each run)
       --timeout <sec>     Stop the agent after this many seconds
       --verify <command>  Shell command that checks the work; on failure its output goes
                           back to the agent for another attempt
@@ -121,6 +122,7 @@ async function runTask(
     model: options.model,
     effort: options.effort,
     maxTurns: options.maxTurns,
+    resume: options.resume,
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,

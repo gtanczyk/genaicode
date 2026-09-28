@@ -35,6 +35,7 @@ export function copilot(options: CopilotAgentOptions = {}): CodingAgent {
       effort: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       usage: true,
       mcp: true,
+      resume: true,
     },
     args: (task) => copilotArgs(task, options),
     prepare: (task) => prepareCopilot(task, options),
@@ -87,6 +88,8 @@ export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, 
   if (mcpConfigPath) args.push('--additional-mcp-config', `@${mcpConfigPath}`);
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--reasoning-effort', task.effort);
+  // `--resume` takes an optional value, so the id goes in the `=` form.
+  if (task.resume) args.push(`--resume=${task.resume}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   // `--prompt=<text>` keeps a prompt that starts with a dash from reading as a flag.
   return [...args, `--prompt=${task.prompt}`];

@@ -12,6 +12,7 @@ export type CliCommand =
       model?: string;
       effort?: string;
       maxTurns?: number;
+      resume?: string;
       timeoutMs?: number;
       verify?: string;
       maxRepairs: number;
@@ -43,6 +44,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           model: { type: 'string', short: 'm' },
           effort: { type: 'string' },
           'max-turns': { type: 'string' },
+          resume: { type: 'string', short: 'r' },
           timeout: { type: 'string' },
           verify: { type: 'string' },
           'max-repairs': { type: 'string' },
@@ -60,6 +62,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       model: values.model,
       effort: values.effort,
       maxTurns: optionalNumber(values['max-turns'], '--max-turns'),
+      resume: values.resume,
       timeoutMs: timeout === undefined ? undefined : timeout * 1000,
       verify: values.verify,
       maxRepairs: optionalNumber(values['max-repairs'], '--max-repairs') ?? 2,

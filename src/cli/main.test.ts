@@ -74,11 +74,16 @@ describe('parseCli', () => {
       model: undefined,
       effort: undefined,
       maxTurns: 5,
+      resume: undefined,
       timeoutMs: 90_000,
       verify: 'npm test',
       maxRepairs: 2,
       json: false,
     });
+  });
+
+  it('parses --resume', () => {
+    expect(parseCli(['run', '-r', 'abc', 'go on'])).toMatchObject({ resume: 'abc', prompt: 'go on' });
   });
 
   it('treats a missing or "-" prompt as stdin', () => {

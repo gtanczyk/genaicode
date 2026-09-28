@@ -23,7 +23,7 @@ export function cursor(options: CursorAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'cursor',
     command: options.command ?? 'cursor-agent',
-    capabilities: { usage: true },
+    capabilities: { usage: true, resume: true },
     args: (task) => cursorArgs(task, options),
     createParser: () => createCursorParser({ partialOutput: options.partialOutput }),
   });
@@ -36,6 +36,8 @@ export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}): s
   if (options.approveMcps ?? true) args.push('--approve-mcps');
   if (options.partialOutput) args.push('--stream-partial-output');
   if (task.model) args.push('--model', task.model);
+  // `--resume` takes an optional value; the `=` form keeps the prompt from being read as the id.
+  if (task.resume) args.push(`--resume=${task.resume}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   return [...args, ...positionalPrompt(task.prompt)];
 }

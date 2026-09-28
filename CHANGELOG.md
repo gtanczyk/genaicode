@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `AgentTask.resume` continues an earlier agent session: pass the `sessionId` of a previous
+  result, and the agent picks up its own history of that session. Supported by `claude`,
+  `codex` (`exec resume`), `cursor`, `opencode` and `copilot` (`capabilities.resume`).
+  Other drivers fail the task before spawning. `genaicode run --resume <id>` does the same
+  from the command line.
+
 ## 2.7.0 — 2026-09-29
 
 ### Added

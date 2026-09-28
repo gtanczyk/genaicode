@@ -14,6 +14,8 @@ const MCP_NAME = /^[A-Za-z0-9_-]+$/;
 /** Reject a task the agent cannot honor before anything is spawned. */
 export function unsupportedTask(name: string, capabilities: AgentCapabilities, task: AgentTask): string | undefined {
   const servers = task.mcpServers ?? [];
+  if (task.resume !== undefined && !capabilities.resume) return `${name} cannot resume a session in this driver.`;
+  if (task.resume !== undefined && !task.resume.trim()) return 'Empty session id in task.resume.';
   if (servers.length && !capabilities.mcp) return `${name} does not support MCP servers in this driver.`;
   const names = new Set<string>();
   for (const server of servers) {

@@ -19,7 +19,7 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, mcp: true },
+    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, mcp: true, resume: true },
     args: (task) => codexArgs(task, options),
     prepare: (task) => withCodexMcp(task, codexArgs(task, options)),
     createParser: createCodexParser,
@@ -32,6 +32,8 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);
   if (task.extraArgs) args.push(...task.extraArgs);
+  // `exec resume <id> <prompt>` takes the prompt after the session id; exec's own flags stay before it.
+  if (task.resume) args.push('resume', task.resume);
   return [...args, ...positionalPrompt(task.prompt)];
 }
 

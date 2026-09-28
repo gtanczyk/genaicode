@@ -37,7 +37,13 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'claude',
     command: options.command ?? 'claude',
-    capabilities: { effort: ['low', 'medium', 'high', 'xhigh', 'max'], maxTurns: true, usage: true, mcp: true },
+    capabilities: {
+      effort: ['low', 'medium', 'high', 'xhigh', 'max'],
+      maxTurns: true,
+      usage: true,
+      mcp: true,
+      resume: true,
+    },
     args: (task) => claudeArgs(task, options),
     prepare: (task) => prepareClaude(task, options),
     createParser: createClaudeParser,
@@ -86,6 +92,7 @@ export function claudeArgs(task: AgentTask, options: ClaudeAgentOptions = {}, mc
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
+  if (task.resume) args.push('--resume', task.resume);
   if (task.extraArgs) args.push(...task.extraArgs);
   return [...args, ...positionalPrompt(task.prompt)];
 }
