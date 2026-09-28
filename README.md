@@ -16,7 +16,7 @@ The core does not inspect repositories, execute shell commands, edit files, or r
 The opt-in [`genaicode/agents`](#coding-agents) subpath drives the coding-agent CLIs you
 already have (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI, opencode, Muse,
 Mistral Vibe, Antigravity) behind one task and event API, so you can orchestrate them from
-backend code.
+backend code. The same drivers are on the command line as `npx genaicode run`.
 
 **Like jQuery**, the common case starts with one small function and becomes more specific
 through chaining—configure a request, follow up across multiple prompts, and keep history
@@ -133,6 +133,23 @@ Importing `genaicode` never spawns anything; only `genaicode/agents` does. The a
 its own credentials, billing, and permission settings. GenAIcode does not sandbox it,
 choose a model, or retry it. See [docs/agents.md](docs/agents.md) for events, options per
 driver, and writing your own driver.
+
+### From the command line
+
+The `genaicode` bin runs the same headless drivers without writing any code:
+
+```bash
+npx genaicode agents                                   # which agent CLIs are installed
+npx genaicode run "Add a unit test for parseDate"      # first installed agent, current dir
+npx genaicode run -a codex -C ../api --verify "npm test" "Fix the failing date tests"
+git diff | npx genaicode run --json -a claude -        # prompt from stdin, JSON-lines events
+```
+
+Assistant text goes to stdout and tool calls, edits, and the result line go to stderr.
+`--verify` runs a shell command after the agent finishes and sends its output back for up
+to `--max-repairs` more attempts (`runWithVerify`). The exit code is 0 on success, 1 when
+the agent or the check fails, 2 on a usage error, and 130 when interrupted.
+`npx genaicode --help` lists every option.
 
 ## Chaining prompts
 
@@ -508,9 +525,9 @@ GenAIcode 1.x was a coding agent. Version 2.0 deliberately replaces that product
 small backend LLM toolkit: a jQuery-like layer for portable prompts, provider adapters,
 conversation chains, and plugins.
 
-The coding-agent CLI, browser UI, repository tools, shell execution, and agent
-orchestration are not deprecated compatibility features; they have been removed from
-2.0. The GenAIcode name, `PromptItem` model, provider converters, and extensibility
+The 1.x coding agent, browser UI, repository tools, and shell execution are not
+deprecated compatibility features; they have been removed from 2.0. The 2.x
+`genaicode` command only drives external agent CLIs (see [From the command line](#from-the-command-line)). The GenAIcode name, `PromptItem` model, provider converters, and extensibility
 continue here in a smaller and more focused form.
 
 The original coding agent remains available from the preserved
