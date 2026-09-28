@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { claudeArgs, createClaudeParser } from './claude.js';
 import { codexArgs, createCodexParser } from './codex.js';
 import { createMuseParser, museArgs } from './muse.js';
+import { museNotification } from './muse-live.js';
 import type { AgentOutputParser } from '../cli-agent.js';
 
 function feed(parser: AgentOutputParser, values: unknown[]) {
@@ -184,6 +185,7 @@ describe('muse driver', () => {
         payload_type: 'task.lifecycle.side_effect_intent',
         payload: { event: { operation: 'model.call' } },
       },
+      { payload_type: 'task.lifecycle.side_effect_intent', payload: { event: { operation: 'reminder.child_run' } } },
       { payload_type: 'task.lifecycle.side_effect_intent', payload: { event: { operation: 'fs.write' } } },
       { payload_type: 'run.output.delta', payload: { text: 'Hello ' } },
       { payload_type: 'run.output.delta', payload: { text: 'world' } },
@@ -197,6 +199,18 @@ describe('muse driver', () => {
       { type: 'message', text: 'Hello world' },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: true });
+  });
+
+  it('maps muse serve items as the server sends them', () => {
+    const item = { itemId: 'i1', kind: 'toolCall', tool: 'bash', status: 'inProgress', args: '{}' };
+    expect(museNotification('item/started', { item })).toEqual([{ type: 'tool-start', id: 'i1', name: 'bash' }]);
+    expect(museNotification('item/completed', { item: { ...item, status: 'failed' } })).toEqual([
+      { type: 'tool-end', id: 'i1', name: 'bash', isError: true },
+    ]);
+    expect(museNotification('item/started', { item: { itemId: 'r1', kind: 'reminderChild' } })).toEqual([]);
+    expect(museNotification('item/completed', { item: { itemId: 'm1', kind: 'agentMessage', text: 'hi' } })).toEqual([
+      { type: 'message', text: 'hi' },
+    ]);
   });
 
   it('surfaces approvals and non-completed terminals', () => {
