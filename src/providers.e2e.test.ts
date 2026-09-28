@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { genaicode } from './index.js';
+import { genaicode, resultToPromptItem, resultToolCalls, toolResults, user } from './index.js';
 import type { GenAIClient, RequestBuilder } from './index.js';
 import { anthropic, gemini, openai } from './providers.js';
 
@@ -118,6 +118,53 @@ describe('provider e2e', () => {
     );
     await runThinkingDisabled(ai);
   });
+
+  // Pinned models, whatever ANTHROPIC_MODEL is: these reject disabled thinking,
+  // forced tool_choice, budgets and temperature, which the converter must work around.
+  for (const model of ['claude-sonnet-5-5', 'claude-opus-5-5']) {
+    const client = () => genaicode(anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model }));
+
+    itIf(hasAnthropic)(`${model} accepts thinking disabled with temperature`, { timeout: 60_000 }, async () => {
+      await runThinkingDisabled(client());
+    });
+
+    itIf(hasAnthropic)(`${model} accepts a thinking level and a budget`, { timeout: 60_000 }, async () => {
+      const ai = client();
+      const prompt = 'What is 2 + 2? Reply with exactly "4".';
+      expect(await ai(prompt).thinking({ level: 'minimal' }).maxOutputTokens(2000).text()).toContain('4');
+      expect(await ai(prompt).thinking({ budgetTokens: 1024 }).maxOutputTokens(2000).text()).toContain('4');
+    });
+
+    itIf(hasAnthropic)(`${model} runs a forced tool call and its replay`, { timeout: 120_000 }, async () => {
+      const ai = client();
+      const tools = [
+        {
+          name: 'add',
+          description: 'Adds two integers.',
+          parameters: {
+            type: 'object',
+            properties: { a: { type: 'integer' }, b: { type: 'integer' } },
+            required: ['a', 'b'],
+          },
+        },
+      ];
+      const ask = user('What is 2 + 2? Use the tool.');
+      const first = await ai(ask).tools(tools, { name: 'add' }).maxOutputTokens(4000).run();
+      const [call] = resultToolCalls(first);
+      expect(call?.name).toBe('add');
+
+      // Assistant turns replay without their thinking blocks; the API must still accept them.
+      const followUp = await ai([
+        ask,
+        resultToPromptItem(first),
+        toolResults({ callId: call!.id, name: 'add', content: '4' }),
+      ])
+        .tools(tools)
+        .maxOutputTokens(4000)
+        .text();
+      expect(followUp).toContain('4');
+    });
+  }
 
   itIf(hasGemini)('calls Gemini with real credentials', { timeout: 60_000 }, async () => {
     const ai = genaicode(
