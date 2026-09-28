@@ -254,6 +254,10 @@ const verdict = await ai(promptText)
   because Gemini 3 rejects `thinkingBudget: 0`. JSON `responseFormat` without an
   explicit `thinking` setting or provider `generationConfig.thinkingConfig` default also
   defaults Google thinking to `MINIMAL` (or `LOW` on Gemini 3.7 / Pro).
+  On Anthropic, `level` becomes `output_config.effort` with adaptive thinking (Opus and
+  Sonnet 4.6+), and `false` uses whatever the model accepts: `disabled`, `between_tools`
+  (Sonnet 5.5), or effort `low` where thinking is always on (Opus 5.5, Fable). Budgets
+  become adaptive thinking on models that removed them.
 
 Providers map what they support and ignore the rest. `ProviderCapabilities.jsonResponse`
 and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as

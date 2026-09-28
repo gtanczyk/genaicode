@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
 import {
+  anthropicModelTraits,
   fromAnthropicMessage,
   toAnthropicMessages,
   toAnthropicRequest,
@@ -142,5 +143,110 @@ describe('Anthropic converter', () => {
     expect(fromAnthropicMessage(message).citations).toEqual([
       { url: 'https://example.com/brawl-stars', title: 'Brawl Stars' },
     ]);
+  });
+
+  it('reads model traits from every ID form, never a date as a version', () => {
+    expect(anthropicModelTraits('claude-sonnet-5-5')).toMatchObject({
+      thinkingOff: 'between_tools',
+      rejectsForcedToolChoice: true,
+      rejectsTemperature: true,
+    });
+    expect(anthropicModelTraits('anthropic.claude-sonnet-5-5').thinkingOff).toBe('between_tools');
+    expect(anthropicModelTraits('claude-opus-5-5').thinkingOff).toBe('none');
+    expect(anthropicModelTraits('claude-fable-5-1').rejectsForcedToolChoice).toBe(true);
+    expect(anthropicModelTraits('claude-fable-5').rejectsForcedToolChoice).toBe(false);
+    expect(anthropicModelTraits('claude-sonnet-5')).toMatchObject({
+      thinkingOff: 'disabled',
+      rejectsForcedToolChoice: false,
+      rejectsBudgetTokens: true,
+    });
+    expect(anthropicModelTraits('claude-sonnet-4-6')).toMatchObject({
+      adaptiveThinking: true,
+      rejectsBudgetTokens: false,
+      rejectsTemperature: false,
+    });
+    expect(anthropicModelTraits('claude-opus-4-7').rejectsTemperature).toBe(true);
+    expect(anthropicModelTraits('claude-opus-4-5@20251101').adaptiveThinking).toBe(false);
+    expect(anthropicModelTraits('claude-sonnet-4-20250514').adaptiveThinking).toBe(false);
+    expect(anthropicModelTraits('claude-haiku-4-5').adaptiveThinking).toBe(false);
+    expect(anthropicModelTraits('claude-test').adaptiveThinking).toBe(false);
+  });
+
+  it('turns thinking off the way each model accepts', () => {
+    const off = (model: string) =>
+      toAnthropicRequest({ prompt: [{ type: 'user', text: 'hi' }], thinking: false }, { model });
+
+    expect(off('claude-sonnet-5-5')).toMatchObject({ thinking: { type: 'between_tools' } });
+    expect(off('claude-sonnet-5-5').output_config).toBeUndefined();
+    const opus = off('claude-opus-5-5');
+    expect(opus.thinking).toBeUndefined();
+    expect(opus.output_config).toEqual({ effort: 'low' });
+    expect(off('claude-sonnet-5').thinking).toEqual({ type: 'disabled' });
+    expect(off('claude-haiku-4-5').thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('maps thinking level to effort and budgets to adaptive where budgets are gone', () => {
+    const request = (model: string, thinking: { budgetTokens?: number; level?: 'minimal' | 'medium' }) =>
+      toAnthropicRequest({ prompt: [{ type: 'user', text: 'hi' }], thinking }, { model });
+
+    expect(request('claude-sonnet-5-5', { level: 'minimal' })).toMatchObject({
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'low' },
+    });
+    expect(request('claude-sonnet-4-6', { level: 'medium' })).toMatchObject({
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'medium' },
+    });
+    expect(request('claude-sonnet-5-5', { budgetTokens: 4096 }).thinking).toEqual({ type: 'adaptive' });
+    expect(request('claude-sonnet-4-6', { budgetTokens: 4096 }).thinking).toEqual({
+      type: 'enabled',
+      budget_tokens: 4096,
+    });
+    const haiku = request('claude-haiku-4-5', { level: 'medium' });
+    expect(haiku.thinking).toBeUndefined();
+    expect(haiku.output_config).toBeUndefined();
+  });
+
+  it('asks for forced tool calls in the system prompt on models that reject tool_choice', () => {
+    const tools = [{ name: 'answer', description: 'Answer', parameters: { type: 'object' } }];
+    const named = toAnthropicRequest(
+      {
+        prompt: [
+          { type: 'systemPrompt', systemPrompt: 'rules' },
+          { type: 'user', text: 'hi' },
+        ],
+        tools,
+        toolChoice: { name: 'answer' },
+      },
+      { model: 'claude-sonnet-5-5' },
+    );
+    expect(named.tool_choice).toEqual({ type: 'auto' });
+    expect(named.system).toEqual([
+      { type: 'text', text: 'rules' },
+      { type: 'text', text: 'Respond by calling the `answer` tool.' },
+    ]);
+
+    const required = toAnthropicRequest(
+      { prompt: [{ type: 'user', text: 'hi' }], tools, toolChoice: 'required' },
+      { model: 'claude-opus-5-5' },
+    );
+    expect(required.tool_choice).toEqual({ type: 'auto' });
+    expect(required.system).toEqual([{ type: 'text', text: 'Respond by calling one of the provided tools.' }]);
+
+    const older = toAnthropicRequest(
+      { prompt: [{ type: 'user', text: 'hi' }], tools, toolChoice: 'required' },
+      { model: 'claude-sonnet-5' },
+    );
+    expect(older.tool_choice).toEqual({ type: 'any' });
+    expect(older.system).toEqual([]);
+  });
+
+  it('leaves out temperature on models that reject it', () => {
+    const at = (model: string) =>
+      toAnthropicRequest({ prompt: [{ type: 'user', text: 'hi' }], temperature: 0 }, { model }).temperature;
+    expect(at('claude-sonnet-5-5')).toBeUndefined();
+    expect(at('claude-opus-4-7')).toBeUndefined();
+    expect(at('claude-sonnet-4-6')).toBe(0);
+    expect(at('claude-haiku-4-5')).toBe(0);
   });
 });

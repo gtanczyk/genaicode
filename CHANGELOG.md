@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The Anthropic provider maps `thinking.level` to `output_config.effort` (`minimal` and
+  `low` → `low`, `medium`, `high`) with adaptive thinking on models that have it (Opus and
+  Sonnet 4.6 and later, Fable, Mythos). Before, `level` was ignored on Anthropic.
+- `anthropicModelTraits(model)` reports what a Claude model ID accepts (adaptive thinking,
+  budgets, temperature, forced tool choice, how thinking turns off). It reads Bedrock
+  (`anthropic.`) and Vertex (`@date`) IDs too.
+
+### Fixed
+
+- Claude Sonnet 5.5, Opus 5.5 and Fable 5.1 no longer 400 on requests genaicode builds:
+  - `thinking: false` sends `between_tools` on Sonnet 5.5, and on Opus 5.5 / Fable / Mythos
+    (where thinking cannot be turned off) leaves `thinking` out and sets effort `low`.
+  - A forced `toolChoice` (`'required'` or `{ name }`) becomes `auto` plus a system-prompt
+    line asking for the call. These models reject `any` / `tool`; check that a call was made.
+- `thinking.budgetTokens` becomes adaptive thinking on models that removed budgets (Opus
+  4.7+, Sonnet 5+, Fable, Mythos) instead of a 400.
+- `temperature` is left out on models that reject it (Opus 4.7+, Sonnet 5+, Fable, Mythos),
+  as for `gpt-6-luna`.
+
 ## 2.6.0 — 2026-09-28
 
 ### Added
