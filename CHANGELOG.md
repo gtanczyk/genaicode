@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `vite` is no longer declared as an optional peer dependency. `genaicode/vite` imports only
+  its types, and the declaration made npm keep `vite` (with rollup and postcss) in
+  `npm ci --omit=dev` installs of projects that have `vite` as a dev dependency.
+
 ## 2.9.0 — 2026-09-29
 
 ### Added

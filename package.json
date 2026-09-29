@@ -69,14 +69,6 @@
     "@google/genai": "^1.30.0",
     "openai": "^5.16.0"
   },
-  "peerDependencies": {
-    "vite": ">=5"
-  },
-  "peerDependenciesMeta": {
-    "vite": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.3.0",
