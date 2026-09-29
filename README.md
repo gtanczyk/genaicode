@@ -193,8 +193,8 @@ in a panel, with the agent working in the project root. The wolf counts the page
 errors" sends them to the agent as one prompt. Options: `agent`, `model`, `effort`,
 `approveAll`, `agents`, `port`, and `captureErrors: false` to leave the page's errors alone.
 Builds are untouched. The chat runs on its own port on 127.0.0.1 even when Vite runs with
-`--host`, lets only the app's origins frame it, and hands its token only to same-origin
-requests from the app.
+`--host`, lets only the app's origins frame it, and hands its token (and takes "fix" requests)
+only from the app's own pages on this machine.
 
 ## Chaining prompts
 

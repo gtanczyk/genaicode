@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
-import { fixPrompt, genaicode, type EmbeddedUiModule } from './plugin.js';
+import { fixPrompt, genaicode, isLoopback, type EmbeddedUiModule } from './plugin.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-vite-'));
 writeFileSync(join(dir, 'agent'), '#!/bin/sh\n', { mode: 0o755 });
@@ -58,6 +58,14 @@ describe('fixPrompt', () => {
     expect(fixPrompt({ page: 'javascript:alert(1)', errors: [{ source: 'console', message: 'a' }] })).not.toContain(
       'javascript',
     );
+  });
+});
+
+describe('isLoopback', () => {
+  it('accepts only this machine', () => {
+    for (const address of ['127.0.0.1', '127.8.0.2', '::1', '::ffff:127.0.0.1']) expect(isLoopback(address)).toBe(true);
+    for (const address of [undefined, '', '192.168.1.5', '::ffff:10.0.0.1', 'fe80::1', '127.0.0.1.evil'])
+      expect(isLoopback(address)).toBe(false);
   });
 });
 

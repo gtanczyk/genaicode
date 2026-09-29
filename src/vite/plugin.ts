@@ -145,9 +145,10 @@ async function handleApi(
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(body));
   };
-  // Only the app's own pages: another site open in the browser must not read the UI's token
-  // or start the agent, and neither must a client on the network when Vite runs with --host.
-  // Browsers send Sec-Fetch-Site on every request; anything without it is refused.
+  // Only this machine: with --host the dev server also answers the network, and Sec-Fetch-Site
+  // is just a header a client there could send. Then only the app's own pages: another site
+  // open in the browser must not read the UI's token or start the agent.
+  if (!isLoopback(req.socket.remoteAddress)) return send(403, { error: 'this machine only' });
   if (req.headers['sec-fetch-site'] !== 'same-origin') return send(403, { error: 'same-origin only' });
   const ui = await started;
   if (!ui) return send(503, { error: 'genaicode is off; see the dev server terminal' });
@@ -201,6 +202,13 @@ export function fixPrompt(body: unknown): string | undefined {
     items.join('\n\n').replace(/```/g, "'''") +
     '\n```'
   );
+}
+
+/** 127.0.0.0/8 and ::1, also as IPv4-mapped IPv6 addresses. */
+export function isLoopback(address: string | undefined): boolean {
+  if (!address) return false;
+  const v4 = address.startsWith('::ffff:') ? address.slice(7) : address;
+  return address === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
 /** Where the app's pages come from, allowed to show the UI in a frame. */
