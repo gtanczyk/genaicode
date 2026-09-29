@@ -165,8 +165,13 @@ run next; Esc stops the agent. `/agent`, `/model` and `/new` switch agent, model
 session; `/help` lists the rest.
 
 <p align="center">
-  <img alt="genaicode chat in a terminal: the agent fixes a failing test, then takes queued follow-ups." src="media/screenshots/chat-terminal.gif" width="49%">
   <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="media/screenshots/chat-terminal.png">
+    <img alt="genaicode chat in a terminal: the agent fixes a failing test, then takes queued follow-ups." src="media/screenshots/chat-terminal.gif" width="49%">
+  </picture>
+  <picture>
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="media/screenshots/wolf-dark.png">
+    <source media="(prefers-reduced-motion: reduce)" srcset="media/screenshots/wolf-light.png">
     <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/chat-browser-dark.gif">
     <source media="(prefers-color-scheme: light)" srcset="media/screenshots/chat-browser-light.gif">
     <img alt="genaicode ui in a browser: the same fix and a follow-up." src="media/screenshots/chat-browser-light.gif" width="49%">
