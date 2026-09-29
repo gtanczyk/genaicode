@@ -2,7 +2,16 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createRoot } from 'react-dom/client';
 import type { SessionEntry, SessionTurn } from '../../agents/session.js';
 import type { ChatView, Notice } from '../controller.js';
-import { formatDuration, formatUsage, relativePath, shortId, toolLabel, toolSummary, turnFooter } from '../format.js';
+import {
+  formatDuration,
+  formatUsage,
+  needsAttention,
+  relativePath,
+  shortId,
+  toolLabel,
+  toolSummary,
+  turnFooter,
+} from '../format.js';
 import type { WebCommand } from './server.js';
 
 const token = new URLSearchParams(location.search).get('token') ?? '';
@@ -40,6 +49,48 @@ function useNow(active: boolean): number {
     return () => clearInterval(timer);
   }, [active]);
   return now;
+}
+
+/**
+ * The wolf from genaicode 1.0: while the tab is in the background, bark when the agent asks for
+ * approval or finishes, and count those in the tab title. Coming back to the tab hushes it.
+ */
+function useBark(view: ChatView | undefined) {
+  const seen = useRef<ChatView['session']>(undefined);
+  const audio = useRef<HTMLAudioElement>(undefined);
+  const unread = useRef(0);
+  useEffect(() => {
+    const hush = () => {
+      if (document.visibilityState !== 'visible') return;
+      unread.current = 0;
+      document.title = 'genaicode';
+      if (audio.current) {
+        audio.current.pause();
+        audio.current.currentTime = 0;
+      }
+    };
+    window.addEventListener('focus', hush);
+    document.addEventListener('visibilitychange', hush);
+    return () => {
+      window.removeEventListener('focus', hush);
+      document.removeEventListener('visibilitychange', hush);
+    };
+  }, []);
+  useEffect(() => {
+    if (!view) return;
+    const before = seen.current;
+    seen.current = view.session;
+    if (!needsAttention(before, view.session) || (document.hasFocus() && document.visibilityState === 'visible'))
+      return;
+    unread.current += 1;
+    document.title = `(${unread.current}) genaicode`;
+    if (!view.bark) return;
+    audio.current ??= new Audio('/assets/bark.mp3');
+    audio.current.currentTime = 0;
+    audio.current.volume = 0.5;
+    // Browsers may refuse sound before the first click on the page; the title still counts.
+    audio.current.play().catch(() => {});
+  }, [view]);
 }
 
 // ---------- Markdown (a small, safe subset; no HTML) ----------
@@ -243,6 +294,7 @@ function App() {
   const root = document.getElementById('root')!;
   const cwd = root.dataset.cwd ?? '';
   const { view, connected } = useView();
+  useBark(view);
   const [draft, setDraft] = useState('');
   const [model, setModel] = useState<string>();
   const scroller = useRef<HTMLElement>(null);
@@ -287,11 +339,12 @@ function App() {
   flush(Number.MAX_SAFE_INTEGER);
 
   const usage = formatUsage(session.usage, session.costUsd);
+  root.classList.toggle('has-turns', session.turns.length > 0);
   return (
     <>
       <header className="bar">
         <div className="brand">
-          <span className="dot" /> genaicode <small>{root.dataset.version}</small>
+          <img src="/assets/wolf-64.png" alt="" /> genaicode <small>{root.dataset.version}</small>
         </div>
         <label className="field">
           Agent
@@ -329,6 +382,14 @@ function App() {
         <span className="spacer" />
         {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
         {usage ? <span className="chip">{usage}</span> : null}
+        <button
+          className={`chip${view.bark ? '' : ' off'}`}
+          title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
+          aria-pressed={view.bark}
+          onClick={() => void command({ type: 'submit', text: `/bark ${view.bark ? 'off' : 'on'}` })}
+        >
+          {view.bark ? '🔊 Bark' : '🔇 Quiet'}
+        </button>
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
       <main
@@ -341,6 +402,7 @@ function App() {
         <div className="thread">
           {session.turns.length === 0 ? (
             <div className="empty">
+              <div className="wolf" role="img" aria-label="genaicode wolf" />
               <h1>What should {session.agent} work on?</h1>
               <div>It works in {cwd}, with its own login, tools and permissions.</div>
               <div className="ideas">

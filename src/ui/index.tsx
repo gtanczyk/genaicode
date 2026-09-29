@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import type { CodingAgent } from '../agents/types.js';
 import { createChatController, NoAgentError, type ChatOptions } from './controller.js';
 import { ChatApp } from './tui/app.js';
-import { startWebUi } from './web/server.js';
+import { startWebUi, type WebAsset } from './web/server.js';
 
 /**
  * Interactive front ends for `genaicode chat` and `genaicode ui`.
@@ -27,6 +27,25 @@ export interface WebRunOptions extends UiRunOptions {
   open?: boolean;
   /** Browser bundle. Default: `web-client.js` next to this module. */
   clientScript?: string;
+  /** Mascot and bark. Default: the `assets/` folder next to this module. */
+  assets?: ReadonlyMap<string, WebAsset>;
+}
+
+const ASSET_TYPES: Record<string, string> = {
+  'wolf-64.png': 'image/png',
+  'wolf.webp': 'image/webp',
+  'wolf-dark.webp': 'image/webp',
+  'bark.mp3': 'audio/mpeg',
+};
+
+/** The web UI's static files; a missing one only means no picture or no sound. */
+export function loadAssets(dir: URL): Map<string, WebAsset> {
+  const assets = new Map<string, WebAsset>();
+  for (const [name, type] of Object.entries(ASSET_TYPES)) {
+    const file = new URL(name, dir);
+    if (existsSync(file)) assets.set(name, { type, body: readFileSync(file) });
+  }
+  return assets;
 }
 
 export async function runChat(options: UiRunOptions): Promise<number> {
@@ -67,6 +86,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     title: { version: options.version, cwd: options.cwd },
     host: options.host,
     port: options.port,
+    assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
   });
   options.stderr.write(
     `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n` +

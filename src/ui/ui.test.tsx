@@ -6,8 +6,9 @@ import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { createChatController, NoAgentError } from './controller.js';
-import { parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
+import { needsAttention, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
+import { loadAssets } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
@@ -62,8 +63,35 @@ describe('format helpers', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
+    expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
+    expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
+    expect(parseSlash('/bark of')).toEqual({ kind: 'bark', invalid: 'of' });
     expect(parseSlash('//etc/hosts is odd')).toBeUndefined();
     expect(parseSlash('fix the bug')).toBeUndefined();
+  });
+
+  it('asks for attention on a new approval or a finished turn', () => {
+    type State = Parameters<typeof needsAttention>[1];
+    const state = (turns: Array<[number, boolean]>, approvals: string[] = []) =>
+      ({
+        turns: turns.map(([id, done]) => ({ id, ...(done ? { result: { ok: true } } : {}) })),
+        approvals: approvals.map((id) => ({ id, kind: 'command' })),
+      }) as unknown as State;
+    expect(needsAttention(undefined, state([[1, true]]))).toBeUndefined();
+    expect(needsAttention(state([]), state([[1, false]]))).toBeUndefined();
+    expect(needsAttention(state([[1, false]]), state([[1, false]], ['a']))).toBe('approval');
+    expect(needsAttention(state([[1, false]], ['a']), state([[1, false]], ['a']))).toBeUndefined();
+    expect(needsAttention(state([[1, false]], ['a']), state([[1, true]]))).toBe('done');
+    // Started and finished between two views.
+    expect(
+      needsAttention(
+        state([[1, true]]),
+        state([
+          [1, true],
+          [2, true],
+        ]),
+      ),
+    ).toBe('done');
   });
 
   it('describes a turn by its outcome', () => {
@@ -128,6 +156,22 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('toggles the bark', () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env, bark: false });
+    expect(chat.get().bark).toBe(false);
+    chat.submit('/bark');
+    expect(chat.get().bark).toBe(true);
+    expect(chat.get().notices.at(-1)?.text).toMatch(/Woof/);
+    chat.submit('/bark on');
+    expect(chat.get().bark).toBe(true);
+    chat.submit('/bark off');
+    expect(chat.get().bark).toBe(false);
+    chat.submit('/bark of');
+    expect(chat.get().bark).toBe(false);
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+    chat.close();
+  });
+
   it('refuses unknown or missing agents up front', () => {
     expect(() => createChatController({ agents: [echoAgent()], agent: 'nope', cwd: '.', env })).toThrow(NoAgentError);
     expect(() => createChatController({ agents: [echoAgent('x', 'not-there')], cwd: '.', env })).toThrow(
@@ -150,7 +194,9 @@ describe('terminal UI', () => {
     await chat.session.idle();
     await tick();
     const frames = app.frames.join('\n');
-    expect(frames).toContain('genaicode');
+    expect(frames).toContain('🐺 genaicode');
+    // The terminal's bark: the bell when the turn ended.
+    expect(frames).toContain('\x07');
     expect(frames).toContain('› fix it');
     expect(frames).toContain('Shell');
     expect(frames).toContain('cat a.txt');
@@ -173,6 +219,7 @@ describe('terminal UI', () => {
     });
     const split = splitTranscript({
       agents: [],
+      bark: true,
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },
@@ -212,6 +259,7 @@ describe('web UI server', () => {
       clientScript: 'console.log(1)',
       title: { version: '1', cwd: '/w <&>' },
       token: 't0k',
+      assets: loadAssets(new URL('./web/assets/', import.meta.url)),
     });
     const base = ui.url.replace(/\?.*$/, '');
     try {
@@ -221,6 +269,12 @@ describe('web UI server', () => {
       expect(page.status).toBe(200);
       expect(await page.text()).toContain('data-cwd="/w &lt;&amp;&gt;"');
       expect(await (await fetch(`${base}app.js`)).text()).toBe('console.log(1)');
+      // The wolf and its bark need no token (an <img> or <audio> cannot send one).
+      const wolf = await fetch(`${base}assets/wolf-64.png`);
+      expect(wolf.headers.get('content-type')).toBe('image/png');
+      expect((await wolf.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+      expect((await fetch(`${base}assets/bark.mp3`)).headers.get('content-type')).toBe('audio/mpeg');
+      expect((await fetch(`${base}assets/..%2Fserver.ts`)).status).toBe(404);
 
       const post = (body: unknown, token = 't0k') =>
         fetch(`${base}api/command`, {

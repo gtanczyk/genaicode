@@ -23,6 +23,8 @@ export interface ChatView {
   session: SessionState;
   notices: Notice[];
   agents: AgentChoice[];
+  /** Bark (web) or ring the terminal bell (TUI) when the agent needs you or finishes. */
+  bark: boolean;
 }
 
 export interface ChatOptions {
@@ -36,6 +38,8 @@ export interface ChatOptions {
   env?: NodeJS.ProcessEnv;
   /** Approve every permission request without asking. */
   approveAll?: boolean;
+  /** Start with the bark on. Default true; `/bark` toggles it. */
+  bark?: boolean;
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
 }
 
@@ -93,10 +97,11 @@ export function createChatController(options: ChatOptions): ChatController {
   });
   let notices: Notice[] = [];
   let nextNotice = 1;
-  let view: ChatView = { session: session.get(), notices, agents };
+  let bark = options.bark ?? true;
+  let view: ChatView = { session: session.get(), notices, agents, bark };
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
-    view = { session: session.get(), notices, agents };
+    view = { session: session.get(), notices, agents, bark };
     for (const listener of [...listeners]) {
       try {
         listener(view);
@@ -175,6 +180,14 @@ export function createChatController(options: ChatOptions): ChatController {
           return 'ok';
         case 'stop':
           session.stop();
+          return 'ok';
+        case 'bark':
+          if (command.invalid !== undefined) {
+            notice(`Use /bark, /bark on or /bark off (not "${command.invalid}").`, 'error');
+            return 'ok';
+          }
+          bark = command.on ?? !bark;
+          notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
           return 'ok';
         case 'unknown':
           notice(`Unknown command ${command.name}. Type /help for the list, or // to send a leading slash.`, 'error');
