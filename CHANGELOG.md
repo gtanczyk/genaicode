@@ -11,7 +11,7 @@
   `/bark [on|off]` or the Bark button toggles it.
 - `genaicode/vite`, a Vite dev plugin: the `genaicode ui` chat in a panel inside the app,
   opened from the wolf in its corner, with the agent working in the project root. The page's
-  errors (build errors, uncaught exceptions, `console.error`) are counted on the wolf, and
+  errors (build errors, uncaught exceptions, unhandled rejections, `console.error`) are counted on the wolf, and
   "Fix N errors" sends them to the agent. `vite` is an optional peer dependency.
 - The `genaicode ui` page sends `Content-Security-Policy: frame-ancestors 'none'`, so other
   pages cannot frame it (the Vite plugin allows its own origins).

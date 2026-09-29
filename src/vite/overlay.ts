@@ -68,16 +68,18 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   const badge = $<HTMLElement>('.badge');
   const panel = $<HTMLElement>('.panel');
   const fix = $<HTMLButtonElement>('.fix');
-  let frame: HTMLElement | undefined;
+  let frame: Promise<void> | undefined;
 
   const render = () => {
     badge.hidden = errors.length === 0;
     badge.textContent = String(errors.length);
     fix.hidden = errors.length === 0;
     fix.textContent = `Fix ${errors.length} error${errors.length === 1 ? '' : 's'}`;
-    wolf.title = errors.length
+    const label = errors.length
       ? `genaicode: ${errors.length} error${errors.length === 1 ? '' : 's'} on this page`
       : `genaicode${session ? ` (${session.agent})` : ''}`;
+    wolf.title = label;
+    wolf.setAttribute('aria-label', label);
   };
 
   const loadSession = async () => {
@@ -90,22 +92,24 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     return session;
   };
 
-  const open = async () => {
+  // One frame, even when the wolf and "Fix" are clicked before the session has loaded.
+  const open = () => {
     panel.hidden = false;
-    if (frame) return;
-    try {
-      const { url } = await loadSession();
-      const iframe = document.createElement('iframe');
-      iframe.src = url;
-      iframe.title = 'genaicode';
-      frame = iframe;
-    } catch (error) {
-      const note = document.createElement('div');
-      note.className = 'note';
-      note.textContent = `The genaicode UI is not available: ${(error as Error).message}. See the dev server's terminal.`;
-      frame = note;
-    }
-    panel.append(frame);
+    frame ??= loadSession().then(
+      ({ url }) => {
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.title = 'genaicode';
+        panel.append(iframe);
+      },
+      (error: unknown) => {
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.textContent = `The genaicode UI is not available: ${(error as Error).message}. See the dev server's terminal.`;
+        panel.append(note);
+      },
+    );
+    return frame;
   };
 
   wolf.addEventListener('click', () => (panel.hidden ? void open() : (panel.hidden = true)));
