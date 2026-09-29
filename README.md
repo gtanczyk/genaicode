@@ -177,6 +177,25 @@ In code, the same conversation is `createAgentSession` from `genaicode/agents` (
 [docs/agents.md](docs/agents.md#chat-sessions)); with a live driver (`codexLive`,
 `museLive`) it also steers the running agent and asks you about permission requests.
 
+### Inside a Vite app
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import genaicode from 'genaicode/vite';
+
+export default defineConfig({ plugins: [genaicode()] });
+```
+
+In `vite dev`, the app gets the wolf in its corner. It opens the same chat as `genaicode ui`
+in a panel, with the agent working in the project root. The wolf counts the page's errors
+(build errors, uncaught exceptions, unhandled rejections, `console.error`), and "Fix N
+errors" sends them to the agent as one prompt. Options: `agent`, `model`, `effort`,
+`approveAll`, `agents`, `port`, and `captureErrors: false` to leave the page's errors alone.
+Builds are untouched. The chat runs on its own port on 127.0.0.1 even when Vite runs with
+`--host`, lets only the app's origins frame it, and hands its token (and takes "fix" requests)
+only from the app's own pages on this machine.
+
 ## Chaining prompts
 
 A chain remembers successful user and assistant turns. Each new prompt sees the complete

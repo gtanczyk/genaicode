@@ -15,7 +15,8 @@
     "prompt",
     "toolkit",
     "coding-agent",
-    "cli"
+    "cli",
+    "vite-plugin"
   ],
   "type": "module",
   "bin": {
@@ -45,6 +46,10 @@
     "./agents": {
       "types": "./dist/agents.d.ts",
       "import": "./dist/agents.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
     }
   },
   "scripts": {
@@ -64,6 +69,14 @@
     "@google/genai": "^1.30.0",
     "openai": "^5.16.0"
   },
+  "peerDependencies": {
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.3.0",
@@ -81,7 +94,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^5.0.0",
-    "vite": "^6.4.1",
+    "vite": "^6.4.3",
     "vitest": "^3.0.7"
   },
   "lint-staged": {

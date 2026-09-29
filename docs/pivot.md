@@ -47,7 +47,9 @@ and it adds no agent loop, prompts, or repository tools of its own. See [agents.
 The `genaicode` bin (`npx genaicode run`, `chat`, `ui`) is a thin front end to those drivers,
 under the same rule: it parses flags, shows events, and adds nothing the library does not
 already do. Its terminal and browser chat are bundled (Ink, React) into `dist/ui` and load
-only for those commands, so the library keeps no UI dependencies.
+only for those commands, so the library keeps no UI dependencies. `genaicode/vite` brings
+back a Vite dev plugin in the same shape: it shows that browser chat inside the app and
+hands the page's errors to the external agent as a prompt; it does not generate code itself.
 
 This is a major-version break. The old implementation remains available in git history
 and in the 1.x npm line.

@@ -16,6 +16,11 @@ export interface WebUiOptions {
   port?: number;
   /** Fixed access token, for tests. Default: 32 random bytes. */
   token?: string;
+  /**
+   * Origins allowed to show the page in a frame (the Vite plugin's overlay). Read per request,
+   * so it can grow once the host server knows its address. Default: none.
+   */
+  frameAncestors?: () => readonly string[];
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
@@ -90,12 +95,19 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   };
-  const send = (res: ServerResponse, status: number, type: string, body: string) => {
+  const send = (
+    res: ServerResponse,
+    status: number,
+    type: string,
+    body: string,
+    headers: Record<string, string> = {},
+  ) => {
     res.writeHead(status, {
       'content-type': type,
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer',
+      ...headers,
     });
     res.end(body);
   };
@@ -120,7 +132,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(url.searchParams.get('token'))) {
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
       }
-      return send(res, 200, 'text/html; charset=utf-8', pageHtml(options.title));
+      const ancestors = options.frameAncestors?.() ?? [];
+      return send(res, 200, 'text/html; charset=utf-8', pageHtml(options.title), {
+        'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
+      });
     }
     if (req.method === 'GET' && url.pathname === '/app.js') {
       return send(res, 200, 'text/javascript; charset=utf-8', options.clientScript);

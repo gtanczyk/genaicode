@@ -267,6 +267,7 @@ describe('web UI server', () => {
       expect((await fetch(base)).status).toBe(403);
       const page = await fetch(ui.url);
       expect(page.status).toBe(200);
+      expect(page.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
       expect(await page.text()).toContain('data-cwd="/w &lt;&amp;&gt;"');
       expect(await (await fetch(`${base}app.js`)).text()).toBe('console.log(1)');
       // The wolf and its bark need no token (an <img> or <audio> cannot send one).
