@@ -5,6 +5,17 @@ export type CliCommand =
   | { kind: 'version' }
   | { kind: 'agents'; json: boolean }
   | {
+      kind: 'chat' | 'ui';
+      agent?: string;
+      cwd?: string;
+      model?: string;
+      effort?: string;
+      resume?: string;
+      approveAll: boolean;
+      port?: number;
+      open: boolean;
+    }
+  | {
       kind: 'run';
       prompt: string | undefined;
       agent?: string;
@@ -30,6 +41,38 @@ export function parseCli(argv: readonly string[]): CliCommand {
   if (command === 'agents') {
     const { values } = parse(() => parseArgs({ args: rest, options: { json: { type: 'boolean' } }, strict: true }));
     return { kind: 'agents', json: values.json === true };
+  }
+
+  if (command === 'chat' || command === 'ui') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: {
+          agent: { type: 'string', short: 'a' },
+          cwd: { type: 'string', short: 'C' },
+          model: { type: 'string', short: 'm' },
+          effort: { type: 'string' },
+          resume: { type: 'string', short: 'r' },
+          yes: { type: 'boolean', short: 'y' },
+          ...(command === 'ui' ? { port: { type: 'string' as const }, 'no-open': { type: 'boolean' as const } } : {}),
+        },
+      }),
+    );
+    const extra = values as { port?: string; 'no-open'?: boolean };
+    const port = optionalNumber(extra.port, '--port');
+    if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
+    return {
+      kind: command,
+      agent: values.agent,
+      cwd: values.cwd,
+      model: values.model,
+      effort: values.effort,
+      resume: values.resume,
+      approveAll: values.yes === true,
+      port,
+      open: extra['no-open'] !== true,
+    };
   }
 
   if (command === 'run') {

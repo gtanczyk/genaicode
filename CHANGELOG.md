@@ -9,6 +9,17 @@
   `codex` (`exec resume`), `cursor`, `opencode` and `copilot` (`capabilities.resume`).
   Other drivers fail the task before spawning. `genaicode run --resume <id>` does the same
   from the command line.
+- `createAgentSession` (`genaicode/agents`): a multi-turn conversation with an agent for chat
+  front ends. It keeps a structured transcript per turn, resumes the agent session on each
+  new prompt, steers or queues prompts sent mid-turn, and holds approvals until answered.
+- `genaicode chat` (and plain `genaicode` in a terminal): chat with an agent in the terminal.
+  `genaicode ui`: the same chat in the browser, on 127.0.0.1 behind a one-time token.
+  Both are bundled into `dist/ui` and load only for those commands.
+
+### Changed
+
+- The opencode driver emits `tool-start` (with the tool's input) before each `tool-end`.
+- `genaicode` with no arguments opens the chat in a terminal; it prints help otherwise.
 
 ## 2.7.0 — 2026-09-29
 

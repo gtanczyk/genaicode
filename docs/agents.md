@@ -88,6 +88,32 @@ const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: 
 `claude`, `codex`, `cursor`, `opencode` and `copilot` support it (`capabilities.resume`).
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
+## Chat sessions
+
+`createAgentSession` keeps a conversation with one agent for chat front ends; the
+`genaicode chat` and `genaicode ui` commands are built on it:
+
+```ts
+import { claude, createAgentSession } from 'genaicode/agents';
+
+const session = createAgentSession({ agent: claude(), cwd: '/work/repo' });
+session.subscribe((state) => render(state)); // a new immutable snapshot on every change
+session.send('Add a --dry-run flag');
+await session.idle();
+session.send('Now cover it with a test'); // resumes the same agent session
+```
+
+- `state.turns[]` holds each prompt with its transcript: `text` (streamed, then final),
+  `tool` (input, clipped output, error flag), `files`, `approval`, `input` (steered text)
+  and `error` entries, plus the turn's `AgentResult`. Usage and cost add up in `state`.
+- `send()` while a turn runs steers the agent when it supports `steer()`, and otherwise
+  queues the prompt; queued prompts run in order. `stop()` aborts the turn and clears the
+  queue.
+- Approval requests wait in `state.approvals` until `approve(id, decision)`, unless
+  `autoApprove` decides them. `stop()` denies whatever is pending.
+- `setAgent()` switches agents between turns and starts a fresh agent session; `reset()`
+  does the same for the current agent.
+
 ## Drivers
 
 | Driver                | Command        | Mode                                     | Notes                                                                                  |

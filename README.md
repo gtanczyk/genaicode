@@ -151,6 +151,26 @@ to `--max-repairs` more attempts (`runWithVerify`). The exit code is 0 on succes
 the agent or the check fails, 2 on a usage error, and 130 when interrupted.
 `npx genaicode --help` lists every option.
 
+### Chat with an agent: terminal and browser
+
+```bash
+npx genaicode                      # chat in this terminal (same as "genaicode chat")
+npx genaicode chat -a claude -C ../api
+npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
+```
+
+Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
+can say "now add a test for that". Prompts sent while the agent works wait in a queue and
+run next; Esc stops the agent. `/agent`, `/model` and `/new` switch agent, model and
+session; `/help` lists the rest.
+
+`genaicode ui` prints a link with a random access token and only answers requests that
+carry it, on the loopback address. Both front ends are bundled into the package and load
+only for these commands; importing `genaicode` or `genaicode/agents` pulls in no UI code.
+In code, the same conversation is `createAgentSession` from `genaicode/agents` (see
+[docs/agents.md](docs/agents.md#chat-sessions)); with a live driver (`codexLive`,
+`museLive`) it also steers the running agent and asks you about permission requests.
+
 ## Chaining prompts
 
 A chain remembers successful user and assistant turns. Each new prompt sees the complete
@@ -541,8 +561,8 @@ The original coding agent remains available from the preserved
 npx genaicode@1
 ```
 
-Running `npx genaicode` with version 2.x prints this migration guidance instead of
-starting the old agent.
+In 2.x, `npx genaicode` opens a chat with the coding-agent CLIs you have installed
+(Claude Code, Codex, opencode...) instead of the 1.x built-in agent.
 
 See [the pivot plan](docs/pivot.md) for the full scope, migration decisions, and the
 roadmap.

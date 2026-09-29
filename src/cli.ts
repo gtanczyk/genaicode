@@ -13,6 +13,7 @@ process.exitCode = await main({
   stdout: process.stdout,
   stderr: process.stderr,
   signal: controller.signal,
+  interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
   readStdin: async () => {
     if (process.stdin.isTTY) return undefined;
     const chunks: Buffer[] = [];

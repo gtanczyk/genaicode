@@ -68,6 +68,13 @@ export function createOpencodeParser(): AgentOutputParser {
           const state = isObject(part?.state) ? part.state : undefined;
           const failed = state?.status === 'error';
           const output = stringField(state, 'output') ?? stringField(state, 'error');
+          // opencode reports a tool call once it has finished, so the start and end arrive together.
+          events.push({
+            type: 'tool-start',
+            ...(id ? { id } : {}),
+            name,
+            ...(state && 'input' in state ? { input: state.input } : {}),
+          });
           events.push({
             type: 'tool-end',
             ...(id ? { id } : {}),
