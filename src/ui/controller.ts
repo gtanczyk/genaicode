@@ -45,6 +45,8 @@ export interface ChatController {
   /** A prompt or a slash command. Returns 'quit' when the user asked to leave. */
   submit(text: string): 'ok' | 'quit';
   stop(): void;
+  /** Show a line from the front end itself. */
+  note(text: string, tone?: Notice['tone']): void;
   approve(id: string, decision: ApprovalDecision): boolean;
   selectAgent(name: string): boolean;
   setModel(model: string | undefined): void;
@@ -180,6 +182,7 @@ export function createChatController(options: ChatOptions): ChatController {
       }
     },
     stop: () => session.stop(),
+    note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     selectAgent,
     setModel(model) {

@@ -9,8 +9,10 @@ scripts in `package.json`.
 - Standard commands live in `package.json` scripts: `npm run lint`, `npm run type-check`,
   `npm test` (unit, vitest), `npm run build` (tsc), and `npm run check` (all of them).
 - The `genaicode` bin (`dist/cli.js`, built from `src/cli.ts` and `src/cli/`) is a thin
-  front end to the `genaicode/agents` drivers (`genaicode agents`, `genaicode run`). It must
-  not grow an agent loop or prompts of its own, and the library entry points never import it.
+  front end to the `genaicode/agents` drivers (`genaicode agents`, `genaicode run`, and the
+  `chat` / `ui` front ends in `src/ui/`, bundled by `scripts/build-ui.mjs` into `dist/ui`). It
+  must not grow an agent loop or prompts of its own, and the library entry points never import
+  it or `src/ui`.
 - `npm run test:e2e` hits real providers and is credential-gated: tests are skipped unless
   provider env vars are set (`OPENAI_API_KEY`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`,
   `GEMINI_API_KEY`/`GEMINI_MODEL`). Without keys they skip (not fail), so this is not a blocker.

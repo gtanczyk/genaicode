@@ -244,6 +244,9 @@ describe('web UI server', () => {
       expect(seen).toContain('"status":"idle"');
       await reader.cancel();
 
+      await post({ type: 'submit', text: '/quit' });
+      expect(chat.get().notices.at(-1)?.text).toMatch(/keeps running until you press Ctrl-C/);
+
       // A DNS-rebinding page reaches the port under another host name.
       const rebinding = await new Promise<number>((resolve, reject) => {
         const req = request(ui.url, { headers: { host: 'evil.example' } }, (res) => {

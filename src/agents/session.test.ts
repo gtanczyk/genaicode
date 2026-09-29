@@ -209,6 +209,97 @@ describe('createAgentSession', () => {
     expect(second.tasks[1].resume).toBeUndefined();
   });
 
+  it("counts each turn's usage once, as agents report running totals", async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'usage', usage: { inputTokens: 5, outputTokens: 1 }, costUsd: 0.1 });
+        emit({ type: 'usage', usage: { inputTokens: 9, outputTokens: 2 }, costUsd: 0.15 });
+      },
+      async (_task, emit) => {
+        emit({ type: 'usage', usage: { inputTokens: 1, outputTokens: 1 }, costUsd: 0.05 });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('a');
+    await session.idle();
+    expect(session.get()).toMatchObject({ usage: { inputTokens: 9, outputTokens: 2 }, costUsd: 0.15 });
+    session.send('b');
+    await session.idle();
+    expect(session.get().usage).toEqual({ inputTokens: 10, outputTokens: 3 });
+    expect(session.get().costUsd).toBeCloseTo(0.2);
+    expect(session.get().turns[0].usage).toEqual({ inputTokens: 9, outputTokens: 2 });
+  });
+
+  it('passes an explicit first resume through, so agents without the capability refuse it', async () => {
+    const { agent, tasks } = fakeAgent([async () => ({ sessionId: 'x' }), async () => {}], {});
+    const session = createAgentSession({ agent, cwd: '.', resume: 'old' });
+    session.send('a');
+    await session.idle();
+    session.send('b');
+    await session.idle();
+    expect(tasks.map((task) => task.resume)).toEqual(['old', undefined]);
+  });
+
+  it('keeps a reset made during a turn after that turn ends', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1' });
+        await gate.promise;
+        return { sessionId: 's-1' };
+      },
+      async () => {},
+    ]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('a');
+    await Promise.resolve();
+    session.reset();
+    gate.resolve();
+    await session.idle();
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('b');
+    await session.idle();
+    expect(tasks[1].resume).toBeUndefined();
+  });
+
+  it('stops through AgentRun.abort() and does not requeue a steer the stop cut off', async () => {
+    let aborted = false;
+    let rejectSteer!: (error: Error) => void;
+    let finish!: () => void;
+    const result: AgentResult = { status: 'aborted', ok: false, exitCode: null, signal: null };
+    const runs: string[] = [];
+    const agent: CodingAgent = {
+      name: 'stubborn',
+      command: 'stubborn',
+      capabilities: { steer: true },
+      run(task): AgentRun {
+        runs.push(task.prompt);
+        const done = new Promise<AgentResult>((resolve) => (finish = () => resolve(result)));
+        return {
+          result: done,
+          abort() {
+            aborted = true;
+            rejectSteer(new Error('aborted'));
+            finish();
+          },
+          steer: () => new Promise<void>((_resolve, reject) => (rejectSteer = reject)),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('work');
+    session.send('also');
+    session.stop();
+    await session.idle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(aborted).toBe(true);
+    expect(runs).toEqual(['work']);
+    expect(session.get().queued).toEqual([]);
+  });
+
   it('does not resume on agents without the capability', async () => {
     const { agent, tasks } = fakeAgent([async () => ({ sessionId: 's-1' }), async () => {}], {});
     const session = createAgentSession({ agent, cwd: '.' });

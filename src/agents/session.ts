@@ -35,6 +35,9 @@ export interface SessionTurn {
   startedAt: number;
   endedAt?: number;
   result?: AgentResult;
+  /** The turn's latest usage report. Agents report running totals, not increments. */
+  usage?: TokenUsage;
+  costUsd?: number;
 }
 
 export interface SessionState {
@@ -129,6 +132,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let controller: AbortController | undefined;
   let nextTurnId = 1;
   let closed = false;
+  // `options.resume` applies to the first turn as given, so an agent that cannot resume refuses it.
+  let explicitResume = options.resume;
+  // `reset()` during a turn: forget the session that turn reports when it ends.
+  let forgetAfterTurn = false;
+  // Usage of finished turns; the running turn's latest report is added on top.
+  let pastUsage: TokenUsage = {};
+  let pastCost: number | undefined;
 
   const set = (patch: Partial<SessionState>) => {
     state = { ...state, ...patch };
@@ -154,7 +164,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const onEvent = (turnId: number, event: AgentEvent) => {
     switch (event.type) {
       case 'session':
-        set({ sessionId: event.sessionId });
+        if (!forgetAfterTurn) set({ sessionId: event.sessionId });
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
@@ -204,12 +214,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ),
         }));
         return;
-      case 'usage':
+      case 'usage': {
+        updateTurn(turnId, (turn) => ({
+          ...turn,
+          usage: event.usage,
+          costUsd: event.costUsd ?? turn.costUsd,
+        }));
+        const turn = state.turns.find((candidate) => candidate.id === turnId);
         set({
-          usage: addUsage(state.usage, event.usage),
-          costUsd: event.costUsd === undefined ? state.costUsd : (state.costUsd ?? 0) + event.costUsd,
+          usage: addUsage(pastUsage, turn?.usage ?? {}),
+          costUsd: turn?.costUsd === undefined ? pastCost : (pastCost ?? 0) + turn.costUsd,
         });
         return;
+      }
       case 'error':
         addEntry(turnId, { kind: 'error', message: event.message });
         return;
@@ -244,8 +261,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const startTurn = (prompt: string) => {
     const turnId = nextTurnId++;
     const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
-    const resume = state.sessionId && agent.capabilities.resume ? state.sessionId : undefined;
-    controller = new AbortController();
+    const resume =
+      explicitResume !== undefined
+        ? explicitResume
+        : state.sessionId && agent.capabilities.resume
+          ? state.sessionId
+          : undefined;
+    explicitResume = undefined;
+    const turnController = new AbortController();
+    controller = turnController;
     set({
       status: 'running',
       turns: [...state.turns, turn].slice(-maxTurns),
@@ -258,7 +282,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       model: state.model,
       effort: state.effort,
       resume,
-      signal: controller.signal,
+      signal: turnController.signal,
       onApproval: (request) => onApproval(turnId, request),
     });
     run = current;
@@ -279,7 +303,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         result,
         endedAt: Date.now(),
       }));
-      if (result.sessionId) set({ sessionId: result.sessionId });
+      const finished = state.turns.find((candidate) => candidate.id === turnId);
+      if (finished?.usage) pastUsage = addUsage(pastUsage, finished.usage);
+      if (finished?.costUsd !== undefined) pastCost = (pastCost ?? 0) + finished.costUsd;
+      set({ usage: pastUsage, costUsd: pastCost });
+      if (forgetAfterTurn) {
+        forgetAfterTurn = false;
+        set({ sessionId: undefined });
+      } else if (result.sessionId) set({ sessionId: result.sessionId });
       const [next, ...rest] = state.queued;
       if (next !== undefined && !closed) {
         set({ queued: rest });
@@ -303,11 +334,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.status === 'idle') return startTurn(prompt);
       const current = run;
       const turnId = state.turns.at(-1)?.id;
+      const turnController = controller;
       if (current?.steer && state.canSteer && turnId !== undefined) {
         addEntry(turnId, { kind: 'input', text: prompt });
         current.steer(prompt).catch(() => {
-          // The turn ended before the agent took the input: run it as the next turn instead.
-          if (closed) return;
+          // The turn ended before the agent took the input: run it as the next turn instead,
+          // unless the user stopped that turn.
+          if (closed || turnController?.signal.aborted) return;
           set({ queued: [...state.queued, prompt] });
           if (state.status === 'idle') {
             const [next, ...rest] = state.queued;
@@ -323,6 +356,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.queued.length) set({ queued: [] });
       denyPending();
       controller?.abort();
+      run?.abort();
       settleIdle();
     },
     approve(id, decision) {
@@ -336,12 +370,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     setAgent(next) {
       if (next === agent) return;
       agent = next;
+      explicitResume = undefined;
+      if (state.status === 'running') forgetAfterTurn = true;
       set({ agent: next.name, sessionId: undefined });
     },
     setModel(model) {
       set({ model });
     },
     reset() {
+      explicitResume = undefined;
+      if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },
     idle() {
