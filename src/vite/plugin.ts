@@ -59,6 +59,8 @@ const MAX_BODY = 256 * 1024;
 export function genaicode(options: GenaicodeViteOptions = {}): Plugin {
   let started: Promise<Embedded | undefined> | undefined;
   let base = '/';
+  // Origins the app's pages were actually opened at (e.g. app.localhost), for frame-ancestors.
+  const seen = new Set<string>();
 
   return {
     name: 'genaicode',
@@ -82,7 +84,7 @@ export function genaicode(options: GenaicodeViteOptions = {}): Plugin {
             approveAll: options.approveAll,
             version: packageVersion(),
             port: options.port,
-            frameAncestors: () => pageOrigins(server),
+            frameAncestors: () => pageOrigins(server, seen),
           });
         } catch (error) {
           if (!(error instanceof ui.NoAgentError)) throw error;
@@ -101,7 +103,7 @@ export function genaicode(options: GenaicodeViteOptions = {}): Plugin {
       );
 
       server.middlewares.use(API, (req, res, next) => {
-        handleApi(req, res, started).catch(next);
+        handleApi(req, res, started, (origin) => seen.add(origin), !!server.config.server.https).catch(next);
       });
     },
 
@@ -121,7 +123,8 @@ export function genaicode(options: GenaicodeViteOptions = {}): Plugin {
         {
           tag: 'script',
           attrs: { type: 'module', src: `${base}@id/__x00__${OVERLAY_ID}` },
-          injectTo: 'body',
+          // First, so the app's own startup errors are caught too. Module scripts are deferred.
+          injectTo: 'head-prepend',
         },
       ];
     },
@@ -140,6 +143,8 @@ async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   started: Promise<Embedded | undefined> | undefined,
+  onPage: (origin: string) => void,
+  https: boolean,
 ) {
   const send = (status: number, body: unknown) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -155,6 +160,8 @@ async function handleApi(
 
   const path = (req.url ?? '/').split('?')[0];
   if (req.method === 'GET' && path === '/session') {
+    const origin = pageOrigin(req.headers.host, https);
+    if (origin) onPage(origin);
     return send(200, { url: ui.url, agent: ui.controller.get().session.agent });
   }
   if (req.method === 'POST' && path === '/fix') {
@@ -211,10 +218,16 @@ export function isLoopback(address: string | undefined): boolean {
   return address === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
+/** The origin a same-origin request came from, by its Host header. */
+function pageOrigin(host: string | undefined, https: boolean): string | undefined {
+  if (!host || !/^[\w.-]+(:\d+)?$|^\[[\da-f:.]+\](:\d+)?$/i.test(host)) return undefined;
+  return `${https ? 'https' : 'http'}://${host.toLowerCase()}`;
+}
+
 /** Where the app's pages come from, allowed to show the UI in a frame. */
-function pageOrigins(server: ViteDevServer): string[] {
+function pageOrigins(server: ViteDevServer, seen: ReadonlySet<string>): string[] {
   const urls = [...(server.resolvedUrls?.local ?? []), ...(server.resolvedUrls?.network ?? [])];
-  const origins = new Set<string>();
+  const origins = new Set<string>(seen);
   for (const url of urls) {
     try {
       origins.add(new URL(url).origin);

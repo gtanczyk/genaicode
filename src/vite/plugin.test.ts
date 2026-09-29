@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,7 +91,10 @@ describe('vite plugin', () => {
 
   it('adds the overlay to the page and serves it as a module', async () => {
     const html = await (await fetch(base)).text();
-    expect(html).toContain('<script type="module" src="/@id/__x00__virtual:genaicode-overlay"></script>');
+    const tag = '<script type="module" src="/@id/__x00__virtual:genaicode-overlay"></script>';
+    expect(html).toContain(tag);
+    // Before the app's own scripts, so their startup errors are caught.
+    expect(html.indexOf(tag)).toBeLessThan(html.indexOf('<h1>'));
     const overlay = await fetch(`${base}@id/__x00__virtual:genaicode-overlay`);
     expect(overlay.headers.get('content-type')).toMatch(/javascript/);
     const code = await overlay.text();
@@ -113,6 +117,23 @@ describe('vite plugin', () => {
     const page = await fetch(url);
     expect(page.status).toBe(200);
     expect(page.headers.get('content-security-policy')).toBe(`frame-ancestors ${new URL(base).origin}`);
+
+    // A page opened at another name Vite answers to (app.localhost) may frame the UI too.
+    const port = new URL(base).port;
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request(
+        `${base}__genaicode/session`,
+        { headers: { ...sameOrigin, host: `app.localhost:${port}` } },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    expect(status).toBe(200);
+    expect((await fetch(url)).headers.get('content-security-policy')).toContain(`http://app.localhost:${port}`);
   });
 
   it('sends the page errors to the agent', async () => {
