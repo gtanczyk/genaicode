@@ -63,8 +63,9 @@ describe('format helpers', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
-    expect(parseSlash('/bark')).toEqual({ kind: 'bark', on: undefined });
+    expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
+    expect(parseSlash('/bark of')).toEqual({ kind: 'bark', invalid: 'of' });
     expect(parseSlash('//etc/hosts is odd')).toBeUndefined();
     expect(parseSlash('fix the bug')).toBeUndefined();
   });
@@ -165,6 +166,9 @@ describe('chat controller', () => {
     expect(chat.get().bark).toBe(true);
     chat.submit('/bark off');
     expect(chat.get().bark).toBe(false);
+    chat.submit('/bark of');
+    expect(chat.get().bark).toBe(false);
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
     chat.close();
   });
 

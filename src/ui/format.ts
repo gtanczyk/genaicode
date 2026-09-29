@@ -128,7 +128,7 @@ export type SlashCommand =
   | { kind: 'model'; model?: string }
   | { kind: 'new' }
   | { kind: 'stop' }
-  | { kind: 'bark'; on?: boolean }
+  | { kind: 'bark'; on?: boolean; invalid?: string }
   | { kind: 'help' }
   | { kind: 'quit' }
   | { kind: 'unknown'; name: string };
@@ -151,7 +151,9 @@ export function parseSlash(text: string): SlashCommand | undefined {
     case '/stop':
       return { kind: 'stop' };
     case '/bark':
-      return { kind: 'bark', on: arg === 'on' ? true : arg === 'off' ? false : undefined };
+      if (arg === undefined) return { kind: 'bark' };
+      if (arg === 'on' || arg === 'off') return { kind: 'bark', on: arg === 'on' };
+      return { kind: 'bark', invalid: arg };
     case '/help':
     case '/?':
       return { kind: 'help' };

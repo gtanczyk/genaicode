@@ -168,8 +168,10 @@ The wolf from genaicode 1.0 is back. When the agent asks for approval or finishe
 browser UI barks if its tab is in the background and counts those events in the tab title.
 The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button) quiets it.
 
-`genaicode ui` prints a link with a random access token and only answers requests that
-carry it, on the loopback address. Both front ends are bundled into the package and load
+`genaicode ui` listens on the loopback address and prints a link with a random access
+token. The page, the event stream and every command need that token; only the bundled
+script and the four mascot files (`/app.js`, `/assets/…`) are served without it, since they
+hold nothing about your session. Both front ends are bundled into the package and load
 only for these commands; importing `genaicode` or `genaicode/agents` pulls in no UI code.
 In code, the same conversation is `createAgentSession` from `genaicode/agents` (see
 [docs/agents.md](docs/agents.md#chat-sessions)); with a live driver (`codexLive`,

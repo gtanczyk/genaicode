@@ -182,6 +182,10 @@ export function createChatController(options: ChatOptions): ChatController {
           session.stop();
           return 'ok';
         case 'bark':
+          if (command.invalid !== undefined) {
+            notice(`Use /bark, /bark on or /bark off (not "${command.invalid}").`, 'error');
+            return 'ok';
+          }
           bark = command.on ?? !bark;
           notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
           return 'ok';
