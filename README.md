@@ -164,6 +164,15 @@ can say "now add a test for that". Prompts sent while the agent works wait in a 
 run next; Esc stops the agent. `/agent`, `/model` and `/new` switch agent, model and
 session; `/help` lists the rest.
 
+<p align="center">
+  <img alt="genaicode chat in a terminal: the agent fixed a failing test." src="media/screenshots/chat-terminal.png" width="49%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/chat-browser-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="media/screenshots/chat-browser-light.png">
+    <img alt="genaicode ui in a browser: the same fix, with the wolf in the background." src="media/screenshots/chat-browser-light.png" width="49%">
+  </picture>
+</p>
+
 The wolf from genaicode 1.0 is back. When the agent asks for approval or finishes, the
 browser UI barks if its tab is in the background and counts those events in the tab title.
 The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button) quiets it.
@@ -186,6 +195,14 @@ import genaicode from 'genaicode/vite';
 
 export default defineConfig({ plugins: [genaicode()] });
 ```
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/vite-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="media/screenshots/vite-light.png">
+    <img alt="The genaicode panel over a Vite app: the agent fixed the page's two errors." src="media/screenshots/vite-light.png" width="80%">
+  </picture>
+</p>
 
 In `vite dev`, the app gets the wolf in its corner. It opens the same chat as `genaicode ui`
 in a panel, with the agent working in the project root. The wolf counts the page's errors
