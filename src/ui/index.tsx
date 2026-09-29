@@ -2,15 +2,18 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import type { CodingAgent } from '../agents/types.js';
-import { createChatController, NoAgentError, type ChatOptions } from './controller.js';
+import { createChatController, NoAgentError, type ChatController, type ChatOptions } from './controller.js';
 import { ChatApp } from './tui/app.js';
 import { startWebUi, type WebAsset } from './web/server.js';
+
+export { NoAgentError };
 
 /**
  * Interactive front ends for `genaicode chat` and `genaicode ui`.
  *
  * This module is bundled with Ink and React into `dist/ui/`, so the library itself keeps
- * no UI dependencies. The CLI loads it only for these two commands.
+ * no UI dependencies. The CLI loads it only for these two commands, and the Vite plugin
+ * (`genaicode/vite`) for `startEmbeddedWeb`.
  */
 export interface UiRunOptions extends ChatOptions {
   agents: readonly CodingAgent[];
@@ -100,6 +103,51 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   await ui.close();
   controller.close();
   return 0;
+}
+
+export interface EmbeddedWebOptions extends ChatOptions {
+  version: string;
+  /** Origins of the pages that show the UI in a frame. */
+  frameAncestors: () => readonly string[];
+  port?: number;
+  clientScript?: string;
+  assets?: ReadonlyMap<string, WebAsset>;
+}
+
+export interface EmbeddedWeb {
+  /** The UI with its access token, for the overlay's frame. */
+  url: string;
+  controller: ChatController;
+  close(): Promise<void>;
+}
+
+/**
+ * The browser UI for a host that shows it in its own page (the Vite plugin), and that sends
+ * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
+ */
+export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
+  const controller = createChatController(options);
+  try {
+    const ui = await startWebUi({
+      controller,
+      clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
+      title: { version: options.version, cwd: options.cwd },
+      port: options.port,
+      frameAncestors: options.frameAncestors,
+      assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
+    });
+    return {
+      url: ui.url,
+      controller,
+      close: async () => {
+        await ui.close();
+        controller.close();
+      },
+    };
+  } catch (error) {
+    controller.close();
+    throw error;
+  }
 }
 
 function openBrowser(url: string) {
