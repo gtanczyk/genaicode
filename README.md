@@ -196,6 +196,8 @@ Builds are untouched. The chat runs on its own port on 127.0.0.1 even when Vite 
 `--host`, lets only the app's origins frame it, and hands its token only to same-origin
 requests from the app.
 
+## Chaining prompts
+
 A chain remembers successful user and assistant turns. Each new prompt sees the complete
 history, so multi-step work stays in ordinary application code:
 

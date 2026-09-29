@@ -10,6 +10,8 @@ const dir = mkdtempSync(join(tmpdir(), 'genaicode-vite-'));
 writeFileSync(join(dir, 'agent'), '#!/bin/sh\n', { mode: 0o755 });
 writeFileSync(join(dir, 'index.html'), '<!doctype html><html><body><h1>app</h1></body></html>');
 const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+const sameOrigin = { 'sec-fetch-site': 'same-origin' };
 
 const tasks: AgentTask[] = [];
 const agent: CodingAgent = {
@@ -52,6 +54,7 @@ describe('fixPrompt', () => {
     expect(fixPrompt({ errors: [] })).toBeUndefined();
     expect(fixPrompt({ errors: [{ source: 'shell', message: 'rm' }] })).toBeUndefined();
     expect(fixPrompt({ errors: [{ source: 'console', message: 1 }] })).toBeUndefined();
+    expect(fixPrompt({ errors: [{ source: 'constructor', message: 'a' }] })).toBeUndefined();
     expect(fixPrompt({ page: 'javascript:alert(1)', errors: [{ source: 'console', message: 'a' }] })).not.toContain(
       'javascript',
     );
@@ -75,7 +78,6 @@ describe('vite plugin', () => {
   });
   afterAll(async () => {
     await server?.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   it('adds the overlay to the page and serves it as a module', async () => {
@@ -90,13 +92,15 @@ describe('vite plugin', () => {
   });
 
   it('gives the UI link to the app only, framed by the app only', async () => {
-    const session = await fetch(`${base}__genaicode/session`, { headers: { 'sec-fetch-site': 'same-origin' } });
+    const session = await fetch(`${base}__genaicode/session`, { headers: sameOrigin });
     const { url, agent: name } = (await session.json()) as { url: string; agent: string };
     expect(name).toBe('fixer');
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]{64}$/);
     expect((await fetch(`${base}__genaicode/session`, { headers: { 'sec-fetch-site': 'cross-site' } })).status).toBe(
       403,
     );
+    // No Sec-Fetch-Site: not a browser page of the app (a client on the network with --host).
+    expect((await fetch(`${base}__genaicode/session`)).status).toBe(403);
 
     const page = await fetch(url);
     expect(page.status).toBe(200);
@@ -132,8 +136,12 @@ describe('vite plugin without an agent', () => {
     try {
       await server.listen();
       const base = server.resolvedUrls!.local[0];
-      expect(await (await fetch(base)).text()).not.toContain('genaicode-overlay');
-      expect((await fetch(`${base}__genaicode/session`)).status).toBe(503);
+      const page = await fetch(base);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('<h1>app</h1>');
+      expect(html).not.toContain('genaicode-overlay');
+      expect((await fetch(`${base}__genaicode/session`, { headers: sameOrigin })).status).toBe(503);
     } finally {
       await server.close();
     }

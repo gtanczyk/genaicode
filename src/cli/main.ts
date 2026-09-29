@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
-import { defaultAgents } from './agents.js';
+import { defaultAgents } from '../agents/defaults.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { createRenderer, describeResult, type Output } from './render.js';
 

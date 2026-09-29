@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
 import type { Plugin, ViteDevServer } from 'vite';
-import { defaultAgents } from '../cli/agents.js';
+import { defaultAgents } from '../agents/defaults.js';
 import type { CodingAgent } from '../agents/types.js';
 import { mountOverlay, type OverlayConfig } from './overlay.js';
 
@@ -146,9 +146,9 @@ async function handleApi(
     res.end(JSON.stringify(body));
   };
   // Only the app's own pages: another site open in the browser must not read the UI's token
-  // or start the agent. Browsers always send Sec-Fetch-Site; tools that omit it run locally anyway.
-  const site = req.headers['sec-fetch-site'];
-  if (site !== undefined && site !== 'same-origin') return send(403, { error: 'same-origin only' });
+  // or start the agent, and neither must a client on the network when Vite runs with --host.
+  // Browsers send Sec-Fetch-Site on every request; anything without it is refused.
+  if (req.headers['sec-fetch-site'] !== 'same-origin') return send(403, { error: 'same-origin only' });
   const ui = await started;
   if (!ui) return send(503, { error: 'genaicode is off; see the dev server terminal' });
 
@@ -189,7 +189,7 @@ export function fixPrompt(body: unknown): string | undefined {
   for (const error of errors.slice(0, 20)) {
     if (!error || typeof error !== 'object') return undefined;
     const { source, message, stack } = error as Record<string, unknown>;
-    if (typeof message !== 'string' || typeof source !== 'string' || !(source in SOURCES)) return undefined;
+    if (typeof message !== 'string' || typeof source !== 'string' || !Object.hasOwn(SOURCES, source)) return undefined;
     const trace = typeof stack === 'string' && stack && !message.includes(stack) ? `\n${stack.slice(0, 4000)}` : '';
     items.push(`${items.length + 1}. [${SOURCES[source]}] ${message.slice(0, 4000)}${trace}`);
   }

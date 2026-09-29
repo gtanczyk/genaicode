@@ -119,7 +119,7 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ page: location.href, errors: sent }),
+      body: JSON.stringify({ page: location.origin + location.pathname, errors: sent }),
     }).catch(() => undefined);
     if (!response?.ok) {
       errors = [...sent, ...errors].slice(-MAX_ERRORS);
@@ -133,7 +133,11 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     try {
       return JSON.stringify(value) ?? String(value);
     } catch {
-      return String(value);
+      try {
+        return String(value);
+      } catch {
+        return Object.prototype.toString.call(value);
+      }
     }
   };
   const add = (error: PageError) => {
@@ -155,11 +159,16 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     const consoleError = console.error.bind(console);
     console.error = (...args: unknown[]) => {
       consoleError(...args);
-      add({
-        source: 'console',
-        message: args.map(text).join(' '),
-        stack: args.find((arg): arg is Error => arg instanceof Error)?.stack,
-      });
+      // Collecting the error must never break the app's own logging.
+      try {
+        add({
+          source: 'console',
+          message: args.map(text).join(' '),
+          stack: args.find((arg): arg is Error => arg instanceof Error)?.stack,
+        });
+      } catch {
+        // Ignore values that cannot be described.
+      }
     };
     hot?.on('vite:error', (payload) => {
       const err = (payload as { err?: { message?: string; frame?: string; id?: string; stack?: string } }).err;
