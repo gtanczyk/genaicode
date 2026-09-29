@@ -21,6 +21,11 @@ export interface AgentTask {
   /** Kill the agent after this many milliseconds. No timeout by default. */
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * Continue an earlier agent session instead of starting a new one: the `sessionId` of a
+   * previous result (`capabilities.resume`). The agent keeps its own history of that session.
+   */
+  resume?: string;
   /** Extra CLI arguments, inserted before the prompt. */
   extraArgs?: readonly string[];
   /** MCP servers to attach for this task (`capabilities.mcp`). */
@@ -105,6 +110,8 @@ export interface AgentCapabilities {
   approvals?: boolean;
   /** Honors `AgentTask.mcpServers`. */
   mcp?: boolean;
+  /** Honors `AgentTask.resume`. */
+  resume?: boolean;
 }
 
 /**

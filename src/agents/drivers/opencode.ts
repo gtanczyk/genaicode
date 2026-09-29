@@ -21,7 +21,7 @@ export function opencode(options: OpencodeAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'opencode',
     command: options.command ?? 'opencode',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'max'], usage: true },
+    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'max'], usage: true, resume: true },
     args: (task) => opencodeArgs(task, options),
     createParser: createOpencodeParser,
   });
@@ -33,6 +33,7 @@ export function opencodeArgs(task: AgentTask, options: OpencodeAgentOptions = {}
   if (options.autoApprove) args.push('--auto');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--variant', task.effort);
+  if (task.resume) args.push('--session', task.resume);
   if (task.extraArgs) args.push(...task.extraArgs);
   return [...args, '--', task.prompt];
 }
@@ -67,6 +68,13 @@ export function createOpencodeParser(): AgentOutputParser {
           const state = isObject(part?.state) ? part.state : undefined;
           const failed = state?.status === 'error';
           const output = stringField(state, 'output') ?? stringField(state, 'error');
+          // opencode reports a tool call once it has finished, so the start and end arrive together.
+          events.push({
+            type: 'tool-start',
+            ...(id ? { id } : {}),
+            name,
+            ...(state && 'input' in state ? { input: state.input } : {}),
+          });
           events.push({
             type: 'tool-end',
             ...(id ? { id } : {}),

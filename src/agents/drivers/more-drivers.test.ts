@@ -240,6 +240,7 @@ describe('opencode driver', () => {
     ]);
     expect(events).toEqual([
       { type: 'session', sessionId: 'o-1' },
+      { type: 'tool-start', id: 'x1', name: 'edit', input: { filePath: 'c.ts' } },
       { type: 'tool-end', id: 'x1', name: 'edit', isError: false, output: 'ok' },
       { type: 'file-change', paths: ['c.ts'] },
       {

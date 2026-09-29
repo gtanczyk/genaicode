@@ -20,8 +20,38 @@ export interface CliEnvironment {
   signal?: AbortSignal;
   /** Agents to offer. Defaults to every headless driver. */
   agents?: readonly CodingAgent[];
+  /** Both stdin and stdout are terminals: `genaicode` with no arguments opens the chat. */
+  interactive?: boolean;
+  /** Terminal streams for the chat UI. */
+  tty?: { stdin: NodeJS.ReadStream; stdout: NodeJS.WriteStream };
+  /** Loads the bundled chat and web front ends. Defaults to `dist/ui/index.js`. */
+  loadUi?(): Promise<UiModule>;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
   runCheck?(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult>;
+}
+
+/** Options the bundled front ends take (see src/ui/index.tsx). */
+export interface UiLaunch {
+  agents: readonly CodingAgent[];
+  agent?: string;
+  cwd: string;
+  model?: string;
+  effort?: string;
+  resume?: string;
+  approveAll?: boolean;
+  env: NodeJS.ProcessEnv;
+  version: string;
+  stdout: NodeJS.WriteStream;
+  stderr: Output;
+  stdin: NodeJS.ReadStream;
+  signal?: AbortSignal;
+  port?: number;
+  open?: boolean;
+}
+
+export interface UiModule {
+  runChat(options: UiLaunch): Promise<number>;
+  runWeb(options: UiLaunch): Promise<number>;
 }
 
 export interface CheckResult {
@@ -37,8 +67,25 @@ export const EXIT_ABORTED = 130;
 export const helpText = `genaicode: run the coding-agent CLIs installed on this machine behind one interface.
 
 Usage:
+  genaicode                            Chat with an agent in this terminal (same as "chat")
+  genaicode chat [options]             Chat with an agent in this terminal
+  genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
+
+Chat and UI options:
+  -a, --agent <name>      Agent to start with (default: the first installed one)
+  -C, --cwd <dir>         Directory the agent works in (default: current directory)
+  -m, --model <id>        Model id passed to the agent CLI
+      --effort <level>    Reasoning effort, in the agent's own vocabulary
+  -r, --resume <id>       Continue this agent session
+  -y, --yes               Approve every permission request the agent asks for
+      --port <n>          (ui) Port to listen on, on 127.0.0.1 (default: a free port)
+      --no-open           (ui) Print the link instead of opening a browser
+
+  Each prompt after the first continues the agent's session (claude, codex, cursor,
+  opencode, copilot). Prompts sent while the agent works wait in a queue. Type /help in
+  the chat for commands.
 
 Run options:
   -a, --agent <name>      Agent to use (default: the first installed one, see "agents")
@@ -46,6 +93,7 @@ Run options:
   -m, --model <id>        Model id passed to the agent CLI
       --effort <level>    Reasoning effort, in the agent's own vocabulary
       --max-turns <n>     Turn limit, where the agent supports one
+  -r, --resume <id>       Continue the agent session with this id (printed after each run)
       --timeout <sec>     Stop the agent after this many seconds
       --verify <command>  Shell command that checks the work; on failure its output goes
                           back to the agent for another attempt
@@ -72,6 +120,9 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const agents = cli.agents ?? defaultAgents();
+  if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
+    command = { kind: 'chat', approveAll: false, open: false };
+  }
   switch (command.kind) {
     case 'help':
       cli.stdout.write(helpText);
@@ -83,7 +134,47 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return listAgents(cli, agents, command.json);
     case 'run':
       return runTask(cli, agents, command);
+    case 'chat':
+    case 'ui':
+      return runUi(cli, agents, command);
   }
+}
+
+async function runUi(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  options: Extract<CliCommand, { kind: 'chat' | 'ui' }>,
+): Promise<number> {
+  const tty = cli.tty ?? { stdin: process.stdin, stdout: process.stdout };
+  if (options.kind === 'chat' && !(cli.interactive ?? (tty.stdin.isTTY && tty.stdout.isTTY))) {
+    cli.stderr.write('genaicode chat needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n');
+    return EXIT_USAGE;
+  }
+  const ui = await (cli.loadUi ?? loadBundledUi)();
+  const launch: UiLaunch = {
+    agents,
+    agent: options.agent,
+    cwd: resolve(cli.cwd, options.cwd ?? '.'),
+    model: options.model,
+    effort: options.effort,
+    resume: options.resume,
+    approveAll: options.approveAll,
+    env: cli.env,
+    version: packageVersion(),
+    stdout: tty.stdout,
+    stderr: cli.stderr,
+    stdin: tty.stdin,
+    signal: cli.signal,
+    port: options.port,
+    open: options.open,
+  };
+  return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
+}
+
+/** The front ends are bundled into dist/ui by scripts/build-ui.mjs; the path is kept opaque to tsc. */
+function loadBundledUi(): Promise<UiModule> {
+  const bundle: string = new URL('../ui/index.js', import.meta.url).href;
+  return import(bundle) as Promise<UiModule>;
 }
 
 function listAgents(cli: CliEnvironment, agents: readonly CodingAgent[], json: boolean): number {
@@ -121,6 +212,7 @@ async function runTask(
     model: options.model,
     effort: options.effort,
     maxTurns: options.maxTurns,
+    resume: options.resume,
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,

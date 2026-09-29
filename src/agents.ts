@@ -55,3 +55,5 @@ export { createVibeParser, vibe, vibeArgs } from './agents/drivers/vibe.js';
 export type { VibeAgentOptions } from './agents/drivers/vibe.js';
 export { antigravity, antigravityArgs, createAntigravityParser } from './agents/drivers/antigravity.js';
 export type { AntigravityAgentOptions } from './agents/drivers/antigravity.js';
+export { createAgentSession } from './agents/session.js';
+export type { AgentSession, AgentSessionOptions, SessionEntry, SessionState, SessionTurn } from './agents/session.js';
