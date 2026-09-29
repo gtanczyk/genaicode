@@ -2,7 +2,7 @@ import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTurn } from '../../agents/session.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
-import { formatDuration, SLASH_COMMANDS, statusParts } from '../format.js';
+import { formatDuration, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
 
 type StaticItem =
@@ -71,7 +71,15 @@ export function ChatApp({
   const width = Math.max(40, (stdout.columns || 80) - 1);
   const rows = stdout.rows || 24;
 
-  useEffect(() => controller.subscribe(setView), [controller]);
+  useEffect(() => {
+    let seen = controller.get().session;
+    return controller.subscribe((next) => {
+      // The terminal's bark: ring the bell when an approval waits or a turn finishes.
+      if (next.bark && needsAttention(seen, next.session)) stdout.write('\x07');
+      seen = next.session;
+      setView(next);
+    });
+  }, [controller, stdout]);
   const running = view.session.status === 'running';
   useEffect(() => {
     if (!running) return;
@@ -176,7 +184,7 @@ export function ChatApp({
             <Box key={item.key} flexDirection="column" marginBottom={1}>
               <Text>
                 <Text color="cyan" bold>
-                  genaicode
+                  🐺 genaicode
                 </Text>
                 <Text color="gray"> {version} · coding agents in your terminal</Text>
               </Text>

@@ -164,6 +164,10 @@ can say "now add a test for that". Prompts sent while the agent works wait in a 
 run next; Esc stops the agent. `/agent`, `/model` and `/new` switch agent, model and
 session; `/help` lists the rest.
 
+The wolf from genaicode 1.0 is back. When the agent asks for approval or finishes, the
+browser UI barks if its tab is in the background and counts those events in the tab title.
+The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button) quiets it.
+
 `genaicode ui` prints a link with a random access token and only answers requests that
 carry it, on the loopback address. Both front ends are bundled into the package and load
 only for these commands; importing `genaicode` or `genaicode/agents` pulls in no UI code.

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The wolf from genaicode 1.0 is back in `genaicode chat` and `genaicode ui`. The browser UI
+  shows it as the favicon, in the header and on the start screen. With the tab in the
+  background, it barks (the original `wolf-bark.mp3`) when the agent asks for approval or
+  finishes, and counts those in the tab title. The terminal UI rings the bell instead.
+  `/bark [on|off]` or the Bark button toggles it.
+
 ## 2.8.0 — 2026-09-29
 
 ### Added

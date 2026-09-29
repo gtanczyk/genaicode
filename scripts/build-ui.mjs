@@ -1,6 +1,7 @@
 // Bundle the interactive front ends (Ink terminal UI and the browser app) into dist/ui/.
 // They ship inside the genaicode package but load only for `genaicode chat` and `genaicode ui`,
 // so the library itself keeps no UI dependencies.
+import { cpSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const shared = {
@@ -46,3 +47,6 @@ await build({
   format: 'esm',
   jsx: 'automatic',
 });
+
+// The wolf mascot and its bark, from genaicode 1.0's UI.
+cpSync('src/ui/web/assets', 'dist/ui/assets', { recursive: true });

@@ -16,6 +16,13 @@ export interface WebUiOptions {
   port?: number;
   /** Fixed access token, for tests. Default: 32 random bytes. */
   token?: string;
+  /** Static files served at /assets/<name> without the token (the mascot and its bark). */
+  assets?: ReadonlyMap<string, WebAsset>;
+}
+
+export interface WebAsset {
+  type: string;
+  body: Buffer;
 }
 
 export interface WebUi {
@@ -117,6 +124,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     if (req.method === 'GET' && url.pathname === '/app.js') {
       return send(res, 200, 'text/javascript; charset=utf-8', options.clientScript);
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
+      const asset = options.assets?.get(url.pathname.slice('/assets/'.length));
+      if (!asset) return send(res, 404, 'text/plain', 'Not found');
+      res.writeHead(200, {
+        'content-type': asset.type,
+        'content-length': asset.body.length,
+        'cache-control': 'public, max-age=86400',
+        'x-content-type-options': 'nosniff',
+      });
+      return res.end(asset.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       if (!tokenOk(url.searchParams.get('token'))) return send(res, 403, 'text/plain', 'Bad token');

@@ -9,6 +9,7 @@ export function pageHtml(title: { version: string; cwd: string }): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>genaicode</title>
+<link rel="icon" type="image/png" href="/assets/wolf-64.png">
 <style>${STYLES}</style>
 </head>
 <body>
@@ -25,6 +26,7 @@ const STYLES = `
   --ok: #2b8a3e; --warn: #b35c00; --warn-soft: #fff4e6; --err: #c92a2a; --err-soft: #fff0f0;
   --code-bg: #f1f1ee; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --wolf: url(/assets/wolf.webp);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,6 +35,7 @@ const STYLES = `
     --line: #2e2e2c; --accent: #7c9bff; --accent-soft: #1f2744; --accent-text: #0e1322;
     --ok: #69db7c; --warn: #ffb35c; --warn-soft: #2e2415; --err: #ff8787; --err-soft: #331b1b;
     --code-bg: #262625; --shadow: 0 1px 2px rgba(0,0,0,.3);
+    --wolf: url(/assets/wolf-dark.webp);
     color-scheme: dark;
   }
 }
@@ -43,7 +46,12 @@ body { background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif,
 button, input, select, textarea { font: inherit; color: inherit; }
 header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .brand { font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
-.brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.brand img { width: 24px; height: 24px; image-rendering: pixelated; }
+.wolf { width: 180px; height: 180px; margin: 0 auto 12px; background: var(--wolf) center / contain no-repeat; }
+#root.has-turns::before { content: ''; position: fixed; inset: 64px 0 120px; background: var(--wolf) center / min(420px, 60vw) no-repeat; opacity: .06; pointer-events: none; z-index: 0; }
+main, header.bar, footer.composer { position: relative; z-index: 1; }
+button.chip { cursor: pointer; }
+button.chip:hover { border-color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
 .field { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .field select, .field input { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 13px; }
@@ -55,7 +63,7 @@ header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; 
 .conn.off { background: var(--err); }
 main { flex: 1; overflow-y: auto; }
 .thread { max-width: 860px; margin: 0 auto; padding: 28px 20px 12px; display: flex; flex-direction: column; gap: 22px; }
-.empty { text-align: center; margin-top: 12vh; color: var(--muted); }
+.empty { text-align: center; margin-top: 8vh; color: var(--muted); }
 .empty h1 { color: var(--text); font-size: 26px; letter-spacing: -.02em; margin: 0 0 8px; }
 .ideas { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
 .ideas button { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; box-shadow: var(--shadow); }
