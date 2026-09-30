@@ -13,6 +13,9 @@ scripts in `package.json`.
   `chat` / `ui` front ends in `src/ui/`, bundled by `scripts/build-ui.mjs` into `dist/ui`). It
   must not grow an agent loop or prompts of its own, and the library entry points never import
   it or `src/ui`.
+- `npm run test:browser` runs the `genaicode/vite` overlay in headless Chromium through
+  Playwright (`*.browser.test.ts`, not part of `npm test`/`check`); it needs
+  `npx playwright install chromium` once.
 - `npm run test:e2e` hits real providers and is credential-gated: tests are skipped unless
   provider env vars are set (`OPENAI_API_KEY`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`,
   `GEMINI_API_KEY`/`GEMINI_MODEL`). Without keys they skip (not fail), so this is not a blocker.
