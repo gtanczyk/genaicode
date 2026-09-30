@@ -59,10 +59,10 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   iframe { background: #141414; }
 }
 </style>
+<button class="wolf" title="genaicode" aria-expanded="false"><span class="badge" hidden></span></button>
 <div class="panel" hidden>
   <div class="head"><b>genaicode</b><button class="fix" hidden></button><button class="close" title="Hide">✕</button></div>
-</div>
-<button class="wolf" title="genaicode"><span class="badge" hidden></span></button>`;
+</div>`;
   const $ = <T extends Element>(selector: string) => root.querySelector(selector) as T;
   const wolf = $<HTMLButtonElement>('.wolf');
   const badge = $<HTMLElement>('.badge');
@@ -92,9 +92,13 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     return session;
   };
 
+  const show = (visible: boolean) => {
+    panel.hidden = !visible;
+    wolf.setAttribute('aria-expanded', String(visible));
+  };
   // One frame, even when the wolf and "Fix" are clicked before the session has loaded.
   const open = () => {
-    panel.hidden = false;
+    show(true);
     frame ??= loadSession().then(
       ({ url }) => {
         const iframe = document.createElement('iframe');
@@ -112,8 +116,12 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     return frame;
   };
 
-  wolf.addEventListener('click', () => (panel.hidden ? void open() : (panel.hidden = true)));
-  $<HTMLButtonElement>('.close').addEventListener('click', () => (panel.hidden = true));
+  wolf.addEventListener('click', () => (panel.hidden ? void open() : show(false)));
+  $<HTMLButtonElement>('.close').addEventListener('click', () => {
+    show(false);
+    // The focused button is gone with the panel: back to the wolf that opened it.
+    wolf.focus();
+  });
   fix.addEventListener('click', async () => {
     const sent = errors;
     errors = [];
@@ -165,9 +173,12 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
       consoleError(...args);
       // Collecting the error must never break the app's own logging.
       try {
+        const message = args.map(text).join(' ');
+        // Vite's client logs a build error it has no overlay for; 'vite:error' below has it already.
+        if (hot && message.startsWith('[vite] Internal Server Error\n')) return;
         add({
           source: 'console',
-          message: args.map(text).join(' '),
+          message,
           stack: args.find((arg): arg is Error => arg instanceof Error)?.stack,
         });
       } catch {
