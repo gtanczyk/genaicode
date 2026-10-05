@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The `genaicode/vite` panel can be resized: drag its left or top edge (or focus an edge and use
+  the arrow keys), double-click an edge to reset it. The size is remembered across reloads.
+
 ## 2.9.1 — 2026-09-29
 
 ### Fixed

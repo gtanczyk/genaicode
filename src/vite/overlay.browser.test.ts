@@ -182,6 +182,91 @@ describe('overlay in the browser', () => {
     expect(await inOverlay((root) => (root.querySelector('.fix') as HTMLElement).hidden)).toBe(true);
   });
 
+  it('ignores a stored size it cannot use', async () => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.evaluate(() =>
+      localStorage.setItem('genaicode-overlay-size', JSON.stringify({ width: -50, height: 'x' })),
+    );
+    await page.reload();
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
+    const rect = await inOverlay((root) => {
+      const { width, height } = root.querySelector('.panel')!.getBoundingClientRect();
+      return { width: Math.round(width), height: Math.round(height) };
+    });
+    expect(rect).toEqual({ width: 320, height: 680 });
+  });
+
+  it('resizes the panel from its edges, remembers the size and resets it', async () => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
+    const box = async () => {
+      const rect = await inOverlay((root) => {
+        const { width, height } = root.querySelector('.panel')!.getBoundingClientRect();
+        return { width, height };
+      });
+      return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    };
+    const grip = async (axis: 'width' | 'height') => {
+      const rect = await inOverlay((root, name) => {
+        const { x, y, width, height } = root.querySelector(`.grip.${name}`)!.getBoundingClientRect();
+        return { x: x + width / 2, y: y + height / 2 };
+      }, axis);
+      return rect;
+    };
+    expect(await box()).toEqual({ width: 460, height: 680 });
+
+    // The panel keeps its bottom-right corner: dragging left and up makes it bigger.
+    const left = await grip('width');
+    await page.mouse.move(left.x, left.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(left.x - 200, left.y + 100, { steps: 5 });
+    await page.mouse.up();
+    const top = await grip('height');
+    await page.mouse.move(top.x, top.y);
+    await page.mouse.down();
+    await page.mouse.move(top.x, top.y + 180, { steps: 5 });
+    await page.mouse.up();
+    expect(await box()).toEqual({ width: 660, height: 500 });
+
+    // Far past the edge of the window it stops at the window.
+    await page.mouse.move(left.x - 200, left.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(-5000, left.y + 100, { steps: 3 });
+    await page.mouse.up();
+    expect((await box()).width).toBe(1200 - 36);
+    expect(await inOverlay((root) => root.querySelector('.grip.width')!.getAttribute('aria-valuenow'))).toBe('1164');
+
+    // Arrow keys on a focused edge, then a reload keeps the size.
+    await inOverlay((root) => (root.querySelector('.grip.width') as HTMLElement).focus());
+    await page.keyboard.press('ArrowRight');
+    expect((await box()).width).toBe(1140);
+    await page.reload();
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
+    expect(await box()).toEqual({ width: 1140, height: 500 });
+
+    // In a window smaller than the minimum, the edges describe what is shown.
+    await page.setViewportSize({ width: 300, height: 380 });
+    expect(await box()).toEqual({ width: 264, height: 270 });
+    const aria = (name: string) =>
+      inOverlay(
+        (root, axis) =>
+          ['min', 'max', 'now'].map((key) => root.querySelector(`.grip.${axis}`)!.getAttribute(`aria-value${key}`)),
+        name,
+      );
+    await expect.poll(() => aria('width')).toEqual(['264', '264', '264']);
+    expect(await aria('height')).toEqual(['270', '270', '270']);
+    await page.setViewportSize({ width: 1200, height: 900 });
+
+    // Double-click, or Enter on a focused edge, puts an edge back.
+    await page.dblclick('genaicode-overlay >> .grip.width');
+    await inOverlay((root) => (root.querySelector('.grip.height') as HTMLElement).focus());
+    await page.keyboard.press('Enter');
+    expect(await box()).toEqual({ width: 460, height: 680 });
+    await page.reload();
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
+    expect(await box()).toEqual({ width: 460, height: 680 });
+  });
+
   it('drops the build errors once an update builds', async () => {
     await page.click('#log');
     buildError();

@@ -43,14 +43,19 @@ export function mountOverlay(config: OverlayConfig, hot: OverlayHot | undefined)
 .badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: #c92a2a; color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; }
 .badge[hidden], .panel[hidden], .fix[hidden] { display: none; }
-.panel { position: fixed; right: 18px; bottom: 82px; width: min(460px, calc(100vw - 36px)); height: min(680px, calc(100vh - 110px));
-  display: flex; flex-direction: column; background: #fff; border: 1px solid #e4e4df; border-radius: 14px; overflow: hidden;
+.panel { position: fixed; right: 18px; bottom: 82px; width: min(var(--width, 460px), calc(100vw - 36px));
+  height: min(var(--height, 680px), calc(100vh - 110px)); display: flex; flex-direction: column; background: #fff; border: 1px solid #e4e4df; border-radius: 14px; overflow: hidden;
   box-shadow: 0 8px 40px rgba(0,0,0,.22); }
 .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #e4e4df; background: #f7f7f5; color: #1d1d1b; }
 .head b { flex: 1; }
 .head button { border: 1px solid #e4e4df; background: #fff; color: #1d1d1b; border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 .head .fix { background: #c92a2a; border-color: #c92a2a; color: #fff; font-weight: 600; }
 iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
+.grip { position: absolute; z-index: 1; touch-action: none; outline-offset: -3px; }
+.grip.width { left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.grip.height { left: 0; right: 0; top: 0; height: 6px; cursor: ns-resize; }
+.grip:hover, .grip:focus-visible, .resizing .grip { background: rgba(127,127,120,.25); }
+.resizing iframe { pointer-events: none; }
 .note { padding: 16px; color: #6b6b66; }
 @media (prefers-color-scheme: dark) {
   .wolf, .panel { background-color: #1d1d1c; border-color: #2e2e2c; }
@@ -62,6 +67,10 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
 <button class="wolf" title="genaicode" aria-expanded="false"><span class="badge" hidden></span></button>
 <div class="panel" hidden>
   <div class="head"><b>genaicode</b><button class="fix" hidden></button><button class="close" title="Hide">✕</button></div>
+  <div class="grip width" role="separator" aria-orientation="vertical" aria-label="Panel width" tabindex="0"
+    aria-keyshortcuts="Enter" title="Drag or use arrow keys to resize · Enter or double-click to reset"></div>
+  <div class="grip height" role="separator" aria-orientation="horizontal" aria-label="Panel height" tabindex="0"
+    aria-keyshortcuts="Enter" title="Drag or use arrow keys to resize · Enter or double-click to reset"></div>
 </div>`;
   const $ = <T extends Element>(selector: string) => root.querySelector(selector) as T;
   const wolf = $<HTMLButtonElement>('.wolf');
@@ -69,6 +78,102 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   const panel = $<HTMLElement>('.panel');
   const fix = $<HTMLButtonElement>('.fix');
   let frame: Promise<void> | undefined;
+
+  // The panel keeps its corner and grows left and up. Its size outlives reloads of the app.
+  const SIZE_KEY = 'genaicode-overlay-size';
+  const DEFAULT_SIZE = { width: 460, height: 680 };
+  const MIN_SIZE = { width: 320, height: 300 };
+  const size = { ...DEFAULT_SIZE };
+  try {
+    const saved = JSON.parse(localStorage.getItem(SIZE_KEY) ?? 'null') as Partial<typeof size> | null;
+    for (const axis of ['width', 'height'] as const) {
+      const value = saved?.[axis];
+      if (typeof value === 'number' && Number.isFinite(value)) size[axis] = Math.max(MIN_SIZE[axis], Math.round(value));
+    }
+  } catch {
+    // No storage, or nothing usable in it: the default size.
+  }
+  // What the window leaves for the panel; the CSS clamps to the same, even below the minimum.
+  const maxSize = () => ({
+    width: Math.max(0, innerWidth - 36),
+    height: Math.max(0, innerHeight - 110),
+  });
+  const minOf = (axis: 'width' | 'height') => Math.min(MIN_SIZE[axis], maxSize()[axis]);
+  const grips = {
+    width: $<HTMLElement>('.grip.width'),
+    height: $<HTMLElement>('.grip.height'),
+  };
+  const sync = () => {
+    const max = maxSize();
+    for (const axis of ['width', 'height'] as const) {
+      grips[axis].setAttribute('aria-valuemin', String(minOf(axis)));
+      grips[axis].setAttribute('aria-valuemax', String(max[axis]));
+      grips[axis].setAttribute('aria-valuenow', String(Math.min(max[axis], size[axis])));
+    }
+  };
+  const resize = (axis: 'width' | 'height', value: number, save: boolean) => {
+    size[axis] = Math.round(Math.max(minOf(axis), Math.min(maxSize()[axis], value)));
+    panel.style.setProperty(`--${axis}`, `${size[axis]}px`);
+    sync();
+    if (!save) return;
+    try {
+      localStorage.setItem(SIZE_KEY, JSON.stringify(size));
+    } catch {
+      // The size just isn't remembered.
+    }
+  };
+  if (size.width !== DEFAULT_SIZE.width) panel.style.setProperty('--width', `${size.width}px`);
+  if (size.height !== DEFAULT_SIZE.height) panel.style.setProperty('--height', `${size.height}px`);
+  sync();
+  window.addEventListener('resize', sync);
+  for (const axis of ['width', 'height'] as const) {
+    const grip = grips[axis];
+    const along = (event: { clientX: number; clientY: number }) => (axis === 'width' ? event.clientX : event.clientY);
+    grip.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const start = along(event);
+      const from = Math.min(maxSize()[axis], size[axis]);
+      grip.setPointerCapture?.(event.pointerId);
+      // The frame would swallow the pointer moves over it.
+      panel.classList.add('resizing');
+      const move = (moved: PointerEvent) => resize(axis, from + start - along(moved), false);
+      const end = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', end);
+        grip.removeEventListener('pointercancel', end);
+        panel.classList.remove('resizing');
+        resize(axis, size[axis], true);
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', end);
+      grip.addEventListener('pointercancel', end);
+    });
+    const reset = () => {
+      panel.style.removeProperty(`--${axis}`);
+      size[axis] = DEFAULT_SIZE[axis];
+      sync();
+      try {
+        localStorage.setItem(SIZE_KEY, JSON.stringify(size));
+      } catch {
+        // The size just isn't remembered.
+      }
+    };
+    grip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        reset();
+        return;
+      }
+      const keys: Record<string, number> =
+        axis === 'width' ? { ArrowLeft: 24, ArrowRight: -24 } : { ArrowUp: 24, ArrowDown: -24 };
+      const step = keys[event.key];
+      if (!step) return;
+      event.preventDefault();
+      resize(axis, Math.min(maxSize()[axis], size[axis]) + step, true);
+    });
+    grip.addEventListener('dblclick', reset);
+  }
 
   const render = () => {
     badge.hidden = errors.length === 0;
