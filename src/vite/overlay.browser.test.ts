@@ -230,6 +230,19 @@ describe('overlay in the browser', () => {
     await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
     expect(await box()).toEqual({ width: 1140, height: 500 });
 
+    // In a window smaller than the minimum, the edges describe what is shown.
+    await page.setViewportSize({ width: 300, height: 380 });
+    expect(await box()).toEqual({ width: 264, height: 270 });
+    const aria = (name: string) =>
+      inOverlay(
+        (root, axis) =>
+          ['min', 'max', 'now'].map((key) => root.querySelector(`.grip.${axis}`)!.getAttribute(`aria-value${key}`)),
+        name,
+      );
+    await expect.poll(() => aria('width')).toEqual(['264', '264', '264']);
+    expect(await aria('height')).toEqual(['270', '270', '270']);
+    await page.setViewportSize({ width: 1200, height: 900 });
+
     // Double-click puts an edge back.
     await page.dblclick('genaicode-overlay >> .grip.width');
     await page.dblclick('genaicode-overlay >> .grip.height');

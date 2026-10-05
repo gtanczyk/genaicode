@@ -91,10 +91,12 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   } catch {
     // No storage, or nothing usable in it: the default size.
   }
+  // What the window leaves for the panel; the CSS clamps to the same, even below the minimum.
   const maxSize = () => ({
-    width: Math.max(MIN_SIZE.width, innerWidth - 36),
-    height: Math.max(MIN_SIZE.height, innerHeight - 110),
+    width: Math.max(0, innerWidth - 36),
+    height: Math.max(0, innerHeight - 110),
   });
+  const minOf = (axis: 'width' | 'height') => Math.min(MIN_SIZE[axis], maxSize()[axis]);
   const grips = {
     width: $<HTMLElement>('.grip.width'),
     height: $<HTMLElement>('.grip.height'),
@@ -102,13 +104,13 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   const sync = () => {
     const max = maxSize();
     for (const axis of ['width', 'height'] as const) {
-      grips[axis].setAttribute('aria-valuemin', String(MIN_SIZE[axis]));
+      grips[axis].setAttribute('aria-valuemin', String(minOf(axis)));
       grips[axis].setAttribute('aria-valuemax', String(max[axis]));
       grips[axis].setAttribute('aria-valuenow', String(Math.min(max[axis], size[axis])));
     }
   };
   const resize = (axis: 'width' | 'height', value: number, save: boolean) => {
-    size[axis] = Math.round(Math.min(maxSize()[axis], Math.max(MIN_SIZE[axis], value)));
+    size[axis] = Math.round(Math.max(minOf(axis), Math.min(maxSize()[axis], value)));
     panel.style.setProperty(`--${axis}`, `${size[axis]}px`);
     sync();
     if (!save) return;
