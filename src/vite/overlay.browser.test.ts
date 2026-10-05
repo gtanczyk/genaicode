@@ -182,6 +182,20 @@ describe('overlay in the browser', () => {
     expect(await inOverlay((root) => (root.querySelector('.fix') as HTMLElement).hidden)).toBe(true);
   });
 
+  it('ignores a stored size it cannot use', async () => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.evaluate(() =>
+      localStorage.setItem('genaicode-overlay-size', JSON.stringify({ width: -50, height: 'x' })),
+    );
+    await page.reload();
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
+    const rect = await inOverlay((root) => {
+      const { width, height } = root.querySelector('.panel')!.getBoundingClientRect();
+      return { width: Math.round(width), height: Math.round(height) };
+    });
+    expect(rect).toEqual({ width: 320, height: 680 });
+  });
+
   it('resizes the panel from its edges, remembers the size and resets it', async () => {
     await page.setViewportSize({ width: 1200, height: 900 });
     await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
@@ -243,9 +257,10 @@ describe('overlay in the browser', () => {
     expect(await aria('height')).toEqual(['270', '270', '270']);
     await page.setViewportSize({ width: 1200, height: 900 });
 
-    // Double-click puts an edge back.
+    // Double-click, or Enter on a focused edge, puts an edge back.
     await page.dblclick('genaicode-overlay >> .grip.width');
-    await page.dblclick('genaicode-overlay >> .grip.height');
+    await inOverlay((root) => (root.querySelector('.grip.height') as HTMLElement).focus());
+    await page.keyboard.press('Enter');
     expect(await box()).toEqual({ width: 460, height: 680 });
     await page.reload();
     await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());

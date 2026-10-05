@@ -68,9 +68,9 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
 <div class="panel" hidden>
   <div class="head"><b>genaicode</b><button class="fix" hidden></button><button class="close" title="Hide">✕</button></div>
   <div class="grip width" role="separator" aria-orientation="vertical" aria-label="Panel width" tabindex="0"
-    title="Drag to resize · double-click to reset"></div>
+    aria-keyshortcuts="Enter" title="Drag or use arrow keys to resize · Enter or double-click to reset"></div>
   <div class="grip height" role="separator" aria-orientation="horizontal" aria-label="Panel height" tabindex="0"
-    title="Drag to resize · double-click to reset"></div>
+    aria-keyshortcuts="Enter" title="Drag or use arrow keys to resize · Enter or double-click to reset"></div>
 </div>`;
   const $ = <T extends Element>(selector: string) => root.querySelector(selector) as T;
   const wolf = $<HTMLButtonElement>('.wolf');
@@ -86,8 +86,10 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   const size = { ...DEFAULT_SIZE };
   try {
     const saved = JSON.parse(localStorage.getItem(SIZE_KEY) ?? 'null') as Partial<typeof size> | null;
-    if (typeof saved?.width === 'number') size.width = saved.width;
-    if (typeof saved?.height === 'number') size.height = saved.height;
+    for (const axis of ['width', 'height'] as const) {
+      const value = saved?.[axis];
+      if (typeof value === 'number' && Number.isFinite(value)) size[axis] = Math.max(MIN_SIZE[axis], Math.round(value));
+    }
   } catch {
     // No storage, or nothing usable in it: the default size.
   }
@@ -147,15 +149,7 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
       grip.addEventListener('pointerup', end);
       grip.addEventListener('pointercancel', end);
     });
-    grip.addEventListener('keydown', (event) => {
-      const keys: Record<string, number> =
-        axis === 'width' ? { ArrowLeft: 24, ArrowRight: -24 } : { ArrowUp: 24, ArrowDown: -24 };
-      const step = keys[event.key];
-      if (!step) return;
-      event.preventDefault();
-      resize(axis, Math.min(maxSize()[axis], size[axis]) + step, true);
-    });
-    grip.addEventListener('dblclick', () => {
+    const reset = () => {
       panel.style.removeProperty(`--${axis}`);
       size[axis] = DEFAULT_SIZE[axis];
       sync();
@@ -164,7 +158,21 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
       } catch {
         // The size just isn't remembered.
       }
+    };
+    grip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        reset();
+        return;
+      }
+      const keys: Record<string, number> =
+        axis === 'width' ? { ArrowLeft: 24, ArrowRight: -24 } : { ArrowUp: 24, ArrowDown: -24 };
+      const step = keys[event.key];
+      if (!step) return;
+      event.preventDefault();
+      resize(axis, Math.min(maxSize()[axis], size[axis]) + step, true);
     });
+    grip.addEventListener('dblclick', reset);
   }
 
   const render = () => {
