@@ -165,6 +165,10 @@ describe('AgentChat', () => {
     );
     expect($$('a').map((a) => a.getAttribute('href'))).toEqual(['https://destination.example']);
     expect($('a').textContent).toBe('https://label.example https://b.example');
+    act(() => root.render(<Markdown text={'````md\n```js\nx\n```\n~~~literal\n````\n\n+ one\n1) two\n- three'} />));
+    expect($('pre code').textContent).toBe('```js\nx\n```\n~~~literal');
+    expect(text('ul li')).toEqual(['one', 'three']);
+    expect(text('ol li')).toEqual(['two']);
     act(() => root.render(<Markdown text={`${'>'.repeat(50_000)} deep`} />));
     expect($$('blockquote')).toHaveLength(8);
     expect($('.gc-md').textContent).toContain('deep');

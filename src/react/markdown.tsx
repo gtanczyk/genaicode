@@ -41,9 +41,13 @@ function inline(text: string, links = true): ReactNode[] {
 // Block syntax is matched on trimmed lines, without regexes that backtrack over whitespace.
 function fence(line: string): { marker: string; lang: string } | undefined {
   const t = line.trim();
-  const marker = t.slice(0, 3);
-  if (marker !== '```' && marker !== '~~~') return undefined;
-  const lang = t.slice(3).trim();
+  const char = t[0];
+  if (char !== '`' && char !== '~') return undefined;
+  let length = 0;
+  while (t[length] === char) length += 1;
+  if (length < 3) return undefined;
+  const marker = char.repeat(length);
+  const lang = t.slice(length).trim();
   return { marker, lang: /^[\w+-]{1,40}$/.test(lang) ? lang : '' };
 }
 function heading(line: string): { level: number; text: string } | undefined {
@@ -90,7 +94,12 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
     if (open) {
       const body: string[] = [];
       i += 1;
-      while (i < lines.length && !lines[i].trimStart().startsWith(open.marker)) body.push(lines[i++]);
+      // Closed by the same character, at least as many times, and nothing else on the line.
+      const closes = (text: string) => {
+        const t = text.trim();
+        return t.length >= open.marker.length && t === open.marker[0].repeat(t.length);
+      };
+      while (i < lines.length && !closes(lines[i])) body.push(lines[i++]);
       i += 1;
       out.push(
         <pre key={key++}>
@@ -128,6 +137,8 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
       const items: string[] = [];
       for (; i < lines.length; i += 1) {
         const next = item(lines[i]);
+        // A list of the other kind starts a new list.
+        if (next !== undefined && items.length && Number.isNaN(parseInt(lines[i], 10)) === ordered) break;
         if (next !== undefined) items.push(next);
         // An indented line continues the item above it.
         else if (lines[i].startsWith('  ') && lines[i].trim()) items[items.length - 1] += `\n${lines[i].trim()}`;
