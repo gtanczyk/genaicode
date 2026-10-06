@@ -192,6 +192,34 @@ describe('createAgentSession', () => {
     ]);
   });
 
+  it('transforms queued prompts only when their turn starts', async () => {
+    const gate = deferred();
+    const { agent } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}]);
+    const seen: string[] = [];
+    const session = createAgentSession({ agent, cwd: '.', transformPrompt: (text) => (seen.push(text), text) });
+    session.send('first');
+    session.send('queued');
+    expect(seen).toEqual(['first']);
+    gate.resolve();
+    await session.idle();
+    expect(seen).toEqual(['first', 'queued']);
+
+    const blocked = deferred();
+    const second = fakeAgent([() => blocked.promise.then(() => ({}))]);
+    seen.length = 0;
+    const stopped = createAgentSession({
+      agent: second.agent,
+      cwd: '.',
+      transformPrompt: (text) => (seen.push(text), text),
+    });
+    stopped.send('run');
+    stopped.send('dropped');
+    stopped.stop();
+    blocked.resolve();
+    await stopped.idle();
+    expect(seen).toEqual(['run']);
+  });
+
   it('holds approvals until answered, and denies them on stop', async () => {
     const decisions: string[] = [];
     const { agent } = fakeAgent([

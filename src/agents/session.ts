@@ -347,13 +347,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const current = run;
       const turnId = state.turns.at(-1)?.id;
       const turnController = controller;
+      // Transform only what is steered now; a queued prompt is transformed when its turn starts.
       let steerText: string | undefined;
-      try {
-        steerText = toAgent(prompt);
-      } catch {
-        // Queued instead: the next turn reports the failure.
+      if (current?.steer && state.canSteer && turnId !== undefined) {
+        try {
+          steerText = toAgent(prompt);
+        } catch {
+          // Queued instead: its turn reports the failure.
+        }
       }
-      if (current?.steer && state.canSteer && turnId !== undefined && steerText !== undefined) {
+      if (current?.steer && turnId !== undefined && steerText !== undefined) {
         addEntry(turnId, { kind: 'input', text: prompt });
         current.steer(steerText).catch(() => {
           // The turn ended before the agent took the input: run it as the next turn instead,

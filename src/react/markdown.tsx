@@ -73,7 +73,11 @@ export function Markdown({ text, streaming, className }: { text: string; streami
   );
 }
 
-function blocks(lines: string[]): ReactNode[] {
+// Deeper quotes render as plain text, so a reply full of '>' cannot exhaust the stack.
+const MAX_QUOTE_DEPTH = 8;
+
+function blocks(lines: string[], depth = 0): ReactNode[] {
+  const quote = (line: string) => depth < MAX_QUOTE_DEPTH && isQuote(line);
   const out: ReactNode[] = [];
   let i = 0;
   let key = 0;
@@ -109,10 +113,10 @@ function blocks(lines: string[]): ReactNode[] {
       i += 1;
       continue;
     }
-    if (isQuote(line)) {
+    if (quote(line)) {
       const quoted: string[] = [];
-      while (i < lines.length && isQuote(lines[i])) quoted.push(unquote(lines[i++]));
-      out.push(<blockquote key={key++}>{blocks(quoted)}</blockquote>);
+      while (i < lines.length && quote(lines[i])) quoted.push(unquote(lines[i++]));
+      out.push(<blockquote key={key++}>{blocks(quoted, depth + 1)}</blockquote>);
       continue;
     }
     if (item(line) !== undefined) {
@@ -145,7 +149,7 @@ function blocks(lines: string[]): ReactNode[] {
       !fence(lines[i]) &&
       !heading(lines[i]) &&
       item(lines[i]) === undefined &&
-      !isQuote(lines[i])
+      !quote(lines[i])
     ) {
       para.push(lines[i++]);
     }

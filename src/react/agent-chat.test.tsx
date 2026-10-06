@@ -160,6 +160,9 @@ describe('AgentChat', () => {
     expect($('hr')).toBeTruthy();
     expect(text('ul li')).toEqual(['one\nmore', 'two']);
     expect(text('.gc-md > p')).toEqual(['#not a heading']);
+    act(() => root.render(<Markdown text={`${'>'.repeat(50_000)} deep`} />));
+    expect($$('blockquote')).toHaveLength(8);
+    expect($('.gc-md').textContent).toContain('deep');
     const started = Date.now();
     act(() => root.render(<Markdown text={`${'['.repeat(20_000)}${' '.repeat(20_000)}x\n${'- '.repeat(10_000)}`} />));
     expect(Date.now() - started).toBeLessThan(1000);
