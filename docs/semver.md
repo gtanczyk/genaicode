@@ -21,6 +21,8 @@ These are covered by minor/patch compatibility within 2.x:
 
 - `genaicode/agents` (coding-agent drivers, `AgentEvent`, `CodingAgent`) may change in a
   minor release until this section lists it as stable. See [agents.md](./agents.md).
+- `genaicode/react` (`<AgentChat>` props, its `.gc-*` class names and `--gc-*` custom
+  properties) and `genaicode/ui` (`startEmbeddedWeb`), on the same terms.
 
 ## Additive changes (minor)
 

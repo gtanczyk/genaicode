@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import type { CodingAgent } from '../agents/types.js';
+import type { EmbeddedWeb as PublicEmbeddedWeb, EmbeddedWebBundleOptions } from '../ui.js';
 import { createChatController, NoAgentError, type ChatController, type ChatOptions } from './controller.js';
 import { ChatApp } from './tui/app.js';
 import { startWebUi, type WebAsset } from './web/server.js';
@@ -105,6 +106,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   return 0;
 }
 
+/** See `EmbeddedWebOptions` in src/ui.ts (`genaicode/ui`), which fills in the defaults. */
 export interface EmbeddedWebOptions extends ChatOptions {
   version: string;
   /** Origins of the pages that show the UI in a frame. */
@@ -149,6 +151,10 @@ export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<Emb
     throw error;
   }
 }
+
+// `genaicode/ui` (src/ui.ts) calls this through a dynamic import; keep the two in step.
+export type { PublicEmbeddedWeb, EmbeddedWebBundleOptions };
+startEmbeddedWeb satisfies (options: EmbeddedWebBundleOptions) => Promise<PublicEmbeddedWeb>;
 
 function openBrowser(url: string) {
   const [command, args] =

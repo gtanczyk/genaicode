@@ -73,6 +73,11 @@ export interface AgentSessionOptions {
    * `approve()` is called. Without it every request waits for `approve()`.
    */
   autoApprove?(request: ApprovalRequest): ApprovalDecision | undefined;
+  /**
+   * Rewrites each prompt just before it reaches the agent, e.g. to add context the user should
+   * not see. Turns, queued prompts and steering input keep the text given to `send()`.
+   */
+  transformPrompt?(prompt: string): string;
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -111,6 +116,7 @@ export interface AgentSession {
 export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const maxToolOutput = options.maxToolOutput ?? 4_000;
   const maxTurns = options.maxTurns ?? 200;
+  const toAgent = (prompt: string) => (options.transformPrompt ? options.transformPrompt(prompt) : prompt);
   let agent = options.agent;
   let state: SessionState = {
     agent: agent.name,
@@ -275,16 +281,22 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       turns: [...state.turns, turn].slice(-maxTurns),
       canSteer: false,
     });
-    const current = agent.run({
-      ...options.task,
-      prompt,
-      cwd: state.cwd,
-      model: state.model,
-      effort: state.effort,
-      resume,
-      signal: turnController.signal,
-      onApproval: (request) => onApproval(turnId, request),
-    });
+    let current: AgentRun;
+    try {
+      current = agent.run({
+        ...options.task,
+        prompt: toAgent(prompt),
+        cwd: state.cwd,
+        model: state.model,
+        effort: state.effort,
+        resume,
+        signal: turnController.signal,
+        onApproval: (request) => onApproval(turnId, request),
+      });
+    } catch (error) {
+      // A throwing transformPrompt (or driver) fails this turn; the queue goes on as usual.
+      current = failedRun(error instanceof Error ? error.message : String(error));
+    }
     run = current;
     if (current.steer && agent.capabilities.steer) set({ canSteer: true });
     void (async () => {
@@ -335,9 +347,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const current = run;
       const turnId = state.turns.at(-1)?.id;
       const turnController = controller;
+      // Transform only what is steered now; a queued prompt is transformed when its turn starts.
+      let steerText: string | undefined;
       if (current?.steer && state.canSteer && turnId !== undefined) {
+        try {
+          steerText = toAgent(prompt);
+        } catch {
+          // Queued instead: its turn reports the failure.
+        }
+      }
+      if (current?.steer && turnId !== undefined && steerText !== undefined) {
         addEntry(turnId, { kind: 'input', text: prompt });
-        current.steer(prompt).catch(() => {
+        current.steer(steerText).catch(() => {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
@@ -390,6 +411,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       closed = true;
       this.stop();
       listeners.clear();
+    },
+  };
+}
+
+/** A run that failed before it started. */
+function failedRun(message: string): AgentRun {
+  const result: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
+  return {
+    result: Promise.resolve(result),
+    abort() {},
+    async *[Symbol.asyncIterator]() {
+      yield { type: 'error', message };
+      yield { type: 'done', result };
     },
   };
 }

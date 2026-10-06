@@ -1,8 +1,24 @@
 # Changelog
 
-## Unreleased
+## 2.10.0 — 2026-10-06
 
 ### Added
+
+- `genaicode/react`: `<AgentChat>`, the `genaicode ui` chat as a presentational React
+  component for apps that run their own `createAgentSession` and stream its `SessionState`
+  to the page. It renders turns, streaming Markdown (no raw HTML; links open in a new tab),
+  collapsible tool calls, edited files, errors, approvals, queued prompts and the busy
+  state, and reports `onSend`, `onStop` and `onApprove`. Slots for host content:
+  `renderPrompt`, `renderAfterTurn`, `renderFooter`, `notices`, `header`, `headerExtras`,
+  `emptyState`, `formatToolName`. Themed with `--gc-*` CSS custom properties; styles in
+  `genaicode/react/styles.css`. React (18+) comes from the app and is not a declared
+  dependency. `Markdown` and the display helpers are exported too.
+- `genaicode ui` and the `genaicode/vite` panel are now drawn by `<AgentChat>`.
+- `genaicode/ui`: `startEmbeddedWeb` for hosts that frame the whole `genaicode ui` page,
+  typed with `task` (`mcpServers`, `timeoutMs`...), `env`, `transformPrompt` and
+  `frameAncestors`. The UI bundle loads only when it is called.
+- `createAgentSession({ transformPrompt })` rewrites each prompt (and steered input) before
+  it reaches the agent; the transcript keeps the text given to `send()`.
 
 - The `genaicode/vite` panel can be resized: drag its left or top edge (or focus an edge and use
   the arrow keys), double-click an edge to reset it. The size is remembered across reloads.

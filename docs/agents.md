@@ -113,6 +113,9 @@ session.send('Now cover it with a test'); // resumes the same agent session
   `autoApprove` decides them. `stop()` denies whatever is pending.
 - `setAgent()` switches agents between turns and starts a fresh agent session; `reset()`
   does the same for the current agent.
+- `transformPrompt(text)` rewrites what reaches the agent (a briefing, a context prefix)
+  while turns, the queue and steered input keep the text given to `send()`.
+- `<AgentChat>` from `genaicode/react` renders `state` in a React page (see the README).
 
 ## Drivers
 
