@@ -27,7 +27,9 @@
     "node": ">=20"
   },
   "license": "Apache-2.0",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "files": [
     "dist",
     "docs",

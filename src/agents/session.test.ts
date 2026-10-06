@@ -154,6 +154,44 @@ describe('createAgentSession', () => {
     await session.idle();
   });
 
+  it('fails the turn when transformPrompt throws, and goes on with the queue', async () => {
+    const gate = deferred();
+    const { agent, tasks, steered } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}], {
+      steer: true,
+    });
+    const session = createAgentSession({
+      agent,
+      cwd: '.',
+      transformPrompt: (text) => {
+        if (text.startsWith('bad')) throw new Error(`cannot brief: ${text}`);
+        return text;
+      },
+    });
+    session.send('bad first');
+    await session.idle();
+    expect(tasks).toHaveLength(0);
+    expect(session.get().status).toBe('idle');
+    expect(session.get().turns[0].result).toMatchObject({
+      status: 'failed',
+      ok: false,
+      error: 'cannot brief: bad first',
+    });
+    expect(session.get().turns[0].entries).toContainEqual({ kind: 'error', message: 'cannot brief: bad first' });
+
+    session.send('good');
+    session.send('bad steer');
+    await Promise.resolve();
+    expect(steered).toEqual([]);
+    expect(session.get().queued).toEqual(['bad steer']);
+    gate.resolve();
+    await session.idle();
+    expect(session.get().turns.map((turn) => [turn.prompt, turn.result?.ok])).toEqual([
+      ['bad first', false],
+      ['good', true],
+      ['bad steer', false],
+    ]);
+  });
+
   it('holds approvals until answered, and denies them on stop', async () => {
     const decisions: string[] = [];
     const { agent } = fakeAgent([

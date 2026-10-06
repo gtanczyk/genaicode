@@ -249,7 +249,7 @@ app.get('/api/agent/events', (req, res) => {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
   const push = (state) => res.write(`data: ${JSON.stringify(state)}\n\n`);
   push(session.get());
-  req.on('close', session.subscribe(push));
+  res.on('close', session.subscribe(push));
 });
 app.post('/api/agent/send', (req, res) => {
   session.send(req.body.text);
