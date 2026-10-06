@@ -50,6 +50,10 @@
       "types": "./dist/agents.d.ts",
       "import": "./dist/agents.js"
     },
+    "./app-agent": {
+      "types": "./dist/app-agent.d.ts",
+      "import": "./dist/app-agent.js"
+    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"

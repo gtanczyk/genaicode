@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `genaicode/app-agent`: a coding agent inside your own local app. `createAppAgent` serves the
+  app's tools to the agent over MCP, turns write tools into actions the user approves, gives
+  the agent the open page with link chips and navigation, and in `dev` mode lets it edit the
+  app and propose a commit of exactly the reviewed tree. `createAppAgentHandler` serves it to
+  the page over HTTP and server-sent events, for any Node server.
+
 ### Fixed
 
 - Anthropic structured outputs: the converter drops the schema keywords the API rejects with a
