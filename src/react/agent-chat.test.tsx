@@ -112,6 +112,7 @@ describe('AgentChat', () => {
     expect(text('.gc-files code')).toEqual(['src/a.ts']);
     expect(text('.gc-turn-footer')).toEqual(['done in 12s · claude']);
     expect($('.gc-working').textContent).toContain('claude is working');
+    expect($('.gc-working [aria-hidden]')?.textContent).toMatch(/^· \d+/);
     expect(text('.gc-error')).toEqual(['rate limited']);
     expect($$('.gc-md')[1].className).toContain('gc-caret');
     expect(text('.gc-queued span')).toEqual(['⏸ CONTEXT: x\n\nOperator: then run the tests']);
@@ -169,6 +170,8 @@ describe('AgentChat', () => {
     expect($('pre code').textContent).toBe('```js\nx\n```\n~~~literal');
     expect(text('ul li')).toEqual(['one', 'three']);
     expect(text('ol li')).toEqual(['two']);
+    act(() => root.render(<Markdown text={'Intro\n***\nNext'} />));
+    expect(text('.gc-md > *')).toEqual(['Intro', '', 'Next']);
     act(() => root.render(<Markdown text={`${'>'.repeat(50_000)} deep`} />));
     expect($$('blockquote')).toHaveLength(8);
     expect($('.gc-md').textContent).toContain('deep');

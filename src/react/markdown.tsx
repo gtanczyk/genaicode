@@ -163,7 +163,8 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
       !fence(lines[i]) &&
       !heading(lines[i]) &&
       item(lines[i]) === undefined &&
-      !quote(lines[i])
+      !quote(lines[i]) &&
+      (para.length === 0 || !isRule(lines[i]))
     ) {
       para.push(lines[i++]);
     }

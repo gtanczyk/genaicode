@@ -310,7 +310,9 @@ function Turn({
       ) : null}
       {running ? (
         <div className="gc-working">
-          <span className="gc-spin" /> {turn.agent} is working · {formatDuration(now - turn.startedAt)}
+          <span className="gc-spin" /> {turn.agent} is working
+          {/* The ticking time stays out of the transcript's live region. */}
+          <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
