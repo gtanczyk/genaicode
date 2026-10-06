@@ -16,7 +16,8 @@ function link(href: string, label: ReactNode, key: number) {
   );
 }
 
-function inline(text: string): ReactNode[] {
+/** `links` is false inside a link label, so no <a> ends up inside another. */
+function inline(text: string, links = true): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let key = 0;
@@ -25,10 +26,12 @@ function inline(text: string): ReactNode[] {
     const at = match.index ?? 0;
     if (at > last) out.push(text.slice(last, at));
     if (match[1]) out.push(<code key={key++}>{token.slice(1, -1)}</code>);
-    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2))}</strong>);
-    else if (match[3]) out.push(<em key={key++}>{inline(token.slice(1, -1))}</em>);
-    else if (match[4]) out.push(link(match[5], inline(token.slice(1, token.indexOf(']'))), key++));
-    else out.push(link(token, token, key++));
+    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), links)}</strong>);
+    else if (match[3]) out.push(<em key={key++}>{inline(token.slice(1, -1), links)}</em>);
+    else if (match[4]) {
+      const label = inline(token.slice(1, token.indexOf(']')), false);
+      out.push(links ? link(match[5], label, key++) : <span key={key++}>{label}</span>);
+    } else out.push(links ? link(token, token, key++) : token);
     last = at + token.length;
   }
   if (last < text.length) out.push(text.slice(last));

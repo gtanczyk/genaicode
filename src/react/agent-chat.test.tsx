@@ -160,6 +160,11 @@ describe('AgentChat', () => {
     expect($('hr')).toBeTruthy();
     expect(text('ul li')).toEqual(['one\nmore', 'two']);
     expect(text('.gc-md > p')).toEqual(['#not a heading']);
+    act(() =>
+      root.render(<Markdown text={'[https://label.example **https://b.example**](https://destination.example)'} />),
+    );
+    expect($$('a').map((a) => a.getAttribute('href'))).toEqual(['https://destination.example']);
+    expect($('a').textContent).toBe('https://label.example https://b.example');
     act(() => root.render(<Markdown text={`${'>'.repeat(50_000)} deep`} />));
     expect($$('blockquote')).toHaveLength(8);
     expect($('.gc-md').textContent).toContain('deep');
