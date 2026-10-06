@@ -151,6 +151,20 @@ describe('AgentChat', () => {
     expect(text('ol li')).toEqual(['one', 'two']);
   });
 
+  it('renders headings, quotes, rules and item continuations, and stays fast on hostile text', () => {
+    act(() =>
+      root.render(<Markdown text={'## Plan\n\n> quoted *note*\n\n---\n\n- one\n  more\n- two\n\n#not a heading'} />),
+    );
+    expect($('h3').textContent).toBe('Plan');
+    expect($('blockquote em').textContent).toBe('note');
+    expect($('hr')).toBeTruthy();
+    expect(text('ul li')).toEqual(['one\nmore', 'two']);
+    expect(text('.gc-md > p')).toEqual(['#not a heading']);
+    const started = Date.now();
+    act(() => root.render(<Markdown text={`${'['.repeat(20_000)}${' '.repeat(20_000)}x\n${'- '.repeat(10_000)}`} />));
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('sends with Enter, keeps Shift+Enter for a new line, ignores blank input', () => {
     const props = render({ state: fixture({ status: 'idle', queued: [] }) });
     type('   ');

@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 // code, inline code, bold, italic and links. Everything is a React text node, so HTML in the
 // text shows as text. Links must be http(s) or mailto and open in a new tab.
 
+// Every repetition is bounded, so text full of unclosed markers stays linear to scan.
 const INLINE =
-  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(\[[^\]]+\]\(((?:https?:\/\/|mailto:)[^)\s]+)\))|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])/g;
+  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])/g;
 
 function link(href: string, label: ReactNode, key: number) {
   return (
@@ -34,17 +35,40 @@ function inline(text: string): ReactNode[] {
   return out;
 }
 
-const FENCE = /^\s*(```|~~~)\s*([\w+-]*)/;
-const HEADING = /^(#{1,6})\s+(.*)$/;
-const ITEM = /^\s*([-*+]|\d+[.)])\s+/;
-const QUOTE = /^\s*>\s?/;
-const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+// Block syntax is matched on trimmed lines, without regexes that backtrack over whitespace.
+function fence(line: string): { marker: string; lang: string } | undefined {
+  const t = line.trim();
+  const marker = t.slice(0, 3);
+  if (marker !== '```' && marker !== '~~~') return undefined;
+  const lang = t.slice(3).trim();
+  return { marker, lang: /^[\w+-]{1,40}$/.test(lang) ? lang : '' };
+}
+function heading(line: string): { level: number; text: string } | undefined {
+  const t = line.trimStart();
+  let level = 0;
+  while (level < 7 && t[level] === '#') level += 1;
+  if (level === 0 || level > 6 || (t[level] !== ' ' && t[level] !== '\t')) return undefined;
+  return { level, text: t.slice(level).trim() };
+}
+/** The item's text, or undefined when `line` is not a list item. */
+function item(line: string): string | undefined {
+  const t = line.trimStart();
+  const marker = /^(?:[-*+]|\d{1,9}[.)])/.exec(t)?.[0];
+  if (!marker || (t[marker.length] !== ' ' && t[marker.length] !== '\t')) return undefined;
+  return t.slice(marker.length).trimStart();
+}
+const isQuote = (line: string) => line.trimStart().startsWith('>');
+const unquote = (line: string) => {
+  const t = line.trimStart().slice(1);
+  return t.startsWith(' ') ? t.slice(1) : t;
+};
+const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
 /** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
 export function Markdown({ text, streaming, className }: { text: string; streaming?: boolean; className?: string }) {
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
-      {blocks(text.replace(/\s+$/, '').split('\n'))}
+      {blocks(text.trimEnd().split('\n'))}
     </div>
   );
 }
@@ -55,15 +79,15 @@ function blocks(lines: string[]): ReactNode[] {
   let key = 0;
   while (i < lines.length) {
     const line = lines[i];
-    const fence = FENCE.exec(line);
-    if (fence) {
+    const open = fence(line);
+    if (open) {
       const body: string[] = [];
       i += 1;
-      while (i < lines.length && !lines[i].trimStart().startsWith(fence[1])) body.push(lines[i++]);
+      while (i < lines.length && !lines[i].trimStart().startsWith(open.marker)) body.push(lines[i++]);
       i += 1;
       out.push(
         <pre key={key++}>
-          <code className={fence[2] ? `language-${fence[2]}` : undefined}>{body.join('\n')}</code>
+          <code className={open.lang ? `language-${open.lang}` : undefined}>{body.join('\n')}</code>
         </pre>,
       );
       continue;
@@ -72,34 +96,35 @@ function blocks(lines: string[]): ReactNode[] {
       i += 1;
       continue;
     }
-    if (RULE.test(line)) {
+    if (isRule(line)) {
       out.push(<hr key={key++} />);
       i += 1;
       continue;
     }
-    const heading = HEADING.exec(line);
-    if (heading) {
+    const title = heading(line);
+    if (title) {
       // h1 in a reply would outrank the host page's own headings.
-      const Tag = `h${Math.min(6, heading[1].length + 1)}` as 'h2';
-      out.push(<Tag key={key++}>{inline(heading[2])}</Tag>);
+      const Tag = `h${Math.min(6, title.level + 1)}` as 'h2';
+      out.push(<Tag key={key++}>{inline(title.text)}</Tag>);
       i += 1;
       continue;
     }
-    if (QUOTE.test(line)) {
+    if (isQuote(line)) {
       const quoted: string[] = [];
-      while (i < lines.length && QUOTE.test(lines[i])) quoted.push(lines[i++].replace(QUOTE, ''));
+      while (i < lines.length && isQuote(lines[i])) quoted.push(unquote(lines[i++]));
       out.push(<blockquote key={key++}>{blocks(quoted)}</blockquote>);
       continue;
     }
-    if (ITEM.test(line)) {
-      const ordered = /^\s*\d/.test(line);
-      const start = ordered ? parseInt(line, 10) : undefined;
+    if (item(line) !== undefined) {
+      const start = parseInt(line, 10);
+      const ordered = !Number.isNaN(start);
       const items: string[] = [];
-      while (i < lines.length && (ITEM.test(lines[i]) || (items.length && /^\s{2,}\S/.test(lines[i])))) {
+      for (; i < lines.length; i += 1) {
+        const next = item(lines[i]);
+        if (next !== undefined) items.push(next);
         // An indented line continues the item above it.
-        if (ITEM.test(lines[i])) items.push(lines[i].replace(ITEM, ''));
-        else items[items.length - 1] += `\n${lines[i].trim()}`;
-        i += 1;
+        else if (lines[i].startsWith('  ') && lines[i].trim()) items[items.length - 1] += `\n${lines[i].trim()}`;
+        else break;
       }
       const children = items.map((item, n) => <li key={n}>{inline(item)}</li>);
       out.push(
@@ -117,10 +142,10 @@ function blocks(lines: string[]): ReactNode[] {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !FENCE.test(lines[i]) &&
-      !HEADING.test(lines[i]) &&
-      !ITEM.test(lines[i]) &&
-      !QUOTE.test(lines[i])
+      !fence(lines[i]) &&
+      !heading(lines[i]) &&
+      item(lines[i]) === undefined &&
+      !isQuote(lines[i])
     ) {
       para.push(lines[i++]);
     }
