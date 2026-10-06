@@ -139,6 +139,21 @@ describe('createAgentSession', () => {
     expect(session.get().queued).toEqual([]);
   });
 
+  it('sends transformed prompts to the agent and keeps the typed text in state', async () => {
+    const gate = deferred();
+    const { agent, tasks, steered } = fakeAgent([() => gate.promise.then(() => ({}))], { steer: true });
+    const session = createAgentSession({ agent, cwd: '.', transformPrompt: (text) => `[ctx] ${text}` });
+    session.send('fix it');
+    session.send('also this');
+    await Promise.resolve();
+    expect(tasks[0].prompt).toBe('[ctx] fix it');
+    expect(steered).toEqual(['[ctx] also this']);
+    expect(session.get().turns[0].prompt).toBe('fix it');
+    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also this' });
+    gate.resolve();
+    await session.idle();
+  });
+
   it('holds approvals until answered, and denies them on stop', async () => {
     const decisions: string[] = [];
     const { agent } = fakeAgent([

@@ -73,6 +73,11 @@ export interface AgentSessionOptions {
    * `approve()` is called. Without it every request waits for `approve()`.
    */
   autoApprove?(request: ApprovalRequest): ApprovalDecision | undefined;
+  /**
+   * Rewrites each prompt just before it reaches the agent, e.g. to add context the user should
+   * not see. Turns, queued prompts and steering input keep the text given to `send()`.
+   */
+  transformPrompt?(prompt: string): string;
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -111,6 +116,7 @@ export interface AgentSession {
 export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const maxToolOutput = options.maxToolOutput ?? 4_000;
   const maxTurns = options.maxTurns ?? 200;
+  const toAgent = (prompt: string) => (options.transformPrompt ? options.transformPrompt(prompt) : prompt);
   let agent = options.agent;
   let state: SessionState = {
     agent: agent.name,
@@ -277,7 +283,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
     const current = agent.run({
       ...options.task,
-      prompt,
+      prompt: toAgent(prompt),
       cwd: state.cwd,
       model: state.model,
       effort: state.effort,
@@ -337,7 +343,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const turnController = controller;
       if (current?.steer && state.canSteer && turnId !== undefined) {
         addEntry(turnId, { kind: 'input', text: prompt });
-        current.steer(prompt).catch(() => {
+        current.steer(toAgent(prompt)).catch(() => {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;

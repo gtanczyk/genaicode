@@ -8,7 +8,7 @@ import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
-import { loadAssets } from './index.js';
+import { loadAssets, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
@@ -316,5 +316,37 @@ describe('web UI server', () => {
       await ui.close();
       chat.close();
     }
+  });
+
+  it("embeds with the host's task options and prompt transform", async () => {
+    const agent = echoAgent();
+    const ui = await startEmbeddedWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      frameAncestors: () => ['http://localhost:5173'],
+      task: { mcpServers: [{ name: 'ops', url: 'http://127.0.0.1:9/mcp' }], timeoutMs: 1000 },
+      transformPrompt: (text) => `Context.\n\nOperator message:\n${text}`,
+    });
+    try {
+      const page = await fetch(ui.url);
+      expect(page.headers.get('content-security-policy')).toBe('frame-ancestors http://localhost:5173');
+      ui.controller.submit('fix it');
+      await ui.controller.session.idle();
+      expect(agent.tasks[0].mcpServers).toEqual([{ name: 'ops', url: 'http://127.0.0.1:9/mcp' }]);
+      expect(agent.tasks[0].timeoutMs).toBe(1000);
+      expect(agent.tasks[0].env).toBe(env);
+      expect(agent.tasks[0].prompt).toBe('Context.\n\nOperator message:\nfix it');
+      expect(ui.controller.get().session.turns[0].prompt).toBe('fix it');
+    } finally {
+      await ui.close();
+    }
+  });
+
+  it('names its missing-agent error for hosts that load the bundle', () => {
+    expect(new NoAgentError('x').name).toBe('NoAgentError');
   });
 });

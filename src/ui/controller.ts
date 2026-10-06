@@ -40,6 +40,8 @@ export interface ChatOptions {
   approveAll?: boolean;
   /** Start with the bark on. Default true; `/bark` toggles it. */
   bark?: boolean;
+  /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
+  transformPrompt?(prompt: string): string;
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
 }
 
@@ -58,7 +60,9 @@ export interface ChatController {
   readonly session: AgentSession;
 }
 
-export class NoAgentError extends Error {}
+export class NoAgentError extends Error {
+  override name = 'NoAgentError';
+}
 
 /** Wire an `AgentSession` to the things both front ends share: agent choice, slash commands, notices. */
 export function createChatController(options: ChatOptions): ChatController {
@@ -93,6 +97,7 @@ export function createChatController(options: ChatOptions): ChatController {
     effort: options.effort,
     resume: options.resume,
     task: { ...options.task, env },
+    transformPrompt: options.transformPrompt,
     autoApprove: options.approveAll ? () => 'approve' : undefined,
   });
   let notices: Notice[] = [];

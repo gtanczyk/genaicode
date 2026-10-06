@@ -46,7 +46,12 @@ await build({
   target: 'es2020',
   format: 'esm',
   jsx: 'automatic',
+  // The <AgentChat> styles, injected by the client as a <style> element.
+  loader: { '.css': 'text' },
 });
+
+// genaicode/react ships its stylesheet next to the compiled component.
+cpSync('src/react/agent-chat.css', 'dist/react/agent-chat.css');
 
 // The wolf mascot and its bark, from genaicode 1.0's UI.
 cpSync('src/ui/web/assets', 'dist/ui/assets', { recursive: true });
