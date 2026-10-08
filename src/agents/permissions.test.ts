@@ -13,7 +13,7 @@ import { opencodeArgs } from './drivers/opencode.js';
 import { applyPermissionArgs } from './drivers/permission-args.js';
 import { vibeArgs } from './drivers/vibe.js';
 import { decideApproval, reportApproval } from './live-agent.js';
-import { linkAbort } from './runtime.js';
+import { anySignal, linkAbort } from './runtime.js';
 import { mergePermissionFlags, resolvePermissions, unsupportedPermissions } from './permissions.js';
 import type { AgentEvent, AgentPermissions, AgentTask, ApprovalHandler, ApprovalRequest } from './types.js';
 
@@ -111,6 +111,20 @@ describe('linkAbort', () => {
     linkAbort(source.signal, linked);
     source.abort();
     expect(linked.signal.aborted).toBe(true);
+  });
+});
+
+describe('anySignal', () => {
+  it('aborts with any source and releases the others', () => {
+    const a = new AbortController();
+    const b = new AbortController();
+    const remove = vi.spyOn(b.signal, 'removeEventListener');
+    const both = anySignal([a.signal, b.signal]);
+    expect(both.aborted).toBe(false);
+    a.abort();
+    expect(both.aborted).toBe(true);
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(anySignal([AbortSignal.abort(), b.signal]).aborted).toBe(true);
   });
 });
 

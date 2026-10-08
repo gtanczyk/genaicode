@@ -1,7 +1,9 @@
-import type { LiveApprovalIds, LiveApprovals, LiveSession } from '../live-agent.js';
+import { reportApproval, type LiveApprovalIds, type LiveApprovals, type LiveSession } from '../live-agent.js';
+import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
 import type { ApprovalRequest } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
+import { anySignal } from '../runtime.js';
 
 const KINDS: Record<string, ApprovalRequest['kind']> = {
   'item/commandExecution/requestApproval': 'command',
@@ -17,13 +19,16 @@ const LEGACY = new Set(['execCommandApproval', 'applyPatchApproval']);
  * Codex app-server approvals (`codex app-server`, v2 protocol). Commands and file changes
  * are answered `accept` / `decline`. A permission profile request
  * (`item/permissions/requestApproval`) asks with `scope: 'turn'`: approving grants the
- * requested categories for the current turn, denying grants none. A request from another
- * thread or turn is rejected; an answer that arrives after the turn ended or after the
+ * requested categories for the current turn, denying grants none. Under a
+ * `task.permissions.sandbox` other than `unrestricted` it is denied without asking, since
+ * the profile would widen that sandbox. A request from another thread or turn is rejected; an answer that arrives after the turn ended or after the
  * server withdrew the request (`serverRequest/resolved`) declines.
  */
 export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds): LiveApprovals {
   const turn = new AbortController();
   let count = 0;
+  const sandbox = resolvePermissions(session.task.permissions).sandbox;
+  const bounded = sandbox !== undefined && sandbox !== 'unrestricted';
 
   const ownThread = (params: unknown) => {
     const thread = ids().session;
@@ -46,10 +51,17 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
         throw new RpcError('Invalid permission profile request.', -32602);
       // The grant is built from a copy: the handler sees `detail` and must not widen it.
       const requested = structuredClone(asked);
-      const decision = await session.approve(
-        { id: itemId, kind: 'other', scope: 'turn', summary: permissionSummary(params, requested), detail: params },
-        signal,
-      );
+      const request: ApprovalRequest = {
+        id: itemId,
+        kind: 'other',
+        scope: 'turn',
+        summary: permissionSummary(params, requested),
+        detail: params,
+      };
+      // A profile widens the sandbox, so a chosen sandbox refuses it without asking.
+      const decision = bounded
+        ? await reportApproval(session.emit, request, signal, async () => ({ decision: 'deny', automatic: true }))
+        : await session.approve(request, signal);
       // Only what was asked for, without the categories the request left null.
       const granted =
         decision === 'approve' && stillOpen(params)
@@ -79,7 +91,7 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
       if (!KINDS[method]) return undefined;
       if (!isObject(params) || !ownTurn(params))
         return Promise.reject(new RpcError('This approval does not belong to the running turn.', -32602));
-      const signal = context ? AbortSignal.any([turn.signal, context.signal]) : turn.signal;
+      const signal = context ? anySignal([turn.signal, context.signal]) : turn.signal;
       return answer(method, params, signal);
     },
     notification(method, params) {

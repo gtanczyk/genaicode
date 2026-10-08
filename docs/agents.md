@@ -236,8 +236,10 @@ codexLive().run({ prompt, cwd, permissions: 'yolo' });
   prompt and does not call `onApproval`.
 - `sandbox`: `workspace-write` turns on the agent's own sandbox (writes limited to `cwd`;
   network rules are the vendor's), `read-only` its read-only mode, `unrestricted` no sandbox,
-  even when the agent's settings enable one. The sandbox bounds approvals: neither a person
-  nor `auto-approve` can grant a step outside it.
+  even when the agent's settings enable one. `auto-approve` never grants a step outside the
+  sandbox. With `ask`, Claude refuses such steps before asking and Codex permission profiles
+  (which widen the sandbox) are denied; a Codex command or file-change approval stays the
+  person's call, as in Codex itself, so approving it may let that one step leave the sandbox.
 - `capabilities.permissions` lists the values a driver accepts. Anything else, and any
   combination the agent cannot honor, fails the run with `status: 'failed'` and an `error`
   naming the value before the agent starts. Setting both a permissions field and the driver

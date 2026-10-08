@@ -3,7 +3,7 @@ import { resolvePermissions } from './permissions.js';
 import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
-import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
+import { anySignal, invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type {
   AgentCapabilities,
   AgentEvent,
@@ -161,7 +161,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     },
     signal: lifetime.signal,
     approve(request, signal) {
-      const ended = signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal;
+      const ended = signal ? anySignal([lifetime.signal, signal]) : lifetime.signal;
       return reportApproval(
         (event) => recorder.emit(event),
         request,

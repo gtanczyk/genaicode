@@ -55,6 +55,18 @@ describe('hostedAgent', () => {
     expect(calls.filter((call) => call.startsWith('poll'))).toHaveLength(5);
   });
 
+  it('refuses ask, which has no way back to onApproval', async () => {
+    const { impl, calls } = provider([], { capabilities: { permissions: { approval: ['ask'] } } });
+    const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({
+      prompt: 'p',
+      cwd: '.',
+      permissions: { approval: 'ask' },
+      onApproval: async () => 'approve' as const,
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', error: "remote cannot run with permissions.approval 'ask'." });
+    expect(calls).toEqual([]);
+  });
+
   it('reports a failed task', async () => {
     const { impl } = provider([{ state: 'failed', error: 'tests red' }]);
     const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;

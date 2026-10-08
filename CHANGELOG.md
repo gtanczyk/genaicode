@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.13.1 — 2026-10-08
+
+### Fixed
+
+- Approvals no longer use `AbortSignal.any`, which Node 20.0–20.2 lack.
+- `hostedAgent()` refuses `permissions.approval: 'ask'`: the provider contract has no way to bring a question back to `onApproval`.
+- `codexLive()` denies Codex permission-profile requests without asking when `task.permissions.sandbox` is `workspace-write` or `read-only`, since the profile would widen that sandbox. The docs now say that a Codex command approval in `ask` mode can still let that step leave the sandbox.
+
 ## 2.13.0 — 2026-10-08
 
 ### Added
