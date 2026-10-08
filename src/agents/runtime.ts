@@ -85,6 +85,15 @@ function statusOf(exit: ProcessExit, outcome: AgentOutcome | undefined): AgentRe
   }
 }
 
+/** Abort `target` with `source`, without keeping a listener on `source` once `target` is done. */
+export function linkAbort(source: AbortSignal | undefined, target: AbortController): void {
+  if (!source) return;
+  if (source.aborted) return target.abort();
+  const forward = () => target.abort();
+  source.addEventListener('abort', forward, { once: true });
+  target.signal.addEventListener('abort', () => source.removeEventListener('abort', forward), { once: true });
+}
+
 export function invalidCwd(cwd: string): string | undefined {
   if (!existsSync(cwd)) return `Working directory does not exist: ${cwd}`;
   if (!statSync(cwd).isDirectory()) return `Working directory is not a directory: ${cwd}`;

@@ -3,7 +3,7 @@ import { resolvePermissions } from './permissions.js';
 import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
-import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
+import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type {
   AgentCapabilities,
   AgentEvent,
@@ -147,8 +147,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   });
   // Ends every open approval question when the task is over.
   const lifetime = new AbortController();
-  if (task.signal?.aborted) lifetime.abort();
-  else task.signal?.addEventListener('abort', () => lifetime.abort(), { once: true });
+  linkAbort(task.signal, lifetime);
 
   const session: LiveSession = {
     task,
@@ -161,15 +160,14 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
       requestHandler = handler;
     },
     signal: lifetime.signal,
-    async approve(request, signal) {
-      recorder.emit({ type: 'approval-request', request });
-      const { decision, automatic } = await decideApproval(
-        task,
+    approve(request, signal) {
+      const ended = signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal;
+      return reportApproval(
+        (event) => recorder.emit(event),
         request,
-        signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal,
+        ended,
+        () => decideApproval(task, request, ended),
       );
-      recorder.emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
-      return decision;
     },
     setSteer(next) {
       steer = next;
@@ -234,6 +232,34 @@ export async function askApproval(
     return 'deny';
   } finally {
     signal.removeEventListener('abort', stop);
+  }
+}
+
+/**
+ * Emit `approval-request`, run `decide`, and emit one `approval-resolved`. When `signal`
+ * aborts first, the denial is emitted right away, before the run's event stream can close.
+ */
+export async function reportApproval(
+  emit: (event: AgentEvent) => void,
+  request: ApprovalRequest,
+  signal: AbortSignal,
+  decide: () => Promise<{ decision: ApprovalDecision; automatic: boolean }>,
+): Promise<ApprovalDecision> {
+  emit({ type: 'approval-request', request });
+  let reported: ApprovalDecision | undefined;
+  const report = (decision: ApprovalDecision, automatic: boolean) => {
+    if (reported) return;
+    reported = decision;
+    emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
+  };
+  const withdrawn = () => report('deny', false);
+  signal.addEventListener('abort', withdrawn, { once: true });
+  try {
+    const { decision, automatic } = await decide();
+    report(decision, automatic);
+    return reported!;
+  } finally {
+    signal.removeEventListener('abort', withdrawn);
   }
 }
 

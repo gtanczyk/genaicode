@@ -40,10 +40,12 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
 
   const answer = async (method: string, params: JsonObject, signal: AbortSignal): Promise<unknown> => {
     if (method === 'item/permissions/requestApproval') {
-      const requested = isObject(params.permissions) ? params.permissions : undefined;
+      const asked = isObject(params.permissions) ? params.permissions : undefined;
       const itemId = stringField(params, 'itemId');
-      if (!requested || !itemId || Object.values(requested).some((value) => value !== null && !isObject(value)))
+      if (!asked || !itemId || Object.values(asked).some((value) => value !== null && !isObject(value)))
         throw new RpcError('Invalid permission profile request.', -32602);
+      // The grant is built from a copy: the handler sees `detail` and must not widen it.
+      const requested = structuredClone(asked);
       const decision = await session.approve(
         { id: itemId, kind: 'other', scope: 'turn', summary: permissionSummary(params, requested), detail: params },
         signal,

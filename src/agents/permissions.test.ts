@@ -12,9 +12,10 @@ import { gemini, geminiArgs } from './drivers/gemini.js';
 import { opencodeArgs } from './drivers/opencode.js';
 import { applyPermissionArgs } from './drivers/permission-args.js';
 import { vibeArgs } from './drivers/vibe.js';
-import { decideApproval } from './live-agent.js';
+import { decideApproval, reportApproval } from './live-agent.js';
+import { linkAbort } from './runtime.js';
 import { mergePermissionFlags, resolvePermissions, unsupportedPermissions } from './permissions.js';
-import type { AgentPermissions, AgentTask, ApprovalHandler, ApprovalRequest } from './types.js';
+import type { AgentEvent, AgentPermissions, AgentTask, ApprovalHandler, ApprovalRequest } from './types.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-permissions-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -28,6 +29,10 @@ describe('resolvePermissions', () => {
     expect(resolvePermissions('yolo')).toEqual({ approval: 'auto-approve', sandbox: 'unrestricted' });
     expect(resolvePermissions({ sandbox: 'read-only' })).toEqual({ sandbox: 'read-only' });
     expect(() => resolvePermissions('full' as never)).toThrow('Invalid task.permissions: "full".');
+    expect(() => resolvePermissions(['yolo'] as never)).toThrow('Invalid task.permissions');
+    expect(() => resolvePermissions({ sandbbox: 'read-only' } as never)).toThrow(
+      'Unknown task.permissions field: sandbbox.',
+    );
     expect(() => resolvePermissions({ approval: 'always' as never })).toThrow(
       'Unknown permissions.approval: "always".',
     );
@@ -71,6 +76,41 @@ describe('decideApproval', () => {
     const gone = new AbortController();
     gone.abort();
     expect(await decideApproval({ permissions: 'yolo' }, request, gone.signal)).toMatchObject({ decision: 'deny' });
+  });
+});
+
+describe('reportApproval', () => {
+  it('reports a withdrawn question at once, and only once', async () => {
+    const events: AgentEvent[] = [];
+    const gone = new AbortController();
+    let finish: (value: { decision: 'approve'; automatic: boolean }) => void = () => {};
+    const pending = reportApproval(
+      (event) => events.push(event),
+      request,
+      gone.signal,
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    gone.abort();
+    // Synchronous: a run that closes its stream right after aborting still has the event.
+    expect(events.map((event) => event.type)).toEqual(['approval-request', 'approval-resolved']);
+    finish({ decision: 'approve', automatic: false });
+    expect(await pending).toBe('deny');
+    expect(events).toHaveLength(2);
+  });
+});
+
+describe('linkAbort', () => {
+  it('drops its listener once the target is done', () => {
+    const source = new AbortController();
+    const remove = vi.spyOn(source.signal, 'removeEventListener');
+    const target = new AbortController();
+    linkAbort(source.signal, target);
+    target.abort();
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    const linked = new AbortController();
+    linkAbort(source.signal, linked);
+    source.abort();
+    expect(linked.signal.aborted).toBe(true);
   });
 });
 

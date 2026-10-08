@@ -13,8 +13,11 @@ const SANDBOXES: readonly SandboxPolicy[] = ['workspace-write', 'read-only', 'un
 export function resolvePermissions(permissions: AgentTask['permissions']): AgentPermissions {
   if (permissions === undefined) return {};
   if (permissions === 'yolo') return { ...YOLO };
-  if (typeof permissions !== 'object' || permissions === null)
+  if (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions))
     throw new Error(`Invalid task.permissions: ${JSON.stringify(permissions)}.`);
+  // A misspelled field must not quietly fall back to the driver's defaults.
+  const unknown = Object.keys(permissions).filter((key) => key !== 'approval' && key !== 'sandbox');
+  if (unknown.length) throw new Error(`Unknown task.permissions field: ${unknown.join(', ')}.`);
   const { approval, sandbox } = permissions;
   if (approval !== undefined && !APPROVALS.includes(approval))
     throw new Error(`Unknown permissions.approval: ${JSON.stringify(approval)}.`);

@@ -175,6 +175,24 @@ describe('codexApprovals', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('grants only what was requested, whatever the handler does to the request', async () => {
+    const params = {
+      threadId: 'th-1',
+      turnId: 'tu-1',
+      itemId: 'p1',
+      permissions: { network: { enabled: true }, fileSystem: null },
+    };
+    const widen: ApprovalHandler = (request) => {
+      const detail = request.detail as { permissions: Record<string, unknown> };
+      detail.permissions.fileSystem = { write: ['/'] };
+      return 'approve';
+    };
+    expect((await codex(widen).request('item/permissions/requestApproval', params)).result).toEqual({
+      permissions: { network: { enabled: true } },
+      scope: 'turn',
+    });
+  });
+
   it('rejects approvals for another thread or turn without asking', async () => {
     const handler = vi.fn<ApprovalHandler>(() => 'approve');
     const h = codex(handler);
@@ -328,6 +346,17 @@ describe('museApprovals', () => {
     await h.settle();
     expect(h.decides().map((params) => params.choiceId)).toEqual(['c-deny']);
     expect(h.events).toContainEqual({ type: 'error', message: expect.stringContaining('no one-time approval') });
+  });
+
+  it('picks from the choices as offered, whatever the handler does to them', async () => {
+    const h = muse((request) => {
+      const offered = (request.detail as { availableChoices: { decision: string; scope: string }[] }).availableChoices;
+      Object.assign(offered[0]!, { decision: 'approved', scope: 'once' });
+      return 'approve';
+    });
+    h.notify('approval/requested', structuredClone(approval));
+    await h.settle();
+    expect(h.decides().map((params) => params.choiceId)).toEqual(['c-once']);
   });
 
   it('denies without a handler, and when the handler throws', async () => {

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import { decideApproval } from '../live-agent.js';
+import { decideApproval, reportApproval } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
@@ -114,15 +114,13 @@ async function claudeApprovals(task: AgentTask, context: PrepareContext) {
   const sandbox = resolvePermissions(task.permissions).sandbox;
   return startClaudeApprovalServer(
     async (request, signal) => {
-      context.emit({ type: 'approval-request', request });
       const ended = signal ? AbortSignal.any([signal, context.signal]) : context.signal;
-      // Outside the sandbox: denied by policy, whoever would have answered.
-      const { decision, automatic } =
+      return reportApproval(context.emit, request, ended, async () =>
+        // Outside the sandbox: denied by policy, whoever would have answered.
         sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)
-          ? { decision: 'deny' as const, automatic: true }
-          : await decideApproval(task, request, ended);
-      context.emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
-      return decision;
+          ? { decision: 'deny', automatic: true }
+          : decideApproval(task, request, ended),
+      );
     },
     { name },
   );

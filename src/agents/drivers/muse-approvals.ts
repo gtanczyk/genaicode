@@ -63,6 +63,10 @@ export function museApprovals(
 
     const stage = (stages.get(approvalId) ?? 0) + 1;
     stages.set(approvalId, stage);
+    // Choices are read from a copy: the handler sees `detail` and must not change them.
+    const choices = Array.isArray(params.availableChoices)
+      ? (structuredClone(params.availableChoices) as unknown[]).filter(isChoice)
+      : [];
     const question = new AbortController();
     questions.set(approvalId, question);
     let decision: ApprovalDecision;
@@ -78,7 +82,6 @@ export function museApprovals(
     if (question.signal.aborted || closed.has(approvalId) || turn.signal.aborted || session.signal.aborted) return;
     if (!ownTurn(params)) return;
 
-    const choices = Array.isArray(params.availableChoices) ? params.availableChoices.filter(isChoice) : [];
     let choice = pickChoice(choices, decision);
     if (!choice && decision === 'approve') {
       choice = pickChoice(choices, 'deny');

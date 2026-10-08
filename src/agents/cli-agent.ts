@@ -1,6 +1,6 @@
 import { planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess, type ProcessHandle } from './process.js';
-import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
+import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 export type { AgentOutcome } from './runtime.js';
@@ -46,8 +46,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   const recorder = new RunRecorder(definition.name, definition.command);
   const iterate = () => recorder.events.iterate();
   const lifetime = new AbortController();
-  if (task.signal?.aborted) lifetime.abort();
-  else task.signal?.addEventListener('abort', () => lifetime.abort(), { once: true });
+  linkAbort(task.signal, lifetime);
   let handle: ProcessHandle | undefined;
   let stopped = false;
 
