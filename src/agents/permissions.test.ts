@@ -247,6 +247,11 @@ describe('applyPermissionArgs', () => {
     expect(() => applyPermissionArgs('other', [], 'yolo')).toThrow('No permission translation for agent "other".');
   });
 
+  it('adds flags after the subcommand, before later positionals', () => {
+    const flags = { args: ['--a'], replaces: {} };
+    expect(mergePermissionFlags(['exec', 'resume', 'id', 'go'], flags)).toEqual(['exec', '--a', 'resume', 'id', 'go']);
+  });
+
   it('leaves everything after -- alone', () => {
     const flags = { args: ['--a'], replaces: { '--x': 'value' as const } };
     expect(mergePermissionFlags(['--x', '1', '--', '--x', '2'], flags)).toEqual(['--a', '--', '--x', '2']);

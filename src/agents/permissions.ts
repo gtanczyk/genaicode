@@ -69,8 +69,8 @@ export interface PermissionFlags {
 
 /**
  * Remove the flags `replaces` names from `args` (both `--flag value` and `--flag=value`), then
- * insert `flags.args` after the leading subcommand words (`exec`, `run`...), so a trailing
- * `-p` / `--prompt` keeps its value.
+ * insert `flags.args` after a leading subcommand word (`exec`, `run`...), so a trailing
+ * `-p` / `--prompt` keeps its value and `exec resume <id> <prompt>` keeps its positionals.
  */
 export function mergePermissionFlags(args: readonly string[], flags: PermissionFlags): string[] {
   const kept: string[] = [];
@@ -85,8 +85,7 @@ export function mergePermissionFlags(args: readonly string[], flags: PermissionF
     if (!kind) kept.push(arg);
     else if (kind === 'value' && name === arg) i++;
   }
-  let at = 0;
-  while (at < kept.length && !kept[at]!.startsWith('-')) at++;
+  const at = kept.length && !kept[0]!.startsWith('-') ? 1 : 0;
   return [...kept.slice(0, at), ...flags.args, ...kept.slice(at)];
 }
 
