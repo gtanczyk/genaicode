@@ -1,5 +1,6 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export interface AntigravityAgentOptions {
@@ -16,15 +17,37 @@ export function antigravity(options: AntigravityAgentOptions = {}): CodingAgent 
   return cliAgent({
     name: 'antigravity',
     command: options.command ?? 'agy',
-    capabilities: { effort: ['low', 'medium', 'high'], usage: true },
+    capabilities: {
+      effort: ['low', 'medium', 'high'],
+      usage: true,
+      permissions: { sandbox: ['workspace-write', 'unrestricted'] },
+    },
     args: (task) => antigravityArgs(task, options),
     createParser: createAntigravityParser,
   });
 }
 
+/**
+ * Antigravity flags for `permissions`: `workspace-write` runs terminal commands in its sandbox
+ * (`--sandbox`), `unrestricted` leaves it off. Approval policies are not offered.
+ */
+export function antigravityPermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval) throw new Error(`antigravity cannot run with permissions.approval '${approval}'.`);
+  if (sandbox === 'read-only') throw new Error("antigravity cannot run with permissions.sandbox 'read-only'.");
+  return {
+    args: sandbox === 'workspace-write' ? ['--sandbox'] : [],
+    replaces: sandbox ? { '--sandbox': 'flag' } : {},
+  };
+}
+
 export function antigravityArgs(task: AgentTask, options: AntigravityAgentOptions = {}): string[] {
   const args = ['--mode', options.mode ?? 'accept-edits'];
-  if (options.sandbox ?? true) args.push('--sandbox');
+  const permissions = resolvePermissions(task.permissions);
+  exclusiveOption('antigravity', 'sandbox', options.sandbox !== undefined, 'sandbox', !!permissions.sandbox);
+  const flags = antigravityPermissionFlags(permissions);
+  if (permissions.sandbox) args.push(...flags.args);
+  else if (options.sandbox ?? true) args.push('--sandbox');
   args.push('--output-format', 'stream-json');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);

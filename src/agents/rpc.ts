@@ -1,9 +1,17 @@
-type RequestId = number | string;
+export type RequestId = number | string;
+
+/** An incoming request in flight. */
+export interface RpcRequestContext {
+  /** The JSON-RPC id the peer gave the request. */
+  id: RequestId;
+  /** Aborts when the peer withdraws the request (`cancel(id)`) or the transport fails. */
+  signal: AbortSignal;
+}
 
 export interface RpcHandlers {
   notification(method: string, params: unknown): void;
   /** Resolve with the result, or throw to send a JSON-RPC error. */
-  request(method: string, params: unknown): unknown | Promise<unknown>;
+  request(method: string, params: unknown, context: RpcRequestContext): unknown | Promise<unknown>;
 }
 
 export class RpcError extends Error {
@@ -23,6 +31,7 @@ export class RpcError extends Error {
 export class RpcPeer {
   private nextId = 0;
   private failure: Error | undefined;
+  private readonly incoming = new Map<RequestId, AbortController>();
   private readonly pending = new Map<
     RequestId,
     { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
@@ -86,9 +95,17 @@ export class RpcPeer {
     return true;
   }
 
-  /** Reject everything in flight and refuse new requests. */
+  /** Abort the signal of an incoming request the peer no longer needs answered. */
+  cancel(id: RequestId): boolean {
+    const controller = this.incoming.get(id);
+    controller?.abort();
+    return controller !== undefined;
+  }
+
+  /** Reject everything in flight, abort incoming requests and refuse new requests. */
   fail(error: Error): void {
     this.failure ??= error;
+    for (const controller of this.incoming.values()) controller.abort();
     for (const waiter of this.pending.values()) {
       clearTimeout(waiter.timer);
       waiter.reject(error);
@@ -97,8 +114,12 @@ export class RpcPeer {
   }
 
   private async answer(id: RequestId, method: string, params: unknown): Promise<void> {
+    const controller = new AbortController();
+    if (this.failure) controller.abort();
+    this.incoming.get(id)?.abort();
+    this.incoming.set(id, controller);
     try {
-      const result = await this.handlers.request(method, params);
+      const result = await this.handlers.request(method, params, { id, signal: controller.signal });
       this.send({ id, result: result ?? {} });
     } catch (error) {
       const code = error instanceof RpcError ? error.code : -32000;
@@ -108,6 +129,8 @@ export class RpcPeer {
       } catch {
         // Transport closed; the exit status reports why.
       }
+    } finally {
+      if (this.incoming.get(id) === controller) this.incoming.delete(id);
     }
   }
 

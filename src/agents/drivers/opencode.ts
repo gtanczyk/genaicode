@@ -1,5 +1,6 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export interface OpencodeAgentOptions {
@@ -21,16 +22,39 @@ export function opencode(options: OpencodeAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'opencode',
     command: options.command ?? 'opencode',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'max'], usage: true, resume: true },
+    capabilities: {
+      effort: ['minimal', 'low', 'medium', 'high', 'max'],
+      usage: true,
+      resume: true,
+      permissions: { approval: ['auto-approve', 'deny'], sandbox: ['unrestricted'] },
+    },
     args: (task) => opencodeArgs(task, options),
     createParser: createOpencodeParser,
   });
 }
 
+/**
+ * opencode flags for `permissions`: `auto-approve` is `--auto`, `deny` leaves it off. opencode
+ * has no sandbox, so `sandbox` can only be `unrestricted`. `ask` is not possible headless.
+ */
+export function opencodePermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval === 'ask') throw new Error("opencode cannot ask for approval headless (permissions.approval 'ask').");
+  if (sandbox && sandbox !== 'unrestricted') throw new Error(`opencode has no sandbox ('${sandbox}').`);
+  return {
+    args: approval === 'auto-approve' ? ['--auto'] : [],
+    replaces: approval ? { '--auto': 'flag' } : {},
+  };
+}
+
 export function opencodeArgs(task: AgentTask, options: OpencodeAgentOptions = {}): string[] {
   const args = ['run', '--format', 'json'];
   if (options.agent) args.push('--agent', options.agent);
-  if (options.autoApprove) args.push('--auto');
+  const permissions = resolvePermissions(task.permissions);
+  exclusiveOption('opencode', 'autoApprove', options.autoApprove !== undefined, 'approval', !!permissions.approval);
+  const flags = opencodePermissionFlags(permissions);
+  if (permissions.approval) args.push(...flags.args);
+  else if (options.autoApprove) args.push('--auto');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--variant', task.effort);
   if (task.resume) args.push('--session', task.resume);

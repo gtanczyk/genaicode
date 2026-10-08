@@ -3,8 +3,9 @@ import type { TokenUsage } from '../core/types.js';
 /**
  * One unit of work handed to a coding agent: a prompt and the directory it may edit.
  *
- * The agent runs as a child process with the caller's `env`. GenAIcode does not
- * sandbox it, pick a model, or retry it; those stay application decisions.
+ * The agent runs as a child process with the caller's `env`. GenAIcode does not pick a
+ * model or retry it; those stay application decisions. `permissions` selects the agent's own
+ * approval and sandbox options; without it each driver keeps its documented defaults.
  */
 export interface AgentTask {
   prompt: string;
@@ -31,11 +32,52 @@ export interface AgentTask {
   /** MCP servers to attach for this task (`capabilities.mcp`). */
   mcpServers?: readonly McpServer[];
   /**
-   * Answer permission prompts from agents that ask over a live session
-   * (`capabilities.approvals`). Without it every request is declined.
+   * Answer the agent's permission prompts (`capabilities.approvals`). Without it every
+   * request is declined, and so is a request whose handler throws.
+   *
+   * `signal` aborts when the answer is no longer wanted: the agent withdrew the request,
+   * its turn ended, the process exited or the task was stopped. Close the question then;
+   * whatever the handler returns afterwards counts as `deny`. Every genaicode driver passes
+   * `signal`; it is optional only so that custom drivers written for 2.x keep compiling.
    */
-  onApproval?: (request: ApprovalRequest) => ApprovalDecision | Promise<ApprovalDecision>;
+  onApproval?: ApprovalHandler;
+  /**
+   * Approval and sandbox policy, translated by the driver into the agent's own options
+   * (`capabilities.permissions` lists what it supports). An omitted field keeps the driver's
+   * default. A value or combination the agent cannot honor fails the run with an error
+   * instead of starting it in another mode. `'yolo'` is `{ approval: 'auto-approve',
+   * sandbox: 'unrestricted' }`.
+   */
+  permissions?: AgentPermissions | 'yolo';
 }
+
+/**
+ * - `ask`: permission prompts go to `task.onApproval`, which is then required.
+ * - `auto-approve`: every prompt is approved without asking, for exactly the scope the agent
+ *   asked for. Where genaicode sees the prompt, it still emits `approval-request` and
+ *   `approval-resolved` (with `automatic: true`); agents that approve on their own report nothing.
+ * - `deny`: nothing that needs a prompt runs; `onApproval` is not called.
+ */
+export type ApprovalPolicy = 'ask' | 'auto-approve' | 'deny';
+
+/**
+ * - `workspace-write`: the agent's sandbox limits writes to `cwd` (network rules are the vendor's).
+ * - `read-only`: the agent's read-only mode; nothing is written.
+ * - `unrestricted`: no sandbox, even when the agent's own settings enable one.
+ *
+ * The sandbox bounds approvals too: `ask` and `auto-approve` never grant a step outside it.
+ */
+export type SandboxPolicy = 'workspace-write' | 'read-only' | 'unrestricted';
+
+export interface AgentPermissions {
+  approval?: ApprovalPolicy;
+  sandbox?: SandboxPolicy;
+}
+
+export type ApprovalHandler = (
+  request: ApprovalRequest,
+  signal?: AbortSignal,
+) => ApprovalDecision | Promise<ApprovalDecision>;
 
 /** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
 export type McpServer =
@@ -53,9 +95,16 @@ export interface ApprovalRequest {
   kind: 'command' | 'file-change' | 'other';
   /** Human-readable summary (the command, the paths, or the vendor's reason). */
   summary?: string;
-  /** The vendor's request payload, unchanged. */
+  /** The vendor's request payload, unchanged: the full command, tool arguments or permissions. */
   detail?: unknown;
+  /**
+   * What `approve` grants. `once` (also when absent): this one invocation. `turn`: the
+   * permissions in `detail`, until the agent's current turn ends.
+   */
+  scope?: ApprovalScope;
 }
+
+export type ApprovalScope = 'once' | 'turn';
 
 export type ApprovalDecision = 'approve' | 'deny';
 
@@ -73,7 +122,8 @@ export type AgentEvent =
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
   | { type: 'file-change'; paths: string[] }
   | { type: 'approval-request'; request: ApprovalRequest }
-  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision }
+  /** `automatic`: decided by `permissions.approval`, without asking anyone. */
+  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision; automatic?: boolean }
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
@@ -112,6 +162,11 @@ export interface AgentCapabilities {
   mcp?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
+  /** `AgentTask.permissions` values the driver can translate. Absent: none. */
+  permissions?: {
+    approval?: readonly ApprovalPolicy[];
+    sandbox?: readonly SandboxPolicy[];
+  };
 }
 
 /**

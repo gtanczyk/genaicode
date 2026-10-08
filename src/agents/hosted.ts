@@ -1,3 +1,4 @@
+import { resolvePermissions, unsupportedPermissions } from './permissions.js';
 import type { ProcessExit } from './process.js';
 import { RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -77,6 +78,9 @@ function runHosted(provider: HostedAgentProvider, task: AgentTask, pollIntervalM
     delete request.signal;
     delete request.onApproval;
     delete request.timeoutMs;
+    const refused = unsupportedPermissions(provider.name, provider.capabilities ?? {}, task);
+    if (refused) return { exit: exit('spawn-error', new Error(refused)) };
+    if (task.permissions !== undefined) request.permissions = resolvePermissions(task.permissions);
     try {
       taskId = (await provider.start(request as HostedTaskRequest, controller.signal)).id;
     } catch (error) {

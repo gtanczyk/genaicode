@@ -257,6 +257,63 @@ describe('createAgentSession', () => {
     expect(session.get().turns[1].result?.status).toBe('aborted');
   });
 
+  it('shows approvals decided by permissions, once each', async () => {
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        const request = { id: 'a1', kind: 'command' as const, summary: 'npm test' };
+        emit({ type: 'approval-request', request });
+        emit({ type: 'approval-resolved', id: 'a1', decision: 'approve', automatic: true });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.', task: { permissions: 'yolo' } });
+    session.send('test');
+    await session.idle();
+    expect(tasks[0]!.permissions).toBe('yolo');
+    expect(session.get().approvals).toEqual([]);
+    expect(session.get().turns[0]!.entries.filter((entry) => entry.kind === 'approval')).toEqual([
+      {
+        kind: 'approval',
+        request: { id: 'a1', kind: 'command', summary: 'npm test' },
+        decision: 'approve',
+        automatic: true,
+      },
+    ]);
+  });
+
+  it('drops a question the agent withdraws', async () => {
+    const withdraw = new AbortController();
+    let decision: string | undefined;
+    const { agent } = fakeAgent([
+      async (task) => {
+        decision = await task.onApproval!({ id: 'a1', kind: 'other' }, withdraw.signal);
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('go');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.get().approvals).toHaveLength(1);
+    withdraw.abort();
+    expect(session.get().approvals).toEqual([]);
+    await session.idle();
+    expect(decision).toBe('deny');
+    expect(session.get().approvals).toEqual([]);
+    expect(session.approve('a1', 'approve')).toBe(false);
+  });
+
+  it('denies a withdrawn request even with autoApprove', async () => {
+    const withdrawn = AbortSignal.abort();
+    let decision: string | undefined;
+    const { agent } = fakeAgent([
+      async (task) => {
+        decision = await task.onApproval!({ id: 'w', kind: 'other' }, withdrawn);
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.', autoApprove: () => 'approve' });
+    session.send('go');
+    await session.idle();
+    expect(decision).toBe('deny');
+  });
+
   it('applies autoApprove and drops the queue on stop', async () => {
     const { agent } = fakeAgent([
       async (task) => {

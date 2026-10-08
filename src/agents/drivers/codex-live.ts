@@ -1,7 +1,10 @@
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import type { AgentOutcome } from '../runtime.js';
-import type { AgentEvent, ApprovalRequest, CodingAgent } from '../types.js';
-import { withCodexMcp, type CodexSandbox } from './codex.js';
+import type { AgentEvent, CodingAgent } from '../types.js';
+import { codexApprovals } from './codex-approvals.js';
+import { exclusiveOption, resolvePermissions } from '../permissions.js';
+import type { AgentTask } from '../types.js';
+import { CODEX_SANDBOX, withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -15,17 +18,51 @@ export interface CodexLiveOptions {
 
 /**
  * Codex over its app server (`codex app-server`, JSON-RPC on stdio).
- * Supports `steer()` and routes command and file-change approvals to `task.onApproval`.
+ * Supports `steer()` and routes command, file-change and permission-profile approvals to
+ * `task.onApproval` (see `codexApprovals`).
+ *
+ * `task.permissions`: `ask` is approval policy `on-request`; `auto-approve` and `deny` are
+ * `never`, since what Codex would ask about is a step outside its sandbox. The sandbox maps to
+ * Codex's own (`unrestricted` is `danger-full-access`).
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   return liveAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, approvals: true, mcp: true },
-    args: (task) => [...(task.extraArgs ?? []), 'app-server'],
-    prepare: (task) => withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']),
+    capabilities: {
+      effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      usage: true,
+      approvals: true,
+      mcp: true,
+      permissions: {
+        approval: ['ask', 'auto-approve', 'deny'],
+        sandbox: ['workspace-write', 'read-only', 'unrestricted'],
+      },
+    },
+    args: (task) => {
+      codexThreadPolicy(task, options);
+      return [...(task.extraArgs ?? []), 'app-server'];
+    },
+    prepare: (task) => {
+      codexThreadPolicy(task, options);
+      return withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
+    },
     drive: (session) => driveCodex(session, options),
   });
+}
+
+/** `thread/start` sandbox and approval policy for a task. */
+export function codexThreadPolicy(
+  task: Pick<AgentTask, 'permissions' | 'onApproval'>,
+  options: Pick<CodexLiveOptions, 'sandbox'> = {},
+): { sandbox: CodexSandbox; approvalPolicy: 'on-request' | 'never' } {
+  const { approval, sandbox } = resolvePermissions(task.permissions);
+  exclusiveOption('codex', 'sandbox', options.sandbox !== undefined, 'sandbox', sandbox !== undefined);
+  const asks = approval ? approval === 'ask' : !!task.onApproval;
+  return {
+    sandbox: sandbox ? CODEX_SANDBOX[sandbox] : (options.sandbox ?? 'workspace-write'),
+    approvalPolicy: asks ? 'on-request' : 'never',
+  };
 }
 
 async function driveCodex(session: LiveSession, options: CodexLiveOptions): Promise<AgentOutcome> {
@@ -41,37 +78,25 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
 
   session.onNotification((method, params) => {
     if (!ours(params)) return;
+    if (approvals.notification(method, params)) return;
     if (method === 'turn/completed') {
       const turn = isObject(params) && isObject(params.turn) ? params.turn : undefined;
       if (ids.turn && stringField(turn, 'id') && stringField(turn, 'id') !== ids.turn) return;
       const status = stringField(turn, 'status');
       const error = stringField(turn?.error, 'message');
       if (error) session.emit({ type: 'error', message: error });
+      approvals.close();
       finish(status === 'completed' ? { ok: true } : { ok: false, error: error ?? `Codex turn ${status ?? 'ended'}.` });
       return;
     }
     for (const event of codexNotification(method, params)) session.emit(event);
   });
 
-  let approvals = 0;
-  session.onRequest(async (method, params) => {
-    const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval';
-    const kind = method.includes('commandExecution') || method === 'execCommandApproval' ? 'command' : 'file-change';
-    if (!legacy && !method.endsWith('/requestApproval')) throw new Error(`${method} is not supported.`);
-    const request: ApprovalRequest = {
-      // One item can raise several approvals (e.g. per shell subcommand); `approvalId` tells them apart.
-      id:
-        stringField(params, 'approvalId') ??
-        stringField(params, 'itemId') ??
-        stringField(params, 'callId') ??
-        `approval-${++approvals}`,
-      kind,
-      ...summaryOf(params),
-      detail: params,
-    };
-    const decision = await session.approve(request);
-    if (legacy) return { decision: decision === 'approve' ? 'approved' : 'denied' };
-    return { decision: decision === 'approve' ? 'accept' : 'decline' };
+  const approvals = codexApprovals(session, () => ({ session: ids.thread, turn: ids.turn }));
+  session.onRequest((method, params, context) => {
+    const answer = approvals.request(method, params, context);
+    if (!answer) throw new Error(`${method} is not supported.`);
+    return answer;
   });
 
   await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
@@ -82,8 +107,7 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
     {
       cwd: task.cwd,
       ...(task.model ? { model: task.model } : {}),
-      sandbox: options.sandbox ?? 'workspace-write',
-      approvalPolicy: task.onApproval ? 'on-request' : 'never',
+      ...codexThreadPolicy(task, options),
     },
     timeout,
   );
@@ -188,13 +212,6 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
     default:
       return [];
   }
-}
-
-function summaryOf(params: unknown): { summary?: string } {
-  const command = isObject(params) ? params.command : undefined;
-  const text = Array.isArray(command) ? command.join(' ') : typeof command === 'string' ? command : undefined;
-  const summary = text ?? stringField(params, 'reason');
-  return summary ? { summary } : {};
 }
 
 function mcpName(item: JsonObject): string {

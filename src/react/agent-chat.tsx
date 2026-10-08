@@ -372,7 +372,16 @@ function Entry({
       const waiting = pending.some((request) => request.id === entry.request.id);
       if (entry.decision || !waiting) {
         // Not pending and no decision: the turn ended (or was stopped) before an answer.
-        const label = entry.decision === 'approve' ? '✓ Approved' : entry.decision ? '✗ Denied' : '– Not answered';
+        const label =
+          entry.decision === 'approve'
+            ? entry.automatic
+              ? '✓ Auto-approved'
+              : '✓ Approved'
+            : entry.decision
+              ? entry.automatic
+                ? '✗ Denied by policy'
+                : '✗ Denied'
+              : '– Not answered';
         return (
           <div className="gc-approval gc-done">
             {label}: {what}&nbsp;
@@ -393,7 +402,7 @@ function Entry({
                 className="gc-btn gc-primary"
                 onClick={() => onApprove(entry.request.id, 'approve')}
               >
-                Approve
+                {entry.request.scope === 'turn' ? 'Approve for this turn' : 'Approve'}
               </button>
               <button type="button" className="gc-btn gc-danger" onClick={() => onApprove(entry.request.id, 'deny')}>
                 Deny

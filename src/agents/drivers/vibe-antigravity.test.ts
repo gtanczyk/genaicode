@@ -36,7 +36,7 @@ describe('vibe driver', () => {
       'plan',
       '--prompt=go',
     ]);
-    expect(vibe().capabilities).toEqual({ maxTurns: true });
+    expect(vibe().capabilities).toMatchObject({ maxTurns: true });
   });
 
   it('decodes streamed history entries', () => {

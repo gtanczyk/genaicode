@@ -225,7 +225,7 @@ export function ChatApp({
               <Text color="green" bold>
                 y
               </Text>{' '}
-              approve ·{' '}
+              {approval.scope === 'turn' ? 'approve for this turn' : 'approve'} ·{' '}
               <Text color="red" bold>
                 n
               </Text>{' '}

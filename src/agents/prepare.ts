@@ -1,4 +1,5 @@
-import type { AgentCapabilities, AgentTask, McpServer } from './types.js';
+import { unsupportedPermissions } from './permissions.js';
+import type { AgentCapabilities, AgentEvent, AgentTask, McpServer } from './types.js';
 
 /** Everything a driver needs to start one task's process. */
 export interface PreparedRun {
@@ -7,6 +8,14 @@ export interface PreparedRun {
   env?: Record<string, string>;
   /** Called once the process has exited (temp files, for example). */
   cleanup?(): void;
+}
+
+/** What `prepare` can use beyond the task. */
+export interface PrepareContext {
+  /** Add an event to the run's stream. */
+  emit(event: AgentEvent): void;
+  /** Aborts once the task is over: the process exited, or it was stopped before it started. */
+  readonly signal: AbortSignal;
 }
 
 const MCP_NAME = /^[A-Za-z0-9_-]+$/;
@@ -23,7 +32,7 @@ export function unsupportedTask(name: string, capabilities: AgentCapabilities, t
     if (names.has(server.name)) return `Duplicate MCP server name: ${server.name}.`;
     names.add(server.name);
   }
-  return undefined;
+  return unsupportedPermissions(name, capabilities, task);
 }
 
 export function isHttpServer(server: McpServer): server is Extract<McpServer, { url: string }> {
@@ -46,12 +55,37 @@ export type SpawnPlan =
 export function planSpawn(definition: SpawnDefinition, task: AgentTask, cwdError: string | undefined): SpawnPlan {
   const refused = unsupportedTask(definition.name, definition.capabilities ?? {}, task) ?? cwdError;
   if (refused) return { ok: false, error: refused };
-  let prepared: PreparedRun;
   try {
-    prepared = definition.prepare ? definition.prepare(task) : { args: definition.args(task) };
+    return spawnPlan(definition, task, definition.prepare ? definition.prepare(task) : { args: definition.args(task) });
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** `planSpawn` for a `prepare` that may need to wait (start a server, for example). */
+export async function planSpawnAsync(
+  definition: Omit<SpawnDefinition, 'prepare'> & {
+    prepare?(task: AgentTask, context: PrepareContext): PreparedRun | Promise<PreparedRun>;
+  },
+  task: AgentTask,
+  cwdError: string | undefined,
+  context: PrepareContext,
+): Promise<SpawnPlan> {
+  const refused = unsupportedTask(definition.name, definition.capabilities ?? {}, task) ?? cwdError;
+  if (refused) return { ok: false, error: refused };
+  try {
+    const prepared = definition.prepare ? await definition.prepare(task, context) : { args: definition.args(task) };
+    return spawnPlan(definition, task, prepared);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function spawnPlan(
+  definition: Pick<SpawnDefinition, 'env'>,
+  task: AgentTask,
+  prepared: PreparedRun,
+): Extract<SpawnPlan, { ok: true }> {
   const base = task.env ?? process.env;
   const env = { ...(definition.env ? definition.env(base) : base), ...prepared.env };
   let cleaned = false;

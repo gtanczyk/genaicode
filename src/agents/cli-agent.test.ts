@@ -56,6 +56,31 @@ async function collect(run: AsyncIterable<AgentEvent>) {
 }
 
 describe('cliAgent', () => {
+  it('waits for an async prepare, and stops it when the task is aborted', async () => {
+    const started = fakeAgent({
+      prepare: async (task) => ({
+        args: [script, task.prompt],
+        env: { FAKE_LINES: JSON.stringify([{ say: 'ready' }]) },
+      }),
+    }).run({ prompt: 'p', cwd: dir });
+    expect((await started.result).text).toBe('ready');
+
+    const controller = new AbortController();
+    let spawned = false;
+    const run = fakeAgent({
+      prepare: (task, context) =>
+        new Promise((resolve) =>
+          context.signal.addEventListener('abort', () => {
+            spawned = true;
+            resolve({ args: [script, task.prompt] });
+          }),
+        ),
+    }).run({ prompt: 'p', cwd: dir, signal: controller.signal });
+    controller.abort();
+    expect((await run.result).status).toBe('aborted');
+    expect(spawned).toBe(true);
+  });
+
   it('settles when a background child keeps the output pipes open', async () => {
     const leftover = join(dir, 'leftover-agent.mjs');
     writeFileSync(

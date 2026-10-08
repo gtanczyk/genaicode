@@ -106,23 +106,25 @@ for await (const event of run) {
 const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
 ```
 
-| Agent            | Driver                        | Extras                                     |
-| ---------------- | ----------------------------- | ------------------------------------------ |
-| Claude Code      | `claude()`                    | MCP servers, max turns, effort, cost       |
-| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals    |
-| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns      |
-| Cursor           | `cursor()`                    | streamed text deltas                       |
-| Gemini CLI       | `gemini()`                    | approval mode                              |
-| opencode         | `opencode()`                  | `provider/model` ids, variants             |
-| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price        |
-| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                     |
-| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals      |
-| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent |
+| Agent            | Driver                        | Extras                                          |
+| ---------------- | ----------------------------- | ----------------------------------------------- |
+| Claude Code      | `claude()`                    | MCP servers, approvals, max turns, effort, cost |
+| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals         |
+| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns           |
+| Cursor           | `cursor()`                    | streamed text deltas                            |
+| Gemini CLI       | `gemini()`                    | approval mode                                   |
+| opencode         | `opencode()`                  | `provider/model` ids, variants                  |
+| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price             |
+| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                          |
+| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals           |
+| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent      |
 
 On top of the drivers:
 
-- **Steer a running task** with `run.steer(text)`, and answer permission prompts with
-  `onApproval` (live drivers).
+- **Steer a running task** with `run.steer(text)` (live drivers), and answer permission
+  prompts with `onApproval` (Claude, live Codex and Muse).
+- **Pick approval and sandbox policy** with `permissions: { approval, sandbox }` (or
+  `'yolo'`); each driver maps it to the agent's own flags and refuses what it cannot honor.
 - **Attach MCP servers per task** with `mcpServers`. Header secrets stay out of argv.
 - **Verify and repair**: `runWithVerify` runs your check (tests, lint) after the agent and
   sends failures back for another attempt.
@@ -130,8 +132,8 @@ On top of the drivers:
   from the agent's environment, so it bills its own login.
 
 Importing `genaicode` never spawns anything; only `genaicode/agents` does. The agent uses
-its own credentials, billing, and permission settings. GenAIcode does not sandbox it,
-choose a model, or retry it. See [docs/agents.md](docs/agents.md) for events, options per
+its own credentials and billing, and its own permission settings unless `permissions` sets
+them; any sandbox is the agent's own. GenAIcode does not choose a model or retry it. See [docs/agents.md](docs/agents.md) for events, options per
 driver, and writing your own driver.
 
 ### From the command line

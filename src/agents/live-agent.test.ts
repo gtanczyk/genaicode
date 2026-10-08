@@ -75,6 +75,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     note('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'ls' } });
     if (mode === 'exit-early') process.exit(0);
     if (mode === 'flood') for (let i = 0; i < 12; i++) note('item/completed', { item: { id: 'f' + i, type: 'agentMessage', text: 'x'.repeat(1024 * 1024) } });
+    if (mode === 'permissions' && codex) {
+      send({ id: 99, method: 'item/permissions/requestApproval', params: { threadId: 'th-1', turnId: 'tu-1', itemId: 'p1', reason: null, permissions: { network: { enabled: true }, fileSystem: null } } });
+      return;
+    }
+    if (mode === 'approval-exit' && codex) {
+      send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', turnId: 'tu-1', itemId: 'c1', command: 'rm -rf build' } });
+      return setTimeout(() => process.exit(0), 50);
+    }
     if (mode === 'approval' && codex) {
       send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
       return;
@@ -86,6 +94,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return;
     }
     if (mode === 'basic') finishTurn('started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
+    if (mode === 'policy') finishTurn(JSON.stringify({ approvalPolicy: started.approvalPolicy, approvalMode: started.approvalMode, sandbox: started.sandbox }));
     return;
   }
   if (msg.method === 'turn/steer') {
@@ -142,6 +151,38 @@ describe('codexLive', () => {
     expect(seen).toMatchObject([{ id: 'c1-a2', kind: 'command', summary: 'rm -rf build' }]);
     expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1-a2', decision: 'approve' });
     expect((await run.result).text).toBe('decision:{"decision":"accept"}');
+  });
+
+  it('grants a permission profile for the turn', async () => {
+    const seen: unknown[] = [];
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('permissions'),
+      onApproval: (request) => {
+        seen.push(request);
+        return 'approve';
+      },
+    });
+    expect((await run.result).text).toBe('decision:{"permissions":{"network":{"enabled":true}},"scope":"turn"}');
+    expect(seen).toMatchObject([{ id: 'p1', kind: 'other', scope: 'turn' }]);
+  });
+
+  it('withdraws an open question when the agent exits', async () => {
+    let signal: AbortSignal | undefined;
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('approval-exit'),
+      onApproval: (_, given) => {
+        signal = given;
+        return new Promise(() => {});
+      },
+    });
+    const events = await collect(run);
+    expect((await run.result).status).toBe('failed');
+    expect(signal?.aborted).toBe(true);
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1', decision: 'deny' });
   });
 
   it('declines approvals when onApproval throws', async () => {
@@ -254,6 +295,79 @@ describe('museLive', () => {
     });
     expect((await run.result).text).toBe('decided:allow-once@0,deny-once@1 receipt:{}');
     expect(seen).toEqual(['ap-1:rm -rf build', 'ap-1/2:git push']);
+  });
+});
+
+describe('live agents with task.permissions', () => {
+  const policy = async (run: AgentRun) => {
+    const result = await run.result;
+    expect(result.status).toBe('completed');
+    return JSON.parse(result.text!) as Record<string, unknown>;
+  };
+
+  it('maps Codex approval and sandbox to thread/start', async () => {
+    const agent = codexLive({ command: codexBin });
+    const task = { prompt: 'go', cwd: dir, env: env('policy') };
+    expect(await policy(agent.run({ ...task, permissions: 'yolo' }))).toEqual({
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+    });
+    expect(
+      await policy(
+        agent.run({ ...task, permissions: { approval: 'ask', sandbox: 'read-only' }, onApproval: () => 'deny' }),
+      ),
+    ).toEqual({ approvalPolicy: 'on-request', sandbox: 'read-only' });
+    // An explicit `deny` wins over an onApproval handler.
+    expect(
+      await policy(agent.run({ ...task, permissions: { approval: 'deny' }, onApproval: () => 'approve' })),
+    ).toEqual({ approvalPolicy: 'never', sandbox: 'workspace-write' });
+  });
+
+  it('refuses what it cannot honor before starting', async () => {
+    const ask = await codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('policy'),
+      permissions: { approval: 'ask' },
+    }).result;
+    expect(ask).toMatchObject({ status: 'failed', error: "permissions.approval 'ask' needs task.onApproval." });
+    const both = await codexLive({ command: codexBin, sandbox: 'read-only' }).run({
+      prompt: 'go',
+      cwd: dir,
+      permissions: { sandbox: 'unrestricted' },
+    }).result;
+    expect(both.error).toBe('codex: set either the sandbox option or task.permissions.sandbox, not both.');
+    const sandbox = await museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      permissions: { sandbox: 'workspace-write' },
+    }).result;
+    expect(sandbox.error).toBe("muse cannot run with permissions.sandbox 'workspace-write' (supported: unrestricted).");
+  });
+
+  it('auto-approves Muse requests once, with automatic events', async () => {
+    const run = museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('approval'),
+      permissions: 'yolo',
+    });
+    const events = await collect(run);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'approval-request', request: expect.objectContaining({ id: 'ap-1' }) }),
+    );
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'ap-1', decision: 'approve', automatic: true });
+    expect((await run.result).text).toBe('decided:allow-once@0 receipt:{}');
+  });
+
+  it('uses denyUnmatched for Muse deny', async () => {
+    const run = museLive({ command: museBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('policy'),
+      permissions: { approval: 'deny' },
+    });
+    expect(await policy(run)).toEqual({ approvalMode: 'denyUnmatched' });
   });
 });
 
