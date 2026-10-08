@@ -3,7 +3,7 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
+import type { AgentEvent, AgentTask, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
 import { claude } from './claude.js';
 import {
   claudeApprovalArgs,
@@ -218,12 +218,16 @@ const bin = join(dir, 'claude');
 writeFileSync(bin, `#!${process.execPath}\nimport(${JSON.stringify(fake)});\n`, { mode: 0o755 });
 
 describe('claude() with onApproval', () => {
-  async function run(onApproval: ApprovalHandler, mcpServers?: { name: string; url: string }[]) {
+  async function run(
+    onApproval: ApprovalHandler | undefined,
+    mcpServers?: { name: string; url: string }[],
+    permissions?: AgentTask['permissions'],
+  ) {
     const agent = claude({ command: bin });
     const events: AgentEvent[] = [];
     const env = { ...process.env };
     delete env.MCP_TOOL_TIMEOUT;
-    const task = agent.run({ prompt: 'fix it', cwd: dir, env, onApproval, mcpServers });
+    const task = agent.run({ prompt: 'fix it', cwd: dir, env, onApproval, mcpServers, permissions });
     for await (const event of task) events.push(event);
     const result = await task.result;
     expect(result.status).toBe('completed');
@@ -255,5 +259,28 @@ describe('claude() with onApproval', () => {
     expect(report.answer).toMatchObject({ behavior: 'deny' });
     expect(report.servers).toEqual(['genaicode_approval', 'docs', 'genaicode_approval_2']);
     expect(report.args).toContain('mcp__genaicode_approval_2__approve');
+  });
+
+  it('auto-approves without onApproval and reports the decision as automatic', async () => {
+    const { report, events } = await run(undefined, undefined, 'yolo');
+    expect(report.answer).toEqual({ behavior: 'allow', updatedInput: { command: 'npm test' } });
+    expect(report.args).toContain('{"sandbox":{"enabled":false}}');
+    expect(events.filter((event) => event.type === 'approval-resolved')).toEqual([
+      { type: 'approval-resolved', id: 'tu-9', decision: 'approve', automatic: true },
+    ]);
+  });
+
+  it('keeps auto-approve inside the sandbox', async () => {
+    const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+    const { report, events } = await run(onApproval, undefined, {
+      approval: 'auto-approve',
+      sandbox: 'workspace-write',
+    });
+    // An unsandboxed Bash call is outside workspace-write, so nobody is asked.
+    expect(report.answer).toMatchObject({ behavior: 'deny' });
+    expect(onApproval).not.toHaveBeenCalled();
+    expect(events.filter((event) => event.type === 'approval-resolved')).toEqual([
+      { type: 'approval-resolved', id: 'tu-9', decision: 'deny', automatic: true },
+    ]);
   });
 });

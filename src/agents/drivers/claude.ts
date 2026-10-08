@@ -2,10 +2,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import { askApproval } from '../live-agent.js';
+import { decideApproval } from '../live-agent.js';
+import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
-import { claudeApprovalEnv, startClaudeApprovalServer } from './claude-approvals.js';
+import {
+  claudeApprovalEnv,
+  claudePermissionFlags,
+  claudeSandboxRefuses,
+  startClaudeApprovalServer,
+} from './claude-approvals.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export type ClaudePermissionMode =
@@ -41,6 +47,9 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
  * `--permission-prompt-tool`, served from a private loopback MCP endpoint for the task (see
  * `startClaudeApprovalServer`), and Claude waits up to a day for an answer (`claudeApprovalEnv`).
  * Without it, tools the permission mode does not allow are refused.
+ *
+ * `task.permissions`: see `claudePermissionFlags`. `ask` and `auto-approve` use the same
+ * prompt tool; a request outside the sandbox is denied before anyone is asked.
  */
 export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   return cliAgent({
@@ -53,6 +62,10 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       mcp: true,
       resume: true,
       approvals: true,
+      permissions: {
+        approval: ['ask', 'auto-approve', 'deny'],
+        sandbox: ['workspace-write', 'read-only', 'unrestricted'],
+      },
     },
     args: (task) => claudeArgs(task, options),
     prepare: (task, context) => prepareClaude(task, options, context),
@@ -66,7 +79,9 @@ async function prepareClaude(
   options: ClaudeAgentOptions,
   context: PrepareContext,
 ): Promise<PreparedRun> {
-  const approvals = task.onApproval ? await claudeApprovals(task, context) : undefined;
+  const policy = resolvePermissions(task.permissions).approval;
+  const asks = policy ? policy !== 'deny' : !!task.onApproval;
+  const approvals = asks ? await claudeApprovals(task, context) : undefined;
   const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
   if (!servers.length) return { args: claudeArgs(task, options) };
   let dir: string | undefined;
@@ -91,17 +106,22 @@ async function prepareClaude(
   };
 }
 
-/** The task's approval endpoint: asks `task.onApproval`, with the run's approval events. */
+/** The task's approval endpoint: decides under `task.permissions`, with the run's approval events. */
 async function claudeApprovals(task: AgentTask, context: PrepareContext) {
   const taken = new Set((task.mcpServers ?? []).map((server) => server.name));
   let name = 'genaicode_approval';
   for (let n = 2; taken.has(name); n++) name = `genaicode_approval_${n}`;
+  const sandbox = resolvePermissions(task.permissions).sandbox;
   return startClaudeApprovalServer(
     async (request, signal) => {
       context.emit({ type: 'approval-request', request });
       const ended = signal ? AbortSignal.any([signal, context.signal]) : context.signal;
-      const decision = await askApproval(task, request, ended);
-      context.emit({ type: 'approval-resolved', id: request.id, decision });
+      // Outside the sandbox: denied by policy, whoever would have answered.
+      const { decision, automatic } =
+        sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)
+          ? { decision: 'deny' as const, automatic: true }
+          : await decideApproval(task, request, ended);
+      context.emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
       return decision;
     },
     { name },
@@ -139,7 +159,12 @@ export function claudeArgs(
   ];
   if (allowed.length) args.push('--allowedTools', allowed.join(','));
   if (options.disallowedTools?.length) args.push('--disallowedTools', options.disallowedTools.join(','));
-  args.push('--output-format', 'stream-json', '--permission-mode', options.permissionMode ?? 'acceptEdits');
+  const permissions = resolvePermissions(task.permissions);
+  const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
+  exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
+  args.push('--output-format', 'stream-json');
+  if (owned) args.push(...claudePermissionFlags(permissions).args);
+  else args.push('--permission-mode', options.permissionMode ?? 'acceptEdits');
   if (approvalArgs) args.push(...approvalArgs);
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);

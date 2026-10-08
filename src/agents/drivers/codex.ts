@@ -1,6 +1,7 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import { isHttpServer, type PreparedRun } from '../prepare.js';
-import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer, SandboxPolicy } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -14,12 +15,52 @@ export interface CodexAgentOptions {
   skipGitRepoCheck?: boolean;
 }
 
+/** Codex's sandbox mode for a `permissions.sandbox`. */
+export const CODEX_SANDBOX: Readonly<Record<SandboxPolicy, CodexSandbox>> = {
+  'workspace-write': 'workspace-write',
+  'read-only': 'read-only',
+  unrestricted: 'danger-full-access',
+};
+
+/**
+ * `codex exec` flags for `permissions`. Exec never asks, so `deny` and `auto-approve` are both
+ * approval policy `never`: what the sandbox allows runs, anything beyond it fails. `ask` is not
+ * possible headless (use `codexLive`).
+ */
+export function codexPermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval === 'ask')
+    throw new Error("codex exec cannot ask for approval; use codexLive() for permissions.approval 'ask'.");
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  if (approval || sandbox)
+    Object.assign(replaces, {
+      '--dangerously-bypass-approvals-and-sandbox': 'flag',
+      '--yolo': 'flag',
+      '--full-auto': 'flag',
+      '--ask-for-approval': 'value',
+      '-a': 'value',
+    });
+  if (approval) args.push('-c', 'approval_policy="never"');
+  if (sandbox) {
+    Object.assign(replaces, { '--sandbox': 'value', '-s': 'value' });
+    args.push('--sandbox', CODEX_SANDBOX[sandbox]);
+  }
+  return { args, replaces };
+}
+
 /** OpenAI Codex CLI in exec mode (`codex exec --json`). */
 export function codex(options: CodexAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, mcp: true, resume: true },
+    capabilities: {
+      effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      usage: true,
+      mcp: true,
+      resume: true,
+      permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
+    },
     args: (task) => codexArgs(task, options),
     prepare: (task) => withCodexMcp(task, codexArgs(task, options)),
     createParser: createCodexParser,
@@ -27,7 +68,12 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
 }
 
 export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): string[] {
-  const args = ['exec', '--json', '--sandbox', options.sandbox ?? 'workspace-write'];
+  const permissions = resolvePermissions(task.permissions);
+  exclusiveOption('codex', 'sandbox', options.sandbox !== undefined, 'sandbox', permissions.sandbox !== undefined);
+  const flags = codexPermissionFlags(permissions);
+  const args = ['exec', '--json'];
+  if (!permissions.sandbox) args.push('--sandbox', options.sandbox ?? 'workspace-write');
+  args.push(...flags.args);
   if (options.skipGitRepoCheck ?? true) args.push('--skip-git-repo-check');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);

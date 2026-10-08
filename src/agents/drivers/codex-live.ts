@@ -2,7 +2,9 @@ import { liveAgent, type LiveSession } from '../live-agent.js';
 import type { AgentOutcome } from '../runtime.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
-import { withCodexMcp, type CodexSandbox } from './codex.js';
+import { exclusiveOption, resolvePermissions } from '../permissions.js';
+import type { AgentTask } from '../types.js';
+import { CODEX_SANDBOX, withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -18,16 +20,49 @@ export interface CodexLiveOptions {
  * Codex over its app server (`codex app-server`, JSON-RPC on stdio).
  * Supports `steer()` and routes command, file-change and permission-profile approvals to
  * `task.onApproval` (see `codexApprovals`).
+ *
+ * `task.permissions`: `ask` is approval policy `on-request`; `auto-approve` and `deny` are
+ * `never`, since what Codex would ask about is a step outside its sandbox. The sandbox maps to
+ * Codex's own (`unrestricted` is `danger-full-access`).
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   return liveAgent({
     name: 'codex',
     command: options.command ?? 'codex',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh'], usage: true, approvals: true, mcp: true },
-    args: (task) => [...(task.extraArgs ?? []), 'app-server'],
-    prepare: (task) => withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']),
+    capabilities: {
+      effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      usage: true,
+      approvals: true,
+      mcp: true,
+      permissions: {
+        approval: ['ask', 'auto-approve', 'deny'],
+        sandbox: ['workspace-write', 'read-only', 'unrestricted'],
+      },
+    },
+    args: (task) => {
+      codexThreadPolicy(task, options);
+      return [...(task.extraArgs ?? []), 'app-server'];
+    },
+    prepare: (task) => {
+      codexThreadPolicy(task, options);
+      return withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
+    },
     drive: (session) => driveCodex(session, options),
   });
+}
+
+/** `thread/start` sandbox and approval policy for a task. */
+export function codexThreadPolicy(
+  task: Pick<AgentTask, 'permissions' | 'onApproval'>,
+  options: Pick<CodexLiveOptions, 'sandbox'> = {},
+): { sandbox: CodexSandbox; approvalPolicy: 'on-request' | 'never' } {
+  const { approval, sandbox } = resolvePermissions(task.permissions);
+  exclusiveOption('codex', 'sandbox', options.sandbox !== undefined, 'sandbox', sandbox !== undefined);
+  const asks = approval ? approval === 'ask' : !!task.onApproval;
+  return {
+    sandbox: sandbox ? CODEX_SANDBOX[sandbox] : (options.sandbox ?? 'workspace-write'),
+    approvalPolicy: asks ? 'on-request' : 'never',
+  };
 }
 
 async function driveCodex(session: LiveSession, options: CodexLiveOptions): Promise<AgentOutcome> {
@@ -72,8 +107,7 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
     {
       cwd: task.cwd,
       ...(task.model ? { model: task.model } : {}),
-      sandbox: options.sandbox ?? 'workspace-write',
-      approvalPolicy: task.onApproval ? 'on-request' : 'never',
+      ...codexThreadPolicy(task, options),
     },
     timeout,
   );

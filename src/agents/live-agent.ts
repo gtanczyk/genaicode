@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { resolvePermissions } from './permissions.js';
 import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
@@ -9,6 +10,7 @@ import type {
   AgentRun,
   AgentTask,
   ApprovalDecision,
+  ApprovalPolicy,
   ApprovalRequest,
   CodingAgent,
 } from './types.js';
@@ -23,9 +25,9 @@ export interface LiveSession {
   /** Called for each request the agent sends. Throw `RpcError` to decline. Unhandled requests are declined. */
   onRequest(handler: (method: string, params: unknown, context: RpcRequestContext) => unknown | Promise<unknown>): void;
   /**
-   * Ask `task.onApproval`, emitting request and decision events. The decision is `deny` when
-   * there is no handler, it throws, `signal` aborts, or the task ends first; the handler's
-   * signal aborts in the last two cases.
+   * Decide a request with `decideApproval`, emitting request and decision events. The decision
+   * is `deny` when there is no handler, it throws, `signal` aborts, or the task ends first; the
+   * handler's signal aborts in the last two cases.
    */
   approve(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision>;
   /** Aborts once the task is over: its process exited, or it was stopped. */
@@ -161,12 +163,12 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     signal: lifetime.signal,
     async approve(request, signal) {
       recorder.emit({ type: 'approval-request', request });
-      const decision = await askApproval(
+      const { decision, automatic } = await decideApproval(
         task,
         request,
         signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal,
       );
-      recorder.emit({ type: 'approval-resolved', id: request.id, decision });
+      recorder.emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
       return decision;
     },
     setSteer(next) {
@@ -233,6 +235,27 @@ export async function askApproval(
   } finally {
     signal.removeEventListener('abort', stop);
   }
+}
+
+/**
+ * Decide one request under `task.permissions.approval`: `deny` and `auto-approve` answer
+ * without asking (`automatic`), otherwise `askApproval`. An approval that arrives after
+ * `signal` aborted is a denial either way.
+ */
+export async function decideApproval(
+  task: Pick<AgentTask, 'onApproval' | 'permissions'>,
+  request: ApprovalRequest,
+  signal: AbortSignal,
+): Promise<{ decision: ApprovalDecision; automatic: boolean }> {
+  let policy: ApprovalPolicy | undefined;
+  try {
+    policy = resolvePermissions(task.permissions).approval;
+  } catch {
+    return { decision: 'deny', automatic: true };
+  }
+  if (policy === 'deny') return { decision: 'deny', automatic: true };
+  if (policy === 'auto-approve') return { decision: signal.aborted ? 'deny' : 'approve', automatic: true };
+  return { decision: await askApproval(task, request, signal), automatic: false };
 }
 
 /** A driver's verdict when it already settled; undefined when it was still waiting. */

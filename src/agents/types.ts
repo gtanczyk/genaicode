@@ -3,8 +3,9 @@ import type { TokenUsage } from '../core/types.js';
 /**
  * One unit of work handed to a coding agent: a prompt and the directory it may edit.
  *
- * The agent runs as a child process with the caller's `env`. GenAIcode does not
- * sandbox it, pick a model, or retry it; those stay application decisions.
+ * The agent runs as a child process with the caller's `env`. GenAIcode does not pick a
+ * model or retry it; those stay application decisions. `permissions` selects the agent's own
+ * approval and sandbox options; without it each driver keeps its documented defaults.
  */
 export interface AgentTask {
   prompt: string;
@@ -40,6 +41,37 @@ export interface AgentTask {
    * `signal`; it is optional only so that custom drivers written for 2.x keep compiling.
    */
   onApproval?: ApprovalHandler;
+  /**
+   * Approval and sandbox policy, translated by the driver into the agent's own options
+   * (`capabilities.permissions` lists what it supports). An omitted field keeps the driver's
+   * default. A value or combination the agent cannot honor fails the run with an error
+   * instead of starting it in another mode. `'yolo'` is `{ approval: 'auto-approve',
+   * sandbox: 'unrestricted' }`.
+   */
+  permissions?: AgentPermissions | 'yolo';
+}
+
+/**
+ * - `ask`: permission prompts go to `task.onApproval`, which is then required.
+ * - `auto-approve`: every prompt is approved without asking, for exactly the scope the agent
+ *   asked for. Where genaicode sees the prompt, it still emits `approval-request` and
+ *   `approval-resolved` (with `automatic: true`); agents that approve on their own report nothing.
+ * - `deny`: nothing that needs a prompt runs; `onApproval` is not called.
+ */
+export type ApprovalPolicy = 'ask' | 'auto-approve' | 'deny';
+
+/**
+ * - `workspace-write`: the agent's sandbox limits writes to `cwd` (network rules are the vendor's).
+ * - `read-only`: the agent's read-only mode; nothing is written.
+ * - `unrestricted`: no sandbox, even when the agent's own settings enable one.
+ *
+ * The sandbox bounds approvals too: `ask` and `auto-approve` never grant a step outside it.
+ */
+export type SandboxPolicy = 'workspace-write' | 'read-only' | 'unrestricted';
+
+export interface AgentPermissions {
+  approval?: ApprovalPolicy;
+  sandbox?: SandboxPolicy;
 }
 
 export type ApprovalHandler = (
@@ -90,7 +122,8 @@ export type AgentEvent =
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
   | { type: 'file-change'; paths: string[] }
   | { type: 'approval-request'; request: ApprovalRequest }
-  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision }
+  /** `automatic`: decided by `permissions.approval`, without asking anyone. */
+  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision; automatic?: boolean }
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
@@ -129,6 +162,11 @@ export interface AgentCapabilities {
   mcp?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
+  /** `AgentTask.permissions` values the driver can translate. Absent: none. */
+  permissions?: {
+    approval?: readonly ApprovalPolicy[];
+    sandbox?: readonly SandboxPolicy[];
+  };
 }
 
 /**

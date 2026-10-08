@@ -1,6 +1,7 @@
 import { cliAgent, type AgentOutputParser } from '../cli-agent.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import type { PreparedRun } from '../prepare.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
 
 export interface VibeAgentOptions {
@@ -27,7 +28,10 @@ export function vibe(options: VibeAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'vibe',
     command: options.command ?? 'vibe',
-    capabilities: { maxTurns: true },
+    capabilities: {
+      maxTurns: true,
+      permissions: { approval: ['auto-approve', 'deny'], sandbox: ['read-only', 'unrestricted'] },
+    },
     args: (task) => vibeArgs(task, options),
     prepare: (task) => prepareVibe(task, options),
     createParser: createVibeParser,
@@ -38,8 +42,39 @@ function prepareVibe(task: AgentTask, options: VibeAgentOptions): PreparedRun {
   return { args: vibeArgs(task, options), ...(task.model ? { env: { VIBE_ACTIVE_MODEL: task.model } } : {}) };
 }
 
+/**
+ * Vibe flags for `permissions`: `auto-approve` is `--auto-approve` for the selected agent
+ * profile, `deny` leaves it off (a headless run declines what it would ask about), and
+ * `read-only` is the `plan` profile, which cannot be combined with `auto-approve`. Vibe has
+ * no sandbox, so `workspace-write` is not offered. `ask` is not possible headless.
+ */
+export function vibePermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval === 'ask') throw new Error("vibe cannot ask for approval headless (permissions.approval 'ask').");
+  if (sandbox === 'workspace-write') throw new Error("vibe has no sandbox ('workspace-write').");
+  if (sandbox === 'read-only' && approval === 'auto-approve')
+    throw new Error("vibe's read-only profile (plan) cannot be combined with permissions.approval 'auto-approve'.");
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  if (approval) {
+    Object.assign(replaces, { '--auto-approve': 'flag', '--yolo': 'flag', '--smart-approve': 'flag' });
+    if (approval === 'auto-approve') args.push('--auto-approve');
+  }
+  if (sandbox === 'read-only') {
+    replaces['--agent'] = 'value';
+    args.push('--agent', 'plan');
+  }
+  return { args, replaces };
+}
+
 export function vibeArgs(task: AgentTask, options: VibeAgentOptions = {}): string[] {
-  const args = ['--output', 'streaming', '--agent', options.agent ?? 'accept-edits'];
+  const permissions = resolvePermissions(task.permissions);
+  const readOnly = permissions.sandbox === 'read-only';
+  exclusiveOption('vibe', 'agent', options.agent !== undefined, 'sandbox', readOnly);
+  const flags = vibePermissionFlags(permissions);
+  const args = ['--output', 'streaming'];
+  if (!readOnly) args.push('--agent', options.agent ?? 'accept-edits');
+  args.push(...flags.args);
   if (options.trustWorkspace ?? true) args.push('--trust');
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
   if (options.maxPriceUsd !== undefined) args.push('--max-price', String(options.maxPriceUsd));

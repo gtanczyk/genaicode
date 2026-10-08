@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import { isHttpServer, type PreparedRun } from '../prepare.js';
-import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export interface CopilotAgentOptions {
@@ -36,6 +37,7 @@ export function copilot(options: CopilotAgentOptions = {}): CodingAgent {
       usage: true,
       mcp: true,
       resume: true,
+      permissions: { approval: ['auto-approve'], sandbox: ['unrestricted'] },
     },
     args: (task) => copilotArgs(task, options),
     prepare: (task) => prepareCopilot(task, options),
@@ -72,9 +74,38 @@ export function copilotMcpConfig(servers: readonly McpServer[]): { mcpServers: R
   return { mcpServers };
 }
 
+/**
+ * Copilot CLI flags for `permissions`. A prompt-mode run must allow its tools up front
+ * (`--allow-all-tools`), so the only approval policy is `auto-approve`. `unrestricted` adds
+ * `--allow-all-paths --allow-all-urls`. Copilot's `--sandbox` lets a command opt out of it per
+ * call, which cannot be locked from the command line, so `workspace-write` is not offered.
+ */
+export function copilotPermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval && approval !== 'auto-approve')
+    throw new Error(`copilot cannot run with permissions.approval '${approval}' in prompt mode.`);
+  if (sandbox && sandbox !== 'unrestricted')
+    throw new Error(`copilot cannot run with permissions.sandbox '${sandbox}'.`);
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  if (approval) {
+    Object.assign(replaces, { '--allow-all-tools': 'flag', '--allow-all': 'flag', '--yolo': 'flag' });
+    args.push('--allow-all-tools');
+  }
+  if (sandbox) {
+    Object.assign(replaces, { '--allow-all-paths': 'flag', '--allow-all-urls': 'flag', '--sandbox': 'flag' });
+    args.push('--allow-all-paths', '--allow-all-urls');
+  }
+  return { args, replaces };
+}
+
 export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, mcpConfigPath?: string): string[] {
+  const permissions = resolvePermissions(task.permissions);
+  exclusiveOption('copilot', 'allowAllTools', options.allowAllTools !== undefined, 'approval', !!permissions.approval);
+  const flags = copilotPermissionFlags(permissions);
   const args = ['--output-format', 'json'];
-  if (options.allowAllTools ?? true) args.push('--allow-all-tools');
+  if (!permissions.approval && (options.allowAllTools ?? true)) args.push('--allow-all-tools');
+  args.push(...flags.args);
   // `--allow-tool` and `--deny-tool` take several values; the `=` form keeps each one to a single value.
   const allowed = [
     ...(options.allowTools ?? []),

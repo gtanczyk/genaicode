@@ -147,6 +147,7 @@ export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; ou
           <Text color="gray">
             {' → '}
             {entry.decision === 'approve' ? 'approved' : entry.decision === 'deny' ? 'denied' : 'waiting'}
+            {entry.decision && entry.automatic ? ' (automatic)' : ''}
           </Text>
         </Text>
       );

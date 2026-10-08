@@ -257,6 +257,29 @@ describe('createAgentSession', () => {
     expect(session.get().turns[1].result?.status).toBe('aborted');
   });
 
+  it('shows approvals decided by permissions, once each', async () => {
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        const request = { id: 'a1', kind: 'command' as const, summary: 'npm test' };
+        emit({ type: 'approval-request', request });
+        emit({ type: 'approval-resolved', id: 'a1', decision: 'approve', automatic: true });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.', task: { permissions: 'yolo' } });
+    session.send('test');
+    await session.idle();
+    expect(tasks[0]!.permissions).toBe('yolo');
+    expect(session.get().approvals).toEqual([]);
+    expect(session.get().turns[0]!.entries.filter((entry) => entry.kind === 'approval')).toEqual([
+      {
+        kind: 'approval',
+        request: { id: 'a1', kind: 'command', summary: 'npm test' },
+        decision: 'approve',
+        automatic: true,
+      },
+    ]);
+  });
+
   it('drops a question the agent withdraws', async () => {
     const withdraw = new AbortController();
     let decision: string | undefined;

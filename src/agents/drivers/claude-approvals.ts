@@ -1,8 +1,11 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { askApproval } from '../live-agent.js';
-import type { ApprovalHandler, ApprovalRequest } from '../types.js';
+import type { PermissionFlags } from '../permissions.js';
+import type { AgentPermissions, ApprovalHandler, ApprovalRequest, SandboxPolicy } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
 
 /** Name of the permission prompt tool `claudeApprovalTool` serves. */
@@ -34,11 +37,25 @@ export interface ClaudeApprovalTool {
   call(args: unknown, signal?: AbortSignal): Promise<McpToolResult>;
 }
 
+export interface ClaudeApprovalToolOptions {
+  /** Tool name. Default `approve`. */
+  name?: string;
+  /**
+   * The run's `permissions.sandbox`: requests that would step outside it are denied without
+   * asking (see `claudeSandboxRefuses`). Needs `cwd`.
+   */
+  sandbox?: SandboxPolicy;
+  /** The run's working directory. */
+  cwd?: string;
+}
+
 /** Build the permission prompt tool around an approval handler. */
 export function claudeApprovalTool(
   onApproval: ApprovalHandler | undefined,
-  options: { name?: string } = {},
+  options: ClaudeApprovalToolOptions = {},
 ): ClaudeApprovalTool {
+  if (options.sandbox && options.sandbox !== 'unrestricted' && !options.cwd)
+    throw new Error('claudeApprovalTool: a sandbox needs cwd.');
   return {
     name: options.name ?? CLAUDE_APPROVAL_TOOL,
     description: 'Asks the user whether Claude may run this exact tool call.',
@@ -48,7 +65,9 @@ export function claudeApprovalTool(
       required: ['tool_name', 'input'],
     },
     async call(args, signal = new AbortController().signal) {
-      const request = claudeApprovalRequest(args);
+      const parsed = claudeApprovalRequest(args);
+      const refused = parsed && options.sandbox && claudeSandboxRefuses(args, options.sandbox, options.cwd ?? '');
+      const request = refused ? undefined : parsed;
       // `updatedInput` is the input Claude asked about, copied before the handler can touch it.
       const input = request && isObject(args) ? structuredClone(args.input) : undefined;
       const decision = request ? await askApproval({ onApproval }, request, signal) : 'deny';
@@ -80,6 +99,82 @@ export function claudeApprovalRequest(args: unknown): ApprovalRequest | undefine
   };
 }
 
+// Tools that only read, which `read-only` may still grant.
+const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch', 'TodoWrite']);
+
+/**
+ * Whether a permission prompt asks for something outside `sandbox`, so neither a person nor
+ * `auto-approve` may grant it. `read-only`: anything but a reading tool, `ExitPlanMode`
+ * included. `workspace-write`: an edit outside `cwd`, and any `Bash` prompt (Claude's sandbox
+ * runs sandboxed commands without asking, so a prompt means an unsandboxed one).
+ */
+export function claudeSandboxRefuses(args: unknown, sandbox: SandboxPolicy, cwd: string): boolean {
+  if (sandbox === 'unrestricted') return false;
+  const tool = stringField(args, 'tool_name') ?? '';
+  if (sandbox === 'read-only') return !READ_TOOLS.has(tool);
+  if (tool === 'Bash') return true;
+  if (!EDIT_TOOLS.has(tool)) return false;
+  const input = isObject(args) ? args.input : undefined;
+  const path = stringField(input, 'file_path') ?? stringField(input, 'notebook_path');
+  return !path || !within(cwd, resolve(cwd, path));
+}
+
+function within(root: string, path: string): boolean {
+  const rel = relative(real(root), real(path));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/** `path` with symlinks resolved as far as it exists. */
+function real(path: string): string {
+  const rest: string[] = [];
+  for (let current = path; ; ) {
+    try {
+      return join(realpathSync(current), ...rest.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return path;
+      rest.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/** Claude's own sandbox, as `workspace-write` uses it: required, and with no way out per command. */
+const CLAUDE_SANDBOX = {
+  enabled: true,
+  failIfUnavailable: true,
+  autoAllowBashIfSandboxed: true,
+  allowUnsandboxedCommands: false,
+};
+
+/**
+ * Claude Code flags for `permissions`. `read-only` is plan mode; `workspace-write` turns on
+ * Claude's sandbox for Bash (writes limited to `cwd` and temp, see `--settings`), with edits in
+ * `cwd` accepted; `unrestricted` turns the sandbox off. `ask` and `auto-approve` need the
+ * permission prompt tool (`claudeApprovalTool` with the same sandbox); `deny` runs without it,
+ * so Claude refuses what it would have asked about.
+ */
+export function claudePermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  if (approval || sandbox) {
+    Object.assign(replaces, {
+      '--permission-mode': 'value',
+      '--dangerously-skip-permissions': 'flag',
+      '--allow-dangerously-skip-permissions': 'flag',
+    });
+    args.push('--permission-mode', sandbox === 'read-only' ? 'plan' : 'acceptEdits');
+  }
+  if (sandbox) {
+    replaces['--settings'] = 'value';
+    const settings = sandbox === 'workspace-write' ? CLAUDE_SANDBOX : { enabled: false };
+    args.push('--settings', JSON.stringify({ sandbox: settings }));
+  }
+  if (approval === 'deny') replaces['--permission-prompt-tool'] = 'value';
+  return { args, replaces };
+}
+
 /** How long Claude waits for an answer: a day, where its default MCP tool timeout is 60 s. */
 const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000;
 
@@ -108,15 +203,15 @@ export interface ClaudeApprovalServer {
 
 /**
  * Serve `claudeApprovalTool` alone over MCP (streamable HTTP, JSON responses) on a random
- * loopback port, behind a random bearer token. For apps that have no MCP server of their own
- * to mount the tool on; `claude()` uses it for `task.onApproval`.
+ * loopback port, behind a random bearer token. `name` is the MCP server name. For apps that
+ * have no MCP server of their own to mount the tool on; `claude()` uses it for `task.onApproval`.
  */
 export async function startClaudeApprovalServer(
   onApproval: ApprovalHandler | undefined,
-  options: { name?: string } = {},
+  options: { name?: string } & Pick<ClaudeApprovalToolOptions, 'sandbox' | 'cwd'> = {},
 ): Promise<ClaudeApprovalServer> {
   const name = options.name ?? 'genaicode_approval';
-  const tool = claudeApprovalTool(onApproval);
+  const tool = claudeApprovalTool(onApproval, { sandbox: options.sandbox, cwd: options.cwd });
   const token = randomBytes(32).toString('hex');
   const expected = Buffer.from(`Bearer ${token}`);
   const closing = new AbortController();

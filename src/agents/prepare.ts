@@ -1,3 +1,4 @@
+import { unsupportedPermissions } from './permissions.js';
 import type { AgentCapabilities, AgentEvent, AgentTask, McpServer } from './types.js';
 
 /** Everything a driver needs to start one task's process. */
@@ -31,7 +32,7 @@ export function unsupportedTask(name: string, capabilities: AgentCapabilities, t
     if (names.has(server.name)) return `Duplicate MCP server name: ${server.name}.`;
     names.add(server.name);
   }
-  return undefined;
+  return unsupportedPermissions(name, capabilities, task);
 }
 
 export function isHttpServer(server: McpServer): server is Extract<McpServer, { url: string }> {

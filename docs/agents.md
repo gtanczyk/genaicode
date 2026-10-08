@@ -187,7 +187,8 @@ const run = claude().run({
   turn ended, the process exited, or the task was stopped. Close the question then. A late
   answer counts as `deny`.
 - No handler, a handler that throws, and an aborted signal all deny. Nothing is approved
-  automatically. `approval-request` and `approval-resolved` events record each question.
+  automatically unless `permissions.approval` says so (see [Permissions](#permissions)).
+  `approval-request` and `approval-resolved` events record each question.
 
 Per agent:
 
@@ -217,6 +218,62 @@ The protocol handlers are exported for apps that run their own driver or MCP ser
   pass `claudeApprovalArgs(serverName)` to Claude and `claudeApprovalEnv(env)` in its env.
   Abort `signal` when the MCP caller disconnects. `startClaudeApprovalServer(onApproval)`
   serves the tool on its own endpoint instead.
+
+## Permissions
+
+`task.permissions` picks the approval policy and the sandbox in one place, and each driver
+translates it into the agent's own options. An omitted field keeps the driver's default (the
+behavior described above); `'yolo'` is `{ approval: 'auto-approve', sandbox: 'unrestricted' }`.
+
+```ts
+claude().run({ prompt, cwd, permissions: { approval: 'auto-approve', sandbox: 'workspace-write' } });
+codexLive().run({ prompt, cwd, permissions: 'yolo' });
+```
+
+- `approval`: `ask` sends prompts to `onApproval` (required then). `auto-approve` approves each
+  prompt without asking, for exactly the scope the agent asked for (one call, or a Codex
+  profile for the turn; never a session-wide grant). `deny` refuses whatever would need a
+  prompt and does not call `onApproval`.
+- `sandbox`: `workspace-write` turns on the agent's own sandbox (writes limited to `cwd`;
+  network rules are the vendor's), `read-only` its read-only mode, `unrestricted` no sandbox,
+  even when the agent's settings enable one. The sandbox bounds approvals: neither a person
+  nor `auto-approve` can grant a step outside it.
+- `capabilities.permissions` lists the values a driver accepts. Anything else, and any
+  combination the agent cannot honor, fails the run with `status: 'failed'` and an `error`
+  naming the value before the agent starts. Setting both a permissions field and the driver
+  option it replaces (`permissionMode`, `sandbox`, `approvalMode`, `force`...) is an error too.
+- Where genaicode sees the prompt (Claude's prompt tool, Muse), `auto-approve` and policy
+  denials still emit `approval-request` and `approval-resolved` with `automatic: true`, and
+  `createAgentSession` shows them as transcript entries. Agents that approve by themselves
+  (Codex with policy `never`, Gemini `yolo`, Cursor `--force`...) report nothing to show.
+
+| Driver          | approval                | sandbox                                  | Translation                                                                                                                                                                                                    |
+| --------------- | ----------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude()`      | ask, auto-approve, deny | workspace-write, read-only, unrestricted | `ask` / `auto-approve`: the prompt tool; `deny`: none. `workspace-write`: Claude's sandbox via `--settings` (required, no per-command escape), `acceptEdits`; `read-only`: `plan`; `unrestricted`: sandbox off |
+| `codex()`       | auto-approve, deny      | workspace-write, read-only, unrestricted | `approval_policy="never"` (exec never asks); `--sandbox` read-only / workspace-write / danger-full-access                                                                                                      |
+| `codexLive()`   | ask, auto-approve, deny | workspace-write, read-only, unrestricted | `ask`: policy `on-request`, otherwise `never`; `thread/start` sandbox as above                                                                                                                                 |
+| `museLive()`    | ask, auto-approve, deny | unrestricted                             | `ask` / `auto-approve`: approval mode `onRequest` (the `once` choice); `deny`: `denyUnmatched`. Muse has no sandbox                                                                                            |
+| `gemini()`      | auto-approve, deny      | workspace-write, read-only, unrestricted | `--approval-mode yolo` / `auto_edit`; `read-only`: `plan` (not with `auto-approve`); `--sandbox` / `--no-sandbox` plus `GEMINI_SANDBOX`, which overrides the flag in Gemini                                    |
+| `cursor()`      | auto-approve, deny      | workspace-write, read-only, unrestricted | `auto-approve`: `--force`, which runs commands unsandboxed, so only with `unrestricted`; `deny`: `--trust`; `--sandbox enabled` / `disabled`; `read-only`: `--mode ask`                                        |
+| `copilot()`     | auto-approve            | unrestricted                             | `--allow-all-tools` (prompt mode needs it); `--allow-all-paths --allow-all-urls`. Copilot's `--sandbox` lets a command opt out of it, so `workspace-write` is not offered                                      |
+| `opencode()`    | auto-approve, deny      | unrestricted                             | `--auto`; opencode has no sandbox                                                                                                                                                                              |
+| `vibe()`        | auto-approve, deny      | read-only, unrestricted                  | `--auto-approve`; `read-only`: `--agent plan` (not with `auto-approve`); no sandbox                                                                                                                            |
+| `antigravity()` | none                    | workspace-write, unrestricted            | `--sandbox` on or off                                                                                                                                                                                          |
+| `muse()`        | none                    | none                                     |                                                                                                                                                                                                                |
+
+Claude in `read-only` writes nothing in the workspace, but plan mode may still save its plan
+under `~/.claude/plans`. In `workspace-write`, Claude's sandbox covers Bash; edits through its
+file tools are accepted inside `cwd` and denied outside it.
+
+For apps that keep their own argument lists (an adapters file, say),
+`applyPermissionArgs(agent, args, permissions)` returns `{ args, env }` with the flags the
+translation owns replaced, using the same per-agent functions (`claudePermissionFlags`,
+`codexPermissionFlags`, `geminiPermissionFlags`, `cursorPermissionFlags`,
+`copilotPermissionFlags`, `opencodePermissionFlags`, `vibePermissionFlags`,
+`antigravityPermissionFlags`; `codexThreadPolicy` for the app server). For Claude, `ask` and
+`auto-approve` also need the prompt tool: `claudeApprovalTool(handler, { sandbox, cwd })`
+denies requests outside the sandbox before asking, and `decideApproval(task, request, signal)`
+applies the approval policy the way the drivers do.
 
 ## Custom live agents
 

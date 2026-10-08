@@ -22,7 +22,8 @@ export type SessionEntry =
       done: boolean;
     }
   | { kind: 'files'; paths: string[] }
-  | { kind: 'approval'; request: ApprovalRequest; decision?: ApprovalDecision }
+  /** `automatic`: decided by the task's `permissions.approval`, without asking. */
+  | { kind: 'approval'; request: ApprovalRequest; decision?: ApprovalDecision; automatic?: boolean }
   | { kind: 'input'; text: string }
   | { kind: 'error'; message: string };
 
@@ -210,13 +211,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         addEntry(turnId, { kind: 'files', paths: event.paths });
         return;
       case 'approval-request':
-        // The entry is added by `onApproval`, which also holds the pending decision.
+        // Usually added by `onApproval`, which holds the pending decision; this covers requests
+        // decided without asking (`permissions.approval`).
+        addApproval(turnId, event.request);
         return;
       case 'approval-resolved':
         updateTurn(turnId, (turn) => ({
           ...turn,
           entries: turn.entries.map((entry) =>
-            entry.kind === 'approval' && entry.request.id === event.id ? { ...entry, decision: event.decision } : entry,
+            entry.kind === 'approval' && entry.request.id === event.id && !entry.decision
+              ? { ...entry, decision: event.decision, ...(event.automatic ? { automatic: true } : {}) }
+              : entry,
           ),
         }));
         return;
@@ -243,8 +248,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
   };
 
+  const addApproval = (turnId: number, request: ApprovalRequest) => {
+    const turn = state.turns.find((candidate) => candidate.id === turnId);
+    const known = turn?.entries.some(
+      (entry) => entry.kind === 'approval' && entry.request.id === request.id && !entry.decision,
+    );
+    if (!known) addEntry(turnId, { kind: 'approval', request });
+  };
+
   const onApproval = (turnId: number, request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> => {
-    addEntry(turnId, { kind: 'approval', request });
+    addApproval(turnId, request);
     if (signal?.aborted) return Promise.resolve('deny');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);

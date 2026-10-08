@@ -4,6 +4,18 @@
 
 ### Added
 
+- `task.permissions`: `{ approval: 'ask' | 'auto-approve' | 'deny', sandbox: 'workspace-write' |
+'read-only' | 'unrestricted' }`, or the `'yolo'` preset (auto-approve, unrestricted). Each
+  driver translates it into the agent's own options and declares what it accepts in
+  `capabilities.permissions`; an unsupported value or combination fails the run with an error
+  instead of starting it in another mode. The sandbox bounds approvals, and `auto-approve`
+  grants exactly the scope the agent asked for. Prompts decided by the policy keep their
+  `approval-request` / `approval-resolved` events, marked `automatic: true`, and show as
+  "Auto-approved" in `createAgentSession`, `<AgentChat>` and `genaicode chat`.
+- For apps with their own argument lists: `applyPermissionArgs`, the per-agent
+  `*PermissionFlags` functions, `codexThreadPolicy`, `decideApproval`, `claudeSandboxRefuses`
+  and a `sandbox` option for `claudeApprovalTool`.
+
 - `claude()` answers permission prompts: with `task.onApproval`, it serves Claude Code's
   `--permission-prompt-tool` from a private loopback MCP endpoint (random port and bearer
   token) next to the task's own `mcpServers`, and raises `MCP_TOOL_TIMEOUT` so Claude waits

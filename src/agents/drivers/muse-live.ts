@@ -1,4 +1,5 @@
 import { liveAgent, uuidv7, type LiveSession } from '../live-agent.js';
+import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
 import type { AgentOutcome } from '../runtime.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
@@ -19,12 +20,20 @@ const TOOL_KINDS = new Set(['commandExecution', 'toolCall', 'mcpToolCall', 'file
 /**
  * Muse over its JSON-RPC server (`muse serve`). Supports `steer()` and routes
  * approval requests to `task.onApproval` (see `museApprovals`); without one, each request is denied.
+ *
+ * `task.permissions`: `ask` and `auto-approve` use approval mode `onRequest` (auto-approve
+ * picks the one-time choice of each request, never a session grant); `deny` is
+ * `denyUnmatched`. Muse has no sandbox, so `sandbox` can only be `unrestricted`.
  */
 export function museLive(options: MuseLiveOptions = {}): CodingAgent {
   return liveAgent({
     name: 'muse',
     command: options.command ?? 'muse',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], approvals: true },
+    capabilities: {
+      effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+      approvals: true,
+      permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['unrestricted'] },
+    },
     args: (task) => [
       'serve',
       ...((options.trustWorkspace ?? true) ? ['--trust-workspace'] : []),
@@ -82,7 +91,7 @@ async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promis
       commandId: uuidv7(),
       workspaceRoot: task.cwd,
       ...(task.model ? { modelId: task.model } : {}),
-      approvalMode: 'onRequest',
+      approvalMode: resolvePermissions(task.permissions).approval === 'deny' ? 'denyUnmatched' : 'onRequest',
     },
     timeout,
   );

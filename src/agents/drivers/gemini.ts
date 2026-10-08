@@ -1,5 +1,6 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export type GeminiApprovalMode = 'default' | 'auto_edit' | 'yolo' | 'plan';
@@ -18,19 +19,62 @@ export interface GeminiAgentOptions {
 
 const EDIT_TOOLS = new Set(['replace', 'write_file', 'edit']);
 
+/**
+ * Gemini CLI flags for `permissions`. `deny` is approval mode `auto_edit` (edits run, other
+ * tools are refused headless), `auto-approve` is `yolo`, and `read-only` is `plan`, which
+ * cannot be combined with `auto-approve`. `workspace-write` runs Gemini in its sandbox
+ * (`--sandbox`: Seatbelt on macOS, Docker or Podman elsewhere; Gemini fails to start when
+ * none is available) and `unrestricted` turns it off. `GEMINI_SANDBOX` overrides the flag in
+ * Gemini, so it is set too. `ask` is not possible headless.
+ */
+export function geminiPermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval === 'ask') throw new Error("gemini cannot ask for approval headless (permissions.approval 'ask').");
+  if (sandbox === 'read-only' && approval === 'auto-approve')
+    throw new Error("gemini's read-only mode (plan) cannot be combined with permissions.approval 'auto-approve'.");
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  const mode =
+    sandbox === 'read-only' ? 'plan' : approval === 'auto-approve' ? 'yolo' : approval ? 'auto_edit' : undefined;
+  if (mode) {
+    Object.assign(replaces, { '--approval-mode': 'value', '--yolo': 'flag', '-y': 'flag' });
+    args.push('--approval-mode', mode);
+  }
+  let env: Record<string, string> | undefined;
+  if (sandbox === 'workspace-write' || sandbox === 'unrestricted') {
+    Object.assign(replaces, { '--sandbox': 'flag', '-s': 'flag', '--no-sandbox': 'flag' });
+    args.push(sandbox === 'workspace-write' ? '--sandbox' : '--no-sandbox');
+    env = { GEMINI_SANDBOX: sandbox === 'workspace-write' ? 'true' : 'false' };
+  }
+  return { args, replaces, ...(env ? { env } : {}) };
+}
+
 /** Gemini CLI in headless mode (`gemini --prompt ... --output-format stream-json`). */
 export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'gemini',
     command: options.command ?? 'gemini',
-    capabilities: { usage: true },
+    capabilities: {
+      usage: true,
+      permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
+    },
     args: (task) => geminiArgs(task, options),
+    prepare: (task) => {
+      const { env } = geminiPermissionFlags(resolvePermissions(task.permissions));
+      return { args: geminiArgs(task, options), ...(env ? { env } : {}) };
+    },
     createParser: createGeminiParser,
   });
 }
 
 export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): string[] {
-  const args = ['--output-format', 'stream-json', '--approval-mode', options.approvalMode ?? 'auto_edit'];
+  const permissions = resolvePermissions(task.permissions);
+  const flags = geminiPermissionFlags(permissions);
+  const owned = flags.args.includes('--approval-mode');
+  exclusiveOption('gemini', 'approvalMode', options.approvalMode !== undefined, 'approval/sandbox', owned);
+  const args = ['--output-format', 'stream-json'];
+  if (!owned) args.push('--approval-mode', options.approvalMode ?? 'auto_edit');
+  args.push(...flags.args);
   if (options.trustWorkspace ?? true) args.push('--skip-trust');
   if (task.model) args.push('--model', task.model);
   if (task.extraArgs) args.push(...task.extraArgs);

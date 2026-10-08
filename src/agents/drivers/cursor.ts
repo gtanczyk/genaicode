@@ -1,5 +1,6 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
+import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export interface CursorAgentOptions {
@@ -18,21 +19,62 @@ export interface CursorAgentOptions {
   partialOutput?: boolean;
 }
 
+/**
+ * Cursor agent flags for `permissions`. `auto-approve` is `--force`, which Cursor describes as
+ * "Run Everything": commands run unsandboxed, so it combines only with `unrestricted`.
+ * `deny` drops `--force` (and trusts the workspace), so what Cursor would ask about is refused.
+ * `workspace-write` is `--sandbox enabled`, `unrestricted` is `--sandbox disabled`, and
+ * `read-only` is ask mode (`--mode ask`). `ask` is not possible headless.
+ */
+export function cursorPermissionFlags(permissions: AgentPermissions): PermissionFlags {
+  const { approval, sandbox } = permissions;
+  if (approval === 'ask') throw new Error("cursor cannot ask for approval headless (permissions.approval 'ask').");
+  if (approval === 'auto-approve' && sandbox && sandbox !== 'unrestricted')
+    throw new Error(
+      `cursor's --force runs commands outside its sandbox; permissions.approval 'auto-approve' needs sandbox 'unrestricted', not '${sandbox}'.`,
+    );
+  const args: string[] = [];
+  const replaces: Record<string, 'flag' | 'value'> = {};
+  if (approval) {
+    Object.assign(replaces, { '--force': 'flag', '-f': 'flag', '--yolo': 'flag', '--trust': 'flag' });
+    args.push(approval === 'auto-approve' ? '--force' : '--trust');
+  }
+  if (sandbox) {
+    Object.assign(replaces, { '--sandbox': 'value', '--mode': 'value', '--plan': 'flag' });
+    if (sandbox === 'read-only') args.push('--mode', 'ask');
+    else args.push('--sandbox', sandbox === 'workspace-write' ? 'enabled' : 'disabled');
+  }
+  return { args, replaces };
+}
+
 /** Cursor's agent CLI in print mode (`cursor-agent -p --output-format stream-json`). */
 export function cursor(options: CursorAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'cursor',
     command: options.command ?? 'cursor-agent',
-    capabilities: { usage: true, resume: true },
+    capabilities: {
+      usage: true,
+      resume: true,
+      permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
+    },
     args: (task) => cursorArgs(task, options),
     createParser: () => createCursorParser({ partialOutput: options.partialOutput }),
   });
 }
 
 export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}): string[] {
+  const permissions = resolvePermissions(task.permissions);
+  exclusiveOption('cursor', 'force', options.force !== undefined, 'approval', permissions.approval !== undefined);
   const args = ['-p', '--output-format', 'stream-json'];
-  if (options.force ?? true) args.push('--force');
-  else if (options.trustWorkspace ?? true) args.push('--trust');
+  if (permissions.approval) args.push(...cursorPermissionFlags(permissions).args);
+  else {
+    // The default `--force` runs unsandboxed, so a sandbox without an approval policy drops it.
+    const force = options.force ?? (!permissions.sandbox || permissions.sandbox === 'unrestricted');
+    cursorPermissionFlags({ ...permissions, approval: force ? 'auto-approve' : 'deny' });
+    if (force) args.push('--force');
+    else if (options.trustWorkspace ?? true) args.push('--trust');
+    args.push(...cursorPermissionFlags({ sandbox: permissions.sandbox }).args);
+  }
   if (options.approveMcps ?? true) args.push('--approve-mcps');
   if (options.partialOutput) args.push('--stream-partial-output');
   if (task.model) args.push('--model', task.model);
