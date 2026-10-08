@@ -16,14 +16,28 @@ export type {
   AgentStatus,
   AgentTask,
   ApprovalDecision,
+  ApprovalHandler,
   ApprovalRequest,
+  ApprovalScope,
   CodingAgent,
   McpServer,
 } from './agents/types.js';
 export { liveAgent, uuidv7 } from './agents/live-agent.js';
-export type { LiveAgentDefinition, LiveSession } from './agents/live-agent.js';
+export type { LiveAgentDefinition, LiveApprovalIds, LiveApprovals, LiveSession } from './agents/live-agent.js';
 export { RpcError, RpcPeer } from './agents/rpc.js';
-export type { RpcHandlers } from './agents/rpc.js';
+export type { RequestId, RpcHandlers, RpcRequestContext } from './agents/rpc.js';
+export { codexApprovals } from './agents/drivers/codex-approvals.js';
+export { museApprovals } from './agents/drivers/muse-approvals.js';
+export type { MuseApprovalOptions } from './agents/drivers/muse-approvals.js';
+export {
+  CLAUDE_APPROVAL_TOOL,
+  claudeApprovalArgs,
+  claudeApprovalEnv,
+  claudeApprovalRequest,
+  claudeApprovalTool,
+  startClaudeApprovalServer,
+} from './agents/drivers/claude-approvals.js';
+export type { ClaudeApprovalServer, ClaudeApprovalTool, McpToolResult } from './agents/drivers/claude-approvals.js';
 export { codexLive, codexNotification } from './agents/drivers/codex-live.js';
 export type { CodexLiveOptions } from './agents/drivers/codex-live.js';
 export { museLive, museNotification } from './agents/drivers/muse-live.js';
@@ -32,7 +46,7 @@ export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from '
 export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
-export type { PreparedRun } from './agents/prepare.js';
+export type { PrepareContext, PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';
 export { codexMcpOverrides } from './agents/drivers/codex.js';
 export { createGeminiParser, gemini, geminiArgs } from './agents/drivers/gemini.js';

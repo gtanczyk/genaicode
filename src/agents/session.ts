@@ -243,12 +243,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
   };
 
-  const onApproval = (turnId: number, request: ApprovalRequest): Promise<ApprovalDecision> => {
+  const onApproval = (turnId: number, request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> => {
     addEntry(turnId, { kind: 'approval', request });
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
+    if (signal?.aborted) return Promise.resolve('deny');
     return new Promise((resolve) => {
-      waiting.set(request.id, resolve);
+      // Withdrawn by the agent, or its turn ended: the question leaves `approvals`.
+      const withdraw = () => {
+        if (waiting.get(request.id) !== answer) return;
+        waiting.delete(request.id);
+        set({ approvals: state.approvals.filter((pending) => pending.id !== request.id) });
+        resolve('deny');
+      };
+      const answer = (decision: ApprovalDecision) => {
+        signal?.removeEventListener('abort', withdraw);
+        resolve(decision);
+      };
+      signal?.addEventListener('abort', withdraw, { once: true });
+      waiting.set(request.id, answer);
       set({ approvals: [...state.approvals, request] });
     });
   };
@@ -291,7 +304,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         effort: state.effort,
         resume,
         signal: turnController.signal,
-        onApproval: (request) => onApproval(turnId, request),
+        onApproval: (request, signal) => onApproval(turnId, request, signal),
       });
     } catch (error) {
       // A throwing transformPrompt (or driver) fails this turn; the queue goes on as usual.

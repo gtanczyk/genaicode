@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
-import { RpcError, RpcPeer } from './rpc.js';
+import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
 import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
 import type {
   AgentCapabilities,
@@ -21,11 +21,36 @@ export interface LiveSession {
   /** Called for each notification the agent sends. Set once, before the first request. */
   onNotification(handler: (method: string, params: unknown) => void): void;
   /** Called for each request the agent sends. Throw `RpcError` to decline. Unhandled requests are declined. */
-  onRequest(handler: (method: string, params: unknown) => unknown | Promise<unknown>): void;
-  /** Ask `task.onApproval` (deny when absent or when it throws), emitting request and decision events. */
-  approve(request: ApprovalRequest): Promise<ApprovalDecision>;
+  onRequest(handler: (method: string, params: unknown, context: RpcRequestContext) => unknown | Promise<unknown>): void;
+  /**
+   * Ask `task.onApproval`, emitting request and decision events. The decision is `deny` when
+   * there is no handler, it throws, `signal` aborts, or the task ends first; the handler's
+   * signal aborts in the last two cases.
+   */
+  approve(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision>;
+  /** Aborts once the task is over: its process exited, or it was stopped. */
+  readonly signal: AbortSignal;
   /** Make `AgentRun.steer` send input, or pass undefined once the task stops accepting it. */
   setSteer(steer: ((text: string) => Promise<void>) | undefined): void;
+}
+
+/**
+ * A vendor's approval protocol over a live session. A driver hands it each request and
+ * notification first; methods it does not own come back as `undefined` / `false`.
+ */
+export interface LiveApprovals {
+  /** Answer an approval request, or `undefined` when `method` is not one. Rejects requests from another thread or turn. */
+  request(method: string, params: unknown, context?: RpcRequestContext): Promise<unknown> | undefined;
+  /** Handle an approval notification. True when `method` belonged to the approval protocol. */
+  notification(method: string, params: unknown): boolean;
+  /** The turn ended: close open questions, and deny whatever is answered afterwards. */
+  close(): void;
+}
+
+/** Which thread (or session) and turn approvals must belong to. Undefined until the agent names them. */
+export interface LiveApprovalIds {
+  session?: string;
+  turn?: string;
 }
 
 export interface LiveAgentDefinition {
@@ -85,7 +110,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   }
 
   let notificationHandler: (method: string, params: unknown) => void = () => {};
-  let requestHandler: (method: string, params: unknown) => unknown = (method) => {
+  let requestHandler: (method: string, params: unknown, context: RpcRequestContext) => unknown = (method) => {
     throw new RpcError(`${method} is not supported by this client.`, -32601);
   };
 
@@ -116,8 +141,12 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   };
   const rpc = new RpcPeer((line) => handle.write(line), {
     notification: (method, params) => notificationHandler(method, params),
-    request: (method, params) => requestHandler(method, params),
+    request: (method, params, context) => requestHandler(method, params, context),
   });
+  // Ends every open approval question when the task is over.
+  const lifetime = new AbortController();
+  if (task.signal?.aborted) lifetime.abort();
+  else task.signal?.addEventListener('abort', () => lifetime.abort(), { once: true });
 
   const session: LiveSession = {
     task,
@@ -129,14 +158,14 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     onRequest(handler) {
       requestHandler = handler;
     },
-    async approve(request) {
+    signal: lifetime.signal,
+    async approve(request, signal) {
       recorder.emit({ type: 'approval-request', request });
-      let decision: ApprovalDecision = 'deny';
-      try {
-        if (task.onApproval) decision = (await task.onApproval(request)) === 'approve' ? 'approve' : 'deny';
-      } catch {
-        decision = 'deny';
-      }
+      const decision = await askApproval(
+        task,
+        request,
+        signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal,
+      );
       recorder.emit({ type: 'approval-resolved', id: request.id, decision });
       return decision;
     },
@@ -146,6 +175,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   };
 
   const exited = handle.exit.then((exit) => {
+    lifetime.abort();
     plan.cleanup();
     steer = undefined;
     rpc.fail(new Error(`${definition.name} exited before the task finished.`));
@@ -158,6 +188,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
 
   const result = Promise.race([outcome.then(() => undefined), exited]).then(async (early) => {
     steer = undefined;
+    lifetime.abort();
     // Exiting before the turn ends is a failure even with exit code 0.
     if (early)
       return recorder.finish(
@@ -171,7 +202,37 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     return recorder.finish(await exited, await outcome);
   });
 
-  return { result, abort: handle.kill, steer: steerRun, [Symbol.asyncIterator]: iterate };
+  const abort = () => {
+    lifetime.abort();
+    handle.kill();
+  };
+  return { result, abort, steer: steerRun, [Symbol.asyncIterator]: iterate };
+}
+
+/**
+ * `task.onApproval`'s answer, or `deny`: without a handler, when it throws, and when `signal`
+ * aborts first (the handler is not waited for then).
+ */
+export async function askApproval(
+  task: Pick<AgentTask, 'onApproval'>,
+  request: ApprovalRequest,
+  signal: AbortSignal,
+): Promise<ApprovalDecision> {
+  const handler = task.onApproval;
+  if (!handler || signal.aborted) return 'deny';
+  let stop: () => void = () => {};
+  const withdrawn = new Promise<'deny'>((resolve) => {
+    stop = () => resolve('deny');
+    signal.addEventListener('abort', stop, { once: true });
+  });
+  try {
+    const answer = await Promise.race([Promise.resolve().then(() => handler(request, signal)), withdrawn]);
+    return answer === 'approve' && !signal.aborted ? 'approve' : 'deny';
+  } catch {
+    return 'deny';
+  } finally {
+    signal.removeEventListener('abort', stop);
+  }
 }
 
 /** A driver's verdict when it already settled; undefined when it was still waiting. */

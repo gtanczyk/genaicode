@@ -1,6 +1,7 @@
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import type { AgentOutcome } from '../runtime.js';
-import type { AgentEvent, ApprovalRequest, CodingAgent } from '../types.js';
+import type { AgentEvent, CodingAgent } from '../types.js';
+import { codexApprovals } from './codex-approvals.js';
 import { withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
@@ -15,7 +16,8 @@ export interface CodexLiveOptions {
 
 /**
  * Codex over its app server (`codex app-server`, JSON-RPC on stdio).
- * Supports `steer()` and routes command and file-change approvals to `task.onApproval`.
+ * Supports `steer()` and routes command, file-change and permission-profile approvals to
+ * `task.onApproval` (see `codexApprovals`).
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   return liveAgent({
@@ -41,37 +43,25 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
 
   session.onNotification((method, params) => {
     if (!ours(params)) return;
+    if (approvals.notification(method, params)) return;
     if (method === 'turn/completed') {
       const turn = isObject(params) && isObject(params.turn) ? params.turn : undefined;
       if (ids.turn && stringField(turn, 'id') && stringField(turn, 'id') !== ids.turn) return;
       const status = stringField(turn, 'status');
       const error = stringField(turn?.error, 'message');
       if (error) session.emit({ type: 'error', message: error });
+      approvals.close();
       finish(status === 'completed' ? { ok: true } : { ok: false, error: error ?? `Codex turn ${status ?? 'ended'}.` });
       return;
     }
     for (const event of codexNotification(method, params)) session.emit(event);
   });
 
-  let approvals = 0;
-  session.onRequest(async (method, params) => {
-    const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval';
-    const kind = method.includes('commandExecution') || method === 'execCommandApproval' ? 'command' : 'file-change';
-    if (!legacy && !method.endsWith('/requestApproval')) throw new Error(`${method} is not supported.`);
-    const request: ApprovalRequest = {
-      // One item can raise several approvals (e.g. per shell subcommand); `approvalId` tells them apart.
-      id:
-        stringField(params, 'approvalId') ??
-        stringField(params, 'itemId') ??
-        stringField(params, 'callId') ??
-        `approval-${++approvals}`,
-      kind,
-      ...summaryOf(params),
-      detail: params,
-    };
-    const decision = await session.approve(request);
-    if (legacy) return { decision: decision === 'approve' ? 'approved' : 'denied' };
-    return { decision: decision === 'approve' ? 'accept' : 'decline' };
+  const approvals = codexApprovals(session, () => ({ session: ids.thread, turn: ids.turn }));
+  session.onRequest((method, params, context) => {
+    const answer = approvals.request(method, params, context);
+    if (!answer) throw new Error(`${method} is not supported.`);
+    return answer;
   });
 
   await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
@@ -188,13 +178,6 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
     default:
       return [];
   }
-}
-
-function summaryOf(params: unknown): { summary?: string } {
-  const command = isObject(params) ? params.command : undefined;
-  const text = Array.isArray(command) ? command.join(' ') : typeof command === 'string' ? command : undefined;
-  const summary = text ?? stringField(params, 'reason');
-  return summary ? { summary } : {};
 }
 
 function mcpName(item: JsonObject): string {

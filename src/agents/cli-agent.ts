@@ -1,5 +1,5 @@
-import { planSpawn, type PreparedRun } from './prepare.js';
-import { startProcess } from './process.js';
+import { planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
+import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
 
@@ -19,8 +19,11 @@ export interface CliAgentDefinition {
   capabilities?: AgentCapabilities;
   /** Full argument list for a task, prompt included. */
   args(task: AgentTask): string[];
-  /** Replaces `args` when a task needs setup: extra env, temp files to clean up. */
-  prepare?(task: AgentTask): PreparedRun;
+  /**
+   * Replaces `args` when a task needs setup: extra env, temp files to clean up, a local
+   * server to start first. The process starts once it resolves.
+   */
+  prepare?(task: AgentTask, context: PrepareContext): PreparedRun | Promise<PreparedRun>;
   createParser(): AgentOutputParser;
   /** Adjust the child environment (the caller's `task.env` or `process.env`). */
   env?(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
@@ -42,46 +45,65 @@ export function cliAgent(definition: CliAgentDefinition): CodingAgent {
 function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun {
   const recorder = new RunRecorder(definition.name, definition.command);
   const iterate = () => recorder.events.iterate();
+  const lifetime = new AbortController();
+  let handle: ProcessHandle | undefined;
+  let stopped = false;
 
-  const plan = planSpawn(definition, task, invalidCwd(task.cwd));
-  if (!plan.ok) {
-    const result = recorder.finish(
-      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
-      undefined,
-    );
-    return { result: Promise.resolve(result), abort() {}, [Symbol.asyncIterator]: iterate };
-  }
-
-  const parser = definition.createParser();
-  const handle = startProcess({
-    command: definition.command,
-    args: plan.args,
-    cwd: task.cwd,
-    env: plan.env,
-    timeoutMs: task.timeoutMs,
-    signal: task.signal,
-    onLine(line) {
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch {
-        recorder.emit({ type: 'raw', line });
-        return;
-      }
-      for (const event of parser.event(value)) recorder.emit(event);
-    },
-    onStderr: (text) => recorder.emit({ type: 'stderr', text }),
-  });
-
-  // A consumer that falls behind pauses the agent instead of buffering its output without bound.
-  recorder.events.onPressure = (paused) => (paused ? handle.pause() : handle.resume());
-
-  return {
-    result: handle.exit.then((exit) => {
+  const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
+  const start = (plan: Extract<SpawnPlan, { ok: true }>) => {
+    const parser = definition.createParser();
+    const started = startProcess({
+      command: definition.command,
+      args: plan.args,
+      cwd: task.cwd,
+      env: plan.env,
+      timeoutMs: task.timeoutMs,
+      signal: task.signal,
+      onLine(line) {
+        let value: unknown;
+        try {
+          value = JSON.parse(line);
+        } catch {
+          recorder.emit({ type: 'raw', line });
+          return;
+        }
+        for (const event of parser.event(value)) recorder.emit(event);
+      },
+      onStderr: (text) => recorder.emit({ type: 'stderr', text }),
+    });
+    handle = started;
+    // A consumer that falls behind pauses the agent instead of buffering its output without bound.
+    recorder.events.onPressure = (paused) => (paused ? started.pause() : started.resume());
+    return started.exit.then((exit) => {
+      lifetime.abort();
       plan.cleanup();
       return recorder.finish(exit, parser.outcome?.());
-    }),
-    abort: handle.kill,
+    });
+  };
+
+  const result = planSpawnAsync(definition, task, invalidCwd(task.cwd), context).then((plan) => {
+    if (!plan.ok) {
+      lifetime.abort();
+      return recorder.finish(
+        { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
+        undefined,
+      );
+    }
+    // Stopped while `prepare` was still running.
+    if (stopped || task.signal?.aborted) {
+      lifetime.abort();
+      plan.cleanup();
+      return recorder.finish({ exitCode: null, signal: null, reason: 'aborted' }, undefined);
+    }
+    return start(plan);
+  });
+
+  return {
+    result,
+    abort() {
+      stopped = true;
+      handle?.kill();
+    },
     [Symbol.asyncIterator]: iterate,
   };
 }

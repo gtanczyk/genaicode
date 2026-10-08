@@ -1,6 +1,37 @@
 # Changelog
 
-## 2.10.0 — 2026-10-06
+## 2.12.0 — 2026-10-08
+
+### Added
+
+- `claude()` answers permission prompts: with `task.onApproval`, it serves Claude Code's
+  `--permission-prompt-tool` from a private loopback MCP endpoint (random port and bearer
+  token) next to the task's own `mcpServers`, and raises `MCP_TOOL_TIMEOUT` so Claude waits
+  for a person. The permission mode (`acceptEdits` by default) still applies first. Approving
+  allows exactly the input Claude asked about; `capabilities.approvals` is now true.
+- `codexLive()` answers Codex permission profile requests (`item/permissions/requestApproval`):
+  approving grants the requested categories for the current turn, denying grants none.
+- `ApprovalRequest.scope`: `once` (also when absent) or `turn`, what approving grants.
+- `onApproval(request, signal)`: `signal` aborts when the request is withdrawn, the turn ends,
+  the process exits or the task is stopped, so an app can close the question. Late answers,
+  like errors and a missing handler, deny. `createAgentSession` drops withdrawn requests from
+  `approvals`; `<AgentChat>` and `genaicode chat` label turn-scoped approvals.
+- The vendor protocols for apps with their own driver or MCP server: `codexApprovals`,
+  `museApprovals` (for a `LiveSession`), `claudeApprovalTool`, `claudeApprovalArgs`,
+  `claudeApprovalEnv`, `claudeApprovalRequest` and `startClaudeApprovalServer`.
+- `LiveSession.signal`, `LiveSession.approve(request, signal?)`, the request context
+  (`id`, `signal`) passed to `onRequest` handlers, `RpcPeer.cancel(id)`, and a `prepare`
+  for `cliAgent` that can be async and gets a `PrepareContext` (`emit`, `signal`).
+
+### Fixed
+
+- `codexLive()` rejects approval requests from another thread or turn, and declines an answer
+  given after the turn ended or after the server withdrew the request.
+- `museLive()` no longer falls back to an approve-for-session choice when Muse offers no
+  one-time approval; it denies instead. Requests of another session or turn are ignored, and an
+  approval resolved elsewhere (`approval/resolved`, `alreadyTerminal`) closes its question.
+
+## 2.11.0 — 2026-10-06
 
 ### Added
 

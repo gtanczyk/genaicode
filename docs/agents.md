@@ -119,19 +119,19 @@ session.send('Now cover it with a test'); // resumes the same agent session
 
 ## Drivers
 
-| Driver                | Command        | Mode                                     | Notes                                                                                  |
-| --------------------- | -------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| `claude(options?)`    | `claude`       | `-p --output-format stream-json`         | `permissionMode` defaults to `acceptEdits`; `allowedTools` / `disallowedTools`         |
-| `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`           |
-| `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                 |
-| `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)  |
-| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`, approvals. See [Live sessions](#live-sessions-steering-and-approvals)       |
-| `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`  |
-| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`     |
-| `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto` |
-| `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns      |
-| `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`         |
-| `antigravity(opts?)`  | `agy`          | `--output-format stream-json --print`    | `mode` defaults to `accept-edits`; `--sandbox` unless `sandbox: false`                 |
+| Driver                | Command        | Mode                                     | Notes                                                                                     |
+| --------------------- | -------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `claude(options?)`    | `claude`       | `-p --output-format stream-json`         | `permissionMode` defaults to `acceptEdits`; `allowedTools` / `disallowedTools`; approvals |
+| `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`              |
+| `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                    |
+| `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)     |
+| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`, approvals. See [Live sessions](#live-sessions-steering-and-approvals)          |
+| `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`     |
+| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`        |
+| `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto`    |
+| `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns         |
+| `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`            |
+| `antigravity(opts?)`  | `agy`          | `--output-format stream-json --print`    | `mode` defaults to `accept-edits`; `--sandbox` unless `sandbox: false`                    |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
@@ -160,14 +160,65 @@ const result = await run.result;
 
 - `steer(text)` resolves once the agent acknowledges the input. It rejects after the task has
   ended, and when no acknowledgement arrives (the input may or may not have reached the agent).
-- `onApproval` is asked for each permission request. It gets a `command`, `file-change` or
-  `other` request and returns `'approve'` or `'deny'`. If `onApproval` is missing or throws, the
-  request is denied. Codex runs with approval policy `never` when no `onApproval` is set.
-- `museLive()` answers each approval with one of the choices Muse offers: the `once`
-  approve or deny choice where there is one. A multi-stage approval asks `onApproval` once
-  per stage; later stages get ids like `ap-1/2`.
+- `onApproval` answers permission requests; see [Approvals](#approvals).
 - The task ends when the agent reports its turn complete. The server is then stopped. An exit
   before that point is a failure, even with exit code 0.
+
+## Approvals
+
+`onApproval(request, signal)` answers the agent's permission prompts on drivers with
+`capabilities.approvals`: `claude`, `codexLive`, `museLive`. It returns `'approve'` or
+`'deny'`.
+
+```ts
+const run = claude().run({
+  prompt: 'Run the tests and fix what fails',
+  cwd: '/work/repo',
+  onApproval: (request, signal) => askUser(request, signal), // your UI
+});
+```
+
+- `request.kind` is `command`, `file-change` or `other`; `summary` is one line to show;
+  `detail` is the vendor's whole request (the command with its working directory, the tool
+  input, the requested permissions). Show `detail` before asking for a decision.
+- `request.scope` says what approving grants. `once` (or absent): this one call. `turn`: the
+  permissions in `detail` until the agent's current turn ends (Codex permission profiles).
+- `signal` aborts when the answer is no longer needed: the agent withdrew the request, the
+  turn ended, the process exited, or the task was stopped. Close the question then. A late
+  answer counts as `deny`.
+- No handler, a handler that throws, and an aborted signal all deny. Nothing is approved
+  automatically. `approval-request` and `approval-resolved` events record each question.
+
+Per agent:
+
+- `claude()`: with `onApproval`, the driver serves Claude Code's `--permission-prompt-tool`
+  from a private MCP endpoint on 127.0.0.1 (random port, random bearer token), next to the
+  task's own `mcpServers`, and raises `MCP_TOOL_TIMEOUT` to a day unless `env` sets it. The
+  permission mode still applies first (`acceptEdits` by default): only what it does not allow
+  is asked. Approving allows exactly the input Claude asked about (`updatedInput` unchanged).
+- `codexLive()`: runs with approval policy `on-request` when `onApproval` is set (`never`
+  otherwise). Commands and file changes are answered `accept` / `decline`. A permission
+  profile request (`item/permissions/requestApproval`) is asked with `scope: 'turn'`; approving
+  grants the requested categories (those that are not null) for the turn, denying grants none.
+  Requests from another thread or turn are rejected; `serverRequest/resolved` withdraws one.
+- `museLive()`: answers with one of the choices Muse offers and the stage's requirement id.
+  Approving picks the `once` choice; a request that only offers session-wide approval is
+  denied. A multi-stage approval asks once per stage (later stages get ids like `ap-1/2`),
+  however often a stage is delivered. `approval/resolved` withdraws an open question.
+
+The protocol handlers are exported for apps that run their own driver or MCP server:
+
+- `codexApprovals(session, ids)` and `museApprovals(session, ids, options?)` take a
+  `LiveSession` and a function returning the current `{ session, turn }` ids. Hand them each
+  request and notification first (`request()` returns `undefined`, `notification()` false,
+  for methods they do not own) and call `close()` when the turn ends.
+- `claudeApprovalTool(onApproval)` is the permission prompt tool as an MCP tool (`name`,
+  `description`, `inputSchema`, `call(args, signal)`) to serve from the app's own MCP server;
+  pass `claudeApprovalArgs(serverName)` to Claude and `claudeApprovalEnv(env)` in its env.
+  Abort `signal` when the MCP caller disconnects. `startClaudeApprovalServer(onApproval)`
+  serves the tool on its own endpoint instead.
+
+## Custom live agents
 
 For other JSON-RPC agents, `liveAgent({ name, command, args, drive })` provides the process,
 an `RpcPeer`, event emission, the approval flow, and `setSteer()`. `drive(session)` runs the

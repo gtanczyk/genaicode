@@ -31,11 +31,21 @@ export interface AgentTask {
   /** MCP servers to attach for this task (`capabilities.mcp`). */
   mcpServers?: readonly McpServer[];
   /**
-   * Answer permission prompts from agents that ask over a live session
-   * (`capabilities.approvals`). Without it every request is declined.
+   * Answer the agent's permission prompts (`capabilities.approvals`). Without it every
+   * request is declined, and so is a request whose handler throws.
+   *
+   * `signal` aborts when the answer is no longer wanted: the agent withdrew the request,
+   * its turn ended, the process exited or the task was stopped. Close the question then;
+   * whatever the handler returns afterwards counts as `deny`. Every genaicode driver passes
+   * `signal`; it is optional only so that custom drivers written for 2.x keep compiling.
    */
-  onApproval?: (request: ApprovalRequest) => ApprovalDecision | Promise<ApprovalDecision>;
+  onApproval?: ApprovalHandler;
 }
+
+export type ApprovalHandler = (
+  request: ApprovalRequest,
+  signal?: AbortSignal,
+) => ApprovalDecision | Promise<ApprovalDecision>;
 
 /** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
 export type McpServer =
@@ -53,9 +63,16 @@ export interface ApprovalRequest {
   kind: 'command' | 'file-change' | 'other';
   /** Human-readable summary (the command, the paths, or the vendor's reason). */
   summary?: string;
-  /** The vendor's request payload, unchanged. */
+  /** The vendor's request payload, unchanged: the full command, tool arguments or permissions. */
   detail?: unknown;
+  /**
+   * What `approve` grants. `once` (also when absent): this one invocation. `turn`: the
+   * permissions in `detail`, until the agent's current turn ends.
+   */
+  scope?: ApprovalScope;
 }
+
+export type ApprovalScope = 'once' | 'turn';
 
 export type ApprovalDecision = 'approve' | 'deny';
 

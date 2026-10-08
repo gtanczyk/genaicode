@@ -75,6 +75,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     note('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'ls' } });
     if (mode === 'exit-early') process.exit(0);
     if (mode === 'flood') for (let i = 0; i < 12; i++) note('item/completed', { item: { id: 'f' + i, type: 'agentMessage', text: 'x'.repeat(1024 * 1024) } });
+    if (mode === 'permissions' && codex) {
+      send({ id: 99, method: 'item/permissions/requestApproval', params: { threadId: 'th-1', turnId: 'tu-1', itemId: 'p1', reason: null, permissions: { network: { enabled: true }, fileSystem: null } } });
+      return;
+    }
+    if (mode === 'approval-exit' && codex) {
+      send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', turnId: 'tu-1', itemId: 'c1', command: 'rm -rf build' } });
+      return setTimeout(() => process.exit(0), 50);
+    }
     if (mode === 'approval' && codex) {
       send({ id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'th-1', itemId: 'c1', approvalId: 'c1-a2', command: 'rm -rf build' } });
       return;
@@ -142,6 +150,38 @@ describe('codexLive', () => {
     expect(seen).toMatchObject([{ id: 'c1-a2', kind: 'command', summary: 'rm -rf build' }]);
     expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1-a2', decision: 'approve' });
     expect((await run.result).text).toBe('decision:{"decision":"accept"}');
+  });
+
+  it('grants a permission profile for the turn', async () => {
+    const seen: unknown[] = [];
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('permissions'),
+      onApproval: (request) => {
+        seen.push(request);
+        return 'approve';
+      },
+    });
+    expect((await run.result).text).toBe('decision:{"permissions":{"network":{"enabled":true}},"scope":"turn"}');
+    expect(seen).toMatchObject([{ id: 'p1', kind: 'other', scope: 'turn' }]);
+  });
+
+  it('withdraws an open question when the agent exits', async () => {
+    let signal: AbortSignal | undefined;
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: env('approval-exit'),
+      onApproval: (_, given) => {
+        signal = given;
+        return new Promise(() => {});
+      },
+    });
+    const events = await collect(run);
+    expect((await run.result).status).toBe('failed');
+    expect(signal?.aborted).toBe(true);
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'c1', decision: 'deny' });
   });
 
   it('declines approvals when onApproval throws', async () => {

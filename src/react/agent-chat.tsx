@@ -393,7 +393,7 @@ function Entry({
                 className="gc-btn gc-primary"
                 onClick={() => onApprove(entry.request.id, 'approve')}
               >
-                Approve
+                {entry.request.scope === 'turn' ? 'Approve for this turn' : 'Approve'}
               </button>
               <button type="button" className="gc-btn gc-danger" onClick={() => onApprove(entry.request.id, 'deny')}>
                 Deny

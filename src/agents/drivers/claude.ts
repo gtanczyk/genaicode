@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import { isHttpServer, type PreparedRun } from '../prepare.js';
+import { askApproval } from '../live-agent.js';
+import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
+import { claudeApprovalEnv, startClaudeApprovalServer } from './claude-approvals.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export type ClaudePermissionMode =
@@ -32,7 +34,14 @@ export interface ClaudeAgentOptions {
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
-/** Claude Code in print mode (`claude -p --output-format stream-json`). */
+/**
+ * Claude Code in print mode (`claude -p --output-format stream-json`).
+ *
+ * With `task.onApproval`, permission prompts reach it through Claude's
+ * `--permission-prompt-tool`, served from a private loopback MCP endpoint for the task (see
+ * `startClaudeApprovalServer`), and Claude waits up to a day for an answer (`claudeApprovalEnv`).
+ * Without it, tools the permission mode does not allow are refused.
+ */
 export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'claude',
@@ -43,23 +52,57 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       usage: true,
       mcp: true,
       resume: true,
+      approvals: true,
     },
     args: (task) => claudeArgs(task, options),
-    prepare: (task) => prepareClaude(task, options),
+    prepare: (task, context) => prepareClaude(task, options, context),
     createParser: createClaudeParser,
   });
 }
 
 /** Write the task's MCP servers to a private temp file, so header secrets stay out of argv. */
-function prepareClaude(task: AgentTask, options: ClaudeAgentOptions): PreparedRun {
-  if (!task.mcpServers?.length) return { args: claudeArgs(task, options) };
+async function prepareClaude(
+  task: AgentTask,
+  options: ClaudeAgentOptions,
+  context: PrepareContext,
+): Promise<PreparedRun> {
+  const approvals = task.onApproval ? await claudeApprovals(task, context) : undefined;
+  const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
+  if (!servers.length) return { args: claudeArgs(task, options) };
   const dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
   const file = join(dir, 'mcp.json');
-  writeFileSync(file, JSON.stringify(claudeMcpConfig(task.mcpServers)), { mode: 0o600 });
+  try {
+    writeFileSync(file, JSON.stringify(claudeMcpConfig(servers)), { mode: 0o600 });
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    void approvals?.close();
+    throw error;
+  }
   return {
-    args: claudeArgs(task, options, file),
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    args: claudeArgs(task, options, file, approvals?.args),
+    ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
+    cleanup: () => {
+      void approvals?.close();
+      rmSync(dir, { recursive: true, force: true });
+    },
   };
+}
+
+/** The task's approval endpoint: asks `task.onApproval`, with the run's approval events. */
+async function claudeApprovals(task: AgentTask, context: PrepareContext) {
+  const taken = new Set((task.mcpServers ?? []).map((server) => server.name));
+  let name = 'genaicode_approval';
+  for (let n = 2; taken.has(name); n++) name = `genaicode_approval_${n}`;
+  return startClaudeApprovalServer(
+    async (request, signal) => {
+      context.emit({ type: 'approval-request', request });
+      const ended = signal ? AbortSignal.any([signal, context.signal]) : context.signal;
+      const decision = await askApproval(task, request, ended);
+      context.emit({ type: 'approval-resolved', id: request.id, decision });
+      return decision;
+    },
+    { name },
+  );
 }
 
 /** The `--mcp-config` document for a set of servers. */
@@ -77,7 +120,12 @@ export function claudeMcpConfig(servers: readonly McpServer[]): { mcpServers: Re
   return { mcpServers };
 }
 
-export function claudeArgs(task: AgentTask, options: ClaudeAgentOptions = {}, mcpConfigPath?: string): string[] {
+export function claudeArgs(
+  task: AgentTask,
+  options: ClaudeAgentOptions = {},
+  mcpConfigPath?: string,
+  approvalArgs?: readonly string[],
+): string[] {
   const args = ['-p', '--verbose'];
   // Multi-value flags come first: a single-value flag must follow them before the prompt.
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
@@ -89,6 +137,7 @@ export function claudeArgs(task: AgentTask, options: ClaudeAgentOptions = {}, mc
   if (allowed.length) args.push('--allowedTools', allowed.join(','));
   if (options.disallowedTools?.length) args.push('--disallowedTools', options.disallowedTools.join(','));
   args.push('--output-format', 'stream-json', '--permission-mode', options.permissionMode ?? 'acceptEdits');
+  if (approvalArgs) args.push(...approvalArgs);
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));

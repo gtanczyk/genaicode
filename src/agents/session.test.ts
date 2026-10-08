@@ -257,6 +257,26 @@ describe('createAgentSession', () => {
     expect(session.get().turns[1].result?.status).toBe('aborted');
   });
 
+  it('drops a question the agent withdraws', async () => {
+    const withdraw = new AbortController();
+    let decision: string | undefined;
+    const { agent } = fakeAgent([
+      async (task) => {
+        decision = await task.onApproval!({ id: 'a1', kind: 'other' }, withdraw.signal);
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('go');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.get().approvals).toHaveLength(1);
+    withdraw.abort();
+    expect(session.get().approvals).toEqual([]);
+    await session.idle();
+    expect(decision).toBe('deny');
+    expect(session.get().approvals).toEqual([]);
+    expect(session.approve('a1', 'approve')).toBe(false);
+  });
+
   it('applies autoApprove and drops the queue on stop', async () => {
     const { agent } = fakeAgent([
       async (task) => {

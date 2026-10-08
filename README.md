@@ -108,7 +108,7 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 
 | Agent            | Driver                        | Extras                                     |
 | ---------------- | ----------------------------- | ------------------------------------------ |
-| Claude Code      | `claude()`                    | MCP servers, max turns, effort, cost       |
+| Claude Code      | `claude()`                    | MCP servers, approvals, max turns, cost    |
 | Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals    |
 | GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns      |
 | Cursor           | `cursor()`                    | streamed text deltas                       |
@@ -121,8 +121,8 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 
 On top of the drivers:
 
-- **Steer a running task** with `run.steer(text)`, and answer permission prompts with
-  `onApproval` (live drivers).
+- **Steer a running task** with `run.steer(text)` (live drivers), and answer permission
+  prompts with `onApproval` (Claude, live Codex and Muse).
 - **Attach MCP servers per task** with `mcpServers`. Header secrets stay out of argv.
 - **Verify and repair**: `runWithVerify` runs your check (tests, lint) after the agent and
   sends failures back for another attempt.
