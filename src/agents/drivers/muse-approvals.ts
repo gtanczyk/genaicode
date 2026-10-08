@@ -2,6 +2,7 @@ import { uuidv7, type LiveApprovalIds, type LiveApprovals, type LiveSession } fr
 import { RpcError } from '../rpc.js';
 import type { ApprovalDecision, ApprovalRequest } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
+import { anySignal } from '../runtime.js';
 
 export interface MuseApprovalOptions {
   /** How long to wait for the server to acknowledge `approval/decide`. Default 60 s. */
@@ -73,7 +74,7 @@ export function museApprovals(
     try {
       decision = await session.approve(
         museApprovalRequest(params, stage === 1 ? approvalId : `${approvalId}/${stage}`),
-        AbortSignal.any([turn.signal, question.signal]),
+        anySignal([turn.signal, question.signal]),
       );
     } finally {
       if (questions.get(approvalId) === question) questions.delete(approvalId);

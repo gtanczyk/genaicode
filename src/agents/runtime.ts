@@ -94,6 +94,16 @@ export function linkAbort(source: AbortSignal | undefined, target: AbortControll
   target.signal.addEventListener('abort', () => source.removeEventListener('abort', forward), { once: true });
 }
 
+/** A signal that aborts when any of `signals` does (`AbortSignal.any` needs Node 20.3). */
+export function anySignal(signals: readonly AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (controller.signal.aborted) break;
+    linkAbort(signal, controller);
+  }
+  return controller.signal;
+}
+
 export function invalidCwd(cwd: string): string | undefined {
   if (!existsSync(cwd)) return `Working directory does not exist: ${cwd}`;
   if (!statSync(cwd).isDirectory()) return `Working directory is not a directory: ${cwd}`;

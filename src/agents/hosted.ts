@@ -81,6 +81,9 @@ function runHosted(provider: HostedAgentProvider, task: AgentTask, pollIntervalM
     const refused = unsupportedPermissions(provider.name, provider.capabilities ?? {}, task);
     if (refused) return { exit: exit('spawn-error', new Error(refused)) };
     if (task.permissions !== undefined) request.permissions = resolvePermissions(task.permissions);
+    // The provider contract has no channel to bring a question back to onApproval.
+    if (resolvePermissions(task.permissions).approval === 'ask')
+      return { exit: exit('spawn-error', new Error(`${provider.name} cannot run with permissions.approval 'ask'.`)) };
     try {
       taskId = (await provider.start(request as HostedTaskRequest, controller.signal)).id;
     } catch (error) {

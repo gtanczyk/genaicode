@@ -7,6 +7,7 @@ import { askApproval } from '../live-agent.js';
 import type { PermissionFlags } from '../permissions.js';
 import type { AgentPermissions, ApprovalHandler, ApprovalRequest, SandboxPolicy } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
+import { anySignal } from '../runtime.js';
 
 /** Name of the permission prompt tool `claudeApprovalTool` serves. */
 export const CLAUDE_APPROVAL_TOOL = 'approve';
@@ -263,7 +264,7 @@ export async function startClaudeApprovalServer(
     // A caller that hangs up withdraws its question.
     const gone = new AbortController();
     response.once('close', () => gone.abort());
-    const signal = AbortSignal.any([closing.signal, gone.signal]);
+    const signal = anySignal([closing.signal, gone.signal]);
     readBody(request).then(
       async (body) => {
         let message: unknown;

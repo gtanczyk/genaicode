@@ -13,6 +13,7 @@ import {
   startClaudeApprovalServer,
 } from './claude-approvals.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
+import { anySignal } from '../runtime.js';
 
 export type ClaudePermissionMode =
   | 'acceptEdits'
@@ -114,7 +115,7 @@ async function claudeApprovals(task: AgentTask, context: PrepareContext) {
   const sandbox = resolvePermissions(task.permissions).sandbox;
   return startClaudeApprovalServer(
     async (request, signal) => {
-      const ended = signal ? AbortSignal.any([signal, context.signal]) : context.signal;
+      const ended = signal ? anySignal([signal, context.signal]) : context.signal;
       return reportApproval(context.emit, request, ended, async () =>
         // Outside the sandbox: denied by policy, whoever would have answered.
         sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)

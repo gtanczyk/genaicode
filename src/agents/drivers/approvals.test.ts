@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { askApproval, type LiveApprovals, type LiveSession } from '../live-agent.js';
 import { RpcError, RpcPeer } from '../rpc.js';
-import type { AgentEvent, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
+import type { AgentEvent, AgentPermissions, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import { museApprovals } from './muse-approvals.js';
 
@@ -18,11 +18,12 @@ function harness(
   build: (session: LiveSession) => LiveApprovals,
   onApproval?: ApprovalHandler,
   decideAck: (params: Record<string, unknown>) => unknown = () => ({ terminal: true }),
+  permissions?: AgentPermissions,
 ) {
   const sent: Sent[] = [];
   const events: AgentEvent[] = [];
   const lifetime = new AbortController();
-  const task = { prompt: 'p', cwd: '.', onApproval };
+  const task = { prompt: 'p', cwd: '.', onApproval, permissions };
   const rpc: RpcPeer = new RpcPeer(
     (line) => {
       const message = JSON.parse(line) as Sent;
@@ -141,6 +142,21 @@ describe('codexApprovals', () => {
       summary: 'Permissions for this turn: network (needs npm)',
       detail: params,
     });
+  });
+
+  it('refuses a permission profile without asking under a chosen sandbox', async () => {
+    const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+    const h = harness((session) => codexApprovals(session, () => ids), onApproval, undefined, {
+      approval: 'ask',
+      sandbox: 'workspace-write',
+    });
+    const params = { threadId: 'th-1', turnId: 'tu-1', itemId: 'p1', permissions: { network: { enabled: true } } };
+    expect((await h.request('item/permissions/requestApproval', params)).result).toEqual({
+      permissions: {},
+      scope: 'turn',
+    });
+    expect(onApproval).not.toHaveBeenCalled();
+    expect(h.events.at(-1)).toEqual({ type: 'approval-resolved', id: 'p1', decision: 'deny', automatic: true });
   });
 
   it('grants nothing when a permission profile is denied, unanswered or invalid', async () => {
