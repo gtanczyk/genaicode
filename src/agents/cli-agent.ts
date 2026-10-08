@@ -46,6 +46,8 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   const recorder = new RunRecorder(definition.name, definition.command);
   const iterate = () => recorder.events.iterate();
   const lifetime = new AbortController();
+  if (task.signal?.aborted) lifetime.abort();
+  else task.signal?.addEventListener('abort', () => lifetime.abort(), { once: true });
   let handle: ProcessHandle | undefined;
   let stopped = false;
 
@@ -102,6 +104,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
     result,
     abort() {
       stopped = true;
+      lifetime.abort();
       handle?.kill();
     },
     [Symbol.asyncIterator]: iterate,

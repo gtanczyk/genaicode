@@ -69,21 +69,24 @@ async function prepareClaude(
   const approvals = task.onApproval ? await claudeApprovals(task, context) : undefined;
   const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
   if (!servers.length) return { args: claudeArgs(task, options) };
-  const dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
-  const file = join(dir, 'mcp.json');
+  let dir: string | undefined;
+  let file: string;
   try {
+    dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
+    file = join(dir, 'mcp.json');
     writeFileSync(file, JSON.stringify(claudeMcpConfig(servers)), { mode: 0o600 });
   } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
     void approvals?.close();
     throw error;
   }
+  const created = dir;
   return {
     args: claudeArgs(task, options, file, approvals?.args),
     ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
     cleanup: () => {
       void approvals?.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(created, { recursive: true, force: true });
     },
   };
 }

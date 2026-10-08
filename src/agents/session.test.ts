@@ -277,6 +277,20 @@ describe('createAgentSession', () => {
     expect(session.approve('a1', 'approve')).toBe(false);
   });
 
+  it('denies a withdrawn request even with autoApprove', async () => {
+    const withdrawn = AbortSignal.abort();
+    let decision: string | undefined;
+    const { agent } = fakeAgent([
+      async (task) => {
+        decision = await task.onApproval!({ id: 'w', kind: 'other' }, withdrawn);
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.', autoApprove: () => 'approve' });
+    session.send('go');
+    await session.idle();
+    expect(decision).toBe('deny');
+  });
+
   it('applies autoApprove and drops the queue on stop', async () => {
     const { agent } = fakeAgent([
       async (task) => {

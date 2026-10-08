@@ -245,9 +245,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   const onApproval = (turnId: number, request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> => {
     addEntry(turnId, { kind: 'approval', request });
+    if (signal?.aborted) return Promise.resolve('deny');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
-    if (signal?.aborted) return Promise.resolve('deny');
     return new Promise((resolve) => {
       // Withdrawn by the agent, or its turn ended: the question leaves `approvals`.
       const withdraw = () => {

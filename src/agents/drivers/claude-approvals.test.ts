@@ -33,6 +33,15 @@ describe('claudeApprovalTool', () => {
     });
   });
 
+  it('allows the input as asked even when the handler mutates the request', async () => {
+    const input = { command: 'npm test' };
+    const result = await claudeApprovalTool((request) => {
+      (request.detail as { input: { command: string } }).input.command = 'redacted';
+      return 'approve';
+    }).call({ tool_name: 'Bash', input });
+    expect(answer(result)).toEqual({ behavior: 'allow', updatedInput: { command: 'npm test' } });
+  });
+
   it('denies with a message', async () => {
     const result = await claudeApprovalTool(() => 'deny').call(call);
     expect(answer(result)).toEqual({ behavior: 'deny', message: expect.any(String) });

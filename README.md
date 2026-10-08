@@ -106,18 +106,18 @@ for await (const event of run) {
 const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
 ```
 
-| Agent            | Driver                        | Extras                                     |
-| ---------------- | ----------------------------- | ------------------------------------------ |
-| Claude Code      | `claude()`                    | MCP servers, approvals, max turns, cost    |
-| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals    |
-| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns      |
-| Cursor           | `cursor()`                    | streamed text deltas                       |
-| Gemini CLI       | `gemini()`                    | approval mode                              |
-| opencode         | `opencode()`                  | `provider/model` ids, variants             |
-| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price        |
-| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                     |
-| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals      |
-| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent |
+| Agent            | Driver                        | Extras                                          |
+| ---------------- | ----------------------------- | ----------------------------------------------- |
+| Claude Code      | `claude()`                    | MCP servers, approvals, max turns, effort, cost |
+| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals         |
+| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns           |
+| Cursor           | `cursor()`                    | streamed text deltas                            |
+| Gemini CLI       | `gemini()`                    | approval mode                                   |
+| opencode         | `opencode()`                  | `provider/model` ids, variants                  |
+| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price             |
+| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                          |
+| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals           |
+| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent      |
 
 On top of the drivers:
 

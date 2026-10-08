@@ -49,9 +49,9 @@ export function claudeApprovalTool(
     },
     async call(args, signal = new AbortController().signal) {
       const request = claudeApprovalRequest(args);
+      // `updatedInput` is the input Claude asked about, copied before the handler can touch it.
+      const input = request && isObject(args) ? structuredClone(args.input) : undefined;
       const decision = request ? await askApproval({ onApproval }, request, signal) : 'deny';
-      const input = isObject(args) ? args.input : undefined;
-      // `updatedInput` is the input Claude asked about, unchanged: approving never rewrites it.
       const answer =
         decision === 'approve' ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: DENIED };
       return { content: [{ type: 'text', text: JSON.stringify(answer) }] };
