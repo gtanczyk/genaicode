@@ -312,4 +312,26 @@ describe('Anthropic converter', () => {
     );
     expect(plain.output_config).toBeUndefined();
   });
+
+  it('drops the keywords structured outputs reject, but never a property of that name', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        maximum: { type: 'integer', minimum: 1, maximum: 9, multipleOf: 1 },
+        tags: { type: 'array', items: { type: 'string', maxLength: 20 }, minItems: 2, maxItems: 5, uniqueItems: true },
+        either: { anyOf: [{ type: 'number', exclusiveMinimum: 0 }, { type: 'null' }] },
+      },
+      required: ['maximum'],
+    };
+    expect(toAnthropicFormat({ type: 'json_schema', name: 'x', schema })?.schema).toEqual({
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        maximum: { type: 'integer' },
+        tags: { type: 'array', items: { type: 'string', maxLength: 20 }, minItems: 1 },
+        either: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+      },
+      required: ['maximum'],
+    });
+  });
 });

@@ -192,13 +192,38 @@ function forcedToolInstruction(choice: ToolChoice | undefined): string | undefin
   return `Respond by calling the \`${choice.name}\` tool.`;
 }
 
-// Structured outputs reject an object that may grow keys, so close every one.
-function closeObjects(schema: unknown): unknown {
-  if (Array.isArray(schema)) return schema.map(closeObjects);
-  if (!schema || typeof schema !== 'object') return schema;
-  const node = Object.fromEntries(
-    Object.entries(schema as Record<string, unknown>).map(([key, value]) => [key, closeObjects(value)]),
-  );
+// Keywords structured outputs answer with a 400 (checked live, October 2026).
+const UNSUPPORTED_KEYWORDS = new Set([
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'maxItems',
+  'uniqueItems',
+]);
+const SCHEMA_MAPS = new Set(['properties', '$defs', 'definitions', 'patternProperties']);
+const SCHEMA_LISTS = new Set(['anyOf', 'allOf', 'oneOf', 'prefixItems']);
+
+// Rewrites one schema node for structured outputs, walking only real subschemas.
+function toAnthropicSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
+  const node: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+    if (UNSUPPORTED_KEYWORDS.has(key)) continue;
+    if (SCHEMA_MAPS.has(key) && value && typeof value === 'object' && !Array.isArray(value)) {
+      node[key] = Object.fromEntries(Object.entries(value).map(([name, sub]) => [name, toAnthropicSchema(sub)]));
+    } else if (SCHEMA_LISTS.has(key) && Array.isArray(value)) {
+      node[key] = value.map(toAnthropicSchema);
+    } else if (key === 'items' || key === 'not' || key === 'additionalProperties') {
+      node[key] = Array.isArray(value) ? value.map(toAnthropicSchema) : toAnthropicSchema(value);
+    } else {
+      node[key] = value;
+    }
+  }
+  // Only 0 and 1 are accepted; 1 keeps "not empty".
+  if (typeof node.minItems === 'number' && node.minItems > 1) node.minItems = 1;
+  // An object that may grow keys is rejected, so close every one.
   if (node.type === 'object' && node.additionalProperties === undefined) node.additionalProperties = false;
   return node;
 }
@@ -206,7 +231,7 @@ function closeObjects(schema: unknown): unknown {
 // Only a schema maps: Anthropic has no schemaless JSON mode, so `json` stays a prompt hint.
 export function toAnthropicFormat(format: ResponseFormat | undefined): Anthropic.JSONOutputFormat | undefined {
   if (format?.type !== 'json_schema') return undefined;
-  return { type: 'json_schema', schema: closeObjects(format.schema) as Record<string, unknown> };
+  return { type: 'json_schema', schema: toAnthropicSchema(format.schema) as Record<string, unknown> };
 }
 
 export function toAnthropicRequest(
