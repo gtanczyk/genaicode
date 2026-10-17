@@ -5,6 +5,7 @@ import type {
   GenerationResult,
   PromptImage,
   PromptItem,
+  ResponseFormat,
   ResultPart,
   ThinkingConfig,
   ThinkingLevel,
@@ -191,6 +192,23 @@ function forcedToolInstruction(choice: ToolChoice | undefined): string | undefin
   return `Respond by calling the \`${choice.name}\` tool.`;
 }
 
+// Structured outputs reject an object that may grow keys, so close every one.
+function closeObjects(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(closeObjects);
+  if (!schema || typeof schema !== 'object') return schema;
+  const node = Object.fromEntries(
+    Object.entries(schema as Record<string, unknown>).map(([key, value]) => [key, closeObjects(value)]),
+  );
+  if (node.type === 'object' && node.additionalProperties === undefined) node.additionalProperties = false;
+  return node;
+}
+
+// Only a schema maps: Anthropic has no schemaless JSON mode, so `json` stays a prompt hint.
+export function toAnthropicFormat(format: ResponseFormat | undefined): Anthropic.JSONOutputFormat | undefined {
+  if (format?.type !== 'json_schema') return undefined;
+  return { type: 'json_schema', schema: closeObjects(format.schema) as Record<string, unknown> };
+}
+
 export function toAnthropicRequest(
   request: GenerationRequest,
   defaults: AnthropicRequestDefaults,
@@ -215,6 +233,8 @@ export function toAnthropicRequest(
   }
 
   const { thinking, effort } = toAnthropicThinking(request.thinking, defaults.thinking, traits);
+  const format = toAnthropicFormat(request.responseFormat);
+  const outputConfig: Anthropic.OutputConfig = { ...(effort ? { effort } : {}), ...(format ? { format } : {}) };
 
   return {
     model,
@@ -225,7 +245,7 @@ export function toAnthropicRequest(
     tools: tools.length ? tools : undefined,
     tool_choice: toolChoice,
     thinking,
-    ...(effort ? { output_config: { effort } } : {}),
+    ...(effort || format ? { output_config: outputConfig } : {}),
   };
 }
 
