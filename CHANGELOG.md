@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- Anthropic structured outputs: the converter drops the schema keywords the API rejects with a
+  400 (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `maxItems`,
+  `uniqueItems`) and lowers `minItems` above 1 to 1, the largest value accepted. It walks only
+  real subschemas, so a property that happens to be named `maximum` is kept. Callers still
+  validate the answer against their own schema.
+
+## 2.13.3 — 2026-10-17
+
 ### Added
 
 - The Anthropic provider honors `responseFormat: { type: 'json_schema' }`: it sends the schema as
