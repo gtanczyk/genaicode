@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   anthropicModelTraits,
   fromAnthropicMessage,
+  toAnthropicFormat,
   toAnthropicMessages,
   toAnthropicRequest,
   toAnthropicSystem,
@@ -248,5 +249,67 @@ describe('Anthropic converter', () => {
     expect(at('claude-opus-4-7')).toBeUndefined();
     expect(at('claude-sonnet-4-6')).toBe(0);
     expect(at('claude-haiku-4-5')).toBe(0);
+  });
+
+  it('sends a json_schema response format as output_config.format, objects closed', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        ideas: {
+          type: 'array',
+          items: { type: 'object', properties: { label: { type: 'string' } }, required: ['label'] },
+        },
+        meta: { type: 'object', properties: {}, additionalProperties: false },
+      },
+      required: ['ideas'],
+    };
+    const request = toAnthropicRequest(
+      {
+        prompt: [{ type: 'user', text: 'ideas' }],
+        thinking: { level: 'minimal' },
+        responseFormat: { type: 'json_schema', name: 'ideas', schema, strict: true },
+      },
+      { model: 'claude-sonnet-5-5' },
+    );
+    expect(request.output_config).toEqual({
+      effort: 'low',
+      format: {
+        type: 'json_schema',
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ideas: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: { label: { type: 'string' } },
+                required: ['label'],
+              },
+            },
+            meta: { type: 'object', properties: {}, additionalProperties: false },
+          },
+          required: ['ideas'],
+        },
+      },
+    });
+    expect(schema).not.toHaveProperty('additionalProperties');
+  });
+
+  it('sends output_config.format without thinking, and nothing for text or schemaless json', () => {
+    const schema = { type: 'object', properties: { ok: { type: 'boolean' } } };
+    const bare = toAnthropicRequest(
+      { prompt: [{ type: 'user', text: 'hi' }], responseFormat: { type: 'json_schema', name: 'ok', schema } },
+      { model: 'claude-haiku-4-5' },
+    );
+    expect(bare.output_config).toEqual({ format: toAnthropicFormat({ type: 'json_schema', name: 'ok', schema }) });
+    expect(toAnthropicFormat({ type: 'json' })).toBeUndefined();
+    expect(toAnthropicFormat({ type: 'text' })).toBeUndefined();
+    const plain = toAnthropicRequest(
+      { prompt: [{ type: 'user', text: 'hi' }], responseFormat: { type: 'json' } },
+      { model: 'claude-haiku-4-5' },
+    );
+    expect(plain.output_config).toBeUndefined();
   });
 });

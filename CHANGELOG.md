@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The Anthropic provider honors `responseFormat: { type: 'json_schema' }`: it sends the schema as
+  `output_config.format` (structured outputs), next to any `effort`, so the answer is decoded
+  against the schema instead of only asked for in the prompt. Anthropic requires
+  `additionalProperties: false` on every object, so the converter adds it where the schema leaves
+  it out. A schemaless `{ type: 'json' }` still maps to nothing: Anthropic has no such mode.
+
 ## 2.13.2 — 2026-10-09
 
 ### Fixed
