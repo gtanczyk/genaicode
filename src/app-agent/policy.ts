@@ -5,12 +5,11 @@ import type { CodingAgent } from '../agents/types.js';
 import type { AppAgentMode } from './state.js';
 
 const WEB_TOOLS = ['WebFetch', 'WebSearch'];
-const READ_ONLY_GIT = ['git status', 'git diff', 'git log'];
 
 /**
  * The agents an app agent offers by default: the drivers that take per-run MCP servers,
  * locked down per mode. In `use` mode they get no shell and no file edits, only the app's
- * tools. In `dev` mode they edit files and may run `commands` and read-only git, never
+ * tools. In `dev` mode they edit files and may run `commands` (each with any arguments), never
  * commit or push (that goes through `propose_commit`). Codex has no per-command allowlist:
  * in `dev` mode its shell is bounded only by the `workspace-write` sandbox.
  */
@@ -41,7 +40,9 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       copilot({ allowAllTools: false, denyTools: ['shell', 'write'] }),
     ];
   }
-  const allowed = [...commands, ...READ_ONLY_GIT];
+  // Each command with any arguments. No git rules: `git diff --no-index` or `git log --output`
+  // reach outside cwd; git asks through the agent's own permission prompt instead.
+  const allowed = [...commands];
   return [
     claude({
       permissionMode: 'acceptEdits',

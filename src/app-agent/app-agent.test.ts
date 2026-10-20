@@ -253,7 +253,7 @@ describe('createAppAgent', () => {
     await post(base, '/send', { text: 'fix it' });
     await settle(agent);
     expect(dev.tasks[0]!.cwd).toBe(dir);
-    expect(dev.tasks[0]!.prompt).toContain('You may run: npm test, and read-only git.');
+    expect(dev.tasks[0]!.prompt).toContain('You may run: npm test.');
     expect(use.tasks).toHaveLength(0);
   });
 
@@ -503,6 +503,32 @@ describe('conversation across switches', () => {
     await post(base, '/send', { text: 'fresh' });
     await settle(agent);
     expect(two.tasks.at(-1)!.prompt).not.toContain('Earlier in this conversation');
+  });
+
+  it('tells the next agent how an action proposed before a switch ended', async () => {
+    const one = fakeAgent(
+      [
+        async (task) => {
+          await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+          return 'proposed';
+        },
+      ],
+      'one',
+    );
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/actions/1', { decision: 'approve' });
+    await settle(agent);
+    await post(base, '/send', { text: 'done?' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('The user approved action #1 (Retry j1). Result:\nretried');
   });
 
   it('answers the agent CLI permission prompts through the handler', async () => {

@@ -53,7 +53,8 @@ export interface AppAgentOptions {
     /** Git repository the commit goes to. Default `cwd`. */
     repo?: string;
     /**
-     * Commands the agent may run there, e.g. `npm test`. Read-only git is always allowed.
+     * Commands the agent may run there, each with any arguments, e.g. `npm test`; anything
+     * else, git included, goes through the agent CLI's own permission prompt.
      * Claude and Copilot enforce the list; Codex only has its `workspace-write` sandbox.
      */
     commands?: readonly string[];
@@ -334,7 +335,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       lines.push(
         '',
         `Dev mode: your cwd is ${options.dev.cwd}; you may change the app's own code there.`,
-        ...(commands.length ? [`You may run: ${commands.join(', ')}, and read-only git.`] : []),
+        ...(commands.length ? [`You may run: ${commands.join(', ')}.`] : []),
         'Do not commit or push. When the change is ready, call `propose_commit` with a commit message;',
         'the user reviews the diff and approves it.',
         ...(options.dev.instructions ? [options.dev.instructions] : []),
@@ -359,7 +360,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
 
   // App notes reach an agent that is already talking; they never start a conversation.
   const tell = (text: string) => {
-    if (!session) return;
+    if (!session) {
+      // The conversation moved to another agent or mode: the next one hears it in its briefing.
+      if (carryOver) carryOver = clip(`${carryOver}\n\n${APP_NOTE}${text}`, CARRY_MAX, true);
+      return;
+    }
     trace({ kind: 'note', text: clip(text, 2_000) });
     deliver(`${APP_NOTE}${text}`, false);
   };
