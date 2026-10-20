@@ -55,7 +55,10 @@ export async function treeChanges(repo: string, tree: string): Promise<TreeChang
   return { files, diff: diff.length > MAX_DIFF ? `${diff.slice(0, MAX_DIFF)}\n… (truncated)` : diff };
 }
 
-/** Commit `tree` only while the worktree still matches it, so what was reviewed is what lands. */
+/**
+ * Commit `tree` only while the worktree still matches it, so what was reviewed is what lands.
+ * The commit goes through a scratch index: a failed commit leaves the user's index as it was.
+ */
 export async function commitTree(
   repo: string,
   tree: string,
@@ -69,16 +72,26 @@ export async function commitTree(
     };
   }
   const parent = (await must(repo, ['rev-parse', 'HEAD'])).trim();
-  await must(repo, ['read-tree', tree]);
-  // Hooks run as usual; they can take a while.
-  const commit = await runGit(repo, ['commit', '-m', message], { timeoutMs: 20 * 60_000 });
+  const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
+  let commit;
+  try {
+    await must(repo, ['read-tree', tree], env);
+    // Hooks run as usual, on the scratch index; they can take a while.
+    commit = await runGit(repo, ['commit', '-m', message], { timeoutMs: 20 * 60_000, env });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   let output = `${commit.stdout}\n${commit.stderr}`.trim();
   let ok = commit.code === 0;
   if (ok && (await must(repo, ['rev-parse', 'HEAD^{tree}'])).trim() !== tree) {
-    // A hook rewrote staged files: undo the commit, keep its changes staged for a new review.
-    await must(repo, ['reset', '--soft', parent]);
+    // A hook rewrote the files: undo the commit, its changes stay in the worktree for a new review.
+    await must(repo, ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', parent]);
     ok = false;
-    output = `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left staged. Ask the agent to propose the commit again.`;
+    output = `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`;
+  } else if (ok) {
+    // The user's index now matches the new commit.
+    await must(repo, ['reset', '-q']);
   }
   return { ok, output: output.length > 8_000 ? `…${output.slice(-8_000)}` : output };
 }

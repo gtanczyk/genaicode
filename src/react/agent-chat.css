@@ -632,6 +632,10 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.gc-app-diff-status {
+  color: var(--_muted);
+  font-size: 0.87em;
+}
 .gc-app-action summary {
   cursor: pointer;
   color: var(--_muted);

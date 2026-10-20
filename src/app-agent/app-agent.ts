@@ -151,7 +151,10 @@ const CARRY_MAX = 12_000;
  * This is the state and logic only; `createAppAgentHandler` serves it over HTTP.
  */
 export function createAppAgent(options: AppAgentOptions): AppAgent {
+  const names = new Set(['app_view', 'app_links', 'app_open', 'propose_commit']);
   for (const tool of options.tools ?? []) {
+    if (names.has(tool.name)) throw new Error(`tool name "${tool.name}" is taken`);
+    names.add(tool.name);
     const properties = (tool.inputSchema?.properties ?? {}) as Record<string, unknown>;
     if (tool.write && APPROVAL_SUMMARY in properties) {
       throw new Error(`write tool "${tool.name}" cannot take an argument named ${APPROVAL_SUMMARY}`);

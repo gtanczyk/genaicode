@@ -268,12 +268,18 @@ function ActionCard({
   render?: (action: AppAction) => ReactNode;
 }) {
   const [changes, setChanges] = useState<TreeChanges | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { changes: load } = client;
   useEffect(() => {
     if (action.kind === 'commit' && action.status === 'pending') {
-      load(action.id).then(setChanges, () => setChanges(null));
+      setLoadError(null);
+      load(action.id).then(setChanges, (error: unknown) =>
+        setLoadError(error instanceof Error ? error.message : String(error)),
+      );
     }
   }, [action.id, action.kind, action.status, load]);
+  // A commit is approved only after its diff has been shown.
+  const blocked = action.kind === 'commit' && !changes;
 
   const what =
     render?.(action) ??
@@ -304,9 +310,19 @@ function ActionCard({
           <pre className="gc-app-diff">{changes.diff}</pre>
         </details>
       )}
+      {action.status === 'pending' && blocked && (
+        <div className="gc-app-diff-status">
+          {loadError ? `Could not load the changes: ${loadError}` : 'Loading the changes…'}
+        </div>
+      )}
       {action.status === 'pending' ? (
         <div className="gc-buttons">
-          <button type="button" className="gc-btn gc-primary" onClick={() => client.decide(action.id, 'approve')}>
+          <button
+            type="button"
+            className="gc-btn gc-primary"
+            disabled={blocked}
+            onClick={() => client.decide(action.id, 'approve')}
+          >
             Approve
           </button>
           <button type="button" className="gc-btn gc-danger" onClick={() => client.decide(action.id, 'reject')}>

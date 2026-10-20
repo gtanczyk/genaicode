@@ -271,6 +271,16 @@ describe('createAppAgent', () => {
     expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
   });
 
+  it('refuses tool names that are taken', () => {
+    const tool = { name: 'propose_commit', description: 'x', run: () => 'ok' };
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://127.0.0.1:1/mcp', tools: [tool] })).toThrow(/taken/);
+    const twice = [
+      { ...tool, name: 'jobs' },
+      { ...tool, name: 'jobs' },
+    ];
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://127.0.0.1:1/mcp', tools: twice })).toThrow(/taken/);
+  });
+
   it('refuses a write tool that declares the reserved approval_summary argument', () => {
     expect(() =>
       createAppAgent({
@@ -362,7 +372,28 @@ describe('commitTree', () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain('commit hook changed the files');
     expect(git('log', '--format=%s')).toBe('init\n');
+    expect(git('diff', '--cached', '--name-only')).toBe('');
+    expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
+  });
+
+  it("keeps the user's index when the commit fails", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    writeFileSync(path.join(repo, 'b.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    writeFileSync(path.join(repo, 'b.txt'), 'two\n');
+    git('add', 'a.txt');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change');
+    expect(result.ok).toBe(false);
     expect(git('diff', '--cached', '--name-only')).toBe('a.txt\n');
+    expect(git('log', '--format=%s')).toBe('init\n');
   });
 });
 

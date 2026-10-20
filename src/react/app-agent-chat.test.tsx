@@ -175,6 +175,33 @@ describe('AppAgentChat', () => {
     expect(calls).toContainEqual({ url: '/api/agent/actions/1', body: { decision: 'approve' } });
   });
 
+  it('keeps a commit unapprovable until its diff loads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('boom', { status: 500 })),
+    );
+    const events = mount();
+    events.emit(
+      appState({
+        actions: [
+          {
+            id: '2',
+            kind: 'commit',
+            summary: 'Fix',
+            commit: { message: 'Fix', tree: 'abc' },
+            status: 'pending',
+            createdAt: t0,
+          },
+        ],
+      }),
+    );
+    expect(button('Approve').disabled).toBe(true);
+    expect(text()).toContain('Loading the changes');
+    await flush();
+    expect(button('Approve').disabled).toBe(true);
+    expect(text()).toContain('Could not load the changes');
+  });
+
   it('uses a client the host passes instead of opening its own stream', () => {
     FakeEventSource.last = null;
     const client = {
