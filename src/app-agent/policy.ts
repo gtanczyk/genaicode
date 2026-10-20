@@ -21,7 +21,8 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
         strictMcpConfig: true,
         disallowedTools: ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', ...WEB_TOOLS],
       }),
-      codex({ sandbox: 'read-only' }),
+      // The sandbox alone still lets the shell read host files: drop the shell and image viewer.
+      codex({ sandbox: 'read-only', config: { 'features.shell_tool': false, 'features.view_image': false } }),
       copilot({ allowAllTools: false, denyTools: ['shell', 'write'] }),
     ];
   }

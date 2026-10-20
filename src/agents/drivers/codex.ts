@@ -18,6 +18,8 @@ export interface CodexAgentOptions {
    * asks, so without it Codex refuses each call as needing approval.
    */
   allowMcpTools?: boolean;
+  /** Extra `-c key=value` config overrides, e.g. `{ 'features.shell_tool': false }`. */
+  config?: Readonly<Record<string, string | number | boolean>>;
 }
 
 /** Codex's sandbox mode for a `permissions.sandbox`. */
@@ -82,6 +84,7 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (options.skipGitRepoCheck ?? true) args.push('--skip-git-repo-check');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);
+  for (const [key, value] of Object.entries(options.config ?? {})) args.push('-c', `${key}=${JSON.stringify(value)}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   // `exec resume <id> <prompt>` takes the prompt after the session id; exec's own flags stay before it.
   if (task.resume) args.push('resume', task.resume);

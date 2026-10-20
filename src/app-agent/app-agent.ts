@@ -24,11 +24,14 @@ import {
  * (`write: true`) only create an action: the user approves or rejects it in the app, and the
  * agent hears the outcome as its next message.
  */
+const APPROVAL_SUMMARY = 'approval_summary';
+
 export interface AppTool {
   name: string;
   description: string;
   /** JSON Schema of the arguments. Default: no arguments. */
   inputSchema?: Record<string, unknown>;
+  /** Needs the user's approval. The agent also passes `approval_summary`, which `run` never sees. */
   write?: boolean;
   /** Throw to refuse a call. Write tools check here, before an action is created. */
   validate?(args: Record<string, unknown>): void;
@@ -148,6 +151,12 @@ const CARRY_MAX = 12_000;
  * This is the state and logic only; `createAppAgentHandler` serves it over HTTP.
  */
 export function createAppAgent(options: AppAgentOptions): AppAgent {
+  for (const tool of options.tools ?? []) {
+    const properties = (tool.inputSchema?.properties ?? {}) as Record<string, unknown>;
+    if (tool.write && APPROVAL_SUMMARY in properties) {
+      throw new Error(`write tool "${tool.name}" cannot take an argument named ${APPROVAL_SUMMARY}`);
+    }
+  }
   const now = options.now ?? Date.now;
   const env = options.env ?? process.env;
   const serverName = options.serverName ?? 'app';
@@ -395,12 +404,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           type: 'object',
           properties: {
             ...properties,
-            summary: { type: 'string', description: 'One line the user reads before approving' },
+            [APPROVAL_SUMMARY]: { type: 'string', description: 'One line the user reads before approving' },
           },
-          required: [...required.filter((name) => name !== 'summary'), 'summary'],
+          required: [...required, APPROVAL_SUMMARY],
         },
         call: async (args) => {
-          const { summary, ...rest } = args;
+          const { [APPROVAL_SUMMARY]: summary, ...rest } = args;
           tool.validate?.(rest);
           const action = propose({
             kind: 'tool',
@@ -532,7 +541,13 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     configure(change) {
       const nextMode = change.mode ?? mode;
       if (!modes.includes(nextMode)) throw new AppAgentError(`unknown mode "${nextMode}"`, 400);
-      const nextAgent = change.agent ?? agentName;
+      const offered = installed(nextMode);
+      // A mode-only switch keeps the agent when the target mode offers it, else picks one there.
+      const nextAgent =
+        change.agent ??
+        (offered.some((choice) => choice.name === agentName)
+          ? agentName
+          : (offered.find((choice) => choice.installed)?.name ?? offered[0]?.name ?? agentName));
       if (!agentsFor(nextMode).some((agent) => agent.name === nextAgent)) {
         throw new AppAgentError(`unknown agent "${nextAgent}"`, 400);
       }

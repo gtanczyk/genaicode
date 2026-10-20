@@ -68,9 +68,17 @@ export async function commitTree(
       output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
     };
   }
+  const parent = (await must(repo, ['rev-parse', 'HEAD'])).trim();
   await must(repo, ['read-tree', tree]);
   // Hooks run as usual; they can take a while.
   const commit = await runGit(repo, ['commit', '-m', message], { timeoutMs: 20 * 60_000 });
-  const output = `${commit.stdout}\n${commit.stderr}`.trim();
-  return { ok: commit.code === 0, output: output.length > 8_000 ? `…${output.slice(-8_000)}` : output };
+  let output = `${commit.stdout}\n${commit.stderr}`.trim();
+  let ok = commit.code === 0;
+  if (ok && (await must(repo, ['rev-parse', 'HEAD^{tree}'])).trim() !== tree) {
+    // A hook rewrote staged files: undo the commit, keep its changes staged for a new review.
+    await must(repo, ['reset', '--soft', parent]);
+    ok = false;
+    output = `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left staged. Ask the agent to propose the commit again.`;
+  }
+  return { ok, output: output.length > 8_000 ? `…${output.slice(-8_000)}` : output };
 }

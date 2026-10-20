@@ -113,6 +113,18 @@ describe('codex driver', () => {
       'read-only',
       'go',
     ]);
+    expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'features.shell_tool': false, x: 'y' } })).toEqual([
+      'exec',
+      '--json',
+      '--sandbox',
+      'workspace-write',
+      '--skip-git-repo-check',
+      '-c',
+      'features.shell_tool=false',
+      '-c',
+      'x="y"',
+      'go',
+    ]);
   });
 
   it('decodes exec JSONL into agent events', () => {

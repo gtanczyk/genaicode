@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
 import { PROMPT_MARKER, userText } from './state.js';
+import { commitTree, snapshotTree } from './git.js';
 import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
 
 type Step = (task: AgentTask) => Promise<string>;
@@ -141,7 +142,7 @@ describe('createAppAgent', () => {
       async (task) => {
         const listed = await mcp(task, 'tools/list');
         const read = await callTool(task, 'jobs_count');
-        const write = await callTool(task, 'retry_job', { id: 'j1', summary: 'Retry job j1' });
+        const write = await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry job j1' });
         return `${listed.result!.tools!.length} tools; ${read.content![0]!.text}; ${write.content![0]!.text}`;
       },
     ]);
@@ -188,8 +189,8 @@ describe('createAppAgent', () => {
   it('tells the agent about a rejection and refuses writes the tool does not validate', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {
-        const bad = await callTool(task, 'delete', { id: 'root', summary: 'x' });
-        await callTool(task, 'delete', { id: 'a', summary: 'Delete a' });
+        const bad = await callTool(task, 'delete', { id: 'root', approval_summary: 'x' });
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
         return bad.isError ? `refused: ${bad.content![0]!.text}` : 'accepted';
       },
     ]);
@@ -256,6 +257,38 @@ describe('createAppAgent', () => {
     expect(use.tasks).toHaveLength(0);
   });
 
+  it('picks an agent the target mode offers when only the mode changes', async () => {
+    const use = fakeAgent([], 'reader');
+    const dev = fakeAgent([], 'editor');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: (mode) => [mode === 'dev' ? dev.agent : use.agent],
+      dev: { cwd: mkdtempSync(path.join(tmpdir(), 'app-agent-dev-')) },
+    });
+    expect((await post(base, '/config', { mode: 'dev' })).status).toBe(200);
+    expect(agent.get()).toMatchObject({ mode: 'dev', agent: 'editor' });
+    await post(base, '/config', { mode: 'use' });
+    expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
+  });
+
+  it('refuses a write tool that declares the reserved approval_summary argument', () => {
+    expect(() =>
+      createAppAgent({
+        name: 'app',
+        mcpUrl: 'http://127.0.0.1:1/mcp',
+        tools: [
+          {
+            name: 'file',
+            description: 'x',
+            write: true,
+            inputSchema: { type: 'object', properties: { approval_summary: { type: 'string' } } },
+            run: () => 'ok',
+          },
+        ],
+      }),
+    ).toThrow(/approval_summary/);
+  });
+
   it('commits exactly the reviewed tree in dev mode', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-repo-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -308,6 +341,28 @@ describe('createAppAgent', () => {
     expect(agent.get().actions[1]!.result).toContain('changed after they were reviewed');
     expect(git('log', '-1', '--format=%s')).toBe('Change a\n');
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
+  });
+});
+
+describe('commitTree', () => {
+  it('undoes a commit whose hook rewrote the reviewed files', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho hooked > a.txt\ngit add a.txt\n', {
+      mode: 0o755,
+    });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('commit hook changed the files');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    expect(git('diff', '--cached', '--name-only')).toBe('a.txt\n');
   });
 });
 

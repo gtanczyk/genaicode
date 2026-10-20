@@ -13,6 +13,7 @@
   `POST /approvals/:id` answers the agent CLI's own permission prompts.
 - `genaicode/react`: `AppAgentChat`, the page side of an app agent (chat, link chips, action
   cards with the commit diff, agent and mode pickers), and `useAppAgent` for a page of your own.
+- `codex({ config })`: extra `-c key=value` overrides, e.g. `{ 'features.shell_tool': false }`.
 
 ### Fixed
 
