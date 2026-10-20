@@ -267,17 +267,20 @@ function ActionCard({
   client: AppAgentClient;
   render?: (action: AppAction) => ReactNode;
 }) {
-  const [changes, setChanges] = useState<TreeChanges | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // A loaded diff belongs to one reviewed tree: ids start over when the server restarts.
+  const key = `${action.id}:${action.commit?.tree ?? ''}:${action.commit?.base ?? ''}`;
+  const [loaded, setLoaded] = useState<{ key: string; changes?: TreeChanges; error?: string } | null>(null);
+  const changes = loaded?.key === key ? (loaded.changes ?? null) : null;
+  const loadError = loaded?.key === key ? (loaded.error ?? null) : null;
   const { changes: load } = client;
   useEffect(() => {
     if (action.kind === 'commit' && action.status === 'pending') {
-      setLoadError(null);
-      load(action.id).then(setChanges, (error: unknown) =>
-        setLoadError(error instanceof Error ? error.message : String(error)),
+      load(action.id).then(
+        (result) => setLoaded({ key, changes: result }),
+        (error: unknown) => setLoaded({ key, error: error instanceof Error ? error.message : String(error) }),
       );
     }
-  }, [action.id, action.kind, action.status, load]);
+  }, [action.id, action.kind, action.status, key, load]);
   // A commit is approved only after its diff has been shown.
   const blocked = action.kind === 'commit' && (!changes || changes.truncated === true);
 

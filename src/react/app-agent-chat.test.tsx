@@ -263,6 +263,27 @@ describe('AppAgentChat', () => {
     expect(calls.filter((c) => c.url.endsWith('/changes'))).toHaveLength(1);
   });
 
+  it('reloads the diff when an action id comes back with another tree', async () => {
+    const events = mount();
+    const commit = {
+      id: '2',
+      kind: 'commit' as const,
+      summary: 'Fix',
+      commit: { message: 'Fix', tree: 'abc', base: null },
+      status: 'pending' as const,
+      createdAt: t0,
+    };
+    events.emit(appState({ actions: [commit] }));
+    await flush();
+    expect(button('Approve').disabled).toBe(false);
+    // The server restarted: action 2 is now another commit.
+    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null } }] }));
+    expect(button('Approve').disabled).toBe(true);
+    await flush();
+    expect(calls.filter((c) => c.url.endsWith('/changes'))).toHaveLength(2);
+    expect(button('Approve').disabled).toBe(false);
+  });
+
   it('switches agent and mode, keeps history with a divider, and starts over with New', async () => {
     const events = mount({ modeLabels: { use: 'ops' } });
     const earlier = turn(-1, `Briefing${PROMPT_MARKER}first`, 'first answer', 'codex');

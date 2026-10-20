@@ -537,6 +537,29 @@ describe('commitTree', () => {
     expect(git('log', '--format=%s')).toBe('elsewhere\ninit\n');
   });
 
+  it('leaves the index alone when something staged while committing', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // While the hook runs, the user stages a new file in their own index.
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      '#!/bin/sh\necho c > c.txt\nenv -u GIT_INDEX_FILE git add c.txt\n',
+      { mode: 0o755 },
+    );
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('The index changed while committing');
+    expect(git('diff', '--cached', '--name-only')).toContain('c.txt');
+  });
+
   it("keeps the user's index when the commit fails", async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });

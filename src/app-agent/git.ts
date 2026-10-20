@@ -40,6 +40,12 @@ async function emptyTree(repo: string): Promise<string> {
   }
 }
 
+/** The tree the user's index holds, or null when it cannot be written (e.g. a merge conflict). */
+async function indexTree(repo: string): Promise<string | null> {
+  const result = await runGit(repo, ['write-tree']);
+  return result.code === 0 ? result.stdout.trim() : null;
+}
+
 async function must(repo: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   const result = await runGit(repo, args, { env });
   if (result.code !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
@@ -110,6 +116,8 @@ export async function commitTree(
       output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
     };
   }
+  // The user's own index, to tell later whether something staged meanwhile.
+  const staged = await indexTree(repo);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   let commit;
@@ -144,9 +152,13 @@ export async function commitTree(
         ? `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`
         : `${output}\n\nA commit hook changed the files after they were reviewed, and HEAD moved before the commit could be undone. Check commit ${made} in git.`;
   } else if (ok) {
-    // The user's index now matches the new commit. The commit landed even if this fails.
-    const reset = await runGit(repo, ['reset', '-q']);
-    if (reset.code !== 0) {
+    // Bring the user's index to the new commit, unless something staged while committing.
+    // The commit landed even if this fails.
+    const now = await indexTree(repo);
+    const reset = now !== null && now === staged ? await runGit(repo, ['reset', '-q']) : null;
+    if (!reset) {
+      output = `${output}\n\nThe index changed while committing, so it was left as is. Check \`git status\` before staging more.`;
+    } else if (reset.code !== 0) {
       output = `${output}\n\nCommitted, but resetting the index to it failed: ${reset.stderr.trim()}. Run \`git reset\` before staging more.`;
     }
   }
