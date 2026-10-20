@@ -209,4 +209,19 @@ describe('installResizeHandle with a writer that applies later', () => {
     expect(handle.getAttribute('aria-valuemin')).toBe('0');
     expect(handle.getAttribute('aria-valuemax')).toBe('0');
   });
+
+  it('floors a negative minimum at 0', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    const sizes: number[] = [];
+    installResizeHandle(handle, {
+      axis: 'x',
+      bounds: () => [-20, 500],
+      read: () => 100,
+      write: (size) => sizes.push(size),
+    });
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(sizes).toEqual([0]);
+    expect(handle.getAttribute('aria-valuemin')).toBe('0');
+  });
 });

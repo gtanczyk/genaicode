@@ -59,7 +59,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   const range = (): [number, number] => {
     const [min, max] = options.bounds();
     const top = Math.max(0, max);
-    return [Math.min(min, top), top];
+    return [Math.max(0, Math.min(min, top)), top];
   };
   const clamp = (size: number) => {
     const [min, max] = range();
