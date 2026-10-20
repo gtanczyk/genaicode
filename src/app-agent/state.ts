@@ -53,6 +53,8 @@ export interface TreeChanges {
   diff: string;
   /** The diff was cut to fit: it cannot be reviewed here, so the commit cannot be approved. */
   truncated?: boolean;
+  /** Changed files whose contents the diff cannot show (binary). */
+  binary?: string[];
 }
 
 /** Separates the briefing and page context from what the user typed. */

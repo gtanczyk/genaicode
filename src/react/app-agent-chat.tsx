@@ -310,6 +310,11 @@ function ActionCard({
           <pre className="gc-app-diff">{changes.diff}</pre>
         </details>
       )}
+      {changes?.binary && (
+        <div className="gc-app-diff-status">
+          Binary, contents not shown: {changes.binary.join(', ')}. Check them in your editor before approving.
+        </div>
+      )}
       {action.status === 'pending' && blocked && (
         <div className="gc-app-diff-status">
           {changes?.truncated

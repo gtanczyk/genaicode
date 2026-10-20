@@ -68,9 +68,15 @@ export async function treeChanges(repo: string, tree: string): Promise<TreeChang
       const [status = '', ...rest] = line.split('\t');
       return { status, path: rest.join('\t') };
     });
+  // `-\t-\tpath` in numstat marks a binary file: the diff only says it differs.
+  const binary = (await must(repo, ['diff', '--numstat', '--no-renames', '-z', base, tree]))
+    .split('\0')
+    .filter((entry) => entry.startsWith('-\t-\t'))
+    .map((entry) => entry.slice(4));
   const diff = await must(repo, ['diff', '--no-color', base, tree]);
-  if (diff.length <= MAX_DIFF) return { files, diff };
-  return { files, diff: `${diff.slice(0, MAX_DIFF)}\n… (truncated)`, truncated: true };
+  const shown =
+    diff.length <= MAX_DIFF ? { diff } : { diff: `${diff.slice(0, MAX_DIFF)}\n… (truncated)`, truncated: true };
+  return { files, ...shown, ...(binary.length ? { binary } : {}) };
 }
 
 /**

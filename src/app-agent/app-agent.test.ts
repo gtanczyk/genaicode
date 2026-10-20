@@ -466,6 +466,8 @@ describe('first commit', () => {
     expect((await commitTree(repo, tree, 'First')).ok).toBe(true);
     expect(git('log', '--format=%s')).toBe('First\n');
     expect(git('status', '--porcelain')).toBe('');
+    writeFileSync(path.join(repo, 'b.bin'), Buffer.from([0, 1, 2, 0]));
+    expect((await treeChanges(repo, await snapshotTree(repo))).binary).toEqual(['b.bin']);
   });
 });
 
