@@ -348,16 +348,17 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     return lines.join('\n');
   };
 
-  // App notes go ahead of queued prompts: an action's outcome is the agent's next message.
-  const deliver = (text: string, withView: boolean, first = false) => {
+  // App notes go ahead of queued prompts and survive a stop: an action's outcome is the agent's
+  // next message.
+  const deliver = (text: string, withView: boolean, note = false) => {
     const target = ensureSession();
     const seen = withView && view ? `[The user has ${view} open]` : '';
     if (!briefed) {
       briefed = true;
       const earlier = carryOver ? `\n\nEarlier in this conversation, with another agent or mode:\n${carryOver}` : '';
-      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`, { first });
+      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`, { note });
     } else {
-      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text, { first });
+      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text, { note });
     }
   };
 
@@ -511,9 +512,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         const message = String(args.message ?? '').trim();
         if (!message) throw new Error('message is required');
         const { tree, base } = await snapshotTree(repo());
-        return waiting(
-          propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, tree, base } }),
-        );
+        return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, tree, base } }));
       },
     },
   ];
@@ -529,14 +528,16 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         const queued = stopped?.get().queued ?? [];
         stopped?.stop();
         try {
-          // A stopped run still steerable would swallow the outcome note; let it wind down first.
+          // Let the stopped run wind down: none of its edits may land after the check.
           if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
           // A throw is this action's outcome too: it must reach the agent before the queued prompts.
-          const outcome = await commitTree(repo(), action.commit!, action.commit!.message).catch(
-            (error: Error) => ({ ok: false, output: error.message }),
-          );
+          const outcome = await commitTree(repo(), action.commit!, action.commit!.message).catch((error: Error) => ({
+            ok: false,
+            output: error.message,
+          }));
           updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
-          // The commit is recorded; the note still waits for a run slow to abort.
+          // A note sent while the stopped run still winds down would wait for the user's next
+          // prompt; send it once the session is idle, so it starts its own turn.
           if (stopped && session === stopped) await stopped.idle();
           tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
         } finally {

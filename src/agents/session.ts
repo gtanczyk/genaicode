@@ -98,10 +98,11 @@ export interface AgentSession {
   get(): SessionState;
   subscribe(listener: (state: SessionState) => void): () => void;
   /**
-   * Start, steer, or queue a prompt. Empty text is ignored. `first` queues it ahead of the
-   * prompts already waiting, for a note the agent must see before them.
+   * Start, steer, or queue a prompt. Empty text is ignored. `note` marks a message from the
+   * host app (an action's outcome): it is never steered, runs before the queued prompts, and is
+   * kept when the user stops the turn, to run before their next prompt.
    */
-  send(text: string, options?: { first?: boolean }): void;
+  send(text: string, options?: { note?: boolean }): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
@@ -146,6 +147,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let explicitResume = options.resume;
   // `reset()` during a turn: forget the session that turn reports when it ends.
   let forgetAfterTurn = false;
+  // Host notes waiting for a turn, ahead of `state.queued`. After a user stop they wait for the
+  // user's next prompt instead of starting a turn on their own.
+  const notes: string[] = [];
+  let holdNotes = false;
   // Usage of finished turns; the running turn's latest report is added on top.
   let pastUsage: TokenUsage = {};
   let pastCost: number | undefined;
@@ -294,6 +299,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 
   const startTurn = (prompt: string) => {
+    holdNotes = false;
     const turnId = nextTurnId++;
     const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
     const resume =
@@ -352,15 +358,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         forgetAfterTurn = false;
         set({ sessionId: undefined });
       } else if (result.sessionId) set({ sessionId: result.sessionId });
-      const [next, ...rest] = state.queued;
-      if (next !== undefined && !closed) {
-        set({ queued: rest });
+      const next = closed ? undefined : takeNext();
+      if (next !== undefined) {
         startTurn(next);
       } else {
         set({ status: 'idle', canSteer: false });
         settleIdle();
       }
     })();
+  };
+
+  const takeNext = (): string | undefined => {
+    if (notes.length && !holdNotes) return notes.shift();
+    const [next, ...rest] = state.queued;
+    if (next !== undefined) set({ queued: rest });
+    return next;
   };
 
   return {
@@ -371,9 +383,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     send(text, sendOptions) {
       const prompt = text.trim();
-      const enqueue = (queued: string[]) => (sendOptions?.first ? [prompt, ...queued] : [...queued, prompt]);
       if (!prompt || closed) return;
-      if (state.status === 'idle') return startTurn(prompt);
+      if (sendOptions?.note) {
+        if (state.status === 'idle') return startTurn(prompt);
+        notes.push(prompt);
+        return;
+      }
+      holdNotes = false;
+      if (state.status === 'idle') {
+        // Held notes go first: the agent hears what happened before the user's next words.
+        if (!notes.length) return startTurn(prompt);
+        set({ queued: [...state.queued, prompt] });
+        return startTurn(notes.shift()!);
+      }
       const current = run;
       const turnId = state.turns.at(-1)?.id;
       const turnController = controller;
@@ -392,19 +414,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
-          set({ queued: enqueue(state.queued) });
+          set({ queued: [...state.queued, prompt] });
           if (state.status === 'idle') {
-            const [next, ...rest] = state.queued;
-            set({ queued: rest });
+            const next = takeNext();
             if (next !== undefined) startTurn(next);
           }
         });
         return;
       }
-      set({ queued: enqueue(state.queued) });
+      set({ queued: [...state.queued, prompt] });
     },
     stop() {
       if (state.queued.length) set({ queued: [] });
+      holdNotes = true;
       denyPending();
       controller?.abort();
       run?.abort();
@@ -439,6 +461,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     close() {
       closed = true;
+      notes.length = 0;
       this.stop();
       listeners.clear();
     },

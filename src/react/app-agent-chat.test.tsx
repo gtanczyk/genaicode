@@ -284,6 +284,38 @@ describe('AppAgentChat', () => {
     expect(button('Approve').disabled).toBe(false);
   });
 
+  it('drops a diff reply for a tree the card no longer shows', async () => {
+    const replies: Array<(diff: string) => void> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) =>
+            replies.push((diff) => resolve(new Response(JSON.stringify({ files: [], diff })))),
+          ),
+      ),
+    );
+    const events = mount();
+    const commit = {
+      id: '2',
+      kind: 'commit' as const,
+      summary: 'Fix',
+      commit: { message: 'Fix', tree: 'abc', base: null },
+      status: 'pending' as const,
+      createdAt: t0,
+    };
+    events.emit(appState({ actions: [commit] }));
+    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null } }] }));
+    const [first, second] = replies.slice(-2);
+    second!('new diff');
+    await flush();
+    first!('old diff');
+    await flush();
+    expect(text()).toContain('new diff');
+    expect(text()).not.toContain('old diff');
+    expect(button('Approve').disabled).toBe(false);
+  });
+
   it('switches agent and mode, keeps history with a divider, and starts over with New', async () => {
     const events = mount({ modeLabels: { use: 'ops' } });
     const earlier = turn(-1, `Briefing${PROMPT_MARKER}first`, 'first answer', 'codex');

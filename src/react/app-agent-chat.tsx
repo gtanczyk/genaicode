@@ -274,12 +274,16 @@ function ActionCard({
   const loadError = loaded?.key === key ? (loaded.error ?? null) : null;
   const { changes: load } = client;
   useEffect(() => {
-    if (action.kind === 'commit' && action.status === 'pending') {
-      load(action.id).then(
-        (result) => setLoaded({ key, changes: result }),
-        (error: unknown) => setLoaded({ key, error: error instanceof Error ? error.message : String(error) }),
-      );
-    }
+    if (action.kind !== 'commit' || action.status !== 'pending') return;
+    // A reply for a tree the card no longer shows is dropped.
+    let current = true;
+    load(action.id).then(
+      (result) => current && setLoaded({ key, changes: result }),
+      (error: unknown) => current && setLoaded({ key, error: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => {
+      current = false;
+    };
   }, [action.id, action.kind, action.status, key, load]);
   // A commit is approved only after its diff has been shown.
   const blocked = action.kind === 'commit' && (!changes || changes.truncated === true);
