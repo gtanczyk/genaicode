@@ -3,11 +3,21 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
-import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
-import type { CodingAgent } from '../agents/types.js';
-import { commitTree, snapshotTree, treeChanges, type TreeChanges } from './git.js';
+import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
+import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
+import { commitTree, snapshotTree, treeChanges } from './git.js';
 import type { McpTool } from './mcp.js';
-import { defaultAppAgents, type AppAgentMode } from './policy.js';
+import { defaultAppAgents } from './policy.js';
+import {
+  APP_NOTE,
+  PROMPT_MARKER,
+  userText,
+  type AppAction,
+  type AppLink,
+  type AppAgentMode,
+  type AppAgentState,
+  type TreeChanges,
+} from './state.js';
 
 /**
  * A tool the app gives its agent. Read tools run when the agent calls them. Write tools
@@ -24,44 +34,6 @@ export interface AppTool {
   validate?(args: Record<string, unknown>): void;
   /** What the tool returns to the agent (read tools) or the outcome of an approved action (write tools). */
   run(args: Record<string, unknown>): Promise<string> | string;
-}
-
-export type AppActionStatus = 'pending' | 'running' | 'done' | 'failed' | 'rejected';
-
-/** A write waiting for the user, or done. */
-export interface AppAction {
-  id: string;
-  kind: 'tool' | 'commit';
-  /** The one line the user reads before deciding. */
-  summary: string;
-  tool?: { name: string; args: Record<string, unknown> };
-  commit?: { message: string; tree: string };
-  status: AppActionStatus;
-  result?: string;
-  createdAt: number;
-}
-
-/** A chip the agent offers under a reply; clicking it opens that page of the app. */
-export interface AppLink {
-  turnId: number;
-  label: string;
-  path: string;
-}
-
-export interface AppAgentState {
-  name: string;
-  mode: AppAgentMode;
-  /** `dev` is offered only when the app configured it. */
-  modes: AppAgentMode[];
-  agent: string;
-  agents: Array<{ name: string; installed: boolean }>;
-  session: SessionState | null;
-  actions: AppAction[];
-  links: AppLink[];
-  /** The page the app last reported as open. */
-  view: string | null;
-  /** A bumped id asks the page to open `path` once. */
-  navigation: { id: number; path: string } | null;
 }
 
 export interface AppAgentOptions {
@@ -92,8 +64,38 @@ export interface AppAgentOptions {
   /** MCP server name the agent sees; its tools show as `mcp__<name>__<tool>`. Default `app`. */
   serverName?: string;
   env?: NodeJS.ProcessEnv;
+  /** Every prompt, tool call, decision and finished turn, e.g. to append to a JSONL log. */
+  trace?: (record: AppAgentTrace) => void;
   now?: () => number;
 }
+
+/** One line of the trace. Long texts are clipped. */
+export type AppAgentTrace =
+  | { kind: 'session'; agent: string; mode: AppAgentMode }
+  | { kind: 'prompt'; agent: string; mode: AppAgentMode; view: string | null; text: string }
+  | { kind: 'note'; text: string }
+  | {
+      kind: 'mcp';
+      tool: string;
+      args: Record<string, unknown>;
+      ok: boolean;
+      ms: number;
+      result?: string;
+      error?: string;
+    }
+  | { kind: 'decision'; action: string; summary: string; decision: 'approve' | 'reject' }
+  | {
+      kind: 'turn';
+      agent: string;
+      mode: AppAgentMode;
+      turn: number;
+      status: string;
+      ok: boolean;
+      error?: string;
+      ms: number;
+      costUsd?: number;
+      entries: unknown[];
+    };
 
 export interface AppAgent {
   get(): AppAgentState;
@@ -101,13 +103,18 @@ export interface AppAgent {
   /** A message from the user. Carries the open page when the app reports one. */
   send(text: string): void;
   stop(): void;
-  /** Drop the conversation; the next message starts fresh. */
+  /** Drop the conversation, history and chips; the next message starts fresh. */
   reset(): void;
-  /** Switch agent or mode between turns. Throws while a turn runs. */
+  /**
+   * Switch agent or mode between turns. Throws while a turn runs. The transcript so far moves
+   * to `history`, and the next agent's first prompt carries a short version of it.
+   */
   configure(change: { agent?: string; mode?: AppAgentMode }): void;
   /** The app reports which page is open. */
   setView(path: string): void;
   decide(id: string, decision: 'approve' | 'reject'): void;
+  /** Answer a permission prompt of the agent CLI itself (`session.approvals`). */
+  approve(id: string, decision: ApprovalDecision): void;
   /** The diff a proposed commit would land. */
   changes(id: string): Promise<TreeChanges>;
   /** The tools the agent currently sees over MCP. */
@@ -116,15 +123,6 @@ export interface AppAgent {
   readonly mcpToken: string;
   readonly serverName: string;
   close(): void;
-}
-
-/** Separates the briefing and page context from what the user typed. */
-export const PROMPT_MARKER = '\n\nUser message:\n';
-
-/** What the user typed, without the briefing or page context in front of it. */
-export function userText(prompt: string): string {
-  const at = prompt.lastIndexOf(PROMPT_MARKER);
-  return at < 0 ? prompt : prompt.slice(at + PROMPT_MARKER.length);
 }
 
 export class AppAgentError extends Error {
@@ -138,6 +136,8 @@ export class AppAgentError extends Error {
 
 const MAX_ACTIONS = 50;
 const MAX_LINKS = 6;
+const MAX_HISTORY = 100;
+const CARRY_MAX = 12_000;
 
 /**
  * A coding agent inside a local app: the user chats with an agent CLI from their machine
@@ -184,6 +184,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let view: string | null = null;
   let links: AppLink[] = [];
   let navigation: AppAgentState['navigation'] = null;
+  let history: SessionTurn[] = [];
+  let nextArchivedId = -1;
+  let carryOver = '';
+  let traced = new Set<number>();
+  const trace = options.trace ?? (() => {});
   const listeners = new Set<(state: AppAgentState) => void>();
 
   const get = (): AppAgentState => ({
@@ -193,12 +198,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     agent: agentName,
     agents: installed(mode),
     session: session?.get() ?? null,
+    history,
     actions,
     links,
     view,
     navigation,
   });
   const changed = () => {
+    traceTurns();
     const state = get();
     for (const listener of [...listeners]) {
       try {
@@ -206,6 +213,36 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       } catch {
         // Keep other subscribers going.
       }
+    }
+  };
+
+  const traceTurns = () => {
+    if (!options.trace) return;
+    for (const turn of session?.get().turns ?? []) {
+      if (!turn.result || traced.has(turn.id)) continue;
+      traced.add(turn.id);
+      trace({
+        kind: 'turn',
+        agent: turn.agent,
+        mode,
+        turn: turn.id,
+        status: turn.result.status,
+        ok: turn.result.ok,
+        ...(turn.result.error ? { error: turn.result.error } : {}),
+        ms: (turn.endedAt ?? now()) - turn.startedAt,
+        ...(turn.costUsd !== undefined ? { costUsd: turn.costUsd } : {}),
+        entries: turn.entries.map((entry) =>
+          entry.kind === 'tool'
+            ? {
+                ...entry,
+                input: clip(JSON.stringify(entry.input) ?? '', 1_000),
+                output: clip(entry.output ?? '', 2_000),
+              }
+            : entry.kind === 'text'
+              ? { ...entry, text: clip(entry.text, 4_000) }
+              : entry,
+        ),
+      });
     }
   };
 
@@ -231,11 +268,28 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     });
     unsubscribeSession = session.subscribe(changed);
     briefed = false;
+    traced = new Set();
+    trace({ kind: 'session', agent: agentName, mode });
     return session;
   };
 
+  // The turns so far stay in the conversation; negative ids keep their chips attached.
+  const archiveSession = () => {
+    const turns = session?.get().turns ?? [];
+    if (turns.length === 0) return;
+    const ids = new Map(turns.map((turn) => [turn.id, nextArchivedId--]));
+    history = [...history, ...turns.map((turn) => ({ ...turn, id: ids.get(turn.id)! }))].slice(-MAX_HISTORY);
+    links = links.flatMap((link) => {
+      if (link.turnId < 0) return [link];
+      const id = ids.get(link.turnId);
+      return id === undefined ? [] : [{ ...link, turnId: id }];
+    });
+    carryOver = clip(`${carryOver}\n\n${transcript(turns)}`.trim(), CARRY_MAX, true);
+  };
+
   const dropSession = () => {
-    links = [];
+    traceTurns();
+    links = links.filter((link) => link.turnId < 0);
     unsubscribeSession?.();
     session?.close();
     session = null;
@@ -281,7 +335,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     const seen = withView && view ? `[The user has ${view} open]` : '';
     if (!briefed) {
       briefed = true;
-      target.send(`${briefing()}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`);
+      const earlier = carryOver ? `\n\nEarlier in this conversation, with another agent or mode:\n${carryOver}` : '';
+      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`);
     } else {
       target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text);
     }
@@ -289,7 +344,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
 
   // App notes reach an agent that is already talking; they never start a conversation.
   const tell = (text: string) => {
-    if (session) deliver(`[app] ${text}`, false);
+    if (!session) return;
+    trace({ kind: 'note', text: clip(text, 2_000) });
+    deliver(`${APP_NOTE}${text}`, false);
   };
 
   const updateAction = (id: string, patch: Partial<AppAction>) => {
@@ -459,6 +516,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     send(text) {
       const trimmed = text.trim();
       if (!trimmed) throw new AppAgentError('empty message', 400);
+      trace({ kind: 'prompt', agent: agentName, mode, view, text: clip(trimmed, 4_000) });
       deliver(trimmed, true);
     },
     stop() {
@@ -466,6 +524,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     },
     reset() {
       dropSession();
+      history = [];
+      links = [];
+      carryOver = '';
       changed();
     },
     configure(change) {
@@ -476,6 +537,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         throw new AppAgentError(`unknown agent "${nextAgent}"`, 400);
       }
       if (session?.get().status === 'running') throw new AppAgentError('the agent is busy', 409);
+      if (nextMode === mode && nextAgent === agentName) return;
+      archiveSession();
       mode = nextMode;
       agentName = nextAgent;
       dropSession();
@@ -488,6 +551,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       const action = actions.find((candidate) => candidate.id === id);
       if (!action) throw new AppAgentError('no such action', 404);
       if (action.status !== 'pending') throw new AppAgentError(`action is ${action.status}`, 409);
+      trace({ kind: 'decision', action: id, summary: action.summary, decision });
       if (decision === 'reject') {
         updateAction(id, { status: 'rejected' });
         tell(`The user rejected action #${id} (${action.summary}).`);
@@ -495,17 +559,51 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         void execute(action);
       }
     },
+    approve(id, decision) {
+      if (!session?.approve(id, decision)) throw new AppAgentError('no such approval request', 404);
+    },
     async changes(id) {
       const action = actions.find((candidate) => candidate.id === id);
       if (!action?.commit) throw new AppAgentError('no such commit action', 404);
       return treeChanges(repo(), action.commit.tree);
     },
     mcpTools() {
-      return [...appTools(), ...(options.pages ? pageTools() : []), ...(mode === 'dev' ? devTools() : [])];
+      const tools = [...appTools(), ...(options.pages ? pageTools() : []), ...(mode === 'dev' ? devTools() : [])];
+      if (!options.trace) return tools;
+      return tools.map((tool) => ({
+        ...tool,
+        call: async (args: Record<string, unknown>) => {
+          const started = now();
+          try {
+            const result = await tool.call(args);
+            trace({ kind: 'mcp', tool: tool.name, args, ok: true, ms: now() - started, result: clip(result, 2_000) });
+            return result;
+          } catch (error) {
+            const message = (error as Error).message;
+            trace({ kind: 'mcp', tool: tool.name, args, ok: false, ms: now() - started, error: message });
+            throw error;
+          }
+        },
+      }));
     },
     close() {
       listeners.clear();
       dropSession();
     },
   };
+}
+
+function clip(text: string, max: number, keepEnd = false): string {
+  if (text.length <= max) return text;
+  return keepEnd ? `… (earlier part dropped)\n${text.slice(-max)}` : `${text.slice(0, max)}… (clipped)`;
+}
+
+// What the user asked and what came back, without the tool calls.
+function transcript(turns: readonly SessionTurn[]): string {
+  return turns
+    .map((turn) => {
+      const texts = turn.entries.flatMap((entry) => (entry.kind === 'text' ? [entry.text] : []));
+      return `User: ${userText(turn.prompt).trim()}\n${turn.agent}: ${texts.at(-1)?.trim() ?? '(no answer)'}`;
+    })
+    .join('\n\n');
 }

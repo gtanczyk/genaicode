@@ -2,12 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-
-/** What a proposed commit would change, for the approval card. */
-export interface TreeChanges {
-  files: Array<{ status: string; path: string }>;
-  diff: string;
-}
+import type { TreeChanges } from './state.js';
 
 const MAX_DIFF = 200_000;
 

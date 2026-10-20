@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AppAgentError, type AppAgent } from './app-agent.js';
-import type { AppAgentMode } from './policy.js';
+import type { AppAgentMode } from './state.js';
 import { handleMcpMessage } from './mcp.js';
 
 export interface AppAgentHandlerOptions {
@@ -33,6 +33,7 @@ const MAX_BODY = 256 * 1024;
  * - `GET  /state`, `GET /events` (server-sent `AppAgentState` snapshots)
  * - `POST /send {text}`, `/stop`, `/reset`, `/config {agent?, mode?}`, `/view {path}`
  * - `POST /actions/:id {decision: 'approve' | 'reject'}`, `GET /actions/:id/changes`
+ * - `POST /approvals/:id {decision: 'approve' | 'deny'}`: the agent CLI's own permission prompts
  * - `POST /mcp`: the agent's MCP endpoint (bearer `agent.mcpToken`; browser requests refused)
  *
  * Requests another site started are refused (`Sec-Fetch-Site`, `Origin`).
@@ -107,6 +108,15 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
           return true;
         }
         default: {
+          const approval = /^\/approvals\/([^/]+)$/.exec(route);
+          if (approval) {
+            const answer = field('decision');
+            if (answer !== 'approve' && answer !== 'deny') {
+              return json(res, 400, { error: 'decision must be approve or deny' });
+            }
+            agent.approve(decodeURIComponent(approval[1]!), answer);
+            break;
+          }
           const action = /^\/actions\/([^/]+)$/.exec(route);
           const decision = field('decision');
           if (!action) return json(res, 404, { error: 'not found' });

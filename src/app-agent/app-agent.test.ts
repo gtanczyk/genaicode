@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
-import { createAppAgent, PROMPT_MARKER, userText, type AppAgent, type AppAgentOptions } from './app-agent.js';
+import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
+import { PROMPT_MARKER, userText } from './state.js';
 import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
 
 type Step = (task: AgentTask) => Promise<string>;
@@ -307,6 +308,81 @@ describe('createAppAgent', () => {
     expect(agent.get().actions[1]!.result).toContain('changed after they were reviewed');
     expect(git('log', '-1', '--format=%s')).toBe('Change a\n');
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
+  });
+});
+
+describe('conversation across switches', () => {
+  it('keeps earlier turns as history, carries a transcript to the next agent, and reset clears it', async () => {
+    const one = fakeAgent([], 'one');
+    const two = fakeAgent([], 'two');
+    const records: Array<{ kind: string }> = [];
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      pages: () => ['/a'],
+      trace: (record) => records.push(record),
+    });
+    one.tasks.length = 0;
+    await post(base, '/send', { text: 'first question' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    let state = agent.get();
+    expect(state.session).toBeNull();
+    expect(state.history.map((turn) => [turn.id, turn.agent])).toEqual([[-1, 'one']]);
+
+    await post(base, '/send', { text: 'second' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain(
+      'Earlier in this conversation, with another agent or mode:\nUser: first question\none: echo: first question',
+    );
+    expect(userText(two.tasks[0]!.prompt)).toBe('second');
+
+    expect(records.map((record) => record.kind)).toEqual(['prompt', 'session', 'turn', 'prompt', 'session', 'turn']);
+
+    await post(base, '/reset');
+    state = agent.get();
+    expect(state.history).toEqual([]);
+    await post(base, '/send', { text: 'fresh' });
+    await settle(agent);
+    expect(two.tasks.at(-1)!.prompt).not.toContain('Earlier in this conversation');
+  });
+
+  it('answers the agent CLI permission prompts through the handler', async () => {
+    let resolveApproval: (decision: string) => void = () => {};
+    const asked: CodingAgent = {
+      name: 'asker',
+      command: process.execPath,
+      capabilities: { approvals: true },
+      run(task): AgentRun {
+        const decision = task.onApproval!({ id: 'ap1', kind: 'command', summary: 'npm test' });
+        const result = Promise.resolve(decision).then((answer) => {
+          resolveApproval(answer);
+          return { status: 'completed', ok: true, exitCode: 0, signal: null } as AgentResult;
+        });
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'approval-request',
+              request: { id: 'ap1', kind: 'command', summary: 'npm test' },
+            } as AgentEvent;
+            yield { type: 'done', result: await result } as AgentEvent;
+          },
+        };
+      },
+    };
+    const answered = new Promise<string>((resolve) => (resolveApproval = resolve));
+    const { agent, base } = await serve({ name: 'app', agents: () => [asked] });
+    await post(base, '/send', { text: 'test it' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(agent.get().session!.approvals.map((request) => request.id)).toEqual(['ap1']);
+    expect((await post(base, '/approvals/ap1', { decision: 'maybe' })).status).toBe(400);
+    expect((await post(base, '/approvals/ap1', { decision: 'approve' })).status).toBe(200);
+    expect(await answered).toBe('approve');
+    expect((await post(base, '/approvals/ap1', { decision: 'approve' })).status).toBe(404);
   });
 });
 

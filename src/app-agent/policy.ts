@@ -2,9 +2,7 @@ import { claude } from '../agents/drivers/claude.js';
 import { codex } from '../agents/drivers/codex.js';
 import { copilot } from '../agents/drivers/copilot.js';
 import type { CodingAgent } from '../agents/types.js';
-
-/** `use`: the agent works the app through its tools. `dev`: it also edits the app's own code. */
-export type AppAgentMode = 'use' | 'dev';
+import type { AppAgentMode } from './state.js';
 
 const WEB_TOOLS = ['WebFetch', 'WebSearch'];
 const READ_ONLY_GIT = ['git status', 'git diff', 'git log'];
