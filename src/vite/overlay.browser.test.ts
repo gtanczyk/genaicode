@@ -139,6 +139,31 @@ describe('overlay in the browser', () => {
     expect(await focused()).toBe('overlay .wolf');
   });
 
+  it('closes with Escape from the panel and from the wolf', async () => {
+    expect(await inOverlay((root) => root.querySelector('.wolf')!.getAttribute('aria-controls'))).toBe('panel');
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).focus());
+    await page.keyboard.press('Enter');
+    expect(await panelHidden()).toBe(false);
+
+    await page.keyboard.press('Tab');
+    expect(await focused()).toBe('overlay .close');
+    await page.keyboard.press('Escape');
+    expect(await panelHidden()).toBe(true);
+    expect(await focused()).toBe('overlay .wolf');
+    expect(await inOverlay((root) => root.querySelector('.wolf')!.getAttribute('aria-expanded'))).toBe('false');
+
+    await page.keyboard.press('Enter');
+    expect(await panelHidden()).toBe(false);
+    await page.keyboard.press('Escape');
+    expect(await panelHidden()).toBe(true);
+    expect(await focused()).toBe('overlay .wolf');
+
+    // A closed panel leaves Escape to the app.
+    await page.focus('#app-input');
+    await page.keyboard.press('Escape');
+    expect(await focused()).toBe('app-input');
+  });
+
   it('opens the genaicode UI in a frame the page may show', async () => {
     const loaded = page.waitForResponse((response) => response.url().includes('?token='));
     await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());

@@ -64,8 +64,8 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   iframe { background: #141414; }
 }
 </style>
-<button class="wolf" title="genaicode" aria-expanded="false"><span class="badge" hidden></span></button>
-<div class="panel" hidden>
+<button class="wolf" title="genaicode" aria-expanded="false" aria-controls="panel"><span class="badge" hidden></span></button>
+<div class="panel" id="panel" hidden>
   <div class="head"><b>genaicode</b><button class="fix" hidden></button><button class="close" title="Hide">✕</button></div>
   <div class="grip width" role="separator" aria-orientation="vertical" aria-label="Panel width" tabindex="0"
     aria-keyshortcuts="Enter" title="Drag or use arrow keys to resize · Enter or double-click to reset"></div>
@@ -222,10 +222,17 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   };
 
   wolf.addEventListener('click', () => (panel.hidden ? void open() : show(false)));
-  $<HTMLButtonElement>('.close').addEventListener('click', () => {
+  // The focused control is gone with the panel: back to the wolf that opened it.
+  const close = () => {
     show(false);
-    // The focused button is gone with the panel: back to the wolf that opened it.
     wolf.focus();
+  };
+  $<HTMLButtonElement>('.close').addEventListener('click', close);
+  // Escape from the wolf or anything in the panel; inside the frame the key stays with the UI.
+  root.addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key !== 'Escape' || panel.hidden) return;
+    event.preventDefault();
+    close();
   });
   fix.addEventListener('click', async () => {
     const sent = errors;
