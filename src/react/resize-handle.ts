@@ -52,21 +52,34 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   const root = () => options.root ?? handle.ownerDocument.body;
   const direction = () => options.direction?.() ?? 1;
   const step = options.step ?? 24;
-  const clamp = (size: number) => {
+  // A window smaller than the minimum wins: the size never exceeds what fits, nor goes below 0.
+  const range = (): [number, number] => {
     const [min, max] = options.bounds();
-    // A window smaller than the minimum wins: the size never exceeds what fits.
-    return Math.round(Math.max(Math.min(min, max), Math.min(max, size)));
+    const top = Math.max(0, max);
+    return [Math.min(min, top), top];
+  };
+  const clamp = (size: number) => {
+    const [min, max] = range();
+    return Math.round(Math.max(min, Math.min(max, size)));
   };
   // `now` is the size just written: a writer may apply it on its next render, after `read()`.
   const sync = (now = options.read()) => {
-    const [min, max] = options.bounds();
-    handle.setAttribute('aria-valuemin', String(Math.round(Math.min(min, max))));
-    handle.setAttribute('aria-valuemax', String(Math.round(Math.max(0, max))));
+    const [min, max] = range();
+    handle.setAttribute('aria-valuemin', String(Math.round(min)));
+    handle.setAttribute('aria-valuemax', String(Math.round(max)));
     handle.setAttribute('aria-valuenow', String(clamp(now)));
+  };
+  // What was last written, and what read() said right after: while read() still says that,
+  // the writer has not applied it yet and key steps go on from the written size.
+  let written: { size: number; read: number } | undefined;
+  const current = () => {
+    const now = options.read();
+    return written && written.read === now ? written.size : now;
   };
   const write = (size: number, commit: boolean) => {
     const next = clamp(size);
     options.write(next, commit);
+    written = { size: next, read: options.read() };
     sync(next);
     return next;
   };
@@ -102,11 +115,12 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   const onBlur = () => end();
   const onDoubleClick = () => {
     end(false);
+    written = undefined;
     options.reset?.();
     sync();
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    const [min, max] = options.bounds();
+    const [min, max] = range();
     const keys =
       options.axis === 'x' ? { less: 'ArrowLeft', more: 'ArrowRight' } : { less: 'ArrowUp', more: 'ArrowDown' };
     if (event.key === 'Escape' && drag) {
@@ -118,7 +132,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
     else if (event.key === 'End') write(max, true);
     else if (event.key === keys.less || event.key === keys.more) {
       const delta = (event.key === keys.more ? 1 : -1) * direction() * (event.shiftKey ? 2 * step : step);
-      write(clamp(options.read()) + delta, true);
+      write(clamp(current()) + delta, true);
     } else return;
     event.preventDefault();
     event.stopPropagation();

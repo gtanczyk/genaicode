@@ -185,4 +185,44 @@ describe('installResizeHandle with a writer that applies later', () => {
     pointer('pointerup', 200);
     expect(commits).toEqual([500]);
   });
+
+  it('steps keys from the written size until read() catches up', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    let applied = 400;
+    let pending = 400;
+    installResizeHandle(handle, {
+      axis: 'x',
+      bounds: () => [300, 900],
+      read: () => applied,
+      write: (size) => (pending = size),
+    });
+    const key = (name: string) => handle.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+    key('ArrowRight');
+    key('ArrowRight');
+    expect(pending).toBe(448);
+    applied = pending;
+    key('ArrowRight');
+    expect(pending).toBe(472);
+    // A size changed from outside wins over what was written.
+    applied = 600;
+    key('ArrowRight');
+    expect(pending).toBe(624);
+  });
+
+  it('never writes a negative size when nothing fits', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    const sizes: number[] = [];
+    installResizeHandle(handle, {
+      axis: 'x',
+      bounds: () => [300, -40],
+      read: () => 390,
+      write: (size) => sizes.push(size),
+    });
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(sizes).toEqual([0]);
+    expect(handle.getAttribute('aria-valuemin')).toBe('0');
+    expect(handle.getAttribute('aria-valuemax')).toBe('0');
+  });
 });
