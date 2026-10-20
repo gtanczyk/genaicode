@@ -52,7 +52,10 @@ export interface AppAgentOptions {
     cwd: string;
     /** Git repository the commit goes to. Default `cwd`. */
     repo?: string;
-    /** Commands the agent may run there, e.g. `npm test`. Read-only git is always allowed. */
+    /**
+     * Commands the agent may run there, e.g. `npm test`. Read-only git is always allowed.
+     * Claude and Copilot enforce the list; Codex only has its `workspace-write` sandbox.
+     */
     commands?: readonly string[];
     instructions?: string;
   };

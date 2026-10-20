@@ -52,7 +52,8 @@ export async function treeChanges(repo: string, tree: string): Promise<TreeChang
       return { status, path: rest.join('\t') };
     });
   const diff = await must(repo, ['diff', '--no-color', 'HEAD', tree]);
-  return { files, diff: diff.length > MAX_DIFF ? `${diff.slice(0, MAX_DIFF)}\n… (truncated)` : diff };
+  if (diff.length <= MAX_DIFF) return { files, diff };
+  return { files, diff: `${diff.slice(0, MAX_DIFF)}\n… (truncated)`, truncated: true };
 }
 
 /**

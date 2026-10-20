@@ -175,6 +175,31 @@ describe('AppAgentChat', () => {
     expect(calls).toContainEqual({ url: '/api/agent/actions/1', body: { decision: 'approve' } });
   });
 
+  it('keeps a commit with a truncated diff unapprovable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ files: [], diff: '+a', truncated: true }))),
+    );
+    const events = mount();
+    events.emit(
+      appState({
+        actions: [
+          {
+            id: '2',
+            kind: 'commit',
+            summary: 'Fix',
+            commit: { message: 'Fix', tree: 'abc' },
+            status: 'pending',
+            createdAt: t0,
+          },
+        ],
+      }),
+    );
+    await flush();
+    expect(button('Approve').disabled).toBe(true);
+    expect(text()).toContain('too large to review');
+  });
+
   it('keeps a commit unapprovable until its diff loads', async () => {
     vi.stubGlobal(
       'fetch',

@@ -279,7 +279,7 @@ function ActionCard({
     }
   }, [action.id, action.kind, action.status, load]);
   // A commit is approved only after its diff has been shown.
-  const blocked = action.kind === 'commit' && !changes;
+  const blocked = action.kind === 'commit' && (!changes || changes.truncated === true);
 
   const what =
     render?.(action) ??
@@ -312,7 +312,11 @@ function ActionCard({
       )}
       {action.status === 'pending' && blocked && (
         <div className="gc-app-diff-status">
-          {loadError ? `Could not load the changes: ${loadError}` : 'Loading the changes…'}
+          {changes?.truncated
+            ? 'The diff is too large to review here. Reject it and commit from git yourself.'
+            : loadError
+              ? `Could not load the changes: ${loadError}`
+              : 'Loading the changes…'}
         </div>
       )}
       {action.status === 'pending' ? (

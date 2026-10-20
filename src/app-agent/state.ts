@@ -51,6 +51,8 @@ export interface AppAgentState {
 export interface TreeChanges {
   files: Array<{ status: string; path: string }>;
   diff: string;
+  /** The diff was cut to fit: it cannot be reviewed here, so the commit cannot be approved. */
+  truncated?: boolean;
 }
 
 /** Separates the briefing and page context from what the user typed. */

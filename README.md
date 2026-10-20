@@ -380,7 +380,9 @@ prompts); `useAppAgent` wraps them for a page of your own. Switching agent or mo
 conversation: the next agent gets a short transcript. `trace` receives every prompt, MCP call,
 decision and finished turn, for a log. Default agents are Claude Code, Codex and
 Copilot CLI, locked down per mode: in `use` mode they get only the app's tools (no shell, no
-file edits); in `dev` mode they edit files and run the listed commands, never commit or push.
+file edits); in `dev` mode they edit files and run the listed commands, never commit or push (Claude and
+Copilot enforce the command list; Codex has no per-command allowlist, so it runs in its
+`workspace-write` sandbox: writes only inside `cwd`, no network).
 `propose_commit` snapshots the worktree, the user reviews that diff, and Approve commits
 exactly that tree or refuses if the files changed since. The MCP endpoint takes a per-run
 bearer and refuses browser requests; every other route asks `authorize` and refuses
