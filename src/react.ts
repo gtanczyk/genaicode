@@ -14,6 +14,17 @@
 export { AgentChat } from './react/agent-chat.js';
 export type { AgentChatProps, ChatNotice } from './react/agent-chat.js';
 export { Markdown } from './react/markdown.js';
+export { AppAgentChat, useAppAgent } from './react/app-agent-chat.js';
+export type { AppAgentChatProps, AppAgentClient } from './react/app-agent-chat.js';
+export { APP_NOTE, PROMPT_MARKER, userText } from './app-agent/state.js';
+export type {
+  AppAction,
+  AppActionStatus,
+  AppAgentMode,
+  AppAgentState,
+  AppLink,
+  TreeChanges,
+} from './app-agent/state.js';
 export {
   formatDuration,
   formatUsage,

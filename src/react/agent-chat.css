@@ -504,3 +504,132 @@
     max-width: 92%;
   }
 }
+
+/* <AppAgentChat>: page chips, action cards, the agent and mode controls */
+.gc-app-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gc-app-controls select {
+  font: inherit;
+  font-size: 0.87em;
+  color: var(--_text);
+  background: var(--_bg);
+  border: 1px solid var(--_border);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+.gc-app-modes {
+  display: inline-flex;
+  border: 1px solid var(--_border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.gc-app-modes button {
+  font: inherit;
+  font-size: 0.87em;
+  border: 0;
+  background: transparent;
+  color: var(--_muted);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.gc-app-modes button.gc-on {
+  background: var(--_accent-soft);
+  color: var(--_text);
+  font-weight: 600;
+}
+.gc-app-modes button:disabled,
+.gc-app-controls select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.gc-app-banner {
+  flex-basis: 100%;
+  order: 99;
+  font-size: 0.87em;
+  color: var(--_error);
+  background: var(--_error-soft);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.gc-app-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 38px;
+}
+.gc-app-link {
+  font: inherit;
+  font-size: 0.87em;
+  border: 1px solid var(--_accent);
+  color: var(--_accent);
+  background: var(--_panel);
+  border-radius: 999px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.gc-app-link::after {
+  content: ' →';
+}
+.gc-app-link.gc-here {
+  background: var(--_accent-soft);
+}
+.gc-app-note {
+  font-size: 0.87em;
+  color: var(--_muted);
+}
+.gc-app-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gc-app-action {
+  border: 1px solid var(--_border);
+  background: var(--_panel);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.93em;
+}
+.gc-app-action.gc-pending {
+  border-color: var(--_warn);
+  background: var(--_warn-soft);
+}
+.gc-app-action.gc-failed {
+  border-color: var(--_error);
+}
+.gc-app-action.gc-done,
+.gc-app-action.gc-rejected {
+  opacity: 0.75;
+}
+.gc-app-action-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.gc-app-action code,
+.gc-app-action pre {
+  font-family: var(--_mono);
+  font-size: 0.87em;
+}
+.gc-app-action pre {
+  margin: 0;
+  background: var(--_code-bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gc-app-action summary {
+  cursor: pointer;
+  color: var(--_muted);
+  font-size: 0.87em;
+}
