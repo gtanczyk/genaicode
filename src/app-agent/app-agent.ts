@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
@@ -639,6 +639,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     close() {
       listeners.clear();
       dropSession();
+      if (useCwd) rmSync(useCwd, { recursive: true, force: true });
+      useCwd = null;
     },
   };
 }

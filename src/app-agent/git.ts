@@ -95,7 +95,6 @@ export async function commitTree(
       output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
     };
   }
-  const parent = await head(repo);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   let commit;
@@ -112,6 +111,9 @@ export async function commitTree(
   if (made && (await must(repo, ['rev-parse', `${made}^{tree}`])).trim() !== tree) {
     // A hook rewrote the files: undo the commit, its changes stay in the worktree for a new review.
     // The expected old value refuses the undo if something else moved HEAD meanwhile.
+    // Back to the commit's own parent, which is not the HEAD seen before if something moved it.
+    const parentOf = await runGit(repo, ['rev-parse', '--verify', '-q', `${made}^`]);
+    const parent = parentOf.code === 0 ? parentOf.stdout.trim() : null;
     const undo = await runGit(
       repo,
       parent
