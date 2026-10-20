@@ -59,8 +59,9 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
     codex({ sandbox: 'workspace-write', config: { web_search: 'disabled' } }),
     copilot({
       allowAllTools: false,
-      allowTools: ['write', ...allowed.map((c) => `shell(${c})`)],
-      denyTools: ['shell(git commit)', 'shell(git push)'],
+      // `shell(npm test)` is the exact command only; `:*` adds any arguments.
+      allowTools: ['write', ...allowed.flatMap((c) => [`shell(${c})`, `shell(${c}:*)`])],
+      denyTools: ['shell(git commit)', 'shell(git commit:*)', 'shell(git push)', 'shell(git push:*)'],
     }),
   ];
 }
