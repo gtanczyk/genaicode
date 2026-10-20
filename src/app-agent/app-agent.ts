@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { detectAgents } from '../agents/discovery.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
@@ -145,6 +146,7 @@ const MAX_ACTIONS = 50;
 const MAX_LINKS = 6;
 const MAX_HISTORY = 100;
 const CARRY_MAX = 12_000;
+const STOP_WAIT_MS = 10_000;
 
 /**
  * A coding agent inside a local app: the user chats with an agent CLI from their machine
@@ -523,10 +525,15 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         const stopped = session;
         const queued = stopped?.get().queued ?? [];
         stopped?.stop();
-        const outcome = await commitTree(repo(), action.commit!.tree, action.commit!.message);
-        updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
-        tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
-        if (session === stopped) for (const prompt of queued) session?.send(prompt);
+        try {
+          // A stopped run still steerable would swallow the outcome note; let it wind down first.
+          if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
+          const outcome = await commitTree(repo(), action.commit!.tree, action.commit!.message);
+          updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
+          tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
+        } finally {
+          if (session === stopped) for (const prompt of queued) session?.send(prompt);
+        }
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
         if (!tool) throw new Error(`tool ${action.tool!.name} is gone`);

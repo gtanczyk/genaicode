@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -351,12 +351,44 @@ describe('createAppAgent', () => {
     await post(base, '/send', { text: 'and then this' });
     expect(agent.get().session!.queued).toHaveLength(1);
     await post(base, '/actions/1', { decision: 'approve' });
-    for (let i = 0; i < 200 && agent.get().actions[0]!.status === 'running'; i++) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    // The commit waits for the stopped turn to wind down.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(agent.get().actions[0]!.status).toBe('running');
     release();
     await settle(agent);
     expect(agent.get().actions[0]!.status).toBe('done');
+    expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
+  });
+
+  it('keeps queued prompts when the commit throws', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    // The repository is gone by the time the user approves: git fails outright.
+    rmSync(path.join(repo, '.git'), { recursive: true, force: true });
+    await post(base, '/actions/1', { decision: 'approve' });
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('failed');
     expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
   });
 
