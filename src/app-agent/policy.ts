@@ -37,7 +37,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       }),
       // The sandbox alone still lets the shell read host files: drop the shell and image viewer.
       codex({ sandbox: 'read-only', config: { 'features.shell_tool': false, 'features.view_image': false } }),
-      copilot({ allowAllTools: false, denyTools: ['shell', 'write'] }),
+      copilot({ allowAllTools: false, denyTools: ['shell', 'write', 'read', 'url', 'memory'] }),
     ];
   }
   // Each command with any arguments. No git rules: `git diff --no-index` or `git log --output`
