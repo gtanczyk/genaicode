@@ -554,6 +554,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       session?.stop();
     },
     reset() {
+      if (actions.some((action) => action.status === 'running')) throw new AppAgentError('an action is running', 409);
       dropSession();
       history = [];
       links = [];
@@ -579,6 +580,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       }
       if (session?.get().status === 'running') throw new AppAgentError('the agent is busy', 409);
       if (nextMode === mode && nextAgent === agentName) return;
+      // A running action reports to this conversation (and a commit gives back its queue).
+      if (actions.some((action) => action.status === 'running')) throw new AppAgentError('an action is running', 409);
       archiveSession();
       mode = nextMode;
       agentName = nextAgent;

@@ -35,8 +35,12 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
           ...WEB_TOOLS,
         ],
       }),
-      // The sandbox alone still lets the shell read host files: drop the shell and image viewer.
-      codex({ sandbox: 'read-only', config: { 'features.shell_tool': false, 'features.view_image': false } }),
+      // The sandbox alone still lets the shell read host files: drop the shell, image viewer and
+      // web search.
+      codex({
+        sandbox: 'read-only',
+        config: { 'features.shell_tool': false, 'features.view_image': false, web_search: 'disabled' },
+      }),
       copilot({ allowAllTools: false, denyTools: ['shell', 'write', 'read', 'url', 'memory'] }),
     ];
   }
@@ -52,7 +56,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       allowedTools: allowed.map((c) => `Bash(${c}:*)`),
       disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS],
     }),
-    codex({ sandbox: 'workspace-write' }),
+    codex({ sandbox: 'workspace-write', config: { web_search: 'disabled' } }),
     copilot({
       allowAllTools: false,
       allowTools: ['write', ...allowed.map((c) => `shell(${c})`)],

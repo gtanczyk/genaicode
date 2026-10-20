@@ -605,6 +605,38 @@ describe('createAppAgentHandler', () => {
     expect(await status(`localhost:${new URL(base).port}`)).toBe(200);
   });
 
+  it('refuses switching or starting over while an action runs', async () => {
+    let finish = () => {};
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const other = fakeAgent([], 'other');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake, other.agent],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = () => resolve('retried'))),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    expect(agent.get().actions[0]!.status).toBe('running');
+    expect((await post(base, '/config', { agent: 'other' })).status).toBe(409);
+    expect((await post(base, '/reset')).status).toBe(409);
+    finish();
+    await settle(agent);
+    expect((await post(base, '/config', { agent: 'other' })).status).toBe(200);
+  });
+
   it('drops pending actions when the user starts over', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {
