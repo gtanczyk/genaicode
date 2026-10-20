@@ -271,6 +271,28 @@ describe('createAppAgent', () => {
     expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
   });
 
+  it('streams view changes and never drops pending actions at the cap', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        for (let i = 0; i < 55; i++) await callTool(task, 'retry_job', { id: `j${i}`, approval_summary: `Retry ${i}` });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'ok' }],
+    });
+    const seen: Array<string | null> = [];
+    agent.subscribe((state) => seen.push(state.view));
+    expect((await post(base, '/view', { path: '/jobs' })).status).toBe(204);
+    expect(seen.at(-1)).toBe('/jobs');
+    await post(base, '/send', { text: 'retry all' });
+    await settle(agent);
+    expect(agent.get().actions).toHaveLength(55);
+    expect(agent.get().actions[0]!.id).toBe('1');
+  });
+
   it('refuses tool names that are taken', () => {
     const tool = { name: 'propose_commit', description: 'x', run: () => 'ok' };
     expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://127.0.0.1:1/mcp', tools: [tool] })).toThrow(/taken/);

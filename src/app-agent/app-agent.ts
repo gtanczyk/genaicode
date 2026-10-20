@@ -371,7 +371,15 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
 
   const propose = (action: Omit<AppAction, 'id' | 'status' | 'createdAt'>): AppAction => {
     const created: AppAction = { ...action, id: String(nextAction++), status: 'pending', createdAt: now() };
-    actions = [...actions, created].slice(-MAX_ACTIONS);
+    actions = [...actions, created];
+    // Only settled actions make room: a pending one still waits for the user.
+    while (actions.length > MAX_ACTIONS) {
+      const settled = actions.findIndex(
+        (candidate) => candidate.status !== 'pending' && candidate.status !== 'running',
+      );
+      if (settled < 0) break;
+      actions = actions.filter((_, index) => index !== settled);
+    }
     changed();
     return created;
   };
@@ -569,7 +577,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       changed();
     },
     setView(next) {
+      if (next === view) return;
       view = next;
+      changed();
     },
     decide(id, decision) {
       const action = actions.find((candidate) => candidate.id === id);
