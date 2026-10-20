@@ -272,9 +272,13 @@ describe('createAppAgent', () => {
   });
 
   it('streams view changes and never drops pending actions at the cap', async () => {
+    let refused = '';
     const { agent: fake } = fakeAgent([
       async (task) => {
-        for (let i = 0; i < 55; i++) await callTool(task, 'retry_job', { id: `j${i}`, approval_summary: `Retry ${i}` });
+        for (let i = 0; i < 55; i++) {
+          const result = await callTool(task, 'retry_job', { id: `j${i}`, approval_summary: `Retry ${i}` });
+          if (result.isError) refused = result.content![0]!.text;
+        }
         return 'proposed';
       },
     ]);
@@ -289,8 +293,9 @@ describe('createAppAgent', () => {
     expect(seen.at(-1)).toBe('/jobs');
     await post(base, '/send', { text: 'retry all' });
     await settle(agent);
-    expect(agent.get().actions).toHaveLength(55);
+    expect(agent.get().actions).toHaveLength(50);
     expect(agent.get().actions[0]!.id).toBe('1');
+    expect(refused).toContain('wait for the user');
   });
 
   it('refuses tool names that are taken', () => {

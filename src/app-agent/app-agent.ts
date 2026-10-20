@@ -375,6 +375,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   };
 
   const propose = (action: Omit<AppAction, 'id' | 'status' | 'createdAt'>): AppAction => {
+    const open = actions.filter((candidate) => candidate.status === 'pending' || candidate.status === 'running');
+    if (open.length >= MAX_ACTIONS) {
+      throw new Error(`${open.length} actions already wait for the user; wait for their decisions first`);
+    }
     const created: AppAction = { ...action, id: String(nextAction++), status: 'pending', createdAt: now() };
     actions = [...actions, created];
     // Only settled actions make room: a pending one still waits for the user.

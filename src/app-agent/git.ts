@@ -124,8 +124,11 @@ export async function commitTree(
         ? `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`
         : `${output}\n\nA commit hook changed the files after they were reviewed, and HEAD moved before the commit could be undone. Check commit ${made} in git.`;
   } else if (ok) {
-    // The user's index now matches the new commit.
-    await must(repo, ['reset', '-q']);
+    // The user's index now matches the new commit. The commit landed even if this fails.
+    const reset = await runGit(repo, ['reset', '-q']);
+    if (reset.code !== 0) {
+      output = `${output}\n\nCommitted, but resetting the index to it failed: ${reset.stderr.trim()}. Run \`git reset\` before staging more.`;
+    }
   }
   return { ok, output: output.length > 8_000 ? `…${output.slice(-8_000)}` : output };
 }
