@@ -186,6 +186,30 @@ describe('createAppAgent', () => {
     expect((await post(base, '/actions/1', { decision: 'reject' })).status).toBe(409);
   });
 
+  it('delivers an action outcome ahead of prompts queued behind the running turn', async () => {
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'waiting';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => 'deleted' }],
+    });
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'follow-up' });
+    await post(base, '/actions/1', { decision: 'reject' });
+    release();
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
   it('tells the agent about a rejection and refuses writes the tool does not validate', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {
@@ -467,6 +491,28 @@ describe('commitTree', () => {
     expect(git('log', '--format=%s')).toBe('init\n');
     expect(git('diff', '--cached', '--name-only')).toBe('');
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
+  });
+
+  it('leaves a commit made on top of its own alone', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    // Another commit lands right after ours, with a different tree.
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'post-commit'),
+      '#!/bin/sh\n[ -n "$INNER" ] && exit 0\necho b > b.txt\ngit add b.txt\nINNER=1 git commit -qm other\n',
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('HEAD moved');
+    expect(git('log', '--format=%s')).toBe('other\nChange a\ninit\n');
   });
 
   it("keeps the user's index when the commit fails", async () => {

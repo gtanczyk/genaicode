@@ -348,15 +348,16 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     return lines.join('\n');
   };
 
-  const deliver = (text: string, withView: boolean) => {
+  // App notes go ahead of queued prompts: an action's outcome is the agent's next message.
+  const deliver = (text: string, withView: boolean, first = false) => {
     const target = ensureSession();
     const seen = withView && view ? `[The user has ${view} open]` : '';
     if (!briefed) {
       briefed = true;
       const earlier = carryOver ? `\n\nEarlier in this conversation, with another agent or mode:\n${carryOver}` : '';
-      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`);
+      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`, { first });
     } else {
-      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text);
+      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text, { first });
     }
   };
 
@@ -368,7 +369,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       return;
     }
     trace({ kind: 'note', text: clip(text, 2_000) });
-    deliver(`${APP_NOTE}${text}`, false);
+    deliver(`${APP_NOTE}${text}`, false, true);
   };
 
   const updateAction = (id: string, patch: Partial<AppAction>) => {
@@ -530,6 +531,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
           const outcome = await commitTree(repo(), action.commit!.tree, action.commit!.message);
           updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
+          // The commit is recorded; the note still waits for a run slow to abort.
+          if (stopped && session === stopped) await stopped.idle();
           tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
         } finally {
           if (session === stopped) for (const prompt of queued) session?.send(prompt);

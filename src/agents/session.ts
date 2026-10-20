@@ -97,8 +97,11 @@ export interface AgentSessionOptions {
 export interface AgentSession {
   get(): SessionState;
   subscribe(listener: (state: SessionState) => void): () => void;
-  /** Start, steer, or queue a prompt. Empty text is ignored. */
-  send(text: string): void;
+  /**
+   * Start, steer, or queue a prompt. Empty text is ignored. `first` queues it ahead of the
+   * prompts already waiting, for a note the agent must see before them.
+   */
+  send(text: string, options?: { first?: boolean }): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
@@ -366,8 +369,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    send(text) {
+    send(text, sendOptions) {
       const prompt = text.trim();
+      const enqueue = (queued: string[]) => (sendOptions?.first ? [prompt, ...queued] : [...queued, prompt]);
       if (!prompt || closed) return;
       if (state.status === 'idle') return startTurn(prompt);
       const current = run;
@@ -388,7 +392,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
-          set({ queued: [...state.queued, prompt] });
+          set({ queued: enqueue(state.queued) });
           if (state.status === 'idle') {
             const [next, ...rest] = state.queued;
             set({ queued: rest });
@@ -397,7 +401,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       }
-      set({ queued: [...state.queued, prompt] });
+      set({ queued: enqueue(state.queued) });
     },
     stop() {
       if (state.queued.length) set({ queued: [] });

@@ -124,6 +124,19 @@ describe('createAgentSession', () => {
     expect(session.get().turns).toHaveLength(3);
   });
 
+  it('queues a `first` prompt ahead of the waiting ones', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('one');
+    session.send('two');
+    session.send('note', { first: true });
+    expect(session.get().queued).toEqual(['note', 'two']);
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['one', 'note', 'two']);
+  });
+
   it('steers a running agent that supports it', async () => {
     const gate = deferred();
     const { agent, steered } = fakeAgent([() => gate.promise.then(() => ({}))], { steer: true });
