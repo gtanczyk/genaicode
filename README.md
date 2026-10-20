@@ -318,6 +318,41 @@ Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,
 the `genaicode ui` look, light or dark by `prefers-color-scheme`, or by `theme="light"` /
 `"dark"`. `genaicode ui` and the Vite panel draw this same component.
 
+Two smaller pieces come along for hosts that build their own panels around a transcript:
+
+```ts
+import { installResizeHandle, storedSize, useFollowScroll } from 'genaicode/react';
+
+// A log that stays at its newest line until the user scrolls up (and again after follow()).
+const { ref, onScroll, follow } = useFollowScroll(lines);
+
+// A drag handle on a panel's left edge; the width survives reloads.
+const stored = storedSize('panel-width', [300, 900]);
+let width = stored.get();
+const handle = installResizeHandle(edge, {
+  axis: 'x',
+  direction: () => -1, // dragging left makes the panel wider
+  bounds: () => [300, Math.min(900, innerWidth - 24)],
+  read: () => width ?? 390,
+  write: (next, commit) => {
+    width = next;
+    panel.style.setProperty('--width', `${width}px`);
+    if (commit) stored.set(width);
+  },
+  reset: () => {
+    width = undefined;
+    panel.style.removeProperty('--width');
+    stored.clear();
+  },
+});
+window.addEventListener('resize', handle.sync);
+```
+
+The handle keeps its `aria-value*` range current and takes the arrow keys (Shift for bigger
+steps), Home and End, Escape to undo a drag, and Enter or double-click to reset. While a drag
+runs, `document.body` (or `root`) has `data-resizing="true"`, so the page can keep the cursor
+and turn off pointer events on iframes.
+
 To show the whole `genaicode ui` page in a frame instead, `startEmbeddedWeb` from
 `genaicode/ui` serves it on 127.0.0.1 with your `task` (`mcpServers`, `timeoutMs`...), `env`
 and `transformPrompt`, and returns its tokenized `url` and a `controller` to send prompts.

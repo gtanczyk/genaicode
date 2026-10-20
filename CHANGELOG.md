@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `genaicode/react` exports `useFollowScroll`, the hook that keeps a transcript at its newest
+  line until the user scrolls up (`<AgentChat>` now uses it, and also re-pins when its box is
+  resized), and `installResizeHandle` with `storedSize`: a framework-free panel-edge resize
+  handle with pointer drag, arrow keys, Home/End, Escape to undo a drag, Enter or double-click
+  to reset, and a kept ARIA range. The gamedev.pl Play workbench uses both.
+
 ### Fixed
 
 - Anthropic structured outputs: the converter drops the schema keywords the API rejects with a
