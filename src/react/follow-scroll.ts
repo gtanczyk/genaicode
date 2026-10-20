@@ -19,22 +19,28 @@ export function useFollowScroll<T extends HTMLElement = HTMLDivElement>(
   content: unknown,
   slack = 30,
 ): { ref: Ref<T>; onScroll: UIEventHandler<T>; follow: () => void } {
-  const ref = useRef<T>(null);
+  const box = useRef<T | null>(null);
+  const observer = useRef<ResizeObserver | undefined>(undefined);
   const following = useRef(true);
   const pin = useCallback(() => {
-    const el = ref.current;
+    const el = box.current;
     if (el && following.current) el.scrollTop = el.scrollHeight;
   }, []);
   useIsomorphicLayoutEffect(pin, [content, pin]);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(pin);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [pin]);
+  // A callback ref, so a box that mounts later or is replaced gets observed too.
+  const ref = useCallback(
+    (el: T | null) => {
+      box.current = el;
+      observer.current?.disconnect();
+      observer.current = undefined;
+      if (!el || typeof ResizeObserver === 'undefined') return;
+      observer.current = new ResizeObserver(pin);
+      observer.current.observe(el);
+    },
+    [pin],
+  );
   const onScroll: UIEventHandler<T> = useCallback(() => {
-    const el = ref.current;
+    const el = box.current;
     // A hidden box (no height) says nothing about where the user is.
     if (el && el.clientHeight) following.current = el.scrollTop + el.clientHeight >= el.scrollHeight - slack;
   }, [slack]);
@@ -43,6 +49,5 @@ export function useFollowScroll<T extends HTMLElement = HTMLDivElement>(
     following.current = true;
     pin();
   }, [pin]);
-  // `Ref<T>` rather than the object type, which differs between React 18 and 19 typings.
   return { ref, onScroll, follow };
 }

@@ -161,3 +161,28 @@ describe('storedSize', () => {
     expect(localStorage.getItem('panel')).toBeNull();
   });
 });
+
+describe('installResizeHandle with a writer that applies later', () => {
+  it('publishes and commits the size it wrote, not the stale read', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    const applied = 400;
+    const commits: number[] = [];
+    installResizeHandle(handle, {
+      axis: 'x',
+      bounds: () => [300, 900],
+      // Like a React state setter: read() catches up only after a render.
+      read: () => applied,
+      write: (size, commit) => {
+        if (commit) commits.push(size);
+      },
+    });
+    const pointer = (type: string, clientX: number) =>
+      handle.dispatchEvent(new PointerEvent(type, { clientX, button: 0, pointerId: 1, bubbles: true }));
+    pointer('pointerdown', 100);
+    pointer('pointermove', 200);
+    expect(handle.getAttribute('aria-valuenow')).toBe('500');
+    pointer('pointerup', 200);
+    expect(commits).toEqual([500]);
+  });
+});

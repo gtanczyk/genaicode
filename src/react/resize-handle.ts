@@ -57,38 +57,43 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
     // A window smaller than the minimum wins: the size never exceeds what fits.
     return Math.round(Math.max(Math.min(min, max), Math.min(max, size)));
   };
-  const sync = () => {
+  // `now` is the size just written: a writer may apply it on its next render, after `read()`.
+  const sync = (now = options.read()) => {
     const [min, max] = options.bounds();
     handle.setAttribute('aria-valuemin', String(Math.round(Math.min(min, max))));
     handle.setAttribute('aria-valuemax', String(Math.round(Math.max(0, max))));
-    handle.setAttribute('aria-valuenow', String(clamp(options.read())));
+    handle.setAttribute('aria-valuenow', String(clamp(now)));
   };
   const write = (size: number, commit: boolean) => {
-    options.write(clamp(size), commit);
-    sync();
+    const next = clamp(size);
+    options.write(next, commit);
+    sync(next);
+    return next;
   };
   const along = (event: MouseEvent) => (options.axis === 'x' ? event.clientX : event.clientY);
 
-  let drag: { pointer: number; start: number; size: number; direction: number } | undefined;
+  let drag: { pointer: number; start: number; size: number; direction: number; last: number } | undefined;
   const end = (commit = true) => {
     if (!drag) return;
+    const { last } = drag;
     drag = undefined;
     delete root().dataset.resizing;
     delete root().dataset.resizeAxis;
-    if (commit) write(options.read(), true);
+    if (commit) write(last, true);
   };
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || drag) return;
     event.preventDefault();
     handle.focus({ preventScroll: true });
-    drag = { pointer: event.pointerId, start: along(event), size: clamp(options.read()), direction: direction() };
+    const size = clamp(options.read());
+    drag = { pointer: event.pointerId, start: along(event), size, direction: direction(), last: size };
     handle.setPointerCapture?.(event.pointerId);
     root().dataset.resizing = 'true';
     root().dataset.resizeAxis = options.axis;
   };
   const onPointerMove = (event: PointerEvent) => {
     if (drag && event.pointerId === drag.pointer)
-      write(drag.size + drag.direction * (along(event) - drag.start), false);
+      drag.last = write(drag.size + drag.direction * (along(event) - drag.start), false);
   };
   // Another finger lifting off the handle does not end this drag.
   const onPointerEnd = (event: PointerEvent) => {

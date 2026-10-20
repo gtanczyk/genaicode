@@ -65,3 +65,34 @@ it('keeps following while hidden (no height)', () => {
   act(() => root.render(<Log lines={['a', 'b', 'c', 'd']} />));
   expect(el.scrollTop).toBe(200);
 });
+
+function Late({ show, lines }: { show: boolean; lines: string[] }) {
+  const scroll = useFollowScroll(lines);
+  return show ? (
+    <div ref={scroll.ref} onScroll={scroll.onScroll} className="log">
+      {lines.map((line, i) => (
+        <p key={i}>{line}</p>
+      ))}
+    </div>
+  ) : null;
+}
+
+it('observes a box that mounts after the first render', () => {
+  const observed: Element[] = [];
+  const Original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    observe(el: Element) {
+      observed.push(el);
+    }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  try {
+    act(() => root.render(<Late show={false} lines={['a']} />));
+    expect(observed).toHaveLength(0);
+    act(() => root.render(<Late show lines={['a']} />));
+    expect(observed).toEqual([host.querySelector('.log')]);
+  } finally {
+    globalThis.ResizeObserver = Original;
+  }
+});
