@@ -41,7 +41,8 @@ export interface ResizeHandle {
 
 /**
  * Make `handle` resize a panel. Give it `role="separator"`, `tabindex="0"` and an
- * `aria-label`; this keeps `aria-valuemin`, `aria-valuemax` and `aria-valuenow` current.
+ * `aria-label`; this sets `aria-orientation` and `touch-action: none`, and keeps
+ * `aria-valuemin`, `aria-valuemax` and `aria-valuenow` current.
  *
  * Pointer: drag (the pointer is captured, so it may leave the handle). Keys: arrows by `step`
  * (Shift: twice that), Home and End to the bounds, Escape during a drag to undo it, Enter (and
@@ -89,7 +90,11 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
     if (drag && event.pointerId === drag.pointer)
       write(drag.size + drag.direction * (along(event) - drag.start), false);
   };
-  const onPointerEnd = () => end();
+  // Another finger lifting off the handle does not end this drag.
+  const onPointerEnd = (event: PointerEvent) => {
+    if (drag && event.pointerId === drag.pointer) end();
+  };
+  const onBlur = () => end();
   const onDoubleClick = () => {
     end(false);
     options.reset?.();
@@ -115,6 +120,10 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   };
 
   const view = handle.ownerDocument.defaultView;
+  // A width handle is a vertical bar; separators are horizontal unless they say otherwise.
+  handle.setAttribute('aria-orientation', options.axis === 'x' ? 'vertical' : 'horizontal');
+  // Otherwise a touch drag can turn into a page pan, which cancels the pointer.
+  handle.style.touchAction = 'none';
   handle.addEventListener('pointerdown', onPointerDown);
   handle.addEventListener('pointermove', onPointerMove);
   handle.addEventListener('pointerup', onPointerEnd);
@@ -123,7 +132,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   handle.addEventListener('dblclick', onDoubleClick);
   handle.addEventListener('keydown', onKeyDown);
   // Switching windows mid-drag may never deliver the pointerup.
-  view?.addEventListener('blur', onPointerEnd);
+  view?.addEventListener('blur', onBlur);
   sync();
 
   return {
@@ -137,7 +146,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
       handle.removeEventListener('lostpointercapture', onPointerEnd);
       handle.removeEventListener('dblclick', onDoubleClick);
       handle.removeEventListener('keydown', onKeyDown);
-      view?.removeEventListener('blur', onPointerEnd);
+      view?.removeEventListener('blur', onBlur);
     },
   };
 }

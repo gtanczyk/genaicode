@@ -38,6 +38,19 @@ describe('installResizeHandle', () => {
     expect(handle.getAttribute('aria-valuemin')).toBe('300');
     expect(handle.getAttribute('aria-valuemax')).toBe('900');
     expect(handle.getAttribute('aria-valuenow')).toBe('400');
+    expect(handle.getAttribute('aria-orientation')).toBe('vertical');
+    expect(handle.style.touchAction).toBe('none');
+  });
+
+  it('keeps a drag going when another pointer lifts', () => {
+    const { handle, pointer, size } = fixture();
+    pointer('pointerdown', 600);
+    handle.dispatchEvent(new PointerEvent('pointerup', { clientX: 0, pointerId: 2, bubbles: true }));
+    expect(document.body.dataset.resizing).toBe('true');
+    pointer('pointermove', 550);
+    expect(size()).toBe(450);
+    pointer('pointerup', 550);
+    expect(document.body.dataset.resizing).toBeUndefined();
   });
 
   it('drags in the panel direction, clamps, and commits once at the end', () => {
@@ -56,7 +69,8 @@ describe('installResizeHandle', () => {
   });
 
   it('follows the y axis and a positive direction', () => {
-    const { pointer, size } = fixture({ axis: 'y', direction: () => 1, bounds: () => [64, 500] });
+    const { handle, pointer, size } = fixture({ axis: 'y', direction: () => 1, bounds: () => [64, 500] });
+    expect(handle.getAttribute('aria-orientation')).toBe('horizontal');
     pointer('pointerdown', 0, 100);
     pointer('pointermove', 0, 150);
     pointer('pointerup', 0, 150);
