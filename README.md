@@ -357,9 +357,28 @@ createServer(async (req, res) => {
 }).listen(3000, '127.0.0.1');
 ```
 
-The page talks to `/api/agent`: `GET /events` streams `AppAgentState` (the session's turns,
-pending actions, link chips, navigation requests), and `POST /send`, `/stop`, `/reset`,
-`/config`, `/view` and `/actions/:id` drive it. Default agents are Claude Code, Codex and
+On the page, `AppAgentChat` from `genaicode/react` is the whole drawer: the chat, the agent's
+page chips under its replies, Approve and Reject cards (with the diff of a proposed commit),
+and the agent and mode pickers. It reports `currentPath` to the agent and calls `onNavigate`
+when a chip is clicked or the agent is asked to go somewhere.
+
+```tsx
+import { AppAgentChat } from 'genaicode/react';
+import 'genaicode/react/styles.css';
+
+<AppAgentChat currentPath={location.pathname} onNavigate={(path) => router.push(path)} />;
+```
+
+<p align="center">
+  <img alt="A shop admin with the agent drawer: the agent proposed a refund, waiting for Approve." src="media/screenshots/app-agent.png" width="80%">
+</p>
+
+Under it, `/api/agent` serves `GET /events` (a stream of `AppAgentState`: the session, earlier
+turns, pending actions, link chips, navigation requests) and `POST /send`, `/stop`, `/reset`,
+`/config`, `/view`, `/actions/:id` and `/approvals/:id` (the agent CLI's own permission
+prompts); `useAppAgent` wraps them for a page of your own. Switching agent or mode keeps the
+conversation: the next agent gets a short transcript. `trace` receives every prompt, MCP call,
+decision and finished turn, for a log. Default agents are Claude Code, Codex and
 Copilot CLI, locked down per mode: in `use` mode they get only the app's tools (no shell, no
 file edits); in `dev` mode they edit files and run the listed commands, never commit or push.
 `propose_commit` snapshots the worktree, the user reviews that diff, and Approve commits

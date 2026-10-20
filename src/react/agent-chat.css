@@ -66,6 +66,8 @@
 .gc-chat {
   height: 100%;
   min-height: 0;
+  /* As a flex item it may shrink below its widest line, so a narrow drawer does not overflow. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--_bg);
@@ -577,9 +579,11 @@
 .gc-app-link.gc-here {
   background: var(--_accent-soft);
 }
-.gc-app-note {
-  font-size: 0.87em;
+.gc-prompt:has(> .gc-app-note) {
+  background: transparent;
   color: var(--_muted);
+  border: 1px dashed var(--_border);
+  font-size: 0.87em;
 }
 .gc-app-actions {
   display: flex;

@@ -8,10 +8,19 @@
   app's tools to the agent over MCP, turns write tools into actions the user approves, gives
   the agent the open page with link chips and navigation, and in `dev` mode lets it edit the
   app and propose a commit of exactly the reviewed tree. `createAppAgentHandler` serves it to
-  the page over HTTP and server-sent events, for any Node server.
+  the page over HTTP and server-sent events, for any Node server. Switching agent or mode keeps
+  the conversation, `trace` logs prompts, MCP calls, decisions and turns, and
+  `POST /approvals/:id` answers the agent CLI's own permission prompts.
+- `genaicode/react`: `AppAgentChat`, the page side of an app agent (chat, link chips, action
+  cards with the commit diff, agent and mode pickers), and `useAppAgent` for a page of your own.
 
 ### Fixed
 
+- `codex()` reads MCP tool results: a successful call (`error: null`) is no longer reported as
+  failed, and its text becomes the tool output. `codex exec` never asks for approval, so it now
+  pre-approves the tools of `task.mcpServers` (`default_tools_approval_mode`); before, Codex
+  refused every call to them. `allowMcpTools: false` keeps the old behavior.
+- `<AgentChat>` can shrink in a flex container narrower than its widest line.
 - Anthropic structured outputs: the converter drops the schema keywords the API rejects with a
   400 (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `maxItems`,
   `uniqueItems`) and lowers `minItems` above 1 to 1, the largest value accepted. It walks only
