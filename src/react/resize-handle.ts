@@ -36,7 +36,11 @@ export interface ResizeHandleOptions {
 }
 
 export interface ResizeHandle {
-  /** Update the ARIA range after the bounds or the size changed from outside (window resize, dock). */
+  /**
+   * Update the ARIA range after the bounds or the size changed from outside (window resize,
+   * dock). It writes nothing: a saved size above a smaller window's maximum is kept, and shows
+   * clamped in `aria-valuenow`, so cap the shown size in CSS the same way (`min(...)`).
+   */
   sync(): void;
   /** Remove the listeners. */
   dispose(): void;

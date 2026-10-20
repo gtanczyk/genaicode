@@ -345,6 +345,8 @@ const handle = installResizeHandle(edge, {
     stored.clear();
   },
 });
+// The CSS caps the shown width, so the saved one comes back when the window grows again:
+// .panel { width: min(var(--width, 390px), calc(100vw - 24px)); }
 window.addEventListener('resize', handle.sync);
 ```
 
