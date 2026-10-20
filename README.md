@@ -386,7 +386,8 @@ Copilot enforce the command list; Codex has no per-command allowlist, so it runs
 `propose_commit` snapshots the worktree, the user reviews that diff, and Approve commits
 exactly that tree or refuses if the files changed since. The MCP endpoint takes a per-run
 bearer and refuses browser requests; every other route asks `authorize` and refuses
-cross-site requests.
+cross-site requests. Without `authorize` only a loopback `Host` is accepted (add names with
+`allowedHosts`), so a DNS-rebinding page cannot reach the agent.
 
 ## Chaining prompts
 

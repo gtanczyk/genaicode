@@ -10,9 +10,12 @@ export interface AppAgentHandlerOptions {
   /**
    * The app's own check that the request comes from its signed-in user (a session cookie).
    * Runs for every route but the MCP endpoint, which takes the agent's bearer instead.
-   * Without it anyone who can reach the server can drive the agent: keep the server on 127.0.0.1.
+   * Without it the server must be on loopback: requests whose `Host` is not `localhost`,
+   * `127.0.0.1` or `[::1]` (or one of `allowedHosts`) are refused, which stops DNS rebinding.
    */
   authorize?(req: IncomingMessage): boolean | Promise<boolean>;
+  /** Extra `Host` names accepted without `authorize`, e.g. `myapp.localhost`. */
+  allowedHosts?: readonly string[];
   /** MCP `serverInfo`. Default `{ name: agent.serverName, version: '1.0.0' }`. */
   serverInfo?: { name: string; version: string };
 }
@@ -64,6 +67,9 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
       }
 
       if (crossSite(req)) return json(res, 403, { error: 'cross-site request' });
+      if (!options.authorize && !loopbackHost(req.headers.host, options.allowedHosts)) {
+        return json(res, 403, { error: 'unknown host' });
+      }
       if (options.authorize && !(await options.authorize(req))) return json(res, 403, { error: 'forbidden' });
 
       if (method === 'GET' && route === '/state') return json(res, 200, agent.get());
@@ -177,6 +183,25 @@ function crossSite(req: IncomingMessage): boolean {
   } catch {
     return true;
   }
+}
+
+// Without app auth, only a loopback name may reach the agent: a rebinding domain that resolves
+// to 127.0.0.1 still sends its own name as Host.
+function loopbackHost(host: string | undefined, allowed: readonly string[] = []): boolean {
+  if (!host) return false;
+  let name: string;
+  try {
+    name = new URL(`http://${host}`).hostname;
+  } catch {
+    return false;
+  }
+  return (
+    name === 'localhost' ||
+    name.endsWith('.localhost') ||
+    name === '127.0.0.1' ||
+    name === '[::1]' ||
+    allowed.includes(name)
+  );
 }
 
 function bearerOk(header: string | undefined, token: string): boolean {

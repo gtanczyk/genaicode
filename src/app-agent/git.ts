@@ -102,16 +102,21 @@ export async function commitTree(
   }
   let output = `${commit.stdout}\n${commit.stderr}`.trim();
   let ok = commit.code === 0;
-  if (ok && (await must(repo, ['rev-parse', 'HEAD^{tree}'])).trim() !== tree) {
+  const made = ok ? await head(repo) : null;
+  if (made && (await must(repo, ['rev-parse', `${made}^{tree}`])).trim() !== tree) {
     // A hook rewrote the files: undo the commit, its changes stay in the worktree for a new review.
-    await must(
+    // The expected old value refuses the undo if something else moved HEAD meanwhile.
+    const undo = await runGit(
       repo,
       parent
-        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', parent]
-        : ['update-ref', '-d', 'HEAD'],
+        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', parent, made]
+        : ['update-ref', '-d', 'HEAD', made],
     );
     ok = false;
-    output = `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`;
+    output =
+      undo.code === 0
+        ? `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`
+        : `${output}\n\nA commit hook changed the files after they were reviewed, and HEAD moved before the commit could be undone. Check commit ${made} in git.`;
   } else if (ok) {
     // The user's index now matches the new commit.
     await must(repo, ['reset', '-q']);

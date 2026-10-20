@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -589,6 +589,39 @@ describe('createAppAgentHandler', () => {
     expect((await fetch(`${base}/api/agent/state`, { headers: { 'sec-fetch-site': 'same-site' } })).status).toBe(403);
     expect((await post(base, '/send', { text: '  ' })).status).toBe(400);
     expect((await fetch(`${base}/other`)).status).toBe(404);
+
+    // DNS rebinding: the attacker's name still arrives as Host.
+    const status = (host: string) =>
+      new Promise<number>((resolve, reject) => {
+        const url = new URL(`${base}/api/agent/state`);
+        request({ hostname: url.hostname, port: url.port, path: url.pathname, headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode!);
+        })
+          .on('error', reject)
+          .end();
+      });
+    expect(await status('rebind.example:80')).toBe(403);
+    expect(await status(`localhost:${new URL(base).port}`)).toBe(200);
+  });
+
+  it('drops pending actions when the user starts over', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/reset');
+    expect(agent.get().actions[0]).toMatchObject({ status: 'rejected' });
+    expect((await post(base, '/actions/1', { decision: 'approve' })).status).toBe(409);
   });
 
   it('asks the app to authorize everything but MCP, and streams state', async () => {

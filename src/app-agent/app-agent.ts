@@ -558,6 +558,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       history = [];
       links = [];
       carryOver = '';
+      // A fresh conversation cannot hear their outcome: nothing waits for the user any more.
+      actions = actions.map((action) =>
+        action.status === 'pending' ? { ...action, status: 'rejected', result: 'Dropped by starting over.' } : action,
+      );
       changed();
     },
     configure(change) {
