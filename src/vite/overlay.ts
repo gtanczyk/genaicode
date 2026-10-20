@@ -231,7 +231,9 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
   // Escape from the wolf or anything in the panel; inside the frame the key stays with the UI.
   root.addEventListener('keydown', (event) => {
     if ((event as KeyboardEvent).key !== 'Escape' || panel.hidden) return;
+    // The Escape was for the overlay: the app's own shortcuts must not see it too.
     event.preventDefault();
+    event.stopPropagation();
     close();
   });
   fix.addEventListener('click', async () => {

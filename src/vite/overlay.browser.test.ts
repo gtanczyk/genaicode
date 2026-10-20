@@ -15,6 +15,7 @@ writeFileSync(
   join(dir, 'index.html'),
   `<!doctype html><html><body>
 <input id="app-input" />
+<script>window.appEscapes = 0; document.addEventListener('keydown', (e) => { if (e.key === 'Escape') appEscapes++; });</script>
 <button id="throw" onclick="setTimeout(() => { throw new Error('clicked too hard'); })">throw</button>
 <button id="reject" onclick="Promise.reject(new Error('promise broke'))">reject</button>
 <button id="log" onclick="console.error('logged', new Error('bad state'))">log</button>
@@ -158,10 +159,13 @@ describe('overlay in the browser', () => {
     expect(await panelHidden()).toBe(true);
     expect(await focused()).toBe('overlay .wolf');
 
-    // A closed panel leaves Escape to the app.
+    // The app never heard the Escapes the overlay handled; a closed panel leaves them to the app.
+    const appEscapes = () => page.evaluate(() => (window as unknown as { appEscapes: number }).appEscapes);
+    expect(await appEscapes()).toBe(0);
     await page.focus('#app-input');
     await page.keyboard.press('Escape');
     expect(await focused()).toBe('app-input');
+    expect(await appEscapes()).toBe(1);
   });
 
   it('opens the genaicode UI in a frame the page may show', async () => {
