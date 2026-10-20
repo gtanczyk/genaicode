@@ -13,7 +13,8 @@ export interface AppAction {
   /** The one line the user reads before deciding. */
   summary: string;
   tool?: { name: string; args: Record<string, unknown> };
-  commit?: { message: string; tree: string };
+  /** `base`: the commit the reviewed tree is a change on; null before the first commit. */
+  commit?: { message: string; tree: string; base: string | null };
   status: AppActionStatus;
   result?: string;
   createdAt: number;

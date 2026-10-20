@@ -46,21 +46,29 @@ async function must(repo: string, args: string[], env?: NodeJS.ProcessEnv): Prom
   return result.stdout;
 }
 
+/** The worktree as a git tree, and the commit it is a change on (null before the first commit). */
+export interface Snapshot {
+  tree: string;
+  base: string | null;
+}
+
 /** The whole worktree as a git tree, through a scratch index: nothing gets staged. */
-export async function snapshotTree(repo: string): Promise<string> {
+export async function snapshotTree(repo: string): Promise<Snapshot> {
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   try {
-    if (await head(repo)) await must(repo, ['read-tree', 'HEAD'], env);
+    const base = await head(repo);
+    if (base) await must(repo, ['read-tree', base], env);
     await must(repo, ['add', '-A'], env);
-    return (await must(repo, ['write-tree'], env)).trim();
+    return { tree: (await must(repo, ['write-tree'], env)).trim(), base };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-export async function treeChanges(repo: string, tree: string): Promise<TreeChanges> {
-  const base = (await head(repo)) ?? (await emptyTree(repo));
+/** The snapshot's changes against its own base, which is what the user reviews. */
+export async function treeChanges(repo: string, { tree, base: from }: Snapshot): Promise<TreeChanges> {
+  const base = from ?? (await emptyTree(repo));
   const files = (await must(repo, ['diff', '--name-status', '--no-renames', base, tree]))
     .split('\n')
     .filter(Boolean)
@@ -80,22 +88,28 @@ export async function treeChanges(repo: string, tree: string): Promise<TreeChang
 }
 
 /**
- * Commit `tree` only while the worktree still matches it, so what was reviewed is what lands.
- * The commit goes through a scratch index: a failed commit leaves the user's index as it was.
+ * Commit the snapshot only while the worktree and HEAD still match it, so what was reviewed is
+ * what lands. The commit goes through a scratch index: a failed commit leaves the user's index
+ * as it was.
  */
 export async function commitTree(
   repo: string,
-  tree: string,
+  { tree, base }: Snapshot,
   message: string,
 ): Promise<{ ok: boolean; output: string }> {
   const current = await snapshotTree(repo);
-  if (current !== tree) {
+  if (current.base !== base) {
+    return {
+      ok: false,
+      output: 'HEAD moved after the changes were reviewed. Ask the agent to propose the commit again.',
+    };
+  }
+  if (current.tree !== tree) {
     return {
       ok: false,
       output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
     };
   }
-  const before = await head(repo);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   let commit;
@@ -109,10 +123,10 @@ export async function commitTree(
   let output = `${commit.stdout}\n${commit.stderr}`.trim();
   let ok = commit.code === 0;
   const made = ok ? await head(repo) : null;
-  // HEAD is our commit only while its parent is the HEAD seen before; otherwise leave it alone.
+  // HEAD is our commit only while its parent is the reviewed base; otherwise leave it alone.
   const parentOf = made ? await runGit(repo, ['rev-parse', '--verify', '-q', `${made}^`]) : null;
   const parent = parentOf?.code === 0 ? parentOf.stdout.trim() : null;
-  if (made && parent !== before) {
+  if (made && parent !== base) {
     ok = false;
     output = `${output}\n\nHEAD moved while committing, so the commit could not be checked against the review. Check the history in git.`;
   } else if (made && (await must(repo, ['rev-parse', `${made}^{tree}`])).trim() !== tree) {
@@ -120,8 +134,8 @@ export async function commitTree(
     // The expected old value refuses the undo if something else moved HEAD meanwhile.
     const undo = await runGit(
       repo,
-      before
-        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', before, made]
+      base
+        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', base, made]
         : ['update-ref', '-d', 'HEAD', made],
     );
     ok = false;

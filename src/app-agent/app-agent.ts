@@ -510,8 +510,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       call: async (args) => {
         const message = String(args.message ?? '').trim();
         if (!message) throw new Error('message is required');
-        const tree = await snapshotTree(repo());
-        return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, tree } }));
+        const { tree, base } = await snapshotTree(repo());
+        return waiting(
+          propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, tree, base } }),
+        );
       },
     },
   ];
@@ -529,7 +531,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         try {
           // A stopped run still steerable would swallow the outcome note; let it wind down first.
           if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
-          const outcome = await commitTree(repo(), action.commit!.tree, action.commit!.message);
+          // A throw is this action's outcome too: it must reach the agent before the queued prompts.
+          const outcome = await commitTree(repo(), action.commit!, action.commit!.message).catch(
+            (error: Error) => ({ ok: false, output: error.message }),
+          );
           updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
           // The commit is recorded; the note still waits for a run slow to abort.
           if (stopped && session === stopped) await stopped.idle();
@@ -625,7 +630,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     async changes(id) {
       const action = actions.find((candidate) => candidate.id === id);
       if (!action?.commit) throw new AppAgentError('no such commit action', 404);
-      return treeChanges(repo(), action.commit.tree);
+      return treeChanges(repo(), action.commit);
     },
     mcpTools() {
       const tools = [...appTools(), ...(options.pages ? pageTools() : []), ...(mode === 'dev' ? devTools() : [])];

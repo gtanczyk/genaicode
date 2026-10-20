@@ -413,7 +413,9 @@ describe('createAppAgent', () => {
     release();
     await settle(agent);
     expect(agent.get().actions[0]!.status).toBe('failed');
-    expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeGreaterThan(-1);
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeLessThan(prompts.indexOf('and then this'));
   });
 
   it('commits exactly the reviewed tree in dev mode', async () => {
@@ -513,6 +515,26 @@ describe('commitTree', () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain('HEAD moved');
     expect(git('log', '--format=%s')).toBe('other\nChange a\ninit\n');
+  });
+
+  it('refuses the commit once HEAD moved after the review', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // Another worktree commits to the branch; this worktree's files still match the review.
+    git('commit', '-q', '--allow-empty', '-m', 'elsewhere');
+    expect((await treeChanges(repo, reviewed)).files).toEqual([{ status: 'M', path: 'a.txt' }]);
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('HEAD moved after the changes were reviewed');
+    expect(git('log', '--format=%s')).toBe('elsewhere\ninit\n');
   });
 
   it("keeps the user's index when the commit fails", async () => {
