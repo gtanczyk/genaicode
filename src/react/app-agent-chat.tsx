@@ -69,6 +69,15 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
     },
     [base],
   );
+  // Stable, so a card does not reload its diff on every streamed update.
+  const changes = useCallback(
+    async (id: string) => {
+      const res = await fetch(`${base}/actions/${encodeURIComponent(id)}/changes`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as TreeChanges;
+    },
+    [base],
+  );
 
   return useMemo(
     () => ({
@@ -81,13 +90,9 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
       view: (path) => call('/view', { path }),
       decide: (id, decision) => call(`/actions/${encodeURIComponent(id)}`, { decision }),
       approve: (id, decision) => call(`/approvals/${encodeURIComponent(id)}`, { decision }),
-      changes: async (id) => {
-        const res = await fetch(`${base}/actions/${encodeURIComponent(id)}/changes`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return (await res.json()) as TreeChanges;
-      },
+      changes,
     }),
-    [state, error, call, base],
+    [state, error, call, changes],
   );
 }
 
@@ -120,8 +125,16 @@ export interface AppAgentChatProps {
  * header, the agent picker, the modes and "New". Turns from before a switch stay in place.
  */
 export function AppAgentChat(props: AppAgentChatProps) {
-  const own = useAppAgent(props.basePath);
-  const client = props.client ?? own;
+  return props.client ? <AppAgentView {...props} client={props.client} /> : <ConnectedChat {...props} />;
+}
+
+function ConnectedChat(props: AppAgentChatProps) {
+  const client = useAppAgent(props.basePath);
+  return <AppAgentView {...props} client={client} />;
+}
+
+function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
+  const { client } = props;
   const { state } = client;
   const { onNavigate, currentPath } = props;
 

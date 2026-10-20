@@ -110,7 +110,7 @@ function mount(props: Partial<AppAgentChatProps> = {}) {
 
 const text = () => container.textContent ?? '';
 const button = (label: string) =>
-  [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
+  Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
 describe('AppAgentChat', () => {
@@ -175,6 +175,42 @@ describe('AppAgentChat', () => {
     expect(calls).toContainEqual({ url: '/api/agent/actions/1', body: { decision: 'approve' } });
   });
 
+  it('uses a client the host passes instead of opening its own stream', () => {
+    FakeEventSource.last = null;
+    const client = {
+      state: appState(),
+      error: null,
+      send: vi.fn(),
+      stop: vi.fn(),
+      reset: vi.fn(),
+      configure: vi.fn(),
+      view: vi.fn(),
+      decide: vi.fn(),
+      approve: vi.fn(),
+      changes: vi.fn(),
+    };
+    act(() => root.render(<AppAgentChat client={client} />));
+    expect(FakeEventSource.last).toBeNull();
+    expect(text()).toContain('how many orders?');
+  });
+
+  it('loads a commit diff once, not on every update', async () => {
+    const events = mount();
+    const commit = {
+      id: '2',
+      kind: 'commit' as const,
+      summary: 'Fix',
+      commit: { message: 'Fix', tree: 'abc' },
+      status: 'pending' as const,
+      createdAt: t0,
+    };
+    events.emit(appState({ actions: [commit] }));
+    await flush();
+    events.emit(appState({ actions: [commit], view: '/customers' }));
+    await flush();
+    expect(calls.filter((c) => c.url.endsWith('/changes'))).toHaveLength(1);
+  });
+
   it('switches agent and mode, keeps history with a divider, and starts over with New', async () => {
     const events = mount({ modeLabels: { use: 'ops' } });
     const earlier = turn(-1, `Briefing${PROMPT_MARKER}first`, 'first answer', 'codex');
@@ -185,7 +221,7 @@ describe('AppAgentChat', () => {
     act(() => button('dev').click());
     act(() => button('New').click());
     const select = container.querySelector('select')!;
-    expect([...select.options].map((o) => [o.value, o.disabled])).toEqual([
+    expect(Array.from(select.options).map((o) => [o.value, o.disabled])).toEqual([
       ['claude', false],
       ['codex', true],
     ]);
@@ -220,7 +256,7 @@ describe('AppAgentChat', () => {
     );
     expect(text()).toContain('The user approved action #1 (Refund). Result:');
     expect(text()).not.toContain('long output');
-    const approve = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Approve')!;
+    const approve = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
     act(() => approve.click());
     await flush();
     expect(calls).toContainEqual({ url: '/api/agent/approvals/ap1', body: { decision: 'approve' } });
