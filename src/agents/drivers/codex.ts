@@ -13,6 +13,11 @@ export interface CodexAgentOptions {
   sandbox?: CodexSandbox;
   /** Allow running outside a git repository. Default true. */
   skipGitRepoCheck?: boolean;
+  /**
+   * With `task.mcpServers`: pre-approve every tool of those servers. Default true: exec never
+   * asks, so without it Codex refuses each call as needing approval.
+   */
+  allowMcpTools?: boolean;
 }
 
 /** Codex's sandbox mode for a `permissions.sandbox`. */
@@ -62,7 +67,7 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => codexArgs(task, options),
-    prepare: (task) => withCodexMcp(task, codexArgs(task, options)),
+    prepare: (task) => withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true }),
     createParser: createCodexParser,
   });
 }
@@ -84,9 +89,9 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
 }
 
 /** Prefix `args` with the task's MCP servers as `-c mcp_servers.*` config overrides. */
-export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
+export function withCodexMcp(task: AgentTask, args: string[], options: { approveTools?: boolean } = {}): PreparedRun {
   if (!task.mcpServers?.length) return { args };
-  const mcp = codexMcpOverrides(task.mcpServers);
+  const mcp = codexMcpOverrides(task.mcpServers, options);
   return { args: [...mcp.args, ...args], env: mcp.env };
 }
 
@@ -94,8 +99,12 @@ export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
  * Config overrides for Codex MCP servers. Secrets never go on the command line: HTTP
  * header values travel in environment variables (`env_http_headers`), and a stdio
  * server's `env` is set on Codex's environment and forwarded by name (`env_vars`).
+ * `approveTools` sets each server's `default_tools_approval_mode` to `approve`.
  */
-export function codexMcpOverrides(servers: readonly McpServer[]): { args: string[]; env: Record<string, string> } {
+export function codexMcpOverrides(
+  servers: readonly McpServer[],
+  options: { approveTools?: boolean } = {},
+): { args: string[]; env: Record<string, string> } {
   const args: string[] = [];
   const env: Record<string, string> = {};
   const set = (key: string, value: string) => args.push('-c', `${key}=${value}`);
@@ -126,6 +135,7 @@ export function codexMcpOverrides(servers: readonly McpServer[]): { args: string
       }
       if (entries.length) set(`${key}.env_vars`, JSON.stringify(entries.map(([name]) => name)));
     }
+    if (options.approveTools) set(`${key}.default_tools_approval_mode`, '"approve"');
   });
   return { args, env };
 }
@@ -168,13 +178,17 @@ export function createCodexParser(): AgentOutputParser {
             ...(output !== undefined ? { output } : {}),
           });
         } else if (itemType === 'mcp_tool_call') {
-          const error = stringField(item.error, 'message');
+          // A successful call carries `error: null` and the tool's answer in `result.content`.
+          const failed = item.status === 'failed' || (item.error !== undefined && item.error !== null);
+          const output = failed
+            ? (stringField(item.error, 'message') ?? stringOrNone(item.error))
+            : mcpResultText(item.result);
           events.push({
             type: 'tool-end',
             ...withId,
             name: mcpName(item),
-            isError: item.status === 'failed' || item.error !== undefined,
-            ...(error ? { output: error } : {}),
+            isError: failed,
+            ...(output ? { output } : {}),
           });
         } else if (itemType === 'file_change') {
           const paths = Array.isArray(item.changes)
@@ -215,6 +229,19 @@ export function createCodexParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+function stringOrNone(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function mcpResultText(result: unknown): string | undefined {
+  if (!isObject(result) || !Array.isArray(result.content)) return undefined;
+  const texts = result.content.flatMap((part) => {
+    const text = stringField(part, 'text');
+    return text ? [text] : [];
+  });
+  return texts.length ? texts.join('\n') : undefined;
 }
 
 function mcpName(item: Record<string, unknown>): string {

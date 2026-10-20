@@ -135,6 +135,24 @@ describe('codex driver', () => {
           error: { message: 'denied' },
         },
       },
+      { type: 'item.started', item: { id: 'i5', type: 'mcp_tool_call', server: 'docs', tool: 'read' } },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'i5',
+          type: 'mcp_tool_call',
+          server: 'docs',
+          tool: 'read',
+          status: 'completed',
+          error: null,
+          result: {
+            content: [
+              { type: 'text', text: 'page one' },
+              { type: 'text', text: 'page two' },
+            ],
+          },
+        },
+      },
       { type: 'item.completed', item: { id: 'i4', type: 'agent_message', text: 'All set.' } },
       { type: 'turn.completed', usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 3 } },
     ]);
@@ -145,6 +163,8 @@ describe('codex driver', () => {
       { type: 'file-change', paths: ['a.ts'] },
       { type: 'tool-start', id: 'i3', name: 'docs/search', input: undefined },
       { type: 'tool-end', id: 'i3', name: 'docs/search', isError: true, output: 'denied' },
+      { type: 'tool-start', id: 'i5', name: 'docs/read', input: undefined },
+      { type: 'tool-end', id: 'i5', name: 'docs/read', isError: false, output: 'page one\npage two' },
       { type: 'message', text: 'All set.' },
       { type: 'usage', usage: { inputTokens: 7, outputTokens: 3, cachedInputTokens: 2, totalTokens: 10 } },
     ]);
