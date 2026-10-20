@@ -9,6 +9,9 @@
   `uniqueItems`) and lowers `minItems` above 1 to 1, the largest value accepted. It walks only
   real subschemas, so a property that happens to be named `maximum` is kept. Callers still
   validate the answer against their own schema.
+- `genaicode/vite` overlay: Escape closes the panel and hands the focus back to the wolf, from the
+  wolf or anything in the panel (inside the chat frame the key stays with the UI). The wolf names
+  the panel it toggles with `aria-controls`.
 
 ## 2.13.3 — 2026-10-17
 
