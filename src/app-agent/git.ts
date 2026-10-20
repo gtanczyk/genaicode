@@ -24,6 +24,22 @@ function runGit(
   });
 }
 
+/** The commit HEAD points at, or null in a repository without commits. */
+async function head(repo: string): Promise<string | null> {
+  const result = await runGit(repo, ['rev-parse', '--verify', '-q', 'HEAD']);
+  return result.code === 0 ? result.stdout.trim() : null;
+}
+
+/** The empty tree, in the repository's hash format: the base of a first commit. */
+async function emptyTree(repo: string): Promise<string> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
+  try {
+    return (await must(repo, ['write-tree'], { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') })).trim();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function must(repo: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   const result = await runGit(repo, args, { env });
   if (result.code !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
@@ -35,7 +51,7 @@ export async function snapshotTree(repo: string): Promise<string> {
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   try {
-    await must(repo, ['read-tree', 'HEAD'], env);
+    if (await head(repo)) await must(repo, ['read-tree', 'HEAD'], env);
     await must(repo, ['add', '-A'], env);
     return (await must(repo, ['write-tree'], env)).trim();
   } finally {
@@ -44,14 +60,15 @@ export async function snapshotTree(repo: string): Promise<string> {
 }
 
 export async function treeChanges(repo: string, tree: string): Promise<TreeChanges> {
-  const files = (await must(repo, ['diff', '--name-status', '--no-renames', 'HEAD', tree]))
+  const base = (await head(repo)) ?? (await emptyTree(repo));
+  const files = (await must(repo, ['diff', '--name-status', '--no-renames', base, tree]))
     .split('\n')
     .filter(Boolean)
     .map((line) => {
       const [status = '', ...rest] = line.split('\t');
       return { status, path: rest.join('\t') };
     });
-  const diff = await must(repo, ['diff', '--no-color', 'HEAD', tree]);
+  const diff = await must(repo, ['diff', '--no-color', base, tree]);
   if (diff.length <= MAX_DIFF) return { files, diff };
   return { files, diff: `${diff.slice(0, MAX_DIFF)}\n… (truncated)`, truncated: true };
 }
@@ -72,7 +89,7 @@ export async function commitTree(
       output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
     };
   }
-  const parent = (await must(repo, ['rev-parse', 'HEAD'])).trim();
+  const parent = await head(repo);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   let commit;
@@ -87,7 +104,12 @@ export async function commitTree(
   let ok = commit.code === 0;
   if (ok && (await must(repo, ['rev-parse', 'HEAD^{tree}'])).trim() !== tree) {
     // A hook rewrote the files: undo the commit, its changes stay in the worktree for a new review.
-    await must(repo, ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', parent]);
+    await must(
+      repo,
+      parent
+        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', parent]
+        : ['update-ref', '-d', 'HEAD'],
+    );
     ok = false;
     output = `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`;
   } else if (ok) {

@@ -46,7 +46,9 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
     claude({
       permissionMode: 'acceptEdits',
       strictMcpConfig: true,
-      allowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', ...allowed.map((c) => `Bash(${c}:*)`)],
+      // acceptEdits already reads and edits inside cwd without asking; no bare Read/Edit rules,
+      // which would match every path on the machine.
+      allowedTools: allowed.map((c) => `Bash(${c}:*)`),
       disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS],
     }),
     codex({ sandbox: 'workspace-write' }),

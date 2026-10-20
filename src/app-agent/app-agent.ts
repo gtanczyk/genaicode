@@ -502,11 +502,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     updateAction(action.id, { status: 'running' });
     try {
       if (action.kind === 'commit') {
-        // No edits may land between the check and the commit.
-        session?.stop();
+        // No edits may land between the check and the commit. Stopping drops the queue: keep it.
+        const stopped = session;
+        const queued = stopped?.get().queued ?? [];
+        stopped?.stop();
         const outcome = await commitTree(repo(), action.commit!.tree, action.commit!.message);
         updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
         tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
+        if (session === stopped) for (const prompt of queued) session?.send(prompt);
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
         if (!tool) throw new Error(`tool ${action.tool!.name} is gone`);

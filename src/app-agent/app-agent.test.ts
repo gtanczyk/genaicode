@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
 import { PROMPT_MARKER, userText } from './state.js';
-import { commitTree, snapshotTree } from './git.js';
+import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
 
 type Step = (task: AgentTask) => Promise<string>;
@@ -299,6 +299,40 @@ describe('createAppAgent', () => {
     ).toThrow(/approval_summary/);
   });
 
+  it('keeps prompts queued behind a running turn when a commit is approved', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    expect(agent.get().session!.queued).toHaveLength(1);
+    await post(base, '/actions/1', { decision: 'approve' });
+    for (let i = 0; i < 200 && agent.get().actions[0]!.status === 'running'; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+    expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
+  });
+
   it('commits exactly the reviewed tree in dev mode', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-repo-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -394,6 +428,22 @@ describe('commitTree', () => {
     expect(result.ok).toBe(false);
     expect(git('diff', '--cached', '--name-only')).toBe('a.txt\n');
     expect(git('log', '--format=%s')).toBe('init\n');
+  });
+});
+
+describe('first commit', () => {
+  it('works in a repository without commits', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-unborn-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    const tree = await snapshotTree(repo);
+    expect((await treeChanges(repo, tree)).files).toEqual([{ status: 'A', path: 'a.txt' }]);
+    expect((await commitTree(repo, tree, 'First')).ok).toBe(true);
+    expect(git('log', '--format=%s')).toBe('First\n');
+    expect(git('status', '--porcelain')).toBe('');
   });
 });
 
