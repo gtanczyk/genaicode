@@ -17,7 +17,10 @@ export interface ResizeHandleOptions {
   direction?: () => number;
   /** Smallest and largest size right now, e.g. from the window size. */
   bounds: () => readonly [min: number, max: number];
-  /** The size shown now. */
+  /**
+   * The size shown now. It must return what `write` or `reset` just set, synchronously: keep
+   * the size in a variable or a ref, not only in React state that updates on the next render.
+   */
   read: () => number;
   /** Apply `size` (already within bounds and rounded). `commit` is true when it should be kept. */
   write: (size: number, commit: boolean) => void;
@@ -62,24 +65,15 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
     const [min, max] = range();
     return Math.round(Math.max(min, Math.min(max, size)));
   };
-  // `now` is the size just written: a writer may apply it on its next render, after `read()`.
   const sync = (now = options.read()) => {
     const [min, max] = range();
     handle.setAttribute('aria-valuemin', String(Math.round(min)));
     handle.setAttribute('aria-valuemax', String(Math.round(max)));
     handle.setAttribute('aria-valuenow', String(clamp(now)));
   };
-  // What was last written, and what read() said right after: while read() still says that,
-  // the writer has not applied it yet and key steps go on from the written size.
-  let written: { size: number; read: number } | undefined;
-  const current = () => {
-    const now = options.read();
-    return written && written.read === now ? written.size : now;
-  };
   const write = (size: number, commit: boolean) => {
     const next = clamp(size);
     options.write(next, commit);
-    written = { size: next, read: options.read() };
     sync(next);
     return next;
   };
@@ -115,7 +109,6 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   const onBlur = () => end();
   const onDoubleClick = () => {
     end(false);
-    written = undefined;
     options.reset?.();
     sync();
   };
@@ -132,7 +125,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
     else if (event.key === 'End') write(max, true);
     else if (event.key === keys.less || event.key === keys.more) {
       const delta = (event.key === keys.more ? 1 : -1) * direction() * (event.shiftKey ? 2 * step : step);
-      write(clamp(current()) + delta, true);
+      write(clamp(options.read()) + delta, true);
     } else return;
     event.preventDefault();
     event.stopPropagation();
@@ -155,7 +148,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   sync();
 
   return {
-    sync,
+    sync: () => sync(),
     dispose() {
       end();
       handle.removeEventListener('pointerdown', onPointerDown);

@@ -126,6 +126,14 @@ describe('installResizeHandle', () => {
     expect(size()).toBe(200);
   });
 
+  it('can be passed to addEventListener as sync', () => {
+    const { handle, resizer } = fixture();
+    window.addEventListener('resize', resizer.sync);
+    window.dispatchEvent(new Event('resize'));
+    window.removeEventListener('resize', resizer.sync);
+    expect(handle.getAttribute('aria-valuenow')).toBe('400');
+  });
+
   it('stops listening after dispose', () => {
     const { resizer, key, size } = fixture();
     resizer.dispose();
@@ -184,30 +192,6 @@ describe('installResizeHandle with a writer that applies later', () => {
     expect(handle.getAttribute('aria-valuenow')).toBe('500');
     pointer('pointerup', 200);
     expect(commits).toEqual([500]);
-  });
-
-  it('steps keys from the written size until read() catches up', () => {
-    const handle = document.createElement('div');
-    document.body.append(handle);
-    let applied = 400;
-    let pending = 400;
-    installResizeHandle(handle, {
-      axis: 'x',
-      bounds: () => [300, 900],
-      read: () => applied,
-      write: (size) => (pending = size),
-    });
-    const key = (name: string) => handle.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
-    key('ArrowRight');
-    key('ArrowRight');
-    expect(pending).toBe(448);
-    applied = pending;
-    key('ArrowRight');
-    expect(pending).toBe(472);
-    // A size changed from outside wins over what was written.
-    applied = 600;
-    key('ArrowRight');
-    expect(pending).toBe(624);
   });
 
   it('never writes a negative size when nothing fits', () => {

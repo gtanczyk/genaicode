@@ -351,7 +351,8 @@ window.addEventListener('resize', handle.sync);
 The handle keeps its `aria-value*` range current and takes the arrow keys (Shift for bigger
 steps), Home and End, Escape to undo a drag, and Enter or double-click to reset. While a drag
 runs, `document.body` (or `root`) has `data-resizing="true"`, so the page can keep the cursor
-and turn off pointer events on iframes.
+and turn off pointer events on iframes. `read()` must return what `write` or `reset` just set,
+so keep the size in a variable or a ref rather than only in React state.
 
 To show the whole `genaicode ui` page in a frame instead, `startEmbeddedWeb` from
 `genaicode/ui` serves it on 127.0.0.1 with your `task` (`mcpServers`, `timeoutMs`...), `env`
