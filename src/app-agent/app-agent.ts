@@ -207,6 +207,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let carryOver = '';
   // The user's prompts sent while an action runs: they follow its outcome, never overtake it.
   let held: string[] = [];
+  // The session's own queue, kept aside while a commit stops its turn; a user stop drops it too.
+  let saved: string[] = [];
   let traced = new Set<number>();
   // Logging only observes: a failing sink must not change what happens (an action's status).
   const trace = (record: Parameters<NonNullable<AppAgentOptions['trace']>>[0]) => {
@@ -225,8 +227,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     agent: agentName,
     agents: installed(mode),
     session:
-      session && held.length
-        ? { ...session.get(), queued: [...session.get().queued, ...held] }
+      session && (saved.length || held.length)
+        ? { ...session.get(), queued: [...saved, ...session.get().queued, ...held] }
         : (session?.get() ?? null),
     history,
     actions,
@@ -555,7 +557,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       if (action.kind === 'commit') {
         // No edits may land between the check and the commit. Stopping drops the queue: keep it.
         const stopped = session;
-        const queued = stopped?.get().queued ?? [];
+        saved = stopped?.get().queued ?? [];
         stopped?.stop();
         try {
           // Let the stopped run wind down: none of its edits may land after the check.
@@ -571,7 +573,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           if (stopped && session === stopped) await stopped.idle();
           tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
         } finally {
-          if (session === stopped) for (const prompt of queued) session?.send(prompt);
+          const restore = saved;
+          saved = [];
+          if (session === stopped) for (const prompt of restore) session?.send(prompt);
         }
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
@@ -614,8 +618,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       deliver(trimmed, true);
     },
     stop() {
-      if (held.length) {
+      if (held.length || saved.length) {
         held = [];
+        saved = [];
         changed();
       }
       session?.stop();
