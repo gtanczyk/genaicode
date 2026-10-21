@@ -101,7 +101,20 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
 export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
   const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
   if (!options.onlyTaskMcpServers) return prepared;
-  const others = await configuredMcpServers(options.command ?? 'codex', task, codexMcpServers);
+  let listed: string[] = [];
+  const others = await configuredMcpServers(options.command ?? 'codex', task, (listing) => {
+    const servers = codexMcpServers(listing);
+    listed = servers.map((server) => server.name);
+    return servers;
+  });
+  // `-c` merges into a table the config already has (a stdio server keeps its `command` next to the
+  // task's `url`), and no override removes a key: a task server must not reuse a configured name.
+  const clash = task.mcpServers?.find((server) => listed.includes(server.name));
+  if (clash) {
+    throw new Error(
+      `Codex already has an MCP server named "${clash.name}"; the task's server would merge into it. Give the task's server another name.`,
+    );
+  }
   const off = others.flatMap(({ name, transport }) => {
     const key = `mcp_servers.${tomlKey(name)}`;
     // A server only a plugin defines has no transport in the config table, and Codex refuses a

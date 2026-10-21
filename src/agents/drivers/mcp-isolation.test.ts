@@ -20,7 +20,7 @@ const app = { name: 'app', url: 'http://127.0.0.1:1/mcp' };
 
 describe.skipIf(process.platform === 'win32')('only the task MCP servers', () => {
   it('switches off the other servers in Codex config', async () => {
-    const command = fakeCli('codex', [{ name: 'github' }, { name: 'app' }, { name: 'my.server' }]);
+    const command = fakeCli('codex', [{ name: 'github' }, { name: 'my.server' }]);
     const prepared = await prepareCodex(
       { prompt: 'go', cwd: dir, mcpServers: [app] },
       { command, onlyTaskMcpServers: true },
@@ -32,6 +32,13 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
       'mcp_servers."my.server".enabled=false',
     ]);
     expect(prepared.args).toContain('mcp_servers.app.url="http://127.0.0.1:1/mcp"');
+  });
+
+  it('refuses a task server whose name Codex already has', async () => {
+    const command = fakeCli('codex-clash', [{ name: 'app', transport: { type: 'stdio', command: 'app-mcp' } }]);
+    await expect(
+      prepareCodex({ prompt: 'go', cwd: dir, mcpServers: [app] }, { command, onlyTaskMcpServers: true }),
+    ).rejects.toThrow(/already has an MCP server named "app"/);
   });
 
   it('keeps a valid transport on a plugin server it switches off', async () => {

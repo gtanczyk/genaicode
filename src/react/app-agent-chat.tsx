@@ -150,6 +150,10 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
   // Report the open page; the agent reads it with each prompt. Once until the server's state
   // shows it, then again whenever it does not: a restarted or another backend starts without it.
   const reported = useRef<string | null>(null);
+  // A lost report or a lost stream (maybe a restarted backend) leaves nothing acknowledged.
+  useEffect(() => {
+    if (client.error) reported.current = null;
+  }, [client.error]);
   const serverView = state?.view;
   useEffect(() => {
     if (!state || currentPath === undefined) return;
