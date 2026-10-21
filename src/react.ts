@@ -36,3 +36,6 @@ export {
 } from './react/format.js';
 export type { SessionEntry, SessionState, SessionTurn } from './agents/session.js';
 export type { ApprovalDecision, ApprovalRequest } from './agents/types.js';
+export { useFollowScroll } from './react/follow-scroll.js';
+export { installResizeHandle, storedSize } from './react/resize-handle.js';
+export type { ResizeHandle, ResizeHandleOptions, StoredSize } from './react/resize-handle.js';

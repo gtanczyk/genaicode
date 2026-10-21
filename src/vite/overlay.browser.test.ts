@@ -15,6 +15,7 @@ writeFileSync(
   join(dir, 'index.html'),
   `<!doctype html><html><body>
 <input id="app-input" />
+<script>window.appEscapes = 0; document.addEventListener('keydown', (e) => { if (e.key === 'Escape') appEscapes++; });</script>
 <button id="throw" onclick="setTimeout(() => { throw new Error('clicked too hard'); })">throw</button>
 <button id="reject" onclick="Promise.reject(new Error('promise broke'))">reject</button>
 <button id="log" onclick="console.error('logged', new Error('bad state'))">log</button>
@@ -137,6 +138,34 @@ describe('overlay in the browser', () => {
     await page.keyboard.press('Enter');
     expect(await panelHidden()).toBe(true);
     expect(await focused()).toBe('overlay .wolf');
+  });
+
+  it('closes with Escape from the panel and from the wolf', async () => {
+    expect(await inOverlay((root) => root.querySelector('.wolf')!.getAttribute('aria-controls'))).toBe('panel');
+    await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).focus());
+    await page.keyboard.press('Enter');
+    expect(await panelHidden()).toBe(false);
+
+    await page.keyboard.press('Tab');
+    expect(await focused()).toBe('overlay .close');
+    await page.keyboard.press('Escape');
+    expect(await panelHidden()).toBe(true);
+    expect(await focused()).toBe('overlay .wolf');
+    expect(await inOverlay((root) => root.querySelector('.wolf')!.getAttribute('aria-expanded'))).toBe('false');
+
+    await page.keyboard.press('Enter');
+    expect(await panelHidden()).toBe(false);
+    await page.keyboard.press('Escape');
+    expect(await panelHidden()).toBe(true);
+    expect(await focused()).toBe('overlay .wolf');
+
+    // The app never heard the Escapes the overlay handled; a closed panel leaves them to the app.
+    const appEscapes = () => page.evaluate(() => (window as unknown as { appEscapes: number }).appEscapes);
+    expect(await appEscapes()).toBe(0);
+    await page.focus('#app-input');
+    await page.keyboard.press('Escape');
+    expect(await focused()).toBe('app-input');
+    expect(await appEscapes()).toBe(1);
   });
 
   it('opens the genaicode UI in a frame the page may show', async () => {

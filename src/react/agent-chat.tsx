@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision } from '../agents/types.js';
+import { useFollowScroll } from './follow-scroll.js';
 import { formatDuration, formatUsage, relativePath, shortId, toolLabel, toolSummary, turnFooter } from './format.js';
 import { Markdown } from './markdown.js';
 
@@ -78,16 +79,10 @@ export interface AgentChatProps {
 export function AgentChat(props: AgentChatProps) {
   const state = props.state ?? NO_SESSION;
   const [draft, setDraft] = useState('');
-  const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
   const input = useRef<HTMLTextAreaElement>(null);
   const running = state?.status === 'running';
   const now = useNow(running);
 
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  });
   useLayoutEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -101,7 +96,7 @@ export function AgentChat(props: AgentChatProps) {
 
   const send = () => {
     if (!draft.trim() || props.disabled) return;
-    pinned.current = true;
+    follow();
     props.onSend(draft);
     setDraft('');
   };
@@ -150,6 +145,8 @@ export function AgentChat(props: AgentChatProps) {
     }
   });
   flush(Number.MAX_SAFE_INTEGER);
+  // `items` is new on every render, so each render scrolls to the end while the user is there.
+  const { ref: scroller, onScroll, follow } = useFollowScroll(items, 80);
 
   const placeholder =
     props.placeholder ??
@@ -181,14 +178,7 @@ export function AgentChat(props: AgentChatProps) {
           {props.headerExtras}
         </div>
       )}
-      <div
-        className="gc-scroll"
-        ref={scroller}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        }}
-      >
+      <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
         <div className="gc-thread" role="log" aria-live="polite">
           {state.turns.length === 0
             ? (props.emptyState ?? (

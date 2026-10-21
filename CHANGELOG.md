@@ -22,6 +22,11 @@
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
   prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
   `send(text, { queue: true })` waits for its own turn instead of steering a running one.
+- `genaicode/react` exports `useFollowScroll`, the hook that keeps a transcript at its newest
+  line until the user scrolls up (`<AgentChat>` now uses it, and also re-pins when its box is
+  resized), and `installResizeHandle` with `storedSize`: a framework-free panel-edge resize
+  handle with pointer drag, arrow keys, Home/End, Escape to undo a drag, Enter or double-click
+  to reset, and a kept ARIA range. The gamedev.pl Play workbench uses both.
 
 ### Fixed
 
@@ -35,6 +40,9 @@
   `uniqueItems`) and lowers `minItems` above 1 to 1, the largest value accepted. It walks only
   real subschemas, so a property that happens to be named `maximum` is kept. Callers still
   validate the answer against their own schema.
+- `genaicode/vite` overlay: Escape closes the panel and hands the focus back to the wolf, from the
+  wolf or anything in the panel (inside the chat frame the key stays with the UI). The wolf names
+  the panel it toggles with `aria-controls`.
 
 ## 2.13.3 — 2026-10-17
 
