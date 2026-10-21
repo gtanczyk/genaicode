@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -280,7 +280,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   const cwdFor = (target: AppAgentMode) => {
     if (target === 'dev') return options.dev!.cwd;
     // No files to touch in use mode: an empty directory keeps the agent on the app's tools.
-    useCwd ??= mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-'));
+    if (!useCwd) {
+      useCwd = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-'));
+      // Copilot reads hooks from the user's config too; its repository settings switch them all off.
+      mkdirSync(path.join(useCwd, '.github', 'copilot'), { recursive: true });
+      writeFileSync(path.join(useCwd, '.github', 'copilot', 'settings.json'), '{ "disableAllHooks": true }\n');
+    }
     return useCwd;
   };
 
@@ -609,6 +614,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       deliver(trimmed, true);
     },
     stop() {
+      if (held.length) {
+        held = [];
+        changed();
+      }
       session?.stop();
     },
     reset() {

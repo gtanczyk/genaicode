@@ -12,7 +12,9 @@ const WEB_TOOLS = ['WebFetch', 'WebSearch'];
  * tools. In `dev` mode they edit files and may run `commands` (each with any arguments), never
  * commit or push (that goes through `propose_commit`). Codex has no per-command allowlist:
  * in `dev` mode its shell is bounded only by the `workspace-write` sandbox. In both modes the
- * only MCP server is the app's: the user's own configured servers are switched off.
+ * only MCP server is the app's: the user's own configured servers are switched off. Claude's
+ * hooks are off in both modes; Copilot's in `use` mode only (through settings in the app
+ * agent's own working directory), since in `dev` mode they live in the user's repository.
  */
 export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[] = []): CodingAgent[] {
   if (mode === 'use') {
@@ -71,6 +73,8 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       // which would match every path on the machine.
       allowedTools: allowed.map((c) => `Bash(${c}:*)`),
       disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS],
+      // Hooks run commands outside these rules, `git commit` included.
+      settings: { disableAllHooks: true },
     }),
     codex({
       sandbox: 'workspace-write',

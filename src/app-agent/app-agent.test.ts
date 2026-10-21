@@ -241,6 +241,46 @@ describe('createAppAgent', () => {
     expect(prompts.findIndex((p) => p.includes('approved action #1'))).toBeLessThan(prompts.indexOf('is it done?'));
   });
 
+  it('drops prompts held behind a running action when the user stops', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'never mind' });
+    await post(base, '/stop');
+    expect(agent.get().session!.queued).toEqual([]);
+    finish('retried');
+    await settle(agent);
+    expect(tasks.map((task) => userText(task.prompt))).not.toContain('never mind');
+  });
+
+  it('switches Copilot hooks off in the use-mode working directory', async () => {
+    const { agent: fake, tasks } = fakeAgent([]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake] });
+    await post(base, '/send', { text: 'hi' });
+    await settle(agent);
+    const settings = readFileSync(path.join(tasks[0]!.cwd, '.github', 'copilot', 'settings.json'), 'utf8');
+    expect(JSON.parse(settings)).toEqual({ disableAllHooks: true });
+  });
+
   it('keeps an action done when the trace sink throws', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {

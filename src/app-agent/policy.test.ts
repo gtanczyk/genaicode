@@ -27,6 +27,7 @@ describe('defaultAppAgents', () => {
     expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.settings).toEqual({ disableAllHooks: true });
     defaultAppAgents('dev');
     expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({ 'features.apps': false });
+    expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.settings).toEqual({ disableAllHooks: true });
   });
 
   it('lets Copilot run each dev command with arguments, and never commit or push', () => {
