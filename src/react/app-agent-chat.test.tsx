@@ -175,6 +175,18 @@ describe('AppAgentChat', () => {
     expect(calls).toContainEqual({ url: '/api/agent/actions/1', body: { decision: 'approve' } });
   });
 
+  it('reports the open page to a new backend that has not acknowledged it', async () => {
+    const views = () => calls.filter((c) => c.url.endsWith('/view')).length;
+    const first = mount({ basePath: '/a', currentPath: '/orders' });
+    first.emit(appState({ view: null }));
+    await flush();
+    expect(views()).toBe(1);
+    act(() => root.render(<AppAgentChat basePath="/b" currentPath="/orders" />));
+    FakeEventSource.last!.emit(appState({ view: null }));
+    await flush();
+    expect(calls.filter((c) => c.url === '/b/view')).toHaveLength(1);
+  });
+
   it('drops the old backend state when the base path changes', async () => {
     const events = mount({ basePath: '/a' });
     const refund = { id: '1', kind: 'tool' as const, summary: 'Refund order 7', status: 'pending' as const };

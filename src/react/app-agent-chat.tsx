@@ -168,6 +168,8 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
   }, [client.error]);
   const serverView = state?.view;
   useEffect(() => {
+    // No state yet: a new connection or another backend, which has heard nothing.
+    if (!state) reported.current = null;
     if (!state || currentPath === undefined) return;
     if (serverView === currentPath) {
       reported.current = null;

@@ -608,6 +608,30 @@ describe('createAppAgent', () => {
 
   it('refuses a server name the drivers would refuse', () => {
     expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', serverName: 'shop.app' })).toThrow(/serverName/);
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', serverName: 'read' })).toThrow(
+      /permission kind/,
+    );
+  });
+
+  it('runs no action after close', async () => {
+    let ran = false;
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => ((ran = true), 'deleted') }],
+    });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    agent.close();
+    expect(() => agent.decide('1', 'approve')).toThrow(/closed/);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ran).toBe(false);
   });
 
   it('keeps the queue through two commits approved together', async () => {

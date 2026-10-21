@@ -149,6 +149,7 @@ const MAX_LINKS = 6;
 const MAX_HISTORY = 100;
 const CARRY_MAX = 12_000;
 const STOP_WAIT_MS = 10_000;
+const COPILOT_KINDS = ['read', 'write', 'shell', 'url', 'memory'];
 
 /**
  * A coding agent inside a local app: the user chats with an agent CLI from their machine
@@ -173,6 +174,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   const serverName = options.serverName ?? 'app';
   // Checked here, not on the first turn: every driver refuses other names.
   if (!MCP_NAME.test(serverName)) throw new Error(`serverName must match ${MCP_NAME}: ${JSON.stringify(serverName)}`);
+  // Copilot reads these bare names as permission kinds, so its rules would not name the server.
+  if (COPILOT_KINDS.includes(serverName)) throw new Error(`serverName "${serverName}" is a Copilot permission kind`);
   // A dropped session's process may still be winding down: its late calls must not reach the app.
   const newToken = () => randomBytes(24).toString('base64url');
   let mcpToken = newToken();
@@ -705,6 +708,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       changed();
     },
     decide(id, decision) {
+      // Nothing runs once the app closed the agent, whoever still holds it.
+      if (closed) throw new AppAgentError('the agent is closed', 409);
       const action = actions.find((candidate) => candidate.id === id);
       if (!action) throw new AppAgentError('no such action', 404);
       if (action.status !== 'pending') throw new AppAgentError(`action is ${action.status}`, 409);
