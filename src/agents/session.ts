@@ -391,8 +391,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const prompt = text.trim();
       if (!prompt || closed) return;
       if (sendOptions?.note) {
-        if (state.status === 'idle') return startTurn(prompt);
         set({ notes: [...(state.notes ?? []), prompt] });
+        // A new note releases the held ones, oldest first.
+        if (state.status === 'idle') return startTurn(shiftNote());
         return;
       }
       holdNotes = false;

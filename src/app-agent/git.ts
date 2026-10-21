@@ -70,10 +70,19 @@ async function must(repo: string, args: string[], env?: NodeJS.ProcessEnv): Prom
   return result.stdout;
 }
 
-/** The worktree as a git tree, and the commit it is a change on (null before the first commit). */
+/**
+ * The worktree as a git tree, the commit it is a change on (null before the first commit) and the
+ * branch HEAD names (null when detached).
+ */
 export interface Snapshot {
   tree: string;
   base: string | null;
+  ref: string | null;
+}
+
+async function headRef(repo: string): Promise<string | null> {
+  const result = await runGit(repo, ['symbolic-ref', '-q', 'HEAD']);
+  return result.code === 0 ? result.stdout.trim() : null;
 }
 
 /** The whole worktree as a git tree, through a scratch index: nothing gets staged. */
@@ -81,10 +90,11 @@ export async function snapshotTree(repo: string): Promise<Snapshot> {
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
   try {
+    const ref = await headRef(repo);
     const base = await head(repo);
     if (base) await must(repo, ['read-tree', base], env);
     await must(repo, ['add', '-A'], env);
-    return { tree: (await must(repo, ['write-tree'], env)).trim(), base };
+    return { tree: (await must(repo, ['write-tree'], env)).trim(), base, ref };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -115,17 +125,18 @@ export async function treeChanges(repo: string, { tree, base: from }: Snapshot):
  * Commit the snapshot only while the worktree and HEAD still match it, so what was reviewed is
  * what lands. Built from plumbing rather than `git commit`: the hooks run on a scratch index (the
  * user's index stays as it was), a hook that changes the files stops the commit before it exists,
- * HEAD moves only from the reviewed base, and a merge or cherry-pick in progress is never taken
+ * only the reviewed branch moves and only from the reviewed base, and a merge or cherry-pick in progress is never taken
  * over.
  */
 export async function commitTree(
   repo: string,
-  { tree, base }: Snapshot,
+  { tree, base, ref }: Snapshot,
   message: string,
 ): Promise<{ ok: boolean; output: string }> {
   const busy = await operationInProgress(repo);
   if (busy) return refuse(`A ${busy} is in progress in this repository. Finish or abort it`);
   const current = await snapshotTree(repo);
+  if (current.ref !== ref) return refuse('HEAD is on another branch than when the changes were reviewed');
   if (current.base !== base) return refuse('HEAD moved after the changes were reviewed');
   if (current.tree !== tree) return refuse('The files changed after they were reviewed');
 
@@ -175,16 +186,21 @@ export async function commitTree(
     made = (
       await must(repo, ['commit-tree', tree, ...(base ? ['-p', base] : []), ...(sign ? ['-S'] : []), '-F', messageFile])
     ).trim();
-    // Only from the reviewed base: anything that moved HEAD meanwhile wins and this commit is dropped.
-    const moved = await runGit(repo, [
-      'update-ref',
-      '-m',
-      `commit: ${subject}`,
-      'HEAD',
-      made,
-      base ?? '0'.repeat(tree.length),
-    ]);
-    if (moved.code !== 0) {
+    // The reviewed branch itself (HEAD itself when detached), and only from the reviewed base:
+    // anything that moved it or switched HEAD meanwhile wins and this commit is dropped.
+    const switched = (await headRef(repo)) !== ref;
+    const moved = switched
+      ? null
+      : await runGit(repo, [
+          'update-ref',
+          ...(ref ? [] : ['--no-deref']),
+          '-m',
+          `commit: ${subject}`,
+          ref ?? 'HEAD',
+          made,
+          base ?? '0'.repeat(tree.length),
+        ]);
+    if (!moved || moved.code !== 0) {
       return done(false, logs, 'HEAD moved while committing, so nothing was committed. Check the history in git.');
     }
     // Still on the scratch index, which now matches the new commit, as `git commit` would leave it.
@@ -193,16 +209,17 @@ export async function commitTree(
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  const branch = (await runGit(repo, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim() || 'detached HEAD';
+  const branch = ref?.replace(/^refs\/heads\//, '') ?? 'detached HEAD';
   const summary = `[${branch} ${made.slice(0, 7)}] ${subject}`;
-  // Bring the user's index to the new commit, unless something staged while committing.
+  // Bring the user's index to the new commit, unless something staged or switched HEAD meanwhile.
   const now = await indexTree(repo);
-  const reset = now !== null && now === staged ? await runGit(repo, ['reset', '-q']) : null;
+  const reset =
+    now !== null && now === staged && (await headRef(repo)) === ref ? await runGit(repo, ['reset', '-q']) : null;
   if (!reset) {
     return done(
       true,
       [...logs, summary],
-      'The index changed while committing, so it was left as is. Check `git status` before staging more.',
+      'The index or HEAD changed while committing, so the index was left as is. Check `git status` before staging more.',
     );
   }
   if (reset.code !== 0) {

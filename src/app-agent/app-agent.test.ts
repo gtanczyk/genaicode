@@ -540,6 +540,34 @@ describe('commitTree', () => {
     expect(git('show', 'HEAD:a.txt')).toBe('two\n');
   });
 
+  it('commits only to the branch that was reviewed', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    git('branch', 'other');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    expect(reviewed.ref).toBe('refs/heads/main');
+    // Same commit, other branch: tree and base still match.
+    git('checkout', '-q', 'other');
+    const refused = await commitTree(repo, reviewed, 'Change a');
+    expect(refused.ok).toBe(false);
+    expect(refused.output).toContain('another branch');
+
+    // A hook that switches branches mid-commit moves neither of them.
+    git('checkout', '-q', 'main');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'commit-msg'), '#!/bin/sh\ngit checkout -q other\n', { mode: 0o755 });
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s', 'main')).toBe('init\n');
+    expect(git('log', '--format=%s', 'other')).toBe('init\n');
+  });
+
   it('refuses the commit once HEAD moved after the review', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -579,7 +607,7 @@ describe('commitTree', () => {
     );
     const result = await commitTree(repo, reviewed, 'Change a');
     expect(result.ok).toBe(true);
-    expect(result.output).toContain('The index changed while committing');
+    expect(result.output).toContain('changed while committing, so the index was left as is');
     expect(git('diff', '--cached', '--name-only')).toContain('c.txt');
   });
 
@@ -844,6 +872,11 @@ describe('createAppAgentHandler', () => {
     expect((await post(base, '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, bearer)).status).toBe(
       202,
     );
+
+    // A dropped session's late calls are refused.
+    agent.reset();
+    expect((await post(base, '/mcp', rpc, bearer)).status).toBe(401);
+    expect((await post(base, '/mcp', rpc, { authorization: `Bearer ${agent.mcpToken}` })).status).toBe(200);
 
     expect((await post(base, '/send', { text: 'x' }, { origin: 'http://evil.example' })).status).toBe(403);
     expect((await post(base, '/send', { text: 'x' }, { 'sec-fetch-site': 'cross-site' })).status).toBe(403);

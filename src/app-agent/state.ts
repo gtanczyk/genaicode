@@ -14,7 +14,7 @@ export interface AppAction {
   summary: string;
   tool?: { name: string; args: Record<string, unknown> };
   /** `base`: the commit the reviewed tree is a change on; null before the first commit. */
-  commit?: { message: string; tree: string; base: string | null };
+  commit?: { message: string; tree: string; base: string | null; ref: string | null };
   status: AppActionStatus;
   result?: string;
   createdAt: number;

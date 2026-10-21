@@ -155,6 +155,20 @@ describe('createAgentSession', () => {
     expect(tasks.map((task) => task.prompt)).toEqual(['start', 'note', 'next']);
   });
 
+  it('plays held notes before a newer note', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('old', { note: true });
+    session.stop();
+    gate.resolve();
+    await session.idle();
+    session.send('new', { note: true });
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'old', 'new']);
+  });
+
   it('steers a running agent that supports it', async () => {
     const gate = deferred();
     const { agent, steered } = fakeAgent([() => gate.promise.then(() => ({}))], { steer: true });

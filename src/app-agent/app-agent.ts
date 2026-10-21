@@ -67,8 +67,6 @@ export interface AppAgentOptions {
   agent?: string;
   /** Where the agent reaches the app's MCP endpoint (`<basePath>/mcp` of the handler). */
   mcpUrl: string | (() => string);
-  /** Bearer the agent sends to the MCP endpoint. Default: 24 random bytes. */
-  mcpToken?: string;
   /** MCP server name the agent sees; its tools show as `mcp__<name>__<tool>`. Default `app`. */
   serverName?: string;
   env?: NodeJS.ProcessEnv;
@@ -127,7 +125,7 @@ export interface AppAgent {
   changes(id: string): Promise<TreeChanges>;
   /** The tools the agent currently sees over MCP. */
   mcpTools(): McpTool[];
-  /** Bearer the agent sends to the MCP endpoint. */
+  /** Bearer the current session's agent sends to the MCP endpoint; a new one with every session. */
   readonly mcpToken: string;
   readonly serverName: string;
   close(): void;
@@ -169,7 +167,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   const now = options.now ?? Date.now;
   const env = options.env ?? process.env;
   const serverName = options.serverName ?? 'app';
-  const mcpToken = options.mcpToken ?? randomBytes(24).toString('base64url');
+  // A dropped session's process may still be winding down: its late calls must not reach the app.
+  const newToken = () => randomBytes(24).toString('base64url');
+  let mcpToken = newToken();
   const modes: AppAgentMode[] = options.dev ? ['use', 'dev'] : ['use'];
   const agentsFor = (target: AppAgentMode) =>
     options.agents?.(target) ?? defaultAppAgents(target, options.dev?.commands ?? []);
@@ -327,6 +327,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     session = null;
     unsubscribeSession = null;
     briefed = false;
+    mcpToken = newToken();
   };
 
   const briefing = (): string => {
@@ -525,8 +526,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       call: async (args) => {
         const message = String(args.message ?? '').trim();
         if (!message) throw new Error('message is required');
-        const { tree, base } = await snapshotTree(repo());
-        return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, tree, base } }));
+        const snapshot = await snapshotTree(repo());
+        return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, ...snapshot } }));
       },
     },
   ];
@@ -571,7 +572,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   };
 
   return {
-    mcpToken,
+    get mcpToken() {
+      return mcpToken;
+    },
     serverName,
     get,
     subscribe(listener) {

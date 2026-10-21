@@ -157,7 +157,7 @@ describe('AppAgentChat', () => {
             id: '2',
             kind: 'commit',
             summary: 'Fix the total',
-            commit: { message: 'Fix the total', tree: 'abc', base: null },
+            commit: { message: 'Fix the total', tree: 'abc', base: null, ref: null },
             status: 'pending',
             createdAt: t0,
           },
@@ -188,7 +188,7 @@ describe('AppAgentChat', () => {
             id: '2',
             kind: 'commit',
             summary: 'Fix',
-            commit: { message: 'Fix', tree: 'abc', base: null },
+            commit: { message: 'Fix', tree: 'abc', base: null, ref: null },
             status: 'pending',
             createdAt: t0,
           },
@@ -213,7 +213,7 @@ describe('AppAgentChat', () => {
             id: '2',
             kind: 'commit',
             summary: 'Fix',
-            commit: { message: 'Fix', tree: 'abc', base: null },
+            commit: { message: 'Fix', tree: 'abc', base: null, ref: null },
             status: 'pending',
             createdAt: t0,
           },
@@ -252,7 +252,7 @@ describe('AppAgentChat', () => {
       id: '2',
       kind: 'commit' as const,
       summary: 'Fix',
-      commit: { message: 'Fix', tree: 'abc', base: null },
+      commit: { message: 'Fix', tree: 'abc', base: null, ref: null },
       status: 'pending' as const,
       createdAt: t0,
     };
@@ -269,7 +269,7 @@ describe('AppAgentChat', () => {
       id: '2',
       kind: 'commit' as const,
       summary: 'Fix',
-      commit: { message: 'Fix', tree: 'abc', base: null },
+      commit: { message: 'Fix', tree: 'abc', base: null, ref: null },
       status: 'pending' as const,
       createdAt: t0,
     };
@@ -277,7 +277,7 @@ describe('AppAgentChat', () => {
     await flush();
     expect(button('Approve').disabled).toBe(false);
     // The server restarted: action 2 is now another commit.
-    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null } }] }));
+    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }));
     expect(button('Approve').disabled).toBe(true);
     await flush();
     expect(calls.filter((c) => c.url.endsWith('/changes'))).toHaveLength(2);
@@ -300,12 +300,12 @@ describe('AppAgentChat', () => {
       id: '2',
       kind: 'commit' as const,
       summary: 'Fix',
-      commit: { message: 'Fix', tree: 'abc', base: null },
+      commit: { message: 'Fix', tree: 'abc', base: null, ref: null },
       status: 'pending' as const,
       createdAt: t0,
     };
     events.emit(appState({ actions: [commit] }));
-    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null } }] }));
+    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }));
     const [first, second] = replies.slice(-2);
     second!('new diff');
     await flush();
