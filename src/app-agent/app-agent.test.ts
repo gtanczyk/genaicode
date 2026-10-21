@@ -1,0 +1,1599 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, request, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
+import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
+import { PROMPT_MARKER, userText } from './state.js';
+import { commitTree, snapshotTree, treeChanges } from './git.js';
+import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
+
+type Step = (task: AgentTask) => Promise<string>;
+
+/** An agent whose turns run `steps` in order; each step's text is the reply. Calls MCP like a CLI would. */
+function fakeAgent(steps: Step[], name = 'fake'): { agent: CodingAgent; tasks: AgentTask[] } {
+  const tasks: AgentTask[] = [];
+  const agent: CodingAgent = {
+    name,
+    command: process.execPath,
+    capabilities: { resume: true, mcp: true },
+    run(task): AgentRun {
+      tasks.push(task);
+      const step = steps.shift() ?? (async (t: AgentTask) => `echo: ${userText(t.prompt)}`);
+      const done = step(task).then((text) => {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+        return { text, result };
+      });
+      return {
+        result: done.then(({ result }) => result),
+        abort() {},
+        async *[Symbol.asyncIterator]() {
+          const { text, result } = await done;
+          const events: AgentEvent[] = [
+            { type: 'session', sessionId: 's1' },
+            { type: 'message', text },
+            { type: 'done', result },
+          ];
+          yield* events;
+        },
+      };
+    },
+  };
+  return { agent, tasks };
+}
+
+/** What a CLI agent sends to the app's MCP endpoint. */
+async function mcp(task: AgentTask, method: string, params: Record<string, unknown> = {}) {
+  const server = task.mcpServers![0] as { url: string; headers?: Record<string, string> };
+  const response = await fetch(server.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...server.headers },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  return (await response.json()) as {
+    result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: unknown[] };
+  };
+}
+
+const callTool = async (task: AgentTask, name: string, args: Record<string, unknown> = {}) =>
+  (await mcp(task, 'tools/call', { name, arguments: args })).result!;
+
+let servers: Server[] = [];
+let agents: AppAgent[] = [];
+afterEach(async () => {
+  for (const agent of agents) agent.close();
+  await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
+  servers = [];
+  agents = [];
+});
+
+async function serve(
+  options: Omit<AppAgentOptions, 'mcpUrl'>,
+  handlerOptions: AppAgentHandlerOptions = {},
+): Promise<{ agent: AppAgent; base: string }> {
+  let base = '';
+  const agent = createAppAgent({ ...options, mcpUrl: () => `${base}/api/agent/mcp` });
+  const handle = createAppAgentHandler(agent, handlerOptions);
+  const server = createServer((req, res) => {
+    void handle(req, res).then((handled) => {
+      if (!handled) res.writeHead(404).end('app');
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  servers.push(server);
+  agents.push(agent);
+  return { agent, base };
+}
+
+const post = (base: string, route: string, body: unknown = {}, headers: Record<string, string> = {}) =>
+  fetch(`${base}/api/agent${route}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+
+async function settle(agent: AppAgent) {
+  for (let i = 0; i < 200; i++) {
+    const state = agent.get();
+    if (state.session?.status !== 'running' && !state.actions.some((a) => a.status === 'running')) return state;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('agent did not settle');
+}
+
+const lastText = (agent: AppAgent) => {
+  const entries = agent.get().session!.turns.at(-1)!.entries;
+  return entries
+    .filter((e) => e.kind === 'text')
+    .map((e) => (e as { text: string }).text)
+    .join('');
+};
+
+describe('createAppAgent', () => {
+  it('briefs the first prompt, adds the open page, and keeps the user text recoverable', async () => {
+    const { agent: fake, tasks } = fakeAgent([]);
+    const { agent, base } = await serve({
+      name: 'the test console',
+      agents: () => [fake],
+      pages: () => ['/admin/jobs', '/admin/costs'],
+      instructions: 'Costs are in USD.',
+    });
+    await post(base, '/view', { path: '/admin/jobs' });
+    await post(base, '/send', { text: 'how many jobs?' });
+    await settle(agent);
+    await post(base, '/send', { text: 'and now?' });
+    await settle(agent);
+
+    expect(tasks[0]!.prompt).toContain('You are the assistant inside the test console');
+    expect(tasks[0]!.prompt).toContain('Costs are in USD.');
+    expect(tasks[0]!.prompt).toContain(`[The user has /admin/jobs open]${PROMPT_MARKER}how many jobs?`);
+    expect(tasks[1]!.prompt).toBe(`[The user has /admin/jobs open]${PROMPT_MARKER}and now?`);
+    expect(tasks[0]!.mcpServers![0]!.name).toBe('app');
+    expect(lastText(agent)).toBe('echo: and now?');
+  });
+
+  it('runs read tools at once and turns write tools into actions the user approves', async () => {
+    const written: unknown[] = [];
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        const listed = await mcp(task, 'tools/list');
+        const read = await callTool(task, 'jobs_count');
+        const write = await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry job j1' });
+        return `${listed.result!.tools!.length} tools; ${read.content![0]!.text}; ${write.content![0]!.text}`;
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        { name: 'jobs_count', description: 'Count jobs.', run: () => '3 jobs' },
+        {
+          name: 'retry_job',
+          description: 'Retry a job.',
+          write: true,
+          inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          run: (args) => {
+            written.push(args);
+            return 'retried';
+          },
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry the failed one' });
+    await settle(agent);
+
+    expect(lastText(agent)).toBe(
+      '2 tools; 3 jobs; Waiting for the user as action #1. You will get a message with the outcome.',
+    );
+    expect(written).toEqual([]);
+    const [action] = agent.get().actions;
+    expect(action).toMatchObject({ id: '1', kind: 'tool', summary: 'Retry job j1', status: 'pending' });
+    expect(action!.tool).toEqual({ name: 'retry_job', args: { id: 'j1' } });
+
+    const decided = await post(base, '/actions/1', { decision: 'approve' });
+    expect(decided.status).toBe(200);
+    await settle(agent);
+    expect(written).toEqual([{ id: 'j1' }]);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'done', result: 'retried' });
+    expect(agent.get().session!.turns.at(-1)!.prompt).toContain(
+      'The user approved action #1 (Retry job j1). Result:\nretried',
+    );
+
+    expect((await post(base, '/actions/1', { decision: 'reject' })).status).toBe(409);
+  });
+
+  it('delivers an action outcome ahead of prompts queued behind the running turn', async () => {
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'waiting';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => 'deleted' }],
+    });
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'follow-up' });
+    await post(base, '/actions/1', { decision: 'reject' });
+    release();
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
+  it('queues a prompt sent right after a rejection behind its outcome, even when the agent steers', async () => {
+    let release = () => {};
+    const steered: string[] = [];
+    const tasks: AgentTask[] = [];
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'steering',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(task): AgentRun {
+        tasks.push(task);
+        const done = (async () => {
+          if (tasks.length === 1) {
+            await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+            await new Promise<void>((resolve) => (release = resolve));
+          }
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          steer: async (text) => void steered.push(text),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [steering],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => 'deleted' }],
+    });
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'reject' });
+    await post(base, '/send', { text: 'follow-up' });
+    expect(steered).toEqual([]);
+    release();
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
+  it('holds a prompt sent while an approved action runs until its outcome is told', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'is it done?' });
+    expect(agent.get().session!.queued).toEqual(['is it done?']);
+    finish('retried');
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('approved action #1'))).toBeLessThan(prompts.indexOf('is it done?'));
+  });
+
+  it('drops prompts held behind a running action when the user stops', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'never mind' });
+    await post(base, '/stop');
+    expect(agent.get().session!.queued).toEqual([]);
+    finish('retried');
+    await settle(agent);
+    expect(tasks.map((task) => userText(task.prompt))).not.toContain('never mind');
+  });
+
+  it('switches Copilot hooks off in the use-mode working directory', async () => {
+    const { agent: fake, tasks } = fakeAgent([]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake] });
+    await post(base, '/send', { text: 'hi' });
+    await settle(agent);
+    const settings = readFileSync(path.join(tasks[0]!.cwd, '.github', 'copilot', 'settings.json'), 'utf8');
+    expect(JSON.parse(settings)).toEqual({ disableAllHooks: true });
+  });
+
+  it('starts no agent after close for a prompt held behind an action', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'after close' });
+    agent.close();
+    finish('retried');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(tasks).toHaveLength(1);
+  });
+
+  it('keeps an action done when the trace sink throws', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+      trace: () => {
+        throw new Error('log full');
+      },
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'done', result: 'retried' });
+  });
+
+  it('tells the agent about a rejection and refuses writes the tool does not validate', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        const bad = await callTool(task, 'delete', { id: 'root', approval_summary: 'x' });
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+        return bad.isError ? `refused: ${bad.content![0]!.text}` : 'accepted';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'delete',
+          description: 'Delete.',
+          write: true,
+          validate: (args) => {
+            if (args.id === 'root') throw new Error('root cannot be deleted');
+          },
+          run: () => 'deleted',
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    expect(lastText(agent)).toBe('refused: root cannot be deleted');
+    expect(agent.get().actions).toHaveLength(1);
+
+    await post(base, '/actions/1', { decision: 'reject' });
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('rejected');
+    expect(userText(agent.get().session!.turns.at(-1)!.prompt)).toBe('[app] The user rejected action #1 (Delete a).');
+  });
+
+  it('offers page chips and opens known pages only', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'app_links', { links: [{ label: 'Costs', path: '/admin/costs' }] });
+        const bad = await callTool(task, 'app_open', { path: 'https://evil.example' });
+        await callTool(task, 'app_open', { path: '/admin/costs' });
+        return String(bad.isError);
+      },
+    ]);
+    const started = Date.now();
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], pages: () => ['/admin/costs'] });
+    await post(base, '/send', { text: 'where are costs?' });
+    const state = await settle(agent);
+    expect(lastText(agent)).toBe('true');
+    expect(state.links).toEqual([{ turnId: 1, label: 'Costs', path: '/admin/costs' }]);
+    // Time-based, so a restarted backend's ids never repeat one the page already followed.
+    expect(state.navigation).toEqual({ id: expect.any(Number), path: '/admin/costs' });
+    expect(state.navigation!.id).toBeGreaterThanOrEqual(started);
+  });
+
+  it('switches mode and agent between turns and starts a fresh conversation', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'app-agent-dev-'));
+    const use = fakeAgent([], 'one');
+    const dev = fakeAgent([], 'one');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: (mode) => [mode === 'dev' ? dev.agent : use.agent],
+      dev: { cwd: dir, commands: ['npm test'] },
+    });
+    expect(agent.get().modes).toEqual(['use', 'dev']);
+    expect((await post(base, '/config', { mode: 'nope' })).status).toBe(400);
+    expect((await post(base, '/config', { agent: 'missing' })).status).toBe(400);
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'fix it' });
+    await settle(agent);
+    expect(dev.tasks[0]!.cwd).toBe(dir);
+    expect(dev.tasks[0]!.prompt).toContain('You may run: npm test.');
+    expect(use.tasks).toHaveLength(0);
+  });
+
+  it('picks an agent the target mode offers when only the mode changes', async () => {
+    const use = fakeAgent([], 'reader');
+    const dev = fakeAgent([], 'editor');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: (mode) => [mode === 'dev' ? dev.agent : use.agent],
+      dev: { cwd: mkdtempSync(path.join(tmpdir(), 'app-agent-dev-')) },
+    });
+    expect((await post(base, '/config', { mode: 'dev' })).status).toBe(200);
+    expect(agent.get()).toMatchObject({ mode: 'dev', agent: 'editor' });
+    await post(base, '/config', { mode: 'use' });
+    expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
+  });
+
+  it('streams view changes and never drops pending actions at the cap', async () => {
+    let refused = '';
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        for (let i = 0; i < 55; i++) {
+          const result = await callTool(task, 'retry_job', { id: `j${i}`, approval_summary: `Retry ${i}` });
+          if (result.isError) refused = result.content![0]!.text;
+        }
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'ok' }],
+    });
+    const seen: Array<string | null> = [];
+    agent.subscribe((state) => seen.push(state.view));
+    expect((await post(base, '/view', { path: '/jobs' })).status).toBe(204);
+    expect(seen.at(-1)).toBe('/jobs');
+    await post(base, '/send', { text: 'retry all' });
+    await settle(agent);
+    expect(agent.get().actions).toHaveLength(50);
+    expect(agent.get().actions[0]!.id).toBe('1');
+    expect(refused).toContain('wait for the user');
+  });
+
+  it('refuses tool names that are taken', () => {
+    const tool = { name: 'propose_commit', description: 'x', run: () => 'ok' };
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://127.0.0.1:1/mcp', tools: [tool] })).toThrow(/taken/);
+    const twice = [
+      { ...tool, name: 'jobs' },
+      { ...tool, name: 'jobs' },
+    ];
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://127.0.0.1:1/mcp', tools: twice })).toThrow(/taken/);
+  });
+
+  it('refuses a write tool that declares the reserved approval_summary argument', () => {
+    expect(() =>
+      createAppAgent({
+        name: 'app',
+        mcpUrl: 'http://127.0.0.1:1/mcp',
+        tools: [
+          {
+            name: 'file',
+            description: 'x',
+            write: true,
+            inputSchema: { type: 'object', properties: { approval_summary: { type: 'string' } } },
+            run: () => 'ok',
+          },
+        ],
+      }),
+    ).toThrow(/approval_summary/);
+  });
+
+  it('drops a commit proposal from a session reset while it ran', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-reset-'));
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    const { agent: fake } = fakeAgent([]);
+    const agent = createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', agents: () => [fake], dev: { cwd: repo } });
+    agents.push(agent);
+    agent.configure({ mode: 'dev' });
+    const tool = agent.mcpTools().find((candidate) => candidate.name === 'propose_commit')!;
+    const call = tool.call({ message: 'Change a' });
+    agent.reset();
+    await expect(call).rejects.toThrow('This session has ended.');
+    expect(agent.get().actions).toEqual([]);
+  });
+
+  it('keeps prompts queued behind a running turn when a commit is approved', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    expect(agent.get().session!.queued).toHaveLength(1);
+    await post(base, '/actions/1', { decision: 'approve' });
+    // The commit waits for the stopped turn to wind down.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(agent.get().actions[0]!.status).toBe('running');
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+    expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
+  });
+
+  it('fails the commit when the stopped turn does not end in time', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-slow-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        // Ignores the stop.
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo }, stopTimeoutMs: 50 });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'approve' });
+    await new Promise((r) => setTimeout(r, 150));
+    // Past the timeout, while the old run still winds down: held behind the outcome.
+    await post(base, '/send', { text: 'next' });
+    expect(git('log', '--format=%s')).toBe('init\n');
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[0]!.result).toContain('did not stop in time');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeLessThan(prompts.indexOf('next'));
+  });
+
+  it('refuses a server name the drivers would refuse', () => {
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', serverName: 'shop.app' })).toThrow(/serverName/);
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', serverName: 'read' })).toThrow(
+      /permission kind/,
+    );
+  });
+
+  it('runs no action after close', async () => {
+    let ran = false;
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => ((ran = true), 'deleted') }],
+    });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    agent.close();
+    expect(() => agent.decide('1', 'approve')).toThrow(/closed/);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ran).toBe(false);
+  });
+
+  it('keeps the queue through two commits approved together', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await callTool(task, 'propose_commit', { message: 'Change a, again' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && agent.get().actions.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    expect(agent.get().session!.queued).toHaveLength(1);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/actions/2', { decision: 'approve' });
+    // The commit waits for the stopped turn to wind down.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(agent.get().actions[0]!.status).toBe('running');
+    release();
+    await settle(agent);
+    expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
+  });
+
+  it('drops the prompts a commit kept aside when the user stops', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    expect(agent.get().session!.queued).toHaveLength(1);
+    await post(base, '/actions/1', { decision: 'approve' });
+    // The commit waits for the stopped turn to wind down.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(agent.get().actions[0]!.status).toBe('running');
+    await post(base, '/stop');
+    expect(agent.get().session!.queued).toEqual([]);
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+    expect(tasks.map((task) => userText(task.prompt))).not.toContain('and then this');
+  });
+
+  it('keeps queued prompts when the commit throws', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'and then this' });
+    // The repository is gone by the time the user approves: git fails outright.
+    rmSync(path.join(repo, '.git'), { recursive: true, force: true });
+    await post(base, '/actions/1', { decision: 'approve' });
+    release();
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('failed');
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeGreaterThan(-1);
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeLessThan(prompts.indexOf('and then this'));
+  });
+
+  it('commits exactly the reviewed tree in dev mode', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-repo-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        const proposed = await callTool(task, 'propose_commit', { message: 'Change a\n\nBody.' });
+        return proposed.content![0]!.text;
+      },
+      // The commit outcome arrives as a turn of its own.
+      async () => 'noted',
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'three\n');
+        await callTool(task, 'propose_commit', { message: 'Change a again' });
+        // Edited after proposing: the reviewed tree no longer matches.
+        writeFileSync(path.join(repo, 'a.txt'), 'four\n');
+        return 'done';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    await settle(agent);
+
+    const changes = (await (await fetch(`${base}/api/agent/actions/1/changes`)).json()) as {
+      files: unknown[];
+      diff: string;
+    };
+    expect(changes.files).toEqual([{ status: 'M', path: 'a.txt' }]);
+    expect(changes.diff).toContain('+two');
+
+    await post(base, '/actions/1', { decision: 'approve' });
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+    expect(git('log', '-1', '--format=%s')).toBe('Change a\n');
+    expect(git('status', '--porcelain')).toBe('');
+
+    await post(base, '/send', { text: 'again' });
+    await settle(agent);
+    await post(base, '/actions/2', { decision: 'approve' });
+    await settle(agent);
+    expect(agent.get().actions[1]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[1]!.result).toContain('changed after they were reviewed');
+    expect(git('log', '-1', '--format=%s')).toBe('Change a\n');
+    expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
+  });
+
+  it('queues a follow-up instead of steering it into a turn with a pending commit', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-steer-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const steered: string[] = [];
+    const tasks: AgentTask[] = [];
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'steering',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(task): AgentRun {
+        tasks.push(task);
+        const done = (async () => {
+          if (tasks.length === 1) {
+            writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+            await callTool(task, 'propose_commit', { message: 'Change a' });
+            await new Promise<void>((resolve) => (release = resolve));
+          }
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          steer: async (text) => void steered.push(text),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const { agent, base } = await serve({ name: 'app', agents: () => [steering], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'also b' });
+    expect(steered).toEqual([]);
+    expect(agent.get().session!.queued).toEqual(['also b']);
+    release();
+    await settle(agent);
+  });
+
+  it('refuses to approve an older commit while a newer prompt runs', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-newer-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        return 'proposed';
+      },
+      async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'answered';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    await settle(agent);
+    await post(base, '/send', { text: 'what else?' });
+    expect(() => agent.decide('1', 'approve')).toThrow(/newer prompt/);
+    expect(agent.get().actions[0]!.status).toBe('pending');
+    release();
+    await settle(agent);
+    expect(lastText(agent)).toBe('answered');
+    agent.decide('1', 'approve');
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+  });
+
+  it('refuses an older commit while the next agent runs its own first turn', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-switch-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: first } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        return 'proposed';
+      },
+    ]);
+    const { agent: second } = fakeAgent(
+      [
+        async () => {
+          await new Promise<void>((resolve) => (release = resolve));
+          return 'answered';
+        },
+      ],
+      'second',
+    );
+    const { agent, base } = await serve({ name: 'app', agents: () => [first, second], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'second' });
+    await post(base, '/send', { text: 'what else?' });
+    expect(agent.get().session!.turns.at(-1)!.id).toBe(1);
+    expect(() => agent.decide('1', 'approve')).toThrow(/newer prompt/);
+    release();
+    await settle(agent);
+  });
+
+  it('refuses to commit a diff too large to review, whichever client approves it', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-large-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'big.txt'), 'x'.repeat(80).concat('\n').repeat(4_000));
+        await callTool(task, 'propose_commit', { message: 'Big' });
+        return 'done';
+      },
+      async () => 'noted',
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    expect((await agent.changes('1')).truncated).toBe(true);
+    agent.decide('1', 'approve');
+    await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[0]!.result).toContain('too large to review');
+    expect(git('log', '-1', '--format=%s')).toBe('init\n');
+  });
+});
+
+describe('commitTree', () => {
+  it('undoes a commit whose hook rewrote the reviewed files', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho hooked > a.txt\ngit add a.txt\n', {
+      mode: 0o755,
+    });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('commit hook changed the files');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    expect(git('diff', '--cached', '--name-only')).toBe('');
+    expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
+  });
+
+  it('refuses a commit whose hook rewrote a file without staging it', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho hooked > a.txt\n', { mode: 0o755 });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('commit hook changed the files');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
+  });
+
+  it('runs a failing hook once, whatever it prints', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    // Fails the first time only, saying something that looks like an old Git.
+    const mark = path.join(repo, '.git', 'ran');
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      `#!/bin/sh\n[ -e "${mark}" ] && exit 0\ntouch "${mark}"\necho "git: 'x' is not a git command" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
+  it('leaves a commit a post-commit hook makes on top of its own alone', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    // Another commit lands right after ours, with a different tree.
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'post-commit'),
+      '#!/bin/sh\n[ -n "$INNER" ] && exit 0\necho b > b.txt\ngit add b.txt\nINNER=1 git commit -qm other\n',
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(true);
+    expect(git('log', '--format=%s')).toBe('other\nChange a\ninit\n');
+    // The hook's own commit builds on the approved tree, not on the user's older index.
+    expect(git('show', 'HEAD:a.txt')).toBe('two\n');
+  });
+
+  it('commits only to the branch that was reviewed', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    git('branch', 'other');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    expect(reviewed.ref).toBe('refs/heads/main');
+    // Same commit, other branch: tree and base still match.
+    git('checkout', '-q', 'other');
+    const refused = await commitTree(repo, reviewed, 'Change a');
+    expect(refused.ok).toBe(false);
+    expect(refused.output).toContain('another branch');
+
+    // A hook that switches branches mid-commit moves neither of them.
+    git('checkout', '-q', 'main');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'commit-msg'), '#!/bin/sh\ngit checkout -q other\n', {
+      mode: 0o755,
+    });
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s', 'main')).toBe('init\n');
+    expect(git('log', '--format=%s', 'other')).toBe('init\n');
+  });
+
+  it('refuses the commit once HEAD moved after the review', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // Another worktree commits to the branch; this worktree's files still match the review.
+    git('commit', '-q', '--allow-empty', '-m', 'elsewhere');
+    expect((await treeChanges(repo, reviewed)).files).toEqual([{ status: 'M', path: 'a.txt' }]);
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('HEAD moved after the changes were reviewed');
+    expect(git('log', '--format=%s')).toBe('elsewhere\ninit\n');
+  });
+
+  it('leaves the index alone when something staged while committing', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // While the hook runs, the user stages a new file in their own index (the worktree stays as reviewed).
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      '#!/bin/sh\nblob=$(echo c | git hash-object -w --stdin)\nenv -u GIT_INDEX_FILE git update-index --add --cacheinfo 100644,$blob,c.txt\n',
+      { mode: 0o755 },
+    );
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('changed while committing, so the index was left as is');
+    expect(git('diff', '--cached', '--name-only')).toContain('c.txt');
+  });
+
+  it('leaves the index to another Git process that holds its lock', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    // Another `git add` is writing the user's index when the commit lands.
+    writeFileSync(path.join(repo, '.git', 'hooks', 'post-commit'), '#!/bin/sh\n: > .git/index.lock\n', {
+      mode: 0o755,
+    });
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('the index was left as is');
+    expect(existsSync(path.join(repo, '.git', 'index.lock'))).toBe(true);
+  });
+
+  it('refuses to commit while a merge is in progress', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    writeFileSync(path.join(repo, '.git', 'MERGE_HEAD'), git('rev-parse', 'HEAD'));
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('A merge is in progress');
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
+  it('leaves a merge started during the commit alone', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    git('commit', '-q', '--allow-empty', '-m', 'side');
+    const side = git('rev-parse', 'HEAD').trim();
+    git('reset', '-q', '--hard', 'HEAD^');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // Something starts a merge while the hook runs.
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      `#!/bin/sh\necho ${side} > "$(git rev-parse --git-path MERGE_HEAD)"\n`,
+      { mode: 0o755 },
+    );
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('A merge started while committing');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    expect(readFileSync(path.join(repo, '.git', 'MERGE_HEAD'), 'utf8').trim()).toBe(side);
+  });
+
+  it('commits nothing when a merge starts while the commit is signed', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-sign-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    const signer = path.join(repo, '.git', 'fake-gpg');
+    writeFileSync(
+      signer,
+      [
+        '#!/bin/sh',
+        'git rev-parse HEAD > "$(git rev-parse --git-path MERGE_HEAD)"',
+        'cat > /dev/null',
+        "printf -- '-----BEGIN PGP SIGNATURE-----\\nx\\n-----END PGP SIGNATURE-----\\n'",
+        "printf '\\n[GNUPG:] SIG_CREATED \\n' >&2",
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    git('config', 'commit.gpgSign', 'true');
+    git('config', 'gpg.format', 'openpgp');
+    git('config', 'gpg.program', signer);
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.output).toContain('A merge started while committing, so nothing was committed');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
+  it('drops its commit when HEAD moves while the hooks run, and applies commit-msg', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'commit-msg'),
+      '#!/bin/sh\nprintf "\\nChecked-by: hook\\n" >> "$1"\n',
+      {
+        mode: 0o755,
+      },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    expect((await commitTree(repo, await snapshotTree(repo), 'Change a')).ok).toBe(true);
+    expect(git('log', '-1', '--format=%B')).toBe('Change a\n\nChecked-by: hook\n\n');
+
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      '#!/bin/sh\nenv -u GIT_INDEX_FILE git commit -q --allow-empty --no-verify -m elsewhere\n',
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'three\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change again');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('HEAD moved while committing');
+    expect(git('log', '--format=%s')).toBe('elsewhere\nChange a\ninit\n');
+  });
+
+  it("keeps the user's index when the commit fails", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    writeFileSync(path.join(repo, 'b.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    writeFileSync(path.join(repo, 'b.txt'), 'two\n');
+    git('add', 'a.txt');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change');
+    expect(result.ok).toBe(false);
+    expect(git('diff', '--cached', '--name-only')).toBe('a.txt\n');
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+});
+
+describe('first commit', () => {
+  it('works in a repository without commits', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-unborn-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    const tree = await snapshotTree(repo);
+    expect((await treeChanges(repo, tree)).files).toEqual([{ status: 'A', path: 'a.txt' }]);
+    expect((await commitTree(repo, tree, 'First')).ok).toBe(true);
+    expect(git('log', '--format=%s')).toBe('First\n');
+    expect(git('status', '--porcelain')).toBe('');
+    writeFileSync(path.join(repo, 'b.bin'), Buffer.from([0, 1, 2, 0]));
+    expect((await treeChanges(repo, await snapshotTree(repo))).binary).toEqual(['b.bin']);
+  });
+});
+
+describe('conversation across switches', () => {
+  it('keeps earlier turns as history, carries a transcript to the next agent, and reset clears it', async () => {
+    const one = fakeAgent([], 'one');
+    const two = fakeAgent([], 'two');
+    const records: Array<{ kind: string }> = [];
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      pages: () => ['/a'],
+      trace: (record) => records.push(record),
+    });
+    one.tasks.length = 0;
+    await post(base, '/send', { text: 'first question' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    let state = agent.get();
+    expect(state.session).toBeNull();
+    expect(state.history.map((turn) => [turn.id, turn.agent])).toEqual([[-1, 'one']]);
+
+    await post(base, '/send', { text: 'second' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain(
+      'Earlier in this conversation, with another agent or mode:\nUser: first question\none: echo: first question',
+    );
+    expect(userText(two.tasks[0]!.prompt)).toBe('second');
+
+    expect(records.map((record) => record.kind)).toEqual(['prompt', 'session', 'turn', 'prompt', 'session', 'turn']);
+
+    await post(base, '/reset');
+    state = agent.get();
+    expect(state.history).toEqual([]);
+    await post(base, '/send', { text: 'fresh' });
+    await settle(agent);
+    expect(two.tasks.at(-1)!.prompt).not.toContain('Earlier in this conversation');
+  });
+
+  it('carries input steered into a turn to the next agent', async () => {
+    let release = () => {};
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'one',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(): AgentRun {
+        const done = new Promise<AgentResult>((resolve) => (release = () => resolve(result)));
+        return {
+          result: done,
+          abort() {},
+          steer: async () => {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'message', text: 'looking' } as AgentEvent;
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({ name: 'app', agents: () => [steering, two.agent] });
+    await post(base, '/send', { text: 'first' });
+    for (let i = 0; i < 200 && !agent.get().session?.turns[0]?.entries.length; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await post(base, '/send', { text: 'and this too' });
+    release();
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/send', { text: 'next' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('User: first\none: looking\nUser: and this too\none: (no answer)');
+  });
+
+  it('drops a rejection from an async trace sink', async () => {
+    const { agent: fake } = fakeAgent([]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      trace: () => Promise.reject(new Error('disk full')) as unknown as void,
+    });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(agent.get().session!.status).toBe('idle');
+  });
+
+  it('traces a turn whose tool input JSON cannot hold', async () => {
+    const cyclic: Record<string, unknown> = { n: 1n };
+    cyclic.self = cyclic;
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+    const odd: CodingAgent = {
+      name: 'odd',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true },
+      run: () => ({
+        result: Promise.resolve(result),
+        abort() {},
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'tool-start', id: 't1', name: 'big', input: { n: 2n } } as AgentEvent;
+          yield { type: 'tool-start', id: 't2', name: 'loop', input: cyclic } as AgentEvent;
+          yield { type: 'done', result } as AgentEvent;
+        },
+      }),
+    };
+    const records: Array<{ kind: string; entries?: unknown[] }> = [];
+    const { agent, base } = await serve({ name: 'app', agents: () => [odd], trace: (record) => records.push(record) });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    expect(agent.get().session!.status).toBe('idle');
+    const turn = records.find((record) => record.kind === 'turn');
+    expect(turn?.entries?.map((entry) => (entry as { input?: string }).input)).toEqual([
+      '{"n":"2"}',
+      '{"n":"1","self":"[Circular]"}',
+    ]);
+    // The session state keeps the raw input; serving it must not throw.
+    const state = await fetch(`${base}/api/agent/state`);
+    expect(state.status).toBe(200);
+    expect(JSON.stringify(await state.json())).toContain('[Circular]');
+  });
+
+  it('tells the next agent how an action proposed before a switch ended', async () => {
+    const one = fakeAgent(
+      [
+        async (task) => {
+          await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+          return 'proposed';
+        },
+      ],
+      'one',
+    );
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/actions/1', { decision: 'approve' });
+    await settle(agent);
+    await post(base, '/send', { text: 'done?' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('The user approved action #1 (Retry j1). Result:\nretried');
+  });
+
+  it('carries a note the stopped session still held to the next agent', async () => {
+    let release = () => {};
+    const one = fakeAgent(
+      [
+        async (task) => {
+          await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+          await new Promise<void>((resolve) => (release = resolve));
+          return 'proposed';
+        },
+      ],
+      'one',
+    );
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'reject' });
+    await post(base, '/stop');
+    release();
+    await settle(agent);
+    expect(agent.get().session!.notes).toHaveLength(1);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/send', { text: 'next' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('The user rejected action #1 (Retry j1).');
+  });
+
+  it('answers the agent CLI permission prompts through the handler', async () => {
+    let resolveApproval: (decision: string) => void = () => {};
+    const asked: CodingAgent = {
+      name: 'asker',
+      command: process.execPath,
+      capabilities: { approvals: true },
+      run(task): AgentRun {
+        const decision = task.onApproval!({ id: 'ap1', kind: 'command', summary: 'npm test' });
+        const result = Promise.resolve(decision).then((answer) => {
+          resolveApproval(answer);
+          return { status: 'completed', ok: true, exitCode: 0, signal: null } as AgentResult;
+        });
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'approval-request',
+              request: { id: 'ap1', kind: 'command', summary: 'npm test' },
+            } as AgentEvent;
+            yield { type: 'done', result: await result } as AgentEvent;
+          },
+        };
+      },
+    };
+    const answered = new Promise<string>((resolve) => (resolveApproval = resolve));
+    const { agent, base } = await serve({ name: 'app', agents: () => [asked] });
+    await post(base, '/send', { text: 'test it' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(agent.get().session!.approvals.map((request) => request.id)).toEqual(['ap1']);
+    expect((await post(base, '/approvals/ap1', { decision: 'maybe' })).status).toBe(400);
+    expect((await post(base, '/approvals/ap1', { decision: 'approve' })).status).toBe(200);
+    expect(await answered).toBe('approve');
+    expect((await post(base, '/approvals/ap1', { decision: 'approve' })).status).toBe(404);
+  });
+});
+
+describe('createAppAgentHandler', () => {
+  it('guards the MCP endpoint and refuses cross-site requests', async () => {
+    const { agent: fake } = fakeAgent([]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake] });
+    const rpc = { jsonrpc: '2.0', id: 1, method: 'tools/list' };
+    expect((await post(base, '/mcp', rpc)).status).toBe(401);
+    expect((await post(base, '/mcp', rpc, { authorization: 'Bearer nope' })).status).toBe(401);
+    const bearer = { authorization: `Bearer ${agent.mcpToken}` };
+    expect((await post(base, '/mcp', rpc, { ...bearer, origin: base })).status).toBe(403);
+    expect((await post(base, '/mcp', rpc, bearer)).status).toBe(200);
+    expect((await post(base, '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, bearer)).status).toBe(
+      202,
+    );
+
+    // A dropped session's late calls are refused.
+    agent.reset();
+    expect((await post(base, '/mcp', rpc, bearer)).status).toBe(401);
+    expect((await post(base, '/mcp', rpc, { authorization: `Bearer ${agent.mcpToken}` })).status).toBe(200);
+
+    expect((await post(base, '/send', { text: 'x' }, { origin: 'http://evil.example' })).status).toBe(403);
+    expect((await post(base, '/send', { text: 'x' }, { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await fetch(`${base}/api/agent/state`, { headers: { 'sec-fetch-site': 'same-site' } })).status).toBe(403);
+    expect((await post(base, '/send', { text: '  ' })).status).toBe(400);
+    expect((await fetch(`${base}/other`)).status).toBe(404);
+
+    // DNS rebinding: the attacker's name still arrives as Host.
+    const status = (host: string) =>
+      new Promise<number>((resolve, reject) => {
+        const url = new URL(`${base}/api/agent/state`);
+        request({ hostname: url.hostname, port: url.port, path: url.pathname, headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode!);
+        })
+          .on('error', reject)
+          .end();
+      });
+    expect(await status('rebind.example:80')).toBe(403);
+    expect(await status(`localhost:${new URL(base).port}`)).toBe(200);
+  });
+
+  it('refuses switching or starting over while an action runs', async () => {
+    let finish = () => {};
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const other = fakeAgent([], 'other');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake, other.agent],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = () => resolve('retried'))),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    expect(agent.get().actions[0]!.status).toBe('running');
+    expect((await post(base, '/config', { agent: 'other' })).status).toBe(409);
+    expect((await post(base, '/reset')).status).toBe(409);
+    finish();
+    await settle(agent);
+    expect((await post(base, '/config', { agent: 'other' })).status).toBe(200);
+  });
+
+  it('drops pending actions when the user starts over', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/reset');
+    expect(agent.get().actions[0]).toMatchObject({ status: 'rejected' });
+    expect((await post(base, '/actions/1', { decision: 'approve' })).status).toBe(409);
+  });
+
+  it('asks the app to authorize everything but MCP, and streams state', async () => {
+    const { agent: fake } = fakeAgent([]);
+    const { agent, base } = await serve(
+      { name: 'app', agents: () => [fake] },
+      { authorize: (req) => req.headers.cookie === 'session=ok' },
+    );
+    expect((await fetch(`${base}/api/agent/state`)).status).toBe(403);
+    const ok = { cookie: 'session=ok' };
+    expect((await fetch(`${base}/api/agent/state`, { headers: ok })).status).toBe(200);
+    const rpc = { jsonrpc: '2.0', id: 1, method: 'ping' };
+    expect((await post(base, '/mcp', rpc, { authorization: `Bearer ${agent.mcpToken}` })).status).toBe(200);
+
+    const controller = new AbortController();
+    const response = await fetch(`${base}/api/agent/events`, { headers: ok, signal: controller.signal });
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    const reader = response.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(JSON.parse(first.replace(/^data: /, '').trim())).toMatchObject({ name: 'app', mode: 'use', agent: 'fake' });
+    controller.abort();
+  });
+});

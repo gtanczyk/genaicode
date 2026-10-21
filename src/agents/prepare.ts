@@ -18,7 +18,8 @@ export interface PrepareContext {
   readonly signal: AbortSignal;
 }
 
-const MCP_NAME = /^[A-Za-z0-9_-]+$/;
+/** MCP server names every driver accepts. */
+export const MCP_NAME = /^[A-Za-z0-9_-]+$/;
 
 /** Reject a task the agent cannot honor before anything is spawned. */
 export function unsupportedTask(name: string, capabilities: AgentCapabilities, task: AgentTask): string | undefined {

@@ -4,6 +4,24 @@
 
 ### Added
 
+- `genaicode/app-agent`: a coding agent inside your own local app. `createAppAgent` serves the
+  app's tools to the agent over MCP, turns write tools into actions the user approves, gives
+  the agent the open page with link chips and navigation, and in `dev` mode lets it edit the
+  app and propose a commit of exactly the reviewed tree. `createAppAgentHandler` serves it to
+  the page over HTTP and server-sent events, for any Node server. Switching agent or mode keeps
+  the conversation, `trace` logs prompts, MCP calls, decisions and turns, and
+  `POST /approvals/:id` answers the agent CLI's own permission prompts.
+- `genaicode/react`: `AppAgentChat`, the page side of an app agent (chat, link chips, action
+  cards with the commit diff, agent and mode pickers), and `useAppAgent` for a page of your own.
+- `codex({ config })`: extra `-c key=value` overrides, e.g. `{ 'features.shell_tool': false }`.
+- `codex({ onlyTaskMcpServers })` and `copilot({ onlyTaskMcpServers })`: switch off the MCP
+  servers the CLI loads from its own config, leaving only the task's. The app agent uses it.
+- `copilot({ excludedTools })`: `--excluded-tools`, e.g. `['web_fetch', 'web_search']`.
+- `claude({ settings })`: `--settings` above the user's and the project's, e.g.
+  `{ disableAllHooks: true }`; merged with the sandbox settings of `task.permissions`.
+- `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
+  prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
+  `send(text, { queue: true })` waits for its own turn instead of steering a running one.
 - `genaicode/react` exports `useFollowScroll`, the hook that keeps a transcript at its newest
   line until the user scrolls up (`<AgentChat>` now uses it, and also re-pins when its box is
   resized), and `installResizeHandle` with `storedSize`: a framework-free panel-edge resize
@@ -12,6 +30,11 @@
 
 ### Fixed
 
+- `codex()` reads MCP tool results: a successful call (`error: null`) is no longer reported as
+  failed, and its text becomes the tool output. `codex exec` never asks for approval, so it now
+  pre-approves the tools of `task.mcpServers` (`default_tools_approval_mode`); before, Codex
+  refused every call to them. `allowMcpTools: false` keeps the old behavior.
+- `<AgentChat>` can shrink in a flex container narrower than its widest line.
 - Anthropic structured outputs: the converter drops the schema keywords the API rejects with a
   400 (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `maxItems`,
   `uniqueItems`) and lowers `minItems` above 1 to 1, the largest value accepted. It walks only

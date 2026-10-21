@@ -86,9 +86,23 @@ describe('MCP servers', () => {
     const result = await codex({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
     const report = JSON.parse(result.text!);
     expect(report.args.slice(0, 2)).toEqual(['-c', 'mcp_servers.docs.url="https://mcp.example/docs"']);
-    expect(report.args.indexOf('exec')).toBe(10);
+    // exec never asks, so it pre-approves the task's own servers.
+    expect(report.args).toContain('mcp_servers.docs.default_tools_approval_mode="approve"');
+    expect(report.args).toContain('mcp_servers.fs.default_tools_approval_mode="approve"');
+    expect(report.args.indexOf('exec')).toBe(14);
+    const strict = await codex({ command: bin, allowMcpTools: false }).run({
+      prompt: 'p',
+      cwd: dir,
+      mcpServers: servers,
+    }).result;
+    expect(JSON.parse(strict.text!).args.join(' ')).not.toContain('default_tools_approval_mode');
     expect(report.args.join(' ')).not.toContain('secret');
     expect(report.header).toBe('Bearer secret');
+  });
+
+  it('quotes a codex server name that is not a bare TOML key', () => {
+    const { args } = codexMcpOverrides([{ name: 'shop.app', url: 'http://127.0.0.1:1/mcp' }]);
+    expect(args).toEqual(['-c', 'mcp_servers."shop.app".url="http://127.0.0.1:1/mcp"']);
   });
 
   it('refuses two codex stdio servers that need different values for one variable', async () => {

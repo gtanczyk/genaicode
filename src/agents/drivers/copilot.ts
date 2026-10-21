@@ -6,6 +6,7 @@ import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../pe
 import { isHttpServer, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
+import { configuredMcpServers } from './mcp-isolation.js';
 
 export interface CopilotAgentOptions {
   /** Executable name or path. Default `copilot`. */
@@ -19,10 +20,18 @@ export interface CopilotAgentOptions {
   allowTools?: readonly string[];
   /** Permission patterns passed as `--deny-tool`, e.g. `shell` or `shell(rm)`. */
   denyTools?: readonly string[];
+  /** Tools removed from the model altogether (`--excluded-tools`), e.g. `web_fetch`, `web_search`. */
+  excludedTools?: readonly string[];
   /** Keep the `ask_user` tool. Default false (`--no-ask-user`): a headless run has nobody to ask. */
   askUser?: boolean;
   /** With `task.mcpServers` and `allowAllTools: false`: pre-allow every tool of those servers. Default true. */
   allowMcpTools?: boolean;
+  /**
+   * Switch off the built-in MCP servers and every server Copilot would load from its own config
+   * (user, workspace, plugins), leaving only the task's. Lists them with `copilot mcp list --json`
+   * first; the run fails if that fails.
+   */
+  onlyTaskMcpServers?: boolean;
 }
 
 const EDIT_TOOLS = new Set(['edit', 'create', 'str_replace_editor']);
@@ -45,8 +54,29 @@ export function copilot(options: CopilotAgentOptions = {}): CodingAgent {
   });
 }
 
+/** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
+export async function prepareCopilot(task: AgentTask, options: CopilotAgentOptions): Promise<PreparedRun> {
+  const prepared = writeCopilotMcp(task, options);
+  if (!options.onlyTaskMcpServers) return prepared;
+  try {
+    const others = await configuredMcpServers(options.command ?? 'copilot', task, copilotMcpNames);
+    const off = ['--disable-builtin-mcps', ...others.map((name) => `--disable-mcp-server=${name}`)];
+    // Before `--prompt=`, which stays last.
+    return { ...prepared, args: [...off, ...prepared.args] };
+  } catch (error) {
+    prepared.cleanup?.();
+    throw error;
+  }
+}
+
+/** Server names in `copilot mcp list --json`: `{ mcpServers: { name: … } }`. */
+export function copilotMcpNames(listing: unknown): string[] {
+  if (!isObject(listing) || !isObject(listing.mcpServers)) throw new Error('expected { mcpServers }');
+  return Object.keys(listing.mcpServers);
+}
+
 /** Write the task's MCP servers to a private temp file, so header secrets stay out of argv. */
-function prepareCopilot(task: AgentTask, options: CopilotAgentOptions): PreparedRun {
+function writeCopilotMcp(task: AgentTask, options: CopilotAgentOptions): PreparedRun {
   if (!task.mcpServers?.length) return { args: copilotArgs(task, options) };
   const dir = mkdtempSync(join(tmpdir(), 'genaicode-copilot-mcp-'));
   const file = join(dir, 'mcp.json');
@@ -115,6 +145,7 @@ export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, 
   ];
   for (const tool of allowed) args.push(`--allow-tool=${tool}`);
   for (const tool of options.denyTools ?? []) args.push(`--deny-tool=${tool}`);
+  if (options.excludedTools?.length) args.push(`--excluded-tools=${options.excludedTools.join(',')}`);
   if (!options.askUser) args.push('--no-ask-user');
   if (mcpConfigPath) args.push('--additional-mcp-config', `@${mcpConfigPath}`);
   if (task.model) args.push('--model', task.model);

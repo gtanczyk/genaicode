@@ -40,6 +40,21 @@ describe('claude driver', () => {
     expect(claudeArgs({ prompt: '-x', cwd: '.' }).slice(-2)).toEqual(['--', '-x']);
   });
 
+  it('passes claude settings once, merged with the sandbox ones', () => {
+    const settings = { disableAllHooks: true };
+    const plain = claudeArgs({ prompt: 'hi', cwd: '.' }, { settings });
+    expect(plain.slice(plain.indexOf('--settings'), plain.indexOf('--settings') + 2)).toEqual([
+      '--settings',
+      '{"disableAllHooks":true}',
+    ]);
+    const sandboxed = claudeArgs({ prompt: 'hi', cwd: '.', permissions: { sandbox: 'read-only' } }, { settings });
+    expect(sandboxed.filter((arg) => arg === '--settings')).toHaveLength(1);
+    expect(JSON.parse(sandboxed[sandboxed.indexOf('--settings') + 1]!)).toEqual({
+      disableAllHooks: true,
+      sandbox: { enabled: false },
+    });
+  });
+
   it('decodes stream-json into agent events', () => {
     const parser = createClaudeParser();
     const events = feed(parser, [
@@ -113,6 +128,19 @@ describe('codex driver', () => {
       'read-only',
       'go',
     ]);
+    expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'features.shell_tool': false, x: 'y' } })).toEqual([
+      'exec',
+      '--json',
+      '--sandbox',
+      'workspace-write',
+      '--skip-git-repo-check',
+      '-c',
+      'features.shell_tool=false',
+      '-c',
+      'x="y"',
+      'go',
+    ]);
+    expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'a.roots': [] } })).toContain('a.roots=[]');
   });
 
   it('decodes exec JSONL into agent events', () => {
@@ -135,6 +163,24 @@ describe('codex driver', () => {
           error: { message: 'denied' },
         },
       },
+      { type: 'item.started', item: { id: 'i5', type: 'mcp_tool_call', server: 'docs', tool: 'read' } },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'i5',
+          type: 'mcp_tool_call',
+          server: 'docs',
+          tool: 'read',
+          status: 'completed',
+          error: null,
+          result: {
+            content: [
+              { type: 'text', text: 'page one' },
+              { type: 'text', text: 'page two' },
+            ],
+          },
+        },
+      },
       { type: 'item.completed', item: { id: 'i4', type: 'agent_message', text: 'All set.' } },
       { type: 'turn.completed', usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 3 } },
     ]);
@@ -145,6 +191,8 @@ describe('codex driver', () => {
       { type: 'file-change', paths: ['a.ts'] },
       { type: 'tool-start', id: 'i3', name: 'docs/search', input: undefined },
       { type: 'tool-end', id: 'i3', name: 'docs/search', isError: true, output: 'denied' },
+      { type: 'tool-start', id: 'i5', name: 'docs/read', input: undefined },
+      { type: 'tool-end', id: 'i5', name: 'docs/read', isError: false, output: 'page one\npage two' },
       { type: 'message', text: 'All set.' },
       { type: 'usage', usage: { inputTokens: 7, outputTokens: 3, cachedInputTokens: 2, totalTokens: 10 } },
     ]);

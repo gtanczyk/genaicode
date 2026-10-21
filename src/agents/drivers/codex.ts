@@ -3,6 +3,7 @@ import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../pe
 import { isHttpServer, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer, SandboxPolicy } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
+import { configuredMcpServers } from './mcp-isolation.js';
 
 export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access';
 
@@ -13,6 +14,18 @@ export interface CodexAgentOptions {
   sandbox?: CodexSandbox;
   /** Allow running outside a git repository. Default true. */
   skipGitRepoCheck?: boolean;
+  /**
+   * With `task.mcpServers`: pre-approve every tool of those servers. Default true: exec never
+   * asks, so without it Codex refuses each call as needing approval.
+   */
+  allowMcpTools?: boolean;
+  /** Extra `-c key=value` config overrides, e.g. `{ 'features.shell_tool': false }`. */
+  config?: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+  /**
+   * Switch off every MCP server Codex would load from its own config, leaving only the task's.
+   * Lists them with `codex mcp list --json` first; the run fails if that fails.
+   */
+  onlyTaskMcpServers?: boolean;
 }
 
 /** Codex's sandbox mode for a `permissions.sandbox`. */
@@ -62,7 +75,7 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => codexArgs(task, options),
-    prepare: (task) => withCodexMcp(task, codexArgs(task, options)),
+    prepare: (task) => prepareCodex(task, options),
     createParser: createCodexParser,
   });
 }
@@ -77,16 +90,76 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (options.skipGitRepoCheck ?? true) args.push('--skip-git-repo-check');
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);
+  for (const [key, value] of Object.entries(options.config ?? {})) args.push('-c', `${key}=${JSON.stringify(value)}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   // `exec resume <id> <prompt>` takes the prompt after the session id; exec's own flags stay before it.
   if (task.resume) args.push('resume', task.resume);
   return [...args, ...positionalPrompt(task.prompt)];
 }
 
+/** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
+export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
+  const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
+  if (!options.onlyTaskMcpServers) return prepared;
+  let listed: string[] = [];
+  const others = await configuredMcpServers(options.command ?? 'codex', task, (listing) => {
+    const servers = codexMcpServers(listing);
+    listed = servers.map((server) => server.name);
+    return servers;
+  });
+  // `-c` merges into a table the config already has (a stdio server keeps its `command` next to the
+  // task's `url`), and no override removes a key: a task server must not reuse a configured name.
+  const clash = task.mcpServers?.find((server) => listed.includes(server.name));
+  if (clash) {
+    throw new Error(
+      `Codex already has an MCP server named "${clash.name}"; the task's server would merge into it. Give the task's server another name.`,
+    );
+  }
+  const off = others.flatMap(({ name, transport }) => {
+    const key = `mcp_servers.${tomlKey(name)}`;
+    // A server only a plugin defines has no transport in the config table, and Codex refuses a
+    // table without one: repeat the listed one next to `enabled=false`.
+    const keep = Object.entries(transport).flatMap(([field, value]) => [
+      '-c',
+      `${key}.${field}=${JSON.stringify(value)}`,
+    ]);
+    return ['-c', `${key}.enabled=false`, ...keep];
+  });
+  return { ...prepared, args: [...off, ...prepared.args] };
+}
+
+/**
+ * Servers in `codex mcp list --json`, an array of `{ name, transport }`, each with the field
+ * that makes its transport valid (`command` or `url`).
+ */
+export function codexMcpServers(
+  listing: unknown,
+): Array<{ name: string; transport: { command?: string; url?: string } }> {
+  if (!Array.isArray(listing)) throw new Error('expected an array');
+  return listing.flatMap((server) => {
+    if (!isObject(server) || typeof server.name !== 'string') return [];
+    const listed = isObject(server.transport) ? server.transport : {};
+    const transport =
+      typeof listed.command === 'string'
+        ? { command: listed.command }
+        : typeof listed.url === 'string'
+          ? { url: listed.url }
+          : {};
+    return [{ name: server.name, transport }];
+  });
+}
+
+/** Server names in `codex mcp list --json`. */
+export function codexMcpNames(listing: unknown): string[] {
+  return codexMcpServers(listing).map((server) => server.name);
+}
+
+const tomlKey = (name: string) => (/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name));
+
 /** Prefix `args` with the task's MCP servers as `-c mcp_servers.*` config overrides. */
-export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
+export function withCodexMcp(task: AgentTask, args: string[], options: { approveTools?: boolean } = {}): PreparedRun {
   if (!task.mcpServers?.length) return { args };
-  const mcp = codexMcpOverrides(task.mcpServers);
+  const mcp = codexMcpOverrides(task.mcpServers, options);
   return { args: [...mcp.args, ...args], env: mcp.env };
 }
 
@@ -94,13 +167,17 @@ export function withCodexMcp(task: AgentTask, args: string[]): PreparedRun {
  * Config overrides for Codex MCP servers. Secrets never go on the command line: HTTP
  * header values travel in environment variables (`env_http_headers`), and a stdio
  * server's `env` is set on Codex's environment and forwarded by name (`env_vars`).
+ * `approveTools` sets each server's `default_tools_approval_mode` to `approve`.
  */
-export function codexMcpOverrides(servers: readonly McpServer[]): { args: string[]; env: Record<string, string> } {
+export function codexMcpOverrides(
+  servers: readonly McpServer[],
+  options: { approveTools?: boolean } = {},
+): { args: string[]; env: Record<string, string> } {
   const args: string[] = [];
   const env: Record<string, string> = {};
   const set = (key: string, value: string) => args.push('-c', `${key}=${value}`);
   servers.forEach((server, index) => {
-    const key = `mcp_servers.${server.name}`;
+    const key = `mcp_servers.${tomlKey(server.name)}`;
     if (isHttpServer(server)) {
       set(`${key}.url`, JSON.stringify(server.url));
       const headers = Object.entries(server.headers ?? {});
@@ -126,6 +203,7 @@ export function codexMcpOverrides(servers: readonly McpServer[]): { args: string
       }
       if (entries.length) set(`${key}.env_vars`, JSON.stringify(entries.map(([name]) => name)));
     }
+    if (options.approveTools) set(`${key}.default_tools_approval_mode`, '"approve"');
   });
   return { args, env };
 }
@@ -168,13 +246,17 @@ export function createCodexParser(): AgentOutputParser {
             ...(output !== undefined ? { output } : {}),
           });
         } else if (itemType === 'mcp_tool_call') {
-          const error = stringField(item.error, 'message');
+          // A successful call carries `error: null` and the tool's answer in `result.content`.
+          const failed = item.status === 'failed' || (item.error !== undefined && item.error !== null);
+          const output = failed
+            ? (stringField(item.error, 'message') ?? stringOrNone(item.error))
+            : mcpResultText(item.result);
           events.push({
             type: 'tool-end',
             ...withId,
             name: mcpName(item),
-            isError: item.status === 'failed' || item.error !== undefined,
-            ...(error ? { output: error } : {}),
+            isError: failed,
+            ...(output ? { output } : {}),
           });
         } else if (itemType === 'file_change') {
           const paths = Array.isArray(item.changes)
@@ -215,6 +297,19 @@ export function createCodexParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+function stringOrNone(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function mcpResultText(result: unknown): string | undefined {
+  if (!isObject(result) || !Array.isArray(result.content)) return undefined;
+  const texts = result.content.flatMap((part) => {
+    const text = stringField(part, 'text');
+    return text ? [text] : [];
+  });
+  return texts.length ? texts.join('\n') : undefined;
 }
 
 function mcpName(item: Record<string, unknown>): string {

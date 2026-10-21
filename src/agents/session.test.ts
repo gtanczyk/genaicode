@@ -124,6 +124,93 @@ describe('createAgentSession', () => {
     expect(session.get().turns).toHaveLength(3);
   });
 
+  it('runs a note ahead of the waiting prompts', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('one');
+    session.send('two');
+    session.send('note', { note: true });
+    expect(session.get().queued).toEqual(['two']);
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['one', 'note', 'two']);
+  });
+
+  it('never steers a note and keeps it through a stop until the next prompt', async () => {
+    const gate = deferred();
+    const { agent, steered, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}], {
+      steer: true,
+    });
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('note', { note: true });
+    expect(steered).toEqual([]);
+    session.stop();
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start']);
+    session.send('next');
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'note', 'next']);
+  });
+
+  it('plays held notes before a newer note', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('old', { note: true });
+    session.stop();
+    gate.resolve();
+    await session.idle();
+    session.send('new', { note: true });
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'old', 'new']);
+  });
+
+  it('releases held notes when a newer note arrives while the stopped turn winds down', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('old', { note: true });
+    session.stop();
+    session.send('new', { note: true });
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'old', 'new']);
+  });
+
+  it('puts back a note whose turn a stop cut short', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('outcome', { note: true });
+    session.stop();
+    gate.resolve();
+    await session.idle();
+    expect(session.get().notes).toEqual(['outcome']);
+    session.send('next');
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['outcome', 'outcome', 'next']);
+  });
+
+  it('queues instead of steering when asked to', async () => {
+    const gate = deferred();
+    const { agent, steered, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}], {
+      steer: true,
+    });
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('later', { queue: true });
+    expect(steered).toEqual([]);
+    expect(session.get().queued).toEqual(['later']);
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'later']);
+  });
+
   it('steers a running agent that supports it', async () => {
     const gate = deferred();
     const { agent, steered } = fakeAgent([() => gate.promise.then(() => ({}))], { steer: true });
