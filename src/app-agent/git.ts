@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { TreeChanges } from './state.js';
@@ -40,8 +40,7 @@ async function emptyTree(repo: string): Promise<string> {
   }
 }
 
-// `git commit` would take these over (a merge commit, a finished cherry-pick) even on a scratch
-// index, leaving the user's own operation half done.
+// A commit in the middle of one of these would leave the user's own operation half done.
 const OPERATIONS: Array<[string, string]> = [
   ['MERGE_HEAD', 'merge'],
   ['CHERRY_PICK_HEAD', 'cherry-pick'],
@@ -114,8 +113,10 @@ export async function treeChanges(repo: string, { tree, base: from }: Snapshot):
 
 /**
  * Commit the snapshot only while the worktree and HEAD still match it, so what was reviewed is
- * what lands. The commit goes through a scratch index: a failed commit leaves the user's index
- * as it was.
+ * what lands. Built from plumbing rather than `git commit`: the hooks run on a scratch index (the
+ * user's index stays as it was), a hook that changes the files stops the commit before it exists,
+ * HEAD moves only from the reviewed base, and a merge or cherry-pick in progress is never taken
+ * over.
  */
 export async function commitTree(
   repo: string,
@@ -123,70 +124,130 @@ export async function commitTree(
   message: string,
 ): Promise<{ ok: boolean; output: string }> {
   const busy = await operationInProgress(repo);
-  if (busy) {
-    return {
-      ok: false,
-      output: `A ${busy} is in progress in this repository. Finish or abort it, then ask the agent to propose the commit again.`,
-    };
-  }
+  if (busy) return refuse(`A ${busy} is in progress in this repository. Finish or abort it`);
   const current = await snapshotTree(repo);
-  if (current.base !== base) {
-    return {
-      ok: false,
-      output: 'HEAD moved after the changes were reviewed. Ask the agent to propose the commit again.',
-    };
-  }
-  if (current.tree !== tree) {
-    return {
-      ok: false,
-      output: 'The files changed after they were reviewed. Ask the agent to propose the commit again.',
-    };
-  }
+  if (current.base !== base) return refuse('HEAD moved after the changes were reviewed');
+  if (current.tree !== tree) return refuse('The files changed after they were reviewed');
+
   // The user's own index, to tell later whether something staged meanwhile.
   const staged = await indexTree(repo);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
-  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') };
-  let commit;
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index'), GIT_EDITOR: ':' };
+  const messageFile = path.join(dir, 'COMMIT_EDITMSG');
+  const logs: string[] = [];
+  let made: string;
+  let subject = '';
   try {
     await must(repo, ['read-tree', tree], env);
-    // Hooks run as usual, on the scratch index; they can take a while.
-    commit = await runGit(repo, ['commit', '-m', message], { timeoutMs: 20 * 60_000, env });
+    const pre = await runHook(repo, 'pre-commit', [], env);
+    logs.push(pre.output);
+    if (!pre.ok) return done(false, logs, 'The pre-commit hook failed, so nothing was committed.');
+    if ((await must(repo, ['write-tree'], env)).trim() !== tree) {
+      return done(
+        false,
+        logs,
+        'A commit hook changed the files after they were reviewed, so nothing was committed; its changes are left in the worktree. Ask the agent to propose the commit again.',
+      );
+    }
+    writeFileSync(messageFile, `${message.trim()}\n`);
+    for (const [name, args] of [
+      ['prepare-commit-msg', [messageFile, 'message']],
+      ['commit-msg', [messageFile]],
+    ] as const) {
+      const hook = await runHook(repo, name, [...args], env);
+      logs.push(hook.output);
+      if (!hook.ok) return done(false, logs, `The ${name} hook failed, so nothing was committed.`);
+    }
+    // Like `git commit -m`: whitespace is cleaned up, `#` lines are kept.
+    const finalMessage = readFileSync(messageFile, 'utf8')
+      .split('\n')
+      .map((line) => line.trimEnd())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (!finalMessage) return done(false, logs, 'The commit message is empty after the hooks ran.');
+    writeFileSync(messageFile, `${finalMessage}\n`);
+    subject = finalMessage.split('\n')[0]!;
+    // A merge started while the hooks ran is left alone: committing now would bury it.
+    const started = await operationInProgress(repo);
+    if (started) return done(false, logs, `A ${started} started while committing, so nothing was committed.`);
+    const sign = (await runGit(repo, ['config', '--bool', 'commit.gpgSign'])).stdout.trim() === 'true';
+    made = (
+      await must(repo, ['commit-tree', tree, ...(base ? ['-p', base] : []), ...(sign ? ['-S'] : []), '-F', messageFile])
+    ).trim();
+    // Only from the reviewed base: anything that moved HEAD meanwhile wins and this commit is dropped.
+    const moved = await runGit(repo, [
+      'update-ref',
+      '-m',
+      `commit: ${subject}`,
+      'HEAD',
+      made,
+      base ?? '0'.repeat(tree.length),
+    ]);
+    if (moved.code !== 0) {
+      return done(false, logs, 'HEAD moved while committing, so nothing was committed. Check the history in git.');
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  let output = `${commit.stdout}\n${commit.stderr}`.trim();
-  let ok = commit.code === 0;
-  const made = ok ? await head(repo) : null;
-  // HEAD is our commit only while its parent is the reviewed base; otherwise leave it alone.
-  const parentOf = made ? await runGit(repo, ['rev-parse', '--verify', '-q', `${made}^`]) : null;
-  const parent = parentOf?.code === 0 ? parentOf.stdout.trim() : null;
-  if (made && parent !== base) {
-    ok = false;
-    output = `${output}\n\nHEAD moved while committing, so the commit could not be checked against the review. Check the history in git.`;
-  } else if (made && (await must(repo, ['rev-parse', `${made}^{tree}`])).trim() !== tree) {
-    // A hook rewrote the files: undo the commit, its changes stay in the worktree for a new review.
-    // The expected old value refuses the undo if something else moved HEAD meanwhile.
-    const undo = await runGit(
-      repo,
-      base
-        ? ['update-ref', '-m', 'app-agent: undo hook-modified commit', 'HEAD', base, made]
-        : ['update-ref', '-d', 'HEAD', made],
+  const branch = (await runGit(repo, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim() || 'detached HEAD';
+  const summary = `[${branch} ${made.slice(0, 7)}] ${subject}`;
+  const post = await runHook(repo, 'post-commit', [], process.env);
+  logs.push(post.output);
+  // Bring the user's index to the new commit, unless something staged while committing.
+  const now = await indexTree(repo);
+  const reset = now !== null && now === staged ? await runGit(repo, ['reset', '-q']) : null;
+  if (!reset) {
+    return done(
+      true,
+      [...logs, summary],
+      'The index changed while committing, so it was left as is. Check `git status` before staging more.',
     );
-    ok = false;
-    output =
-      undo.code === 0
-        ? `${output}\n\nA commit hook changed the files after they were reviewed, so the commit was undone and its changes are left in the worktree. Ask the agent to propose the commit again.`
-        : `${output}\n\nA commit hook changed the files after they were reviewed, and HEAD moved before the commit could be undone. Check commit ${made} in git.`;
-  } else if (ok) {
-    // Bring the user's index to the new commit, unless something staged while committing.
-    // The commit landed even if this fails.
-    const now = await indexTree(repo);
-    const reset = now !== null && now === staged ? await runGit(repo, ['reset', '-q']) : null;
-    if (!reset) {
-      output = `${output}\n\nThe index changed while committing, so it was left as is. Check \`git status\` before staging more.`;
-    } else if (reset.code !== 0) {
-      output = `${output}\n\nCommitted, but resetting the index to it failed: ${reset.stderr.trim()}. Run \`git reset\` before staging more.`;
-    }
   }
+  if (reset.code !== 0) {
+    return done(
+      true,
+      [...logs, summary],
+      `Committed, but resetting the index to it failed: ${reset.stderr.trim()}. Run \`git reset\` before staging more.`,
+    );
+  }
+  return done(true, [...logs, summary]);
+}
+
+function refuse(reason: string): { ok: boolean; output: string } {
+  return { ok: false, output: `${reason}, then ask the agent to propose the commit again.` };
+}
+
+function done(ok: boolean, logs: string[], note?: string): { ok: boolean; output: string } {
+  const output = [...logs.filter(Boolean), ...(note ? [note] : [])].join('\n\n');
   return { ok, output: output.length > 8_000 ? `…${output.slice(-8_000)}` : output };
+}
+
+/** Run one of the repository's hooks the way `git commit` would; a missing hook passes. */
+async function runHook(
+  repo: string,
+  name: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ ok: boolean; output: string }> {
+  // Hooks can take a while (a test run in pre-commit).
+  const timeoutMs = 20 * 60_000;
+  // `git hook run` (Git 2.36+) finds the hook (core.hooksPath) and runs it as Git would, on any OS.
+  const viaGit = await runGit(repo, ['hook', 'run', '--ignore-missing', name, '--', ...args], { timeoutMs, env });
+  if (!/not a git command|unknown subcommand/i.test(viaGit.stderr)) {
+    return { ok: viaGit.code === 0, output: `${viaGit.stdout}\n${viaGit.stderr}`.trim() };
+  }
+  const where = await runGit(repo, ['rev-parse', '--git-path', `hooks/${name}`]);
+  const file = path.resolve(repo, where.stdout.trim());
+  try {
+    accessSync(file, constants.X_OK);
+  } catch {
+    return { ok: true, output: '' };
+  }
+  const top = (await runGit(repo, ['rev-parse', '--show-toplevel'])).stdout.trim() || repo;
+  return new Promise((resolve) => {
+    execFile(file, args, { cwd: top, env, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) =>
+      resolve({ ok: !error, output: `${String(stdout)}\n${String(stderr)}`.trim() }),
+    );
+  });
 }

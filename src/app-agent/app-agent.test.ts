@@ -210,6 +210,28 @@ describe('createAppAgent', () => {
     expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
   });
 
+  it('keeps an action done when the trace sink throws', async () => {
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+      trace: () => {
+        throw new Error('log full');
+      },
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'done', result: 'retried' });
+  });
+
   it('tells the agent about a rejection and refuses writes the tool does not validate', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {
@@ -495,7 +517,7 @@ describe('commitTree', () => {
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
   });
 
-  it('leaves a commit made on top of its own alone', async () => {
+  it('leaves a commit a post-commit hook makes on top of its own alone', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
     git('init', '-q');
@@ -512,8 +534,7 @@ describe('commitTree', () => {
     );
     writeFileSync(path.join(repo, 'a.txt'), 'two\n');
     const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
-    expect(result.ok).toBe(false);
-    expect(result.output).toContain('HEAD moved');
+    expect(result.ok).toBe(true);
     expect(git('log', '--format=%s')).toBe('other\nChange a\ninit\n');
   });
 
@@ -576,6 +597,65 @@ describe('commitTree', () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain('A merge is in progress');
     expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
+  it('leaves a merge started during the commit alone', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    git('commit', '-q', '--allow-empty', '-m', 'side');
+    const side = git('rev-parse', 'HEAD').trim();
+    git('reset', '-q', '--hard', 'HEAD^');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    // Something starts a merge while the hook runs.
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      `#!/bin/sh\necho ${side} > "$(git rev-parse --git-path MERGE_HEAD)"\n`,
+      { mode: 0o755 },
+    );
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('A merge started while committing');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    expect(readFileSync(path.join(repo, '.git', 'MERGE_HEAD'), 'utf8').trim()).toBe(side);
+  });
+
+  it('drops its commit when HEAD moves while the hooks run, and applies commit-msg', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'commit-msg'),
+      '#!/bin/sh\nprintf "\\nChecked-by: hook\\n" >> "$1"\n',
+      {
+        mode: 0o755,
+      },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    expect((await commitTree(repo, await snapshotTree(repo), 'Change a')).ok).toBe(true);
+    expect(git('log', '-1', '--format=%B')).toBe('Change a\n\nChecked-by: hook\n\n');
+
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      '#!/bin/sh\nenv -u GIT_INDEX_FILE git commit -q --allow-empty --no-verify -m elsewhere\n',
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'three\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change again');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('HEAD moved while committing');
+    expect(git('log', '--format=%s')).toBe('elsewhere\nChange a\ninit\n');
   });
 
   it("keeps the user's index when the commit fails", async () => {

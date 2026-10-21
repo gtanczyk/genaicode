@@ -206,7 +206,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let nextArchivedId = -1;
   let carryOver = '';
   let traced = new Set<number>();
-  const trace = options.trace ?? (() => {});
+  // Logging only observes: a failing sink must not change what happens (an action's status).
+  const trace = (record: Parameters<NonNullable<AppAgentOptions['trace']>>[0]) => {
+    try {
+      options.trace?.(record);
+    } catch {
+      // dropped
+    }
+  };
   const listeners = new Set<(state: AppAgentState) => void>();
 
   const get = (): AppAgentState => ({
