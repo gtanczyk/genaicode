@@ -569,6 +569,40 @@ describe('createAppAgent', () => {
     expect(tasks.map((task) => userText(task.prompt))).toContain('and then this');
   });
 
+  it('fails the commit when the stopped turn does not end in time', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-slow-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        // Ignores the stop.
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo }, stopTimeoutMs: 50 });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'approve' });
+    for (let i = 0; i < 200 && agent.get().actions[0]!.status === 'running'; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[0]!.result).toContain('did not stop in time');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    release();
+    await settle(agent);
+  });
+
   it('keeps the queue through two commits approved together', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });

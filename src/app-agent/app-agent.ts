@@ -74,6 +74,8 @@ export interface AppAgentOptions {
   /** Every prompt, tool call, decision and finished turn, e.g. to append to a JSONL log. */
   trace?: (record: AppAgentTrace) => void;
   now?: () => number;
+  /** How long an approved commit waits for the turn it stops to end; past it the commit fails. Default 10 s. */
+  stopTimeoutMs?: number;
 }
 
 /** One line of the trace. Long texts are clipped. */
@@ -569,13 +571,26 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         stopped?.stop();
         try {
           // Let the stopped run wind down: none of its edits may land after the check.
-          if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
+          const ended =
+            !stopped ||
+            (await Promise.race([
+              stopped.idle().then(() => true),
+              delay(options.stopTimeoutMs ?? STOP_WAIT_MS, false, { ref: false }),
+            ]));
           // A throw is this action's outcome too: it must reach the agent before the queued prompts.
           // The user can only approve what they could read: a clipped diff never lands, whichever client approved it.
           const land = async () =>
-            (await treeChanges(repo(), action.commit!)).truncated
-              ? { ok: false, output: 'The diff is too large to review in full; split the change into smaller commits.' }
-              : commitTree(repo(), action.commit!, action.commit!.message);
+            !ended
+              ? {
+                  ok: false,
+                  output: 'The agent did not stop in time, so nothing was committed; approve again once it is idle.',
+                }
+              : (await treeChanges(repo(), action.commit!)).truncated
+                ? {
+                    ok: false,
+                    output: 'The diff is too large to review in full; split the change into smaller commits.',
+                  }
+                : commitTree(repo(), action.commit!, action.commit!.message);
           const outcome = await land().catch((error: Error) => ({ ok: false, output: error.message }));
           updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
           // A note sent while the stopped run still winds down would wait for the user's next
