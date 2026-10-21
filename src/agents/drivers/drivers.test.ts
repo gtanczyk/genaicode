@@ -40,6 +40,21 @@ describe('claude driver', () => {
     expect(claudeArgs({ prompt: '-x', cwd: '.' }).slice(-2)).toEqual(['--', '-x']);
   });
 
+  it('passes claude settings once, merged with the sandbox ones', () => {
+    const settings = { disableAllHooks: true };
+    const plain = claudeArgs({ prompt: 'hi', cwd: '.' }, { settings });
+    expect(plain.slice(plain.indexOf('--settings'), plain.indexOf('--settings') + 2)).toEqual([
+      '--settings',
+      '{"disableAllHooks":true}',
+    ]);
+    const sandboxed = claudeArgs({ prompt: 'hi', cwd: '.', permissions: { sandbox: 'read-only' } }, { settings });
+    expect(sandboxed.filter((arg) => arg === '--settings')).toHaveLength(1);
+    expect(JSON.parse(sandboxed[sandboxed.indexOf('--settings') + 1]!)).toEqual({
+      disableAllHooks: true,
+      sandbox: { enabled: false },
+    });
+  });
+
   it('decodes stream-json into agent events', () => {
     const parser = createClaudeParser();
     const events = feed(parser, [

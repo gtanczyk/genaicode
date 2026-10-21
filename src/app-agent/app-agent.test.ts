@@ -306,12 +306,15 @@ describe('createAppAgent', () => {
         return String(bad.isError);
       },
     ]);
+    const started = Date.now();
     const { agent, base } = await serve({ name: 'app', agents: () => [fake], pages: () => ['/admin/costs'] });
     await post(base, '/send', { text: 'where are costs?' });
     const state = await settle(agent);
     expect(lastText(agent)).toBe('true');
     expect(state.links).toEqual([{ turnId: 1, label: 'Costs', path: '/admin/costs' }]);
-    expect(state.navigation).toEqual({ id: 1, path: '/admin/costs' });
+    // Time-based, so a restarted backend's ids never repeat one the page already followed.
+    expect(state.navigation).toEqual({ id: expect.any(Number), path: '/admin/costs' });
+    expect(state.navigation!.id).toBeGreaterThanOrEqual(started);
   });
 
   it('switches mode and agent between turns and starts a fresh conversation', async () => {

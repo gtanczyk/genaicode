@@ -513,7 +513,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
       call: async (args) => {
         const target = knownPage(args.path);
-        navigation = { id: (navigation?.id ?? 0) + 1, path: target };
+        // Time-based: a restarted or another backend never reuses an id the page already followed.
+        navigation = { id: Math.max(now(), (navigation?.id ?? 0) + 1), path: target };
         changed();
         return `Opened ${target}.`;
       },

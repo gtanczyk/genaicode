@@ -152,8 +152,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let forgetAfterTurn = false;
   // After a user stop, `state.notes` wait for the user's next prompt instead of starting a turn.
   let holdNotes = false;
+  // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
+  let nextIsNote = false;
+  let noteTurn: { id: number; text: string } | undefined;
   const shiftNote = (): string => {
     const [next, ...rest] = state.notes ?? [];
+    nextIsNote = true;
     set({ notes: rest });
     return next!;
   };
@@ -307,6 +311,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const startTurn = (prompt: string) => {
     holdNotes = false;
     const turnId = nextTurnId++;
+    noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
+    nextIsNote = false;
     const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
     const resume =
       explicitResume !== undefined
@@ -347,6 +353,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
       const result = await current.result;
+      if (noteTurn?.id === turnId) noteTurn = undefined;
       denyPending();
       run = undefined;
       controller = undefined;
@@ -433,6 +440,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     stop() {
       if (state.queued.length) set({ queued: [] });
+      if (noteTurn) {
+        set({ notes: [noteTurn.text, ...(state.notes ?? [])] });
+        noteTurn = undefined;
+      }
       holdNotes = true;
       denyPending();
       controller?.abort();

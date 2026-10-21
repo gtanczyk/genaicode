@@ -20,6 +20,8 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       claude({
         permissionMode: 'dontAsk',
         strictMcpConfig: true,
+        // The user's hooks would run shell commands on prompts that carry app data.
+        settings: { disableAllHooks: true },
         // Read tools too: user settings may pre-allow them, and dontAsk runs pre-allowed tools.
         disallowedTools: [
           'Bash',
@@ -70,7 +72,11 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       allowedTools: allowed.map((c) => `Bash(${c}:*)`),
       disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS],
     }),
-    codex({ sandbox: 'workspace-write', config: { web_search: 'disabled' }, onlyTaskMcpServers: true }),
+    codex({
+      sandbox: 'workspace-write',
+      config: { 'features.apps': false, web_search: 'disabled' },
+      onlyTaskMcpServers: true,
+    }),
     copilot({
       allowAllTools: false,
       // `shell(npm test)` is the exact command only; `:*` adds any arguments.

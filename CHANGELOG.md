@@ -17,6 +17,8 @@
 - `codex({ onlyTaskMcpServers })` and `copilot({ onlyTaskMcpServers })`: switch off the MCP
   servers the CLI loads from its own config, leaving only the task's. The app agent uses it.
 - `copilot({ excludedTools })`: `--excluded-tools`, e.g. `['web_fetch', 'web_search']`.
+- `claude({ settings })`: `--settings` above the user's and the project's, e.g.
+  `{ disableAllHooks: true }`; merged with the sandbox settings of `task.permissions`.
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
   prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
 

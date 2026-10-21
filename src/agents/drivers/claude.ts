@@ -37,6 +37,11 @@ export interface ClaudeAgentOptions {
   strictMcpConfig?: boolean;
   /** With `task.mcpServers`: pre-allow every tool of those servers. Default true (headless runs cannot ask). */
   allowMcpTools?: boolean;
+  /**
+   * Settings passed as `--settings`, above the user's and the project's, e.g.
+   * `{ disableAllHooks: true }`. Merged with the sandbox settings of `task.permissions`.
+   */
+  settings?: Record<string, unknown>;
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -162,8 +167,16 @@ export function claudeArgs(
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
   exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
   args.push('--output-format', 'stream-json');
-  if (owned) args.push(...claudePermissionFlags(permissions).args);
-  else args.push('--permission-mode', options.permissionMode ?? 'acceptEdits');
+  const modeArgs = owned
+    ? claudePermissionFlags(permissions).args
+    : ['--permission-mode', options.permissionMode ?? 'acceptEdits'];
+  if (options.settings) {
+    // One `--settings`: a second one would replace the first.
+    const at = modeArgs.indexOf('--settings');
+    if (at < 0) modeArgs.push('--settings', JSON.stringify(options.settings));
+    else modeArgs[at + 1] = JSON.stringify({ ...options.settings, ...JSON.parse(modeArgs[at + 1]!) });
+  }
+  args.push(...modeArgs);
   if (approvalArgs) args.push(...approvalArgs);
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);
