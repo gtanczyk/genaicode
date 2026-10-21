@@ -209,6 +209,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let held: string[] = [];
   // The session's own queue, kept aside while a commit stops its turn; a user stop drops it too.
   let saved: string[] = [];
+  let closed = false;
   let traced = new Set<number>();
   // Logging only observes: a failing sink must not change what happens (an action's status).
   const trace = (record: Parameters<NonNullable<AppAgentOptions['trace']>>[0]) => {
@@ -378,15 +379,16 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
 
   // App notes go ahead of queued prompts and survive a stop: an action's outcome is the agent's
   // next message.
-  const deliver = (text: string, withView: boolean, note = false) => {
+  const deliver = (text: string, withView: boolean, note = false, queue = false) => {
+    if (closed) return;
     const target = ensureSession();
     const seen = withView && view ? `[The user has ${view} open]` : '';
     if (!briefed) {
       briefed = true;
       const earlier = carryOver ? `\n\nEarlier in this conversation, with another agent or mode:\n${carryOver}` : '';
-      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`, { note });
+      target.send(`${briefing()}${earlier}${seen ? `\n\n${seen}` : ''}${PROMPT_MARKER}${text}`, { note, queue });
     } else {
-      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text, { note });
+      target.send(seen ? `${seen}${PROMPT_MARKER}${text}` : text, { note, queue });
     }
   };
 
@@ -580,7 +582,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           if (!others) {
             const restore = saved;
             saved = [];
-            if (session === stopped) for (const prompt of restore) session?.send(prompt);
+            if (session === stopped) for (const prompt of restore) session?.send(prompt, { queue: true });
           }
         }
       } else {
@@ -597,7 +599,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       if (!actions.some((candidate) => candidate.status === 'running')) {
         const release = held;
         held = [];
-        for (const prompt of release) deliver(prompt, true);
+        // Behind every outcome note, never steered into one.
+        for (const prompt of release) deliver(prompt, true, false, true);
       }
     }
   };
@@ -712,6 +715,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       }));
     },
     close() {
+      closed = true;
+      held = [];
+      saved = [];
       listeners.clear();
       dropSession();
       if (useCwd) rmSync(useCwd, { recursive: true, force: true });

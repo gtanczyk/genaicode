@@ -281,6 +281,36 @@ describe('createAppAgent', () => {
     expect(JSON.parse(settings)).toEqual({ disableAllHooks: true });
   });
 
+  it('starts no agent after close for a prompt held behind an action', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'after close' });
+    agent.close();
+    finish('retried');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(tasks).toHaveLength(1);
+  });
+
   it('keeps an action done when the trace sink throws', async () => {
     const { agent: fake } = fakeAgent([
       async (task) => {

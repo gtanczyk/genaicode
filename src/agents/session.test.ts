@@ -183,6 +183,21 @@ describe('createAgentSession', () => {
     expect(tasks.map((task) => task.prompt)).toEqual(['outcome', 'outcome', 'next']);
   });
 
+  it('queues instead of steering when asked to', async () => {
+    const gate = deferred();
+    const { agent, steered, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}], {
+      steer: true,
+    });
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('later', { queue: true });
+    expect(steered).toEqual([]);
+    expect(session.get().queued).toEqual(['later']);
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'later']);
+  });
+
   it('steers a running agent that supports it', async () => {
     const gate = deferred();
     const { agent, steered } = fakeAgent([() => gate.promise.then(() => ({}))], { steer: true });

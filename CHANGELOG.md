@@ -21,6 +21,7 @@
   `{ disableAllHooks: true }`; merged with the sandbox settings of `task.permissions`.
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
   prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
+  `send(text, { queue: true })` waits for its own turn instead of steering a running one.
 
 ### Fixed
 

@@ -102,9 +102,10 @@ export interface AgentSession {
   /**
    * Start, steer, or queue a prompt. Empty text is ignored. `note` marks a message from the
    * host app (an action's outcome): it is never steered, runs before the queued prompts, and is
-   * kept when the user stops the turn, to run before their next prompt.
+   * kept when the user stops the turn, to run before their next prompt. `queue` waits for its
+   * own turn instead of steering a running one.
    */
-  send(text: string, options?: { note?: boolean }): void;
+  send(text: string, options?: { note?: boolean; queue?: boolean }): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
@@ -415,7 +416,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const turnController = controller;
       // Transform only what is steered now; a queued prompt is transformed when its turn starts.
       let steerText: string | undefined;
-      if (current?.steer && state.canSteer && turnId !== undefined) {
+      if (current?.steer && state.canSteer && turnId !== undefined && !sendOptions?.queue) {
         try {
           steerText = toAgent(prompt);
         } catch {
