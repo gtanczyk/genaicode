@@ -20,7 +20,7 @@ export interface CodexAgentOptions {
    */
   allowMcpTools?: boolean;
   /** Extra `-c key=value` config overrides, e.g. `{ 'features.shell_tool': false }`. */
-  config?: Readonly<Record<string, string | number | boolean>>;
+  config?: Readonly<Record<string, string | number | boolean | readonly string[]>>;
   /**
    * Switch off every MCP server Codex would load from its own config, leaving only the task's.
    * Lists them with `codex mcp list --json` first; the run fails if that fails.

@@ -79,7 +79,14 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
     }),
     codex({
       sandbox: 'workspace-write',
-      config: { 'features.apps': false, 'features.hooks': false, web_search: 'disabled' },
+      config: {
+        'features.apps': false,
+        'features.hooks': false,
+        web_search: 'disabled',
+        // The user's own config may open the sandbox up: no network, no roots beyond cwd.
+        'sandbox_workspace_write.network_access': false,
+        'sandbox_workspace_write.writable_roots': [],
+      },
       onlyTaskMcpServers: true,
     }),
     copilot({

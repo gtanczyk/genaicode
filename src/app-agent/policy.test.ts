@@ -32,6 +32,8 @@ describe('defaultAppAgents', () => {
     expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({
       'features.apps': false,
       'features.hooks': false,
+      'sandbox_workspace_write.network_access': false,
+      'sandbox_workspace_write.writable_roots': [],
     });
     expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.settings).toEqual({ disableAllHooks: true });
   });

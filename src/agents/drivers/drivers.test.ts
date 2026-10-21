@@ -140,6 +140,7 @@ describe('codex driver', () => {
       'x="y"',
       'go',
     ]);
+    expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'a.roots': [] } })).toContain('a.roots=[]');
   });
 
   it('decodes exec JSONL into agent events', () => {
