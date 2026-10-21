@@ -243,6 +243,22 @@ describe('AppAgentChat', () => {
     expect(views()).toBe(2);
   });
 
+  it('keeps New and the pickers off while an approved action runs', () => {
+    const events = mount();
+    const running = {
+      id: '1',
+      kind: 'tool' as const,
+      summary: 'Retry j1',
+      tool: { name: 'retry_job', args: {} },
+      status: 'running' as const,
+      createdAt: t0,
+    };
+    events.emit(appState({ actions: [running] }));
+    expect(button('New').disabled).toBe(true);
+    events.emit(appState({ actions: [{ ...running, status: 'done' as const }] }));
+    expect(button('New').disabled).toBe(false);
+  });
+
   it('uses a client the host passes instead of opening its own stream', () => {
     FakeEventSource.last = null;
     const client = {

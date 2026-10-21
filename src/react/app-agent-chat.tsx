@@ -176,7 +176,9 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
 
   const shown = useMemo(() => merged(state), [state]);
   const notices = useMemo(() => switchNotices(state), [state]);
-  const running = state?.session?.status === 'running';
+  // An approved action that still runs blocks switches and New on the server too.
+  const running =
+    state?.session?.status === 'running' || !!state?.actions.some((action) => action.status === 'running');
   const labels = { use: 'use', dev: 'dev', ...props.modeLabels };
   const pending = state?.actions.filter((action) => action.status === 'pending' || action.status === 'running');
   const settled = state?.actions.filter((action) => action.status !== 'pending' && action.status !== 'running');

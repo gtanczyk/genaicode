@@ -557,7 +557,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       if (action.kind === 'commit') {
         // No edits may land between the check and the commit. Stopping drops the queue: keep it.
         const stopped = session;
-        saved = stopped?.get().queued ?? [];
+        saved = [...saved, ...(stopped?.get().queued ?? [])];
         stopped?.stop();
         try {
           // Let the stopped run wind down: none of its edits may land after the check.
@@ -573,9 +573,15 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           if (stopped && session === stopped) await stopped.idle();
           tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
         } finally {
-          const restore = saved;
-          saved = [];
-          if (session === stopped) for (const prompt of restore) session?.send(prompt);
+          // The last of several commits approved together gives the queue back.
+          const others = actions.some(
+            (other) => other.id !== action.id && other.kind === 'commit' && other.status === 'running',
+          );
+          if (!others) {
+            const restore = saved;
+            saved = [];
+            if (session === stopped) for (const prompt of restore) session?.send(prompt);
+          }
         }
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
