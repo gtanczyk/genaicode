@@ -129,7 +129,7 @@ describe('AppAgentChat', () => {
   it('reports the open page, follows chips and app_open, but not a stale request on mount', async () => {
     const onNavigate = vi.fn();
     const events = mount({ currentPath: '/orders', onNavigate });
-    events.emit(appState({ navigation: { id: 4, path: '/customers' } }));
+    events.emit(appState({ navigation: { id: 4, path: '/customers' }, view: null }));
     await flush();
     expect(calls).toContainEqual({ url: '/api/agent/view', body: { path: '/orders' } });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -227,6 +227,22 @@ describe('AppAgentChat', () => {
     expect(text()).toContain('Could not load the changes');
   });
 
+  it('reports the open page again to a backend that lost it', async () => {
+    const events = mount({ currentPath: '/orders' });
+    const views = () => calls.filter((c) => c.url.endsWith('/view')).length;
+    events.emit(appState({ view: null }));
+    events.emit(appState({ view: null }));
+    await flush();
+    expect(views()).toBe(1);
+    events.emit(appState({ view: '/orders' }));
+    await flush();
+    expect(views()).toBe(1);
+    // The server restarted.
+    events.emit(appState({ view: null }));
+    await flush();
+    expect(views()).toBe(2);
+  });
+
   it('uses a client the host passes instead of opening its own stream', () => {
     FakeEventSource.last = null;
     const client = {
@@ -277,7 +293,9 @@ describe('AppAgentChat', () => {
     await flush();
     expect(button('Approve').disabled).toBe(false);
     // The server restarted: action 2 is now another commit.
-    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }));
+    events.emit(
+      appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }),
+    );
     expect(button('Approve').disabled).toBe(true);
     await flush();
     expect(calls.filter((c) => c.url.endsWith('/changes'))).toHaveLength(2);
@@ -305,7 +323,9 @@ describe('AppAgentChat', () => {
       createdAt: t0,
     };
     events.emit(appState({ actions: [commit] }));
-    events.emit(appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }));
+    events.emit(
+      appState({ actions: [{ ...commit, commit: { message: 'Other', tree: 'def', base: null, ref: null } }] }),
+    );
     const [first, second] = replies.slice(-2);
     second!('new diff');
     await flush();

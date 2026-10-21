@@ -205,6 +205,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let history: SessionTurn[] = [];
   let nextArchivedId = -1;
   let carryOver = '';
+  // The user's prompts sent while an action runs: they follow its outcome, never overtake it.
+  let held: string[] = [];
   let traced = new Set<number>();
   // Logging only observes: a failing sink must not change what happens (an action's status).
   const trace = (record: Parameters<NonNullable<AppAgentOptions['trace']>>[0]) => {
@@ -222,7 +224,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     modes,
     agent: agentName,
     agents: installed(mode),
-    session: session?.get() ?? null,
+    session:
+      session && held.length
+        ? { ...session.get(), queued: [...session.get().queued, ...held] }
+        : (session?.get() ?? null),
     history,
     actions,
     links,
@@ -572,6 +577,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     } catch (error) {
       updateAction(action.id, { status: 'failed', result: (error as Error).message });
       tell(`Action #${action.id} failed: ${(error as Error).message}`);
+    } finally {
+      if (!actions.some((candidate) => candidate.status === 'running')) {
+        const release = held;
+        held = [];
+        for (const prompt of release) deliver(prompt, true);
+      }
     }
   };
 
@@ -589,6 +600,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       const trimmed = text.trim();
       if (!trimmed) throw new AppAgentError('empty message', 400);
       trace({ kind: 'prompt', agent: agentName, mode, view, text: clip(trimmed, 4_000) });
+      if (actions.some((action) => action.status === 'running')) {
+        held = [...held, trimmed];
+        changed();
+        return;
+      }
       deliver(trimmed, true);
     },
     stop() {

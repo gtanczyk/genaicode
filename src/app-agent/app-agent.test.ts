@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -208,6 +208,37 @@ describe('createAppAgent', () => {
     await settle(agent);
     const prompts = tasks.map((task) => userText(task.prompt));
     expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
+  it('holds a prompt sent while an approved action runs until its outcome is told', async () => {
+    let finish: (output: string) => void = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+        return 'proposed';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      tools: [
+        {
+          name: 'retry_job',
+          description: 'Retry a job',
+          write: true,
+          run: () => new Promise<string>((resolve) => (finish = resolve)),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    await settle(agent);
+    await post(base, '/actions/1', { decision: 'approve' });
+    await post(base, '/send', { text: 'is it done?' });
+    expect(agent.get().session!.queued).toEqual(['is it done?']);
+    finish('retried');
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('approved action #1'))).toBeLessThan(prompts.indexOf('is it done?'));
   });
 
   it('keeps an action done when the trace sink throws', async () => {
@@ -626,6 +657,26 @@ describe('commitTree', () => {
     expect(result.ok).toBe(true);
     expect(result.output).toContain('changed while committing, so the index was left as is');
     expect(git('diff', '--cached', '--name-only')).toContain('c.txt');
+  });
+
+  it('leaves the index to another Git process that holds its lock', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    // Another `git add` is writing the user's index when the commit lands.
+    writeFileSync(path.join(repo, '.git', 'hooks', 'post-commit'), '#!/bin/sh\n: > .git/index.lock\n', {
+      mode: 0o755,
+    });
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('the index was left as is');
+    expect(existsSync(path.join(repo, '.git', 'index.lock'))).toBe(true);
   });
 
   it('refuses to commit while a merge is in progress', async () => {

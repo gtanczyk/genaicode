@@ -1,5 +1,15 @@
 import { execFile } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { TreeChanges } from './state.js';
@@ -58,10 +68,52 @@ async function operationInProgress(repo: string): Promise<string | null> {
   return null;
 }
 
-/** The tree the user's index holds, or null when it cannot be written (e.g. a merge conflict). */
-async function indexTree(repo: string): Promise<string | null> {
-  const result = await runGit(repo, ['write-tree']);
-  return result.code === 0 ? result.stdout.trim() : null;
+async function indexPath(repo: string): Promise<string> {
+  return path.resolve(repo, (await must(repo, ['rev-parse', '--git-path', 'index'])).trim());
+}
+
+/** The user's index file as it is on disk (null when there is none yet). */
+function indexBytes(file: string): Buffer | null {
+  try {
+    return readFileSync(file);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `git reset` of the user's index to HEAD, only if the index is still `expected`: done on a copy
+ * while holding Git's own `index.lock`, so nothing can stage in between the check and the swap.
+ */
+async function resetIndexIf(
+  repo: string,
+  file: string,
+  expected: Buffer | null,
+): Promise<{ ok: true } | { ok: false; changed: boolean; error?: string }> {
+  const lock = `${file}.lock`;
+  try {
+    writeFileSync(lock, '', { flag: 'wx' });
+  } catch {
+    return { ok: false, changed: true };
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
+  let locked = true;
+  try {
+    const current = indexBytes(file);
+    const same = current === null ? expected === null : expected !== null && current.equals(expected);
+    if (!same) return { ok: false, changed: true };
+    const copy = path.join(dir, 'index');
+    if (current) writeFileSync(copy, current);
+    const reset = await runGit(repo, ['reset', '-q'], { env: { ...process.env, GIT_INDEX_FILE: copy } });
+    if (reset.code !== 0) return { ok: false, changed: false, error: reset.stderr.trim() };
+    copyFileSync(copy, lock);
+    renameSync(lock, file);
+    locked = false;
+    return { ok: true };
+  } finally {
+    if (locked) rmSync(lock, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function must(repo: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
@@ -141,7 +193,8 @@ export async function commitTree(
   if (current.tree !== tree) return refuse('The files changed after they were reviewed');
 
   // The user's own index, to tell later whether something staged meanwhile.
-  const staged = await indexTree(repo);
+  const index = await indexPath(repo);
+  const staged = indexBytes(index);
   const dir = mkdtempSync(path.join(tmpdir(), 'genaicode-app-agent-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index'), GIT_EDITOR: ':' };
   const messageFile = path.join(dir, 'COMMIT_EDITMSG');
@@ -225,21 +278,19 @@ export async function commitTree(
     );
   }
   // Bring the user's index to the new commit, unless something staged or switched HEAD meanwhile.
-  const now = await indexTree(repo);
-  const reset =
-    now !== null && now === staged && (await headRef(repo)) === ref ? await runGit(repo, ['reset', '-q']) : null;
-  if (!reset) {
+  const reset = (await headRef(repo)) === ref ? await resetIndexIf(repo, index, staged) : null;
+  if (!reset || (!reset.ok && reset.changed)) {
     return done(
       true,
       [...logs, summary],
       'The index or HEAD changed while committing, so the index was left as is. Check `git status` before staging more.',
     );
   }
-  if (reset.code !== 0) {
+  if (!reset.ok) {
     return done(
       true,
       [...logs, summary],
-      `Committed, but resetting the index to it failed: ${reset.stderr.trim()}. Run \`git reset\` before staging more.`,
+      `Committed, but resetting the index to it failed: ${reset.error}. Run \`git reset\` before staging more.`,
     );
   }
   return done(true, [...logs, summary]);

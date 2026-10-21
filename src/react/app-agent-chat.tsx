@@ -147,13 +147,20 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
   const { state } = client;
   const { onNavigate, currentPath } = props;
 
-  // Report the open page; the agent reads it with each prompt.
+  // Report the open page; the agent reads it with each prompt. Once until the server's state
+  // shows it, then again whenever it does not: a restarted or another backend starts without it.
   const reported = useRef<string | null>(null);
+  const serverView = state?.view;
   useEffect(() => {
-    if (!state || currentPath === undefined || reported.current === currentPath) return;
+    if (!state || currentPath === undefined) return;
+    if (serverView === currentPath) {
+      reported.current = null;
+      return;
+    }
+    if (reported.current === currentPath) return;
     reported.current = currentPath;
     client.view(currentPath);
-  }, [client, state, currentPath]);
+  }, [client, state, serverView, currentPath]);
 
   // Follow `app_open` once per request; the first state only primes the counter.
   const handled = useRef<number | null>(null);
