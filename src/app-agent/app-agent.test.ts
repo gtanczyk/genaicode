@@ -536,6 +536,8 @@ describe('commitTree', () => {
     const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
     expect(result.ok).toBe(true);
     expect(git('log', '--format=%s')).toBe('other\nChange a\ninit\n');
+    // The hook's own commit builds on the approved tree, not on the user's older index.
+    expect(git('show', 'HEAD:a.txt')).toBe('two\n');
   });
 
   it('refuses the commit once HEAD moved after the review', async () => {

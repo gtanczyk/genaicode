@@ -187,13 +187,14 @@ export async function commitTree(
     if (moved.code !== 0) {
       return done(false, logs, 'HEAD moved while committing, so nothing was committed. Check the history in git.');
     }
+    // Still on the scratch index, which now matches the new commit, as `git commit` would leave it.
+    const post = await runHook(repo, 'post-commit', [], env);
+    logs.push(post.output);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
   const branch = (await runGit(repo, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim() || 'detached HEAD';
   const summary = `[${branch} ${made.slice(0, 7)}] ${subject}`;
-  const post = await runHook(repo, 'post-commit', [], process.env);
-  logs.push(post.output);
   // Bring the user's index to the new commit, unless something staged while committing.
   const now = await indexTree(repo);
   const reset = now !== null && now === staged ? await runGit(repo, ['reset', '-q']) : null;

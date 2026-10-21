@@ -14,6 +14,8 @@
 - `genaicode/react`: `AppAgentChat`, the page side of an app agent (chat, link chips, action
   cards with the commit diff, agent and mode pickers), and `useAppAgent` for a page of your own.
 - `codex({ config })`: extra `-c key=value` overrides, e.g. `{ 'features.shell_tool': false }`.
+- `codex({ onlyTaskMcpServers })` and `copilot({ onlyTaskMcpServers })`: switch off the MCP
+  servers the CLI loads from its own config, leaving only the task's. The app agent uses it.
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
   prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
 

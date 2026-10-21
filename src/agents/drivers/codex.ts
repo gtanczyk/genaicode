@@ -3,6 +3,7 @@ import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../pe
 import { isHttpServer, type PreparedRun } from '../prepare.js';
 import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer, SandboxPolicy } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
+import { configuredMcpServers } from './mcp-isolation.js';
 
 export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access';
 
@@ -20,6 +21,11 @@ export interface CodexAgentOptions {
   allowMcpTools?: boolean;
   /** Extra `-c key=value` config overrides, e.g. `{ 'features.shell_tool': false }`. */
   config?: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * Switch off every MCP server Codex would load from its own config, leaving only the task's.
+   * Lists them with `codex mcp list --json` first; the run fails if that fails.
+   */
+  onlyTaskMcpServers?: boolean;
 }
 
 /** Codex's sandbox mode for a `permissions.sandbox`. */
@@ -69,7 +75,7 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => codexArgs(task, options),
-    prepare: (task) => withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true }),
+    prepare: (task) => prepareCodex(task, options),
     createParser: createCodexParser,
   });
 }
@@ -90,6 +96,23 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (task.resume) args.push('resume', task.resume);
   return [...args, ...positionalPrompt(task.prompt)];
 }
+
+/** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
+export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
+  const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
+  if (!options.onlyTaskMcpServers) return prepared;
+  const others = await configuredMcpServers(options.command ?? 'codex', task, codexMcpNames);
+  const off = others.flatMap((name) => ['-c', `mcp_servers.${tomlKey(name)}.enabled=false`]);
+  return { ...prepared, args: [...off, ...prepared.args] };
+}
+
+/** Server names in `codex mcp list --json`: an array of `{ name }`. */
+export function codexMcpNames(listing: unknown): string[] {
+  if (!Array.isArray(listing)) throw new Error('expected an array');
+  return listing.flatMap((server) => (isObject(server) && typeof server.name === 'string' ? [server.name] : []));
+}
+
+const tomlKey = (name: string) => (/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name));
 
 /** Prefix `args` with the task's MCP servers as `-c mcp_servers.*` config overrides. */
 export function withCodexMcp(task: AgentTask, args: string[], options: { approveTools?: boolean } = {}): PreparedRun {
