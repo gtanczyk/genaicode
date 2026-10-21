@@ -175,6 +175,17 @@ describe('AppAgentChat', () => {
     expect(calls).toContainEqual({ url: '/api/agent/actions/1', body: { decision: 'approve' } });
   });
 
+  it('drops the old backend state when the base path changes', async () => {
+    const events = mount({ basePath: '/a' });
+    const refund = { id: '1', kind: 'tool' as const, summary: 'Refund order 7', status: 'pending' as const };
+    events.emit(appState({ actions: [{ ...refund, tool: { name: 'refund', args: {} }, createdAt: t0 }] }));
+    await flush();
+    expect(text()).toContain('Refund order 7');
+    act(() => root.render(<AppAgentChat basePath="/b" />));
+    expect(events.closed).toBe(true);
+    expect(text()).not.toContain('Refund order 7');
+  });
+
   it('keeps a commit with a truncated diff unapprovable', async () => {
     vi.stubGlobal(
       'fetch',

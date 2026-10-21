@@ -43,7 +43,12 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
 
   // While the stream is up it is the truth: a POST reply can be older than its latest snapshot.
   const streaming = useRef(false);
+  // Another backend: nothing from the old one may stay on screen or land late, or a card could send
+  // its id to the new one.
+  const current = useRef(base);
+  current.current = base;
   useEffect(() => {
+    setState(null);
     const source = new EventSource(`${base}/events`);
     source.onmessage = (event) => {
       streaming.current = true;
@@ -71,10 +76,13 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
         .then(async (res) => {
           if (res.status === 204) return;
           const data = (await res.json()) as AppAgentState & { error?: string };
+          if (current.current !== base) return;
           if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
           if (!streaming.current) setState(data);
         })
-        .catch((e: Error) => setError(e.message));
+        .catch((e: Error) => {
+          if (current.current === base) setError(e.message);
+        });
     },
     [base],
   );

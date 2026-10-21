@@ -12,10 +12,11 @@ export function configuredMcpServers<T extends string | { name: string }>(
   servers: (listing: unknown) => T[],
 ): Promise<T[]> {
   return new Promise((resolve, reject) => {
+    // `task.env` replaces the environment, as it does for the run itself: what the caller left out stays out.
     execFile(
       command,
       ['mcp', 'list', '--json'],
-      { cwd: task.cwd, env: { ...process.env, ...task.env }, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
+      { cwd: task.cwd, env: task.env ?? process.env, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
       (error, stdout) => {
         if (error) return reject(new Error(`could not list ${command}'s MCP servers: ${error.message}`));
         try {

@@ -70,6 +70,22 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     expect(prepared.args.at(-1)).toBe('--prompt=go');
   });
 
+  it("lists servers with the task's environment, not the host's", async () => {
+    const file = join(dir, 'codex-env');
+    writeFileSync(file, `#!/bin/sh\n[ -n "$APP_SECRET" ] && printf '[{"name":"leaked"}]' || printf '[]'\n`);
+    chmodSync(file, 0o755);
+    process.env.APP_SECRET = 'x';
+    try {
+      const prepared = await prepareCodex(
+        { prompt: 'go', cwd: dir, env: { PATH: process.env.PATH ?? '' } },
+        { command: file, onlyTaskMcpServers: true },
+      );
+      expect(prepared.args.join(' ')).not.toContain('leaked');
+    } finally {
+      delete process.env.APP_SECRET;
+    }
+  });
+
   it('refuses to run when the list cannot be read', async () => {
     const command = join(dir, 'missing');
     await expect(prepareCodex({ prompt: 'go', cwd: dir }, { command, onlyTaskMcpServers: true })).rejects.toThrow(
