@@ -210,6 +210,50 @@ describe('createAppAgent', () => {
     expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
   });
 
+  it('queues a prompt sent right after a rejection behind its outcome, even when the agent steers', async () => {
+    let release = () => {};
+    const steered: string[] = [];
+    const tasks: AgentTask[] = [];
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'steering',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(task): AgentRun {
+        tasks.push(task);
+        const done = (async () => {
+          if (tasks.length === 1) {
+            await callTool(task, 'delete', { id: 'a', approval_summary: 'Delete a' });
+            await new Promise<void>((resolve) => (release = resolve));
+          }
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          steer: async (text) => void steered.push(text),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [steering],
+      tools: [{ name: 'delete', description: 'Delete.', write: true, run: () => 'deleted' }],
+    });
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'reject' });
+    await post(base, '/send', { text: 'follow-up' });
+    expect(steered).toEqual([]);
+    release();
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
   it('holds a prompt sent while an approved action runs until its outcome is told', async () => {
     let finish: (output: string) => void = () => {};
     const { agent: fake, tasks } = fakeAgent([
@@ -684,6 +728,42 @@ describe('createAppAgent', () => {
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
   });
 
+  it('refuses to approve an older commit while a newer prompt runs', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-newer-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        return 'proposed';
+      },
+      async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'answered';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    await settle(agent);
+    await post(base, '/send', { text: 'what else?' });
+    expect(() => agent.decide('1', 'approve')).toThrow(/newer prompt/);
+    expect(agent.get().actions[0]!.status).toBe('pending');
+    release();
+    await settle(agent);
+    expect(lastText(agent)).toBe('answered');
+    agent.decide('1', 'approve');
+    await settle(agent);
+    expect(agent.get().actions[0]!.status).toBe('done');
+  });
+
   it('refuses to commit a diff too large to review, whichever client approves it', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-large-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -733,6 +813,24 @@ describe('commitTree', () => {
     expect(result.output).toContain('commit hook changed the files');
     expect(git('log', '--format=%s')).toBe('init\n');
     expect(git('diff', '--cached', '--name-only')).toBe('');
+    expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
+  });
+
+  it('refuses a commit whose hook rewrote a file without staging it', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho hooked > a.txt\n', { mode: 0o755 });
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('commit hook changed the files');
+    expect(git('log', '--format=%s')).toBe('init\n');
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
   });
 
@@ -820,10 +918,10 @@ describe('commitTree', () => {
     git('commit', '-qm', 'init');
     writeFileSync(path.join(repo, 'a.txt'), 'two\n');
     const reviewed = await snapshotTree(repo);
-    // While the hook runs, the user stages a new file in their own index.
+    // While the hook runs, the user stages a new file in their own index (the worktree stays as reviewed).
     writeFileSync(
       path.join(repo, '.git', 'hooks', 'pre-commit'),
-      '#!/bin/sh\necho c > c.txt\nenv -u GIT_INDEX_FILE git add c.txt\n',
+      '#!/bin/sh\nblob=$(echo c | git hash-object -w --stdin)\nenv -u GIT_INDEX_FILE git update-index --add --cacheinfo 100644,$blob,c.txt\n',
       { mode: 0o755 },
     );
     const result = await commitTree(repo, reviewed, 'Change a');

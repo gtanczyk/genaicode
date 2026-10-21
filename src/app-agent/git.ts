@@ -222,6 +222,14 @@ export async function commitTree(
       logs.push(hook.output);
       if (!hook.ok) return done(false, logs, `The ${name} hook failed, so nothing was committed.`);
     }
+    // A hook may also rewrite a file without staging it: the worktree must still be what was reviewed.
+    if ((await snapshotTree(repo)).tree !== tree) {
+      return done(
+        false,
+        logs,
+        'A commit hook changed the files after they were reviewed, so nothing was committed; its changes are left in the worktree. Ask the agent to propose the commit again.',
+      );
+    }
     // Like `git commit -m`: whitespace is cleaned up, `#` lines are kept.
     const finalMessage = readFileSync(messageFile, 'utf8')
       .split('\n')

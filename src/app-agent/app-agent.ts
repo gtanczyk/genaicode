@@ -208,6 +208,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   let carryOver = '';
   // The user's prompts sent while an action runs: they follow its outcome, never overtake it.
   let held: string[] = [];
+  // The turn each commit was proposed in: approving one stops that turn, never a newer prompt.
+  const proposedIn = new Map<string, number | undefined>();
+  const runningTurn = () => (session?.get().status === 'running' ? session.get().turns.at(-1)?.id : undefined);
   // The session's own queue, kept aside while a commit stops its turn; a user stop drops it too.
   let saved: string[] = [];
   let closed = false;
@@ -547,7 +550,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         const snapshot = await snapshotTree(repo());
         // A reset or agent switch meanwhile: this call belongs to a session that is gone.
         if (token !== mcpToken) throw new Error('This session has ended.');
-        return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, ...snapshot } }));
+        const action = propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, ...snapshot } });
+        proposedIn.set(action.id, runningTurn());
+        return waiting(action);
       },
     },
   ];
@@ -627,7 +632,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         changed();
         return;
       }
-      deliver(trimmed, true);
+      // An outcome note still waiting (a rejection while the proposing turn runs) goes first.
+      deliver(trimmed, true, false, !!session?.get().notes?.length);
     },
     stop() {
       if (held.length || saved.length) {
@@ -682,7 +688,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       const action = actions.find((candidate) => candidate.id === id);
       if (!action) throw new AppAgentError('no such action', 404);
       if (action.status !== 'pending') throw new AppAgentError(`action is ${action.status}`, 409);
+      if (decision === 'approve' && action.kind === 'commit') {
+        const active = runningTurn();
+        if (active !== undefined && active !== proposedIn.get(id)) {
+          throw new AppAgentError('the agent is working on a newer prompt; approve the commit once it finishes', 409);
+        }
+      }
       trace({ kind: 'decision', action: id, summary: action.summary, decision });
+      proposedIn.delete(id);
       if (decision === 'reject') {
         updateAction(id, { status: 'rejected' });
         tell(`The user rejected action #${id} (${action.summary}).`);
