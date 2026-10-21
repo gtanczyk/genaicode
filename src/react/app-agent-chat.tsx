@@ -41,14 +41,23 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
   const [state, setState] = useState<AppAgentState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // While the stream is up it is the truth: a POST reply can be older than its latest snapshot.
+  const streaming = useRef(false);
   useEffect(() => {
     const source = new EventSource(`${base}/events`);
     source.onmessage = (event) => {
+      streaming.current = true;
       setError(null);
       setState(JSON.parse(event.data as string) as AppAgentState);
     };
-    source.onerror = () => setError('Lost the connection to the agent; retrying…');
-    return () => source.close();
+    source.onerror = () => {
+      streaming.current = false;
+      setError('Lost the connection to the agent; retrying…');
+    };
+    return () => {
+      streaming.current = false;
+      source.close();
+    };
   }, [base]);
 
   const call = useCallback(
@@ -63,7 +72,7 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
           if (res.status === 204) return;
           const data = (await res.json()) as AppAgentState & { error?: string };
           if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-          setState(data);
+          if (!streaming.current) setState(data);
         })
         .catch((e: Error) => setError(e.message));
     },

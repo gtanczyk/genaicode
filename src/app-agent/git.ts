@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { TreeChanges } from './state.js';
@@ -38,6 +38,25 @@ async function emptyTree(repo: string): Promise<string> {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// `git commit` would take these over (a merge commit, a finished cherry-pick) even on a scratch
+// index, leaving the user's own operation half done.
+const OPERATIONS: Array<[string, string]> = [
+  ['MERGE_HEAD', 'merge'],
+  ['CHERRY_PICK_HEAD', 'cherry-pick'],
+  ['REVERT_HEAD', 'revert'],
+  ['rebase-merge', 'rebase'],
+  ['rebase-apply', 'rebase'],
+  ['sequencer', 'cherry-pick or revert'],
+];
+
+async function operationInProgress(repo: string): Promise<string | null> {
+  for (const [name, label] of OPERATIONS) {
+    const where = await runGit(repo, ['rev-parse', '--git-path', name]);
+    if (where.code === 0 && existsSync(path.resolve(repo, where.stdout.trim()))) return label;
+  }
+  return null;
 }
 
 /** The tree the user's index holds, or null when it cannot be written (e.g. a merge conflict). */
@@ -103,6 +122,13 @@ export async function commitTree(
   { tree, base }: Snapshot,
   message: string,
 ): Promise<{ ok: boolean; output: string }> {
+  const busy = await operationInProgress(repo);
+  if (busy) {
+    return {
+      ok: false,
+      output: `A ${busy} is in progress in this repository. Finish or abort it, then ask the agent to propose the commit again.`,
+    };
+  }
   const current = await snapshotTree(repo);
   if (current.base !== base) {
     return {

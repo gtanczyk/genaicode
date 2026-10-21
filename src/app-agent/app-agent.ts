@@ -305,6 +305,13 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     carryOver = clip(`${carryOver}\n\n${transcript(turns)}`.trim(), CARRY_MAX, true);
   };
 
+  // Notes the old session still held (the user stopped its turn) go to the next agent.
+  const archiveNotes = () => {
+    for (const note of session?.get().notes ?? []) {
+      carryOver = clip(`${carryOver}\n\n${userText(note)}`.trim(), CARRY_MAX, true);
+    }
+  };
+
   const dropSession = () => {
     traceTurns();
     links = links.filter((link) => link.turnId < 0);
@@ -603,6 +610,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       // A running action reports to this conversation (and a commit gives back its queue).
       if (actions.some((action) => action.status === 'running')) throw new AppAgentError('an action is running', 409);
       archiveSession();
+      archiveNotes();
       mode = nextMode;
       agentName = nextAgent;
       dropSession();

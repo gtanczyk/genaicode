@@ -316,6 +316,15 @@ describe('AppAgentChat', () => {
     expect(button('Approve').disabled).toBe(false);
   });
 
+  it('keeps the streamed state over an older POST reply', async () => {
+    const events = mount();
+    events.emit(appState({ session: session([turn(1, 'how many orders?', 'Streamed answer.')]) }));
+    // The POST reply (the default fixture) is older than what the stream already showed.
+    act(() => button('New').click());
+    await flush();
+    expect(text()).toContain('Streamed answer.');
+  });
+
   it('switches agent and mode, keeps history with a divider, and starts over with New', async () => {
     const events = mount({ modeLabels: { use: 'ops' } });
     const earlier = turn(-1, `Briefing${PROMPT_MARKER}first`, 'first answer', 'codex');

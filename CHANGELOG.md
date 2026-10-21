@@ -15,7 +15,7 @@
   cards with the commit diff, agent and mode pickers), and `useAppAgent` for a page of your own.
 - `codex({ config })`: extra `-c key=value` overrides, e.g. `{ 'features.shell_tool': false }`.
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
-  prompts, and kept through a user stop until the next prompt.
+  prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
 
 ### Fixed
 

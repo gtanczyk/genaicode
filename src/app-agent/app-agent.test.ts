@@ -560,6 +560,24 @@ describe('commitTree', () => {
     expect(git('diff', '--cached', '--name-only')).toContain('c.txt');
   });
 
+  it('refuses to commit while a merge is in progress', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const reviewed = await snapshotTree(repo);
+    writeFileSync(path.join(repo, '.git', 'MERGE_HEAD'), git('rev-parse', 'HEAD'));
+    const result = await commitTree(repo, reviewed, 'Change a');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('A merge is in progress');
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
   it("keeps the user's index when the commit fails", async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -659,6 +677,37 @@ describe('conversation across switches', () => {
     await post(base, '/send', { text: 'done?' });
     await settle(agent);
     expect(two.tasks[0]!.prompt).toContain('The user approved action #1 (Retry j1). Result:\nretried');
+  });
+
+  it('carries a note the stopped session still held to the next agent', async () => {
+    let release = () => {};
+    const one = fakeAgent(
+      [
+        async (task) => {
+          await callTool(task, 'retry_job', { id: 'j1', approval_summary: 'Retry j1' });
+          await new Promise<void>((resolve) => (release = resolve));
+          return 'proposed';
+        },
+      ],
+      'one',
+    );
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [one.agent, two.agent],
+      tools: [{ name: 'retry_job', description: 'Retry a job', write: true, run: () => 'retried' }],
+    });
+    await post(base, '/send', { text: 'retry j1' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/actions/1', { decision: 'reject' });
+    await post(base, '/stop');
+    release();
+    await settle(agent);
+    expect(agent.get().session!.notes).toHaveLength(1);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/send', { text: 'next' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('The user rejected action #1 (Retry j1).');
   });
 
   it('answers the agent CLI permission prompts through the handler', async () => {
