@@ -267,6 +267,25 @@ describe('AppAgentChat', () => {
     expect(views()).toBe(2);
   });
 
+  it('does not retry a refused page report until the next streamed state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        calls.push({ url, body: init?.body ? JSON.parse(init.body) : undefined });
+        return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 });
+      }),
+    );
+    const events = mount({ currentPath: '/orders' });
+    const views = () => calls.filter((c) => c.url.endsWith('/view')).length;
+    events.emit(appState({ view: null }));
+    await flush();
+    await flush();
+    expect(views()).toBe(1);
+    events.emit(appState({ view: null }));
+    await flush();
+    expect(views()).toBe(2);
+  });
+
   it('keeps New and the pickers off while an approved action runs', () => {
     const events = mount();
     const running = {

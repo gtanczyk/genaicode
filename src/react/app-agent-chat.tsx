@@ -158,9 +158,13 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
   // Report the open page; the agent reads it with each prompt. Once until the server's state
   // shows it, then again whenever it does not: a restarted or another backend starts without it.
   const reported = useRef<string | null>(null);
-  // A lost report or a lost stream (maybe a restarted backend) leaves nothing acknowledged.
+  // A lost report or a lost stream (maybe a restarted backend) leaves nothing acknowledged: report
+  // again, but only on the next streamed state, so a backend that keeps refusing is not hammered.
+  const retry = useRef<AppAgentState | null | undefined>(undefined);
+  const latest = useRef(state);
+  latest.current = state;
   useEffect(() => {
-    if (client.error) reported.current = null;
+    if (client.error) retry.current = latest.current;
   }, [client.error]);
   const serverView = state?.view;
   useEffect(() => {
@@ -168,6 +172,10 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
     if (serverView === currentPath) {
       reported.current = null;
       return;
+    }
+    if (retry.current !== undefined && retry.current !== state) {
+      retry.current = undefined;
+      reported.current = null;
     }
     if (reported.current === currentPath) return;
     reported.current = currentPath;

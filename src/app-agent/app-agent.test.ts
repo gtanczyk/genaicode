@@ -805,6 +805,44 @@ describe('createAppAgent', () => {
     expect(agent.get().actions[0]!.status).toBe('done');
   });
 
+  it('refuses an older commit while the next agent runs its own first turn', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-switch-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const { agent: first } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+        await callTool(task, 'propose_commit', { message: 'Change a' });
+        return 'proposed';
+      },
+    ]);
+    const { agent: second } = fakeAgent(
+      [
+        async () => {
+          await new Promise<void>((resolve) => (release = resolve));
+          return 'answered';
+        },
+      ],
+      'second',
+    );
+    const { agent, base } = await serve({ name: 'app', agents: () => [first, second], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    await settle(agent);
+    await post(base, '/config', { agent: 'second' });
+    await post(base, '/send', { text: 'what else?' });
+    expect(agent.get().session!.turns.at(-1)!.id).toBe(1);
+    expect(() => agent.decide('1', 'approve')).toThrow(/newer prompt/);
+    release();
+    await settle(agent);
+  });
+
   it('refuses to commit a diff too large to review, whichever client approves it', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-large-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });

@@ -214,7 +214,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   // The user's prompts sent while an action runs: they follow its outcome, never overtake it.
   let held: string[] = [];
   // The turn each commit was proposed in: approving one stops that turn, never a newer prompt.
-  const proposedIn = new Map<string, number | undefined>();
+  // Turn ids restart in a new session (after a switch), so the session is part of the key.
+  const proposedIn = new Map<string, { session: AgentSession | null; turn: number | undefined }>();
   const runningTurn = () => (session?.get().status === 'running' ? session.get().turns.at(-1)?.id : undefined);
   // The session's own queue, kept aside while a commit stops its turn; a user stop drops it too.
   let saved: string[] = [];
@@ -556,7 +557,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         // A reset or agent switch meanwhile: this call belongs to a session that is gone.
         if (token !== mcpToken) throw new Error('This session has ended.');
         const action = propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, ...snapshot } });
-        proposedIn.set(action.id, runningTurn());
+        proposedIn.set(action.id, { session, turn: runningTurn() });
         return waiting(action);
       },
     },
@@ -709,7 +710,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       if (action.status !== 'pending') throw new AppAgentError(`action is ${action.status}`, 409);
       if (decision === 'approve' && action.kind === 'commit') {
         const active = runningTurn();
-        if (active !== undefined && active !== proposedIn.get(id)) {
+        const proposed = proposedIn.get(id);
+        if (active !== undefined && (proposed?.session !== session || active !== proposed.turn)) {
           throw new AppAgentError('the agent is working on a newer prompt; approve the commit once it finishes', 409);
         }
       }
