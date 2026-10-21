@@ -400,7 +400,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (!prompt || closed) return;
       if (sendOptions?.note) {
         set({ notes: [...(state.notes ?? []), prompt] });
-        // A new note releases the held ones, oldest first.
+        // A new note releases the held ones, oldest first: now, or as the running turn ends.
+        holdNotes = false;
         if (state.status === 'idle') return startTurn(shiftNote());
         return;
       }

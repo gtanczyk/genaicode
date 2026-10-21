@@ -793,6 +793,54 @@ describe('createAppAgent', () => {
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
   });
 
+  it('queues a follow-up instead of steering it into a turn with a pending commit', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-steer-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    let release = () => {};
+    const steered: string[] = [];
+    const tasks: AgentTask[] = [];
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'steering',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(task): AgentRun {
+        tasks.push(task);
+        const done = (async () => {
+          if (tasks.length === 1) {
+            writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+            await callTool(task, 'propose_commit', { message: 'Change a' });
+            await new Promise<void>((resolve) => (release = resolve));
+          }
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          steer: async (text) => void steered.push(text),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const { agent, base } = await serve({ name: 'app', agents: () => [steering], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'change a' });
+    for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'also b' });
+    expect(steered).toEqual([]);
+    expect(agent.get().session!.queued).toEqual(['also b']);
+    release();
+    await settle(agent);
+  });
+
   it('refuses to approve an older commit while a newer prompt runs', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-newer-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });

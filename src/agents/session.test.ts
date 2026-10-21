@@ -169,6 +169,19 @@ describe('createAgentSession', () => {
     expect(tasks.map((task) => task.prompt)).toEqual(['start', 'old', 'new']);
   });
 
+  it('releases held notes when a newer note arrives while the stopped turn winds down', async () => {
+    const gate = deferred();
+    const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.send('start');
+    session.send('old', { note: true });
+    session.stop();
+    session.send('new', { note: true });
+    gate.resolve();
+    await session.idle();
+    expect(tasks.map((task) => task.prompt)).toEqual(['start', 'old', 'new']);
+  });
+
   it('puts back a note whose turn a stop cut short', async () => {
     const gate = deferred();
     const { agent, tasks } = fakeAgent([() => gate.promise.then(() => ({})), async () => {}, async () => {}]);

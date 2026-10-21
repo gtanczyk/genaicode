@@ -656,7 +656,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         return;
       }
       // An outcome note still waiting (a rejection while the proposing turn runs) goes first.
-      deliver(trimmed, true, false, !!session?.get().notes?.length);
+      // A pending commit stops its turn when approved: a prompt steered into that turn could be lost.
+      const commitPending = actions.some((action) => action.kind === 'commit' && action.status === 'pending');
+      deliver(trimmed, true, false, commitPending || !!session?.get().notes?.length);
     },
     stop() {
       if (held.length || saved.length) {
