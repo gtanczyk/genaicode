@@ -985,6 +985,28 @@ describe('commitTree', () => {
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('hooked\n');
   });
 
+  it('runs a failing hook once, whatever it prints', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    // Fails the first time only, saying something that looks like an old Git.
+    const mark = path.join(repo, '.git', 'ran');
+    writeFileSync(
+      path.join(repo, '.git', 'hooks', 'pre-commit'),
+      `#!/bin/sh\n[ -e "${mark}" ] && exit 0\ntouch "${mark}"\necho "git: 'x' is not a git command" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
   it('leaves a commit a post-commit hook makes on top of its own alone', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -1283,6 +1305,54 @@ describe('conversation across switches', () => {
     await post(base, '/send', { text: 'fresh' });
     await settle(agent);
     expect(two.tasks.at(-1)!.prompt).not.toContain('Earlier in this conversation');
+  });
+
+  it('carries input steered into a turn to the next agent', async () => {
+    let release = () => {};
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's1' };
+    const steering: CodingAgent = {
+      name: 'one',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true, steer: true },
+      run(): AgentRun {
+        const done = new Promise<AgentResult>((resolve) => (release = () => resolve(result)));
+        return {
+          result: done,
+          abort() {},
+          steer: async () => {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'message', text: 'looking' } as AgentEvent;
+            yield { type: 'done', result: await done } as AgentEvent;
+          },
+        };
+      },
+    };
+    const two = fakeAgent([], 'two');
+    const { agent, base } = await serve({ name: 'app', agents: () => [steering, two.agent] });
+    await post(base, '/send', { text: 'first' });
+    for (let i = 0; i < 200 && !agent.get().session?.turns[0]?.entries.length; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await post(base, '/send', { text: 'and this too' });
+    release();
+    await settle(agent);
+    await post(base, '/config', { agent: 'two' });
+    await post(base, '/send', { text: 'next' });
+    await settle(agent);
+    expect(two.tasks[0]!.prompt).toContain('User: first\none: looking\nUser: and this too\none: (no answer)');
+  });
+
+  it('drops a rejection from an async trace sink', async () => {
+    const { agent: fake } = fakeAgent([]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      trace: () => Promise.reject(new Error('disk full')) as unknown as void,
+    });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(agent.get().session!.status).toBe('idle');
   });
 
   it('traces a turn whose tool input JSON cannot hold', async () => {

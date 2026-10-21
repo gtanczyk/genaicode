@@ -227,7 +227,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   // Logging only observes: a failing sink must not change what happens (an action's status).
   const trace = (record: Parameters<NonNullable<AppAgentOptions['trace']>>[0]) => {
     try {
-      options.trace?.(record);
+      // An async sink's rejection is dropped too, never left unhandled.
+      const result: unknown = options.trace?.(record);
+      if (result instanceof Promise) result.catch(() => {});
     } catch {
       // dropped
     }
@@ -779,8 +781,18 @@ function clip(text: string, max: number, keepEnd = false): string {
 function transcript(turns: readonly SessionTurn[]): string {
   return turns
     .map((turn) => {
-      const texts = turn.entries.flatMap((entry) => (entry.kind === 'text' ? [entry.text] : []));
-      return `User: ${userText(turn.prompt).trim()}\n${turn.agent}: ${texts.at(-1)?.trim() ?? '(no answer)'}`;
+      // Input steered into the turn is the user's too, in its place among the answers.
+      const lines = [`User: ${userText(turn.prompt).trim()}`];
+      let last: string | undefined;
+      for (const entry of turn.entries) {
+        if (entry.kind === 'text') last = entry.text;
+        if (entry.kind !== 'input') continue;
+        if (last !== undefined) lines.push(`${turn.agent}: ${last.trim()}`);
+        last = undefined;
+        lines.push(`User: ${userText(entry.text).trim()}`);
+      }
+      lines.push(`${turn.agent}: ${last?.trim() ?? '(no answer)'}`);
+      return lines.join('\n');
     })
     .join('\n\n');
 }

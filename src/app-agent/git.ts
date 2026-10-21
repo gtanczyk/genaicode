@@ -314,6 +314,14 @@ function done(ok: boolean, logs: string[], note?: string): { ok: boolean; output
 }
 
 /** Run one of the repository's hooks the way `git commit` would; a missing hook passes. */
+let hookRun: Promise<boolean> | undefined;
+function hasHookRun(repo: string): Promise<boolean> {
+  hookRun ??= runGit(repo, ['hook', 'run', '--ignore-missing', 'genaicode-no-such-hook']).then(
+    (probe) => probe.code === 0,
+  );
+  return hookRun;
+}
+
 async function runHook(
   repo: string,
   name: string,
@@ -323,8 +331,9 @@ async function runHook(
   // Hooks can take a while (a test run in pre-commit).
   const timeoutMs = 20 * 60_000;
   // `git hook run` (Git 2.36+) finds the hook (core.hooksPath) and runs it as Git would, on any OS.
-  const viaGit = await runGit(repo, ['hook', 'run', '--ignore-missing', name, '--', ...args], { timeoutMs, env });
-  if (!/not a git command|unknown subcommand/i.test(viaGit.stderr)) {
+  // Whether Git has it is asked with a hook that does not exist, never read from a real hook's output.
+  if (await hasHookRun(repo)) {
+    const viaGit = await runGit(repo, ['hook', 'run', '--ignore-missing', name, '--', ...args], { timeoutMs, env });
     return { ok: viaGit.code === 0, output: `${viaGit.stdout}\n${viaGit.stderr}`.trim() };
   }
   const where = await runGit(repo, ['rev-parse', '--git-path', `hooks/${name}`]);
