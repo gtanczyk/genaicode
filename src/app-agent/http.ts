@@ -58,7 +58,10 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
         if (req.headers.origin !== undefined) return json(res, 403, { error: 'forbidden' });
         if (!bearerOk(req.headers.authorization, agent.mcpToken)) return json(res, 401, { error: 'bad token' });
         if (method !== 'POST') return json(res, 405, { error: 'POST only' });
-        const response = await handleMcpMessage(await readJson(req), agent.mcpTools(), serverInfo);
+        const message = await readJson(req);
+        // Again after the body: the session may have been dropped while it arrived.
+        if (!bearerOk(req.headers.authorization, agent.mcpToken)) return json(res, 401, { error: 'bad token' });
+        const response = await handleMcpMessage(message, agent.mcpTools(), serverInfo);
         if (response === null) {
           res.writeHead(202).end();
           return true;

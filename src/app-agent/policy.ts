@@ -40,12 +40,20 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       // web search.
       codex({
         sandbox: 'read-only',
-        config: { 'features.shell_tool': false, 'features.view_image': false, web_search: 'disabled' },
+        // Apps (connectors) are on by default and bypass the sandbox's network rules.
+        config: {
+          'features.shell_tool': false,
+          'features.view_image': false,
+          'features.apps': false,
+          web_search: 'disabled',
+        },
         onlyTaskMcpServers: true,
       }),
       copilot({
         allowAllTools: false,
         denyTools: ['shell', 'write', 'read', 'url', 'memory'],
+        // A deny rule leaves read-only tools such as web search in place; only this removes them.
+        excludedTools: ['web_fetch', 'web_search'],
         onlyTaskMcpServers: true,
       }),
     ];

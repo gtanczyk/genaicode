@@ -16,6 +16,7 @@
 - `codex({ config })`: extra `-c key=value` overrides, e.g. `{ 'features.shell_tool': false }`.
 - `codex({ onlyTaskMcpServers })` and `copilot({ onlyTaskMcpServers })`: switch off the MCP
   servers the CLI loads from its own config, leaving only the task's. The app agent uses it.
+- `copilot({ excludedTools })`: `--excluded-tools`, e.g. `['web_fetch', 'web_search']`.
 - `AgentSession.send(text, { note: true })` for host notes: never steered, run before queued
   prompts, and kept through a user stop until the next prompt; `SessionState.notes` lists them.
 

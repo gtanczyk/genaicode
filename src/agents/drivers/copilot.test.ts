@@ -34,13 +34,19 @@ describe('copilot driver', () => {
     expect(
       copilotArgs(
         { prompt: 'go', cwd: '.' },
-        { allowAllTools: false, allowTools: ['write'], denyTools: ['shell(rm)'] },
+        {
+          allowAllTools: false,
+          allowTools: ['write'],
+          denyTools: ['shell(rm)'],
+          excludedTools: ['web_fetch', 'web_search'],
+        },
       ),
     ).toEqual([
       '--output-format',
       'json',
       '--allow-tool=write',
       '--deny-tool=shell(rm)',
+      '--excluded-tools=web_fetch,web_search',
       '--no-ask-user',
       '--prompt=go',
     ]);

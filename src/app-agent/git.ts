@@ -188,6 +188,9 @@ export async function commitTree(
     ).trim();
     // The reviewed branch itself (HEAD itself when detached), and only from the reviewed base:
     // anything that moved it or switched HEAD meanwhile wins and this commit is dropped.
+    // Git locks HEAD itself while it updates the branch HEAD names, so a checkout cannot land
+    // inside the update; one that lands just before it still leaves the commit on the reviewed
+    // branch, and the index alone (below).
     const switched = (await headRef(repo)) !== ref;
     const moved = switched
       ? null

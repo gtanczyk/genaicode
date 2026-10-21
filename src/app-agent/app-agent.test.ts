@@ -372,6 +372,21 @@ describe('createAppAgent', () => {
     ).toThrow(/approval_summary/);
   });
 
+  it('drops a commit proposal from a session reset while it ran', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-reset-'));
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    const { agent: fake } = fakeAgent([]);
+    const agent = createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', agents: () => [fake], dev: { cwd: repo } });
+    agents.push(agent);
+    agent.configure({ mode: 'dev' });
+    const tool = agent.mcpTools().find((candidate) => candidate.name === 'propose_commit')!;
+    const call = tool.call({ message: 'Change a' });
+    agent.reset();
+    await expect(call).rejects.toThrow('This session has ended.');
+    expect(agent.get().actions).toEqual([]);
+  });
+
   it('keeps prompts queued behind a running turn when a commit is approved', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-queue-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -561,7 +576,9 @@ describe('commitTree', () => {
 
     // A hook that switches branches mid-commit moves neither of them.
     git('checkout', '-q', 'main');
-    writeFileSync(path.join(repo, '.git', 'hooks', 'commit-msg'), '#!/bin/sh\ngit checkout -q other\n', { mode: 0o755 });
+    writeFileSync(path.join(repo, '.git', 'hooks', 'commit-msg'), '#!/bin/sh\ngit checkout -q other\n', {
+      mode: 0o755,
+    });
     const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
     expect(result.ok).toBe(false);
     expect(git('log', '--format=%s', 'main')).toBe('init\n');

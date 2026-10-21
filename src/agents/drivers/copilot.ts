@@ -20,6 +20,8 @@ export interface CopilotAgentOptions {
   allowTools?: readonly string[];
   /** Permission patterns passed as `--deny-tool`, e.g. `shell` or `shell(rm)`. */
   denyTools?: readonly string[];
+  /** Tools removed from the model altogether (`--excluded-tools`), e.g. `web_fetch`, `web_search`. */
+  excludedTools?: readonly string[];
   /** Keep the `ask_user` tool. Default false (`--no-ask-user`): a headless run has nobody to ask. */
   askUser?: boolean;
   /** With `task.mcpServers` and `allowAllTools: false`: pre-allow every tool of those servers. Default true. */
@@ -143,6 +145,7 @@ export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, 
   ];
   for (const tool of allowed) args.push(`--allow-tool=${tool}`);
   for (const tool of options.denyTools ?? []) args.push(`--deny-tool=${tool}`);
+  if (options.excludedTools?.length) args.push(`--excluded-tools=${options.excludedTools.join(',')}`);
   if (!options.askUser) args.push('--no-ask-user');
   if (mcpConfigPath) args.push('--additional-mcp-config', `@${mcpConfigPath}`);
   if (task.model) args.push('--model', task.model);

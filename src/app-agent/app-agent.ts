@@ -526,7 +526,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       call: async (args) => {
         const message = String(args.message ?? '').trim();
         if (!message) throw new Error('message is required');
+        const token = mcpToken;
         const snapshot = await snapshotTree(repo());
+        // A reset or agent switch meanwhile: this call belongs to a session that is gone.
+        if (token !== mcpToken) throw new Error('This session has ended.');
         return waiting(propose({ kind: 'commit', summary: message.split('\n')[0]!, commit: { message, ...snapshot } }));
       },
     },
