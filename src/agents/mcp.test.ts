@@ -100,6 +100,11 @@ describe('MCP servers', () => {
     expect(report.header).toBe('Bearer secret');
   });
 
+  it('quotes a codex server name that is not a bare TOML key', () => {
+    const { args } = codexMcpOverrides([{ name: 'shop.app', url: 'http://127.0.0.1:1/mcp' }]);
+    expect(args).toEqual(['-c', 'mcp_servers."shop.app".url="http://127.0.0.1:1/mcp"']);
+  });
+
   it('refuses two codex stdio servers that need different values for one variable', async () => {
     const clash = [
       { name: 'a', command: 'mcp-a', env: { TOKEN: 'one' } },

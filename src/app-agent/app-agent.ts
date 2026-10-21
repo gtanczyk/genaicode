@@ -7,6 +7,7 @@ import { detectAgents } from '../agents/discovery.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
+import { safeJson } from './json.js';
 import type { McpTool } from './mcp.js';
 import { defaultAppAgents } from './policy.js';
 import {
@@ -267,7 +268,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           entry.kind === 'tool'
             ? {
                 ...entry,
-                input: clip(jsonText(entry.input), 1_000),
+                input: clip(safeJson(entry.input), 1_000),
                 output: clip(entry.output ?? '', 2_000),
               }
             : entry.kind === 'text'
@@ -565,10 +566,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           // Let the stopped run wind down: none of its edits may land after the check.
           if (stopped) await Promise.race([stopped.idle(), delay(STOP_WAIT_MS, undefined, { ref: false })]);
           // A throw is this action's outcome too: it must reach the agent before the queued prompts.
-          const outcome = await commitTree(repo(), action.commit!, action.commit!.message).catch((error: Error) => ({
-            ok: false,
-            output: error.message,
-          }));
+          // The user can only approve what they could read: a clipped diff never lands, whichever client approved it.
+          const land = async () =>
+            (await treeChanges(repo(), action.commit!)).truncated
+              ? { ok: false, output: 'The diff is too large to review in full; split the change into smaller commits.' }
+              : commitTree(repo(), action.commit!, action.commit!.message);
+          const outcome = await land().catch((error: Error) => ({ ok: false, output: error.message }));
           updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
           // A note sent while the stopped run still winds down would wait for the user's next
           // prompt; send it once the session is idle, so it starts its own turn.
@@ -724,15 +727,6 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       useCwd = null;
     },
   };
-}
-
-// A custom agent's tool input can be anything, including a BigInt or a cycle.
-function jsonText(value: unknown): string {
-  try {
-    return JSON.stringify(value, (_, item: unknown) => (typeof item === 'bigint' ? String(item) : item)) ?? '';
-  } catch {
-    return String(value);
-  }
 }
 
 function clip(text: string, max: number, keepEnd = false): string {

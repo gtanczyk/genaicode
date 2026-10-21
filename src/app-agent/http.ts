@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AppAgentError, type AppAgent } from './app-agent.js';
 import type { AppAgentMode } from './state.js';
+import { safeJson } from './json.js';
 import { handleMcpMessage } from './mcp.js';
 
 export interface AppAgentHandlerOptions {
@@ -153,14 +154,14 @@ class BadRequest extends Error {}
 
 function events(req: IncomingMessage, res: ServerResponse, agent: AppAgent, streams: Set<ServerResponse>) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-  res.write(`data: ${JSON.stringify(agent.get())}\n\n`);
+  res.write(`data: ${safeJson(agent.get())}\n\n`);
   let timer: NodeJS.Timeout | null = null;
   // Streamed text changes the state per token; send the latest every 100 ms at most.
   const unsubscribe = agent.subscribe(() => {
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      if (!res.writableEnded) res.write(`data: ${JSON.stringify(agent.get())}\n\n`);
+      if (!res.writableEnded) res.write(`data: ${safeJson(agent.get())}\n\n`);
     }, 100);
   });
   const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
@@ -216,7 +217,7 @@ function bearerOk(header: string | undefined, token: string): boolean {
 
 function json(res: ServerResponse, status: number, body: unknown): true {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(body));
+  res.end(safeJson(body));
   return true;
 }
 

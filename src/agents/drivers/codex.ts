@@ -164,7 +164,7 @@ export function codexMcpOverrides(
   const env: Record<string, string> = {};
   const set = (key: string, value: string) => args.push('-c', `${key}=${value}`);
   servers.forEach((server, index) => {
-    const key = `mcp_servers.${server.name}`;
+    const key = `mcp_servers.${tomlKey(server.name)}`;
     if (isHttpServer(server)) {
       set(`${key}.url`, JSON.stringify(server.url));
       const headers = Object.entries(server.headers ?? {});

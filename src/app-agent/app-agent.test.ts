@@ -683,6 +683,35 @@ describe('createAppAgent', () => {
     expect(git('log', '-1', '--format=%s')).toBe('Change a\n');
     expect(readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('four\n');
   });
+
+  it('refuses to commit a diff too large to review, whichever client approves it', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-large-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        writeFileSync(path.join(repo, 'big.txt'), 'x'.repeat(80).concat('\n').repeat(4_000));
+        await callTool(task, 'propose_commit', { message: 'Big' });
+        return 'done';
+      },
+      async () => 'noted',
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], dev: { cwd: repo } });
+    await post(base, '/config', { mode: 'dev' });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    expect((await agent.changes('1')).truncated).toBe(true);
+    agent.decide('1', 'approve');
+    await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[0]!.result).toContain('too large to review');
+    expect(git('log', '-1', '--format=%s')).toBe('init\n');
+  });
 });
 
 describe('commitTree', () => {
@@ -1033,8 +1062,12 @@ describe('conversation across switches', () => {
     const turn = records.find((record) => record.kind === 'turn');
     expect(turn?.entries?.map((entry) => (entry as { input?: string }).input)).toEqual([
       '{"n":"2"}',
-      '[object Object]',
+      '{"n":"1","self":"[Circular]"}',
     ]);
+    // The session state keeps the raw input; serving it must not throw.
+    const state = await fetch(`${base}/api/agent/state`);
+    expect(state.status).toBe(200);
+    expect(JSON.stringify(await state.json())).toContain('[Circular]');
   });
 
   it('tells the next agent how an action proposed before a switch ended', async () => {
