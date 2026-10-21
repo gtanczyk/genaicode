@@ -579,7 +579,7 @@ describe('createAppAgent', () => {
     git('add', '.');
     git('commit', '-qm', 'init');
     let release = () => {};
-    const { agent: fake } = fakeAgent([
+    const { agent: fake, tasks } = fakeAgent([
       async (task) => {
         writeFileSync(path.join(repo, 'a.txt'), 'two\n');
         await callTool(task, 'propose_commit', { message: 'Change a' });
@@ -593,14 +593,21 @@ describe('createAppAgent', () => {
     await post(base, '/send', { text: 'change a' });
     for (let i = 0; i < 200 && !agent.get().actions.length; i++) await new Promise((r) => setTimeout(r, 10));
     await post(base, '/actions/1', { decision: 'approve' });
-    for (let i = 0; i < 200 && agent.get().actions[0]!.status === 'running'; i++) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
-    expect(agent.get().actions[0]!.result).toContain('did not stop in time');
+    await new Promise((r) => setTimeout(r, 150));
+    // Past the timeout, while the old run still winds down: held behind the outcome.
+    await post(base, '/send', { text: 'next' });
     expect(git('log', '--format=%s')).toBe('init\n');
     release();
     await settle(agent);
+    expect(agent.get().actions[0]).toMatchObject({ status: 'failed' });
+    expect(agent.get().actions[0]!.result).toContain('did not stop in time');
+    expect(git('log', '--format=%s')).toBe('init\n');
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.findIndex((p) => p.includes('Commit #1 failed'))).toBeLessThan(prompts.indexOf('next'));
+  });
+
+  it('refuses a server name the drivers would refuse', () => {
+    expect(() => createAppAgent({ name: 'app', mcpUrl: 'http://x/mcp', serverName: 'shop.app' })).toThrow(/serverName/);
   });
 
   it('keeps the queue through two commits approved together', async () => {

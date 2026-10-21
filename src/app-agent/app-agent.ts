@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { detectAgents } from '../agents/discovery.js';
+import { MCP_NAME } from '../agents/prepare.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
@@ -68,7 +69,7 @@ export interface AppAgentOptions {
   agent?: string;
   /** Where the agent reaches the app's MCP endpoint (`<basePath>/mcp` of the handler). */
   mcpUrl: string | (() => string);
-  /** MCP server name the agent sees; its tools show as `mcp__<name>__<tool>`. Default `app`. */
+  /** MCP server name the agent sees (letters, digits, `_`, `-`); its tools show as `mcp__<name>__<tool>`. Default `app`. */
   serverName?: string;
   env?: NodeJS.ProcessEnv;
   /** Every prompt, tool call, decision and finished turn, e.g. to append to a JSONL log. */
@@ -170,6 +171,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   const now = options.now ?? Date.now;
   const env = options.env ?? process.env;
   const serverName = options.serverName ?? 'app';
+  // Checked here, not on the first turn: every driver refuses other names.
+  if (!MCP_NAME.test(serverName)) throw new Error(`serverName must match ${MCP_NAME}: ${JSON.stringify(serverName)}`);
   // A dropped session's process may still be winding down: its late calls must not reach the app.
   const newToken = () => randomBytes(24).toString('base64url');
   let mcpToken = newToken();
@@ -592,10 +595,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
                   }
                 : commitTree(repo(), action.commit!, action.commit!.message);
           const outcome = await land().catch((error: Error) => ({ ok: false, output: error.message }));
-          updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
           // A note sent while the stopped run still winds down would wait for the user's next
-          // prompt; send it once the session is idle, so it starts its own turn.
+          // prompt; send it once the session is idle, so it starts its own turn. Until then the
+          // action still runs, so a prompt sent meanwhile is held behind its outcome.
           if (stopped && session === stopped) await stopped.idle();
+          updateAction(action.id, { status: outcome.ok ? 'done' : 'failed', result: outcome.output });
           tell(`Commit #${action.id} ${outcome.ok ? 'succeeded' : 'failed'}:\n${outcome.output}`);
         } finally {
           // The last of several commits approved together gives the queue back.
