@@ -673,6 +673,38 @@ describe('commitTree', () => {
     expect(readFileSync(path.join(repo, '.git', 'MERGE_HEAD'), 'utf8').trim()).toBe(side);
   });
 
+  it('commits nothing when a merge starts while the commit is signed', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-sign-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 'T');
+    writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    const signer = path.join(repo, '.git', 'fake-gpg');
+    writeFileSync(
+      signer,
+      [
+        '#!/bin/sh',
+        'git rev-parse HEAD > "$(git rev-parse --git-path MERGE_HEAD)"',
+        'cat > /dev/null',
+        "printf -- '-----BEGIN PGP SIGNATURE-----\\nx\\n-----END PGP SIGNATURE-----\\n'",
+        "printf '\\n[GNUPG:] SIG_CREATED \\n' >&2",
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    git('config', 'commit.gpgSign', 'true');
+    git('config', 'gpg.format', 'openpgp');
+    git('config', 'gpg.program', signer);
+    writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+    const result = await commitTree(repo, await snapshotTree(repo), 'Change a');
+    expect(result.output).toContain('A merge started while committing, so nothing was committed');
+    expect(result.ok).toBe(false);
+    expect(git('log', '--format=%s')).toBe('init\n');
+  });
+
   it('drops its commit when HEAD moves while the hooks run, and applies commit-msg', async () => {
     const repo = mkdtempSync(path.join(tmpdir(), 'app-agent-hook-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
@@ -778,6 +810,36 @@ describe('conversation across switches', () => {
     await post(base, '/send', { text: 'fresh' });
     await settle(agent);
     expect(two.tasks.at(-1)!.prompt).not.toContain('Earlier in this conversation');
+  });
+
+  it('traces a turn whose tool input JSON cannot hold', async () => {
+    const cyclic: Record<string, unknown> = { n: 1n };
+    cyclic.self = cyclic;
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+    const odd: CodingAgent = {
+      name: 'odd',
+      command: process.execPath,
+      capabilities: { resume: true, mcp: true },
+      run: () => ({
+        result: Promise.resolve(result),
+        abort() {},
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'tool-start', id: 't1', name: 'big', input: { n: 2n } } as AgentEvent;
+          yield { type: 'tool-start', id: 't2', name: 'loop', input: cyclic } as AgentEvent;
+          yield { type: 'done', result } as AgentEvent;
+        },
+      }),
+    };
+    const records: Array<{ kind: string; entries?: unknown[] }> = [];
+    const { agent, base } = await serve({ name: 'app', agents: () => [odd], trace: (record) => records.push(record) });
+    await post(base, '/send', { text: 'go' });
+    await settle(agent);
+    expect(agent.get().session!.status).toBe('idle');
+    const turn = records.find((record) => record.kind === 'turn');
+    expect(turn?.entries?.map((entry) => (entry as { input?: string }).input)).toEqual([
+      '{"n":"2"}',
+      '[object Object]',
+    ]);
   });
 
   it('tells the next agent how an action proposed before a switch ended', async () => {

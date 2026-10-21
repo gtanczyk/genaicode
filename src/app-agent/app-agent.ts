@@ -245,8 +245,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     if (!options.trace) return;
     for (const turn of session?.get().turns ?? []) {
       if (!turn.result || traced.has(turn.id)) continue;
-      traced.add(turn.id);
-      trace({
+      const record: AppAgentTrace = {
         kind: 'turn',
         agent: turn.agent,
         mode,
@@ -260,14 +259,16 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           entry.kind === 'tool'
             ? {
                 ...entry,
-                input: clip(JSON.stringify(entry.input) ?? '', 1_000),
+                input: clip(jsonText(entry.input), 1_000),
                 output: clip(entry.output ?? '', 2_000),
               }
             : entry.kind === 'text'
               ? { ...entry, text: clip(entry.text, 4_000) }
               : entry,
         ),
-      });
+      };
+      traced.add(turn.id);
+      trace(record);
     }
   };
 
@@ -680,6 +681,15 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       useCwd = null;
     },
   };
+}
+
+// A custom agent's tool input can be anything, including a BigInt or a cycle.
+function jsonText(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_, item: unknown) => (typeof item === 'bigint' ? String(item) : item)) ?? '';
+  } catch {
+    return String(value);
+  }
 }
 
 function clip(text: string, max: number, keepEnd = false): string {

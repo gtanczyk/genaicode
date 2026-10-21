@@ -179,13 +179,14 @@ export async function commitTree(
     if (!finalMessage) return done(false, logs, 'The commit message is empty after the hooks ran.');
     writeFileSync(messageFile, `${finalMessage}\n`);
     subject = finalMessage.split('\n')[0]!;
-    // A merge started while the hooks ran is left alone: committing now would bury it.
-    const started = await operationInProgress(repo);
-    if (started) return done(false, logs, `A ${started} started while committing, so nothing was committed.`);
     const sign = (await runGit(repo, ['config', '--bool', 'commit.gpgSign'])).stdout.trim() === 'true';
     made = (
       await must(repo, ['commit-tree', tree, ...(base ? ['-p', base] : []), ...(sign ? ['-S'] : []), '-F', messageFile])
     ).trim();
+    // A merge started while the hooks or the signer ran is left alone: committing now would bury it.
+    // Git has no lock for that, so this runs last, right before the update.
+    const started = await operationInProgress(repo);
+    if (started) return done(false, logs, `A ${started} started while committing, so nothing was committed.`);
     // The reviewed branch itself (HEAD itself when detached), and only from the reviewed base:
     // anything that moved it or switched HEAD meanwhile wins and this commit is dropped.
     // Git locks HEAD itself while it updates the branch HEAD names, so a checkout cannot land
@@ -214,6 +215,15 @@ export async function commitTree(
   }
   const branch = ref?.replace(/^refs\/heads\//, '') ?? 'detached HEAD';
   const summary = `[${branch} ${made.slice(0, 7)}] ${subject}`;
+  // One that started in the moment before the update may still describe the old commit.
+  const late = await operationInProgress(repo);
+  if (late) {
+    return done(
+      true,
+      [...logs, summary],
+      `A ${late} started while committing, so the index was left as is. Check it against the new commit before finishing it.`,
+    );
+  }
   // Bring the user's index to the new commit, unless something staged or switched HEAD meanwhile.
   const now = await indexTree(repo);
   const reset =
