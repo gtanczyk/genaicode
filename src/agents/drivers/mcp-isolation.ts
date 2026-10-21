@@ -6,11 +6,11 @@ import type { AgentTask } from '../types.js';
  * config), from its `mcp list --json`, so a run can switch off every server but the task's.
  * Throws when the list cannot be read: a run that must be isolated does not start without it.
  */
-export function configuredMcpServers(
+export function configuredMcpServers<T extends string | { name: string }>(
   command: string,
   task: AgentTask,
-  names: (listing: unknown) => string[],
-): Promise<string[]> {
+  servers: (listing: unknown) => T[],
+): Promise<T[]> {
   return new Promise((resolve, reject) => {
     execFile(
       command,
@@ -20,7 +20,8 @@ export function configuredMcpServers(
         if (error) return reject(new Error(`could not list ${command}'s MCP servers: ${error.message}`));
         try {
           const own = new Set((task.mcpServers ?? []).map((server) => server.name));
-          resolve(names(JSON.parse(String(stdout)) as unknown).filter((name) => !own.has(name)));
+          const nameOf = (server: T) => (typeof server === 'string' ? server : server.name);
+          resolve(servers(JSON.parse(String(stdout)) as unknown).filter((server) => !own.has(nameOf(server))));
         } catch (parseError) {
           reject(new Error(`could not read ${command}'s MCP server list: ${(parseError as Error).message}`));
         }

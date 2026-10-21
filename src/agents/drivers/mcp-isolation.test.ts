@@ -34,6 +34,24 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     expect(prepared.args).toContain('mcp_servers.app.url="http://127.0.0.1:1/mcp"');
   });
 
+  it('keeps a valid transport on a plugin server it switches off', async () => {
+    const command = fakeCli('codex-plugins', [
+      { name: 'docs', transport: { type: 'stdio', command: 'docs-mcp', args: ['--x'] } },
+      { name: 'web', transport: { type: 'streamable_http', url: 'https://mcp.example/web' } },
+    ]);
+    const prepared = await prepareCodex({ prompt: 'go', cwd: dir }, { command, onlyTaskMcpServers: true });
+    expect(prepared.args.slice(0, 8)).toEqual([
+      '-c',
+      'mcp_servers.docs.enabled=false',
+      '-c',
+      'mcp_servers.docs.command="docs-mcp"',
+      '-c',
+      'mcp_servers.web.enabled=false',
+      '-c',
+      'mcp_servers.web.url="https://mcp.example/web"',
+    ]);
+  });
+
   it('disables built-in and configured Copilot servers', async () => {
     const command = fakeCli('copilot', { mcpServers: { stripe: {}, app: {} } });
     const prepared = await prepareCopilot(

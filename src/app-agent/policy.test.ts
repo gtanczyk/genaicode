@@ -23,10 +23,16 @@ describe('defaultAppAgents', () => {
   it('takes web tools and Codex apps away in use mode', () => {
     defaultAppAgents('use');
     expect(vi.mocked(copilot).mock.calls.at(-1)?.[0]?.excludedTools).toEqual(['web_fetch', 'web_search']);
-    expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({ 'features.apps': false });
+    expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({
+      'features.apps': false,
+      'features.hooks': false,
+    });
     expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.settings).toEqual({ disableAllHooks: true });
     defaultAppAgents('dev');
-    expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({ 'features.apps': false });
+    expect(vi.mocked(codex).mock.calls.at(-1)?.[0]?.config).toMatchObject({
+      'features.apps': false,
+      'features.hooks': false,
+    });
     expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.settings).toEqual({ disableAllHooks: true });
   });
 

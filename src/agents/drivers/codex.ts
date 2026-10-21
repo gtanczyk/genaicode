@@ -101,15 +101,44 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
 export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
   const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
   if (!options.onlyTaskMcpServers) return prepared;
-  const others = await configuredMcpServers(options.command ?? 'codex', task, codexMcpNames);
-  const off = others.flatMap((name) => ['-c', `mcp_servers.${tomlKey(name)}.enabled=false`]);
+  const others = await configuredMcpServers(options.command ?? 'codex', task, codexMcpServers);
+  const off = others.flatMap(({ name, transport }) => {
+    const key = `mcp_servers.${tomlKey(name)}`;
+    // A server only a plugin defines has no transport in the config table, and Codex refuses a
+    // table without one: repeat the listed one next to `enabled=false`.
+    const keep = Object.entries(transport).flatMap(([field, value]) => [
+      '-c',
+      `${key}.${field}=${JSON.stringify(value)}`,
+    ]);
+    return ['-c', `${key}.enabled=false`, ...keep];
+  });
   return { ...prepared, args: [...off, ...prepared.args] };
 }
 
-/** Server names in `codex mcp list --json`: an array of `{ name }`. */
-export function codexMcpNames(listing: unknown): string[] {
+/**
+ * Servers in `codex mcp list --json`, an array of `{ name, transport }`, each with the field
+ * that makes its transport valid (`command` or `url`).
+ */
+export function codexMcpServers(
+  listing: unknown,
+): Array<{ name: string; transport: { command?: string; url?: string } }> {
   if (!Array.isArray(listing)) throw new Error('expected an array');
-  return listing.flatMap((server) => (isObject(server) && typeof server.name === 'string' ? [server.name] : []));
+  return listing.flatMap((server) => {
+    if (!isObject(server) || typeof server.name !== 'string') return [];
+    const listed = isObject(server.transport) ? server.transport : {};
+    const transport =
+      typeof listed.command === 'string'
+        ? { command: listed.command }
+        : typeof listed.url === 'string'
+          ? { url: listed.url }
+          : {};
+    return [{ name: server.name, transport }];
+  });
+}
+
+/** Server names in `codex mcp list --json`. */
+export function codexMcpNames(listing: unknown): string[] {
+  return codexMcpServers(listing).map((server) => server.name);
 }
 
 const tomlKey = (name: string) => (/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name));

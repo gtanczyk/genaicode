@@ -49,6 +49,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
           'features.shell_tool': false,
           'features.view_image': false,
           'features.apps': false,
+          'features.hooks': false,
           web_search: 'disabled',
         },
         onlyTaskMcpServers: true,
@@ -78,7 +79,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
     }),
     codex({
       sandbox: 'workspace-write',
-      config: { 'features.apps': false, web_search: 'disabled' },
+      config: { 'features.apps': false, 'features.hooks': false, web_search: 'disabled' },
       onlyTaskMcpServers: true,
     }),
     copilot({
