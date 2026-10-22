@@ -5,6 +5,8 @@ import type { CodingAgent } from '../agents/types.js';
 import type { AppAgentMode } from './state.js';
 
 const WEB_TOOLS = ['WebFetch', 'WebSearch'];
+// A subagent can outlive the turn, so its answer never reaches the user.
+const SUBAGENT_TOOLS = ['Task', 'Agent'];
 
 /**
  * The agents an app agent offers by default: the drivers that take per-run MCP servers,
@@ -36,7 +38,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
           'MultiEdit',
           'NotebookEdit',
           'NotebookRead',
-          'Task',
+          ...SUBAGENT_TOOLS,
           ...WEB_TOOLS,
         ],
       }),
@@ -73,7 +75,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       // acceptEdits already reads and edits inside cwd without asking; no bare Read/Edit rules,
       // which would match every path on the machine.
       allowedTools: allowed.map((c) => `Bash(${c}:*)`),
-      disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS],
+      disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS, ...SUBAGENT_TOOLS],
       // Hooks run commands outside these rules, `git commit` included.
       settings: { disableAllHooks: true },
     }),

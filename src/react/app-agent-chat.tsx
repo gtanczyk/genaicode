@@ -32,12 +32,21 @@ export interface AppAgentClient {
   changes(id: string): Promise<TreeChanges>;
 }
 
+export interface AppAgentClientOptions {
+  /**
+   * URL of the event stream. Default `<basePath>/events`. `EventSource` cannot send headers,
+   * so an app that wants a key on every request puts it in this URL's query.
+   */
+  eventsUrl?: string;
+}
+
 /**
  * Connect to an app agent served by `createAppAgentHandler` at `basePath` (default
  * `/api/agent`, same origin). Calls send the page's cookies, so the app's `authorize` sees them.
  */
-export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
+export function useAppAgent(basePath = '/api/agent', options: AppAgentClientOptions = {}): AppAgentClient {
   const base = basePath.replace(/\/$/, '');
+  const eventsUrl = options.eventsUrl ?? `${base}/events`;
   const [state, setState] = useState<AppAgentState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +58,7 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
   current.current = base;
   useEffect(() => {
     setState(null);
-    const source = new EventSource(`${base}/events`);
+    const source = new EventSource(eventsUrl);
     source.onmessage = (event) => {
       streaming.current = true;
       setError(null);
@@ -63,7 +72,7 @@ export function useAppAgent(basePath = '/api/agent'): AppAgentClient {
       streaming.current = false;
       source.close();
     };
-  }, [base]);
+  }, [base, eventsUrl]);
 
   const call = useCallback(
     (route: string, body: unknown = {}) => {

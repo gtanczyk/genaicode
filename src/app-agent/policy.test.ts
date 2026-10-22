@@ -49,4 +49,13 @@ describe('defaultAppAgents', () => {
       'shell(git push:*)',
     ]);
   });
+
+  it('keeps Claude from starting subagents in both modes', () => {
+    for (const mode of ['use', 'dev'] as const) {
+      defaultAppAgents(mode);
+      expect(vi.mocked(claude).mock.calls.at(-1)?.[0]?.disallowedTools).toEqual(
+        expect.arrayContaining(['Task', 'Agent']),
+      );
+    }
+  });
 });

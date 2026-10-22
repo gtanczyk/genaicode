@@ -4,6 +4,10 @@
 
 ### Added
 
+- `AppAgent.notify(text)`: a note from the app to its agent, e.g. that a background job a tool
+  started has finished. It goes ahead of queued prompts and never starts a conversation.
+- `useAppAgent(basePath, { eventsUrl })`: the event stream URL, for an app that puts a key in
+  its query because `EventSource` cannot send headers.
 - `genaicode/app-agent`: a coding agent inside your own local app. `createAppAgent` serves the
   app's tools to the agent over MCP, turns write tools into actions the user approves, gives
   the agent the open page with link chips and navigation, and in `dev` mode lets it edit the
@@ -43,6 +47,11 @@
 - `genaicode/vite` overlay: Escape closes the panel and hands the focus back to the wolf, from the
   wolf or anything in the panel (inside the chat frame the key stays with the UI). The wolf names
   the panel it toggles with `aria-controls`.
+
+### Changed
+
+- `defaultAppAgents`: Claude cannot start subagents (`Task`, `Agent`) in either mode; one can
+  outlive the turn, so its answer never reaches the user.
 
 ## 2.13.3 — 2026-10-17
 

@@ -112,6 +112,12 @@ export interface AppAgent {
   subscribe(listener: (state: AppAgentState) => void): () => void;
   /** A message from the user. Carries the open page when the app reports one. */
   send(text: string): void;
+  /**
+   * A note from the app, e.g. a background job a tool started has finished. It reaches the
+   * agent ahead of queued prompts but never starts a conversation. Right after an agent or mode
+   * switch the next agent hears it in its briefing; with no conversation at all it is dropped.
+   */
+  notify(text: string): void;
   stop(): void;
   /** Drop the conversation, history and chips; the next message starts fresh. */
   reset(): void;
@@ -661,6 +667,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       // A pending commit stops its turn when approved: a prompt steered into that turn could be lost.
       const commitPending = actions.some((action) => action.kind === 'commit' && action.status === 'pending');
       deliver(trimmed, true, false, commitPending || !!session?.get().notes?.length);
+    },
+    notify(text) {
+      if (closed || !text.trim()) return;
+      tell(text.trim());
     },
     stop() {
       if (held.length || saved.length) {

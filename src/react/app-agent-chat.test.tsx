@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import { AppAgentChat, PROMPT_MARKER, type AppAgentChatProps, type AppAgentState } from '../react.js';
+import { AppAgentChat, PROMPT_MARKER, useAppAgent, type AppAgentChatProps, type AppAgentState } from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -312,6 +312,16 @@ describe('AppAgentChat', () => {
     expect(button('New').disabled).toBe(true);
     events.emit(appState({ actions: [{ ...running, status: 'done' as const }] }));
     expect(button('New').disabled).toBe(false);
+  });
+
+  it('opens the event stream at the URL the host gives', () => {
+    FakeEventSource.last = null;
+    function Host() {
+      const client = useAppAgent('/api/agent', { eventsUrl: '/api/agent/events?key=k1' });
+      return <AppAgentChat client={client} />;
+    }
+    act(() => root.render(<Host />));
+    expect(FakeEventSource.last!.url).toBe('/api/agent/events?key=k1');
   });
 
   it('uses a client the host passes instead of opening its own stream', () => {
