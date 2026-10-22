@@ -114,8 +114,8 @@ export interface AppAgent {
   send(text: string): void;
   /**
    * A note from the app, e.g. a background job a tool started has finished. It reaches the
-   * agent ahead of queued prompts but never starts a conversation: with none open, the next
-   * agent hears it in its briefing.
+   * agent ahead of queued prompts but never starts a conversation. Right after an agent or mode
+   * switch the next agent hears it in its briefing; with no conversation at all it is dropped.
    */
   notify(text: string): void;
   stop(): void;
