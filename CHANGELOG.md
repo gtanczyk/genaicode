@@ -4,6 +4,10 @@
 
 ### Added
 
+- `AppAgent.notify(text)`: a note from the app to its agent, e.g. that a background job a tool
+  started has finished. It goes ahead of queued prompts and never starts a conversation.
+- `useAppAgent(basePath, { eventsUrl })`: the event stream URL, for an app that puts a key in
+  its query because `EventSource` cannot send headers.
 - `genaicode/app-agent`: a coding agent inside your own local app. `createAppAgent` serves the
   app's tools to the agent over MCP, turns write tools into actions the user approves, gives
   the agent the open page with link chips and navigation, and in `dev` mode lets it edit the

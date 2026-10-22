@@ -210,6 +210,29 @@ describe('createAppAgent', () => {
     expect(prompts.findIndex((p) => p.includes('rejected action #1'))).toBeLessThan(prompts.indexOf('follow-up'));
   });
 
+  it('delivers an app note ahead of queued prompts and drops it with no conversation open', async () => {
+    let release = () => {};
+    const { agent: fake, tasks } = fakeAgent([
+      async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return 'working';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake] });
+    agent.notify('nobody is listening yet');
+    expect(agent.get().session).toBeNull();
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 200 && !tasks.length; i++) await new Promise((r) => setTimeout(r, 10));
+    await post(base, '/send', { text: 'follow-up' });
+    agent.notify('the judge run finished');
+    release();
+    await settle(agent);
+    const prompts = tasks.map((task) => userText(task.prompt));
+    expect(prompts.join('\n')).not.toContain('nobody is listening');
+    expect(prompts.findIndex((p) => p.includes('[app] the judge run finished'))).toBeGreaterThan(0);
+    expect(prompts.findIndex((p) => p.includes('the judge run finished'))).toBeLessThan(prompts.indexOf('follow-up'));
+  });
+
   it('queues a prompt sent right after a rejection behind its outcome, even when the agent steers', async () => {
     let release = () => {};
     const steered: string[] = [];
