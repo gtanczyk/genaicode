@@ -350,8 +350,9 @@ function Folded({
   const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
   const tools = steps.filter(([item]) => item.kind === 'tool').length;
   const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
-  const last = entries.at(-1);
-  const now = !turn.result && last?.kind === 'tool' && !last.done ? toolName(last.name) : undefined;
+  // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
+  const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
+  const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
   const count = tools || steps.length;
   return (
     <>

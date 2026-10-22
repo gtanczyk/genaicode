@@ -287,11 +287,13 @@ describe('AgentChat', () => {
     state.turns[1]!.entries = [
       { kind: 'text', text: 'Looking', streaming: false },
       { kind: 'tool', id: 't3', name: 'mcp__ops__costs', input: {}, done: false },
+      { kind: 'files', paths: ['/work/app/costs.json'] },
     ];
     render({ foldSteps: true, state, formatToolName: (name) => name.replace('mcp__ops__', '') });
     const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
-    // Interim text folds too while a tool runs; the line names the running tool.
+    // Interim text and an edit fold too; the line names the tool still running.
     expect(summary.textContent).toBe('1 step · costs');
+    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
     expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
   });
 
