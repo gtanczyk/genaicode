@@ -48,6 +48,11 @@
   wolf or anything in the panel (inside the chat frame the key stays with the UI). The wolf names
   the panel it toggles with `aria-controls`.
 
+### Changed
+
+- `defaultAppAgents`: Claude cannot start subagents (`Task`, `Agent`) in either mode; one can
+  outlive the turn, so its answer never reaches the user.
+
 ## 2.13.3 — 2026-10-17
 
 ### Added
