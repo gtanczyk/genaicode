@@ -268,6 +268,38 @@
   }
 }
 
+/* foldSteps: a turn's work in one pill */
+.gc-fold > summary {
+  cursor: pointer;
+  width: fit-content;
+  padding: 3px 10px;
+  border: 1px solid var(--_border);
+  border-radius: 999px;
+  font-size: 0.85em;
+  color: var(--_muted);
+}
+.gc-fold > summary .gc-spin {
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.gc-fold > summary:hover {
+  color: var(--_text);
+}
+.gc-fold-now {
+  font-family: var(--_mono);
+}
+.gc-fold > summary .gc-err {
+  color: var(--_error);
+}
+.gc-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--_border);
+}
+
 /* Tool calls */
 .gc-tool {
   background: var(--_panel);

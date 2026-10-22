@@ -307,6 +307,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                 |
 | `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                         |
 | `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns |
+| `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line         |
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end      |
 | `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input               |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                  |
