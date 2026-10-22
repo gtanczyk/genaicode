@@ -270,6 +270,33 @@ describe('AgentChat', () => {
     expect($('.hint').textContent).toBe('Ask about the queue');
   });
 
+  it('folds the work of a turn with foldSteps, keeping the answer and open asks in view', () => {
+    render({ foldSteps: true });
+    const [done, live] = $$('.gc-turn');
+    // Two tools and an edit fold; the answer stays out.
+    expect(done!.querySelector('.gc-fold > summary')!.textContent).toBe('2 steps · errors');
+    expect(done!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
+    expect(done!.querySelector('.gc-fold-body .gc-md')).toBeNull();
+    expect(done!.querySelector('.gc-steps > .gc-md')!.textContent).toContain('Fixed two things');
+    // A pending approval, an error and the streaming reply are all in view: nothing folds.
+    expect(live!.querySelector('.gc-fold')).toBeNull();
+    expect(live!.querySelector('.gc-approval:not(.gc-done)')).not.toBeNull();
+    expect(live!.querySelector('.gc-error')!.textContent).toBe('rate limited');
+
+    const state = fixture();
+    state.turns[1]!.entries = [
+      { kind: 'text', text: 'Looking', streaming: false },
+      { kind: 'tool', id: 't3', name: 'mcp__ops__costs', input: {}, done: false },
+      { kind: 'files', paths: ['/work/app/costs.json'] },
+    ];
+    render({ foldSteps: true, state, formatToolName: (name) => name.replace('mcp__ops__', '') });
+    const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
+    // Interim text and an edit fold too; the line names the tool still running.
+    expect(summary.textContent).toBe('1 step · costs');
+    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
+    expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();

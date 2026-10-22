@@ -139,6 +139,8 @@ export interface AppAgentChatProps {
   renderAction?(action: AppAction): ReactNode;
   emptyState?: ReactNode;
   placeholder?: string;
+  /** Fold each turn's work into one "N steps" line; see `AgentChatProps.foldSteps`. */
+  foldSteps?: boolean;
   theme?: 'auto' | 'light' | 'dark';
   className?: string;
   style?: CSSProperties;
@@ -220,6 +222,7 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
       onSend={client.send}
       onStop={client.stop}
       onApprove={client.approve}
+      foldSteps={props.foldSteps}
       renderPrompt={(text) => {
         const typed = userText(text);
         if (!typed.startsWith(APP_NOTE)) return typed;

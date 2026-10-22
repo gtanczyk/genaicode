@@ -4,6 +4,9 @@
 
 ### Added
 
+- `<AgentChat foldSteps>` (and `<AppAgentChat foldSteps>`): each turn's work (tools, edits,
+  interim text) folds into one "N steps" line that opens on click, naming the running tool.
+  The answer, errors, steering input and open approvals stay in view.
 - `AppAgent.notify(text)`: a note from the app to its agent, e.g. that a background job a tool
   started has finished. It goes ahead of queued prompts and never starts a conversation.
 - `useAppAgent(basePath, { eventsUrl })`: the event stream URL, for an app that puts a key in

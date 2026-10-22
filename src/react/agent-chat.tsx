@@ -52,6 +52,11 @@ export interface AgentChatProps {
   renderFooter?(): ReactNode;
   /** Host lines between turns. */
   notices?: readonly ChatNotice[];
+  /**
+   * Fold a turn's work (tools, edits, interim text) into one "N steps" line that opens on
+   * click, leaving the answer, errors, steering input and open approvals in view. Default false.
+   */
+  foldSteps?: boolean;
   /** Replaces the default header (agent, model, session, usage). Pass null for no header. */
   header?: ReactNode;
   /** Extra content at the right end of the default header. */
@@ -133,6 +138,7 @@ export function AgentChat(props: AgentChatProps) {
         onApprove={props.onApprove}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
+        fold={props.foldSteps ?? false}
       />,
     );
     const after = props.renderAfterTurn?.(turn, index);
@@ -262,6 +268,7 @@ function Turn({
   onApprove,
   prompt,
   toolName,
+  fold,
 }: {
   turn: SessionTurn;
   now: number;
@@ -270,10 +277,23 @@ function Turn({
   onApprove?: AgentChatProps['onApprove'];
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
+  fold: boolean;
 }) {
   const running = !turn.result;
   const bad = turn.result && !turn.result.ok;
   const shown = prompt ? prompt(turn.prompt, turn) : turn.prompt;
+  const entry = (item: SessionEntry, i: number) => (
+    <Entry
+      key={i}
+      entry={item}
+      agent={turn.agent}
+      cwd={cwd}
+      pending={pending}
+      onApprove={onApprove}
+      prompt={prompt}
+      toolName={toolName}
+    />
+  );
   return (
     <section className="gc-turn">
       {shown === null || shown === undefined || shown === false ? null : <div className="gc-prompt">{shown}</div>}
@@ -283,18 +303,11 @@ function Turn({
             {turn.agent.slice(0, 2)}
           </div>
           <div className="gc-steps">
-            {turn.entries.map((entry, i) => (
-              <Entry
-                key={i}
-                entry={entry}
-                agent={turn.agent}
-                cwd={cwd}
-                pending={pending}
-                onApprove={onApprove}
-                prompt={prompt}
-                toolName={toolName}
-              />
-            ))}
+            {fold ? (
+              <Folded turn={turn} pending={pending} toolName={toolName} entry={entry} />
+            ) : (
+              turn.entries.map(entry)
+            )}
           </div>
         </div>
       ) : null}
@@ -310,6 +323,52 @@ function Turn({
         </div>
       )}
     </section>
+  );
+}
+
+/** `foldSteps`: the work in one closed line, then what the user has to see. */
+function Folded({
+  turn,
+  pending,
+  toolName,
+  entry,
+}: {
+  turn: SessionTurn;
+  pending: SessionState['approvals'];
+  toolName: (name: string) => string;
+  entry: (item: SessionEntry, i: number) => ReactNode;
+}) {
+  const { entries } = turn;
+  // The last text is the answer once the turn ends, or while it is still the newest entry.
+  const lastText = entries.map((item) => item.kind).lastIndexOf('text');
+  const answer = lastText >= 0 && (turn.result || lastText === entries.length - 1) ? lastText : -1;
+  const inView = (item: SessionEntry, i: number) =>
+    i === answer ||
+    item.kind === 'error' ||
+    item.kind === 'input' ||
+    (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
+  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
+  const tools = steps.filter(([item]) => item.kind === 'tool').length;
+  const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
+  // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
+  const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
+  const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
+  const count = tools || steps.length;
+  return (
+    <>
+      {steps.length ? (
+        <details className="gc-fold">
+          <summary>
+            {turn.result ? null : <span className="gc-spin" />}
+            {count} {count === 1 ? 'step' : 'steps'}
+            {now ? <span className="gc-fold-now"> · {now}</span> : null}
+            {failed ? <span className="gc-err"> · errors</span> : null}
+          </summary>
+          <div className="gc-fold-body">{steps.map(([item, i]) => entry(item, i))}</div>
+        </details>
+      ) : null}
+      {entries.map((item, i) => (inView(item, i) ? entry(item, i) : null))}
+    </>
   );
 }
 
