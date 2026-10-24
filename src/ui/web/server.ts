@@ -217,8 +217,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
 function run(controller: ChatController, command: WebCommand): boolean {
   switch (command.type) {
     case 'submit':
-      if (controller.submit(command.text) === 'quit') {
-        controller.note('The browser UI keeps running until you press Ctrl-C where you started "genaicode ui".');
+      if (controller.submit(command.text, 'web') === 'quit') {
+        controller.note('The browser UI keeps running until you stop genaicode in the terminal (Ctrl-C).');
       }
       return true;
     case 'stop':

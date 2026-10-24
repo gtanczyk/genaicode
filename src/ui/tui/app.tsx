@@ -189,7 +189,7 @@ export function ChatApp({
                 <Text color="gray"> {version} · coding agents in your terminal</Text>
               </Text>
               <Text color="gray">
-                {view.session.agent} in {cwd} · /help for commands · esc stops the agent
+                {view.session.agent} in {cwd} · /help for commands · /web opens the browser · esc stops the agent
               </Text>
             </Box>
           ) : item.kind === 'turn' ? (

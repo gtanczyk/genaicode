@@ -47,6 +47,8 @@ export interface UiLaunch {
   signal?: AbortSignal;
   port?: number;
   open?: boolean;
+  /** `chat --web`: also open the session in the browser. */
+  openWeb?: boolean;
 }
 
 export interface UiModule {
@@ -80,12 +82,14 @@ Chat and UI options:
       --effort <level>    Reasoning effort, in the agent's own vocabulary
   -r, --resume <id>       Continue this agent session
   -y, --yes               Approve every permission request the agent asks for
-      --port <n>          (ui) Port to listen on, on 127.0.0.1 (default: a free port)
+      --web               (chat) Also open the session in the browser
+      --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
 
   Each prompt after the first continues the agent's session (claude, codex, cursor,
   opencode, copilot). Prompts sent while the agent works wait in a queue. Type /help in
-  the chat for commands.
+  the chat for commands. The terminal and the browser can show one session: /web in the
+  chat opens it in the browser, and Enter in "genaicode ui" brings it into the terminal.
 
 Run options:
   -a, --agent <name>      Agent to use (default: the first installed one, see "agents")
@@ -121,7 +125,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
 
   const agents = cli.agents ?? defaultAgents();
   if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
-    command = { kind: 'chat', approveAll: false, open: false };
+    command = { kind: 'chat', approveAll: false, open: false, web: false };
   }
   switch (command.kind) {
     case 'help':
@@ -167,6 +171,7 @@ async function runUi(
     signal: cli.signal,
     port: options.port,
     open: options.open,
+    openWeb: options.web,
   };
   return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
 }
