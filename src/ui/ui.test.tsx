@@ -1,14 +1,14 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { createChatController, NoAgentError } from './controller.js';
-import { needsAttention, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
+import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
@@ -17,6 +17,19 @@ const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
 const env = { PATH: bin };
+/** Running, not a zombie: a container's init may never reap what it inherits. */
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  try {
+    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+  } catch {
+    return !existsSync('/proc');
+  }
+};
 
 /** Agent that answers each prompt with one tool call and a message. */
 function echoAgent(name = 'echo', command = 'echo-agent'): CodingAgent & { tasks: AgentTask[] } {
@@ -220,6 +233,93 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('runs !commands in the project and ends them with /stop', async () => {
+    expect(parseShell('!npm run agent')).toBe('npm run agent');
+    expect(parseShell('  ! ls ')).toBe('ls');
+    expect(parseShell('!')).toBe('');
+    expect(parseShell('!!important')).toBeUndefined();
+    expect(parseShell('hi!')).toBeUndefined();
+
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const texts = () => chat.get().notices.map((notice) => notice.text);
+    // A character split across two writes arrives whole.
+    chat.submit("!printf '\\342'; sleep 0.05; printf '\\202\\254\\n'");
+    await expect.poll(() => texts().at(-1)).toContain('exit code 0');
+    expect(texts()).toContain('€');
+    const first = texts().length;
+    chat.submit('!printf "\\033[32mready\\033[0m\\n" && pwd && exit 3');
+    await expect.poll(() => texts().at(-1)).toContain('exit code 3');
+    expect(texts().slice(first)).toEqual([
+      '$ printf "\\033[32mready\\033[0m\\n" && pwd && exit 3',
+      `ready\n${bin}`,
+      'printf "\\033[32mready\\033[0m\\n" && pwd && exit 3: exit code 3.',
+    ]);
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+    expect(agent.tasks).toHaveLength(0);
+
+    // A dev server keeps running until /stop, children included.
+    chat.submit('!sh -c "sleep 30" & sleep 30');
+    await expect
+      .poll(() => texts().at(-1), { timeout: 5000 })
+      .toBe('sh -c "sleep 30" & sleep 30 keeps running here; /stop ends it.');
+    chat.submit('/stop');
+    await expect.poll(() => texts().at(-1)).toBe('sh -c "sleep 30" & sleep 30: stopped.');
+    expect(texts()).toContain('Stopping the shell commands.');
+
+    // One that ignores SIGTERM gets SIGKILL a moment later; Esc and the Stop button stop it too.
+    chat.submit("!trap '' TERM; while :; do sleep 0.1; done");
+    await expect.poll(() => texts().at(-1)).toBe("$ trap '' TERM; while :; do sleep 0.1; done");
+    chat.stop();
+    await expect
+      .poll(() => texts().at(-1), { timeout: 6000 })
+      .toBe("trap '' TERM; while :; do sleep 0.1; done: stopped.");
+
+    // What outlives its shell, ignoring SIGTERM, still gets SIGKILL.
+    const pidFile = join(bin, 'stubborn.pid');
+    chat.submit(`!sh -c 'trap "" TERM; echo $$ > ${pidFile}; while :; do sleep 0.1; done' >/dev/null 2>&1 & wait`);
+    await expect.poll(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim()).toBeTruthy();
+    const stubborn = Number(readFileSync(pidFile, 'utf8'));
+    chat.stop();
+    await expect.poll(() => chat.get().shells).toBe(0);
+    expect(alive(stubborn)).toBe(true);
+    await expect.poll(() => alive(stubborn), { timeout: 6000 }).toBe(false);
+
+    // What a finished command left running in the background ends with /stop too.
+    chat.submit('!sleep 60 >/dev/null 2>&1 & echo $!');
+    await expect.poll(() => texts().at(-1)).toBe('sleep 60 >/dev/null 2>&1 & echo $!: exit code 0.');
+    const background = Number(texts().at(-2));
+    expect(chat.get().shells).toBe(0);
+    expect(alive(background)).toBe(true);
+    chat.stop();
+    expect(texts().at(-1)).toBe('Stopping the shell commands.');
+    await expect.poll(() => alive(background)).toBe(false);
+
+    chat.submit('!');
+    expect(texts().at(-1)).toBe('Type a command after !, e.g. !npm test.');
+    chat.submit('!!important');
+    await expect.poll(() => agent.tasks.length).toBe(1);
+    expect(agent.tasks[0].prompt).toBe('!important');
+    chat.close();
+  }, 30_000);
+
+  it('shares one signal listener between chats, so a signal still ends the host', { timeout: 15_000 }, async () => {
+    const shellListeners = () =>
+      process.listeners('SIGTERM').filter((listener) => listener.name === 'onShellSignal').length;
+    // Earlier tests' stopped commands let go within a few seconds.
+    await expect.poll(shellListeners, { timeout: 5000 }).toBe(0);
+    const before = process.listenerCount('SIGTERM');
+    const chats = [0, 1].map(() =>
+      createChatController({ agents: [echoAgent()], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } }),
+    );
+    for (const chat of chats) chat.submit('!sleep 30');
+    await expect.poll(() => chats.map((chat) => chat.get().shells)).toEqual([1, 1]);
+    expect(process.listenerCount('SIGTERM')).toBe(before + 1);
+    for (const chat of chats) chat.stop();
+    await expect.poll(() => process.listenerCount('SIGTERM'), { timeout: 5000 }).toBe(before);
+    for (const chat of chats) chat.close();
+  });
+
   it('opens and stops the browser UI from the terminal only', async () => {
     const calls: string[] = [];
     let running = false;
@@ -296,6 +396,85 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('keeps a shell command from answering a pending approval', async () => {
+    const decisions: string[] = [];
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm i' }));
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('fix it');
+    await tick();
+    expect(chat.get().session.approvals).toHaveLength(1);
+    for (const char of '!ay') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('! ay');
+    expect(chat.get().autoApprove).toBe(false);
+    expect(chat.get().session.approvals).toHaveLength(1);
+    app.stdin.write('\x1b');
+    await tick();
+    app.stdin.write('y');
+    await expect.poll(() => decisions).toEqual(['approve']);
+    app.unmount();
+    chat.close();
+  });
+
+  it('switches to shell mode on ! like Claude Code, and back', async () => {
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const app = render(<ChatApp controller={chat} cwd={bin} version="9.9.9" />);
+    await tick();
+    app.stdin.write('!');
+    await tick();
+    expect(app.lastFrame()).toMatch(/│ ! +Run a shell command in /);
+    expect(app.lastFrame()).toContain('shell mode');
+    // Backspace on the empty shell prompt leaves it; Esc too.
+    app.stdin.write('\x7f');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    app.stdin.write('!');
+    await tick();
+    for (const char of 'echo hi') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('! echo hi');
+    app.stdin.write('\r');
+    await expect.poll(() => chat.get().notices.map((n) => n.text)).toContain('echo hi: exit code 0.');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    expect(app.frames.join('\n')).toContain('$ echo hi');
+    expect(agent.tasks).toHaveLength(0);
+    // Up brings the command back in shell mode.
+    app.stdin.write('\x1b[A');
+    await tick();
+    expect(app.lastFrame()).toContain('! echo hi');
+    app.stdin.write('\x1b');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    // A pasted !! is a prompt that starts with !.
+    app.stdin.write('!!');
+    await tick();
+    expect(app.lastFrame()).toContain('› !');
+    app.unmount();
+    chat.close();
+  });
+
   it('splits finished turns from the live one and keeps notices in order', () => {
     const turn = (id: number, done: boolean) => ({
       id,
@@ -309,6 +488,7 @@ describe('terminal UI', () => {
       agents: [],
       bark: true,
       autoApprove: false,
+      shells: 0,
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },

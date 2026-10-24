@@ -129,8 +129,10 @@ Each prompt after the first continues the agent's own session (`AgentTask.resume
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`
 denies and `a` approves everything from then on (`/auto`, or the Auto-approve chip in the
-browser; `-y` starts that way). `/agent`, `/model` and `/new` switch agent, model and
-session; `/help` lists the rest.
+browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
+Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
+Esc) ends it. `/agent`, `/model` and `/new` switch agent,
+model and session; `/help` lists the rest.
 
 <p align="center">
   <picture>
@@ -187,11 +189,11 @@ for the browser); without a terminal it runs headless like `run`. The agent inst
 package, edits the config, runs your checks and reports; it does not commit.
 
 The instructions are also a Claude Code skill. Copy
-[`skills/genaicode-embed`](skills/genaicode-embed/SKILL.md) into `.claude/skills/` (or
+[`docs/skills/genaicode-embed`](docs/skills/genaicode-embed/SKILL.md) into `.claude/skills/` (or
 `~/.claude/skills/`) and ask Claude to "embed genaicode":
 
 ```bash
-mkdir -p .claude/skills && cp -r node_modules/genaicode/skills/genaicode-embed .claude/skills/
+mkdir -p .claude/skills && cp -r node_modules/genaicode/docs/skills/genaicode-embed .claude/skills/
 ```
 
 ### Inside a Vite app

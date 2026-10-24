@@ -59,10 +59,12 @@ export function ChatApp({
   const [view, setView] = useState<ChatView>(controller.get);
   // The draft lives in a ref: keys can arrive faster than React re-renders (pastes, fast typing),
   // and each one must see the previous key's result.
-  const draftRef = useRef({ text: '', cursor: 0 });
+  // `shell`: the draft is a shell command (`!` typed on an empty prompt, as in Claude Code).
+  const draftRef = useRef({ text: '', cursor: 0, shell: false });
   const [, redraw] = useState(0);
   const draft = draftRef.current.text;
   const cursor = draftRef.current.cursor;
+  const shellMode = draftRef.current.shell;
   const [now, setNow] = useState(Date.now());
   const [armedExit, setArmedExit] = useState(false);
   const history = useRef<string[]>([]);
@@ -93,31 +95,35 @@ export function ChatApp({
     exit();
   };
 
-  const edit = (next: string, at: number) => {
-    draftRef.current = { text: next, cursor: Math.max(0, Math.min([...next].length, at)) };
+  const edit = (next: string, at: number, shell = draftRef.current.shell) => {
+    draftRef.current = { text: next, cursor: Math.max(0, Math.min([...next].length, at)), shell };
     setArmedExit(false);
     redraw((n) => n + 1);
   };
   const setCursor = (at: number) => edit(draftRef.current.text, at);
+  // A history entry `!cmd` comes back in shell mode.
+  const recall = (entry: string) =>
+    entry.startsWith('!') ? edit(entry.slice(1), [...entry].length - 1, true) : edit(entry, [...entry].length, false);
 
   const suggestions = useMemo(() => {
-    if (!draft.startsWith('/') || draft.includes(' ')) return [];
+    if (shellMode || !draft.startsWith('/') || draft.includes(' ')) return [];
     return SLASH_COMMANDS.filter((command) => command.name.startsWith(draft));
   }, [draft]);
 
   const approval = view.session.approvals[0];
 
   useInput((input, key) => {
-    const { text: draft, cursor } = draftRef.current;
+    const { text: draft, cursor, shell } = draftRef.current;
     if (key.ctrl && input === 'c') {
-      if (draft) return edit('', 0);
+      if (draft || shell) return edit('', 0, false);
       if (armedExit) return quit();
       if (running) controller.stop();
       setArmedExit(true);
       return;
     }
     if (key.ctrl && input === 'd' && !draft) return quit();
-    const plain = !key.ctrl && !key.meta;
+    // Not while composing a shell command: its letters must not answer the approval.
+    const plain = !key.ctrl && !key.meta && !shell;
     if (approval && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
@@ -127,16 +133,17 @@ export function ChatApp({
       return;
     }
     if (key.escape) {
-      if (running) controller.stop();
+      if (shell) edit('', 0, false);
+      else if (running || view.shells) controller.stop();
       else edit('', 0);
       return;
     }
     if (key.return) {
-      const text = draft;
-      if (!text.trim()) return;
+      if (!draft.trim()) return;
+      const text = shell ? `!${draft}` : draft;
       if (history.current.at(-1) !== text) history.current.push(text);
       historyIndex.current = history.current.length;
-      edit('', 0);
+      edit('', 0, false);
       if (controller.submit(text) === 'quit') quit();
       return;
     }
@@ -149,19 +156,20 @@ export function ChatApp({
     if (key.rightArrow) return setCursor(Math.min(chars.length, cursor + 1));
     if (key.upArrow) {
       if (!history.current.length || historyIndex.current === 0) return;
-      if (historyIndex.current === history.current.length) stash.current = draft;
+      if (historyIndex.current === history.current.length) stash.current = shell ? `!${draft}` : draft;
       historyIndex.current -= 1;
-      const entry = history.current[historyIndex.current];
-      return edit(entry, [...entry].length);
+      return recall(history.current[historyIndex.current]);
     }
     if (key.downArrow) {
       if (historyIndex.current >= history.current.length) return;
       historyIndex.current += 1;
-      const entry =
-        historyIndex.current === history.current.length ? stash.current : history.current[historyIndex.current];
-      return edit(entry, [...entry].length);
+      return recall(
+        historyIndex.current === history.current.length ? stash.current : history.current[historyIndex.current],
+      );
     }
     if (key.backspace || key.delete) {
+      // Backspace on an empty shell prompt leaves shell mode.
+      if (cursor === 0 && shell && !draft) return edit('', 0, false);
       if (cursor === 0) return;
       chars.splice(cursor - 1, 1);
       return edit(chars.join(''), cursor - 1);
@@ -170,7 +178,11 @@ export function ChatApp({
     if (key.ctrl && input === 'e') return setCursor(chars.length);
     if (key.ctrl && input === 'u') return edit(chars.slice(cursor).join(''), 0);
     if (key.ctrl || key.meta || !input) return;
-    const typed = [...input.replace(/\r\n?/g, '\n')];
+    let typed = [...input.replace(/\r\n?/g, '\n')];
+    if (!shell && !draft && typed[0] === '!' && typed[1] !== '!') {
+      typed = typed.slice(1);
+      return edit(typed.join(''), typed.length, true);
+    }
     chars.splice(cursor, 0, ...typed);
     edit(chars.join(''), cursor + typed.length);
   });
@@ -260,9 +272,9 @@ export function ChatApp({
             {'  '}⏸ {prompt}
           </Text>
         ))}
-        <Box borderStyle="round" borderColor={running ? 'gray' : 'cyan'} paddingX={1}>
-          <Text color="cyan" bold>
-            ›{' '}
+        <Box borderStyle="round" borderColor={shellMode ? 'magenta' : running ? 'gray' : 'cyan'} paddingX={1}>
+          <Text color={shellMode ? 'magenta' : 'cyan'} bold>
+            {shellMode ? '!' : '›'}{' '}
           </Text>
           {draft ? (
             <Text>
@@ -273,11 +285,13 @@ export function ChatApp({
           ) : (
             <Text color="gray">
               <Text inverse> </Text>
-              {running
-                ? view.session.canSteer
-                  ? 'Add to the running task…'
-                  : 'Queue the next prompt…'
-                : 'Ask the agent to change something…'}
+              {shellMode
+                ? `Run a shell command in ${cwd}…`
+                : running
+                  ? view.session.canSteer
+                    ? 'Add to the running task…'
+                    : 'Queue the next prompt…'
+                  : 'Ask the agent to change something…'}
             </Text>
           )}
         </Box>
@@ -295,7 +309,9 @@ export function ChatApp({
         ) : (
           <Box paddingLeft={2}>
             <Text color="gray" wrap="truncate-end">
-              {statusParts(view.session).join(' · ')}
+              {shellMode
+                ? 'shell mode · enter runs it here · /stop ends it · esc or backspace to leave'
+                : statusParts(view.session).join(' · ')}
               {armedExit ? ' · press ctrl+c again to exit' : ''}
             </Text>
           </Box>

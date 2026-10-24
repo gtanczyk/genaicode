@@ -35,7 +35,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   { name: '/agent', args: '[name]', help: 'list agents, or switch (starts a new agent session)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
-  { name: '/stop', help: 'stop the running turn and drop queued prompts' },
+  { name: '/stop', help: 'stop the running turn, drop queued prompts, end !commands' },
   { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
   { name: '/auto', args: '[on|off]', help: 'approve every permission request the agent asks for, or ask again' },
   { name: '/bark', args: '[on|off]', help: 'toggle the wolf: a bark when the agent needs you or finishes' },
@@ -54,6 +54,13 @@ export type SlashCommand =
   | { kind: 'help' }
   | { kind: 'quit' }
   | { kind: 'unknown'; name: string };
+
+/** The command of a `!npm test` line, '' for a bare `!`; undefined otherwise (`!!` sends a `!`). */
+export function parseShell(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('!') || trimmed.startsWith('!!')) return undefined;
+  return trimmed.slice(1).trim();
+}
 
 /** Parse "/agent codex" style input. Returns undefined for a normal prompt. */
 export function parseSlash(text: string): SlashCommand | undefined {

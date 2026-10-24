@@ -1,7 +1,8 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import { detectAgents } from '../agents/discovery.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
 import type { AgentTask, ApprovalDecision, CodingAgent } from '../agents/types.js';
-import { parseSlash, SLASH_COMMANDS } from './format.js';
+import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
 export interface AgentChoice {
   name: string;
@@ -27,6 +28,8 @@ export interface ChatView {
   bark: boolean;
   /** Every permission request is approved without asking (`--yes`, `/auto`). */
   autoApprove: boolean;
+  /** `!commands` still running; stop() ends them. */
+  shells: number;
 }
 
 /** Opens the session in the browser from the terminal chat (`/web`). */
@@ -65,6 +68,7 @@ export interface ChatController {
   subscribe(listener: (view: ChatView) => void): () => void;
   /** A prompt or a slash command. Returns 'quit' when the user asked to leave. Default source: terminal. */
   submit(text: string, source?: ChatSource): 'ok' | 'quit';
+  /** Stop the agent's turn (dropping queued prompts) and the running `!commands`. */
   stop(): void;
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
@@ -119,10 +123,10 @@ export function createChatController(options: ChatOptions): ChatController {
   let notices: Notice[] = [];
   let nextNotice = 1;
   let bark = options.bark ?? true;
-  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove };
+  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove, shells: 0 };
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
-    view = { session: session.get(), notices, agents, bark, autoApprove };
+    view = { session: session.get(), notices, agents, bark, autoApprove, shells: shells.size };
     for (const listener of [...listeners]) {
       try {
         listener(view);
@@ -135,6 +139,108 @@ export function createChatController(options: ChatOptions): ChatController {
   const notice = (text: string, tone: Notice['tone'] = 'info') => {
     notices = [...notices, { id: nextNotice++, afterTurn: session.get().turns.length, text, tone }].slice(-200);
     publish();
+  };
+
+  // `!command`: the user's own shell commands, e.g. the dev server the agent just set up.
+  const shells = new Set<ChildProcess>();
+  // Process groups to end on /stop and exit, while anything in them runs: a shell can exit
+  // before what it started (`server &`, or on SIGTERM), so a group outlives its shell here
+  // until it is empty, or until its SIGKILL once stopped.
+  const groups = new Map<ChildProcess, { stopping: boolean }>();
+  let sweep: ReturnType<typeof setInterval> | undefined;
+  const drop = (child: ChildProcess) => {
+    groups.delete(child);
+    if (groups.size) return;
+    unwatchShells(onEnd);
+    clearInterval(sweep);
+    sweep = undefined;
+  };
+  // Forget the groups whose shell exited once nothing runs in them any more.
+  const prune = () => {
+    for (const [child, group] of groups) {
+      if (!shells.has(child) && !group.stopping && !groupAlive(child)) drop(child);
+    }
+  };
+  /** SIGTERM, then SIGKILL for what still runs after a moment; SIGKILL at once when this process ends. */
+  const stopShells = (now = false) => {
+    prune();
+    for (const [child, group] of groups) {
+      killTree(child, now ? 'SIGKILL' : 'SIGTERM');
+      if (now || group.stopping) continue;
+      group.stopping = true;
+      setTimeout(() => {
+        killTree(child, 'SIGKILL');
+        drop(child);
+      }, KILL_AFTER_MS).unref();
+    }
+    return groups.size;
+  };
+  const stopAll = () => {
+    session.stop();
+    if (stopShells()) notice('Stopping the shell commands.');
+  };
+  const onEnd = () => stopShells(true);
+  const runShell = (command: string) => {
+    if (!command) {
+      notice('Type a command after !, e.g. !npm test.', 'error');
+      return;
+    }
+    notice(`$ ${command}`);
+    let child: ChildProcess;
+    try {
+      child = spawn(command, {
+        cwd: options.cwd,
+        env,
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // Its own process group, so /stop also ends what it starts (npm → node).
+        detached: process.platform !== 'win32',
+      });
+    } catch (error) {
+      notice(`Could not run it: ${errorText(error)}`, 'error');
+      return;
+    }
+    shells.add(child);
+    groups.set(child, { stopping: false });
+    watchShells(onEnd);
+    publish();
+    let output = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Output in batches, so a chatty dev server adds a few notices, not hundreds.
+    const flush = () => {
+      timer = undefined;
+      const lines = output.replace(ANSI, '').replace(/\s+$/, '').split('\n');
+      output = '';
+      if (lines.length === 1 && !lines[0]) return;
+      const shown =
+        lines.length > SHELL_LINES
+          ? [`… ${lines.length - SHELL_LINES} more lines`, ...lines.slice(-SHELL_LINES)]
+          : lines;
+      notice(shown.join('\n'));
+    };
+    const onData = (chunk: string) => {
+      output += chunk;
+      timer ??= setTimeout(flush, 150);
+    };
+    // Decoded per stream, so a character split across chunks stays whole.
+    child.stdout?.setEncoding('utf8').on('data', onData);
+    child.stderr?.setEncoding('utf8').on('data', onData);
+    child.on('error', (error) => notice(`Could not run it: ${errorText(error)}`, 'error'));
+    child.on('close', (code, signal) => {
+      shells.delete(child);
+      if (!groups.get(child)?.stopping) {
+        if (!groupAlive(child)) drop(child);
+        else sweep ??= setInterval(prune, 1000).unref();
+      }
+      publish();
+      if (timer) clearTimeout(timer);
+      flush();
+      if (signal) notice(`${command}: stopped.`);
+      else notice(`${command}: exit code ${code}.`, code ? 'error' : 'info');
+    });
+    setTimeout(() => {
+      if (shells.has(child)) notice(`${command} keeps running here; /stop ends it.`);
+    }, 3000).unref?.();
   };
 
   const selectAgent = (name: string): boolean => {
@@ -189,6 +295,15 @@ export function createChatController(options: ChatOptions): ChatController {
       return () => listeners.delete(listener);
     },
     submit(text, source = 'terminal') {
+      const shell = parseShell(text);
+      if (shell !== undefined) {
+        runShell(shell);
+        return 'ok';
+      }
+      if (text.trimStart().startsWith('!!')) {
+        session.send(text.trimStart().slice(1));
+        return 'ok';
+      }
       const command = parseSlash(text);
       if (!command) {
         session.send(text.startsWith('//') ? text.slice(1) : text);
@@ -201,6 +316,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice(
             [
               ...SLASH_COMMANDS.map((c) => `${c.name}${c.args ? ` ${c.args}` : ''}  ${c.help}`),
+              '!command  run a shell command in the project (e.g. !npm run dev); /stop ends it, !! sends a leading !',
               'While the agent works, new prompts steer it (live agents) or wait in a queue.',
             ].join('\n'),
           );
@@ -227,7 +343,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Next prompt starts a new agent session.');
           return 'ok';
         case 'stop':
-          session.stop();
+          stopAll();
           return 'ok';
         case 'bark':
           if (command.invalid !== undefined) {
@@ -259,7 +375,8 @@ export function createChatController(options: ChatOptions): ChatController {
           return 'ok';
       }
     },
-    stop: () => session.stop(),
+    // Esc and the Stop button too: the agent's turn and the !commands.
+    stop: stopAll,
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     selectAgent,
@@ -267,11 +384,71 @@ export function createChatController(options: ChatOptions): ChatController {
       session.setModel(model || undefined);
     },
     close() {
+      stopShells();
       unsubscribe();
       listeners.clear();
       session.close();
     },
   };
+}
+
+const SHELL_LINES = 40;
+const KILL_AFTER_MS = 3000;
+const SIGNALS: NodeJS.Signals[] = process.platform === 'win32' ? [] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
+
+// `!commands` run in their own process groups, out of reach of the terminal's Ctrl-C or
+// hangup: each controller with some running registers here, and they end with this process,
+// however it ends. One listener for all controllers, so a signal keeps its default (exit)
+// unless the host handles it too.
+const shellOwners = new Set<() => void>();
+const endShells = () => {
+  for (const end of [...shellOwners]) end();
+};
+// Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
+const onShellSignal = (signal: NodeJS.Signals) => {
+  endShells();
+  if (process.listenerCount(signal) === 1) {
+    shellOwners.clear();
+    unlistenShells();
+    process.kill(process.pid, signal);
+  }
+};
+function watchShells(end: () => void) {
+  if (shellOwners.has(end)) return;
+  shellOwners.add(end);
+  if (shellOwners.size > 1) return;
+  process.on('exit', endShells);
+  for (const signal of SIGNALS) process.prependListener(signal, onShellSignal);
+}
+function unwatchShells(end: () => void) {
+  if (shellOwners.delete(end) && !shellOwners.size) unlistenShells();
+}
+function unlistenShells() {
+  process.removeListener('exit', endShells);
+  for (const signal of SIGNALS) process.removeListener(signal, onShellSignal);
+}
+
+/** Whether anything started by a `!command` still runs in its process group. */
+function groupAlive(child: ChildProcess): boolean {
+  if (process.platform === 'win32' || !child.pid) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Ends a `!command` and what it started: its process group, or the process on Windows. */
+function killTree(child: ChildProcess, signal: NodeJS.Signals) {
+  try {
+    if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    // Already gone.
+  }
 }
 
 function errorText(error: unknown): string {

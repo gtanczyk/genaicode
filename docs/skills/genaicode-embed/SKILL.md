@@ -80,7 +80,8 @@ allow, batch what must run into few commands, and do not run the dev server just
    you created that the project does not track.
 6. **Report**, starting with how to see it, before anything else: one line with the exact
    command to run and what happens next, e.g. "Run `npm run agent`: the game opens in your
-   browser with the genaicode wolf in the bottom-right corner." The developer may not know
+   browser with the genaicode wolf in the bottom-right corner. You can also type
+   `!npm run agent` right here." The developer may not know
    the project's scripts or that a new one exists, so never leave this for the end of a
    long summary. Then what you changed, file by file, briefly. Say that the agent uses its
    own CLI login and billing.

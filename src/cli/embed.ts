@@ -33,7 +33,7 @@ export function stripFrontmatter(text: string): string {
   return match ? text.slice(match[0].length) : text;
 }
 
-/** The instructions as shipped: `skills/genaicode-embed/SKILL.md` in the package. */
+/** The instructions as shipped: `docs/skills/genaicode-embed/SKILL.md` in the package. */
 export function readEmbedInstructions(): string {
-  return readFileSync(new URL('../../skills/genaicode-embed/SKILL.md', import.meta.url), 'utf8');
+  return readFileSync(new URL('../../docs/skills/genaicode-embed/SKILL.md', import.meta.url), 'utf8');
 }

@@ -117,7 +117,9 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
 .resizing iframe { pointer-events: none; }
 .note { padding: 16px; color: #6b6b66; }
 @media (prefers-color-scheme: dark) {
-  .wolf, .panel { background-color: #1d1d1c; border-color: #2e2e2c; }
+  /* The wolf stays light: a dark circle disappears on a dark page. */
+  .wolf { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.22), 0 4px 18px rgba(0,0,0,.65); }
+  .panel { background-color: #1d1d1c; border-color: #2e2e2c; }
   .head { background: #141414; border-color: #2e2e2c; color: #ececea; }
   .head button { background: #1d1d1c; border-color: #2e2e2c; color: #ececea; }
   iframe { background: #141414; }
