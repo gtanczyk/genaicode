@@ -24,6 +24,7 @@
 ### Changed
 
 - The overlay's wolf stays light in dark mode, with a ring, so it shows on dark pages.
+- The embed skill moved to `docs/skills/genaicode-embed/SKILL.md` (it was `skills/`).
 
 ## 2.18.0
 

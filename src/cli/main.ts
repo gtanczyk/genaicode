@@ -117,7 +117,7 @@ Embed options:
 
   The agent reads the project and chooses how to wire genaicode in; [request] steers it,
   e.g. "only the dev panel". Without a terminal it runs headless like "run". The
-  instructions also ship as a Claude Code skill: skills/genaicode-embed/SKILL.md.
+  instructions also ship as a Claude Code skill: docs/skills/genaicode-embed/SKILL.md.
 
 The agent uses its own login, billing, and permission defaults. GenAIcode adds no agent
 loop or sandbox of its own, and no prompts but embed's instructions.

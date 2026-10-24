@@ -189,11 +189,11 @@ for the browser); without a terminal it runs headless like `run`. The agent inst
 package, edits the config, runs your checks and reports; it does not commit.
 
 The instructions are also a Claude Code skill. Copy
-[`skills/genaicode-embed`](skills/genaicode-embed/SKILL.md) into `.claude/skills/` (or
+[`docs/skills/genaicode-embed`](docs/skills/genaicode-embed/SKILL.md) into `.claude/skills/` (or
 `~/.claude/skills/`) and ask Claude to "embed genaicode":
 
 ```bash
-mkdir -p .claude/skills && cp -r node_modules/genaicode/skills/genaicode-embed .claude/skills/
+mkdir -p .claude/skills && cp -r node_modules/genaicode/docs/skills/genaicode-embed .claude/skills/
 ```
 
 ### Inside a Vite app
