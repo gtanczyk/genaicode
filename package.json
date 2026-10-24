@@ -33,6 +33,8 @@
   "files": [
     "dist",
     "docs",
+    "!docs/examples",
+    "!docs/media",
     "README.md",
     "LICENSE"
   ],
@@ -71,14 +73,15 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p scripts/tsconfig.build.json && node scripts/build-ui.mjs",
     "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest --run --project unit",
-    "test:e2e": "vitest --run --project e2e",
-    "test:browser": "vitest --run --project browser",
-    "test:watch": "vitest --project unit",
+    "test": "vitest --config scripts/vitest.config.ts --run --project unit",
+    "test:e2e": "vitest --config scripts/vitest.config.ts --run --project e2e",
+    "test:browser": "vitest --config scripts/vitest.config.ts --run --project browser",
+    "test:watch": "vitest --config scripts/vitest.config.ts --project unit",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint && npm test && npm run build",
     "prepublishOnly": "npm run check",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -95,10 +98,8 @@
     "eslint": "^8.54.0",
     "eslint-config-prettier": "^9.0.0",
     "happy-dom": "^20.14.5",
-    "husky": "^9.1.1",
     "ink": "^6.8.0",
     "ink-testing-library": "^4.0.0",
-    "lint-staged": "^16.4.0",
     "playwright": "^1.56.1",
     "prettier": "^3.1.0",
     "react": "^19.3.0",
@@ -106,9 +107,6 @@
     "typescript": "^5.0.0",
     "vite": "^6.4.3",
     "vitest": "^4.1.11"
-  },
-  "lint-staged": {
-    "*.{js,ts,md}": "prettier --write"
   },
   "prettier": {
     "trailingComma": "all",
@@ -129,7 +127,7 @@
       "plugin:@typescript-eslint/recommended"
     ],
     "ignorePatterns": [
-      "examples/**/*",
+      "docs/examples/**/*",
       "dist",
       "coverage"
     ],

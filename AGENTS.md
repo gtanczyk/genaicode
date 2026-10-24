@@ -24,5 +24,5 @@ scripts in `package.json`.
   This is a documented first-class extension point and runs the full prompt/chain/plugin/tool
   code paths locally with no external calls.
 - `engines` asks for Node `>=20`; CI runs Node 22.
-- A husky `pre-commit` hook runs `lint-staged`, which runs `prettier --write` on staged
-  `*.{js,ts,md}`. Commits may reformat staged files.
+- `npm run format` runs `prettier --write .`; there is no pre-commit hook, so run it before
+  committing.
