@@ -33,6 +33,8 @@ export interface AgentChatProps {
   onSend(text: string): void;
   /** The user pressed Stop or Esc while the agent works. Without it there is no Stop button. */
   onStop?(): void;
+  /** Offer Stop (button and Esc) while the agent is idle too: the host runs something of its own. */
+  canStop?: boolean;
   /**
    * Answer an approval the agent asked for (`state.approvals`). Without it pending approvals
    * show as waiting, with no buttons.
@@ -110,7 +112,7 @@ export function AgentChat(props: AgentChatProps) {
       event.preventDefault();
       send();
     }
-    if (event.key === 'Escape' && running && props.onStop) props.onStop();
+    if (event.key === 'Escape' && (running || props.canStop) && props.onStop) props.onStop();
   };
 
   // Notices sit after the turn that was last when they were posted.
@@ -219,7 +221,7 @@ export function AgentChat(props: AgentChatProps) {
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
           />
-          {running && props.onStop ? (
+          {(running || props.canStop) && props.onStop ? (
             <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
               Stop
             </button>

@@ -171,6 +171,7 @@ function App() {
         notices={view?.notices}
         onSend={submit}
         onStop={() => void command({ type: 'stop' })}
+        canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
         hint={
           <>

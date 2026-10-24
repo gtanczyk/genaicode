@@ -15,9 +15,11 @@
   badge, "Fix N errors", the resizable panel) for any other Node dev server, as
   `handle(req, res)` / `middleware` plus `injectHtml(html)`. `genaicode embed` now uses it
   for non-Vite dev servers and for the dev server it writes, instead of a hand-made button.
-- `!command` in `genaicode chat` and `genaicode ui` runs a shell command in the project
-  (e.g. `!npm run dev` after `genaicode embed`), its output in the transcript; `/stop` ends
-  it and what it started, `!!` sends a leading `!` to the agent.
+- `!command` in `genaicode chat` (`!` on an empty prompt switches to shell mode, as in
+  Claude Code) and `genaicode ui` runs a shell command in the project
+  (e.g. `!npm run dev` after `genaicode embed`), its output in the transcript; `/stop`, Esc
+  or the Stop button end it and what it started, `!!` sends a leading `!` to the agent.
+  `<AgentChat canStop>` offers Stop while the agent is idle.
 
 ### Changed
 

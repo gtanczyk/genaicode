@@ -28,6 +28,8 @@ export interface ChatView {
   bark: boolean;
   /** Every permission request is approved without asking (`--yes`, `/auto`). */
   autoApprove: boolean;
+  /** `!commands` still running; stop() ends them. */
+  shells: number;
 }
 
 /** Opens the session in the browser from the terminal chat (`/web`). */
@@ -121,10 +123,10 @@ export function createChatController(options: ChatOptions): ChatController {
   let notices: Notice[] = [];
   let nextNotice = 1;
   let bark = options.bark ?? true;
-  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove };
+  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove, shells: 0 };
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
-    view = { session: session.get(), notices, agents, bark, autoApprove };
+    view = { session: session.get(), notices, agents, bark, autoApprove, shells: shells.size };
     for (const listener of [...listeners]) {
       try {
         listener(view);
@@ -161,6 +163,7 @@ export function createChatController(options: ChatOptions): ChatController {
   // They run in their own process groups, out of reach of the terminal's Ctrl-C or hangup:
   // end them with this process, however it ends. A signal keeps its default (exit) unless the
   // host handles it too.
+  // Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
   const onSignal = (signal: NodeJS.Signals) => {
     stopShells(true);
     if (process.listenerCount(signal) === 1) {
@@ -170,7 +173,7 @@ export function createChatController(options: ChatOptions): ChatController {
   };
   const watch = () => {
     process.once('exit', onExit);
-    for (const signal of SIGNALS) process.on(signal, onSignal);
+    for (const signal of SIGNALS) process.prependListener(signal, onSignal);
   };
   const unwatch = () => {
     process.removeListener('exit', onExit);
@@ -198,6 +201,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     shells.add(child);
     if (shells.size === 1) watch();
+    publish();
     let output = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Output in batches, so a chatty dev server adds a few notices, not hundreds.
@@ -222,6 +226,7 @@ export function createChatController(options: ChatOptions): ChatController {
     child.on('close', (code, signal) => {
       shells.delete(child);
       if (shells.size === 0) unwatch();
+      publish();
       if (timer) clearTimeout(timer);
       flush();
       if (signal) notice(`${command}: stopped.`);

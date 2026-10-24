@@ -341,6 +341,45 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('switches to shell mode on ! like Claude Code, and back', async () => {
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const app = render(<ChatApp controller={chat} cwd={bin} version="9.9.9" />);
+    await tick();
+    app.stdin.write('!');
+    await tick();
+    expect(app.lastFrame()).toMatch(/│ ! +Run a shell command in /);
+    expect(app.lastFrame()).toContain('shell mode');
+    // Backspace on the empty shell prompt leaves it; Esc too.
+    app.stdin.write('\x7f');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    app.stdin.write('!');
+    await tick();
+    for (const char of 'echo hi') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('! echo hi');
+    app.stdin.write('\r');
+    await expect.poll(() => chat.get().notices.map((n) => n.text)).toContain('echo hi: exit code 0.');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    expect(app.frames.join('\n')).toContain('$ echo hi');
+    expect(agent.tasks).toHaveLength(0);
+    // Up brings the command back in shell mode.
+    app.stdin.write('\x1b[A');
+    await tick();
+    expect(app.lastFrame()).toContain('! echo hi');
+    app.stdin.write('\x1b');
+    await tick();
+    expect(app.lastFrame()).toContain('Ask the agent to change something');
+    // A pasted !! is a prompt that starts with !.
+    app.stdin.write('!!');
+    await tick();
+    expect(app.lastFrame()).toContain('› !');
+    app.unmount();
+    chat.close();
+  });
+
   it('splits finished turns from the live one and keeps notices in order', () => {
     const turn = (id: number, done: boolean) => ({
       id,
@@ -354,6 +393,7 @@ describe('terminal UI', () => {
       agents: [],
       bark: true,
       autoApprove: false,
+      shells: 0,
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },
