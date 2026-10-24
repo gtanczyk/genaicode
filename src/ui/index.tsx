@@ -23,6 +23,8 @@ export interface UiRunOptions extends ChatOptions {
   stderr: NodeJS.WritableStream;
   stdin: NodeJS.ReadStream;
   signal?: AbortSignal;
+  /** Sent as soon as the chat opens. */
+  firstPrompt?: string;
 }
 
 export interface WebRunOptions extends UiRunOptions {
@@ -61,6 +63,7 @@ export async function runChat(options: UiRunOptions): Promise<number> {
     options.stderr.write(`${error.message}\n`);
     return 2;
   }
+  if (options.firstPrompt) controller.submit(options.firstPrompt);
   const app = render(<ChatApp controller={controller} cwd={options.cwd} version={options.version} />, {
     stdout: options.stdout,
     stdin: options.stdin,
@@ -96,6 +99,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n` +
       `Open ${ui.url}\n(the link carries an access token; Ctrl-C stops the server)\n`,
   );
+  if (options.firstPrompt) controller.submit(options.firstPrompt);
   if (options.open !== false) openBrowser(ui.url);
   await new Promise<void>((resolve) => {
     if (options.signal?.aborted) return resolve();

@@ -16,6 +16,22 @@ export type CliCommand =
       open: boolean;
     }
   | {
+      kind: 'embed';
+      /** What the user wants, in their words, e.g. "only the dev overlay". */
+      request?: string;
+      agent?: string;
+      cwd?: string;
+      model?: string;
+      effort?: string;
+      approveAll: boolean;
+      /** Print the prompt instead of starting an agent. */
+      print: boolean;
+      /** Chat in the browser instead of the terminal. */
+      ui: boolean;
+      port?: number;
+      open: boolean;
+    }
+  | {
       kind: 'run';
       prompt: string | undefined;
       agent?: string;
@@ -72,6 +88,43 @@ export function parseCli(argv: readonly string[]): CliCommand {
       approveAll: values.yes === true,
       port,
       open: extra['no-open'] !== true,
+    };
+  }
+
+  if (command === 'embed') {
+    const { values, positionals } = parse(() =>
+      parseArgs({
+        args: rest,
+        allowPositionals: true,
+        strict: true,
+        options: {
+          agent: { type: 'string', short: 'a' },
+          cwd: { type: 'string', short: 'C' },
+          model: { type: 'string', short: 'm' },
+          effort: { type: 'string' },
+          yes: { type: 'boolean', short: 'y' },
+          print: { type: 'boolean' },
+          ui: { type: 'boolean' },
+          port: { type: 'string' },
+          'no-open': { type: 'boolean' },
+        },
+      }),
+    );
+    const request = positionals.join(' ').trim();
+    const port = optionalNumber(values.port, '--port');
+    if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
+    return {
+      kind: 'embed',
+      request: request || undefined,
+      agent: values.agent,
+      cwd: values.cwd,
+      model: values.model,
+      effort: values.effort,
+      approveAll: values.yes === true,
+      print: values.print === true,
+      ui: values.ui === true,
+      port,
+      open: values['no-open'] !== true,
     };
   }
 

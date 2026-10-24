@@ -4,6 +4,14 @@
 
 ### Added
 
+- `genaicode embed [request]`: your own agent adds genaicode to the project in the current
+  directory. It gets instructions (the Vite overlay; a development-only panel through
+  `genaicode/ui` for webpack, Next.js, Express and other Node dev servers; the in-app agent;
+  or `genaicode ui` alongside) and decides from what it reads in the project. The chat opens
+  in the terminal (`--ui`: browser), headless without one; `--print` prints the
+  instructions for any other agent. They ship as a Claude Code skill too,
+  `skills/genaicode-embed/SKILL.md`.
+
 - `<AgentChat foldSteps>` (and `<AppAgentChat foldSteps>`): each turn's work (tools, edits,
   interim text) folds into one "N steps" line that opens on click, naming the running tool.
   The answer, errors, steering input and open approvals stay in view.
