@@ -37,6 +37,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
   { name: '/stop', help: 'stop the running turn and drop queued prompts' },
   { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
+  { name: '/auto', args: '[on|off]', help: 'approve every permission request the agent asks for, or ask again' },
   { name: '/bark', args: '[on|off]', help: 'toggle the wolf: a bark when the agent needs you or finishes' },
   { name: '/help', help: 'show commands and keys' },
   { name: '/quit', help: 'exit' },
@@ -48,6 +49,7 @@ export type SlashCommand =
   | { kind: 'new' }
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
+  | { kind: 'auto'; on?: boolean; invalid?: string }
   | { kind: 'web'; off: boolean; invalid?: string }
   | { kind: 'help' }
   | { kind: 'quit' }
@@ -74,6 +76,11 @@ export function parseSlash(text: string): SlashCommand | undefined {
       if (arg === undefined) return { kind: 'bark' };
       if (arg === 'on' || arg === 'off') return { kind: 'bark', on: arg === 'on' };
       return { kind: 'bark', invalid: arg };
+    case '/auto':
+    case '/yolo':
+      if (arg === undefined) return { kind: 'auto' };
+      if (arg === 'on' || arg === 'off') return { kind: 'auto', on: arg === 'on' };
+      return { kind: 'auto', invalid: arg };
     case '/web':
     case '/ui':
     case '/browser':

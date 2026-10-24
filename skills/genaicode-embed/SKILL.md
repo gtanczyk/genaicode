@@ -10,8 +10,9 @@ already has installed (Claude Code, Codex, Copilot CLI, Cursor, Gemini, opencode
 one API. Your job is to wire it into the project in the current directory so the
 project's developers can talk to their agent from inside the running app.
 
-There are three ways in, plus a fallback. Pick by what the project is, not by what is
-more impressive.
+There are four ways in, plus a last resort. Pick by what the project is, not by what is
+more impressive. Always end with a working way in: "it doesn't fit" is not a result while
+the project has HTML pages a browser can open.
 
 1. **Vite dev overlay** (`genaicode/vite`): for any app built with Vite. One plugin line;
    in `vite dev` the page gets a wolf button that opens a chat with the agent working in
@@ -27,14 +28,24 @@ more impressive.
    data. The agent works the app through tools the app serves over MCP, every write waits
    for the user's Approve, and an optional `dev` mode lets the agent edit the app's own
    code and propose a commit.
-4. **Fallback**: no Node process to host it (a Rails, Django, Go or static-site project,
-   or a stack you cannot change safely): tell the user to run `npx genaicode ui` (browser)
-   or `npx genaicode` (terminal) in the project next to their dev server.
+4. **A dev server of your own**: the project has pages but nothing serves them in
+   development (static HTML, files opened from `file://`, a build script that writes
+   `index.html`, a game jam entry with a size budget...). Write a small Node script that
+   serves those files on localhost and injects the panel into the HTML it serves, and an
+   npm script to start it. The files on disk and the build output stay untouched, so size
+   budgets and release builds are not affected.
+5. **Last resort**: no Node at all in the project and no HTML to serve (a Rails, Django or
+   Go app whose server you cannot change safely): tell the user to run `npx genaicode ui`
+   (browser) or `npx genaicode` (terminal) next to their dev server, and say why.
 
 The agent CLI always runs on the machine that runs the server, with that machine's
-login and files. Options 1 and 2 exist only in development. The in-app agent is for apps
+login and files. Options 1, 2 and 4 exist only in development. The in-app agent is for apps
 that run on the developer's own machine (or a trusted internal host behind real auth).
 Never wire any of them into a public production site, and never expose them without auth.
+
+Work with as few shell commands as you can: the user approves each one unless they turned
+on auto-approve. Read files instead of listing them through the shell where your tools
+allow, batch what must run into few commands, and do not run the dev server just to look.
 
 ## Steps
 
@@ -50,10 +61,11 @@ Never wire any of them into a public production site, and never expose them with
    - The user wants the agent to use the app itself (its data, its actions), or the app
      is an internal tool with a Node server and a React UI: option 3, alone or next to
      option 1 or 2.
-   - Otherwise: option 4. Say why.
+   - Pages but no dev server: option 4.
+   - Otherwise: option 5. Say why.
    - If genaicode is already wired in, extend or fix what is there instead of adding a
      second copy.
-3. **Install** `genaicode` as a dev dependency for options 1 and 2, as a regular
+3. **Install** `genaicode` as a dev dependency for options 1, 2 and 4, as a regular
    dependency when the server imports `genaicode/app-agent`. Use the project's package
    manager (lockfile: `package-lock.json` npm, `pnpm-lock.yaml` pnpm, `yarn.lock` yarn,
    `bun.lockb`/`bun.lock` bun). If you may not run the install, add the dependency to
@@ -63,7 +75,7 @@ Never wire any of them into a public production site, and never expose them with
 4. **Wire it in** (recipes below), matching the project's style: TypeScript or
    JavaScript, ESM or CJS, its formatter, its folder layout.
 5. **Check it**: run the project's type check, lint and tests if it has them, and a
-   production build. For options 1 and 2 the production output must not contain
+   production build. For options 1, 2 and 4 the production output must not contain
    genaicode. Fix what you broke; do not "fix" unrelated failures. Remove build output
    you created that the project does not track.
 6. **Report**: what you changed, file by file, and how to try it (the dev command, where
@@ -200,6 +212,90 @@ export function GenaicodePanel() {
 Not React? The same in the app's own framework or plain DOM: fetch the session, then a
 fixed button that toggles a fixed iframe. Keep the token URL out of logs, `localStorage`
 and anything the page sends elsewhere.
+
+## Recipe: a dev server of your own
+
+For a project with pages but no dev server. One file, e.g. `tools/agent-dev.mjs` (match the
+project's folder for scripts), plus `"agent": "node tools/agent-dev.mjs"` (or a name that
+fits next to the existing scripts) in `package.json`:
+
+```js
+// Development only: serves <dir> on 127.0.0.1 with the genaicode panel injected into HTML.
+// The files on disk are not changed.
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize, resolve, sep } from 'node:path';
+import { startEmbeddedWeb } from 'genaicode/ui';
+
+const root = resolve(process.argv[2] ?? 'build');
+const port = Number(process.env.PORT ?? 5173);
+const origins = new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
+const chat = await startEmbeddedWeb({ cwd: process.cwd(), frameAncestors: () => [...origins] });
+const TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
+};
+const PANEL = `<script type="module" src="/__genaicode/panel.js"></script>`;
+
+createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', 'http://x');
+  if (url.pathname === '/__genaicode/session') {
+    // The token: only this machine (a loopback Host, which stops DNS rebinding), only the
+    // app's own pages.
+    if (!origins.has(`http://${req.headers.host}`) || req.headers['sec-fetch-site'] !== 'same-origin') {
+      return res.writeHead(403).end();
+    }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    return res.end(JSON.stringify({ url: chat.url }));
+  }
+  if (url.pathname === '/__genaicode/panel.js') {
+    res.writeHead(200, { 'content-type': 'text/javascript' });
+    return res.end(PANEL_SCRIPT);
+  }
+  let file;
+  try {
+    file = normalize(join(root, decodeURIComponent(url.pathname)));
+  } catch {
+    return res.writeHead(400).end();
+  }
+  if (file !== root && !file.startsWith(root + sep)) return res.writeHead(403).end();
+  if ((await stat(file).catch(() => null))?.isDirectory()) file = join(file, 'index.html');
+  const body = await readFile(file).catch(() => null);
+  if (!body) return res.writeHead(404).end('not found');
+  const type = TYPES[extname(file)] ?? 'application/octet-stream';
+  res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
+  res.end(type === 'text/html' ? injectPanel(body.toString()) : body);
+}).listen(port, '127.0.0.1', () =>
+  console.log(`http://localhost:${port}  (genaicode panel: the button in the corner)`),
+);
+
+function injectPanel(html) {
+  return html.includes('</body>') ? html.replace('</body>', `${PANEL}</body>`) : html + PANEL;
+}
+```
+
+`PANEL_SCRIPT` is the page side as plain DOM, the same as the React component in the
+recipe above: fetch `/__genaicode/session`, then a fixed button in a corner that toggles a
+fixed iframe with `src` set to the session `url`. Keep it out of the app's own code.
+
+- Listen on `127.0.0.1` only, and hand out the token only for a loopback `Host` and
+  `Sec-Fetch-Site: same-origin`. Together they keep the token on this machine and away from
+  other sites, including DNS-rebinding pages.
+- Serve what the developer actually opens: the build output folder if the project builds
+  one (start or chain its build or watch script when it has one, e.g. with `--watch` or a
+  second process), otherwise the source folder with the HTML.
+- Optional, for the agent to see what breaks: in `PANEL_SCRIPT`, collect `error` and
+  `unhandledrejection` events and offer a "Fix N errors" button that POSTs them to a
+  `/__genaicode/fix` route (same checks as the session route) which calls
+  `chat.controller.submit('Fix these errors in the page …' + details)`.
+- A page that reloads itself on change (a watch build) is the developer's own; do not
+  add a live-reload system for this.
 
 ## Recipe: in-app agent
 

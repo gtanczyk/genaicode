@@ -117,8 +117,13 @@ export function ChatApp({
       return;
     }
     if (key.ctrl && input === 'd' && !draft) return quit();
-    if (approval && !draft && (input === 'y' || input === 'n')) {
+    const plain = !key.ctrl && !key.meta;
+    if (approval && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
+      return;
+    }
+    if (approval && !draft && plain && input === 'a') {
+      controller.submit('/auto on');
       return;
     }
     if (key.escape) {
@@ -226,6 +231,10 @@ export function ChatApp({
                 y
               </Text>{' '}
               {approval.scope === 'turn' ? 'approve for this turn' : 'approve'} ·{' '}
+              <Text color="green" bold>
+                a
+              </Text>{' '}
+              approve all from now on ·{' '}
               <Text color="red" bold>
                 n
               </Text>{' '}

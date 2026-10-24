@@ -177,6 +177,49 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('approves what is waiting and what comes next with /auto', async () => {
+    const decisions: string[] = [];
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm i' }));
+          decisions.push(await task.onApproval!({ id: 'a2', kind: 'command', summary: 'npm test' }));
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    expect(chat.get().autoApprove).toBe(false);
+    chat.submit('fix it');
+    await tick();
+    expect(chat.get().session.approvals.map((a) => a.id)).toEqual(['a1']);
+    chat.submit('/auto');
+    await tick();
+    expect(chat.get().autoApprove).toBe(true);
+    expect(decisions).toEqual(['approve', 'approve']);
+    expect(chat.get().session.approvals).toEqual([]);
+    chat.submit('/auto off');
+    expect(chat.get().autoApprove).toBe(false);
+    chat.submit('/auto maybe');
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+    const yes = createChatController({ agents: [asking], agent: 'asker', cwd: '/w', env, approveAll: true });
+    expect(yes.get().autoApprove).toBe(true);
+    yes.close();
+    chat.close();
+  });
+
   it('opens and stops the browser UI from the terminal only', async () => {
     const calls: string[] = [];
     let running = false;
@@ -265,6 +308,7 @@ describe('terminal UI', () => {
     const split = splitTranscript({
       agents: [],
       bark: true,
+      autoApprove: false,
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },

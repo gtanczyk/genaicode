@@ -138,6 +138,18 @@ function App() {
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
             <button
+              className={`chip${view.autoApprove ? '' : ' off'}`}
+              title={
+                view.autoApprove
+                  ? 'Every permission request is approved without asking'
+                  : 'The agent asks before commands and edits it needs permission for'
+              }
+              aria-pressed={view.autoApprove}
+              onClick={() => submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
+            >
+              {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
+            </button>
+            <button
               className={`chip${view.bark ? '' : ' off'}`}
               title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
               aria-pressed={view.bark}
