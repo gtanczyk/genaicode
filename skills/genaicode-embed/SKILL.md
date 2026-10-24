@@ -32,8 +32,8 @@ the project has HTML pages a browser can open.
    development (static HTML, files opened from `file://`, a build script that writes
    `index.html`, a game jam entry with a size budget...). Write a small Node script that
    serves those files on localhost with the overlay from option 2 injected into the HTML
-   it serves, and an npm script to start it. The files on disk and the build output stay untouched, so size
-   budgets and release builds are not affected.
+   it serves, and an npm script to start it. The files on disk and the build output stay
+   untouched, so size budgets and release builds are not affected.
 5. **Last resort**: no Node at all in the project and no HTML to serve (a Rails, Django or
    Go app whose server you cannot change safely): tell the user to run `npx genaicode ui`
    (browser) or `npx genaicode` (terminal) next to their dev server, and say why.
