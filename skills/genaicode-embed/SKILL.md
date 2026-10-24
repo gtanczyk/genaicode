@@ -102,10 +102,12 @@ Server side, in the Node process that serves the app in development, and only th
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // Development only: production never imports genaicode.
+// The origins the app was opened at; the chat lets only these frame it, read per request.
+const origins = new Set<string>();
 let panel: Promise<{ url: string }> | undefined;
-export function genaicodePanel(appOrigin: string) {
+export function genaicodePanel() {
   panel ??= import('genaicode/ui').then(({ startEmbeddedWeb }) =>
-    startEmbeddedWeb({ cwd: process.cwd(), frameAncestors: () => [appOrigin] }),
+    startEmbeddedWeb({ cwd: process.cwd(), frameAncestors: () => [...origins] }),
   );
   return panel;
 }
@@ -115,18 +117,23 @@ export function genaicodePanel(appOrigin: string) {
 export async function genaicodeSession(req: IncomingMessage, res: ServerResponse) {
   const address = req.socket.remoteAddress ?? '';
   const local = address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
-  if (!local || req.headers['sec-fetch-site'] !== 'same-origin') {
+  const host = req.headers.host ?? '';
+  const loopbackHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  if (!local || !loopbackHost || req.headers['sec-fetch-site'] !== 'same-origin') {
     res.writeHead(403).end();
     return;
   }
-  const { url } = await genaicodePanel(`http://${req.headers.host}`);
+  origins.add(`http://${host}`); // localhost and 127.0.0.1 can both frame it, without a restart
+  const { url } = await genaicodePanel();
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify({ url }));
 }
 ```
 
-- `frameAncestors` must list every origin the app is opened at in development
-  (`http://localhost:3000`, `http://127.0.0.1:3000`...); the chat refuses other frames.
+- `frameAncestors` is read per request and must list every origin the app is opened at in
+  development (`http://localhost:3000`, `http://127.0.0.1:3000`...); the chat refuses other
+  frames. Collect them as above rather than capturing the first one. Behind a dev host name
+  (`app.localhost`, https), allow that name explicitly.
   `startEmbeddedWeb` binds to 127.0.0.1 on a free port (`port` to fix one) and takes
   `agent`, `model`, `effort`, `approveAll` like the Vite plugin.
 - Start it once per process. Dev servers that reload server code (Next.js, nodemon...)

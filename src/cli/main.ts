@@ -181,16 +181,22 @@ async function runEmbed(
       { firstPrompt: request, transformPrompt: (text) => (text === request ? prompt : text) },
     );
   }
-  return runTask(cli, agents, {
-    kind: 'run',
-    prompt,
-    agent: options.agent,
-    cwd,
-    model: options.model,
-    effort: options.effort,
-    maxRepairs: 0,
-    json: false,
-  });
+  return runTask(
+    cli,
+    agents,
+    {
+      kind: 'run',
+      prompt,
+      agent: options.agent,
+      cwd,
+      model: options.model,
+      effort: options.effort,
+      maxRepairs: 0,
+      json: false,
+    },
+    // -y without a terminal: the same answer the chat's auto-approve gives.
+    options.approveAll ? { onApproval: async () => 'approve' as const } : {},
+  );
 }
 
 async function runUi(
@@ -251,6 +257,7 @@ async function runTask(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
   options: Extract<CliCommand, { kind: 'run' }>,
+  extra: Pick<AgentTask, 'onApproval'> = {},
 ): Promise<number> {
   const prompt = options.prompt ?? (await cli.readStdin())?.trim();
   if (!prompt) {
@@ -271,6 +278,7 @@ async function runTask(
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,
+    ...extra,
   };
   const render = options.json
     ? (event: AgentEvent) => cli.stdout.write(`${JSON.stringify(event)}\n`)

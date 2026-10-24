@@ -111,6 +111,11 @@ describe('genaicode embed', () => {
     };
     const { cli, err } = environment('/', ['embed', '-a', 'alpha', '-C', dir], { agents: [agent] });
     expect(await main(cli)).toBe(EXIT_OK);
+    expect(tasks[0].onApproval).toBeUndefined();
+    const yes = environment('/', ['embed', '-y', '-a', 'alpha', '-C', dir], { agents: [agent] });
+    expect(await main(yes.cli)).toBe(EXIT_OK);
+    expect(await tasks[1].onApproval?.({} as never)).toBe('approve');
+    tasks.splice(1);
     expect(tasks).toHaveLength(1);
     expect(tasks[0].cwd).toBe(dir);
     expect(tasks[0].prompt).toContain('## Recipe: Vite overlay');
