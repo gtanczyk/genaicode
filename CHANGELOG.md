@@ -53,6 +53,9 @@
 
 ### Changed
 
+- README and the package description lead with the coding agents: a 20-second demo, the
+  `npx genaicode run --verify` one-liner, then `genaicode/agents`. The LLM layer moved below
+  them as "Also: a thin LLM layer", and the 1.x note to the end.
 - `defaultAppAgents`: Claude cannot start subagents (`Task`, `Agent`) in either mode; one can
   outlive the turn, so its answer never reaches the user.
 
