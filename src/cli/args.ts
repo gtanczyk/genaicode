@@ -14,6 +14,8 @@ export type CliCommand =
       approveAll: boolean;
       port?: number;
       open: boolean;
+      /** chat: also open the session in the browser. */
+      web: boolean;
     }
   | {
       kind: 'run';
@@ -55,12 +57,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
           effort: { type: 'string' },
           resume: { type: 'string', short: 'r' },
           yes: { type: 'boolean', short: 'y' },
-          ...(command === 'ui' ? { port: { type: 'string' as const }, 'no-open': { type: 'boolean' as const } } : {}),
+          port: { type: 'string' },
+          ...(command === 'ui' ? { 'no-open': { type: 'boolean' as const } } : { web: { type: 'boolean' as const } }),
         },
       }),
     );
-    const extra = values as { port?: string; 'no-open'?: boolean };
-    const port = optionalNumber(extra.port, '--port');
+    const extra = values as { 'no-open'?: boolean; web?: boolean };
+    const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
       kind: command,
@@ -72,6 +75,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       approveAll: values.yes === true,
       port,
       open: extra['no-open'] !== true,
+      web: extra.web === true,
     };
   }
 

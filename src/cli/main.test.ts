@@ -86,6 +86,12 @@ describe('parseCli', () => {
     expect(parseCli(['run', '-r', 'abc', 'go on'])).toMatchObject({ resume: 'abc', prompt: 'go on' });
   });
 
+  it('parses chat --web and its port, and keeps --web off ui', () => {
+    expect(parseCli(['chat', '--web', '--port', '4000'])).toMatchObject({ kind: 'chat', web: true, port: 4000 });
+    expect(parseCli(['ui', '--no-open'])).toMatchObject({ kind: 'ui', web: false, open: false });
+    expect(() => parseCli(['ui', '--web'])).toThrow(UsageError);
+  });
+
   it('treats a missing or "-" prompt as stdin', () => {
     expect(parseCli(['run'])).toMatchObject({ prompt: undefined });
     expect(parseCli(['run', '-'])).toMatchObject({ prompt: undefined });

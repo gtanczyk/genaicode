@@ -36,6 +36,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
   { name: '/stop', help: 'stop the running turn and drop queued prompts' },
+  { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
   { name: '/bark', args: '[on|off]', help: 'toggle the wolf: a bark when the agent needs you or finishes' },
   { name: '/help', help: 'show commands and keys' },
   { name: '/quit', help: 'exit' },
@@ -47,6 +48,7 @@ export type SlashCommand =
   | { kind: 'new' }
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
+  | { kind: 'web'; off: boolean; invalid?: string }
   | { kind: 'help' }
   | { kind: 'quit' }
   | { kind: 'unknown'; name: string };
@@ -72,6 +74,11 @@ export function parseSlash(text: string): SlashCommand | undefined {
       if (arg === undefined) return { kind: 'bark' };
       if (arg === 'on' || arg === 'off') return { kind: 'bark', on: arg === 'on' };
       return { kind: 'bark', invalid: arg };
+    case '/web':
+    case '/ui':
+    case '/browser':
+      if (arg === undefined || arg === 'off') return { kind: 'web', off: arg === 'off' };
+      return { kind: 'web', off: false, invalid: arg };
     case '/help':
     case '/?':
       return { kind: 'help' };

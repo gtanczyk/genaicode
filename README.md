@@ -117,7 +117,13 @@ the agent or the check fails, 2 on a usage error, and 130 when interrupted.
 npx genaicode                      # chat in this terminal (same as "genaicode chat")
 npx genaicode chat -a claude -C ../api
 npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
+npx genaicode chat --web           # both: the terminal and the browser on one session
 ```
+
+The terminal and the browser can show one session. `/web` in the terminal chat opens it in
+the browser (`/web off` stops the server), and Enter in the terminal that runs
+`genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
+side shows up in both.
 
 Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
