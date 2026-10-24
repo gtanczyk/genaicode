@@ -25,6 +25,8 @@ export interface ChatView {
   agents: AgentChoice[];
   /** Bark (web) or ring the terminal bell (TUI) when the agent needs you or finishes. */
   bark: boolean;
+  /** Every permission request is approved without asking (`--yes`, `/auto`). */
+  autoApprove: boolean;
 }
 
 /** Opens the session in the browser from the terminal chat (`/web`). */
@@ -103,6 +105,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   }
 
+  let autoApprove = options.approveAll === true;
   const session = createAgentSession({
     agent: initial,
     cwd: options.cwd,
@@ -111,15 +114,15 @@ export function createChatController(options: ChatOptions): ChatController {
     resume: options.resume,
     task: { ...options.task, env },
     transformPrompt: options.transformPrompt,
-    autoApprove: options.approveAll ? () => 'approve' : undefined,
+    autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
   let notices: Notice[] = [];
   let nextNotice = 1;
   let bark = options.bark ?? true;
-  let view: ChatView = { session: session.get(), notices, agents, bark };
+  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove };
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
-    view = { session: session.get(), notices, agents, bark };
+    view = { session: session.get(), notices, agents, bark, autoApprove };
     for (const listener of [...listeners]) {
       try {
         listener(view);
@@ -233,6 +236,20 @@ export function createChatController(options: ChatOptions): ChatController {
           }
           bark = command.on ?? !bark;
           notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
+          return 'ok';
+        case 'auto':
+          if (command.invalid !== undefined) {
+            notice(`Use /auto, /auto on or /auto off (not "${command.invalid}").`, 'error');
+            return 'ok';
+          }
+          autoApprove = command.on ?? !autoApprove;
+          // What is waiting now gets the same answer as what comes next.
+          if (autoApprove) for (const approval of session.get().approvals) session.approve(approval.id, 'approve');
+          notice(
+            autoApprove
+              ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
+              : 'Auto-approve off: the agent asks again.',
+          );
           return 'ok';
         case 'web':
           web(command, source);

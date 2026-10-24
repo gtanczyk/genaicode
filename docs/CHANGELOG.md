@@ -4,6 +4,17 @@
 
 ### Added
 
+- Auto-approve in `genaicode chat` and `genaicode ui`: `a` on a permission request (or
+  `/auto`, or the Auto-approve chip in the browser) approves it and everything after it;
+  `/auto off` asks again. `-y` starts with it on.
+- `genaicode embed` makes projects without a dev server work too: the agent writes a small
+  dev-only server that serves the pages with the panel injected, leaving the files and the
+  build untouched. It also keeps its shell commands few, since each one may need approval.
+
+## 2.18.0
+
+### Added
+
 - `genaicode embed [request]`: your own agent adds genaicode to the project in the current
   directory. It gets instructions (the Vite overlay; a development-only panel through
   `genaicode/ui` for webpack, Next.js, Express and other Node dev servers; the in-app agent;

@@ -121,6 +121,10 @@ export function ChatApp({
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
     }
+    if (approval && !draft && input === 'a') {
+      controller.submit('/auto on');
+      return;
+    }
     if (key.escape) {
       if (running) controller.stop();
       else edit('', 0);
@@ -226,6 +230,10 @@ export function ChatApp({
                 y
               </Text>{' '}
               {approval.scope === 'turn' ? 'approve for this turn' : 'approve'} ·{' '}
+              <Text color="green" bold>
+                a
+              </Text>{' '}
+              approve all from now on ·{' '}
               <Text color="red" bold>
                 n
               </Text>{' '}
