@@ -78,8 +78,12 @@ allow, batch what must run into few commands, and do not run the dev server just
    production build. For options 1, 2 and 4 the production output must not contain
    genaicode. Fix what you broke; do not "fix" unrelated failures. Remove build output
    you created that the project does not track.
-6. **Report**: what you changed, file by file, and how to try it (the dev command, where
-   to click). Say that the agent uses its own CLI login and billing.
+6. **Report**, starting with how to see it, before anything else: one line with the exact
+   command to run and what happens next, e.g. "Run `npm run agent`: the game opens in your
+   browser with an Agent button in the bottom-right corner." The developer may not know
+   the project's scripts or that a new one exists, so never leave this for the end of a
+   long summary. Then what you changed, file by file, briefly. Say that the agent uses its
+   own CLI login and billing.
 
 ## Recipe: Vite overlay
 
@@ -222,6 +226,7 @@ fits next to the existing scripts) in `package.json`:
 ```js
 // Development only: serves <dir> on 127.0.0.1 with the genaicode panel injected into HTML.
 // The files on disk are not changed.
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -271,9 +276,17 @@ createServer(async (req, res) => {
   const type = TYPES[extname(file)] ?? 'application/octet-stream';
   res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
   res.end(type === 'text/html' ? injectPanel(body.toString()) : body);
-}).listen(port, '127.0.0.1', () =>
-  console.log(`http://localhost:${port}  (genaicode panel: the button in the corner)`),
-);
+}).listen(port, '127.0.0.1', () => {
+  const page = `http://localhost:${port}/`;
+  console.log(`${page}  (genaicode panel: the button in the corner)`);
+  // Open it like `vite --open` does; NO_OPEN=1 to skip.
+  if (!process.env.NO_OPEN && !process.env.CI) {
+    const opener = { darwin: 'open', win32: 'explorer' }[process.platform] ?? 'xdg-open';
+    spawn(opener, [page], { stdio: 'ignore', detached: true })
+      .on('error', () => {})
+      .unref();
+  }
+});
 
 function injectPanel(html) {
   return html.includes('</body>') ? html.replace('</body>', `${PANEL}</body>`) : html + PANEL;
@@ -294,6 +307,8 @@ fixed iframe with `src` set to the session `url`. Keep it out of the app's own c
   `unhandledrejection` events and offer a "Fix N errors" button that POSTs them to a
   `/__genaicode/fix` route (same checks as the session route) which calls
   `chat.controller.submit('Fix these errors in the page …' + details)`.
+- Open the browser on start (as above), at the page the developer works on when there is
+  one obvious page (e.g. `/fireball/`), not a folder listing.
 - A page that reloads itself on change (a watch build) is the developer's own; do not
   add a live-reload system for this.
 
