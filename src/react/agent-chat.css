@@ -251,6 +251,45 @@
   padding-left: 12px;
   color: var(--_muted);
 }
+.gc-md-table {
+  overflow-x: auto;
+  margin: 0 0 8px;
+}
+.gc-md table {
+  /* Columns keep their natural width and the wrapper scrolls; only long cells wrap. */
+  width: max-content;
+  border-collapse: collapse;
+  font-size: 0.93em;
+  font-variant-numeric: tabular-nums;
+}
+.gc-md th,
+.gc-md td {
+  border: 1px solid var(--_border);
+  padding: 4px 10px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  max-width: 32ch;
+}
+.gc-md th {
+  background: var(--_code-bg);
+  font-weight: 600;
+}
+.gc-md tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--_code-bg) 50%, transparent);
+}
+.gc-md del {
+  color: var(--_muted);
+}
+.gc-md li.gc-md-task {
+  list-style: none;
+  margin-left: -20px;
+}
+.gc-md-task input {
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+  accent-color: var(--_accent);
+}
 .gc-md hr {
   border: 0;
   border-top: 1px solid var(--_border);

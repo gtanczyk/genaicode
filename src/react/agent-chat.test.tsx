@@ -180,6 +180,28 @@ describe('AgentChat', () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
+  it('renders tables, strikethrough and task lists', () => {
+    act(() =>
+      root.render(
+        <Markdown
+          text={
+            '**Games**\n| Game | Sessions | Note |\n|---|--:|:-:|\n| apex | 283 | a \\| b ~~old~~ |\n| bonfire |\n\n- [x] done\n- [ ] todo\n- [link](https://x.example)'
+          }
+        />,
+      ),
+    );
+    expect(text('.gc-md > p')).toEqual(['Games']);
+    expect(text('.gc-md-table th')).toEqual(['Game', 'Sessions', 'Note']);
+    expect(text('.gc-md-table tbody tr:first-child td')).toEqual(['apex', '283', 'a | b old']);
+    expect(text('.gc-md-table tbody tr:last-child td')).toEqual(['bonfire', '', '']);
+    expect($$('.gc-md-table th').map((th) => (th as HTMLElement).style.textAlign)).toEqual(['', 'right', 'center']);
+    expect($('td del').textContent).toBe('old');
+    expect($$('.gc-md-task input').map((box) => (box as HTMLInputElement).checked)).toEqual([true, false]);
+    expect(text('ul li')).toEqual(['done', 'todo', 'link']);
+    act(() => root.render(<Markdown text={'a | b\nnot a delimiter\n\n| x |\n|---|---|'} />));
+    expect($('table')).toBeNull();
+  });
+
   it('sends with Enter, keeps Shift+Enter for a new line, ignores blank input', () => {
     const props = render({ state: fixture({ status: 'idle', queued: [] }) });
     type('   ');

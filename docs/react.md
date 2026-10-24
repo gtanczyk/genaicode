@@ -67,7 +67,7 @@ export function AgentDrawer() {
 ```
 
 `<AgentChat>` fills its container's height. It shows turns with streaming Markdown (no raw
-HTML; links open in a new tab), collapsible tool calls, edited files, errors, the agent's
+HTML; links open in a new tab; GFM tables, strikethrough and task lists), collapsible tool calls, edited files, errors, the agent's
 own approval requests, queued prompts and a working indicator, and an input where Enter
 sends, Shift+Enter adds a line and Esc stops. Props:
 

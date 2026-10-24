@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 
-// A small, safe Markdown subset for agent replies: paragraphs, headings, lists, quotes, fenced
-// code, inline code, bold, italic and links. Everything is a React text node, so HTML in the
+// A small, safe Markdown subset for agent replies: paragraphs, headings, lists, task lists,
+// quotes, tables, fenced code, inline code, bold, italic, strikethrough and links. Everything is a React text node, so HTML in the
 // text shows as text. Links must be http(s) or mailto and open in a new tab.
 
 // Every repetition is bounded, so text full of unclosed markers stays linear to scan.
 const INLINE =
-  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])/g;
+  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])/g;
 
 function link(href: string, label: ReactNode, key: number) {
   return (
@@ -27,10 +27,11 @@ function inline(text: string, links = true): ReactNode[] {
     if (at > last) out.push(text.slice(last, at));
     if (match[1]) out.push(<code key={key++}>{token.slice(1, -1)}</code>);
     else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), links)}</strong>);
-    else if (match[3]) out.push(<em key={key++}>{inline(token.slice(1, -1), links)}</em>);
-    else if (match[4]) {
+    else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), links)}</del>);
+    else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), links)}</em>);
+    else if (match[5]) {
       const label = inline(token.slice(1, token.indexOf(']')), false);
-      out.push(links ? link(match[5], label, key++) : <span key={key++}>{label}</span>);
+      out.push(links ? link(match[6], label, key++) : <span key={key++}>{label}</span>);
     } else out.push(links ? link(token, token, key++) : token);
     last = at + token.length;
   }
@@ -69,6 +70,45 @@ const unquote = (line: string) => {
   const t = line.trimStart().slice(1);
   return t.startsWith(' ') ? t.slice(1) : t;
 };
+type Align = 'left' | 'center' | 'right' | undefined;
+
+/** The cells of a table row; `\|` is a literal pipe. */
+function cells(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
+  const out: string[] = [''];
+  for (let i = 0; i < t.length; i += 1) {
+    if (t[i] === '\\' && t[i + 1] === '|') out[out.length - 1] += t[++i];
+    else if (t[i] === '|') out.push('');
+    else out[out.length - 1] += t[i];
+  }
+  return out.map((cell) => cell.trim());
+}
+/** The column alignments when `line` is a table's delimiter row, such as `|---|:--:|`. */
+function delimiter(line: string): Align[] | undefined {
+  if (!line.includes('-')) return undefined;
+  const aligns: Align[] = [];
+  for (const cell of cells(line)) {
+    if (!/^:?-+:?$/.test(cell)) return undefined;
+    const left = cell.startsWith(':');
+    const right = cell.endsWith(':');
+    aligns.push(left && right ? 'center' : right ? 'right' : left ? 'left' : undefined);
+  }
+  return aligns;
+}
+/** A table starts at `i` when a row with a pipe is followed by a delimiter row of as many columns. */
+function tableAt(lines: string[], i: number): Align[] | undefined {
+  if (!lines[i].includes('|') || i + 1 >= lines.length) return undefined;
+  const aligns = delimiter(lines[i + 1]);
+  return aligns && aligns.length === cells(lines[i]).length ? aligns : undefined;
+}
+/** A task item's checkbox state and text, or undefined for a plain item. */
+function task(text: string): { done: boolean; text: string } | undefined {
+  const box = /^\[([ xX])\](?:[ \t]|$)/.exec(text);
+  return box ? { done: box[1] !== ' ', text: text.slice(box[0].length) } : undefined;
+}
+
 const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
 /** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
@@ -125,6 +165,37 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
       i += 1;
       continue;
     }
+    const aligns = tableAt(lines, i);
+    if (aligns) {
+      const head = cells(line);
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) rows.push(cells(lines[i++]));
+      // Short rows are padded and long rows cut, so every row has the header's columns.
+      const row = (values: string[], Cell: 'th' | 'td') =>
+        aligns.map((align, n) => (
+          <Cell key={n} style={align ? { textAlign: align } : undefined}>
+            {inline(values[n] ?? '')}
+          </Cell>
+        ));
+      out.push(
+        <div key={key++} className="gc-md-table">
+          <table>
+            <thead>
+              <tr>{row(head, 'th')}</tr>
+            </thead>
+            {rows.length > 0 && (
+              <tbody>
+                {rows.map((values, n) => (
+                  <tr key={n}>{row(values, 'td')}</tr>
+                ))}
+              </tbody>
+            )}
+          </table>
+        </div>,
+      );
+      continue;
+    }
     if (quote(line)) {
       const quoted: string[] = [];
       while (i < lines.length && quote(lines[i])) quoted.push(unquote(lines[i++]));
@@ -144,7 +215,17 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
         else if (lines[i].startsWith('  ') && lines[i].trim()) items[items.length - 1] += `\n${lines[i].trim()}`;
         else break;
       }
-      const children = items.map((item, n) => <li key={n}>{inline(item)}</li>);
+      const children = items.map((text, n) => {
+        const box = task(text);
+        return box ? (
+          <li key={n} className="gc-md-task">
+            <input type="checkbox" checked={box.done} disabled />
+            {inline(box.text)}
+          </li>
+        ) : (
+          <li key={n}>{inline(text)}</li>
+        );
+      });
       out.push(
         ordered ? (
           <ol key={key++} start={start !== 1 ? start : undefined}>
@@ -164,6 +245,7 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
       !heading(lines[i]) &&
       item(lines[i]) === undefined &&
       !quote(lines[i]) &&
+      !tableAt(lines, i) &&
       (para.length === 0 || !isRule(lines[i]))
     ) {
       para.push(lines[i++]);

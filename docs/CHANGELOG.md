@@ -20,6 +20,8 @@
   (e.g. `!npm run dev` after `genaicode embed`), its output in the transcript; `/stop`, Esc
   or the Stop button end it and what it started, `!!` sends a leading `!` to the agent.
   `<AgentChat canStop>` offers Stop while the agent is idle.
+- `Markdown` renders GFM tables (alignment, `\|` escapes, horizontal scroll when wide),
+  `~~strikethrough~~` and task lists (`- [x]`). A table may follow a paragraph line directly.
 
 ### Changed
 
