@@ -113,7 +113,7 @@ and in the 1.x npm line.
   helpers, fixtures, examples, and related docs).
 - `2.2.0` adds portable `responseFormat` and `thinking` request fields (so apps
   need fewer provider-specific `generationConfig` casts). See
-  [CHANGELOG.md](../CHANGELOG.md).
+  [CHANGELOG.md](CHANGELOG.md).
 
 ## Success measures
 

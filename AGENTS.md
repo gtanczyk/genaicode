@@ -23,6 +23,6 @@ scripts in `package.json`.
   `ModelProvider` (`{ name, async generate(request) }`) and pass it to `genaicode(provider)`.
   This is a documented first-class extension point and runs the full prompt/chain/plugin/tool
   code paths locally with no external calls.
-- `.nvmrc` pins Node 20, but `engines` allows `>=20`; Node 22 also works fine.
+- `engines` asks for Node `>=20`; CI runs Node 22.
 - A husky `pre-commit` hook runs `lint-staged`, which runs `prettier --write` on staged
   `*.{js,ts,md}`. Commits may reformat staged files.
