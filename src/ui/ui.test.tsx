@@ -8,7 +8,7 @@ import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { createChatController, NoAgentError } from './controller.js';
-import { needsAttention, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
+import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
@@ -217,6 +217,43 @@ describe('chat controller', () => {
     const yes = createChatController({ agents: [asking], agent: 'asker', cwd: '/w', env, approveAll: true });
     expect(yes.get().autoApprove).toBe(true);
     yes.close();
+    chat.close();
+  });
+
+  it('runs !commands in the project and ends them with /stop', async () => {
+    expect(parseShell('!npm run agent')).toBe('npm run agent');
+    expect(parseShell('  ! ls ')).toBe('ls');
+    expect(parseShell('!')).toBe('');
+    expect(parseShell('!!important')).toBeUndefined();
+    expect(parseShell('hi!')).toBeUndefined();
+
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const texts = () => chat.get().notices.map((notice) => notice.text);
+    chat.submit('!printf "\\033[32mready\\033[0m\\n" && pwd && exit 3');
+    await expect.poll(() => texts().at(-1)).toContain('exit code 3');
+    expect(texts()).toEqual([
+      '$ printf "\\033[32mready\\033[0m\\n" && pwd && exit 3',
+      `ready\n${bin}`,
+      'printf "\\033[32mready\\033[0m\\n" && pwd && exit 3: exit code 3.',
+    ]);
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+    expect(agent.tasks).toHaveLength(0);
+
+    // A dev server keeps running until /stop, children included.
+    chat.submit('!sh -c "sleep 30" & sleep 30');
+    await expect
+      .poll(() => texts().at(-1), { timeout: 5000 })
+      .toBe('sh -c "sleep 30" & sleep 30 keeps running here; /stop ends it.');
+    chat.submit('/stop');
+    await expect.poll(() => texts().at(-1)).toBe('sh -c "sleep 30" & sleep 30: stopped.');
+    expect(texts()).toContain('Stopping the shell commands.');
+
+    chat.submit('!');
+    expect(texts().at(-1)).toBe('Type a command after !, e.g. !npm test.');
+    chat.submit('!!important');
+    await expect.poll(() => agent.tasks.length).toBe(1);
+    expect(agent.tasks[0].prompt).toBe('!important');
     chat.close();
   });
 

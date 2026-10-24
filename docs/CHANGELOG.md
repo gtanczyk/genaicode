@@ -15,6 +15,13 @@
   badge, "Fix N errors", the resizable panel) for any other Node dev server, as
   `handle(req, res)` / `middleware` plus `injectHtml(html)`. `genaicode embed` now uses it
   for non-Vite dev servers and for the dev server it writes, instead of a hand-made button.
+- `!command` in `genaicode chat` and `genaicode ui` runs a shell command in the project
+  (e.g. `!npm run dev` after `genaicode embed`), its output in the transcript; `/stop` ends
+  it and what it started, `!!` sends a leading `!` to the agent.
+
+### Changed
+
+- The overlay's wolf stays light in dark mode, with a ring, so it shows on dark pages.
 
 ## 2.18.0
 

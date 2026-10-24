@@ -129,8 +129,9 @@ Each prompt after the first continues the agent's own session (`AgentTask.resume
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`
 denies and `a` approves everything from then on (`/auto`, or the Auto-approve chip in the
-browser; `-y` starts that way). `/agent`, `/model` and `/new` switch agent, model and
-session; `/help` lists the rest.
+browser; `-y` starts that way). `!npm run dev` runs a shell command in the project with its
+output in the transcript, and `/stop` ends it. `/agent`, `/model` and `/new` switch agent,
+model and session; `/help` lists the rest.
 
 <p align="center">
   <picture>
