@@ -29,6 +29,8 @@ export interface UiRunOptions extends ChatOptions {
   stderr: NodeJS.WritableStream;
   stdin: NodeJS.ReadStream;
   signal?: AbortSignal;
+  /** Sent as soon as the chat opens. */
+  firstPrompt?: string;
 }
 
 export interface WebRunOptions extends UiRunOptions {
@@ -73,6 +75,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
     return 2;
   }
   if (options.openWeb) controller.submit('/web');
+  if (options.firstPrompt) controller.submit(options.firstPrompt);
   await runTerminal(controller, options);
   await web.close();
   controller.close();
@@ -103,6 +106,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
+  if (options.firstPrompt) controller.submit(options.firstPrompt);
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');

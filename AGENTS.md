@@ -12,7 +12,8 @@ scripts in `package.json`.
   front end to the `genaicode/agents` drivers (`genaicode agents`, `genaicode run`, and the
   `chat` / `ui` front ends in `src/ui/`, bundled by `scripts/build-ui.mjs` into `dist/ui`). It
   must not grow an agent loop or prompts of its own, and the library entry points never import
-  it or `src/ui`.
+  it or `src/ui`. The one prompt it ships is `genaicode embed`'s, kept in
+  `skills/genaicode-embed/SKILL.md` so it also works as a Claude Code skill.
 - `npm run test:browser` runs the `genaicode/vite` overlay in headless Chromium through
   Playwright (`*.browser.test.ts`, not part of `npm test`/`check`); it needs
   `npx playwright install chromium` once.

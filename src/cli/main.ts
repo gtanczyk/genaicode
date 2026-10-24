@@ -6,6 +6,7 @@ import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
+import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
 import { createRenderer, describeResult, type Output } from './render.js';
 
 export interface CliEnvironment {
@@ -47,6 +48,10 @@ export interface UiLaunch {
   signal?: AbortSignal;
   port?: number;
   open?: boolean;
+  /** Sent as soon as the chat opens (`genaicode embed`). */
+  firstPrompt?: string;
+  /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
+  transformPrompt?(prompt: string): string;
   /** `chat --web`: also open the session in the browser. */
   openWeb?: boolean;
 }
@@ -74,6 +79,7 @@ Usage:
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
+  genaicode embed [options] [request]  Have an agent add genaicode to the project here
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
@@ -104,8 +110,18 @@ Run options:
       --max-repairs <n>   Repair attempts after a failed check (default 2)
       --json              Print agent events as JSON lines instead of text
 
+Embed options:
+      --print             Print the agent's instructions instead of starting one
+      --ui                Follow the agent in the browser instead of this terminal
+  -a, -C, -m, --effort, -y, --port, --no-open: as for chat and ui
+
+  The agent reads the project and chooses how to wire genaicode in; [request] steers it,
+  e.g. "only the dev panel". Without a terminal it runs headless like "run". The
+  instructions also ship as a Claude Code skill: skills/genaicode-embed/SKILL.md.
+
 The agent uses its own login, billing, and permission defaults. GenAIcode adds no agent
-loop, prompts, or sandbox of its own. Library API: https://github.com/gtanczyk/genaicode#readme
+loop or sandbox of its own, and no prompts but embed's instructions.
+Library API: https://github.com/gtanczyk/genaicode#readme
 
 Looking for the legacy 1.x coding agent?
   Run it:  npx genaicode@1
@@ -141,13 +157,57 @@ export async function main(cli: CliEnvironment): Promise<number> {
     case 'chat':
     case 'ui':
       return runUi(cli, agents, command);
+    case 'embed':
+      return runEmbed(cli, agents, command);
   }
+}
+
+async function runEmbed(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  options: Extract<CliCommand, { kind: 'embed' }>,
+): Promise<number> {
+  const cwd = resolve(cli.cwd, options.cwd ?? '.');
+  const prompt = embedPrompt(readEmbedInstructions(), { cwd, version: packageVersion(), request: options.request });
+  if (options.print) {
+    cli.stdout.write(`${prompt}\n`);
+    return EXIT_OK;
+  }
+
+  const tty = cli.tty ?? { stdin: process.stdin, stdout: process.stdout };
+  if (options.ui || (cli.interactive ?? (tty.stdin.isTTY && tty.stdout.isTTY))) {
+    // The chat shows the short request; the agent gets the instructions.
+    const request = embedRequest(options.request);
+    return runUi(
+      cli,
+      agents,
+      { ...options, kind: options.ui ? 'ui' : 'chat', cwd, web: false },
+      { firstPrompt: request, transformPrompt: (text) => (text === request ? prompt : text) },
+    );
+  }
+  return runTask(
+    cli,
+    agents,
+    {
+      kind: 'run',
+      prompt,
+      agent: options.agent,
+      cwd,
+      model: options.model,
+      effort: options.effort,
+      maxRepairs: 0,
+      json: false,
+    },
+    // -y without a terminal: the same answer the chat's auto-approve gives.
+    options.approveAll ? { onApproval: async () => 'approve' as const } : {},
+  );
 }
 
 async function runUi(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
   options: Extract<CliCommand, { kind: 'chat' | 'ui' }>,
+  extra: Pick<UiLaunch, 'firstPrompt' | 'transformPrompt'> = {},
 ): Promise<number> {
   const tty = cli.tty ?? { stdin: process.stdin, stdout: process.stdout };
   if (options.kind === 'chat' && !(cli.interactive ?? (tty.stdin.isTTY && tty.stdout.isTTY))) {
@@ -172,6 +232,7 @@ async function runUi(
     port: options.port,
     open: options.open,
     openWeb: options.web,
+    ...extra,
   };
   return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
 }
@@ -201,6 +262,7 @@ async function runTask(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
   options: Extract<CliCommand, { kind: 'run' }>,
+  extra: Pick<AgentTask, 'onApproval'> = {},
 ): Promise<number> {
   const prompt = options.prompt ?? (await cli.readStdin())?.trim();
   if (!prompt) {
@@ -221,6 +283,7 @@ async function runTask(
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,
+    ...extra,
   };
   const render = options.json
     ? (event: AgentEvent) => cli.stdout.write(`${JSON.stringify(event)}\n`)

@@ -165,6 +165,33 @@ In code, the same conversation is `createAgentSession` from `genaicode/agents` (
 [docs/agents.md](docs/agents.md#chat-sessions)); with a live driver (`codexLive`,
 `museLive`) it also steers the running agent and asks you about permission requests.
 
+### Let your agent embed it
+
+```bash
+npx genaicode embed                      # in your project: your agent wires genaicode in
+npx genaicode embed -a codex "only the dev panel"
+npx genaicode embed --print | pbcopy     # just the instructions, for any other agent
+```
+
+`genaicode embed` does not inspect your project itself. It starts your agent with
+instructions on how to embed genaicode, and the agent reads the project and picks the way
+in: the Vite overlay below for an app on Vite; for any other Node dev server (webpack,
+Next.js, Express...) a development-only panel that shows the same chat through
+`startEmbeddedWeb` from `genaicode/ui`; the in-app agent (`genaicode/app-agent` with
+`<AppAgentChat>`) when the agent should act on the app itself; and `npx genaicode ui` next
+to the dev server when there is no Node process to host it. Words after `embed` go to the
+agent as your request. You watch and answer in the same chat as `genaicode chat` (`--ui`
+for the browser); without a terminal it runs headless like `run`. The agent installs the
+package, edits the config, runs your checks and reports; it does not commit.
+
+The instructions are also a Claude Code skill. Copy
+[`skills/genaicode-embed`](skills/genaicode-embed/SKILL.md) into `.claude/skills/` (or
+`~/.claude/skills/`) and ask Claude to "embed genaicode":
+
+```bash
+mkdir -p .claude/skills && cp -r node_modules/genaicode/skills/genaicode-embed .claude/skills/
+```
+
 ### Inside a Vite app
 
 ```ts

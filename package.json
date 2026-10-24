@@ -35,6 +35,7 @@
     "docs",
     "!docs/examples",
     "!docs/media",
+    "skills",
     "README.md",
     "LICENSE"
   ],
