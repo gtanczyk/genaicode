@@ -106,7 +106,8 @@ export function createOverlay<Ui extends OverlayUi>(
       const open = ['head', 'body', 'html']
         .map((tag) => new RegExp(`<${tag}(\\s[^>]*)?>`, 'i').exec(html))
         .find((match) => match);
-      const at = open ? open.index + open[0].length : 0;
+      // Without those optional tags, after the doctype: before it, the page would be in quirks mode.
+      const at = open ? open.index + open[0].length : (/^\s*<!doctype[^>]*>/i.exec(html)?.[0].length ?? 0);
       return html.slice(0, at) + script + html.slice(at);
     },
     async close() {

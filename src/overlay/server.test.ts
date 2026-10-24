@@ -92,6 +92,9 @@ describe('dev overlay on any server', () => {
     expect(overlay.script).toContain('<script type="module" src="/__genaicode/overlay.js"></script>');
     expect(overlay.injectHtml(html)).toBe(html);
     expect(overlay.injectHtml('<p>x</p>')).toBe(`${overlay.script}<p>x</p>`);
+    expect(overlay.injectHtml('<!doctype html><title>x</title><p>x</p>')).toBe(
+      `<!doctype html>${overlay.script}<title>x</title><p>x</p>`,
+    );
     const module = await fetch(`${base}__genaicode/overlay.js`);
     expect(module.headers.get('content-type')).toMatch(/javascript/);
     const code = await module.text();
