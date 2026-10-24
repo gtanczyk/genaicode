@@ -87,7 +87,9 @@ describe('dev overlay on any server', () => {
 
   it('puts the overlay in the page head and serves it', async () => {
     const html = await (await fetch(base)).text();
-    expect(html).toContain('<head><script type="module" src="/__genaicode/overlay.js"></script><title>');
+    expect(html).toContain(`<head>${overlay.script}<title>`);
+    expect(overlay.script).toMatch(/^<script>\(function collectEarlyErrors\(\) \{[\s\S]*\}\)\(\)<\/script>/);
+    expect(overlay.script).toContain('<script type="module" src="/__genaicode/overlay.js"></script>');
     expect(overlay.injectHtml(html)).toBe(html);
     expect(overlay.injectHtml('<p>x</p>')).toBe(`${overlay.script}<p>x</p>`);
     const module = await fetch(`${base}__genaicode/overlay.js`);

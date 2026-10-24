@@ -14,6 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'genaicode-overlay-node-'));
 writeFileSync(join(dir, 'agent'), '#!/bin/sh\n', { mode: 0o755 });
 const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
 const html = `<!doctype html><html><head><title>game</title></head><body>
+<script>console.error('sprites failed to load'); missing.start();</script>
 <button id="throw" onclick="setTimeout(() => { throw new Error('fireball missed'); })">throw</button>
 </body></html>`;
 
@@ -90,10 +91,11 @@ it('shows the wolf with the error count, opens the chat and sends the errors', a
       const el = root.querySelector('.badge') as HTMLElement;
       return el.hidden ? undefined : el.textContent;
     });
-  expect(await badge()).toBeUndefined();
+  // The page's own startup errors, from before the overlay module ran.
+  await expect.poll(badge).toBe('2');
 
   await page.click('#throw');
-  await expect.poll(badge).toBe('1');
+  await expect.poll(badge).toBe('3');
 
   const loaded = page.waitForResponse((response) => response.url().includes('?token='));
   await inOverlay((root) => (root.querySelector('.wolf') as HTMLElement).click());
@@ -101,10 +103,12 @@ it('shows the wolf with the error count, opens the chat and sends the errors', a
   const src = await inOverlay((root) => root.querySelector('iframe')?.src);
   await expect.poll(() => page.frames().some((frame) => frame.url() === src)).toBe(true);
 
-  expect(await inOverlay((root) => root.querySelector('.fix')!.textContent)).toBe('Fix 1 error');
+  expect(await inOverlay((root) => root.querySelector('.fix')!.textContent)).toBe('Fix 3 errors');
   await inOverlay((root) => (root.querySelector('.fix') as HTMLElement).click());
   await expect.poll(() => tasks.length).toBe(1);
-  expect(tasks[0].prompt).toContain(`The app running in the dev server at ${base} reports this error`);
-  expect(tasks[0].prompt).toContain('[uncaught error] Uncaught Error: fireball missed');
+  expect(tasks[0].prompt).toContain(`The app running in the dev server at ${base} reports these errors`);
+  expect(tasks[0].prompt).toContain('1. [console.error] sprites failed to load');
+  expect(tasks[0].prompt).toContain('2. [uncaught error] Uncaught ReferenceError: missing is not defined');
+  expect(tasks[0].prompt).toContain('3. [uncaught error] Uncaught Error: fireball missed');
   expect(await badge()).toBeUndefined();
 });

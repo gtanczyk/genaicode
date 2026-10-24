@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { TLSSocket } from 'node:tls';
-import { mountOverlay, type OverlayConfig } from './client.js';
+import { collectEarlyErrors, mountOverlay, type OverlayConfig } from './client.js';
 
 /**
  * The server side of the dev overlay (the wolf in the page's corner), shared by the Vite
@@ -58,7 +58,10 @@ export interface Overlay<Ui extends OverlayUi = OverlayUi> {
   handle(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
   /** `handle` as Express / Connect middleware. */
   middleware(req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void): void;
-  /** `<script type="module" src="/__genaicode/overlay.js"></script>`: put it in the app's HTML. */
+  /**
+   * The overlay's tags for the app's HTML: an inline error collector for the page's own
+   * scripts, then `<script type="module" src="/__genaicode/overlay.js">`.
+   */
   readonly script: string;
   /** Adds `script` to an HTML page, as early as possible; unchanged when the overlay is off. */
   injectHtml(html: string): string;
@@ -77,7 +80,10 @@ export function createOverlay<Ui extends OverlayUi>(
   let ui: Promise<Ui | undefined> | undefined = startOverlayUi(() => start(() => [...seen]), log);
   let off = false;
   void ui.then((started) => (off = !started));
-  const script = `<script type="module" src="${API}/overlay.js"></script>`;
+  // The page's classic scripts run before any module: an inline collector keeps their errors.
+  const script =
+    (captureErrors ? `<script>(${collectEarlyErrors.toString()})()</script>` : '') +
+    `<script type="module" src="${API}/overlay.js"></script>`;
   const handle = (req: IncomingMessage, res: ServerResponse) =>
     handleOverlayRequest(req, res, {
       ui,

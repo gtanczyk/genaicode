@@ -157,8 +157,9 @@ if (process.env.NODE_ENV !== 'production') {
 Page side, the overlay script in development only:
 
 - Where the server renders or serves the HTML: `overlay.injectHtml(html)`, or
-  `overlay.script` (`<script type="module" src="/__genaicode/overlay.js"></script>`) in the
-  dev template.
+  `overlay.script` (an inline error collector plus
+  `<script type="module" src="/__genaicode/overlay.js"></script>`) at the top of the dev
+  template's `<head>`.
 - Otherwise, in the app's entry, behind the bundler's dev flag so production drops it:
 
   ```js
