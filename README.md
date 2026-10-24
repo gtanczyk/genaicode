@@ -8,22 +8,31 @@
 
 # GenAIcode
 
-GenAIcode is a small TypeScript toolkit for using LLMs in backend code.
+GenAIcode drives the coding-agent CLIs you already have (Claude Code, Codex, GitHub Copilot
+CLI, Cursor, Gemini CLI, opencode, Muse, Mistral Vibe, Antigravity) behind one API and one
+CLI. Script them, swap them with one flag, and let your tests decide when the job is done.
 
-It sits between raw provider SDKs and full agent frameworks: one prompt representation,
-thin provider adapters, a convenient request API, and lightweight conversation chains.
-The core does not inspect repositories, execute shell commands, edit files, or run an agent UI.
-The opt-in [`genaicode/agents`](#coding-agents) subpath drives the coding-agent CLIs you
-already have (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI, opencode, Muse,
-Mistral Vibe, Antigravity) behind one task and event API, so you can orchestrate them from
-backend code. The same drivers are on the command line as `npx genaicode run`.
+<p align="center">
+  <a href="media/showcase.mp4">
+    <img alt="genaicode in 20 seconds: the Vite overlay fixes a broken page, run --verify sends a failed test back to the agent, and an agent inside an app waits for Approve." src="media/screenshots/showcase.gif" width="100%">
+  </a>
+  <br>
+  <sub>Recorded live with Claude Code and Codex. <a href="media/showcase.mp4">Full video (87 s)</a>.</sub>
+</p>
 
-**Like jQuery**, the common case starts with one small function and becomes more specific
-through chaining—configure a request, follow up across multiple prompts, and keep history
-portable without adopting a full agent framework.
+```bash
+npx genaicode run --verify "npm test" "fix the failing tests"
+```
 
-GenAIcode 1.x was a coding agent; see [Migration from 1.x](#migration-from-1x) if you need
-the old product or the 2.0 scope decisions.
+That runs the first agent CLI installed on your machine in the current directory, then runs
+`npm test`. If the check fails, its output goes back to the agent for another attempt. Add
+`-a codex` (or `claude`, `copilot`, `opencode`...) to pick the agent; the command stays the
+same. From there, the same drivers are a TypeScript API, a chat in your terminal or browser,
+a panel inside your Vite app, and an agent inside your own app.
+
+GenAIcode also ships [a thin LLM layer](#also-a-thin-llm-layer) for calling model providers
+from backend code. The two halves are separate subpaths: importing `genaicode` never spawns an
+agent, and `genaicode/agents` loads no provider SDK.
 
 ## Install
 
@@ -31,59 +40,8 @@ the old product or the 2.0 scope decisions.
 npm install genaicode
 ```
 
-Node.js 20 or newer is required.
-
-## Why this vs a raw SDK
-
-Provider SDKs are the right tool when you call one vendor and own every request shape
-yourself. The cost shows up when the same backend needs a second provider, a test double,
-or shared policy (timeouts, JSON parsing, rate limits, fallback) without copying glue.
-
-GenAIcode is that thin shared layer:
-
-- One portable prompt/tool IR (`PromptItem`) instead of OpenAI messages vs Anthropic
-  blocks vs Gemini contents.
-- One request API (`.text()`, `.json()`, `.stream()`, chains) over those adapters.
-- A tiny `ModelProvider` seam so tests and custom gateways do not mock vendor HTTP.
-- Opt-in middleware and retry helpers—no hidden tool runners, no silent retries, no
-  agent loop.
-
-If you are happy importing one SDK and never swapping models or providers, stay on the
-SDK. If you want the call site to look the same while the edge stays replaceable, use
-GenAIcode.
-
-## A prompt in three lines
-
-```ts
-import { genaicode } from 'genaicode';
-import { openai } from 'genaicode/providers';
-
-const ai = genaicode(openai({ model: 'your-model-name' }));
-const answer = await ai('Explain why the sky is blue in two sentences.').text();
-```
-
-The client is callable on purpose. Configuration is ordinary method chaining—system
-instructions, temperature, token limits, and more—without a separate options object or
-framework setup:
-
-```ts
-const result = await ai('Create a release note from these commits')
-  .system('You are a concise technical writer.')
-  .temperature(0.2)
-  .maxOutputTokens(500)
-  .text();
-```
-
-Builders are immutable, so a configured base request can be safely reused:
-
-```ts
-const releaseNote = ai('Create a release note from these commits')
-  .system('You are a concise technical writer.')
-  .temperature(0.2);
-
-const short = await releaseNote.maxOutputTokens(200).text();
-const long = await releaseNote.maxOutputTokens(800).text();
-```
+Node.js 20 or newer is required. The agent CLIs are yours to install and log in to;
+`npx genaicode agents` lists which ones it finds.
 
 ## Coding agents
 
@@ -431,7 +389,70 @@ bearer and refuses browser requests; every other route asks `authorize` and refu
 cross-site requests. Without `authorize` only a loopback `Host` is accepted (add names with
 `allowedHosts`), so a DNS-rebinding page cannot reach the agent.
 
-## Chaining prompts
+## Also: a thin LLM layer
+
+Besides driving agents, GenAIcode is a small TypeScript toolkit for calling LLMs from backend
+code. It sits between raw provider SDKs and full agent frameworks: one prompt representation,
+thin provider adapters, a convenient request API, and lightweight conversation chains. This
+layer does not inspect repositories, execute shell commands, edit files, or run an agent UI.
+
+**Like jQuery**, the common case starts with one small function and becomes more specific
+through chaining—configure a request, follow up across multiple prompts, and keep history
+portable without adopting a full agent framework.
+
+### A prompt in three lines
+
+```ts
+import { genaicode } from 'genaicode';
+import { openai } from 'genaicode/providers';
+
+const ai = genaicode(openai({ model: 'your-model-name' }));
+const answer = await ai('Explain why the sky is blue in two sentences.').text();
+```
+
+The client is callable on purpose. Configuration is ordinary method chaining—system
+instructions, temperature, token limits, and more—without a separate options object or
+framework setup:
+
+```ts
+const result = await ai('Create a release note from these commits')
+  .system('You are a concise technical writer.')
+  .temperature(0.2)
+  .maxOutputTokens(500)
+  .text();
+```
+
+Builders are immutable, so a configured base request can be safely reused:
+
+```ts
+const releaseNote = ai('Create a release note from these commits')
+  .system('You are a concise technical writer.')
+  .temperature(0.2);
+
+const short = await releaseNote.maxOutputTokens(200).text();
+const long = await releaseNote.maxOutputTokens(800).text();
+```
+
+### Why this vs a raw SDK
+
+Provider SDKs are the right tool when you call one vendor and own every request shape
+yourself. The cost shows up when the same backend needs a second provider, a test double,
+or shared policy (timeouts, JSON parsing, rate limits, fallback) without copying glue.
+
+GenAIcode is that thin shared layer:
+
+- One portable prompt/tool IR (`PromptItem`) instead of OpenAI messages vs Anthropic
+  blocks vs Gemini contents.
+- One request API (`.text()`, `.json()`, `.stream()`, chains) over those adapters.
+- A tiny `ModelProvider` seam so tests and custom gateways do not mock vendor HTTP.
+- Opt-in middleware and retry helpers—no hidden tool runners, no silent retries, no
+  agent loop.
+
+If you are happy importing one SDK and never swapping models or providers, stay on the
+SDK. If you want the call site to look the same while the edge stays replaceable, use
+GenAIcode.
+
+### Chaining prompts
 
 A chain remembers successful user and assistant turns. Each new prompt sees the complete
 history, so multi-step work stays in ordinary application code:
@@ -449,7 +470,7 @@ const answer3 = await chain.text('Prompt 3: summarize the final contract.');
 This is `prompt1 → response1 → prompt2 → response2 → prompt3 → response3`. The history
 is available as portable `PromptItem[]` through `chain.history()`.
 
-## Using a chain in a loop
+### Using a chain in a loop
 
 A chain is ordinary application state, so normal control flow works:
 
@@ -492,7 +513,7 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
 
 The application owns validation, attempt limits, and failure policy.
 
-## Schema adapters
+### Schema adapters
 
 `json(...)` and `parseJsonResult(...)` accept either a parser function or a schema adapter
 with a `parse(value)` method. This keeps schema validation library-agnostic:
@@ -512,7 +533,7 @@ Calling `.json()` also sets `responseFormat: { type: 'json' }` on the request wh
 not already chosen a format, so providers that support JSON mode (OpenAI, Gemini/Vertex)
 are asked for JSON rather than free text.
 
-## Response format and thinking
+### Response format and thinking
 
 Portable request fields cover the two knobs backends usually poke through provider-specific
 config:
@@ -543,7 +564,7 @@ Providers map what they support and ignore the rest. `ProviderCapabilities.jsonR
 and `ProviderCapabilities.thinking` advertise support. Vendor-specific escapes such as
 Vertex `generationConfig` remain available for anything not covered here.
 
-## PromptItem: the portable prompt IR
+### PromptItem: the portable prompt IR
 
 `PromptItem` is GenAIcode's provider-neutral intermediate representation:
 
@@ -576,7 +597,7 @@ const supportTicket = (ticket: Ticket) =>
 await ai(supportTicket(ticket)).text();
 ```
 
-## Tools
+### Tools
 
 ```ts
 const calls = await ai('What is the weather in Warsaw?')
@@ -598,7 +619,7 @@ const calls = await ai('What is the weather in Warsaw?')
 GenAIcode normalizes tool calls but deliberately does not execute them. The application
 owns permissions, retries, and side effects.
 
-## Streaming
+### Streaming
 
 Providers that support native streaming expose a provider-neutral `StreamEvent` IR.
 Request builders and chains offer `.stream()` and `.streamText()`. If a provider has no
@@ -618,7 +639,7 @@ ai.provider.capabilities;
 // { streaming: true, tools: true, images: 'input', systemPrompt: true }
 ```
 
-## Middleware
+### Middleware
 
 Hook-style plugins remain the extension point. Built-in helpers cover common backend
 needs without restoring a global registry:
@@ -637,7 +658,7 @@ const ai = genaicode(openai({ model: 'your-model-name' }), {
 });
 ```
 
-## Retries
+### Retries
 
 Retries stay in application code. Use `classifyError`, `isRetryable`, and `withRetry`
 when you want shared classification without hidden policy:
@@ -654,7 +675,7 @@ const text = await withRetry(() => ai('Summarize the deploy notes.').text(), {
 See [retry guidance](docs/retry.md), [semver policy](docs/semver.md), and the
 [provider package evaluation](docs/provider-packages.md).
 
-## Providers
+### Providers
 
 Models are provided in the adapter, through `.model(...)`, or with environment variables:
 
@@ -718,7 +739,7 @@ const provider: ModelProvider = {
 All Anthropic, Google, and OpenAI conversion functions are public from
 `genaicode/providers`, so gateways and tests can reuse them without instantiating clients.
 
-## Provider E2E tests
+### Provider E2E tests
 
 Run real-provider E2E tests locally with:
 
@@ -739,7 +760,7 @@ Beyond the smoke call, E2E also covers portable `responseFormat: { type: 'json' 
 CI/CD is configured in `.github/workflows/provider-e2e.yaml`. Each provider runs in its own
 job and only starts when both required secrets are configured in GitHub Actions.
 
-## Plugins and hooks
+### Plugins and hooks
 
 A provider plugin no longer needs registration in global configuration. It exports the
 same small `ModelProvider` contract as a built-in adapter:
