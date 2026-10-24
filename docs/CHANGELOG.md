@@ -9,7 +9,8 @@
   `/auto off` asks again. `-y` starts with it on.
 - `genaicode embed` makes projects without a dev server work too: the agent writes a small
   dev-only server that serves the pages with the panel injected, leaving the files and the
-  build untouched. It also keeps its shell commands few, since each one may need approval.
+  build untouched. That server opens the browser, and the agent's report starts with the one
+  command to run. It also keeps its shell commands few, since each one may need approval.
 
 ## 2.18.0
 
