@@ -105,8 +105,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^5.0.0",
-    "vite": "^6.4.3",
-    "vitest": "^4.1.11"
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12"
   },
   "prettier": {
     "trailingComma": "all",
