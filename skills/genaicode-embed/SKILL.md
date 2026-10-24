@@ -18,10 +18,10 @@ the project has HTML pages a browser can open.
    in `vite dev` the page gets a wolf button that opens a chat with the agent working in
    the project root, and the page's errors can be sent to the agent with one click.
    Builds are untouched, nothing reaches production.
-2. **Dev panel without Vite** (`genaicode/ui`): the same chat for apps on webpack, Next.js,
-   Express, Fastify, Remix, Astro or any other Node dev server. The dev server process
-   starts the chat on 127.0.0.1 with `startEmbeddedWeb`, and a development-only component
-   on the page shows it in a frame. A few more lines than the plugin, same result.
+2. **Dev overlay without Vite** (`createDevOverlay` from `genaicode/ui`): the same overlay
+   (the wolf, the error badge, "Fix N errors") for apps on webpack, Next.js, Express,
+   Fastify, Koa or any other Node dev server. The dev server mounts its routes, the page
+   loads one script in development. A few more lines than the plugin, same result.
 3. **In-app agent** (`genaicode/app-agent` on the server, `<AppAgentChat>` from
    `genaicode/react` on the page): for a local app with its own Node server (an admin
    console, an internal tool, an editor) whose users want the agent to act on the app's
@@ -31,8 +31,8 @@ the project has HTML pages a browser can open.
 4. **A dev server of your own**: the project has pages but nothing serves them in
    development (static HTML, files opened from `file://`, a build script that writes
    `index.html`, a game jam entry with a size budget...). Write a small Node script that
-   serves those files on localhost and injects the panel into the HTML it serves, and an
-   npm script to start it. The files on disk and the build output stay untouched, so size
+   serves those files on localhost with the overlay from option 2 injected into the HTML
+   it serves, and an npm script to start it. The files on disk and the build output stay untouched, so size
    budgets and release builds are not affected.
 5. **Last resort**: no Node at all in the project and no HTML to serve (a Rails, Django or
    Go app whose server you cannot change safely): tell the user to run `npx genaicode ui`
@@ -80,7 +80,7 @@ allow, batch what must run into few commands, and do not run the dev server just
    you created that the project does not track.
 6. **Report**, starting with how to see it, before anything else: one line with the exact
    command to run and what happens next, e.g. "Run `npm run agent`: the game opens in your
-   browser with an Agent button in the bottom-right corner." The developer may not know
+   browser with the genaicode wolf in the bottom-right corner." The developer may not know
    the project's scripts or that a new one exists, so never leave this for the end of a
    long summary. Then what you changed, file by file, briefly. Say that the agent uses its
    own CLI login and billing.
@@ -113,109 +113,62 @@ export default defineConfig({
 - The chat runs on its own 127.0.0.1 port, only the app's own pages can frame it, and it
   takes requests only from the same machine. No env vars or secrets are needed.
 
-## Recipe: dev panel without Vite
+## Recipe: dev overlay without Vite
+
+`createDevOverlay()` from `genaicode/ui` is the Vite plugin's overlay for any Node dev
+server: the genaicode wolf in the page's bottom-right corner opens the chat, its badge
+counts the page's errors, and "Fix N errors" sends them to the agent. Do not write your own
+button, panel or session route: use this.
 
 Server side, in the Node process that serves the app in development, and only there:
 
 ```ts
-import type { IncomingMessage, ServerResponse } from 'node:http';
-
 // Development only: production never imports genaicode.
-// The origins the app was opened at; the chat lets only these frame it, read per request.
-const origins = new Set<string>();
-let panel: Promise<{ url: string }> | undefined;
-export function genaicodePanel() {
-  panel ??= import('genaicode/ui').then(({ startEmbeddedWeb }) =>
-    startEmbeddedWeb({ cwd: process.cwd(), frameAncestors: () => [...origins] }),
-  );
-  return panel;
-}
-
-// GET /__genaicode/session -> { url }. The url carries the chat's access token: hand it only
-// to the app's own pages on this machine.
-export async function genaicodeSession(req: IncomingMessage, res: ServerResponse) {
-  const address = req.socket.remoteAddress ?? '';
-  const local = address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
-  const host = req.headers.host ?? '';
-  const loopbackHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-  if (!local || !loopbackHost || req.headers['sec-fetch-site'] !== 'same-origin') {
-    res.writeHead(403).end();
-    return;
-  }
-  origins.add(`http://${host}`); // localhost and 127.0.0.1 can both frame it, without a restart
-  const { url } = await genaicodePanel();
-  res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-  res.end(JSON.stringify({ url }));
+if (process.env.NODE_ENV !== 'production') {
+  const { createDevOverlay } = await import('genaicode/ui');
+  const overlay = createDevOverlay(); // the agent works in process.cwd(); `cwd` to change
+  app.use(overlay.middleware); // before the app's own routes
 }
 ```
 
-- `frameAncestors` is read per request and must list every origin the app is opened at in
-  development (`http://localhost:3000`, `http://127.0.0.1:3000`...); the chat refuses other
-  frames. Collect them as above rather than capturing the first one. Behind a dev host name
-  (`app.localhost`, https), allow that name explicitly.
-  `startEmbeddedWeb` binds to 127.0.0.1 on a free port (`port` to fix one) and takes
-  `agent`, `model`, `effort`, `approveAll` like the Vite plugin.
+- `overlay.handle(req, res)` answers everything under `/__genaicode/` and resolves to
+  `false` for other URLs; `overlay.middleware` is the same for Express / Connect. Options:
+  `cwd`, `agent`, `model`, `effort`, `approveAll` (only if asked), `port`,
+  `captureErrors: false`, like the Vite plugin.
+- The chat starts in the background on 127.0.0.1. Its token goes only to the app's own
+  pages, on this machine, opened at `localhost`, `*.localhost`, `127.0.0.1` or `[::1]`.
+  Without an agent CLI it logs why and the app runs on.
 - Start it once per process. Dev servers that reload server code (Next.js, nodemon...)
-  re-run modules: keep the promise on `globalThis` so a reload does not start a second chat.
-- Where to hook the route:
-  - Express / Connect / node:http dev server: before the app's routes, behind
-    `process.env.NODE_ENV !== 'production'`.
-  - webpack-dev-server: `devServer.setupMiddlewares(middlewares, devServer)`, push a
-    middleware for `/__genaicode/session`.
-  - Next.js: a route handler such as `app/api/genaicode/route.ts` (folders starting with
-    `_` are private in the app router) that returns 404 unless
-    `process.env.NODE_ENV === 'development'`. It has no socket address, so check that the
-    `Host` header is `localhost` / `127.0.0.1` / `[::1]` with a port and that
-    `sec-fetch-site` is `same-origin`. Start the chat from the route on first use (Node
-    runtime: `export const runtime = 'nodejs'`), cached on `globalThis`.
-  - Fastify: a route under `if (dev)`; Koa: a middleware under `if (dev)`.
+  re-run modules: keep the overlay on `globalThis` so a reload does not start a second chat.
+- Where to hook it:
+  - Express / Connect: `app.use(overlay.middleware)` before the routes.
+  - node:http: `if (await overlay.handle(req, res)) return;` at the top of the handler.
+  - webpack-dev-server: `setupMiddlewares: (middlewares) => [{ name: 'genaicode', middleware: overlay.middleware }, ...middlewares]`.
+  - Fastify: an `onRequest` hook that, for URLs under `/__genaicode/`, calls
+    `reply.hijack()` and `overlay.handle(request.raw, reply.raw)`. Koa: a middleware that
+    sets `ctx.respond = false` when `await overlay.handle(ctx.req, ctx.res)` is true.
+  - Next.js: a rewrite in `next.config` from `/__genaicode/:path*` to
+    `/api/genaicode/:path*` (development only), and a pages-router route
+    `pages/api/genaicode/[...path].ts` with `export const config = { api: { bodyParser: false } }`
+    that returns 404 outside development, sets
+    `req.url = '/__genaicode/' + [req.query.path].flat().join('/')` and calls
+    `overlay.handle(req, res)`.
 
-Page side, a component rendered only in development (`process.env.NODE_ENV === 'development'`,
-`import.meta.env.DEV`...), loaded so the production bundle drops it (a dynamic `import()`
-behind that check, or the framework's dev-only slot):
+Page side, the overlay script in development only:
 
-```tsx
-import { useEffect, useState } from 'react';
+- Where the server renders or serves the HTML: `overlay.injectHtml(html)`, or
+  `overlay.script` (`<script type="module" src="/__genaicode/overlay.js"></script>`) in the
+  dev template.
+- Otherwise, in the app's entry, behind the bundler's dev flag so production drops it:
 
-export function GenaicodePanel() {
-  const [url, setUrl] = useState<string>();
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    fetch('/__genaicode/session')
-      .then((r) => (r.ok ? r.json() : undefined))
-      .then((s) => setUrl(s?.url));
-  }, []);
-  if (!url) return null;
-  return (
-    <>
-      <button onClick={() => setOpen(!open)} style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 2147483647 }}>
-        Agent
-      </button>
-      {open && (
-        <iframe
-          src={url}
-          title="genaicode"
-          style={{
-            position: 'fixed',
-            right: 16,
-            bottom: 64,
-            width: 420,
-            height: '70vh',
-            zIndex: 2147483647,
-            border: 0,
-            borderRadius: 12,
-            boxShadow: '0 8px 32px #0004',
-          }}
-        />
-      )}
-    </>
-  );
-}
-```
-
-Not React? The same in the app's own framework or plain DOM: fetch the session, then a
-fixed button that toggles a fixed iframe. Keep the token URL out of logs, `localStorage`
-and anything the page sends elsewhere.
+  ```js
+  if (process.env.NODE_ENV === 'development') {
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = '/__genaicode/overlay.js';
+    document.head.append(script);
+  }
+  ```
 
 ## Recipe: a dev server of your own
 
@@ -224,18 +177,17 @@ project's folder for scripts), plus `"agent": "node tools/agent-dev.mjs"` (or a 
 fits next to the existing scripts) in `package.json`:
 
 ```js
-// Development only: serves <dir> on 127.0.0.1 with the genaicode panel injected into HTML.
+// Development only: serves <dir> on 127.0.0.1 with the genaicode overlay injected into HTML.
 // The files on disk are not changed.
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { startEmbeddedWeb } from 'genaicode/ui';
+import { createDevOverlay } from 'genaicode/ui';
 
 const root = resolve(process.argv[2] ?? 'build');
 const port = Number(process.env.PORT ?? 5173);
-const origins = new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
-const chat = await startEmbeddedWeb({ cwd: process.cwd(), frameAncestors: () => [...origins] });
+const overlay = createDevOverlay();
 const TYPES = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -246,26 +198,12 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.wasm': 'application/wasm',
 };
-const PANEL = `<script type="module" src="/__genaicode/panel.js"></script>`;
 
 createServer(async (req, res) => {
-  const url = new URL(req.url ?? '/', 'http://x');
-  if (url.pathname === '/__genaicode/session') {
-    // The token: only this machine (a loopback Host, which stops DNS rebinding), only the
-    // app's own pages.
-    if (!origins.has(`http://${req.headers.host}`) || req.headers['sec-fetch-site'] !== 'same-origin') {
-      return res.writeHead(403).end();
-    }
-    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    return res.end(JSON.stringify({ url: chat.url }));
-  }
-  if (url.pathname === '/__genaicode/panel.js') {
-    res.writeHead(200, { 'content-type': 'text/javascript' });
-    return res.end(PANEL_SCRIPT);
-  }
+  if (await overlay.handle(req, res)) return;
   let file;
   try {
-    file = normalize(join(root, decodeURIComponent(url.pathname)));
+    file = normalize(join(root, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)));
   } catch {
     return res.writeHead(400).end();
   }
@@ -275,10 +213,10 @@ createServer(async (req, res) => {
   if (!body) return res.writeHead(404).end('not found');
   const type = TYPES[extname(file)] ?? 'application/octet-stream';
   res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
-  res.end(type === 'text/html' ? injectPanel(body.toString()) : body);
+  res.end(type === 'text/html' ? overlay.injectHtml(body.toString()) : body);
 }).listen(port, '127.0.0.1', () => {
   const page = `http://localhost:${port}/`;
-  console.log(`${page}  (genaicode panel: the button in the corner)`);
+  console.log(`${page}  (genaicode: the wolf in the bottom-right corner)`);
   // Open it like `vite --open` does; NO_OPEN=1 to skip.
   if (!process.env.NO_OPEN && !process.env.CI) {
     const opener = { darwin: 'open', win32: 'explorer' }[process.platform] ?? 'xdg-open';
@@ -287,26 +225,12 @@ createServer(async (req, res) => {
       .unref();
   }
 });
-
-function injectPanel(html) {
-  return html.includes('</body>') ? html.replace('</body>', `${PANEL}</body>`) : html + PANEL;
-}
 ```
 
-`PANEL_SCRIPT` is the page side as plain DOM, the same as the React component in the
-recipe above: fetch `/__genaicode/session`, then a fixed button in a corner that toggles a
-fixed iframe with `src` set to the session `url`. Keep it out of the app's own code.
-
-- Listen on `127.0.0.1` only, and hand out the token only for a loopback `Host` and
-  `Sec-Fetch-Site: same-origin`. Together they keep the token on this machine and away from
-  other sites, including DNS-rebinding pages.
+- Listen on `127.0.0.1` only.
 - Serve what the developer actually opens: the build output folder if the project builds
   one (start or chain its build or watch script when it has one, e.g. with `--watch` or a
   second process), otherwise the source folder with the HTML.
-- Optional, for the agent to see what breaks: in `PANEL_SCRIPT`, collect `error` and
-  `unhandledrejection` events and offer a "Fix N errors" button that POSTs them to a
-  `/__genaicode/fix` route (same checks as the session route) which calls
-  `chat.controller.submit('Fix these errors in the page …' + details)`.
 - Open the browser on start (as above), at the page the developer works on when there is
   one obvious page (e.g. `/fireball/`), not a folder listing.
 - A page that reloads itself on change (a watch build) is the developer's own; do not

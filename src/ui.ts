@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { defaultAgents } from './agents/defaults.js';
 import type { AgentSession, SessionState } from './agents/session.js';
 import type { AgentTask, ApprovalDecision, CodingAgent } from './agents/types.js';
+import { createOverlay, type Overlay, type OverlayLog } from './overlay/server.js';
 
 /**
  * `genaicode/ui`: the `genaicode ui` chat served on 127.0.0.1 for a host that shows it in its
@@ -10,6 +11,9 @@ import type { AgentTask, ApprovalDecision, CodingAgent } from './agents/types.js
  * The UI itself (React, Ink) is bundled in `dist/ui/` and loaded only when
  * `startEmbeddedWeb` runs, so importing this module pulls no UI code. For a chat drawn by the
  * host's own React tree, use `genaicode/react` instead.
+ *
+ * `createDevOverlay` puts the same chat into any Node dev server the way `genaicode/vite` does
+ * for Vite: the genaicode wolf in the page's corner, with the page's errors in its badge.
  */
 
 export interface EmbeddedWebOptions {
@@ -84,6 +88,42 @@ export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<Emb
     version: options.version ?? packageVersion(),
     frameAncestors: options.frameAncestors ?? (() => []),
   });
+}
+
+export interface DevOverlayOptions extends Omit<EmbeddedWebOptions, 'cwd' | 'frameAncestors'> {
+  /** Directory the agent works in. Default: `process.cwd()`. */
+  cwd?: string;
+  /** Collect the page's errors and offer to send them to the agent. Default true. */
+  captureErrors?: boolean;
+  /** Where the overlay says it started, or why not. Default: `console`. */
+  log?: OverlayLog;
+}
+
+/** The genaicode overlay for a dev server: its routes, and the tag that puts it in a page. */
+export type DevOverlay = Overlay<EmbeddedWeb>;
+
+/**
+ * The genaicode overlay for a dev server other than Vite (Express, webpack-dev-server, a
+ * script that serves static files...): the wolf in the corner opens the chat with the agent
+ * working in `cwd`, its badge counts the page's errors, and "Fix N errors" sends them to the
+ * agent. Development only.
+ *
+ * ```js
+ * const overlay = createDevOverlay();
+ * app.use(overlay.middleware); // Express, before the app's routes
+ * // ...and overlay.script in the dev HTML, or overlay.injectHtml(html) where HTML is served.
+ * ```
+ *
+ * The chat starts in the background on 127.0.0.1. Its token goes only to the app's own pages
+ * (same-origin), on this machine, opened at a loopback name (localhost, *.localhost,
+ * 127.0.0.1, [::1]). Without an agent CLI the overlay stays off and the app runs on.
+ */
+export function createDevOverlay(options: DevOverlayOptions = {}): DevOverlay {
+  const { captureErrors = true, log = console, ...web } = options;
+  return createOverlay(
+    (frameAncestors) => startEmbeddedWeb({ ...web, cwd: web.cwd ?? process.cwd(), frameAncestors }),
+    { captureErrors, log },
+  );
 }
 
 /** The front ends are bundled into dist/ui by scripts/build-ui.mjs; the path is kept opaque to tsc. */

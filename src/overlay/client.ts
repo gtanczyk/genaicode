@@ -1,6 +1,6 @@
-/** What the plugin tells the overlay. */
+/** What the dev server tells the overlay. */
 export interface OverlayConfig {
-  /** Path of the plugin's endpoints on the dev server, e.g. `/__genaicode`. */
+  /** Path of the overlay's endpoints on the dev server, e.g. `/__genaicode`. */
   api: string;
   /** Collect errors from the page and offer to send them to the agent. */
   captureErrors: boolean;
@@ -15,8 +15,8 @@ export interface OverlayHot {
  * The dev-server overlay: a wolf in the corner of the app that opens the genaicode UI in a
  * panel, and collects the page's errors so one click sends them to the agent.
  *
- * The plugin serves this function's source (`mountOverlay.toString()`) as a module, so it must
- * not use anything from outside its own body.
+ * The dev server serves this function's source (`mountOverlay.toString()`) as a module (see
+ * `overlayModule` in ./server.ts), so it must not use anything from outside its own body.
  */
 export function mountOverlay(config: OverlayConfig, hot: OverlayHot | undefined): void {
   if (document.querySelector('genaicode-overlay')) return;

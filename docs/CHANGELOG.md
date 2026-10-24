@@ -11,6 +11,10 @@
   dev-only server that serves the pages with the panel injected, leaving the files and the
   build untouched. That server opens the browser, and the agent's report starts with the one
   command to run. It also keeps its shell commands few, since each one may need approval.
+- `createDevOverlay()` in `genaicode/ui`: the Vite plugin's overlay (the wolf, its error
+  badge, "Fix N errors", the resizable panel) for any other Node dev server, as
+  `handle(req, res)` / `middleware` plus `injectHtml(html)`. `genaicode embed` now uses it
+  for non-Vite dev servers and for the dev server it writes, instead of a hand-made button.
 
 ## 2.18.0
 
