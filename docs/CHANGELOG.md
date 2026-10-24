@@ -11,6 +11,9 @@
   in the terminal (`--ui`: browser), headless without one; `--print` prints the
   instructions for any other agent. They ship as a Claude Code skill too,
   `skills/genaicode-embed/SKILL.md`.
+- One session in the terminal and the browser: `/web` in `genaicode chat` opens it in the
+  browser (`/web off` stops the server), `genaicode chat --web` does so at start, and Enter
+  in the terminal running `genaicode ui` continues there with the browser still connected.
 
 - `<AgentChat foldSteps>` (and `<AppAgentChat foldSteps>`): each turn's work (tools, edits,
   interim text) folds into one "N steps" line that opens on click, naming the running tool.

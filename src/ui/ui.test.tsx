@@ -1,4 +1,6 @@
 import { request } from 'node:http';
+import { Console } from 'node:console';
+import { PassThrough } from 'node:stream';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +10,7 @@ import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
-import { loadAssets, startEmbeddedWeb } from './index.js';
+import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
@@ -66,6 +68,9 @@ describe('format helpers', () => {
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
     expect(parseSlash('/bark of')).toEqual({ kind: 'bark', invalid: 'of' });
+    expect(parseSlash('/web')).toEqual({ kind: 'web', off: false });
+    expect(parseSlash('/ui off')).toEqual({ kind: 'web', off: true });
+    expect(parseSlash('/web now')).toEqual({ kind: 'web', off: false, invalid: 'now' });
     expect(parseSlash('//etc/hosts is odd')).toBeUndefined();
     expect(parseSlash('fix the bug')).toBeUndefined();
   });
@@ -170,6 +175,46 @@ describe('chat controller', () => {
     expect(chat.get().bark).toBe(false);
     expect(chat.get().notices.at(-1)?.tone).toBe('error');
     chat.close();
+  });
+
+  it('opens and stops the browser UI from the terminal only', async () => {
+    const calls: string[] = [];
+    let running = false;
+    const web = {
+      async open() {
+        calls.push('open');
+        running = true;
+        return 'http://127.0.0.1:1/?token=x';
+      },
+      async close() {
+        calls.push('close');
+        const was = running;
+        running = false;
+        return was;
+      },
+    };
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env, web });
+    const last = () => chat.get().notices.at(-1)?.text;
+    chat.submit('/web');
+    await tick();
+    expect(last()).toMatch(/^Open in the browser: http:\/\/127\.0\.0\.1:1\/\?token=x\n.*share the session/);
+    chat.submit('/web', 'web');
+    expect(last()).toMatch(/This is the browser UI already/);
+    chat.submit('/web off', 'web');
+    expect(last()).toMatch(/from the terminal/);
+    chat.submit('/web off');
+    await tick();
+    expect(last()).toBe('Stopped the browser UI.');
+    chat.submit('/web off');
+    await tick();
+    expect(last()).toBe('The browser UI is not running.');
+    expect(calls).toEqual(['open', 'close', 'close']);
+    chat.close();
+
+    const plain = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    plain.submit('/web');
+    expect(plain.get().notices.at(-1)?.text).toBe('The browser UI is not available here.');
+    plain.close();
   });
 
   it('refuses unknown or missing agents up front', () => {
@@ -300,7 +345,7 @@ describe('web UI server', () => {
       await reader.cancel();
 
       await post({ type: 'submit', text: '/quit' });
-      expect(chat.get().notices.at(-1)?.text).toMatch(/keeps running until you press Ctrl-C/);
+      expect(chat.get().notices.at(-1)?.text).toMatch(/keeps running until you stop genaicode/);
 
       // A DNS-rebinding page reaches the port under another host name.
       const rebinding = await new Promise<number>((resolve, reject) => {
@@ -346,7 +391,114 @@ describe('web UI server', () => {
     }
   });
 
+  it('shares one session between the browser and the terminal', async () => {
+    const terminal = fakeTerminal();
+    const opened: string[] = [];
+    const abort = new AbortController();
+    const done = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      ...terminal,
+      openUrl: (url) => opened.push(url),
+      signal: abort.signal,
+    });
+    await until(() => /Press Enter/.test(terminal.errors()));
+    const url = /Open (\S+)/.exec(terminal.errors())![1];
+    expect(opened).toEqual([url]);
+    // The browser starts a turn, then Enter brings the session into the terminal.
+    const post = (text: string) =>
+      fetch(new URL('/api/command', url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': new URL(url).searchParams.get('token')! },
+        body: JSON.stringify({ type: 'submit', text }),
+      });
+    await post('from the browser');
+    terminal.stdin.write('\n');
+    await until(() => terminal.screen().includes('from the browser'));
+    // The terminal's /web reopens the running server rather than starting a second one.
+    await terminal.type('/web', '\r');
+    await until(() => terminal.screen().includes('Open in the browser'));
+    expect(opened).toEqual([url, url]);
+    abort.abort();
+    expect(await done).toBe(0);
+    expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+  });
+
+  it('opens the terminal chat in the browser with chat --web', async () => {
+    const terminal = fakeTerminal();
+    const opened: string[] = [];
+    const abort = new AbortController();
+    const agent = echoAgent();
+    const done = runChat({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      ...terminal,
+      openWeb: true,
+      openUrl: (url) => opened.push(url),
+      signal: abort.signal,
+    });
+    await until(() => opened.length === 1);
+    await terminal.type('from the terminal', '\r');
+    await until(() => agent.tasks.length === 1);
+    const events = await fetch(new URL(`/api/events${new URL(opened[0]).search}`, opened[0]));
+    const first = new TextDecoder().decode((await events.body!.getReader().read()).value);
+    expect(first).toContain('from the terminal');
+    abort.abort();
+    expect(await done).toBe(0);
+  });
+
   it('names its missing-agent error for hosts that load the bundle', () => {
     expect(new NoAgentError('x').name).toBe('NoAgentError');
   });
 });
+
+/** Streams that pass for a terminal, for the front ends' own Ink render. */
+function fakeTerminal() {
+  // Ink patches the console through `console.Console`, which Vitest's console lacks.
+  (console as { Console?: typeof Console }).Console ??= Console;
+  const stdin = Object.assign(new PassThrough(), {
+    isTTY: true,
+    setRawMode() {
+      return stdin;
+    },
+    ref() {
+      return stdin;
+    },
+    unref() {
+      return stdin;
+    },
+  }) as unknown as NodeJS.ReadStream & PassThrough;
+  let out = '';
+  const stdout = Object.assign(new PassThrough(), {
+    isTTY: true,
+    columns: 100,
+    rows: 30,
+  }) as unknown as NodeJS.WriteStream;
+  stdout.on('data', (chunk: Buffer) => (out += chunk.toString()));
+  let err = '';
+  const stderr = { write: (text: string) => ((err += text), true) } as unknown as NodeJS.WritableStream;
+  // One write per key: Ink reads a longer chunk as a paste, Enter included.
+  const type = async (...keys: string[]) => {
+    for (const key of keys) {
+      stdin.write(key);
+      await tick();
+    }
+  };
+  return { stdin, stdout, stderr, type, screen: () => out, errors: () => err };
+}
+
+async function until(check: () => boolean, timeoutMs = 3000) {
+  const end = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > end) throw new Error('Timed out');
+    await tick();
+  }
+}

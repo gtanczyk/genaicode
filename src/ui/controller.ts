@@ -27,6 +27,17 @@ export interface ChatView {
   bark: boolean;
 }
 
+/** Opens the session in the browser from the terminal chat (`/web`). */
+export interface WebHandoff {
+  /** Start the browser UI on this session, or reuse the running one, and open it. Resolves to its URL. */
+  open(): Promise<string>;
+  /** Stop the browser UI. Resolves false when it was not running. */
+  close(): Promise<boolean>;
+}
+
+/** Where a prompt or slash command was typed. */
+export type ChatSource = 'terminal' | 'web';
+
 export interface ChatOptions {
   agents: readonly CodingAgent[];
   /** Agent to start with. Default: the first installed one. */
@@ -42,14 +53,16 @@ export interface ChatOptions {
   bark?: boolean;
   /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
   transformPrompt?(prompt: string): string;
+  /** Backs `/web`. Without it, `/web` only says the browser UI is not available here. */
+  web?: WebHandoff;
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
 }
 
 export interface ChatController {
   get(): ChatView;
   subscribe(listener: (view: ChatView) => void): () => void;
-  /** A prompt or a slash command. Returns 'quit' when the user asked to leave. */
-  submit(text: string): 'ok' | 'quit';
+  /** A prompt or a slash command. Returns 'quit' when the user asked to leave. Default source: terminal. */
+  submit(text: string, source?: ChatSource): 'ok' | 'quit';
   stop(): void;
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
@@ -138,6 +151,33 @@ export function createChatController(options: ChatOptions): ChatController {
     return true;
   };
 
+  const web = (command: { off: boolean; invalid?: string }, source: ChatSource) => {
+    if (command.invalid !== undefined) {
+      notice(`Use /web or /web off (not "${command.invalid}").`, 'error');
+    } else if (!options.web) {
+      notice(source === 'web' ? 'This is the browser UI already.' : 'The browser UI is not available here.');
+    } else if (source === 'web') {
+      notice(
+        command.off
+          ? 'Stop the browser UI from the terminal (/web off there, or Ctrl-C).'
+          : 'This is the browser UI already. The terminal shows the same session.',
+      );
+    } else if (command.off) {
+      options.web.close().then(
+        (stopped) => notice(stopped ? 'Stopped the browser UI.' : 'The browser UI is not running.'),
+        (error: unknown) => notice(`Could not stop the browser UI: ${errorText(error)}`, 'error'),
+      );
+    } else {
+      options.web.open().then(
+        (url) =>
+          notice(
+            `Open in the browser: ${url}\nThe browser and this terminal share the session; /web off stops the server.`,
+          ),
+        (error: unknown) => notice(`Could not start the browser UI: ${errorText(error)}`, 'error'),
+      );
+    }
+  };
+
   return {
     session,
     get: () => view,
@@ -145,7 +185,7 @@ export function createChatController(options: ChatOptions): ChatController {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    submit(text) {
+    submit(text, source = 'terminal') {
       const command = parseSlash(text);
       if (!command) {
         session.send(text.startsWith('//') ? text.slice(1) : text);
@@ -194,6 +234,9 @@ export function createChatController(options: ChatOptions): ChatController {
           bark = command.on ?? !bark;
           notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
           return 'ok';
+        case 'web':
+          web(command, source);
+          return 'ok';
         case 'unknown':
           notice(`Unknown command ${command.name}. Type /help for the list, or // to send a leading slash.`, 'error');
           return 'ok';
@@ -212,4 +255,8 @@ export function createChatController(options: ChatOptions): ChatController {
       session.close();
     },
   };
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
