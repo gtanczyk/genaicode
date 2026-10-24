@@ -117,11 +117,12 @@ export function ChatApp({
       return;
     }
     if (key.ctrl && input === 'd' && !draft) return quit();
-    if (approval && !draft && (input === 'y' || input === 'n')) {
+    const plain = !key.ctrl && !key.meta;
+    if (approval && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
     }
-    if (approval && !draft && input === 'a') {
+    if (approval && !draft && plain && input === 'a') {
       controller.submit('/auto on');
       return;
     }

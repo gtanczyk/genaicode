@@ -246,8 +246,11 @@ const PANEL = `<script type="module" src="/__genaicode/panel.js"></script>`;
 createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/__genaicode/session') {
-    // The token: only this machine, only the app's own pages.
-    if (req.headers['sec-fetch-site'] !== 'same-origin') return res.writeHead(403).end();
+    // The token: only this machine (a loopback Host, which stops DNS rebinding), only the
+    // app's own pages.
+    if (!origins.has(`http://${req.headers.host}`) || req.headers['sec-fetch-site'] !== 'same-origin') {
+      return res.writeHead(403).end();
+    }
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(JSON.stringify({ url: chat.url }));
   }
@@ -281,8 +284,9 @@ function injectPanel(html) {
 recipe above: fetch `/__genaicode/session`, then a fixed button in a corner that toggles a
 fixed iframe with `src` set to the session `url`. Keep it out of the app's own code.
 
-- Listen on `127.0.0.1` only. That plus the `Sec-Fetch-Site` check is what keeps the token
-  on this machine.
+- Listen on `127.0.0.1` only, and hand out the token only for a loopback `Host` and
+  `Sec-Fetch-Site: same-origin`. Together they keep the token on this machine and away from
+  other sites, including DNS-rebinding pages.
 - Serve what the developer actually opens: the build output folder if the project builds
   one (start or chain its build or watch script when it has one, e.g. with `--watch` or a
   second process), otherwise the source folder with the HTML.
