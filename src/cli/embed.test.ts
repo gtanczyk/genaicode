@@ -28,7 +28,7 @@ describe('embedPrompt', () => {
     expect(prompt).not.toMatch(/^---/);
     expect(prompt).toContain('# Embed genaicode in this project');
     expect(prompt).toContain('## Recipe: Vite overlay');
-    expect(prompt).toContain('## Recipe: dev panel without Vite');
+    expect(prompt).toContain('## Recipe: dev overlay without Vite');
     expect(prompt).toContain('Embed genaicode in the project in /work/shop.');
     expect(prompt).toContain('depend on `^2.18.0`');
     expect(prompt).toContain('The user did not say which integration');

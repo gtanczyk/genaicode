@@ -178,8 +178,8 @@ npx genaicode embed --print | pbcopy     # just the instructions, for any other 
 `genaicode embed` does not inspect your project itself. It starts your agent with
 instructions on how to embed genaicode, and the agent reads the project and picks the way
 in: the Vite overlay below for an app on Vite; for any other Node dev server (webpack,
-Next.js, Express...) a development-only panel that shows the same chat through
-`startEmbeddedWeb` from `genaicode/ui`; the in-app agent (`genaicode/app-agent` with
+Next.js, Express...) the same overlay through `createDevOverlay` from `genaicode/ui`; for
+pages with no dev server at all, a small dev-only server of its own with that overlay; the in-app agent (`genaicode/app-agent` with
 `<AppAgentChat>`) when the agent should act on the app itself; and `npx genaicode ui` next
 to the dev server when there is no Node process to host it. Words after `embed` go to the
 agent as your request. You watch and answer in the same chat as `genaicode chat` (`--ui`
@@ -220,6 +220,20 @@ errors" sends them to the agent as one prompt. Options: `agent`, `model`, `effor
 Builds are untouched. The chat runs on its own port on 127.0.0.1 even when Vite runs with
 `--host`, lets only the app's origins frame it, and hands its token (and takes "fix" requests)
 only from the app's own pages on this machine.
+
+Any other Node dev server (Express, webpack-dev-server, a script that serves static files)
+gets the same overlay from `createDevOverlay` in `genaicode/ui`:
+
+```ts
+import { createDevOverlay } from 'genaicode/ui';
+
+const overlay = createDevOverlay(); // same options as the plugin, plus `cwd`
+app.use(overlay.middleware); // Express; or `if (await overlay.handle(req, res)) return;`
+// ...and in the HTML it serves: overlay.injectHtml(html), or the overlay.script tag.
+```
+
+Development only. The token goes only to pages opened at `localhost`, `*.localhost`,
+`127.0.0.1` or `[::1]`, and without an agent CLI the overlay stays off.
 
 ### In your own React app
 

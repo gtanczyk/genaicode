@@ -1,6 +1,6 @@
-/** What the plugin tells the overlay. */
+/** What the dev server tells the overlay. */
 export interface OverlayConfig {
-  /** Path of the plugin's endpoints on the dev server, e.g. `/__genaicode`. */
+  /** Path of the overlay's endpoints on the dev server, e.g. `/__genaicode`. */
   api: string;
   /** Collect errors from the page and offer to send them to the agent. */
   captureErrors: boolean;
@@ -11,12 +11,71 @@ export interface OverlayHot {
   on(event: string, callback: (payload: unknown) => void): void;
 }
 
+/** The buffer `collectEarlyErrors` leaves on `window.__genaicodeEarly` for the overlay. */
+interface EarlyErrors {
+  errors: { source: 'error' | 'rejection' | 'console'; message: string; stack?: string }[];
+  /** Set by the overlay once it listens itself. */
+  done?: boolean;
+  /** Puts the page's own `console.error` back. */
+  restore(): void;
+}
+
+/**
+ * Runs as a classic inline script ahead of the page's own scripts, which run before any
+ * module (the overlay is one), and keeps their errors for the overlay to pick up. Served as
+ * source like `mountOverlay`, so it must not use anything from outside its own body.
+ */
+export function collectEarlyErrors(): void {
+  const target = window as { __genaicodeEarly?: EarlyErrors };
+  if (target.__genaicodeEarly) return;
+  const consoleError = console.error;
+  const early: EarlyErrors = {
+    errors: [],
+    restore: () => {
+      if (console.error === report) console.error = consoleError;
+    },
+  };
+  target.__genaicodeEarly = early;
+  const keep = (error: EarlyErrors['errors'][number]) => {
+    if (!early.done && early.errors.length < 20) early.errors.push(error);
+  };
+  const text = (value: unknown): string => {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return Object.prototype.toString.call(value);
+    }
+  };
+  window.addEventListener('error', (event) => {
+    const where = event.filename ? ` (${event.filename}:${event.lineno}:${event.colno})` : '';
+    keep({ source: 'error', message: `${event.message}${where}`, stack: (event.error as Error | undefined)?.stack });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    keep({ source: 'rejection', message: text(event.reason), stack: (event.reason as Error | undefined)?.stack });
+  });
+  const report = (...args: unknown[]) => {
+    consoleError.apply(console, args);
+    try {
+      keep({
+        source: 'console',
+        message: args.map(text).join(' '),
+        stack: args.find((arg): arg is Error => arg instanceof Error)?.stack,
+      });
+    } catch {
+      // Ignore values that cannot be described.
+    }
+  };
+  console.error = report;
+}
+
 /**
  * The dev-server overlay: a wolf in the corner of the app that opens the genaicode UI in a
  * panel, and collects the page's errors so one click sends them to the agent.
  *
- * The plugin serves this function's source (`mountOverlay.toString()`) as a module, so it must
- * not use anything from outside its own body.
+ * The dev server serves this function's source (`mountOverlay.toString()`) as a module (see
+ * `overlayModule` in ./server.ts), so it must not use anything from outside its own body.
  */
 export function mountOverlay(config: OverlayConfig, hot: OverlayHot | undefined): void {
   if (document.querySelector('genaicode-overlay')) return;
@@ -274,7 +333,16 @@ iframe { flex: 1; width: 100%; border: 0; background: #f7f7f5; }
     render();
   };
 
+  // What `collectEarlyErrors` caught before this module ran: the page's classic scripts.
+  const early = (window as { __genaicodeEarly?: EarlyErrors }).__genaicodeEarly;
+  if (early) {
+    early.done = true;
+    early.restore();
+  }
   if (config.captureErrors) {
+    for (const error of early?.errors ?? []) {
+      if (error && typeof error.message === 'string' && typeof error.source === 'string') add(error);
+    }
     window.addEventListener('error', (event) => {
       const where = event.filename ? ` (${event.filename}:${event.lineno}:${event.colno})` : '';
       add({ source: 'error', message: `${event.message}${where}`, stack: (event.error as Error | undefined)?.stack });
