@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/logo.png">
-    <img alt="GenAIcode Logo." src="media/logo.png" width="100%" height="auto">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/media/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset=".github/media/logo.png">
+    <img alt="GenAIcode Logo." src=".github/media/logo.png" width="100%" height="auto">
   </picture>
 </p>
 
@@ -13,11 +13,11 @@ CLI, Cursor, Gemini CLI, opencode, Muse, Mistral Vibe, Antigravity) behind one A
 CLI. Script them, swap them with one flag, and let your tests decide when the job is done.
 
 <p align="center">
-  <a href="media/showcase.mp4">
-    <img alt="genaicode in 20 seconds: the Vite overlay fixes a broken page, run --verify sends a failed test back to the agent, and an agent inside an app waits for Approve." src="media/screenshots/showcase.gif" width="100%">
+  <a href=".github/media/showcase.mp4">
+    <img alt="genaicode in 20 seconds: the Vite overlay fixes a broken page, run --verify sends a failed test back to the agent, and an agent inside an app waits for Approve." src=".github/media/screenshots/showcase.gif" width="100%">
   </a>
   <br>
-  <sub>Recorded live with Claude Code and Codex. <a href="media/showcase.mp4">Full video (87 s)</a>.</sub>
+  <sub>Recorded live with Claude Code and Codex. <a href=".github/media/showcase.mp4">Full video (87 s)</a>.</sub>
 </p>
 
 ```bash
@@ -126,15 +126,15 @@ session; `/help` lists the rest.
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="media/screenshots/chat-terminal.png">
-    <img alt="genaicode chat in a terminal: the agent fixes a failing test, then takes queued follow-ups." src="media/screenshots/chat-terminal.gif" width="49%">
+    <source media="(prefers-reduced-motion: reduce)" srcset=".github/media/screenshots/chat-terminal.png">
+    <img alt="genaicode chat in a terminal: the agent fixes a failing test, then takes queued follow-ups." src=".github/media/screenshots/chat-terminal.gif" width="49%">
   </picture>
   <picture>
-    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="media/screenshots/wolf-dark.png">
-    <source media="(prefers-reduced-motion: reduce)" srcset="media/screenshots/wolf-light.png">
-    <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/chat-browser-dark.gif">
-    <source media="(prefers-color-scheme: light)" srcset="media/screenshots/chat-browser-light.gif">
-    <img alt="genaicode ui in a browser: the same fix and a follow-up." src="media/screenshots/chat-browser-light.gif" width="49%">
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset=".github/media/screenshots/wolf-dark.png">
+    <source media="(prefers-reduced-motion: reduce)" srcset=".github/media/screenshots/wolf-light.png">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/media/screenshots/chat-browser-dark.gif">
+    <source media="(prefers-color-scheme: light)" srcset=".github/media/screenshots/chat-browser-light.gif">
+    <img alt="genaicode ui in a browser: the same fix and a follow-up." src=".github/media/screenshots/chat-browser-light.gif" width="49%">
   </picture>
 </p>
 
@@ -144,9 +144,9 @@ The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/wolf-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/screenshots/wolf-light.png">
-    <img alt="The browser UI with the wolf behind a finished turn." src="media/screenshots/wolf-light.png" width="80%">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/media/screenshots/wolf-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset=".github/media/screenshots/wolf-light.png">
+    <img alt="The browser UI with the wolf behind a finished turn." src=".github/media/screenshots/wolf-light.png" width="80%">
   </picture>
 </p>
 
@@ -171,9 +171,9 @@ export default defineConfig({ plugins: [genaicode()] });
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/screenshots/vite-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/screenshots/vite-light.png">
-    <img alt="The genaicode panel over a Vite app: the agent fixed the page's two errors." src="media/screenshots/vite-light.png" width="80%">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/media/screenshots/vite-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset=".github/media/screenshots/vite-light.png">
+    <img alt="The genaicode panel over a Vite app: the agent fixed the page's two errors." src=".github/media/screenshots/vite-light.png" width="80%">
   </picture>
 </p>
 
@@ -367,7 +367,7 @@ import 'genaicode/react/styles.css';
 ```
 
 <p align="center">
-  <img alt="A shop admin with the agent drawer: the agent proposed a refund, waiting for Approve." src="media/screenshots/app-agent.png" width="80%">
+  <img alt="A shop admin with the agent drawer: the agent proposed a refund, waiting for Approve." src=".github/media/screenshots/app-agent.png" width="80%">
 </p>
 
 Under it, `/api/agent` serves `GET /events` (a stream of `AppAgentState`: the session, earlier
