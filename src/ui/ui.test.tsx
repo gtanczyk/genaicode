@@ -249,13 +249,21 @@ describe('chat controller', () => {
     await expect.poll(() => texts().at(-1)).toBe('sh -c "sleep 30" & sleep 30: stopped.');
     expect(texts()).toContain('Stopping the shell commands.');
 
+    // One that ignores SIGTERM gets SIGKILL a moment later; Esc and the Stop button stop it too.
+    chat.submit("!trap '' TERM; while :; do sleep 0.1; done");
+    await expect.poll(() => texts().at(-1)).toBe("$ trap '' TERM; while :; do sleep 0.1; done");
+    chat.stop();
+    await expect
+      .poll(() => texts().at(-1), { timeout: 6000 })
+      .toBe("trap '' TERM; while :; do sleep 0.1; done: stopped.");
+
     chat.submit('!');
     expect(texts().at(-1)).toBe('Type a command after !, e.g. !npm test.');
     chat.submit('!!important');
     await expect.poll(() => agent.tasks.length).toBe(1);
     expect(agent.tasks[0].prompt).toBe('!important');
     chat.close();
-  });
+  }, 20_000);
 
   it('opens and stops the browser UI from the terminal only', async () => {
     const calls: string[] = [];

@@ -66,6 +66,7 @@ export interface ChatController {
   subscribe(listener: (view: ChatView) => void): () => void;
   /** A prompt or a slash command. Returns 'quit' when the user asked to leave. Default source: terminal. */
   submit(text: string, source?: ChatSource): 'ok' | 'quit';
+  /** Stop the agent's turn (dropping queued prompts) and the running `!commands`. */
   stop(): void;
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
@@ -140,26 +141,39 @@ export function createChatController(options: ChatOptions): ChatController {
 
   // `!command`: the user's own shell commands, e.g. the dev server the agent just set up.
   const shells = new Set<ChildProcess>();
-  const stopShells = () => {
-    for (const child of shells) killTree(child);
+  /** SIGTERM, then SIGKILL for what still runs after a moment; SIGKILL at once when this process ends. */
+  const stopShells = (now = false) => {
+    for (const child of shells) {
+      killTree(child, now ? 'SIGKILL' : 'SIGTERM');
+      if (!now) {
+        setTimeout(() => {
+          if (shells.has(child)) killTree(child, 'SIGKILL');
+        }, KILL_AFTER_MS).unref();
+      }
+    }
     return shells.size;
   };
+  const stopAll = () => {
+    session.stop();
+    if (stopShells()) notice('Stopping the shell commands.');
+  };
+  const onExit = () => stopShells(true);
   // They run in their own process groups, out of reach of the terminal's Ctrl-C or hangup:
   // end them with this process, however it ends. A signal keeps its default (exit) unless the
   // host handles it too.
   const onSignal = (signal: NodeJS.Signals) => {
-    stopShells();
+    stopShells(true);
     if (process.listenerCount(signal) === 1) {
       unwatch();
       process.kill(process.pid, signal);
     }
   };
   const watch = () => {
-    process.once('exit', stopShells);
+    process.once('exit', onExit);
     for (const signal of SIGNALS) process.on(signal, onSignal);
   };
   const unwatch = () => {
-    process.removeListener('exit', stopShells);
+    process.removeListener('exit', onExit);
     for (const signal of SIGNALS) process.removeListener(signal, onSignal);
   };
   const runShell = (command: string) => {
@@ -318,8 +332,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Next prompt starts a new agent session.');
           return 'ok';
         case 'stop':
-          session.stop();
-          if (stopShells()) notice('Stopping the shell commands.');
+          stopAll();
           return 'ok';
         case 'bark':
           if (command.invalid !== undefined) {
@@ -351,7 +364,8 @@ export function createChatController(options: ChatOptions): ChatController {
           return 'ok';
       }
     },
-    stop: () => session.stop(),
+    // Esc and the Stop button too: the agent's turn and the !commands.
+    stop: stopAll,
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     selectAgent,
@@ -368,17 +382,18 @@ export function createChatController(options: ChatOptions): ChatController {
 }
 
 const SHELL_LINES = 40;
+const KILL_AFTER_MS = 3000;
 const SIGNALS: NodeJS.Signals[] = process.platform === 'win32' ? [] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 
 /** Ends a `!command` and what it started: its process group, or the process on Windows. */
-function killTree(child: ChildProcess) {
+function killTree(child: ChildProcess, signal: NodeJS.Signals) {
   try {
-    if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGTERM');
-    else child.kill();
+    if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+    else child.kill(signal);
   } catch {
-    child.kill();
+    // Already gone.
   }
 }
 
