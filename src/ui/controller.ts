@@ -143,15 +143,23 @@ export function createChatController(options: ChatOptions): ChatController {
 
   // `!command`: the user's own shell commands, e.g. the dev server the agent just set up.
   const shells = new Set<ChildProcess>();
+  // Process groups to end on /stop and exit: the running commands', and the ones being stopped
+  // until their SIGKILL, since a shell can exit on SIGTERM before what it started.
+  const groups = new Map<ChildProcess, { stopping: boolean }>();
+  const drop = (child: ChildProcess) => {
+    groups.delete(child);
+    if (!groups.size) unwatchShells(onEnd);
+  };
   /** SIGTERM, then SIGKILL for what still runs after a moment; SIGKILL at once when this process ends. */
   const stopShells = (now = false) => {
-    for (const child of shells) {
+    for (const [child, group] of groups) {
       killTree(child, now ? 'SIGKILL' : 'SIGTERM');
-      if (!now) {
-        setTimeout(() => {
-          if (shells.has(child)) killTree(child, 'SIGKILL');
-        }, KILL_AFTER_MS).unref();
-      }
+      if (now || group.stopping) continue;
+      group.stopping = true;
+      setTimeout(() => {
+        killTree(child, 'SIGKILL');
+        drop(child);
+      }, KILL_AFTER_MS).unref();
     }
     return shells.size;
   };
@@ -159,26 +167,7 @@ export function createChatController(options: ChatOptions): ChatController {
     session.stop();
     if (stopShells()) notice('Stopping the shell commands.');
   };
-  const onExit = () => stopShells(true);
-  // They run in their own process groups, out of reach of the terminal's Ctrl-C or hangup:
-  // end them with this process, however it ends. A signal keeps its default (exit) unless the
-  // host handles it too.
-  // Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
-  const onSignal = (signal: NodeJS.Signals) => {
-    stopShells(true);
-    if (process.listenerCount(signal) === 1) {
-      unwatch();
-      process.kill(process.pid, signal);
-    }
-  };
-  const watch = () => {
-    process.once('exit', onExit);
-    for (const signal of SIGNALS) process.prependListener(signal, onSignal);
-  };
-  const unwatch = () => {
-    process.removeListener('exit', onExit);
-    for (const signal of SIGNALS) process.removeListener(signal, onSignal);
-  };
+  const onEnd = () => stopShells(true);
   const runShell = (command: string) => {
     if (!command) {
       notice('Type a command after !, e.g. !npm test.', 'error');
@@ -200,7 +189,8 @@ export function createChatController(options: ChatOptions): ChatController {
       return;
     }
     shells.add(child);
-    if (shells.size === 1) watch();
+    groups.set(child, { stopping: false });
+    watchShells(onEnd);
     publish();
     let output = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -226,7 +216,7 @@ export function createChatController(options: ChatOptions): ChatController {
     child.on('error', (error) => notice(`Could not run it: ${errorText(error)}`, 'error'));
     child.on('close', (code, signal) => {
       shells.delete(child);
-      if (shells.size === 0) unwatch();
+      if (!groups.get(child)?.stopping) drop(child);
       publish();
       if (timer) clearTimeout(timer);
       flush();
@@ -392,6 +382,38 @@ const KILL_AFTER_MS = 3000;
 const SIGNALS: NodeJS.Signals[] = process.platform === 'win32' ? [] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
+
+// `!commands` run in their own process groups, out of reach of the terminal's Ctrl-C or
+// hangup: each controller with some running registers here, and they end with this process,
+// however it ends. One listener for all controllers, so a signal keeps its default (exit)
+// unless the host handles it too.
+const shellOwners = new Set<() => void>();
+const endShells = () => {
+  for (const end of [...shellOwners]) end();
+};
+// Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
+const onShellSignal = (signal: NodeJS.Signals) => {
+  endShells();
+  if (process.listenerCount(signal) === 1) {
+    shellOwners.clear();
+    unlistenShells();
+    process.kill(process.pid, signal);
+  }
+};
+function watchShells(end: () => void) {
+  if (shellOwners.has(end)) return;
+  shellOwners.add(end);
+  if (shellOwners.size > 1) return;
+  process.on('exit', endShells);
+  for (const signal of SIGNALS) process.prependListener(signal, onShellSignal);
+}
+function unwatchShells(end: () => void) {
+  if (shellOwners.delete(end) && !shellOwners.size) unlistenShells();
+}
+function unlistenShells() {
+  process.removeListener('exit', endShells);
+  for (const signal of SIGNALS) process.removeListener(signal, onShellSignal);
+}
 
 /** Ends a `!command` and what it started: its process group, or the process on Windows. */
 function killTree(child: ChildProcess, signal: NodeJS.Signals) {

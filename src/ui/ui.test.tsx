@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
@@ -17,6 +17,14 @@ const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
 const env = { PATH: bin };
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /** Agent that answers each prompt with one tool call and a message. */
 function echoAgent(name = 'echo', command = 'echo-agent'): CodingAgent & { tasks: AgentTask[] } {
@@ -262,13 +270,36 @@ describe('chat controller', () => {
       .poll(() => texts().at(-1), { timeout: 6000 })
       .toBe("trap '' TERM; while :; do sleep 0.1; done: stopped.");
 
+    // What outlives its shell, ignoring SIGTERM, still gets SIGKILL.
+    const pidFile = join(bin, 'stubborn.pid');
+    chat.submit(`!sh -c 'trap "" TERM; echo $$ > ${pidFile}; while :; do sleep 0.1; done' >/dev/null 2>&1 & wait`);
+    await expect.poll(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim()).toBeTruthy();
+    const stubborn = Number(readFileSync(pidFile, 'utf8'));
+    chat.stop();
+    await expect.poll(() => chat.get().shells).toBe(0);
+    expect(alive(stubborn)).toBe(true);
+    await expect.poll(() => alive(stubborn), { timeout: 6000 }).toBe(false);
+
     chat.submit('!');
     expect(texts().at(-1)).toBe('Type a command after !, e.g. !npm test.');
     chat.submit('!!important');
     await expect.poll(() => agent.tasks.length).toBe(1);
     expect(agent.tasks[0].prompt).toBe('!important');
     chat.close();
-  }, 20_000);
+  }, 30_000);
+
+  it('shares one signal listener between chats, so a signal still ends the host', async () => {
+    const before = process.listenerCount('SIGTERM');
+    const chats = [0, 1].map(() =>
+      createChatController({ agents: [echoAgent()], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } }),
+    );
+    for (const chat of chats) chat.submit('!sleep 30');
+    await expect.poll(() => chats.map((chat) => chat.get().shells)).toEqual([1, 1]);
+    expect(process.listenerCount('SIGTERM')).toBe(before + 1);
+    for (const chat of chats) chat.stop();
+    await expect.poll(() => process.listenerCount('SIGTERM'), { timeout: 5000 }).toBe(before);
+    for (const chat of chats) chat.close();
+  });
 
   it('opens and stops the browser UI from the terminal only', async () => {
     const calls: string[] = [];
