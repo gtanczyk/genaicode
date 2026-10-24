@@ -17,12 +17,17 @@ const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
 const env = { PATH: bin };
+/** Running, not a zombie: a container's init may never reap what it inherits. */
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
-    return true;
   } catch {
     return false;
+  }
+  try {
+    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+  } catch {
+    return !existsSync('/proc');
   }
 };
 
@@ -280,6 +285,16 @@ describe('chat controller', () => {
     expect(alive(stubborn)).toBe(true);
     await expect.poll(() => alive(stubborn), { timeout: 6000 }).toBe(false);
 
+    // What a finished command left running in the background ends with /stop too.
+    chat.submit('!sleep 60 >/dev/null 2>&1 & echo $!');
+    await expect.poll(() => texts().at(-1)).toBe('sleep 60 >/dev/null 2>&1 & echo $!: exit code 0.');
+    const background = Number(texts().at(-2));
+    expect(chat.get().shells).toBe(0);
+    expect(alive(background)).toBe(true);
+    chat.stop();
+    expect(texts().at(-1)).toBe('Stopping the shell commands.');
+    await expect.poll(() => alive(background)).toBe(false);
+
     chat.submit('!');
     expect(texts().at(-1)).toBe('Type a command after !, e.g. !npm test.');
     chat.submit('!!important');
@@ -288,7 +303,11 @@ describe('chat controller', () => {
     chat.close();
   }, 30_000);
 
-  it('shares one signal listener between chats, so a signal still ends the host', async () => {
+  it('shares one signal listener between chats, so a signal still ends the host', { timeout: 15_000 }, async () => {
+    const shellListeners = () =>
+      process.listeners('SIGTERM').filter((listener) => listener.name === 'onShellSignal').length;
+    // Earlier tests' stopped commands let go within a few seconds.
+    await expect.poll(shellListeners, { timeout: 5000 }).toBe(0);
     const before = process.listenerCount('SIGTERM');
     const chats = [0, 1].map(() =>
       createChatController({ agents: [echoAgent()], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } }),

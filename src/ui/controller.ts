@@ -143,15 +143,27 @@ export function createChatController(options: ChatOptions): ChatController {
 
   // `!command`: the user's own shell commands, e.g. the dev server the agent just set up.
   const shells = new Set<ChildProcess>();
-  // Process groups to end on /stop and exit: the running commands', and the ones being stopped
-  // until their SIGKILL, since a shell can exit on SIGTERM before what it started.
+  // Process groups to end on /stop and exit, while anything in them runs: a shell can exit
+  // before what it started (`server &`, or on SIGTERM), so a group outlives its shell here
+  // until it is empty, or until its SIGKILL once stopped.
   const groups = new Map<ChildProcess, { stopping: boolean }>();
+  let sweep: ReturnType<typeof setInterval> | undefined;
   const drop = (child: ChildProcess) => {
     groups.delete(child);
-    if (!groups.size) unwatchShells(onEnd);
+    if (groups.size) return;
+    unwatchShells(onEnd);
+    clearInterval(sweep);
+    sweep = undefined;
+  };
+  // Forget the groups whose shell exited once nothing runs in them any more.
+  const prune = () => {
+    for (const [child, group] of groups) {
+      if (!shells.has(child) && !group.stopping && !groupAlive(child)) drop(child);
+    }
   };
   /** SIGTERM, then SIGKILL for what still runs after a moment; SIGKILL at once when this process ends. */
   const stopShells = (now = false) => {
+    prune();
     for (const [child, group] of groups) {
       killTree(child, now ? 'SIGKILL' : 'SIGTERM');
       if (now || group.stopping) continue;
@@ -161,7 +173,7 @@ export function createChatController(options: ChatOptions): ChatController {
         drop(child);
       }, KILL_AFTER_MS).unref();
     }
-    return shells.size;
+    return groups.size;
   };
   const stopAll = () => {
     session.stop();
@@ -216,7 +228,10 @@ export function createChatController(options: ChatOptions): ChatController {
     child.on('error', (error) => notice(`Could not run it: ${errorText(error)}`, 'error'));
     child.on('close', (code, signal) => {
       shells.delete(child);
-      if (!groups.get(child)?.stopping) drop(child);
+      if (!groups.get(child)?.stopping) {
+        if (!groupAlive(child)) drop(child);
+        else sweep ??= setInterval(prune, 1000).unref();
+      }
       publish();
       if (timer) clearTimeout(timer);
       flush();
@@ -413,6 +428,17 @@ function unwatchShells(end: () => void) {
 function unlistenShells() {
   process.removeListener('exit', endShells);
   for (const signal of SIGNALS) process.removeListener(signal, onShellSignal);
+}
+
+/** Whether anything started by a `!command` still runs in its process group. */
+function groupAlive(child: ChildProcess): boolean {
+  if (process.platform === 'win32' || !child.pid) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Ends a `!command` and what it started: its process group, or the process on Windows. */
