@@ -87,7 +87,10 @@ export default defineConfig({
 - Add it to the existing `plugins` array; keep everything else. With a config function
   (`defineConfig(({ mode }) => ...)`) it goes in the returned object the same way.
 - A `vite.config.js` in a CommonJS package (no `"type": "module"`) still uses `import`:
-  Vite bundles the config. Only a `vite.config.cjs` needs `require('genaicode/vite').default`.
+  Vite bundles the config. genaicode is ESM only (`require('genaicode/vite')` fails), so a
+  `vite.config.cjs` loads it with a dynamic import from an async config:
+  `module.exports = async () => ({ plugins: [react(), (await import('genaicode/vite')).default()] })`,
+  keeping the rest of the existing config in that object.
 - Options, all optional: `agent` (e.g. `'claude'`, `'codex'`; default: first installed),
   `model`, `effort`, `approveAll` (skip the agent's permission prompts; only if asked),
   `port`, `captureErrors: false`. Leave the defaults unless the user asked.
