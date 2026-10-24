@@ -33,7 +33,6 @@
   "files": [
     "dist",
     "docs",
-    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -70,12 +69,12 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/build-ui.mjs",
+    "build": "npm run clean && tsc -p scripts/tsconfig.build.json && node scripts/build-ui.mjs",
     "lint": "eslint . --ext js,ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest --config vitest.unit.config.ts --run",
-    "test:e2e": "vitest --config vitest.e2e.config.ts --run",
-    "test:browser": "vitest --config vitest.browser.config.ts --run",
-    "test:watch": "vitest --config vitest.unit.config.ts",
+    "test": "vitest --run --project unit",
+    "test:e2e": "vitest --run --project e2e",
+    "test:browser": "vitest --run --project browser",
+    "test:watch": "vitest --project unit",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint && npm test && npm run build",
     "prepublishOnly": "npm run check",
@@ -110,5 +109,30 @@
   },
   "lint-staged": {
     "*.{js,ts,md}": "prettier --write"
+  },
+  "prettier": {
+    "trailingComma": "all",
+    "tabWidth": 2,
+    "semi": true,
+    "singleQuote": true,
+    "printWidth": 120,
+    "bracketSpacing": true,
+    "endOfLine": "lf"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true
+    },
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended"
+    ],
+    "ignorePatterns": [
+      "examples/**/*",
+      "dist",
+      "coverage"
+    ],
+    "parser": "@typescript-eslint/parser"
   }
 }

@@ -268,7 +268,7 @@
 ### Notes
 
 - Releases are published from GitHub Actions when a version tag is pushed. See
-  [docs/releasing.md](docs/releasing.md).
+  [docs/releasing.md](releasing.md).
 
 ## 2.4.0 — 2026-09-24
 
@@ -278,7 +278,7 @@
   `CodingAgent` interface. Drivers `claude()`, `codex()`, `muse()`; agent-neutral
   `AgentEvent` stream and `AgentResult`; abort, timeout and process-group kill;
   `detectAgents` / `findExecutable`; `cliAgent()` for custom drivers. See
-  [docs/agents.md](docs/agents.md).
+  [docs/agents.md](agents.md).
 - Live agent sessions over JSON-RPC: `codexLive()` (`codex app-server`) and `museLive()`
   (`muse serve`) with `AgentRun.steer()` and `AgentTask.onApproval`; `liveAgent()` and
   `RpcPeer` for custom live drivers; `approval-resolved` event.
@@ -319,7 +319,7 @@
 
 Publishes the Phase 3–4 work already on `master`. npm `2.0.0` shipped the 2.0
 kernel and provider adapters only; this minor adds the remaining public surface
-documented in the README and [semver policy](docs/semver.md).
+documented in the README and [semver policy](semver.md).
 
 ### Added
 
@@ -327,12 +327,12 @@ documented in the README and [semver policy](docs/semver.md).
   native streams for OpenAI / Anthropic / Google with generate→stream fallback)
 - Built-in middleware: `timingPlugin`, `rateLimitPlugin`, `cachePlugin`,
   `fallbackPlugin`, `fallbackProvider`
-- Retry helpers: `classifyError`, `isRetryable`, `withRetry` (+ [docs/retry.md](docs/retry.md))
+- Retry helpers: `classifyError`, `isRetryable`, `withRetry` (+ [docs/retry.md](retry.md))
 - `ProviderCapabilities` on `ModelProvider`
 - Compatibility fixtures for multimodal and tool-call round trips
 - Framework examples under `examples/` (HTTP handler, queue worker, cron job)
-- Written guidance: [docs/semver.md](docs/semver.md),
-  [docs/provider-packages.md](docs/provider-packages.md)
+- Written guidance: [docs/semver.md](semver.md),
+  [docs/provider-packages.md](provider-packages.md)
 
 ### Notes
 
