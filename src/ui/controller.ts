@@ -216,12 +216,13 @@ export function createChatController(options: ChatOptions): ChatController {
           : lines;
       notice(shown.join('\n'));
     };
-    const onData = (chunk: Buffer) => {
-      output += chunk.toString('utf8');
+    const onData = (chunk: string) => {
+      output += chunk;
       timer ??= setTimeout(flush, 150);
     };
-    child.stdout?.on('data', onData);
-    child.stderr?.on('data', onData);
+    // Decoded per stream, so a character split across chunks stays whole.
+    child.stdout?.setEncoding('utf8').on('data', onData);
+    child.stderr?.setEncoding('utf8').on('data', onData);
     child.on('error', (error) => notice(`Could not run it: ${errorText(error)}`, 'error'));
     child.on('close', (code, signal) => {
       shells.delete(child);

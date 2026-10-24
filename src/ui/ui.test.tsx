@@ -230,9 +230,14 @@ describe('chat controller', () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
     const texts = () => chat.get().notices.map((notice) => notice.text);
+    // A character split across two writes arrives whole.
+    chat.submit("!printf '\\342'; sleep 0.05; printf '\\202\\254\\n'");
+    await expect.poll(() => texts().at(-1)).toContain('exit code 0');
+    expect(texts()).toContain('€');
+    const first = texts().length;
     chat.submit('!printf "\\033[32mready\\033[0m\\n" && pwd && exit 3');
     await expect.poll(() => texts().at(-1)).toContain('exit code 3');
-    expect(texts()).toEqual([
+    expect(texts().slice(first)).toEqual([
       '$ printf "\\033[32mready\\033[0m\\n" && pwd && exit 3',
       `ready\n${bin}`,
       'printf "\\033[32mready\\033[0m\\n" && pwd && exit 3: exit code 3.',
@@ -337,6 +342,46 @@ describe('terminal UI', () => {
     expect(frames).toMatch(/✓ done in \d+s · echo/);
     expect(app.lastFrame()).toContain('echo · session s-1');
     expect(agent.tasks[0].prompt).toBe('fix it');
+    app.unmount();
+    chat.close();
+  });
+
+  it('keeps a shell command from answering a pending approval', async () => {
+    const decisions: string[] = [];
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm i' }));
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('fix it');
+    await tick();
+    expect(chat.get().session.approvals).toHaveLength(1);
+    for (const char of '!ay') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('! ay');
+    expect(chat.get().autoApprove).toBe(false);
+    expect(chat.get().session.approvals).toHaveLength(1);
+    app.stdin.write('\x1b');
+    await tick();
+    app.stdin.write('y');
+    await expect.poll(() => decisions).toEqual(['approve']);
     app.unmount();
     chat.close();
   });

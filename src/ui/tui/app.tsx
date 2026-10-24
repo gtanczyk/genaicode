@@ -122,7 +122,8 @@ export function ChatApp({
       return;
     }
     if (key.ctrl && input === 'd' && !draft) return quit();
-    const plain = !key.ctrl && !key.meta;
+    // Not while composing a shell command: its letters must not answer the approval.
+    const plain = !key.ctrl && !key.meta && !shell;
     if (approval && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
