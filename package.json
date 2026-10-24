@@ -34,6 +34,7 @@
     "dist",
     "docs",
     "!docs/examples",
+    "!docs/media",
     "README.md",
     "LICENSE"
   ],
