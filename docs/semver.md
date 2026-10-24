@@ -52,7 +52,7 @@ Require a new major version:
 - Timing of stream events beyond the `StreamEvent` discriminant
 - Dependency versions of underlying provider SDKs within a major (may bump in
   minors when needed for security or API drift)
-- Example apps under `examples/` (illustrative only)
+- Example apps under `docs/examples/` (illustrative only)
 
 ## Plugin and provider authors
 

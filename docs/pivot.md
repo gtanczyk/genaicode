@@ -91,7 +91,7 @@ and in the 1.x npm line.
   `fallbackProvider`).
 - First-class schema adapters without requiring a specific validation library — implemented.
 - Small framework examples for HTTP handlers, queues, and cron jobs — implemented
-  under `examples/`.
+  under `docs/examples/`.
 - Re-evaluate separate provider packages if dependency size becomes material —
   evaluated; keep bundled for 2.x (see [provider-packages.md](./provider-packages.md)).
 

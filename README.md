@@ -808,7 +808,7 @@ Plugins run in registration order, and each plugin may call `next()` once. This 
 extension mechanism compatible with npm packages and ordinary imports without restoring
 the 1.x runtime TypeScript loader or process-global plugin registry.
 
-Framework-shaped examples live under `examples/` (`http-handler`, `queue-worker`,
+Framework-shaped examples live under [`docs/examples/`](docs/examples/) (`http-handler`, `queue-worker`,
 `cron-job`).
 
 ## Design boundaries
