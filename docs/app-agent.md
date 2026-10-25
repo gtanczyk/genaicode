@@ -107,7 +107,12 @@ const agent = createAppAgent({
       validate: () => {
         if (!controlled) throw new Error('Call game_take_control first.');
       },
-      run: async ({ keys, frames }) => game.step(keys as string[], Number(frames ?? 10)),
+      // The schema is a hint to the agent; the bound is enforced here.
+      run: async ({ keys, frames }) =>
+        game.step(
+          Array.isArray(keys) ? keys.map(String) : [],
+          Math.min(Math.max(Math.trunc(Number(frames) || 10), 1), 120),
+        ),
     },
     { name: 'game_release_control', description: 'Give the controls back.', run: () => ((controlled = false), 'ok') },
   ],
