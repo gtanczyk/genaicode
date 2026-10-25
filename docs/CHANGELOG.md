@@ -4,6 +4,9 @@
 
 ### Added
 
+- `dev.commit: false` and `dev.only: true` in `createAppAgent`: an app that delivers the
+  agent's edits itself (not a git commit) drops `propose_commit`, and an app that is only ever
+  edited starts in `dev` mode with no `use` mode to switch to.
 - Auto-approve in `genaicode chat` and `genaicode ui`: `a` on a permission request (or
   `/auto`, or the Auto-approve chip in the browser) approves it and everything after it;
   `/auto off` asks again. `-y` starts with it on.

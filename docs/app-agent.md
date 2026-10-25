@@ -63,7 +63,9 @@ Copilot enforce the command list; Codex has no per-command allowlist, so it runs
 `workspace-write` sandbox: writes only inside `cwd`, no network).
 `propose_commit` snapshots the worktree, the user reviews that diff, and Approve commits
 exactly that tree on the reviewed HEAD, or refuses if the files or HEAD changed since, a hook
-changed the files, or a merge or rebase is in progress. The repository's commit hooks run.
+changed the files, or a merge or rebase is in progress. The repository's commit hooks run. An app that delivers the
+edits itself (syncs the files, uploads them) passes `dev.commit: false`, so the agent gets no
+`propose_commit`, and `dev.only: true` when there is nothing to do in `use` mode.
 The agent sees no MCP server but the app's: Claude runs with `--strict-mcp-config`, and Codex
 and Copilot get the user's own configured servers switched off. The MCP endpoint takes a per-run
 bearer and refuses browser requests; every other route asks `authorize` and refuses

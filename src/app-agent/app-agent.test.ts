@@ -488,6 +488,25 @@ describe('createAppAgent', () => {
     expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
   });
 
+  it('starts in dev mode alone and offers no commit when the app delivers the files itself', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'app-agent-dev-'));
+    const dev = fakeAgent([], 'editor');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [dev.agent],
+      tools: [{ name: 'propose_commit', description: 'The app delivers', run: () => 'delivered' }],
+      dev: { cwd: dir, commands: ['npm test'], commit: false, only: true },
+    });
+    expect(agent.get()).toMatchObject({ mode: 'dev', modes: ['dev'] });
+    expect((await post(base, '/config', { mode: 'use' })).status).toBe(400);
+    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit']);
+    await post(base, '/send', { text: 'fix it' });
+    await settle(agent);
+    expect(dev.tasks[0]!.cwd).toBe(dir);
+    expect(dev.tasks[0]!.prompt).toContain('Do not commit or push.');
+    expect(dev.tasks[0]!.prompt).not.toContain('call `propose_commit`');
+  });
+
   it('streams view changes and never drops pending actions at the cap', async () => {
     let refused = '';
     const { agent: fake } = fakeAgent([
