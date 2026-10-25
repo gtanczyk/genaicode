@@ -258,3 +258,35 @@ describe('genaicode CLI', () => {
     expect(readFileSync(join(dir, 'marker'), 'utf8').trim()).toBe('checked');
   });
 });
+
+describe('acp', () => {
+  it('parses its options', () => {
+    expect(parseCli(['acp', '-a', 'codex', '--effort', 'high', '-y'])).toEqual({
+      kind: 'acp',
+      agent: 'codex',
+      model: undefined,
+      effort: 'high',
+      approveAll: true,
+    });
+    expect(() => parseCli(['acp', '--cwd', '/x'])).toThrow(UsageError);
+  });
+
+  it('serves the protocol on its input and output', async () => {
+    const { PassThrough } = await import('node:stream');
+    const input = new PassThrough();
+    const { cli, out } = environment({ argv: ['acp'], input, agents: [fakeAgent('claude', [])] });
+    const done = main(cli);
+    input.end(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1 } })}\n`);
+    expect(await done).toBe(EXIT_OK);
+    expect(JSON.parse(out())).toMatchObject({
+      id: 1,
+      result: { protocolVersion: 1, agentInfo: { name: 'genaicode' } },
+    });
+  });
+
+  it('rejects an unknown agent', async () => {
+    const { cli, err } = environment({ argv: ['acp', '-a', 'nope'], agents: [fakeAgent('claude', [])] });
+    expect(await main(cli)).toBe(EXIT_USAGE);
+    expect(err()).toContain('Unknown agent "nope"');
+  });
+});

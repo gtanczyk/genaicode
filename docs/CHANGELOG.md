@@ -4,6 +4,11 @@
 
 ### Added
 
+- `genaicode acp`: the Agent Client Protocol (version 1) on stdin/stdout, so editors (Zed,
+  JetBrains) and apps in any language (a game engine's editor, a Tauri or native app) can run
+  the installed agent CLIs: sessions with MCP servers, streamed text and tool calls, permission
+  requests, cancel, and config options for the agent, its effort and approvals. See
+  [embedding.md](embedding.md#any-language-the-agent-client-protocol).
 - `autoApprove` in `createAppAgent` answers the agent CLI's own permission prompts the app
   decides itself (e.g. its auto-approve setting); the rest still wait for the user.
 - An `AppTool` may return `{ text, images }`: the images (e.g. a screenshot of the app)
