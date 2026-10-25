@@ -51,10 +51,13 @@ import 'genaicode/react/styles.css';
   <img alt="A shop admin with the agent drawer: the agent proposed a refund, waiting for Approve." src="media/screenshots/app-agent.png" width="80%">
 </p>
 
+A read tool may return `{ text, images: [{ mimeType: 'image/png', data }] }` instead of a
+string, so the agent can look at what it changed, e.g. a screenshot of the app.
+
 Under it, `/api/agent` serves `GET /events` (a stream of `AppAgentState`: the session, earlier
 turns, pending actions, link chips, navigation requests) and `POST /send`, `/stop`, `/reset`,
 `/config`, `/view`, `/actions/:id` and `/approvals/:id` (the agent CLI's own permission
-prompts); `useAppAgent` wraps them for a page of your own. Switching agent or mode keeps the
+prompts; `autoApprove` answers the ones the app decides itself); `useAppAgent` wraps them for a page of your own. Switching agent or mode keeps the
 conversation: the next agent gets a short transcript. `trace` receives every prompt, MCP call,
 decision and finished turn, for a log. Default agents are Claude Code, Codex and
 Copilot CLI, locked down per mode: in `use` mode they get only the app's tools (no shell, no
@@ -63,7 +66,9 @@ Copilot enforce the command list; Codex has no per-command allowlist, so it runs
 `workspace-write` sandbox: writes only inside `cwd`, no network).
 `propose_commit` snapshots the worktree, the user reviews that diff, and Approve commits
 exactly that tree on the reviewed HEAD, or refuses if the files or HEAD changed since, a hook
-changed the files, or a merge or rebase is in progress. The repository's commit hooks run.
+changed the files, or a merge or rebase is in progress. The repository's commit hooks run. An app that delivers the
+edits itself (syncs the files, uploads them) passes `dev.commit: false`, so the agent gets no
+`propose_commit`, and `dev.only: true` when there is nothing to do in `use` mode.
 The agent sees no MCP server but the app's: Claude runs with `--strict-mcp-config`, and Codex
 and Copilot get the user's own configured servers switched off. The MCP endpoint takes a per-run
 bearer and refuses browser requests; every other route asks `authorize` and refuses

@@ -6,10 +6,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { detectAgents } from '../agents/discovery.js';
 import { MCP_NAME } from '../agents/prepare.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
+import type { ApprovalDecision, ApprovalRequest, CodingAgent } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { safeJson } from './json.js';
-import type { McpTool } from './mcp.js';
+import { outputText, type McpTool, type ToolOutput } from './mcp.js';
 import { defaultAppAgents } from './policy.js';
 import {
   APP_NOTE,
@@ -38,8 +38,11 @@ export interface AppTool {
   write?: boolean;
   /** Throw to refuse a call. Write tools check here, before an action is created. */
   validate?(args: Record<string, unknown>): void;
-  /** What the tool returns to the agent (read tools) or the outcome of an approved action (write tools). */
-  run(args: Record<string, unknown>): Promise<string> | string;
+  /**
+   * What the tool returns to the agent (read tools) or the outcome of an approved action (write
+   * tools). A read tool may add images, e.g. a screenshot; a write tool's outcome is its text.
+   */
+  run(args: Record<string, unknown>): Promise<ToolOutput> | ToolOutput;
 }
 
 export interface AppAgentOptions {
@@ -62,6 +65,13 @@ export interface AppAgentOptions {
      */
     commands?: readonly string[];
     instructions?: string;
+    /**
+     * Offer `propose_commit`. Default true. Turn it off when `cwd` is not a git repository the
+     * user commits to, e.g. the app syncs or delivers the files itself.
+     */
+    commit?: boolean;
+    /** Only `dev` mode: no `use` mode, and the agent starts in `dev`. */
+    only?: boolean;
   };
   /** Agents offered in each mode. Default `defaultAppAgents(mode, dev.commands)`. */
   agents?: (mode: AppAgentMode) => readonly CodingAgent[];
@@ -77,6 +87,12 @@ export interface AppAgentOptions {
   now?: () => number;
   /** How long an approved commit waits for the turn it stops to end; past it the commit fails. Default 10 s. */
   stopTimeoutMs?: number;
+  /**
+   * Decide the agent CLI's own permission prompts without asking, e.g. from an "auto-approve"
+   * setting the app has. Read on every prompt, so the app can change its answer at any time.
+   * Return undefined to leave the prompt to the user (`approve`).
+   */
+  autoApprove?(request: ApprovalRequest): ApprovalDecision | undefined;
 }
 
 /** One line of the trace. Long texts are clipped. */
@@ -166,7 +182,12 @@ const COPILOT_KINDS = ['read', 'write', 'shell', 'url', 'memory'];
  * This is the state and logic only; `createAppAgentHandler` serves it over HTTP.
  */
 export function createAppAgent(options: AppAgentOptions): AppAgent {
-  const names = new Set(['app_view', 'app_links', 'app_open', 'propose_commit']);
+  const names = new Set([
+    'app_view',
+    'app_links',
+    'app_open',
+    ...(options.dev?.commit === false ? [] : ['propose_commit']),
+  ]);
   for (const tool of options.tools ?? []) {
     if (names.has(tool.name)) throw new Error(`tool name "${tool.name}" is taken`);
     names.add(tool.name);
@@ -185,7 +206,8 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   // A dropped session's process may still be winding down: its late calls must not reach the app.
   const newToken = () => randomBytes(24).toString('base64url');
   let mcpToken = newToken();
-  const modes: AppAgentMode[] = options.dev ? ['use', 'dev'] : ['use'];
+  const modes: AppAgentMode[] = options.dev ? (options.dev.only ? ['dev'] : ['use', 'dev']) : ['use'];
+  const commits = options.dev?.commit !== false;
   const agentsFor = (target: AppAgentMode) =>
     options.agents?.(target) ?? defaultAppAgents(target, options.dev?.commands ?? []);
   // PATH lookups once per mode, not on every streamed update.
@@ -202,7 +224,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     return list;
   };
 
-  let mode: AppAgentMode = 'use';
+  let mode: AppAgentMode = modes[0]!;
   const startList = installed(mode);
   let agentName = options.agent ?? startList.find((choice) => choice.installed)?.name ?? startList[0]?.name ?? 'claude';
   if (!startList.some((choice) => choice.name === agentName)) {
@@ -325,6 +347,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         env,
         mcpServers: [{ name: serverName, url, headers: { authorization: `Bearer ${mcpToken}` } }],
       },
+      ...(options.autoApprove ? { autoApprove: (request: ApprovalRequest) => options.autoApprove!(request) } : {}),
     });
     unsubscribeSession = session.subscribe(changed);
     briefed = false;
@@ -388,8 +411,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         '',
         `Dev mode: your cwd is ${options.dev.cwd}; you may change the app's own code there.`,
         ...(commands.length ? [`You may run: ${commands.join(', ')}.`] : []),
-        'Do not commit or push. When the change is ready, call `propose_commit` with a commit message;',
-        'the user reviews the diff and approves it.',
+        ...(commits
+          ? [
+              'Do not commit or push. When the change is ready, call `propose_commit` with a commit message;',
+              'the user reviews the diff and approves it.',
+            ]
+          : ['Do not commit or push.']),
         ...(options.dev.instructions ? [options.dev.instructions] : []),
       );
     }
@@ -627,7 +654,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
         if (!tool) throw new Error(`tool ${action.tool!.name} is gone`);
-        const output = await tool.run(action.tool!.args);
+        const output = outputText(await tool.run(action.tool!.args));
         updateAction(action.id, { status: 'done', result: output });
         tell(`The user approved action #${action.id} (${action.summary}). Result:\n${output}`);
       }
@@ -752,7 +779,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       return treeChanges(repo(), action.commit);
     },
     mcpTools() {
-      const tools = [...appTools(), ...(options.pages ? pageTools() : []), ...(mode === 'dev' ? devTools() : [])];
+      const tools = [
+        ...appTools(),
+        ...(options.pages ? pageTools() : []),
+        ...(mode === 'dev' && commits ? devTools() : []),
+      ];
       if (!options.trace) return tools;
       return tools.map((tool) => ({
         ...tool,
@@ -760,7 +791,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           const started = now();
           try {
             const result = await tool.call(args);
-            trace({ kind: 'mcp', tool: tool.name, args, ok: true, ms: now() - started, result: clip(result, 2_000) });
+            trace({
+              kind: 'mcp',
+              tool: tool.name,
+              args,
+              ok: true,
+              ms: now() - started,
+              result: clip(outputText(result), 2_000),
+            });
             return result;
           } catch (error) {
             const message = (error as Error).message;

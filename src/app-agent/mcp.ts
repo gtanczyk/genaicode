@@ -1,9 +1,17 @@
+/** What a tool returns: text, or text with images (e.g. a screenshot the agent should look at). */
+export type ToolOutput = string | { text: string; images?: ReadonlyArray<{ mimeType: string; data: string }> };
+
 /** A tool the app serves to the agent over MCP. */
 export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  call(args: Record<string, unknown>): Promise<string>;
+  call(args: Record<string, unknown>): Promise<ToolOutput>;
+}
+
+/** The text of a tool's output, without its images. */
+export function outputText(output: ToolOutput): string {
+  return typeof output === 'string' ? output : output.text;
 }
 
 interface JsonRpcRequest {
@@ -45,7 +53,14 @@ export async function handleMcpMessage(
       if (!tool) return rpcError(id, -32602, `unknown tool ${String(params?.name)}`);
       const args = isObject(params?.arguments) ? params.arguments : {};
       try {
-        return result(id, { content: [{ type: 'text', text: await tool.call(args) }] });
+        const output = await tool.call(args);
+        const images = typeof output === 'string' ? [] : (output.images ?? []);
+        return result(id, {
+          content: [
+            { type: 'text', text: outputText(output) },
+            ...images.map((image) => ({ type: 'image', mimeType: image.mimeType, data: image.data })),
+          ],
+        });
       } catch (error) {
         return result(id, { content: [{ type: 'text', text: (error as Error).message }], isError: true });
       }

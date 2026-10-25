@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
-import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
+import { createAppAgent, type AppAgent, type AppAgentOptions, type AppAgentTrace } from './app-agent.js';
 import { PROMPT_MARKER, userText } from './state.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
@@ -54,7 +54,11 @@ async function mcp(task: AgentTask, method: string, params: Record<string, unkno
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
   return (await response.json()) as {
-    result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: unknown[] };
+    result?: {
+      content?: Array<{ type: string; text: string; mimeType?: string; data?: string }>;
+      isError?: boolean;
+      tools?: unknown[];
+    };
   };
 }
 
@@ -486,6 +490,82 @@ describe('createAppAgent', () => {
     expect(agent.get()).toMatchObject({ mode: 'dev', agent: 'editor' });
     await post(base, '/config', { mode: 'use' });
     expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
+  });
+
+  it('passes the images a read tool returns to the agent, and their text to the trace', async () => {
+    const records: AppAgentTrace[] = [];
+    let content: unknown;
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        content = (await callTool(task, 'screenshot')).content;
+        return 'looked';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      trace: (record) => records.push(record),
+      tools: [
+        {
+          name: 'screenshot',
+          description: 'The game as it looks now.',
+          run: () => ({ text: 'desktop, build abc', images: [{ mimeType: 'image/png', data: 'iVBORw0KGgo=' }] }),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'how does it look?' });
+    await settle(agent);
+    expect(content).toEqual([
+      { type: 'text', text: 'desktop, build abc' },
+      { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' },
+    ]);
+    expect(records).toContainEqual(
+      expect.objectContaining({ kind: 'mcp', tool: 'screenshot', result: 'desktop, build abc' }),
+    );
+  });
+
+  it("decides the agent CLI's own permission prompts the app auto-approves", async () => {
+    let auto = true;
+    const decisions: unknown[] = [];
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm test' }));
+        auto = false;
+        const asked = task.onApproval!({ id: 'a2', kind: 'command', summary: 'rm -rf dist' });
+        decisions.push(await asked);
+        return 'done';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      autoApprove: (request) => (auto && request.kind === 'command' ? 'approve' : undefined),
+    });
+    await post(base, '/send', { text: 'test it' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(agent.get().session!.approvals.map((request) => request.id)).toEqual(['a2']);
+    agent.approve('a2', 'deny');
+    await settle(agent);
+    expect(decisions).toEqual(['approve', 'deny']);
+  });
+
+  it('starts in dev mode alone and offers no commit when the app delivers the files itself', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'app-agent-dev-'));
+    const dev = fakeAgent([], 'editor');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [dev.agent],
+      tools: [{ name: 'propose_commit', description: 'The app delivers', run: () => 'delivered' }],
+      dev: { cwd: dir, commands: ['npm test'], commit: false, only: true },
+    });
+    expect(agent.get()).toMatchObject({ mode: 'dev', modes: ['dev'] });
+    expect((await post(base, '/config', { mode: 'use' })).status).toBe(400);
+    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit']);
+    await post(base, '/send', { text: 'fix it' });
+    await settle(agent);
+    expect(dev.tasks[0]!.cwd).toBe(dir);
+    expect(dev.tasks[0]!.prompt).toContain('Do not commit or push.');
+    expect(dev.tasks[0]!.prompt).not.toContain('call `propose_commit`');
   });
 
   it('streams view changes and never drops pending actions at the cap', async () => {
