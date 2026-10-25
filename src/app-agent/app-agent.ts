@@ -9,7 +9,7 @@ import { createAgentSession, type AgentSession, type SessionTurn } from '../agen
 import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { safeJson } from './json.js';
-import type { McpTool } from './mcp.js';
+import { outputText, type McpTool, type ToolOutput } from './mcp.js';
 import { defaultAppAgents } from './policy.js';
 import {
   APP_NOTE,
@@ -38,8 +38,11 @@ export interface AppTool {
   write?: boolean;
   /** Throw to refuse a call. Write tools check here, before an action is created. */
   validate?(args: Record<string, unknown>): void;
-  /** What the tool returns to the agent (read tools) or the outcome of an approved action (write tools). */
-  run(args: Record<string, unknown>): Promise<string> | string;
+  /**
+   * What the tool returns to the agent (read tools) or the outcome of an approved action (write
+   * tools). A read tool may add images, e.g. a screenshot; a write tool's outcome is its text.
+   */
+  run(args: Record<string, unknown>): Promise<ToolOutput> | ToolOutput;
 }
 
 export interface AppAgentOptions {
@@ -644,7 +647,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       } else {
         const tool = options.tools?.find((candidate) => candidate.name === action.tool!.name);
         if (!tool) throw new Error(`tool ${action.tool!.name} is gone`);
-        const output = await tool.run(action.tool!.args);
+        const output = outputText(await tool.run(action.tool!.args));
         updateAction(action.id, { status: 'done', result: output });
         tell(`The user approved action #${action.id} (${action.summary}). Result:\n${output}`);
       }
@@ -781,7 +784,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
           const started = now();
           try {
             const result = await tool.call(args);
-            trace({ kind: 'mcp', tool: tool.name, args, ok: true, ms: now() - started, result: clip(result, 2_000) });
+            trace({
+              kind: 'mcp',
+              tool: tool.name,
+              args,
+              ok: true,
+              ms: now() - started,
+              result: clip(outputText(result), 2_000),
+            });
             return result;
           } catch (error) {
             const message = (error as Error).message;

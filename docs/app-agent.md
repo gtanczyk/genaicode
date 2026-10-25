@@ -51,6 +51,9 @@ import 'genaicode/react/styles.css';
   <img alt="A shop admin with the agent drawer: the agent proposed a refund, waiting for Approve." src="media/screenshots/app-agent.png" width="80%">
 </p>
 
+A read tool may return `{ text, images: [{ mimeType: 'image/png', data }] }` instead of a
+string, so the agent can look at what it changed, e.g. a screenshot of the app.
+
 Under it, `/api/agent` serves `GET /events` (a stream of `AppAgentState`: the session, earlier
 turns, pending actions, link chips, navigation requests) and `POST /send`, `/stop`, `/reset`,
 `/config`, `/view`, `/actions/:id` and `/approvals/:id` (the agent CLI's own permission

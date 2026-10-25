@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
-import { createAppAgent, type AppAgent, type AppAgentOptions } from './app-agent.js';
+import { createAppAgent, type AppAgent, type AppAgentOptions, type AppAgentTrace } from './app-agent.js';
 import { PROMPT_MARKER, userText } from './state.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { createAppAgentHandler, type AppAgentHandlerOptions } from './http.js';
@@ -54,7 +54,11 @@ async function mcp(task: AgentTask, method: string, params: Record<string, unkno
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
   return (await response.json()) as {
-    result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: unknown[] };
+    result?: {
+      content?: Array<{ type: string; text: string; mimeType?: string; data?: string }>;
+      isError?: boolean;
+      tools?: unknown[];
+    };
   };
 }
 
@@ -486,6 +490,38 @@ describe('createAppAgent', () => {
     expect(agent.get()).toMatchObject({ mode: 'dev', agent: 'editor' });
     await post(base, '/config', { mode: 'use' });
     expect(agent.get()).toMatchObject({ mode: 'use', agent: 'reader' });
+  });
+
+  it('passes the images a read tool returns to the agent, and their text to the trace', async () => {
+    const records: AppAgentTrace[] = [];
+    let content: unknown;
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        content = (await callTool(task, 'screenshot')).content;
+        return 'looked';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      trace: (record) => records.push(record),
+      tools: [
+        {
+          name: 'screenshot',
+          description: 'The game as it looks now.',
+          run: () => ({ text: 'desktop, build abc', images: [{ mimeType: 'image/png', data: 'iVBORw0KGgo=' }] }),
+        },
+      ],
+    });
+    await post(base, '/send', { text: 'how does it look?' });
+    await settle(agent);
+    expect(content).toEqual([
+      { type: 'text', text: 'desktop, build abc' },
+      { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' },
+    ]);
+    expect(records).toContainEqual(
+      expect.objectContaining({ kind: 'mcp', tool: 'screenshot', result: 'desktop, build abc' }),
+    );
   });
 
   it('starts in dev mode alone and offers no commit when the app delivers the files itself', async () => {

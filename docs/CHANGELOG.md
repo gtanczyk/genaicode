@@ -4,6 +4,8 @@
 
 ### Added
 
+- An `AppTool` may return `{ text, images }`: the images (e.g. a screenshot of the app)
+  reach the agent as MCP image content. A write tool's outcome stays its text.
 - `dev.commit: false` and `dev.only: true` in `createAppAgent`: an app that delivers the
   agent's edits itself (not a git commit) drops `propose_commit`, and an app that is only ever
   edited starts in `dev` mode with no `use` mode to switch to.

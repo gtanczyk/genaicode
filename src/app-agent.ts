@@ -12,4 +12,4 @@ export type {
   AppLink,
   TreeChanges,
 } from './app-agent/state.js';
-export type { McpTool } from './app-agent/mcp.js';
+export type { McpTool, ToolOutput } from './app-agent/mcp.js';
