@@ -524,6 +524,31 @@ describe('createAppAgent', () => {
     );
   });
 
+  it("decides the agent CLI's own permission prompts the app auto-approves", async () => {
+    let auto = true;
+    const decisions: unknown[] = [];
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm test' }));
+        auto = false;
+        const asked = task.onApproval!({ id: 'a2', kind: 'command', summary: 'rm -rf dist' });
+        decisions.push(await asked);
+        return 'done';
+      },
+    ]);
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [fake],
+      autoApprove: (request) => (auto && request.kind === 'command' ? 'approve' : undefined),
+    });
+    await post(base, '/send', { text: 'test it' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(agent.get().session!.approvals.map((request) => request.id)).toEqual(['a2']);
+    agent.approve('a2', 'deny');
+    await settle(agent);
+    expect(decisions).toEqual(['approve', 'deny']);
+  });
+
   it('starts in dev mode alone and offers no commit when the app delivers the files itself', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'app-agent-dev-'));
     const dev = fakeAgent([], 'editor');

@@ -4,6 +4,8 @@
 
 ### Added
 
+- `autoApprove` in `createAppAgent` answers the agent CLI's own permission prompts the app
+  decides itself (e.g. its auto-approve setting); the rest still wait for the user.
 - An `AppTool` may return `{ text, images }`: the images (e.g. a screenshot of the app)
   reach the agent as MCP image content. A write tool's outcome stays its text.
 - `dev.commit: false` and `dev.only: true` in `createAppAgent`: an app that delivers the

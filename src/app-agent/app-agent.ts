@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { detectAgents } from '../agents/discovery.js';
 import { MCP_NAME } from '../agents/prepare.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision, CodingAgent } from '../agents/types.js';
+import type { ApprovalDecision, ApprovalRequest, CodingAgent } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { safeJson } from './json.js';
 import { outputText, type McpTool, type ToolOutput } from './mcp.js';
@@ -87,6 +87,12 @@ export interface AppAgentOptions {
   now?: () => number;
   /** How long an approved commit waits for the turn it stops to end; past it the commit fails. Default 10 s. */
   stopTimeoutMs?: number;
+  /**
+   * Decide the agent CLI's own permission prompts without asking, e.g. from an "auto-approve"
+   * setting the app has. Read on every prompt, so the app can change its answer at any time.
+   * Return undefined to leave the prompt to the user (`approve`).
+   */
+  autoApprove?(request: ApprovalRequest): ApprovalDecision | undefined;
 }
 
 /** One line of the trace. Long texts are clipped. */
@@ -341,6 +347,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         env,
         mcpServers: [{ name: serverName, url, headers: { authorization: `Bearer ${mcpToken}` } }],
       },
+      ...(options.autoApprove ? { autoApprove: (request: ApprovalRequest) => options.autoApprove!(request) } : {}),
     });
     unsubscribeSession = session.subscribe(changed);
     briefed = false;

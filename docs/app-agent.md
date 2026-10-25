@@ -57,7 +57,7 @@ string, so the agent can look at what it changed, e.g. a screenshot of the app.
 Under it, `/api/agent` serves `GET /events` (a stream of `AppAgentState`: the session, earlier
 turns, pending actions, link chips, navigation requests) and `POST /send`, `/stop`, `/reset`,
 `/config`, `/view`, `/actions/:id` and `/approvals/:id` (the agent CLI's own permission
-prompts); `useAppAgent` wraps them for a page of your own. Switching agent or mode keeps the
+prompts; `autoApprove` answers the ones the app decides itself); `useAppAgent` wraps them for a page of your own. Switching agent or mode keeps the
 conversation: the next agent gets a short transcript. `trace` receives every prompt, MCP call,
 decision and finished turn, for a log. Default agents are Claude Code, Codex and
 Copilot CLI, locked down per mode: in `use` mode they get only the app's tools (no shell, no
