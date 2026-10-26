@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "description": "Drive the coding-agent CLIs you already have (Claude Code, Codex, Copilot, Cursor, Gemini, opencode...) behind one API and one CLI, plus a thin provider-neutral LLM layer.",
   "author": "Grzegorz Tańczyk",
   "repository": {
