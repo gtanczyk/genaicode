@@ -67,9 +67,10 @@ export interface AppAgentOptions {
     instructions?: string;
     /**
      * Offer `propose_commit`. Default true. Turn it off when `cwd` is not a git repository the
-     * user commits to, e.g. the app syncs or delivers the files itself.
+     * user commits to, e.g. the app syncs or delivers the files itself. `'on-request'` offers no
+     * `propose_commit` but lets the agent run `git commit` and `git push` when the user asks.
      */
-    commit?: boolean;
+    commit?: boolean | 'on-request';
     /** Only `dev` mode: no `use` mode, and the agent starts in `dev`. */
     only?: boolean;
   };
@@ -207,9 +208,10 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   const newToken = () => randomBytes(24).toString('base64url');
   let mcpToken = newToken();
   const modes: AppAgentMode[] = options.dev ? (options.dev.only ? ['dev'] : ['use', 'dev']) : ['use'];
-  const commits = options.dev?.commit !== false;
+  const commits = options.dev?.commit !== false && options.dev?.commit !== 'on-request';
   const agentsFor = (target: AppAgentMode) =>
-    options.agents?.(target) ?? defaultAppAgents(target, options.dev?.commands ?? []);
+    options.agents?.(target) ??
+    defaultAppAgents(target, options.dev?.commands ?? [], { git: options.dev?.commit === 'on-request' });
   // PATH lookups once per mode, not on every streamed update.
   const found = new Map<AppAgentMode, AppAgentState['agents']>();
   const installed = (target: AppAgentMode) => {
@@ -416,7 +418,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
               'Do not commit or push. When the change is ready, call `propose_commit` with a commit message;',
               'the user reviews the diff and approves it.',
             ]
-          : ['Do not commit or push.']),
+          : options.dev.commit === 'on-request'
+            ? ['Commit or push only when the user asks you to.']
+            : ['Do not commit or push.']),
         ...(options.dev.instructions ? [options.dev.instructions] : []),
       );
     }
