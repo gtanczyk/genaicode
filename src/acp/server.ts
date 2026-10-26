@@ -109,10 +109,11 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
         -32603,
       );
     }
+    const names = new Set<string>();
     const session: Session = {
       id: randomUUID(),
       cwd: params.cwd,
-      mcpServers: (params.mcpServers ?? []).map(toMcpServer),
+      mcpServers: (params.mcpServers ?? []).map((server) => toMcpServer(server, names)),
       agent,
       effort: effortFor(agent, options.effort),
       mode: options.approveAll ? 'auto-approve' : 'ask',
@@ -318,9 +319,12 @@ type AcpMcpServer =
   | { type: 'http' | 'sse'; name: string; url: string; headers?: Array<{ name: string; value: string }> }
   | { type?: undefined; name: string; command: string; args?: string[]; env?: Array<{ name: string; value: string }> };
 
-function toMcpServer(server: AcpMcpServer): McpServer {
-  // genaicode server names are /^[A-Za-z0-9_-]+$/; ACP allows any.
-  const name = String(server.name ?? '').replace(/[^A-Za-z0-9_-]/g, '_') || 'mcp';
+function toMcpServer(server: AcpMcpServer, taken: Set<string>): McpServer {
+  // genaicode server names are /^[A-Za-z0-9_-]+$/ and unique; ACP allows any.
+  const base = String(server.name ?? '').replace(/[^A-Za-z0-9_-]/g, '_') || 'mcp';
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}_${n}`;
+  taken.add(name);
   if ('url' in server && typeof server.url === 'string') {
     if (server.type === 'sse') throw invalid(`MCP server "${server.name}": SSE is not supported; use HTTP.`);
     return { name, url: server.url, headers: pairs(server.headers) };
@@ -418,7 +422,9 @@ export function createEventMapper(): (event: AgentEvent) => Array<Record<string,
         return update;
       }
       case 'tool-start': {
-        if (streamed) nextMessage();
+        // Text after the tool is a new ACP message, but some drivers end with one `message` holding
+        // the whole reply, so `streamed` keeps counting until that message arrives.
+        if (streamed) messageId = randomUUID();
         const toolCallId = event.id ?? `tool-${++toolCalls}`;
         open.set(event.name, toolCallId);
         return [

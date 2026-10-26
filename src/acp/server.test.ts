@@ -230,6 +230,7 @@ describe('serveAcp', () => {
         cwd: '/tmp',
         mcpServers: [
           { type: 'http', name: 'my game', url: 'http://127.0.0.1:7777/mcp', headers: [{ name: 'x', value: 'y' }] },
+          { type: 'http', name: 'my.game', url: 'http://127.0.0.1:7778/mcp', headers: [] },
         ],
       });
       expect(configOptions?.map((option) => option.id)).toEqual(['agent', 'effort', 'mode']);
@@ -253,7 +254,10 @@ describe('serveAcp', () => {
     });
     expect(claude.tasks[0]).toMatchObject({
       effort: 'high',
-      mcpServers: [{ name: 'my_game', url: 'http://127.0.0.1:7777/mcp', headers: { x: 'y' } }],
+      mcpServers: [
+        { name: 'my_game', url: 'http://127.0.0.1:7777/mcp', headers: { x: 'y' } },
+        { name: 'my_game_2', url: 'http://127.0.0.1:7778/mcp', headers: {} },
+      ],
     });
     // The new agent starts its own session.
     expect(codex.tasks[0]).toMatchObject({ prompt: 'two', resume: undefined, effort: undefined });
@@ -361,6 +365,27 @@ describe('createEventMapper', () => {
         { type: 'message', text: 'Streamed!' },
       ]),
     ).toEqual(['Str', 'eamed!']);
+  });
+
+  it('reconciles a final message that spans tool calls', () => {
+    const run = (events: AgentEvent[]) =>
+      events
+        .flatMap(createEventMapper())
+        .map((update) => (update.content as { text?: string } | undefined)?.text)
+        .filter(Boolean)
+        .join('');
+    const tool: AgentEvent = { type: 'tool-start', id: 't', name: 'Bash' };
+    expect(run([{ type: 'text-delta', text: 'Fixing ' }, tool, { type: 'message', text: 'Fixing complete.' }])).toBe(
+      'Fixing complete.',
+    );
+    expect(
+      run([
+        { type: 'text-delta', text: 'Fixing ' },
+        tool,
+        { type: 'text-delta', text: 'done.' },
+        { type: 'message', text: 'Fixing done. All tests passed.' },
+      ]),
+    ).toBe('Fixing done. All tests passed.');
   });
 
   it('reports changed files as a completed edit', () => {
