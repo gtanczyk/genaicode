@@ -1,4 +1,4 @@
-# Command line: run, chat, ui, embed
+# Command line: run, chat, ui, embed, acp
 
 [← README](../README.md)
 
@@ -103,3 +103,15 @@ The instructions are also a Claude Code skill. Copy
 ```bash
 mkdir -p .claude/skills && cp -r node_modules/genaicode/docs/skills/genaicode-embed .claude/skills/
 ```
+
+## For editors and apps in other languages: `genaicode acp`
+
+```bash
+npx genaicode acp -a claude
+```
+
+`genaicode acp` serves the [Agent Client Protocol](https://agentclientprotocol.com) on stdin
+and stdout, for editors that speak it (Zed, JetBrains IDEs) and for any app that starts it as a
+child process: a Godot or Unity editor plugin, a Tauri or native app, a Python tool. Sessions,
+streamed replies and tool calls, permission requests and cancel go over the protocol; the host
+picks the agent, effort and approvals per session. See [embedding.md](embedding.md#any-language-the-agent-client-protocol).

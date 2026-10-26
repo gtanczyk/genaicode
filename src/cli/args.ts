@@ -34,6 +34,13 @@ export type CliCommand =
       open: boolean;
     }
   | {
+      kind: 'acp';
+      agent?: string;
+      model?: string;
+      effort?: string;
+      approveAll: boolean;
+    }
+  | {
       kind: 'run';
       prompt: string | undefined;
       agent?: string;
@@ -129,6 +136,28 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ui: values.ui === true,
       port,
       open: values['no-open'] !== true,
+    };
+  }
+
+  if (command === 'acp') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: {
+          agent: { type: 'string', short: 'a' },
+          model: { type: 'string', short: 'm' },
+          effort: { type: 'string' },
+          yes: { type: 'boolean', short: 'y' },
+        },
+      }),
+    );
+    return {
+      kind: 'acp',
+      agent: values.agent,
+      model: values.model,
+      effort: values.effort,
+      approveAll: values.yes === true,
     };
   }
 

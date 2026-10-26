@@ -5,6 +5,7 @@ import { detectAgents } from '../agents/discovery.js';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
 import { createRenderer, describeResult, type Output } from './render.js';
@@ -23,6 +24,8 @@ export interface CliEnvironment {
   agents?: readonly CodingAgent[];
   /** Both stdin and stdout are terminals: `genaicode` with no arguments opens the chat. */
   interactive?: boolean;
+  /** The protocol input of `acp`. Default: `process.stdin`. */
+  input?: NodeJS.ReadableStream;
   /** Terminal streams for the chat UI. */
   tty?: { stdin: NodeJS.ReadStream; stdout: NodeJS.WriteStream };
   /** Loads the bundled chat and web front ends. Defaults to `dist/ui/index.js`. */
@@ -80,6 +83,7 @@ Usage:
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
+  genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
@@ -118,6 +122,12 @@ Embed options:
   The agent reads the project and chooses how to wire genaicode in; [request] steers it,
   e.g. "only the dev panel". Without a terminal it runs headless like "run". The
   instructions also ship as a Claude Code skill: docs/skills/genaicode-embed/SKILL.md.
+
+ACP options:
+  -a, -m, --effort, -y: as for chat (the host can change agent, effort and approvals)
+
+  For editors and other apps that speak ACP (https://agentclientprotocol.com): the app
+  starts "genaicode acp", opens sessions in its own directories and sends prompts.
 
 The agent uses its own login, billing, and permission defaults. GenAIcode adds no agent
 loop or sandbox of its own, and no prompts but embed's instructions.
@@ -159,7 +169,35 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return runUi(cli, agents, command);
     case 'embed':
       return runEmbed(cli, agents, command);
+    case 'acp':
+      return runAcp(cli, agents, command);
   }
+}
+
+async function runAcp(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  options: Extract<CliCommand, { kind: 'acp' }>,
+): Promise<number> {
+  if (options.agent && !agents.some((agent) => agent.name === options.agent)) {
+    cli.stderr.write(`Unknown agent "${options.agent}". Known agents: ${agents.map((a) => a.name).join(', ')}.\n`);
+    return EXIT_USAGE;
+  }
+  const input = cli.input ?? process.stdin;
+  await serveAcp({
+    agents,
+    agent: options.agent,
+    model: options.model,
+    effort: options.effort,
+    approveAll: options.approveAll,
+    env: cli.env,
+    version: packageVersion(),
+    input,
+    output: cli.stdout,
+    // Ctrl-C ends the connection like the host closing it: running prompts stop.
+    signal: cli.signal,
+  });
+  return EXIT_OK;
 }
 
 async function runEmbed(
