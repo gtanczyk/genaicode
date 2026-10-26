@@ -68,6 +68,7 @@ describe('format helpers', () => {
     expect(toolSummary({ filePath: '/w/src/a.ts' }, 80, '/w')).toBe('src/a.ts');
     expect(toolSummary({ other: 1 })).toBe('');
     expect(toolSummary('x'.repeat(100), 10)).toBe(`${'x'.repeat(9)}…`);
+    expect(toolSummary({ command: 'a\n  b' })).toBe('a b');
     expect(relativePath('/w/a.ts', '/w/')).toBe('a.ts');
     expect(relativePath('/elsewhere/a.ts', '/w')).toBe('/elsewhere/a.ts');
     expect(shortId('ses_f158fcc57ffelLfa0gyYTOw7e8')).toBe('…yYTOw7e8');

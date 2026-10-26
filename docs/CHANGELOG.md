@@ -43,6 +43,9 @@
 
 - The overlay's wolf stays light in dark mode, with a ring, so it shows on dark pages.
 - The embed skill moved to `docs/skills/genaicode-embed/SKILL.md` (it was `skills/`).
+- `AgentChat` shows a tool call's whole argument: opening a step wraps the full shell command
+  (line breaks kept) instead of cutting it with an ellipsis, and hovering the header shows it too.
+  `toolArgument` (in `genaicode/react`) returns it.
 
 ## 2.18.0
 

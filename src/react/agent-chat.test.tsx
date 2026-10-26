@@ -123,6 +123,15 @@ describe('AgentChat', () => {
     expect(button('Queue')).toBeTruthy();
   });
 
+  it('shows the whole tool argument, not a cut one', () => {
+    const command = `cd game && grep -rn "will" --include='*.ts' . | grep -v node_modules | head -50 ${'x'.repeat(300)}\necho done`;
+    const state = fixture();
+    state.turns[0].entries[0] = { kind: 'tool', id: 't1', name: 'Bash', input: { command }, output: 'ok', done: true };
+    render({ state });
+    expect($('.gc-tool-arg').textContent).toBe(command);
+    expect($('.gc-tool summary').getAttribute('title')).toBe(command);
+  });
+
   it('renders markdown safely', () => {
     render();
     const md = $$('.gc-md')[0];

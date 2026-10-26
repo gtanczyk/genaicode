@@ -10,7 +10,7 @@ import {
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision } from '../agents/types.js';
 import { useFollowScroll } from './follow-scroll.js';
-import { formatDuration, formatUsage, relativePath, shortId, toolLabel, toolSummary, turnFooter } from './format.js';
+import { formatDuration, formatUsage, relativePath, shortId, toolArgument, toolLabel, turnFooter } from './format.js';
 import { Markdown } from './markdown.js';
 
 /** A line from the host itself (not the agent), shown between turns. */
@@ -394,19 +394,21 @@ function Entry({
   switch (entry.kind) {
     case 'text':
       return <Markdown text={entry.text} streaming={entry.streaming} />;
-    case 'tool':
+    case 'tool': {
+      const argument = toolArgument(entry.input, cwd);
       return (
         <details className="gc-tool">
-          <summary>
+          <summary title={argument || undefined}>
             <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
               {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
             </span>
             <span className="gc-tool-name">{toolName(entry.name)}</span>
-            <span className="gc-tool-arg">{toolSummary(entry.input, 200, cwd)}</span>
+            <span className="gc-tool-arg">{argument}</span>
           </summary>
           <pre>{entry.output?.trim() || (entry.done ? 'No output.' : 'Running…')}</pre>
         </details>
       );
+    }
     case 'files':
       return (
         <div className="gc-files">

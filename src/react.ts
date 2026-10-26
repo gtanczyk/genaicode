@@ -31,6 +31,7 @@ export {
   relativePath,
   shortId,
   toolLabel,
+  toolArgument,
   toolSummary,
   turnFooter,
 } from './react/format.js';
