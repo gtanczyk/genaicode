@@ -4,7 +4,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
-import { EXIT_ABORTED, EXIT_FAILED, EXIT_OK, EXIT_USAGE, helpText, main, type CliEnvironment } from './main.js';
+import {
+  EXIT_ABORTED,
+  EXIT_FAILED,
+  EXIT_OK,
+  EXIT_USAGE,
+  helpText,
+  main,
+  type CliEnvironment,
+  type UiLaunch,
+} from './main.js';
 
 const completed: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Done.' };
 
@@ -90,6 +99,45 @@ describe('parseCli', () => {
     expect(parseCli(['chat', '--web', '--port', '4000'])).toMatchObject({ kind: 'chat', web: true, port: 4000 });
     expect(parseCli(['ui', '--no-open'])).toMatchObject({ kind: 'ui', web: false, open: false });
     expect(() => parseCli(['ui', '--web'])).toThrow(UsageError);
+  });
+
+  it('parses --mcp name=url for chat and ui', () => {
+    expect(parseCli(['ui', '--mcp', 'game=http://127.0.0.1:7777/mcp', '--mcp', 'b=https://x.dev/mcp'])).toMatchObject({
+      mcpServers: [
+        { name: 'game', url: 'http://127.0.0.1:7777/mcp' },
+        { name: 'b', url: 'https://x.dev/mcp' },
+      ],
+    });
+    expect(parseCli(['chat'])).toMatchObject({ mcpServers: [] });
+    expect(parseCli(['ui', '--exit-with-stdin'])).toMatchObject({ exitWithStdin: true });
+    expect(() => parseCli(['chat', '--exit-with-stdin'])).toThrow(UsageError);
+    expect(() => parseCli(['ui', '--mcp', 'game'])).toThrow(UsageError);
+  });
+
+  it('gives ui --mcp servers to the MCP-capable agents only', async () => {
+    const launches: UiLaunch[] = [];
+    const loadUi = async () => ({
+      runChat: async () => 0,
+      runWeb: async (launch: UiLaunch) => (launches.push(launch), 0),
+    });
+    const stub = (name: string, mcp: boolean): CodingAgent => ({
+      name,
+      command: name,
+      capabilities: { mcp },
+      run: () => {
+        throw new Error('not run');
+      },
+    });
+    const [plain, mcp] = [stub('plain', false), stub('mcp', true)];
+    const argv = ['ui', '--mcp', 'game=http://127.0.0.1:7777/mcp'];
+    const { cli } = environment({ argv, agents: [plain, mcp], loadUi });
+    expect(await main(cli)).toBe(EXIT_OK);
+    expect(launches[0]!.agents.map((agent) => agent.name)).toEqual(['mcp']);
+    expect(launches[0]!.task).toEqual({ mcpServers: [{ name: 'game', url: 'http://127.0.0.1:7777/mcp' }] });
+
+    const refused = environment({ argv: [...argv, '-a', 'plain'], agents: [plain, mcp], loadUi });
+    expect(await main(refused.cli)).toBe(EXIT_USAGE);
+    expect(refused.err()).toContain('does not support MCP servers');
   });
 
   it('treats a missing or "-" prompt as stdin', () => {

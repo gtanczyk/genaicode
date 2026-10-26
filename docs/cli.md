@@ -68,6 +68,13 @@ The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button
   </picture>
 </p>
 
+`--mcp name=url` (repeatable) gives the agent an MCP server over streamable HTTP for every
+prompt, e.g. `genaicode ui --mcp game=http://127.0.0.1:7777/mcp` from a game editor whose
+running game serves tools there. Only the agents that take MCP servers in genaicode (claude,
+codex, copilot) are offered then.
+An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
+its stdin, which also reaches the server when a launcher such as npx sits in between.
+
 `genaicode ui` listens on the loopback address and prints a link with a random access
 token. The page, the event stream and every command need that token; only the bundled
 script and the four mascot files (`/app.js`, `/assets/…`) are served without it, since they

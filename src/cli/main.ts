@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
-import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
+import type { AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { serveAcp } from '../acp/server.js';
@@ -57,6 +57,10 @@ export interface UiLaunch {
   transformPrompt?(prompt: string): string;
   /** `chat --web`: also open the session in the browser. */
   openWeb?: boolean;
+  /** `ui --exit-with-stdin`: stop when stdin ends. */
+  exitWithStdin?: boolean;
+  /** `--mcp`: attached to every prompt. */
+  task?: { mcpServers?: readonly McpServer[] };
 }
 
 export interface UiModule {
@@ -95,6 +99,9 @@ Chat and UI options:
       --web               (chat) Also open the session in the browser
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
+      --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
+      --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
+                          Only agents with MCP support (claude, codex, copilot) take it
 
   Each prompt after the first continues the agent's session (claude, codex, cursor,
   opencode, copilot). Prompts sent while the agent works wait in a queue. Type /help in
@@ -151,7 +158,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
 
   const agents = cli.agents ?? defaultAgents();
   if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
-    command = { kind: 'chat', approveAll: false, open: false, web: false };
+    command = { kind: 'chat', approveAll: false, open: false, web: false, mcpServers: [] };
   }
   switch (command.kind) {
     case 'help':
@@ -219,7 +226,7 @@ async function runEmbed(
     return runUi(
       cli,
       agents,
-      { ...options, kind: options.ui ? 'ui' : 'chat', cwd, web: false },
+      { ...options, kind: options.ui ? 'ui' : 'chat', cwd, web: false, mcpServers: [] },
       { firstPrompt: request, transformPrompt: (text) => (text === request ? prompt : text) },
     );
   }
@@ -252,6 +259,15 @@ async function runUi(
     cli.stderr.write('genaicode chat needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n');
     return EXIT_USAGE;
   }
+  if (options.mcpServers.length) {
+    // Only agents that take MCP servers can use them; offer just those.
+    const chosen = agents.find((agent) => agent.name === options.agent);
+    if (chosen && !chosen.capabilities.mcp) {
+      cli.stderr.write(`Agent "${chosen.name}" does not support MCP servers in genaicode (--mcp).\n`);
+      return EXIT_USAGE;
+    }
+    agents = agents.filter((agent) => agent.capabilities.mcp);
+  }
   const ui = await (cli.loadUi ?? loadBundledUi)();
   const launch: UiLaunch = {
     agents,
@@ -270,6 +286,8 @@ async function runUi(
     port: options.port,
     open: options.open,
     openWeb: options.web,
+    exitWithStdin: options.exitWithStdin,
+    ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
     ...extra,
   };
   return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);

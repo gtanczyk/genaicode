@@ -7,7 +7,8 @@ in a host that is not written in JavaScript.
 - `addons/genaicode/plugin.gd` adds a **genaicode** dock: a chat with the agent about this
   project, with pickers for the agent, its effort and approvals, and Allow / Reject when the
   agent asks for permission. It starts `npx -y genaicode acp` and speaks the Agent Client
-  Protocol over its stdin and stdout (`acp_client.gd`, about 120 lines of GDScript).
+  Protocol over its stdin and stdout (`acp_client.gd`, about 120 lines of GDScript). A button opens the
+  full chat in the browser instead.
 - `addons/genaicode/game_mcp.gd` is an autoload: while the game runs (debug builds only) it
   serves MCP tools on `http://127.0.0.1:7777/mcp`. The dock hands that server to the agent, so
   the agent can `game_observe` (state and a screenshot), `game_take_control`, `game_act` (hold
@@ -43,8 +44,14 @@ You need Node.js 20+ and an agent CLI you are logged in to (`npx genaicode agent
 2. Ask the agent about the project, e.g. "make the star move slowly".
 3. Press F5 to run the game, then ask: "Play the game: take control and collect 3 stars."
 
-Set `GENAICODE_ACP_COMMAND` before starting Godot to run another command, e.g.
-`npx -y genaicode acp -a codex` or a local checkout's `node /path/to/genaicode/dist/cli.js acp`.
+The button at the top right of the dock opens the full chat in the browser: it starts
+`genaicode ui --mcp game=…` (`browser_chat.gd`), so the agent there has the same game tools.
+The browser keeps its own session, and Godot stops the server when it closes. This needs a
+genaicode release with `ui --mcp`.
+
+Set `GENAICODE_ACP_COMMAND` (dock) and `GENAICODE_UI_COMMAND` (browser) before starting Godot
+to run other commands, e.g. `npx -y genaicode acp -a codex` or a local checkout's
+`node /path/to/genaicode/dist/cli.js acp`.
 
 ## In your own project
 

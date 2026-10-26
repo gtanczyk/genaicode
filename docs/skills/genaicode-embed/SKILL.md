@@ -282,6 +282,10 @@ Put the panel where the host's developers work: an editor dock (Godot `EditorPlu
 A complete GDScript client and editor dock: https://github.com/gtanczyk/genaicode/blob/master/docs/examples/godot
 Electron: `startEmbeddedWeb` from `genaicode/ui` in the main process shows the bundled chat in
 a `BrowserWindow` without any protocol code.
+No room for a native panel, or the user wants the full chat: a button that starts
+`npx -y genaicode@<version> ui --no-open -C <project> [--mcp name=url]`, reads the
+`Open <link>` line from its stderr and opens that link in the system browser (the Godot
+example's `browser_chat.gd`). Stop the process when the host closes.
 
 ## Recipe: let the agent drive the app
 
