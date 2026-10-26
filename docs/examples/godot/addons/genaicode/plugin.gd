@@ -46,7 +46,7 @@ func _connect() -> void:
 	_client.update.connect(_on_update)
 	_client.permission_requested.connect(_on_permission)
 	_client.log_line.connect(func(line: String) -> void: _note(line, "gray"))
-	_client.exited.connect(func() -> void: _note("genaicode acp exited.", "salmon"))
+	_client.exited.connect(_on_exited)
 	var command := OS.get_environment("GENAICODE_ACP_COMMAND")
 	if command.is_empty():
 		command = "npx -y genaicode acp"
@@ -157,9 +157,16 @@ func _choose(index: int, config_id: String, picker: OptionButton) -> void:
 		_show_options(reply[0].configOptions)
 
 
+## The session died with the process: no more prompts until the plugin is enabled again.
+func _on_exited() -> void:
+	_session_id = ""
+	_send.disabled = true
+	_note("genaicode acp exited. Disable and enable the plugin to start it again.", "salmon")
+
+
 func _set_running(running: bool) -> void:
 	_running = running
-	_send.disabled = running
+	_send.disabled = running or _session_id.is_empty()
 	_stop.disabled = not running
 	for child in _options.get_children():
 		child.disabled = running
