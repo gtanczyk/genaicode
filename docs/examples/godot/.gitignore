@@ -1,0 +1,4 @@
+.godot/
+*.import
+# Godot writes these on first open
+*.uid
