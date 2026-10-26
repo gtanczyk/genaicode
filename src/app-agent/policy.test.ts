@@ -50,6 +50,14 @@ describe('defaultAppAgents', () => {
     ]);
   });
 
+  it('lifts the commit and push rules when the app allows git', () => {
+    defaultAppAgents('dev', [], { git: true });
+    expect(vi.mocked(copilot).mock.calls.at(-1)?.[0]?.denyTools).toEqual([]);
+    const disallowed = vi.mocked(claude).mock.calls.at(-1)?.[0]?.disallowedTools;
+    expect(disallowed).not.toContain('Bash(git commit:*)');
+    expect(disallowed).toEqual(expect.arrayContaining(['WebFetch', 'Task']));
+  });
+
   it('keeps Claude from starting subagents in both modes', () => {
     for (const mode of ['use', 'dev'] as const) {
       defaultAppAgents(mode);

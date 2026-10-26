@@ -4,6 +4,8 @@
 
 ### Added
 
+- `dev.commit: 'on-request'` in `createAppAgent` (and `defaultAppAgents(mode, commands, { git })`):
+  no `propose_commit`, and the agent may `git commit` and `git push` when the user asks for it.
 - `genaicode acp`: the Agent Client Protocol (version 1) on stdin/stdout, so editors (Zed,
   JetBrains) and apps in any language (a game engine's editor, a Tauri or native app) can run
   the installed agent CLIs: sessions with MCP servers, streamed text and tool calls, permission
