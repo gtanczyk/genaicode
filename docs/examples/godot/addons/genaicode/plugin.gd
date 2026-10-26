@@ -5,8 +5,10 @@ extends EditorPlugin
 ## tools from game_mcp.gd, so the agent can also play the game started with F5.
 
 const AcpClient := preload("res://addons/genaicode/acp_client.gd")
+const BrowserChat := preload("res://addons/genaicode/browser_chat.gd")
 
 var _client: AcpClient
+var _browser: BrowserChat
 var _session_id := ""
 var _agent_name := ""
 var _running := false
@@ -39,6 +41,8 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	if _client:
 		_client.stop()
+	if _browser:
+		_browser.stop()
 	remove_control_from_docks(_dock)
 	_dock.queue_free()
 
@@ -46,6 +50,8 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	if _client:
 		_client.poll()
+	if _browser:
+		_browser.poll()
 
 
 func _connect() -> void:
@@ -355,9 +361,15 @@ func _build_dock() -> void:
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_status.add_theme_color_override("font_color", _muted())
+	var browser := Button.new()
+	browser.flat = true
+	browser.icon = _editor_theme().get_icon("ExternalLink", "EditorIcons")
+	browser.tooltip_text = "Open the full chat in the browser (genaicode ui)"
+	browser.pressed.connect(_open_browser)
 	header.add_child(wolf)
 	header.add_child(title)
 	header.add_child(_status)
+	header.add_child(browser)
 	_dock.add_child(header)
 
 	_options = HBoxContainer.new()
@@ -459,6 +471,21 @@ func _scale() -> float:
 
 
 ## The same port game_mcp.gd listens on.
+## The browser chat runs its own session, with the same game tools as the dock.
+func _open_browser() -> void:
+	if _browser == null:
+		_browser = BrowserChat.new()
+		_browser.log_line.connect(func(line: String) -> void: _note(line))
+	var command := OS.get_environment("GENAICODE_UI_COMMAND")
+	if command.is_empty():
+		command = "npx -y genaicode ui"
+	var args := PackedStringArray(["--no-open", "-C", ProjectSettings.globalize_path("res://"), "--mcp", "game=" + _game_mcp_url()])
+	if not _browser.is_running():
+		_note("Starting the browser chat…")
+	if _browser.open(command, args) != OK:
+		_note("Could not start \"%s\". Is Node.js installed?" % command, true)
+
+
 func _game_mcp_url() -> String:
 	var port := int(OS.get_environment("GENAICODE_GAME_PORT")) if OS.has_environment("GENAICODE_GAME_PORT") else 7777
 	return "http://127.0.0.1:%d/mcp" % port

@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import type { McpServer } from '../agents/types.js';
 
 export type CliCommand =
   | { kind: 'help' }
@@ -16,6 +17,8 @@ export type CliCommand =
       open: boolean;
       /** chat: also open the session in the browser. */
       web: boolean;
+      /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
+      mcpServers: McpServer[];
     }
   | {
       kind: 'embed';
@@ -81,6 +84,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           resume: { type: 'string', short: 'r' },
           yes: { type: 'boolean', short: 'y' },
           port: { type: 'string' },
+          mcp: { type: 'string', multiple: true },
           ...(command === 'ui' ? { 'no-open': { type: 'boolean' as const } } : { web: { type: 'boolean' as const } }),
         },
       }),
@@ -99,6 +103,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       port,
       open: extra['no-open'] !== true,
       web: extra.web === true,
+      mcpServers: (values.mcp ?? []).map(parseMcp),
     };
   }
 
@@ -203,6 +208,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
 }
 
 /** Run a `parseArgs` call, reporting its errors as usage errors. */
+/** `--mcp name=url`: an MCP server over streamable HTTP. */
+function parseMcp(value: string): McpServer {
+  const match = /^([\w-]+)=(https?:\/\/\S+)$/.exec(value);
+  if (!match) throw new UsageError(`--mcp expects name=http(s)://url, got "${value}".`);
+  return { name: match[1]!, url: match[2]! };
+}
+
 function parse<T>(call: () => T): T {
   try {
     return call();
