@@ -6,6 +6,12 @@
 
 - `dev.commit: 'on-request'` in `createAppAgent` (and `defaultAppAgents(mode, commands, { git })`):
   no `propose_commit`, and the agent may `git commit` and `git push` when the user asks for it.
+- `claude()` supports `steer()`: the prompt goes to Claude Code as stream-json on stdin, and
+  a message sent while it works reaches the running turn between tool calls, as in Claude
+  Code itself. `AgentSession.send()` (and so `genaicode chat`, `genaicode ui`, `<AgentChat>`
+  and `createAppAgent`) now steers Claude instead of queueing. `claude({ steer: false })`
+  keeps the old one-shot prompt argument.
+
 - `genaicode acp`: the Agent Client Protocol (version 1) on stdin/stdout, so editors (Zed,
   JetBrains) and apps in any language (a game engine's editor, a Tauri or native app) can run
   the installed agent CLIs: sessions with MCP servers, streamed text and tool calls, permission

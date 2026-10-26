@@ -108,6 +108,10 @@ func _send(message: Dictionary) -> void:
 
 
 func _receive(line: String) -> void:
+	# npx may print other lines (install notices) before the server's JSON-RPC.
+	if not line.begins_with("{"):
+		log_line.emit(line)
+		return
 	var message = JSON.parse_string(line)
 	if typeof(message) != TYPE_DICTIONARY:
 		return
