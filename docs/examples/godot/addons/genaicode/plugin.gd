@@ -5,7 +5,6 @@ extends EditorPlugin
 ## tools from game_mcp.gd, so the agent can also play the game started with F5.
 
 const AcpClient := preload("res://addons/genaicode/acp_client.gd")
-const GAME_MCP_URL := "http://127.0.0.1:7777/mcp"
 
 var _client: AcpClient
 var _session_id := ""
@@ -59,7 +58,7 @@ func _connect() -> void:
 		return
 	var session = await _client.request("session/new", {
 		"cwd": ProjectSettings.globalize_path("res://"),
-		"mcpServers": [{"type": "http", "name": "game", "url": GAME_MCP_URL, "headers": []}],
+		"mcpServers": [{"type": "http", "name": "game", "url": _game_mcp_url(), "headers": []}],
 	}).done
 	if session[1]:
 		_note(session[1].message, "salmon")
@@ -218,3 +217,9 @@ func _build_dock() -> void:
 	row.add_child(_send)
 	row.add_child(_stop)
 	_dock.add_child(row)
+
+
+## The same port game_mcp.gd listens on.
+func _game_mcp_url() -> String:
+	var port := int(OS.get_environment("GENAICODE_GAME_PORT")) if OS.has_environment("GENAICODE_GAME_PORT") else 7777
+	return "http://127.0.0.1:%d/mcp" % port

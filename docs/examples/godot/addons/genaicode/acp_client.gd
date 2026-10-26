@@ -42,9 +42,7 @@ func stop() -> void:
 	if _pid > 0 and OS.is_process_running(_pid):
 		OS.kill(_pid)
 	_pid = -1
-	for id in _pending:
-		_pending[id].done.emit(null, {"message": "genaicode acp stopped"})
-	_pending.clear()
+	_fail_pending("genaicode acp stopped")
 
 
 func is_running() -> bool:
@@ -84,7 +82,16 @@ func poll() -> void:
 			newline = _buffer.find(10)
 	if _pid > 0 and not OS.is_process_running(_pid):
 		_pid = -1
+		_fail_pending("genaicode acp exited")
 		exited.emit()
+
+
+## End every request still waiting, so callers awaiting a Reply can go on.
+func _fail_pending(reason: String) -> void:
+	var pending := _pending
+	_pending = {}
+	for id in pending:
+		pending[id].done.emit(null, {"message": reason})
 
 
 func _read_available(pipe: FileAccess) -> PackedByteArray:
