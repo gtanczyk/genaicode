@@ -10,7 +10,8 @@ var _client: AcpClient
 var _session_id := ""
 var _running := false
 var _streaming := false
-var _permission_id: Variant = null
+## Permission requests waiting for Allow / Reject, oldest first: [id, title].
+var _permissions: Array = []
 
 var _dock: VBoxContainer
 var _transcript: RichTextLabel
@@ -104,24 +105,30 @@ func _on_update(update: Dictionary) -> void:
 
 
 func _on_permission(id: Variant, request: Dictionary) -> void:
-	_permission_id = id
-	_permission_label.text = "Allow: %s?" % request.toolCall.get("title", "this step")
-	_permission.visible = true
+	_permissions.append([id, request.toolCall.get("title", "this step")])
+	_show_permission()
+
+
+## Parallel tool calls can ask at once: show the oldest question until it is answered.
+func _show_permission() -> void:
+	_permission.visible = not _permissions.is_empty()
+	if _permission.visible:
+		var more := "  (+%d more)" % (_permissions.size() - 1) if _permissions.size() > 1 else ""
+		_permission_label.text = "Allow: %s?%s" % [_permissions[0][1], more]
 
 
 func _answer(option_id: String) -> void:
-	if _permission_id == null:
+	if _permissions.is_empty():
 		return
-	_client.respond(_permission_id, {"outcome": {"outcome": "selected", "optionId": option_id}})
-	_permission_id = null
-	_permission.visible = false
+	_client.respond(_permissions.pop_front()[0], {"outcome": {"outcome": "selected", "optionId": option_id}})
+	_show_permission()
 
 
 func _cancel() -> void:
-	if _permission_id != null:
-		_client.respond(_permission_id, {"outcome": {"outcome": "cancelled"}})
-		_permission_id = null
-		_permission.visible = false
+	for pending in _permissions:
+		_client.respond(pending[0], {"outcome": {"outcome": "cancelled"}})
+	_permissions.clear()
+	_show_permission()
 	_client.notify("session/cancel", {"sessionId": _session_id})
 
 
@@ -156,6 +163,10 @@ func _set_running(running: bool) -> void:
 	_stop.disabled = not running
 	for child in _options.get_children():
 		child.disabled = running
+	if not running:
+		# The turn is over, so the server has settled any question still shown.
+		_permissions.clear()
+		_show_permission()
 
 
 func _note(text: String, color: String) -> void:
