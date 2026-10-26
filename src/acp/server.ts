@@ -98,22 +98,32 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
     };
   }
 
+  /** Agents that can run this session's prompts: with MCP servers, only drivers that attach them. */
+  function usable(mcpServers: readonly McpServer[]) {
+    return mcpServers.length > 0 ? installed.filter((agent) => agent.capabilities.mcp) : installed;
+  }
+
   function newSession(params: NewSessionParams) {
     if (typeof params?.cwd !== 'string' || params.cwd === '') throw invalid('cwd is required.');
-    const agent = options.agent ? installed.find((candidate) => candidate.name === options.agent) : installed[0];
+    const names = new Set<string>();
+    const mcpServers = (params.mcpServers ?? []).map((server) => toMcpServer(server, names));
+    const agents = usable(mcpServers);
+    const agent = options.agent ? installed.find((candidate) => candidate.name === options.agent) : agents[0];
     if (!agent) {
       throw new RpcError(
         options.agent
           ? `Agent "${options.agent}" is not installed.`
-          : `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
+          : installed.length > 0
+            ? `None of the installed agents (${installed.map((a) => a.name).join(', ')}) supports MCP servers.`
+            : `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
         -32603,
       );
     }
-    const names = new Set<string>();
+    if (!agents.includes(agent)) throw invalid(`${agent.name} does not support MCP servers in genaicode.`);
     const session: Session = {
       id: randomUUID(),
       cwd: params.cwd,
-      mcpServers: (params.mcpServers ?? []).map((server) => toMcpServer(server, names)),
+      mcpServers,
       agent,
       effort: effortFor(agent, options.effort),
       mode: options.approveAll ? 'auto-approve' : 'ask',
@@ -131,6 +141,9 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
         if (session.run) throw invalid('Wait for the running prompt to end before switching agents.');
         const agent = installed.find((candidate) => candidate.name === value);
         if (!agent) throw invalid(`Agent "${value}" is not installed.`);
+        if (!usable(session.mcpServers).includes(agent)) {
+          throw invalid(`${agent.name} does not support MCP servers in genaicode.`);
+        }
         if (agent !== session.agent) {
           // The next agent cannot continue the previous one's session.
           session.agent = agent;
@@ -241,7 +254,7 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
         category: 'model',
         type: 'select',
         currentValue: session.agent.name,
-        options: installed.map((agent) => ({ value: agent.name, name: agent.name })),
+        options: usable(session.mcpServers).map((agent) => ({ value: agent.name, name: agent.name })),
       },
     ];
     const efforts = session.agent.capabilities.effort ?? [];

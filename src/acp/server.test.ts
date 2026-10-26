@@ -221,10 +221,12 @@ describe('serveAcp', () => {
   it('switches agent, effort and approvals through config options', async () => {
     const claude = fakeAgent('claude', [async () => ({ sessionId: 'c-1' })], {
       resume: true,
+      mcp: true,
       effort: ['low', 'high'],
     });
-    const codex = fakeAgent('codex', [async () => {}], { resume: true });
-    await withClient([claude.agent, codex.agent], async (cx) => {
+    const codex = fakeAgent('codex', [async () => {}], { resume: true, mcp: true });
+    const gemini = fakeAgent('gemini', [], { resume: false });
+    await withClient([gemini.agent, claude.agent, codex.agent], async (cx) => {
       await cx.request(acp.methods.agent.initialize, { protocolVersion: 1 });
       const { sessionId, configOptions } = await cx.request(acp.methods.agent.session.new, {
         cwd: '/tmp',
@@ -234,6 +236,15 @@ describe('serveAcp', () => {
         ],
       });
       expect(configOptions?.map((option) => option.id)).toEqual(['agent', 'effort', 'mode']);
+      // gemini cannot attach MCP servers, so the session starts on claude and does not offer gemini.
+      const agentOption = configOptions?.find((option) => option.id === 'agent') as
+        | { currentValue: string; options: Array<{ value: string }> }
+        | undefined;
+      expect(agentOption?.currentValue).toBe('claude');
+      expect(agentOption?.options.map((option) => option.value)).toEqual(['claude', 'codex']);
+      await expect(
+        cx.request(acp.methods.agent.session.setConfigOption, { sessionId, configId: 'agent', value: 'gemini' }),
+      ).rejects.toThrow(/does not support MCP/);
       await cx.request(acp.methods.agent.session.setConfigOption, { sessionId, configId: 'effort', value: 'high' });
       await cx.request(acp.methods.agent.session.setConfigOption, {
         sessionId,

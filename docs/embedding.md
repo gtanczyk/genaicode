@@ -103,6 +103,7 @@ A complete exchange, one JSON object per line (`>` sent by the host, `<` by gena
 ```
 
 With an agent that cannot resume (gemini, antigravity) each prompt starts a fresh agent session.
+A session with MCP servers offers only the agents that can attach them (claude, codex, copilot).
 Not supported yet: `session/load` and `session/resume` (sessions live as long as the process),
 images in prompts, SSE MCP servers, and the client's file system and terminal methods (the agent
 CLI reads, writes and runs commands itself).
