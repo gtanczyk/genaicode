@@ -32,6 +32,22 @@ process.stdout.write(JSON.stringify({ say: 'end' }) + '\\n');
 `,
 );
 
+// Takes its first stdin line, writes FAKE_BULK MiB of messages, then echoes the next line and idles.
+const steered = join(dir, 'steered-agent.mjs');
+writeFileSync(
+  steered,
+  `import readline from 'node:readline';
+const out = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
+let lines = 0;
+readline.createInterface({ input: process.stdin }).on('line', () => {
+  lines++;
+  out({ taken: true });
+  if (lines === 1) for (let i = 0; i < Number(process.env.FAKE_BULK); i++) out({ say: 'x'.repeat(1024 * 1024) });
+  else out({ say: 'steered' }, out({ idle: true }));
+});
+`,
+);
+
 function fakeAgent(overrides: Partial<CliAgentDefinition> = {}) {
   return cliAgent({
     name: 'fake',
@@ -224,6 +240,36 @@ console.log(JSON.stringify({ say: 'bye' }));
     await collect(run);
     await expect(collect(run)).rejects.toThrow(/only once/);
   });
+
+  it('reads output while a steer waits, even when a slow consumer paused it', async () => {
+    const run = fakeAgent({
+      args: () => [steered],
+      input: { start: () => ['go'], steer: (text) => text },
+      createParser: () => ({
+        event: (value) =>
+          typeof value === 'object' && value && 'say' in value ? [{ type: 'message', text: String(value.say) }] : [],
+        input: (value) =>
+          typeof value === 'object' && value
+            ? 'taken' in value
+              ? 'taken'
+              : 'idle' in value
+                ? 'idle'
+                : undefined
+            : undefined,
+      }),
+    }).run({ prompt: 'x', cwd: dir, env: env({ FAKE_BULK: '12' }) });
+    let messages = 0;
+    for await (const event of run) {
+      if (event.type !== 'message') continue;
+      // Let the output fill past the high-water mark, then wait on a steer inside the loop.
+      if (++messages === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await run.steer!('more');
+      }
+    }
+    expect(messages).toBe(13);
+    expect((await run.result).ok).toBe(true);
+  }, 15_000);
 
   it('runs a real driver against a stand-in executable', async () => {
     const bin = join(dir, 'claude');

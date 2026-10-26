@@ -28,22 +28,22 @@ for await (const event of run) {
 const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
 ```
 
-| Agent            | Driver                        | Extras                                          |
-| ---------------- | ----------------------------- | ----------------------------------------------- |
-| Claude Code      | `claude()`                    | MCP servers, approvals, max turns, effort, cost |
-| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals         |
-| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns           |
-| Cursor           | `cursor()`                    | streamed text deltas                            |
-| Gemini CLI       | `gemini()`                    | approval mode                                   |
-| opencode         | `opencode()`                  | `provider/model` ids, variants                  |
-| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price             |
-| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                          |
-| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals           |
-| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent      |
+| Agent            | Driver                        | Extras                                       |
+| ---------------- | ----------------------------- | -------------------------------------------- |
+| Claude Code      | `claude()`                    | `steer()`, MCP, approvals, max turns, effort |
+| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals      |
+| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns        |
+| Cursor           | `cursor()`                    | streamed text deltas                         |
+| Gemini CLI       | `gemini()`                    | approval mode                                |
+| opencode         | `opencode()`                  | `provider/model` ids, variants               |
+| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price          |
+| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                       |
+| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals        |
+| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent   |
 
 On top of the drivers:
 
-- **Steer a running task** with `run.steer(text)` (live drivers), and answer permission
+- **Steer a running task** with `run.steer(text)` (Claude and the live drivers), and answer permission
   prompts with `onApproval` (Claude, live Codex and Muse).
 - **Pick approval and sandbox policy** with `permissions: { approval, sandbox }` (or
   `'yolo'`); each driver maps it to the agent's own flags and refuses what it cannot honor.
@@ -212,6 +212,11 @@ const result = await run.result;
 - `steer(text)` resolves once the agent acknowledges the input. It rejects after the task has
   ended, and when no acknowledgement arrives (the input may or may not have reached the agent).
 - `onApproval` answers permission requests; see [Approvals](#approvals).
+- `claude()` steers too, without a server: it writes the prompt to Claude Code as
+  `--input-format stream-json`, and each steer is one more user message that Claude reads
+  between tool calls of the running turn. `steer(text)` resolves once Claude takes it; a steer
+  that arrives as the turn ends runs as one more turn of the same task. `claude({ steer: false })`
+  passes the prompt as an argument instead.
 - The task ends when the agent reports its turn complete. The server is then stopped. An exit
   before that point is a failure, even with exit code 0.
 
