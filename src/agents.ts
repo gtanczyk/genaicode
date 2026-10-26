@@ -10,6 +10,7 @@ export type { ClaudeAgentOptions, ClaudePermissionMode } from './agents/drivers/
 export { CODEX_SANDBOX, codex, codexArgs, codexPermissionFlags, createCodexParser } from './agents/drivers/codex.js';
 export type { CodexAgentOptions, CodexSandbox } from './agents/drivers/codex.js';
 export { createMuseParser, muse, museArgs } from './agents/drivers/muse.js';
+export { museMcpOverrides } from './agents/drivers/muse-mcp.js';
 export type { MuseAgentOptions } from './agents/drivers/muse.js';
 export type {
   AgentCapabilities,

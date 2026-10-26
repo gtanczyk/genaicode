@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { claude, claudeArgs, claudeMcpConfig } from './drivers/claude.js';
 import { codex, codexMcpOverrides } from './drivers/codex.js';
+import { gemini } from './drivers/gemini.js';
 import { muse } from './drivers/muse.js';
+import { museMcpOverrides } from './drivers/muse-mcp.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-mcp-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -23,11 +25,13 @@ const report = {
   mode: file ? (statSync(file).mode & 0o777).toString(8) : undefined,
   config: file ? JSON.parse(readFileSync(file, 'utf8')) : undefined,
   header: process.env.GENAICODE_MCP_0_HEADER_0,
+  env: process.env.GENAICODE_MCP_1_ENV_0,
 };
 // Both claude's and codex's final-message shapes; each parser ignores the other's.
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(report) }));
 console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify(report) } }));
 console.log(JSON.stringify({ type: 'turn.completed' }));
+console.log(JSON.stringify({ payload_type: 'run.terminal.completed', payload: { text: JSON.stringify(report) } }));
 `,
 );
 const bin = join(dir, 'agent');
@@ -115,8 +119,38 @@ describe('MCP servers', () => {
     expect(result).toMatchObject({ status: 'failed', exitCode: null });
   });
 
+  it('gives muse the servers as -c overrides, secrets by ${VAR} reference only', async () => {
+    expect(museMcpOverrides(servers)).toEqual({
+      args: [
+        '-c',
+        'mcp_servers.docs.transport="streamable_http"',
+        '-c',
+        'mcp_servers.docs.url="https://mcp.example/docs"',
+        '-c',
+        'mcp_servers.docs.headers.Authorization="${GENAICODE_MCP_0_HEADER_0}"',
+        '-c',
+        'mcp_servers.fs.transport="stdio"',
+        '-c',
+        'mcp_servers.fs.command="mcp-fs"',
+        '-c',
+        'mcp_servers.fs.args=["--root","."]',
+        '-c',
+        'mcp_servers.fs.env.LOG="${GENAICODE_MCP_1_ENV_0}"',
+      ],
+      env: { GENAICODE_MCP_0_HEADER_0: 'Bearer secret', GENAICODE_MCP_1_ENV_0: '1' },
+    });
+    const result = await muse({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
+    expect(result.status).toBe('completed');
+    const report = JSON.parse(result.text ?? '{}') as { args: string[]; header: string; env: string };
+    expect(report.args.slice(0, 3)).toEqual(['exec', '-c', 'mcp_servers.docs.transport="streamable_http"']);
+    expect(report.args.at(-1)).toBe('p');
+    expect(report.args.join(' ')).not.toContain('secret');
+    expect(report.header).toBe('Bearer secret');
+    expect(report.env).toBe('1');
+  });
+
   it('refuses servers a driver cannot attach, and bad names', async () => {
-    const unsupported = await muse({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
+    const unsupported = await gemini({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
     expect(unsupported).toMatchObject({ status: 'failed', exitCode: null });
     expect(unsupported.error).toMatch(/does not support MCP servers/);
 

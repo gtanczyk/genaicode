@@ -2,9 +2,10 @@ import { liveAgent, uuidv7, type LiveSession } from '../live-agent.js';
 import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
 import type { AgentOutcome } from '../runtime.js';
-import type { AgentEvent, CodingAgent } from '../types.js';
+import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
 import { museApprovals } from './muse-approvals.js';
 import { isObject, stringField } from './json.js';
+import { withMuseMcp } from './muse-mcp.js';
 
 export interface MuseLiveOptions {
   /** Executable name or path. Default `muse`. */
@@ -32,15 +33,20 @@ export function museLive(options: MuseLiveOptions = {}): CodingAgent {
     capabilities: {
       effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       approvals: true,
+      mcp: true,
       permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['unrestricted'] },
     },
-    args: (task) => [
-      'serve',
-      ...((options.trustWorkspace ?? true) ? ['--trust-workspace'] : []),
-      ...(task.extraArgs ?? []),
-    ],
+    args: (task) => serveArgs(task, options),
+    prepare: (task) => {
+      const args = serveArgs(task, options);
+      return withMuseMcp(task, args.slice(0, 1), args.slice(1));
+    },
     drive: (session) => driveMuse(session, options),
   });
+}
+
+function serveArgs(task: AgentTask, options: MuseLiveOptions): string[] {
+  return ['serve', ...((options.trustWorkspace ?? true) ? ['--trust-workspace'] : []), ...(task.extraArgs ?? [])];
 }
 
 async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promise<AgentOutcome> {
