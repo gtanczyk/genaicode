@@ -42,6 +42,12 @@ export interface ClaudeAgentOptions {
    * `{ disableAllHooks: true }`. Merged with the sandbox settings of `task.permissions`.
    */
   settings?: Record<string, unknown>;
+  /**
+   * Send the prompt as `--input-format stream-json` on stdin, so `AgentRun.steer` can add
+   * messages that Claude reads between tool calls of the running turn. Default true; false
+   * passes the prompt as an argument and declares no steering.
+   */
+  steer?: boolean;
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -56,12 +62,18 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
  *
  * `task.permissions`: see `claudePermissionFlags`. `ask` and `auto-approve` use the same
  * prompt tool; a request outside the sandbox is denied before anyone is asked.
+ *
+ * Steering (`options.steer`, on by default): the prompt and each steer are user messages on
+ * stdin, and `--replay-user-messages` tells when Claude took one. Stdin closes once a turn
+ * ends with every message taken; a steer that came too late for its turn runs as one more.
  */
 export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
+  const steer = options.steer ?? true;
   return cliAgent({
     name: 'claude',
     command: options.command ?? 'claude',
     capabilities: {
+      ...(steer ? { steer: true } : {}),
       effort: ['low', 'medium', 'high', 'xhigh', 'max'],
       maxTurns: true,
       usage: true,
@@ -73,10 +85,16 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
         sandbox: ['workspace-write', 'read-only', 'unrestricted'],
       },
     },
-    args: (task) => claudeArgs(task, options),
-    prepare: (task, context) => prepareClaude(task, options, context),
+    args: (task) => claudeArgs(task, options, undefined, undefined, steer),
+    prepare: (task, context) => prepareClaude(task, options, context, steer),
     createParser: createClaudeParser,
+    ...(steer ? { input: { start: (task) => [claudeUserMessage(task.prompt)], steer: claudeUserMessage } } : {}),
   });
+}
+
+/** One `--input-format stream-json` line: a user message with `text`. */
+export function claudeUserMessage(text: string): string {
+  return JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } });
 }
 
 /** Write the task's MCP servers to a private temp file, so header secrets stay out of argv. */
@@ -84,12 +102,13 @@ async function prepareClaude(
   task: AgentTask,
   options: ClaudeAgentOptions,
   context: PrepareContext,
+  stdinPrompt: boolean,
 ): Promise<PreparedRun> {
   const policy = resolvePermissions(task.permissions).approval;
   const asks = policy ? policy !== 'deny' : !!task.onApproval;
   const approvals = asks ? await claudeApprovals(task, context) : undefined;
   const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
-  if (!servers.length) return { args: claudeArgs(task, options) };
+  if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt) };
   let dir: string | undefined;
   let file: string;
   try {
@@ -103,7 +122,7 @@ async function prepareClaude(
   }
   const created = dir;
   return {
-    args: claudeArgs(task, options, file, approvals?.args),
+    args: claudeArgs(task, options, file, approvals?.args, stdinPrompt),
     ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
     cleanup: () => {
       void approvals?.close();
@@ -152,6 +171,8 @@ export function claudeArgs(
   options: ClaudeAgentOptions = {},
   mcpConfigPath?: string,
   approvalArgs?: readonly string[],
+  /** The prompt comes as stream-json on stdin (see `claude({ steer })`), not as an argument. */
+  stdinPrompt = false,
 ): string[] {
   const args = ['-p', '--verbose'];
   // Multi-value flags come first: a single-value flag must follow them before the prompt.
@@ -167,6 +188,7 @@ export function claudeArgs(
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
   exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
   args.push('--output-format', 'stream-json');
+  if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
   const modeArgs = owned
     ? claudePermissionFlags(permissions).args
     : ['--permission-mode', options.permissionMode ?? 'acceptEdits'];
@@ -183,7 +205,7 @@ export function claudeArgs(
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
   if (task.resume) args.push('--resume', task.resume);
   if (task.extraArgs) args.push(...task.extraArgs);
-  return [...args, ...positionalPrompt(task.prompt)];
+  return stdinPrompt ? args : [...args, ...positionalPrompt(task.prompt)];
 }
 
 export function createClaudeParser(): AgentOutputParser {
@@ -194,6 +216,11 @@ export function createClaudeParser(): AgentOutputParser {
 
   return {
     outcome: () => outcome,
+    input(value) {
+      if (!isObject(value)) return undefined;
+      if (value.type === 'user' && value.isReplay === true) return 'taken';
+      return value.type === 'result' ? 'idle' : undefined;
+    },
     event(value) {
       if (!isObject(value)) return [];
       const events: AgentEvent[] = [];
