@@ -57,6 +57,8 @@ export interface UiLaunch {
   transformPrompt?(prompt: string): string;
   /** `chat --web`: also open the session in the browser. */
   openWeb?: boolean;
+  /** `ui --exit-with-stdin`: stop when stdin ends. */
+  exitWithStdin?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
 }
@@ -97,6 +99,7 @@ Chat and UI options:
       --web               (chat) Also open the session in the browser
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
+      --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot) take it
 
@@ -283,6 +286,7 @@ async function runUi(
     port: options.port,
     open: options.open,
     openWeb: options.web,
+    exitWithStdin: options.exitWithStdin,
     ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
     ...extra,
   };

@@ -17,6 +17,8 @@ export type CliCommand =
       open: boolean;
       /** chat: also open the session in the browser. */
       web: boolean;
+      /** ui: stop when stdin ends (a host app closes the pipe). */
+      exitWithStdin?: boolean;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
     }
@@ -85,11 +87,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
           yes: { type: 'boolean', short: 'y' },
           port: { type: 'string' },
           mcp: { type: 'string', multiple: true },
-          ...(command === 'ui' ? { 'no-open': { type: 'boolean' as const } } : { web: { type: 'boolean' as const } }),
+          ...(command === 'ui'
+            ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
+            : { web: { type: 'boolean' as const } }),
         },
       }),
     );
-    const extra = values as { 'no-open'?: boolean; web?: boolean };
+    const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean };
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
@@ -103,6 +107,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       port,
       open: extra['no-open'] !== true,
       web: extra.web === true,
+      exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
     };
   }

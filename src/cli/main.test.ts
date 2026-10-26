@@ -109,6 +109,8 @@ describe('parseCli', () => {
       ],
     });
     expect(parseCli(['chat'])).toMatchObject({ mcpServers: [] });
+    expect(parseCli(['ui', '--exit-with-stdin'])).toMatchObject({ exitWithStdin: true });
+    expect(() => parseCli(['chat', '--exit-with-stdin'])).toThrow(UsageError);
     expect(() => parseCli(['ui', '--mcp', 'game'])).toThrow(UsageError);
   });
 

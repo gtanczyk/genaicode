@@ -41,7 +41,12 @@ func is_running() -> bool:
 	return _pid > 0 and OS.is_process_running(_pid)
 
 
+## With npx the server is a child of the process we started, so killing that alone would leave
+## it running: closing its stdin (`--exit-with-stdin`) stops the server itself.
 func stop() -> void:
+	if _stdio:
+		_stdio.close()
+		_stdio = null
 	if is_running():
 		OS.kill(_pid)
 	_pid = -1

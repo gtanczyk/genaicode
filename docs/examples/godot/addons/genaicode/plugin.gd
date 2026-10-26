@@ -479,7 +479,7 @@ func _open_browser() -> void:
 	var command := OS.get_environment("GENAICODE_UI_COMMAND")
 	if command.is_empty():
 		command = "npx -y genaicode ui"
-	var args := PackedStringArray(["--no-open", "-C", ProjectSettings.globalize_path("res://"), "--mcp", "game=" + _game_mcp_url()])
+	var args := PackedStringArray(["--no-open", "--exit-with-stdin", "-C", ProjectSettings.globalize_path("res://"), "--mcp", "game=" + _game_mcp_url()])
 	if not _browser.is_running():
 		_note("Starting the browser chat…")
 	if _browser.open(command, args) != OK:

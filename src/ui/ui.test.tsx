@@ -652,6 +652,30 @@ describe('web UI server', () => {
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
   });
 
+  it('stops when stdin ends with exitWithStdin', async () => {
+    const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    expect((await fetch(url)).status).toBe(200);
+    (stdin as unknown as PassThrough).end();
+    expect(await done).toBe(0);
+    expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+  });
+
   it('opens the terminal chat in the browser with chat --web', async () => {
     const terminal = fakeTerminal();
     const opened: string[] = [];

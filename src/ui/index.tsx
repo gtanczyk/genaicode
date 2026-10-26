@@ -45,6 +45,11 @@ export interface WebRunOptions extends UiRunOptions {
   assets?: ReadonlyMap<string, WebAsset>;
   /** Opens the link. Default: the system browser. */
   openUrl?(url: string): void;
+  /**
+   * Stop when stdin ends (`--exit-with-stdin`): a host app that starts the server through a
+   * launcher such as npx stops it by closing the pipe, which also reaches the server itself.
+   */
+  exitWithStdin?: boolean;
 }
 
 const ASSET_TYPES: Record<string, string> = {
@@ -110,9 +115,12 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
+    const watchEnd = !terminal && options.exitWithStdin === true;
     const onAbort = () => {
       options.stdin.off('data', onData);
-      if (terminal) options.stdin.pause();
+      options.stdin.off('end', onAbort);
+      options.signal?.removeEventListener('abort', onAbort);
+      if (terminal || watchEnd) options.stdin.pause();
       resolve('stop');
     };
     const onData = () => {
@@ -122,6 +130,11 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     };
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (terminal) options.stdin.once('data', onData);
+    else if (watchEnd) {
+      // Read (and drop) whatever arrives, so the end of the stream is noticed.
+      options.stdin.once('end', onAbort);
+      options.stdin.resume();
+    }
   });
   if (next === 'terminal') await runTerminal(controller, options);
   await web.close();
