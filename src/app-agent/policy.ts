@@ -13,7 +13,8 @@ const SUBAGENT_TOOLS = ['Task', 'Agent'];
  * locked down per mode. In `use` mode they get no shell and no file edits, only the app's
  * tools. In `dev` mode they edit files and may run `commands` (each with any arguments), never
  * commit or push (that goes through `propose_commit`); with `git`, Claude and Copilot may commit
- * and push through their own permission prompt. Codex has no per-command allowlist:
+ * and push. Claude asks through its permission prompt; headless Copilot cannot ask, so those
+ * commands are allowed outright. Codex cannot push without network and has no per-command allowlist:
  * in `dev` mode its shell is bounded only by the `workspace-write` sandbox. In both modes the
  * only MCP server is the app's: the user's own configured servers are switched off. Claude's
  * hooks are off in both modes; Copilot's in `use` mode only (through settings in the app
@@ -100,7 +101,13 @@ export function defaultAppAgents(
     copilot({
       allowAllTools: false,
       // `shell(npm test)` is the exact command only; `:*` adds any arguments.
-      allowTools: ['write', ...allowed.flatMap((c) => [`shell(${c})`, `shell(${c}:*)`])],
+      allowTools: [
+        'write',
+        ...[...allowed, ...(options.git ? ['git commit', 'git push'] : [])].flatMap((c) => [
+          `shell(${c})`,
+          `shell(${c}:*)`,
+        ]),
+      ],
       denyTools: noGit.flatMap((c) => [`shell(${c})`, `shell(${c}:*)`]),
       onlyTaskMcpServers: true,
     }),
