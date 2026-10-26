@@ -12,13 +12,18 @@ const SUBAGENT_TOOLS = ['Task', 'Agent'];
  * The agents an app agent offers by default: the drivers that take per-run MCP servers,
  * locked down per mode. In `use` mode they get no shell and no file edits, only the app's
  * tools. In `dev` mode they edit files and may run `commands` (each with any arguments), never
- * commit or push (that goes through `propose_commit`). Codex has no per-command allowlist:
+ * commit or push (that goes through `propose_commit`); with `git`, Claude and Copilot may commit
+ * and push through their own permission prompt. Codex has no per-command allowlist:
  * in `dev` mode its shell is bounded only by the `workspace-write` sandbox. In both modes the
  * only MCP server is the app's: the user's own configured servers are switched off. Claude's
  * hooks are off in both modes; Copilot's in `use` mode only (through settings in the app
  * agent's own working directory), since in `dev` mode they live in the user's repository.
  */
-export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[] = []): CodingAgent[] {
+export function defaultAppAgents(
+  mode: AppAgentMode,
+  commands: readonly string[] = [],
+  options: { git?: boolean } = {},
+): CodingAgent[] {
   if (mode === 'use') {
     return [
       claude({
@@ -68,6 +73,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
   // Each command with any arguments. No git rules: `git diff --no-index` or `git log --output`
   // reach outside cwd; git asks through the agent's own permission prompt instead.
   const allowed = [...commands];
+  const noGit = options.git ? [] : ['git commit', 'git push'];
   return [
     claude({
       permissionMode: 'acceptEdits',
@@ -75,7 +81,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       // acceptEdits already reads and edits inside cwd without asking; no bare Read/Edit rules,
       // which would match every path on the machine.
       allowedTools: allowed.map((c) => `Bash(${c}:*)`),
-      disallowedTools: ['Bash(git commit:*)', 'Bash(git push:*)', ...WEB_TOOLS, ...SUBAGENT_TOOLS],
+      disallowedTools: [...noGit.map((c) => `Bash(${c}:*)`), ...WEB_TOOLS, ...SUBAGENT_TOOLS],
       // Hooks run commands outside these rules, `git commit` included.
       settings: { disableAllHooks: true },
     }),
@@ -95,7 +101,7 @@ export function defaultAppAgents(mode: AppAgentMode, commands: readonly string[]
       allowAllTools: false,
       // `shell(npm test)` is the exact command only; `:*` adds any arguments.
       allowTools: ['write', ...allowed.flatMap((c) => [`shell(${c})`, `shell(${c}:*)`])],
-      denyTools: ['shell(git commit)', 'shell(git commit:*)', 'shell(git push)', 'shell(git push:*)'],
+      denyTools: noGit.flatMap((c) => [`shell(${c})`, `shell(${c}:*)`]),
       onlyTaskMcpServers: true,
     }),
   ];

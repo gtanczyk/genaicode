@@ -568,6 +568,21 @@ describe('createAppAgent', () => {
     expect(dev.tasks[0]!.prompt).not.toContain('call `propose_commit`');
   });
 
+  it('lets the agent commit when the user asks, without propose_commit', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'app-agent-dev-'));
+    const dev = fakeAgent([], 'editor');
+    const { agent, base } = await serve({
+      name: 'app',
+      agents: () => [dev.agent],
+      dev: { cwd: dir, commit: 'on-request', only: true },
+    });
+    expect(agent.mcpTools().map((tool) => tool.name)).not.toContain('propose_commit');
+    await post(base, '/send', { text: 'commit it' });
+    await settle(agent);
+    expect(dev.tasks[0]!.prompt).toContain('Commit or push only when the user asks you to.');
+    expect(dev.tasks[0]!.prompt).not.toContain('Do not commit or push.');
+  });
+
   it('streams view changes and never drops pending actions at the cap', async () => {
     let refused = '';
     const { agent: fake } = fakeAgent([
