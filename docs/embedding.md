@@ -102,6 +102,7 @@ A complete exchange, one JSON object per line (`>` sent by the host, `<` by gena
 < {"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}
 ```
 
+With an agent that cannot resume (gemini, antigravity) each prompt starts a fresh agent session.
 Not supported yet: `session/load` and `session/resume` (sessions live as long as the process),
 images in prompts, SSE MCP servers, and the client's file system and terminal methods (the agent
 CLI reads, writes and runs commands itself).

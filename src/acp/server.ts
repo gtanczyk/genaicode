@@ -168,7 +168,8 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
       cwd: session.cwd,
       model: options.model,
       effort: session.effort,
-      resume: session.agentSessionId,
+      // A driver that cannot resume starts each prompt fresh instead of refusing it.
+      resume: session.agent.capabilities.resume ? session.agentSessionId : undefined,
       env,
       ...(session.mcpServers.length > 0 ? { mcpServers: session.mcpServers } : {}),
       // Approvals are decided here, as in `genaicode chat`: not every driver takes

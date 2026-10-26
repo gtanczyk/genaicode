@@ -150,6 +150,26 @@ describe('serveAcp', () => {
     expect(tasks[0]!.permissions).toBeUndefined();
   });
 
+  it('starts each prompt fresh when the driver cannot resume', async () => {
+    const { agent, tasks } = fakeAgent(
+      'gemini',
+      [async () => ({ sessionId: 'g-1' }), async () => ({ sessionId: 'g-2' })],
+      { resume: false, approvals: false },
+    );
+    await withClient([agent], async (cx) => {
+      await cx.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION });
+      const session = await cx.request(acp.methods.agent.session.new, { cwd: '/tmp', mcpServers: [] });
+      for (const text of ['one', 'two']) {
+        const result = await cx.request(acp.methods.agent.session.prompt, {
+          sessionId: session.sessionId,
+          prompt: [{ type: 'text', text }],
+        });
+        expect(result.stopReason).toBe('end_turn');
+      }
+    });
+    expect(tasks.map((task) => task.resume)).toEqual([undefined, undefined]);
+  });
+
   it("asks the host for the agent's permission prompts", async () => {
     const decisions: string[] = [];
     const { agent } = fakeAgent('claude', [
