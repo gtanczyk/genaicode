@@ -70,8 +70,9 @@ changed the files, or a merge or rebase is in progress. The repository's commit 
 edits itself (syncs the files, uploads them) passes `dev.commit: false`, so the agent gets no
 `propose_commit`, and `dev.only: true` when there is nothing to do in `use` mode.
 `dev.commit: 'on-request'` also offers no `propose_commit`, but tells the agent to commit or push
-only when the user asks, and the default agents drop their commit and push rules: Claude and
-Copilot then ask through their own permission prompt (Codex's sandbox has no network, so it can't push).
+only when the user asks, and the default agents drop their commit and push deny rules.
+Claude asks through its permission prompt; Copilot cannot ask headless, so those commands are
+allowed outright. Codex's sandbox has no network, so it can't push.
 The agent sees no MCP server but the app's: Claude runs with `--strict-mcp-config`, and Codex
 and Copilot get the user's own configured servers switched off. The MCP endpoint takes a per-run
 bearer and refuses browser requests; every other route asks `authorize` and refuses

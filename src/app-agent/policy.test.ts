@@ -51,8 +51,17 @@ describe('defaultAppAgents', () => {
   });
 
   it('lifts the commit and push rules when the app allows git', () => {
-    defaultAppAgents('dev', [], { git: true });
+    defaultAppAgents('dev', ['npm test'], { git: true });
     expect(vi.mocked(copilot).mock.calls.at(-1)?.[0]?.denyTools).toEqual([]);
+    expect(vi.mocked(copilot).mock.calls.at(-1)?.[0]?.allowTools).toEqual([
+      'write',
+      'shell(npm test)',
+      'shell(npm test:*)',
+      'shell(git commit)',
+      'shell(git commit:*)',
+      'shell(git push)',
+      'shell(git push:*)',
+    ]);
     const disallowed = vi.mocked(claude).mock.calls.at(-1)?.[0]?.disallowedTools;
     expect(disallowed).not.toContain('Bash(git commit:*)');
     expect(disallowed).toEqual(expect.arrayContaining(['WebFetch', 'Task']));

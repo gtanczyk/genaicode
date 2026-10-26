@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Headless Copilot can commit and push when an app enables `dev.commit: 'on-request'`:
+  its allowlist now includes those commands, since it cannot ask for permission.
+
 ### Added
 
 - `dev.commit: 'on-request'` in `createAppAgent` (and `defaultAppAgents(mode, commands, { git })`):
