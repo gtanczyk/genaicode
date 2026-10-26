@@ -76,8 +76,13 @@ func _submit(_text := "") -> void:
 		return
 	_prompt.clear()
 	_transcript.append_text("\n[b]You:[/b] %s\n" % _escape(text))
+	var prompt: Array = [{"type": "text", "text": text}]
+	# The game's tools exist only while it runs (F5); say so, or the agent tries to start Godot itself.
+	if not EditorInterface.is_playing_scene():
+		_note("The game is not running: press F5 first if the agent should play it.", "gray")
+		prompt.append({"type": "text", "text": "(Editor note: the game is not running, so the game_* tools are unavailable. If the task needs them, ask the user to press F5 in the Godot editor and send the prompt again. Do not start Godot yourself.)"})
 	_set_running(true)
-	var reply = await _client.request("session/prompt", {"sessionId": _session_id, "prompt": [{"type": "text", "text": text}]}).done
+	var reply = await _client.request("session/prompt", {"sessionId": _session_id, "prompt": prompt}).done
 	_streaming = false
 	if reply[1]:
 		_note(reply[1].message, "salmon")
