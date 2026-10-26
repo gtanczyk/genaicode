@@ -35,6 +35,8 @@ export interface ProcessHandle {
   close(): void;
   /** Write one line to stdin. Requires `stdin: true`. */
   write(line: string): void;
+  /** Close stdin, so an agent that reads input until EOF can finish. */
+  endInput(): void;
   /** Stop reading stdout and stderr, so the agent blocks once the pipes fill. */
   pause(): void;
   /** Read again after `pause()`. */
@@ -156,6 +158,9 @@ export function startProcess(options: ProcessOptions): ProcessHandle {
     write(line) {
       if (!child.stdin || child.stdin.destroyed) throw new Error(`${options.command} is not accepting input.`);
       child.stdin.write(line.endsWith('\n') ? line : `${line}\n`);
+    },
+    endInput() {
+      child.stdin?.end();
     },
     pause() {
       if (paused || !pausable || closed) return;
