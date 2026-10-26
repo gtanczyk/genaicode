@@ -196,8 +196,10 @@ func _call(name: String, args: Dictionary) -> Dictionary:
 			get_tree().paused = false
 			for action in actions:
 				Input.action_press(action)
+			# Physics frames tick at a fixed rate (60 per second by default), so a move lasts as
+			# long on a 120 Hz screen as on a 60 Hz one.
 			for i in frames:
-				await get_tree().process_frame
+				await get_tree().physics_frame
 				if not _controlled:
 					break
 			for action in actions:
@@ -212,8 +214,20 @@ func _call(name: String, args: Dictionary) -> Dictionary:
 
 func _observe() -> Dictionary:
 	var content: Array = [{"type": "text", "text": JSON.stringify(_state())}]
-	await RenderingServer.frame_post_draw
-	var image := get_viewport().get_texture().get_image()
+	# Wait for a fresh frame, but not forever: a hidden or occluded window (macOS) may not draw,
+	# and then the last frame will do.
+	var drawn := [false]
+	var on_drawn := func() -> void: drawn[0] = true
+	RenderingServer.frame_post_draw.connect(on_drawn, CONNECT_ONE_SHOT)
+	var deadline := Time.get_ticks_msec() + 500
+	while not drawn[0] and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	if RenderingServer.frame_post_draw.is_connected(on_drawn):
+		RenderingServer.frame_post_draw.disconnect(on_drawn)
+	# A headless run (CI, --headless) has no frames to show.
+	var image: Image = null
+	if DisplayServer.get_name() != "headless":
+		image = get_viewport().get_texture().get_image()
 	if image and not image.is_empty():
 		image.resize(320, int(320.0 * image.get_height() / image.get_width()))
 		content.append({"type": "image", "mimeType": "image/png", "data": Marshalls.raw_to_base64(image.save_png_to_buffer())})

@@ -4,7 +4,7 @@ A Godot 4.5 project where a coding agent CLI (Claude Code, Codex...) works in th
 also plays the game. It is a small example of [`genaicode acp`](../../embedding.md#any-language-the-agent-client-protocol)
 in a host that is not written in JavaScript.
 
-- `addons/genaicode/plugin.gd` adds an **Agent** dock: a chat with the agent about this
+- `addons/genaicode/plugin.gd` adds a **genaicode** dock: a chat with the agent about this
   project, with pickers for the agent, its effort and approvals, and Allow / Reject when the
   agent asks for permission. It starts `npx -y genaicode acp` and speaks the Agent Client
   Protocol over its stdin and stdout (`acp_client.gd`, about 120 lines of GDScript).
@@ -17,7 +17,8 @@ in a host that is not written in JavaScript.
   with `agent_state()`.
 
 <p align="center">
-  <img alt="The game while Claude Code plays it: the banner says Agent controls this game, with a Take back control button." src="agent-playing.png" width="60%">
+  <img alt="The genaicode dock: the wolf header with the agent's status, agent and effort pickers, the user's message, tool calls marked done or failed, the agent's reply with code, and an Allow / Reject card." src="dock.png" width="30%">
+  <img alt="The game while Claude Code plays it: the banner says Agent controls this game, with a Take back control button." src="agent-playing.png" width="60%" align="top">
 </p>
 
 What the dock showed in a test run with Claude Code (abridged):
@@ -37,8 +38,8 @@ Perfect! I've collected both stars. The score is now 2. Releasing control back t
 
 You need Node.js 20+ and an agent CLI you are logged in to (`npx genaicode agents` lists them).
 
-1. Open this folder in Godot 4.5. The plugin is already enabled; the Agent dock is next to the
-   Inspector.
+1. Open this folder in Godot 4.5. The plugin is already enabled; the genaicode dock is a tab next
+   to the Inspector.
 2. Ask the agent about the project, e.g. "make the star move slowly".
 3. Press F5 to run the game, then ask: "Play the game: take control and collect 3 stars."
 

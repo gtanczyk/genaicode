@@ -299,6 +299,11 @@ in-app agent, `task.mcpServers` elsewhere.
 - `game_release_control`: give the controls back. Also release when the agent's turn ends
   or its client disconnects.
 
+The tools exist only while the app runs, and agent CLIs connect to MCP servers when a prompt
+starts. When the panel sends a prompt while the app is not running, it says so in the panel and
+adds a note to the prompt ("the app is not running, ask the user to start it"), so the agent
+does not try to launch the app on its own.
+
 Listen on 127.0.0.1 only and refuse browser requests (an `Origin` header, a `Host` that is not
 localhost) so a web page cannot drive the app. These tools are not writes, so they need no
 approval card. Details and a TypeScript version: "The agent drives the app (a game)" in
