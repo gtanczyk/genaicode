@@ -11,8 +11,8 @@ export function relativePath(path: string, cwd?: string): string {
   return path.startsWith(base) ? path.slice(base.length) : path;
 }
 
-/** The one argument worth showing for a tool call (its command, path, pattern...). */
-export function toolSummary(input: unknown, width = 80, cwd?: string): string {
+/** The one argument worth showing for a tool call (its command, path, pattern...), whole and with its line breaks. */
+export function toolArgument(input: unknown, cwd?: string): string {
   if (input === undefined || input === null) return '';
   let value: unknown = input;
   if (typeof input === 'object' && !Array.isArray(input)) {
@@ -20,10 +20,13 @@ export function toolSummary(input: unknown, width = 80, cwd?: string): string {
     value = INPUT_KEYS.map((key) => record[key]).find((field) => typeof field === 'string' || Array.isArray(field));
     if (value === undefined) value = '';
   }
-  const flat = (Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const shown = cwd ? flat.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : flat;
+  const text = (Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : '').trim();
+  return cwd ? text.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : text;
+}
+
+/** {@link toolArgument} on one line, cut to `width`. */
+export function toolSummary(input: unknown, width = 80, cwd?: string): string {
+  const shown = toolArgument(input, cwd).replace(/\s+/g, ' ');
   return shown.length > width ? `${shown.slice(0, width - 1)}…` : shown;
 }
 

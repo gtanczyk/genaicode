@@ -371,6 +371,14 @@
   flex: 1;
   min-width: 0;
 }
+/* Open: the whole argument (a long shell command, a heredoc) wraps instead of ending in an ellipsis. */
+.gc-tool[open] summary {
+  align-items: flex-start;
+}
+.gc-tool[open] .gc-tool-arg {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .gc-tool pre {
   margin: 0;
   padding: 10px 12px;
