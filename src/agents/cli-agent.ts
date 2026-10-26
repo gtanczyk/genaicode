@@ -70,6 +70,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
 
   const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
   const input = definition.input ? stdinInput(definition, definition.input, task) : undefined;
+  let reflow = () => {};
   const start = (plan: Extract<SpawnPlan, { ok: true }>) => {
     const parser = definition.createParser();
     let pressure = false;
@@ -100,6 +101,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
       onStderr: (text) => recorder.emit({ type: 'stderr', text }),
     });
     handle = started;
+    reflow = flow;
     input?.attach(started);
     // A consumer that falls behind pauses the agent instead of buffering its output without bound.
     // A steer awaited from inside the loop needs its echo read, so output flows while one waits.
@@ -141,7 +143,16 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
       lifetime.abort();
       handle?.kill();
     },
-    ...(input ? { steer: input.steer } : {}),
+    ...(input
+      ? {
+          steer(text: string) {
+            const taken = input.steer(text);
+            // Output may be paused already; the echo must still be read.
+            reflow();
+            return taken;
+          },
+        }
+      : {}),
     [Symbol.asyncIterator]: iterate,
   };
 }
