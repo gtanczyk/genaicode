@@ -147,7 +147,7 @@ describe('serveAcp', () => {
       ['Run the tests', '/tmp', undefined],
       ['Again', '/tmp', 'vendor-1'],
     ]);
-    expect(tasks[0]!.permissions).toEqual({ approval: 'ask' });
+    expect(tasks[0]!.permissions).toBeUndefined();
   });
 
   it("asks the host for the agent's permission prompts", async () => {
@@ -233,11 +233,65 @@ describe('serveAcp', () => {
     });
     expect(claude.tasks[0]).toMatchObject({
       effort: 'high',
-      permissions: { approval: 'auto-approve' },
       mcpServers: [{ name: 'my_game', url: 'http://127.0.0.1:7777/mcp', headers: { x: 'y' } }],
     });
     // The new agent starts its own session.
     expect(codex.tasks[0]).toMatchObject({ prompt: 'two', resume: undefined, effort: undefined });
+  });
+
+  it('approves without asking the host in auto-approve mode', async () => {
+    const decisions: string[] = [];
+    const { agent } = fakeAgent('codex', [
+      async (task) => {
+        decisions.push(await task.onApproval!({ id: 'a1', kind: 'command', summary: 'npm test' }));
+      },
+    ]);
+    await withClient(
+      [agent],
+      async (cx, seen) => {
+        await cx.request(acp.methods.agent.initialize, { protocolVersion: 1 });
+        const { sessionId, configOptions } = await cx.request(acp.methods.agent.session.new, {
+          cwd: '/tmp',
+          mcpServers: [],
+        });
+        expect(configOptions?.find((option) => option.id === 'mode')).toMatchObject({ currentValue: 'auto-approve' });
+        await cx.request(acp.methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text: 'go' }] });
+        expect(seen.permissions).toEqual([]);
+      },
+      { approveAll: true },
+    );
+    expect(decisions).toEqual(['approve']);
+  });
+
+  it('stops running prompts and returns when its signal aborts', async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { agent } = fakeAgent('claude', [
+      async () => {
+        started();
+        await new Promise(() => {});
+      },
+    ]);
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const controller = new AbortController();
+    const served = serveAcp({ agents: [agent], version: '1', input, output, signal: controller.signal });
+    const send = (message: object) => input.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+    const replies: Array<{ id?: number; result?: { sessionId?: string } }> = [];
+    output.on('data', (chunk: Buffer) =>
+      chunk
+        .toString()
+        .split('\n')
+        .filter(Boolean)
+        .forEach((line) => replies.push(JSON.parse(line))),
+    );
+    send({ id: 1, method: 'session/new', params: { cwd: '/tmp', mcpServers: [] } });
+    await expect.poll(() => replies.find((reply) => reply.id === 1)).toBeTruthy();
+    const sessionId = replies.find((reply) => reply.id === 1)!.result!.sessionId;
+    send({ id: 2, method: 'session/prompt', params: { sessionId, prompt: [{ type: 'text', text: 'go' }] } });
+    await running;
+    controller.abort(); // the input stays open, as with Ctrl-C
+    await served;
   });
 
   it('returns a failed run as an error', async () => {

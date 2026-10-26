@@ -3,15 +3,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { detectAgents } from '../agents/discovery.js';
 import { RpcError, RpcPeer } from '../agents/rpc.js';
-import type {
-  AgentEvent,
-  AgentResult,
-  AgentRun,
-  ApprovalPolicy,
-  ApprovalRequest,
-  CodingAgent,
-  McpServer,
-} from '../agents/types.js';
+import type { AgentEvent, AgentResult, AgentRun, ApprovalRequest, CodingAgent, McpServer } from '../agents/types.js';
 
 /**
  * `genaicode acp`: the agent side of the Agent Client Protocol (https://agentclientprotocol.com),
@@ -38,9 +30,11 @@ export interface AcpServerOptions {
   version: string;
   input: NodeJS.ReadableStream;
   output: { write(chunk: string): unknown };
+  /** Ends the connection as if the host closed it: running prompts stop. */
+  signal?: AbortSignal;
 }
 
-type Mode = Extract<ApprovalPolicy, 'ask' | 'auto-approve'>;
+type Mode = 'ask' | 'auto-approve';
 
 interface Session {
   id: string;
@@ -177,8 +171,10 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
       resume: session.agentSessionId,
       env,
       ...(session.mcpServers.length > 0 ? { mcpServers: session.mcpServers } : {}),
-      permissions: { approval: session.mode },
-      onApproval: (request, signal) => askHost(session.id, request, signal),
+      // Approvals are decided here, as in `genaicode chat`: not every driver takes
+      // `permissions.approval`, but every one that asks goes through onApproval.
+      onApproval: (request, signal) =>
+        session.mode === 'auto-approve' ? 'approve' : askHost(session.id, request, signal),
     });
     session.run = run;
     let result: AgentResult;
@@ -278,6 +274,9 @@ export async function serveAcp(options: AcpServerOptions): Promise<void> {
   }
 
   const lines = createInterface({ input: options.input, crlfDelay: Infinity });
+  // Closing the interface ends the loop below even when the input itself never ends.
+  if (options.signal?.aborted) lines.close();
+  options.signal?.addEventListener('abort', () => lines.close(), { once: true });
   for await (const line of lines) {
     if (line.trim() === '') continue;
     let message: unknown;

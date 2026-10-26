@@ -184,8 +184,6 @@ async function runAcp(
     return EXIT_USAGE;
   }
   const input = cli.input ?? process.stdin;
-  // Ctrl-C ends the connection like the host closing it: running prompts stop.
-  cli.signal?.addEventListener('abort', () => (input as NodeJS.ReadableStream & { destroy?(): void }).destroy?.());
   await serveAcp({
     agents,
     agent: options.agent,
@@ -196,6 +194,8 @@ async function runAcp(
     version: packageVersion(),
     input,
     output: cli.stdout,
+    // Ctrl-C ends the connection like the host closing it: running prompts stop.
+    signal: cli.signal,
   });
   return EXIT_OK;
 }
