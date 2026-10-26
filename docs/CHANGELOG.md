@@ -9,6 +9,10 @@
   the installed agent CLIs: sessions with MCP servers, streamed text and tool calls, permission
   requests, cancel, and config options for the agent, its effort and approvals. See
   [embedding.md](embedding.md#any-language-the-agent-client-protocol).
+- `genaicode embed` (and its skill) also covers desktop apps, game engine editors and apps in
+  other languages through `genaicode acp`, and can let the agent drive the running app (play
+  the game) through observe / take control / act / release tools. A Godot example lives in
+  `docs/examples/godot`.
 - `autoApprove` in `createAppAgent` answers the agent CLI's own permission prompts the app
   decides itself (e.g. its auto-approve setting); the rest still wait for the user.
 - An `AppTool` may return `{ text, images }`: the images (e.g. a screenshot of the app)

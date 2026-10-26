@@ -1,6 +1,6 @@
 ---
 name: genaicode-embed
-description: Embed genaicode in a project so its developers chat with their own coding agent (Claude Code, Codex, Copilot...) from inside the running app. Use when asked to add genaicode, its Vite overlay, a dev agent panel, or an in-app agent drawer (genaicode/app-agent) to a project, with or without Vite.
+description: Embed genaicode in a project so its developers chat with their own coding agent (Claude Code, Codex, Copilot...) from inside the running app, and optionally let the agent use the app itself (play a game, click through a flow). Use when asked to add genaicode, its Vite overlay, a dev agent panel, an in-app agent drawer (genaicode/app-agent), or an agent panel in a desktop app, a game engine editor (Godot, Unity...) or a non-JavaScript app (genaicode acp).
 ---
 
 # Embed genaicode in this project
@@ -10,9 +10,9 @@ already has installed (Claude Code, Codex, Copilot CLI, Cursor, Gemini, opencode
 one API. Your job is to wire it into the project in the current directory so the
 project's developers can talk to their agent from inside the running app.
 
-There are four ways in, plus a last resort. Pick by what the project is, not by what is
+There are five ways in, plus a last resort. Pick by what the project is, not by what is
 more impressive. Always end with a working way in: "it doesn't fit" is not a result while
-the project has HTML pages a browser can open.
+the project has HTML pages a browser can open or a UI you can add a panel to.
 
 1. **Vite dev overlay** (`genaicode/vite`): for any app built with Vite. One plugin line;
    in `vite dev` the page gets a wolf button that opens a chat with the agent working in
@@ -34,9 +34,21 @@ the project has HTML pages a browser can open.
    serves those files on localhost with the overlay from option 2 injected into the HTML
    it serves, and an npm script to start it. The files on disk and the build output stay
    untouched, so size budgets and release builds are not affected.
-5. **Last resort**: no Node at all in the project and no HTML to serve (a Rails, Django or
-   Go app whose server you cannot change safely): tell the user to run `npx genaicode ui`
-   (browser) or `npx genaicode` (terminal) next to their dev server, and say why.
+5. **Desktop app, game engine or another language** (`genaicode acp`): Electron, Tauri,
+   .NET, Qt, a Godot or Unity editor plugin, a Python or Go tool. The app starts
+   `npx genaicode acp` as a child process and talks the Agent Client Protocol (JSON-RPC on
+   stdin/stdout) to it: a whole conversation with streaming, tool calls, permission questions
+   and agent/effort pickers, from any language. Electron can also use `genaicode/ui` in its
+   main process directly.
+6. **Last resort**: nothing you can add a panel to (a Rails, Django or Go web app whose
+   server you cannot change safely): tell the user to run `npx genaicode ui` (browser) or
+   `npx genaicode` (terminal) next to their dev server, and say why.
+
+Any of these can also **let the agent drive the app**: the app serves a few MCP tools
+(observe, take control, act, release control) and the agent uses the running app the way a
+person does, e.g. plays the game to test a change, reproduces a bug, walks through a flow.
+Offer it when the app is a game or anything interactive; add it when the user asks for it.
+See "Recipe: let the agent drive the app".
 
 The agent CLI always runs on the machine that runs the server, with that machine's
 login and files. Options 1, 2 and 4 exist only in development. The in-app agent is for apps
@@ -62,7 +74,11 @@ allow, batch what must run into few commands, and do not run the dev server just
      is an internal tool with a Node server and a React UI: option 3, alone or next to
      option 1 or 2.
    - Pages but no dev server: option 4.
-   - Otherwise: option 5. Say why.
+   - A desktop app, a game engine project (`project.godot`, a Unity `Assets/` folder...),
+     or an app in another language with its own UI: option 5.
+   - The user wants the agent to play the game or click through the app: add the tools from
+     "Recipe: let the agent drive the app" to whichever option you chose.
+   - Otherwise: option 6. Say why.
    - If genaicode is already wired in, extend or fix what is there instead of adding a
      second copy.
 3. **Install** `genaicode` as a dev dependency for options 1, 2 and 4, as a regular
@@ -71,12 +87,15 @@ allow, batch what must run into few commands, and do not run the dev server just
    `bun.lockb`/`bun.lock` bun). If you may not run the install, add the dependency to
    `package.json` with the version from your task and tell the user to run it. genaicode
    needs Node 20+ and declares no React peer: the app brings React 18+ for
-   `genaicode/react`.
+   `genaicode/react`. Option 5 outside Node installs nothing in the project: the app runs
+   `npx -y genaicode@<version> acp` (the version from your task) and needs Node 20+ on the
+   developer's machine.
 4. **Wire it in** (recipes below), matching the project's style: TypeScript or
    JavaScript, ESM or CJS, its formatter, its folder layout.
 5. **Check it**: run the project's type check, lint and tests if it has them, and a
    production build. For options 1, 2 and 4 the production output must not contain
-   genaicode. Fix what you broke; do not "fix" unrelated failures. Remove build output
+   genaicode; for option 5 and the drive-the-app tools, release builds must not start
+   `genaicode acp` or serve the tools. Fix what you broke; do not "fix" unrelated failures. Remove build output
    you created that the project does not track.
 6. **Report**, starting with how to see it, before anything else: one line with the exact
    command to run and what happens next, e.g. "Run `npm run agent`: the game opens in your
@@ -238,6 +257,56 @@ createServer(async (req, res) => {
 - A page that reloads itself on change (a watch build) is the developer's own; do not
   add a live-reload system for this.
 
+## Recipe: desktop, game engines, other languages (`genaicode acp`)
+
+`genaicode acp` is a coding agent for the [Agent Client Protocol](https://agentclientprotocol.com)
+(v1): newline-delimited JSON-RPC 2.0 on stdin/stdout. Zed and other ACP editors can use it as
+is. In an app you write a small client:
+
+1. Start `npx -y genaicode@<version> acp` (flags: `-a <agent>`, `-m <model>`, `--effort`,
+   `-y` to skip permission prompts, only if asked) with the project as working directory.
+   On Windows run it through `cmd.exe /c`. Read stdout without blocking the UI thread.
+2. Send `initialize` `{protocolVersion: 1}`, then `session/new`
+   `{cwd, mcpServers: [...]}`. Its result has `sessionId` and `configOptions` (agent, effort,
+   approval mode): show them as pickers, change them with `session/set_config_option`.
+3. Send `session/prompt` `{sessionId, prompt: [{type: 'text', text}]}`. While it runs,
+   `session/update` notifications stream `agent_message_chunk` text, `tool_call` and
+   `tool_call_update`; render them in the panel. The result has `stopReason`.
+4. Answer `session/request_permission` requests (Allow / Reject in the panel) with
+   `{outcome: {outcome: 'selected', optionId}}`; several can be open at once. Stop sends the
+   `session/cancel` notification.
+5. After a prompt, refresh what the host shows from disk (the agent edited files).
+
+Put the panel where the host's developers work: an editor dock (Godot `EditorPlugin`, Unity
+`EditorWindow`), a side window, a dev-only menu entry. Keep it out of release builds.
+A complete GDScript client and editor dock: https://github.com/gtanczyk/genaicode/blob/master/docs/examples/godot
+Electron: `startEmbeddedWeb` from `genaicode/ui` in the main process shows the bundled chat in
+a `BrowserWindow` without any protocol code.
+
+## Recipe: let the agent drive the app
+
+In the running app (development builds only), serve four MCP tools on 127.0.0.1 and pass that
+server to the agent: `mcpServers` in `session/new` for ACP, `tools` of `createAppAgent` for the
+in-app agent, `task.mcpServers` elsewhere.
+
+- `game_observe` (or `app_observe`): the state as JSON plus a small screenshot (a few hundred
+  pixels wide) as an MCP image.
+- `game_take_control`: the agent takes over. The app shows "Agent controls this game" with a
+  Take back control button, and pauses between the agent's moves if it can.
+- `game_act`: press keys or click, run a bounded number of frames (clamp, e.g. 1-120, in code,
+  not only in the schema), return the new state. Fails until control is taken, and when the
+  user took control back. One act at a time.
+- `game_release_control`: give the controls back. Also release when the agent's turn ends
+  or its client disconnects.
+
+Listen on 127.0.0.1 only and refuse browser requests (an `Origin` header, a `Host` that is not
+localhost) so a web page cannot drive the app. These tools are not writes, so they need no
+approval card. Details and a TypeScript version: "The agent drives the app (a game)" in
+https://github.com/gtanczyk/genaicode/blob/master/docs/app-agent.md; a GDScript server:
+https://github.com/gtanczyk/genaicode/blob/master/docs/examples/godot/addons/genaicode/game_mcp.gd.
+When you add this, the report says how to try it, e.g. "run the game, then ask the agent:
+Play the game: take control and collect 3 stars."
+
 ## Recipe: in-app agent
 
 Server side, wherever the Node server is created:
@@ -319,4 +388,5 @@ import 'genaicode/react/styles.css';
 - Do not turn on `approveAll` or the agents' "yolo" modes unless the user asks.
 - These recipes are starting points, not templates to paste: adapt them to what the
   project already does. If something does not fit, say what and why instead of forcing it.
-- Docs: https://github.com/gtanczyk/genaicode#readme
+- Docs: https://github.com/gtanczyk/genaicode#readme, outside the web:
+  https://github.com/gtanczyk/genaicode/blob/master/docs/embedding.md

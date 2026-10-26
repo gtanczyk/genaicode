@@ -90,8 +90,12 @@ instructions on how to embed genaicode, and the agent reads the project and pick
 in: the [Vite overlay](vite.md) for an app on Vite; for any other Node dev server (webpack,
 Next.js, Express...) the same overlay through `createDevOverlay` from `genaicode/ui`; for
 pages with no dev server at all, a small dev-only server of its own with that overlay; the in-app agent (`genaicode/app-agent` with
-`<AppAgentChat>`) when the agent should act on the app itself; and `npx genaicode ui` next
-to the dev server when there is no Node process to host it. Words after `embed` go to the
+`<AppAgentChat>`) when the agent should act on the app's data; a panel over `genaicode acp`
+for a desktop app, a game engine editor (Godot, Unity...) or an app in another language; and
+`npx genaicode ui` next to the dev server when there is nothing to add a panel to. Any of
+them can also let the agent drive the running app (play the game, click through a flow)
+through observe / take control / act / release tools ([embedding.md](embedding.md#let-the-agent-act-on-the-app)).
+Words after `embed` go to the
 agent as your request. You watch and answer in the same chat as `genaicode chat` (`--ui`
 for the browser); without a terminal it runs headless like `run`. The agent installs the
 package, edits the config, runs your checks and reports; it does not commit.
