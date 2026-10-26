@@ -16,6 +16,7 @@ const KEYS := {"left": "ui_left", "right": "ui_right", "up": "ui_up", "down": "u
 var _server := TCPServer.new()
 var _clients: Array[Dictionary] = []
 var _controlled := false
+var _acting := false
 var _last_request := 0
 var _banner: CanvasLayer
 
@@ -181,6 +182,9 @@ func _call(name: String, args: Dictionary) -> Dictionary:
 		"game_act":
 			if not _controlled:
 				return _text("Call game_take_control first.", true)
+			# One move at a time, even when calls arrive on several connections.
+			if _acting:
+				return _text("Another game_act is still running. Wait for it, then act again.", true)
 			var actions: Array[String] = []
 			for key in args.get("keys", []):
 				if not KEYS.has(str(key)):
@@ -188,6 +192,7 @@ func _call(name: String, args: Dictionary) -> Dictionary:
 				actions.append(KEYS[str(key)])
 			# The schema is only a hint to the agent; the bound is enforced here.
 			var frames := clampi(int(args.get("frames", 10)), 1, MAX_FRAMES)
+			_acting = true
 			get_tree().paused = false
 			for action in actions:
 				Input.action_press(action)
@@ -197,6 +202,7 @@ func _call(name: String, args: Dictionary) -> Dictionary:
 					break
 			for action in actions:
 				Input.action_release(action)
+			_acting = false
 			if not _controlled:
 				return _text("The player took back control.", true)
 			get_tree().paused = true
@@ -208,7 +214,6 @@ func _observe() -> Dictionary:
 	var content: Array = [{"type": "text", "text": JSON.stringify(_state())}]
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
-	print("observe image: ", image, " ", image.get_size() if image else null)
 	if image and not image.is_empty():
 		image.resize(320, int(320.0 * image.get_height() / image.get_width()))
 		content.append({"type": "image", "mimeType": "image/png", "data": Marshalls.raw_to_base64(image.save_png_to_buffer())})
