@@ -102,6 +102,10 @@ A complete exchange, one JSON object per line (`>` sent by the host, `<` by gena
 < {"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}
 ```
 
+[examples/godot](examples/godot/README.md) is a complete host: a Godot editor dock that chats
+with the agent over ACP in GDScript, and a game that serves its own MCP tools so the agent can
+play it.
+
 With an agent that cannot resume (gemini, antigravity) each prompt starts a fresh agent session.
 A session with MCP servers offers only the agents that can attach them (claude, codex, copilot).
 Not supported yet: `session/load` and `session/resume` (sessions live as long as the process),
@@ -152,6 +156,10 @@ const web = await startEmbeddedWeb({
   task: { mcpServers: [{ name: 'game', url: 'http://127.0.0.1:7777/mcp' }] },
 });
 ```
+
+The [Godot example](examples/godot/README.md) does this from GDScript: the running game serves
+`game_observe`, `game_take_control`, `game_act` and `game_release_control` on 127.0.0.1, and the
+editor dock passes that server to `genaicode acp` in `session/new`.
 
 The agent's CLI may ask before it calls a tool of a new server; answer in the chat, or allow the
 server in the agent's own settings. Keep each action short and bounded, and show in the app when
