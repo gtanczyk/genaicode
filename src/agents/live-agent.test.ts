@@ -68,6 +68,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.method === 'initialize') return send({ id: msg.id, result: {} });
   if (msg.method === 'thread/start') { started = msg.params; return send({ id: msg.id, result: { thread: { id: 'th-1' } } }); }
   if (msg.method === 'session/start') { started = msg.params; return send({ id: msg.id, result: { session: { sessionId: 'se-1' } } }); }
+  if (msg.method === 'session/resume') { started = { resumed: msg.params.sessionId, excludeItems: msg.params.excludeItems }; return send({ id: msg.id, result: { session: { sessionId: 'se-1' }, history: { mode: 'none' }, pendingRequests: [] } }); }
   if (msg.method === 'turn/start') {
     send({ id: msg.id, result: codex ? { turn: { id: 'tu-1' } } : { turnId: 'tu-1' } });
     // Another thread's completion must not end this task.
@@ -93,7 +94,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       send({ id: 99, method: 'approval/request', params: museApproval });
       return;
     }
-    if (mode === 'basic') finishTurn('started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
+    if (mode === 'basic') finishTurn(started.resumed ? 'resumed ' + started.resumed + ' excludeItems:' + started.excludeItems : 'started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
     if (mode === 'policy') finishTurn(JSON.stringify({ approvalPolicy: started.approvalPolicy, approvalMode: started.approvalMode, sandbox: started.sandbox }));
     return;
   }
@@ -240,6 +241,13 @@ describe('museLive', () => {
       if (event.type === 'tool-start') void run.steer!('more');
     });
     expect(await run.result).toMatchObject({ ok: true, sessionId: 'se-1', text: 'steered:more' });
+  });
+
+  it('resumes a saved session with session/resume instead of starting one', async () => {
+    const run = museLive({ command: museBin }).run({ prompt: 'go', cwd: dir, env: env('basic'), resume: 'se-0' });
+    expect(await run.result).toMatchObject({ ok: true, text: 'resumed se-0 excludeItems:true' });
+    const fresh = await museLive({ command: museBin }).run({ prompt: 'go', cwd: dir, env: env('basic') }).result;
+    expect(fresh.text).toBe('started with "onRequest"');
   });
 
   it('routes approvals to onApproval and decides through approval/decide', async () => {

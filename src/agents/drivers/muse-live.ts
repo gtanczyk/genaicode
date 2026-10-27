@@ -2,9 +2,10 @@ import { liveAgent, uuidv7, type LiveSession } from '../live-agent.js';
 import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
 import type { AgentOutcome } from '../runtime.js';
-import type { AgentEvent, CodingAgent } from '../types.js';
+import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
 import { museApprovals } from './muse-approvals.js';
 import { isObject, stringField } from './json.js';
+import { withMuseMcp } from './muse-mcp.js';
 
 export interface MuseLiveOptions {
   /** Executable name or path. Default `muse`. */
@@ -32,15 +33,21 @@ export function museLive(options: MuseLiveOptions = {}): CodingAgent {
     capabilities: {
       effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       approvals: true,
+      mcp: true,
+      resume: true,
       permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['unrestricted'] },
     },
-    args: (task) => [
-      'serve',
-      ...((options.trustWorkspace ?? true) ? ['--trust-workspace'] : []),
-      ...(task.extraArgs ?? []),
-    ],
+    args: (task) => serveArgs(task, options),
+    prepare: (task) => {
+      const args = serveArgs(task, options);
+      return withMuseMcp(task, args.slice(0, 1), args.slice(1));
+    },
     drive: (session) => driveMuse(session, options),
   });
+}
+
+function serveArgs(task: AgentTask, options: MuseLiveOptions): string[] {
+  return ['serve', ...((options.trustWorkspace ?? true) ? ['--trust-workspace'] : []), ...(task.extraArgs ?? [])];
 }
 
 async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promise<AgentOutcome> {
@@ -85,16 +92,19 @@ async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promis
   );
   rpc.notify('initialized');
 
-  const created = await rpc.request(
-    'session/start',
-    {
-      commandId: uuidv7(),
-      workspaceRoot: task.cwd,
-      ...(task.model ? { modelId: task.model } : {}),
-      approvalMode: resolvePermissions(task.permissions).approval === 'deny' ? 'denyUnmatched' : 'onRequest',
-    },
-    timeout,
-  );
+  // `task.resume` picks up a saved session (its conversation and settings) in this new process.
+  const created = task.resume
+    ? await rpc.request('session/resume', { commandId: uuidv7(), sessionId: task.resume, excludeItems: true }, timeout)
+    : await rpc.request(
+        'session/start',
+        {
+          commandId: uuidv7(),
+          workspaceRoot: task.cwd,
+          ...(task.model ? { modelId: task.model } : {}),
+          approvalMode: resolvePermissions(task.permissions).approval === 'deny' ? 'denyUnmatched' : 'onRequest',
+        },
+        timeout,
+      );
   const sessionId = stringField(isObject(created) ? created.session : undefined, 'sessionId');
   ids.session = sessionId;
   if (!sessionId) throw new Error('Muse did not return a session id.');

@@ -1,6 +1,7 @@
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
 import { isObject, stringField } from './json.js';
+import { withMuseMcp } from './muse-mcp.js';
 
 export interface MuseAgentOptions {
   /** Executable name or path. Default `muse`. */
@@ -14,8 +15,12 @@ export function muse(options: MuseAgentOptions = {}): CodingAgent {
   return cliAgent({
     name: 'muse',
     command: options.command ?? 'muse',
-    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], maxTurns: true },
+    capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], maxTurns: true, mcp: true },
     args: (task) => museArgs(task, options),
+    prepare: (task) => {
+      const args = museArgs(task, options);
+      return withMuseMcp(task, args.slice(0, 1), args.slice(1));
+    },
     createParser: createMuseParser,
   });
 }

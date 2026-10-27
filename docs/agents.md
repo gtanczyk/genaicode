@@ -28,18 +28,18 @@ for await (const event of run) {
 const result = await run.result; // { status, ok, text, sessionId, usage, error, ... }
 ```
 
-| Agent            | Driver                        | Extras                                       |
-| ---------------- | ----------------------------- | -------------------------------------------- |
-| Claude Code      | `claude()`                    | `steer()`, MCP, approvals, max turns, effort |
-| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals      |
-| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns        |
-| Cursor           | `cursor()`                    | streamed text deltas                         |
-| Gemini CLI       | `gemini()`                    | approval mode                                |
-| opencode         | `opencode()`                  | `provider/model` ids, variants               |
-| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price          |
-| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                       |
-| Muse             | `muse()`, `museLive()`        | max turns; live: `steer()`, approvals        |
-| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent   |
+| Agent            | Driver                        | Extras                                             |
+| ---------------- | ----------------------------- | -------------------------------------------------- |
+| Claude Code      | `claude()`                    | `steer()`, MCP, approvals, max turns, effort       |
+| Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals            |
+| GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns              |
+| Cursor           | `cursor()`                    | streamed text deltas                               |
+| Gemini CLI       | `gemini()`                    | approval mode                                      |
+| opencode         | `opencode()`                  | `provider/model` ids, variants                     |
+| Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price                |
+| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                             |
+| Muse             | `muse()`, `museLive()`        | MCP servers, max turns; live: `steer()`, approvals |
+| Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent         |
 
 On top of the drivers:
 
@@ -136,7 +136,7 @@ const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
 const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
 ```
 
-`claude`, `codex`, `cursor`, `opencode` and `copilot` support it (`capabilities.resume`).
+`claude`, `codex`, `cursor`, `opencode`, `copilot` and `museLive` support it (`capabilities.resume`).
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
 ## Chat sessions
@@ -342,7 +342,7 @@ protocol and resolves with `{ ok, error? }` when the turn ends.
 ## MCP servers
 
 `task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
-(`claude`, `codex`, `codexLive`, `copilot`):
+(`claude`, `codex`, `codexLive`, `copilot`, `muse`, `museLive`):
 
 ```ts
 await claude().run({
@@ -367,6 +367,12 @@ await claude().run({
   the run), added to the user's own MCP config. `--allow-all-tools` already covers the
   servers' tools; with `allowAllTools: false` each server is pre-allowed with
   `--allow-tool=<name>` unless `allowMcpTools: false`.
+- Muse Code (`muse exec`, `muse serve`) gets repeatable `-c mcp_servers.<name>.*` overrides
+  (`transport` `streamable_http` or `stdio`, `url`, `command`, `args`). Header values and a
+  stdio server's `env` values go through environment variables that the overrides name as a
+  whole-value `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code
+  1.4.4 or newer (checked with 1.4.13). Under `museLive()` with `permissions.approval: 'ask'`
+  every MCP tool call is an approval request: answer it in `onApproval`.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 
