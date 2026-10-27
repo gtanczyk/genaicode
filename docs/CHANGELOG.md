@@ -13,6 +13,8 @@
 mcp_servers.<name>.*` overrides for that run, with header and env values passed as `${VAR}`
   references to environment variables, never in argv. `genaicode chat --mcp` and `ui --mcp` now
   offer Muse too.
+- `museLive()` honors `task.resume`: it continues a saved Muse session with `session/resume`
+  in a fresh `muse serve`, so a conversation can span several tasks.
 - `--mcp name=url` for `genaicode chat` and `genaicode ui`: an MCP server (streamable HTTP)
   the agent gets with every prompt. Only MCP-capable agents are offered then.
 - The Godot example's dock has a button that opens the full browser chat (`genaicode ui`)

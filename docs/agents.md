@@ -136,7 +136,7 @@ const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
 const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
 ```
 
-`claude`, `codex`, `cursor`, `opencode` and `copilot` support it (`capabilities.resume`).
+`claude`, `codex`, `cursor`, `opencode`, `copilot` and `museLive` support it (`capabilities.resume`).
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
 ## Chat sessions
@@ -369,8 +369,10 @@ await claude().run({
   `--allow-tool=<name>` unless `allowMcpTools: false`.
 - Muse Code (`muse exec`, `muse serve`) gets repeatable `-c mcp_servers.<name>.*` overrides
   (`transport` `streamable_http` or `stdio`, `url`, `command`, `args`). Header values and a
-  stdio server's `env` values go through environment variables that the overrides name as
-  `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code 1.4.4 or newer.
+  stdio server's `env` values go through environment variables that the overrides name as a
+  whole-value `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code
+  1.4.4 or newer (checked with 1.4.13). Under `museLive()` with `permissions.approval: 'ask'`
+  every MCP tool call is an approval request: answer it in `onApproval`.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 

@@ -34,6 +34,7 @@ export function museLive(options: MuseLiveOptions = {}): CodingAgent {
       effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       approvals: true,
       mcp: true,
+      resume: true,
       permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['unrestricted'] },
     },
     args: (task) => serveArgs(task, options),
@@ -91,16 +92,19 @@ async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promis
   );
   rpc.notify('initialized');
 
-  const created = await rpc.request(
-    'session/start',
-    {
-      commandId: uuidv7(),
-      workspaceRoot: task.cwd,
-      ...(task.model ? { modelId: task.model } : {}),
-      approvalMode: resolvePermissions(task.permissions).approval === 'deny' ? 'denyUnmatched' : 'onRequest',
-    },
-    timeout,
-  );
+  // `task.resume` picks up a saved session (its conversation and settings) in this new process.
+  const created = task.resume
+    ? await rpc.request('session/resume', { commandId: uuidv7(), sessionId: task.resume, excludeItems: true }, timeout)
+    : await rpc.request(
+        'session/start',
+        {
+          commandId: uuidv7(),
+          workspaceRoot: task.cwd,
+          ...(task.model ? { modelId: task.model } : {}),
+          approvalMode: resolvePermissions(task.permissions).approval === 'deny' ? 'denyUnmatched' : 'onRequest',
+        },
+        timeout,
+      );
   const sessionId = stringField(isObject(created) ? created.session : undefined, 'sessionId');
   ids.session = sessionId;
   if (!sessionId) throw new Error('Muse did not return a session id.');
