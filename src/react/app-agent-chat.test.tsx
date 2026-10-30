@@ -314,6 +314,25 @@ describe('AppAgentChat', () => {
     expect(button('New').disabled).toBe(false);
   });
 
+  it('dismisses a settled card but not a pending one', async () => {
+    const events = mount();
+    const failed = {
+      id: '3',
+      kind: 'tool' as const,
+      summary: 'Retry j3',
+      tool: { name: 'retry_job', args: {} },
+      status: 'failed' as const,
+      result: 'HTTP 500',
+      createdAt: t0,
+    };
+    events.emit(appState({ actions: [{ ...failed, id: '4', status: 'pending' as const }, failed] }));
+    const dismiss = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss"]'));
+    expect(dismiss).toHaveLength(1);
+    act(() => dismiss[0]!.click());
+    await flush();
+    expect(calls).toContainEqual({ url: '/api/agent/actions/3', body: { decision: 'dismiss' } });
+  });
+
   it('opens the event stream at the URL the host gives', () => {
     FakeEventSource.last = null;
     function Host() {

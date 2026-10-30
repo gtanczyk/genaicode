@@ -696,6 +696,26 @@
   gap: 8px;
   align-items: baseline;
 }
+.gc-app-action-tags {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.gc-app-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--_muted);
+  font-size: 1.2em;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.gc-app-dismiss:hover {
+  color: var(--_text);
+  background: var(--_code-bg);
+}
 .gc-app-action code,
 .gc-app-action pre {
   font-family: var(--_mono);

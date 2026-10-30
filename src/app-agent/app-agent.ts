@@ -145,7 +145,8 @@ export interface AppAgent {
   configure(change: { agent?: string; mode?: AppAgentMode }): void;
   /** The app reports which page is open. */
   setView(path: string): void;
-  decide(id: string, decision: 'approve' | 'reject'): void;
+  /** Approve or reject a pending action; `dismiss` drops a settled card from the list. */
+  decide(id: string, decision: 'approve' | 'reject' | 'dismiss'): void;
   /** Answer a permission prompt of the agent CLI itself (`session.approvals`). */
   approve(id: string, decision: ApprovalDecision): void;
   /** The diff a proposed commit would land. */
@@ -757,6 +758,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       if (closed) throw new AppAgentError('the agent is closed', 409);
       const action = actions.find((candidate) => candidate.id === id);
       if (!action) throw new AppAgentError('no such action', 404);
+      if (decision === 'dismiss') {
+        if (action.status === 'pending' || action.status === 'running') {
+          throw new AppAgentError(`action is ${action.status}`, 409);
+        }
+        actions = actions.filter((candidate) => candidate.id !== id);
+        changed();
+        return;
+      }
       if (action.status !== 'pending') throw new AppAgentError(`action is ${action.status}`, 409);
       if (decision === 'approve' && action.kind === 'commit') {
         const active = runningTurn();

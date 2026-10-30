@@ -188,6 +188,13 @@ describe('createAppAgent', () => {
     );
 
     expect((await post(base, '/actions/1', { decision: 'reject' })).status).toBe(409);
+
+    // A settled card can be dismissed; the agent hears nothing more.
+    const prompts = agent.get().session!.turns.length;
+    expect((await post(base, '/actions/1', { decision: 'dismiss' })).status).toBe(200);
+    expect(agent.get().actions).toEqual([]);
+    expect(agent.get().session!.turns).toHaveLength(prompts);
+    expect((await post(base, '/actions/1', { decision: 'dismiss' })).status).toBe(404);
   });
 
   it('delivers an action outcome ahead of prompts queued behind the running turn', async () => {

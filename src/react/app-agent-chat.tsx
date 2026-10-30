@@ -27,7 +27,7 @@ export interface AppAgentClient {
   configure(change: { agent?: string; mode?: AppAgentMode }): void;
   /** Tell the agent which page is open. */
   view(path: string): void;
-  decide(id: string, decision: 'approve' | 'reject'): void;
+  decide(id: string, decision: 'approve' | 'reject' | 'dismiss'): void;
   approve(id: string, decision: ApprovalDecision): void;
   changes(id: string): Promise<TreeChanges>;
 }
@@ -357,7 +357,20 @@ function ActionCard({
     <div className={`gc-app-action gc-${action.status}`}>
       <div className="gc-app-action-head">
         <strong>{action.summary}</strong>
-        <span className="gc-chip">{action.kind === 'commit' ? 'commit' : action.status}</span>
+        <span className="gc-app-action-tags">
+          <span className="gc-chip">{action.kind === 'commit' ? 'commit' : action.status}</span>
+          {action.status !== 'pending' && action.status !== 'running' && (
+            <button
+              type="button"
+              className="gc-app-dismiss"
+              aria-label="Dismiss"
+              title="Dismiss"
+              onClick={() => client.decide(action.id, 'dismiss')}
+            >
+              ×
+            </button>
+          )}
+        </span>
       </div>
       {what}
       {changes && (

@@ -36,7 +36,7 @@ const MAX_BODY = 256 * 1024;
  *
  * - `GET  /state`, `GET /events` (server-sent `AppAgentState` snapshots)
  * - `POST /send {text}`, `/stop`, `/reset`, `/config {agent?, mode?}`, `/view {path}`
- * - `POST /actions/:id {decision: 'approve' | 'reject'}`, `GET /actions/:id/changes`
+ * - `POST /actions/:id {decision: 'approve' | 'reject' | 'dismiss'}`, `GET /actions/:id/changes`
  * - `POST /approvals/:id {decision: 'approve' | 'deny'}`: the agent CLI's own permission prompts
  * - `POST /mcp`: the agent's MCP endpoint (bearer `agent.mcpToken`; browser requests refused)
  *
@@ -130,8 +130,8 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
           const action = /^\/actions\/([^/]+)$/.exec(route);
           const decision = field('decision');
           if (!action) return json(res, 404, { error: 'not found' });
-          if (decision !== 'approve' && decision !== 'reject') {
-            return json(res, 400, { error: 'decision must be approve or reject' });
+          if (decision !== 'approve' && decision !== 'reject' && decision !== 'dismiss') {
+            return json(res, 400, { error: 'decision must be approve, reject or dismiss' });
           }
           agent.decide(decodeURIComponent(action[1]!), decision);
         }
