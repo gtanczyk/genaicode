@@ -27,3 +27,21 @@ scripts in `package.json`.
 - `engines` asks for Node `>=20`; CI runs Node 22.
 - `npm run format` runs `prettier --write .`; there is no pre-commit hook, so run it before
   committing.
+
+## Changelog and releases
+
+`CHANGELOG.md` is the release source of truth; nobody runs `npm version` by hand.
+
+- A PR that changes `src/` (tests excluded) adds one line under `## Unreleased`, or the
+  Changelog guard in `lint.yaml` fails. Write it for someone upgrading `genaicode`, present tense,
+  ending with the PR number: `- \`genaicode run\` resumes a Muse Code session (#149)`.
+- The category decides the bump: `### Breaking` major, `### Added` minor, `### Fixed` patch,
+  `### Internal` (refactors, tooling, nothing a user notices) no release. The highest one present wins.
+- `release-pr.yaml` runs `scripts/release.mjs cut` on every master push that moves `CHANGELOG.md`
+  and keeps one PR, **`release: vX.Y.Z`** on branch `release/next`, up to date. Merging it is the
+  cutoff: `publish.yaml` sees `package.json` change, publishes to npm (trusted publishing,
+  provenance) and creates the `vX.Y.Z` tag and GitHub Release with that section as notes.
+- Hold a release by leaving the PR open. Set the repository variable `RELEASE_AUTOMERGE=true` to
+  merge it automatically, and secret `RELEASE_TOKEN` (a PAT) if CI must run on the release PR. A
+  version npm already holds (the accidental 3.0.0) is stepped past by patch.
+  `node scripts/release.mjs next | notes X.Y.Z | check` work locally.
