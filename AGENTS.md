@@ -42,4 +42,6 @@ scripts in `package.json`.
   cutoff: `publish.yaml` sees `package.json` change, publishes to npm (trusted publishing,
   provenance) and creates the `vX.Y.Z` tag and GitHub Release with that section as notes.
 - Hold a release by leaving the PR open. Set the repository variable `RELEASE_AUTOMERGE=true` to
-  merge it automatically. `node scripts/release.mjs next | notes X.Y.Z | check` work locally.
+  merge it automatically, and secret `RELEASE_TOKEN` (a PAT) if CI must run on the release PR. A
+  version npm already holds (the accidental 3.0.0) is stepped past by patch.
+  `node scripts/release.mjs next | notes X.Y.Z | check` work locally.

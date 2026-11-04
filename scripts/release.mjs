@@ -158,7 +158,27 @@ function baseChangelog(ref) {
 function computeNext() {
   const parsed = parse(read(CHANGELOG));
   if (parsed.errors.length) throw new Error(`${CHANGELOG}: ${parsed.errors.join('; ')}`);
-  return nextVersion(packageVersion(), unreleased(parsed));
+  const version = nextVersion(packageVersion(), unreleased(parsed));
+  // A number npm already holds (an accidental publish, an unpublished one) can never be published again:
+  // step past it by patch, so the release PR always proposes a version that will publish.
+  const used = taken();
+  let next = version;
+  while (next && used.has(next)) next = next.replace(/\d+$/, (n) => String(Number(n) + 1));
+  return next;
+}
+
+function taken() {
+  try {
+    const name = JSON.parse(read('package.json')).name;
+    const out = execFileSync('npm', ['view', name, 'versions', '--json'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return new Set([JSON.parse(out)].flat());
+  } catch {
+    return new Set();
+  }
 }
 
 function check(files, base) {

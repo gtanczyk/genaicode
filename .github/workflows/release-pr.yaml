@@ -5,9 +5,10 @@ name: Release PR
 # Merging that PR is the cutoff: it lands the bumped package.json on master, and publish.yaml
 # publishes. Nothing to release (only Internal lines, or none) means no PR.
 #
-# Repository variable RELEASE_AUTOMERGE=true merges the PR by itself once it is open. A merge made
-# with the workflow's own token does not start other workflows, so the publish is then started
-# here through workflow_dispatch.
+# Pushes and PRs made with the workflow's own token start no other workflows, so CI does not run on
+# the release PR. Set secret RELEASE_TOKEN (a fine-grained PAT with contents + pull-requests write)
+# when CI must run there (a required check). Repository variable RELEASE_AUTOMERGE=true merges the PR
+# by itself once it is open; the publish is then started here through workflow_dispatch.
 on:
   push:
     branches: [master]
@@ -28,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -43,7 +46,7 @@ jobs:
       - name: Close a stale release PR
         if: steps.next.outputs.version == 'none'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           set -euo pipefail
           number="$(gh pr list --head release/next --state open --json number --jq '.[0].number // empty')"
@@ -53,7 +56,7 @@ jobs:
       - name: Cut on release/next and open or update the PR
         if: steps.next.outputs.version != 'none'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           VERSION: ${{ steps.next.outputs.version }}
           AUTOMERGE: ${{ vars.RELEASE_AUTOMERGE }}
         run: |

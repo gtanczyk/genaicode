@@ -25,10 +25,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # A separate assignment, so a failed file lookup fails the step instead of passing an empty list.
+            files="$(gh pr diff "${{ github.event.pull_request.number }}" --name-only)"
             git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            node scripts/release.mjs check --base "${{ github.event.pull_request.base.sha }}" \
-              --files "$(gh pr diff "${{ github.event.pull_request.number }}" --name-only | paste -sd, -)"
+            node scripts/release.mjs check --base "${{ github.event.pull_request.base.sha }}" --files "$files"
           else
             node scripts/release.mjs check
           fi
