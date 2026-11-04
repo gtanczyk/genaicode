@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       models: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,6 +20,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # A change to src/ must add a CHANGELOG.md line (see AGENTS.md, Changelog and releases).
+      - name: Changelog guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/release.mjs check --files "$(gh pr diff "${{ github.event.pull_request.number }}" --name-only | paste -sd, -)"
+          else
+            node scripts/release.mjs check
+          fi
       - run: npm run check
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
