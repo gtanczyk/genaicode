@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { antigravityArgs } from './drivers/antigravity.js';
 import { claude, claudeArgs } from './drivers/claude.js';
 import { codexArgs } from './drivers/codex.js';
 import { copilotArgs } from './drivers/copilot.js';
@@ -16,6 +17,7 @@ describe('task.resume', () => {
     expect(cursorArgs(task).slice(-2)).toEqual(['--resume=sess-1', 'and now the tests']);
     expect(copilotArgs(task).slice(-2)).toEqual(['--resume=sess-1', '--prompt=and now the tests']);
     expect(opencodeArgs(task).slice(-4)).toEqual(['--session', 'sess-1', '--', 'and now the tests']);
+    expect(antigravityArgs(task).slice(-4)).toEqual(['--conversation', 'sess-1', '--print', 'and now the tests']);
   });
 
   it('switches codex to `exec resume` with exec flags before the subcommand', () => {
@@ -38,6 +40,7 @@ describe('task.resume', () => {
   it('leaves the arguments alone without it', () => {
     expect(claudeArgs({ prompt: 'p', cwd: '.' })).not.toContain('--resume');
     expect(codexArgs({ prompt: 'p', cwd: '.' })).not.toContain('resume');
+    expect(antigravityArgs({ prompt: 'p', cwd: '.' })).not.toContain('--conversation');
   });
 
   it('refuses drivers that cannot resume, and empty ids, before spawning', async () => {

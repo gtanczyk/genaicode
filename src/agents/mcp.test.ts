@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { antigravityMcpServers } from './drivers/antigravity.js';
 import { claude, claudeArgs, claudeMcpConfig } from './drivers/claude.js';
 import { codex, codexMcpOverrides } from './drivers/codex.js';
 import { gemini } from './drivers/gemini.js';
@@ -147,6 +148,24 @@ describe('MCP servers', () => {
     expect(report.args.join(' ')).not.toContain('secret');
     expect(report.header).toBe('Bearer secret');
     expect(report.env).toBe('1');
+  });
+
+  it('formats antigravity ACP servers for session/new and session/resume (never in argv)', () => {
+    expect(antigravityMcpServers(servers)).toEqual([
+      {
+        type: 'http',
+        name: 'docs',
+        url: 'https://mcp.example/docs',
+        headers: [{ name: 'Authorization', value: 'Bearer secret' }],
+      },
+      {
+        type: 'stdio',
+        name: 'fs',
+        command: 'mcp-fs',
+        args: ['--root', '.'],
+        env: [{ name: 'LOG', value: '1' }],
+      },
+    ]);
   });
 
   it('refuses servers a driver cannot attach, and bad names', async () => {

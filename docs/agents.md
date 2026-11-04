@@ -37,14 +37,14 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 | Gemini CLI       | `gemini()`                    | approval mode                                      |
 | opencode         | `opencode()`                  | `provider/model` ids, variants                     |
 | Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price                |
-| Antigravity CLI  | `antigravity()`               | sandbox, effort, usage                             |
+| Antigravity CLI  | `antigravity()`               | `steer()`, MCP, approvals, sandbox, effort, usage  |
 | Muse             | `muse()`, `museLive()`        | MCP servers, max turns; live: `steer()`, approvals |
 | Your own CLI/API | `cliAgent()`, `hostedAgent()` | plug in any JSON-lines CLI or hosted agent         |
 
 On top of the drivers:
 
 - **Steer a running task** with `run.steer(text)` (Claude and the live drivers), and answer permission
-  prompts with `onApproval` (Claude, live Codex and Muse).
+  prompts with `onApproval` (Claude, Antigravity, live Codex and Muse).
 - **Pick approval and sandbox policy** with `permissions: { approval, sandbox }` (or
   `'yolo'`); each driver maps it to the agent's own flags and refuses what it cannot honor.
 - **Attach MCP servers per task** with `mcpServers`. Header secrets stay out of argv.
@@ -136,7 +136,7 @@ const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
 const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
 ```
 
-`claude`, `codex`, `cursor`, `opencode`, `copilot` and `museLive` support it (`capabilities.resume`).
+`claude`, `codex`, `cursor`, `opencode`, `copilot`, `antigravity` and `museLive` support it (`capabilities.resume`).
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
 ## Chat sessions
@@ -182,7 +182,7 @@ session.send('Now cover it with a test'); // resumes the same agent session
 | `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto`    |
 | `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns         |
 | `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`            |
-| `antigravity(opts?)`  | `agy`          | `--output-format stream-json --print`    | `mode` defaults to `accept-edits`; `--sandbox` unless `sandbox: false`                    |
+| `antigravity(opts?)`  | `agy`          | `acp` (JSON-RPC)                         | `steer()`, approvals, MCP, resume; `mode` defaults to `accept-edits`; `--sandbox`         |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
@@ -223,7 +223,7 @@ const result = await run.result;
 ## Approvals
 
 `onApproval(request, signal)` answers the agent's permission prompts on drivers with
-`capabilities.approvals`: `claude`, `codexLive`, `museLive`. It returns `'approve'` or
+`capabilities.approvals`: `claude`, `codexLive`, `museLive`, `antigravity`. It returns `'approve'` or
 `'deny'`.
 
 ```ts
@@ -262,6 +262,8 @@ Per agent:
   Approving picks the `once` choice; a request that only offers session-wide approval is
   denied. A multi-stage approval asks once per stage (later stages get ids like `ap-1/2`),
   however often a stage is delivered. `approval/resolved` withdraws an open question.
+- `antigravity()`: answers ACP `session/request_permission` requests (`allow_once` or
+  `reject_once`) for tools not pre-allowed by the session mode (`accept-edits` by default).
 
 The protocol handlers are exported for apps that run their own driver or MCP server:
 
@@ -316,7 +318,7 @@ codexLive().run({ prompt, cwd, permissions: 'yolo' });
 | `copilot()`     | auto-approve            | unrestricted                             | `--allow-all-tools` (prompt mode needs it); `--allow-all-paths --allow-all-urls`. Copilot's `--sandbox` lets a command opt out of it, so `workspace-write` is not offered                                      |
 | `opencode()`    | auto-approve, deny      | unrestricted                             | `--auto`; opencode has no sandbox                                                                                                                                                                              |
 | `vibe()`        | auto-approve, deny      | read-only, unrestricted                  | `--auto-approve`; `read-only`: `--agent plan` (not with `auto-approve`); no sandbox                                                                                                                            |
-| `antigravity()` | none                    | workspace-write, unrestricted            | `--sandbox` on or off                                                                                                                                                                                          |
+| `antigravity()` | ask, auto-approve, deny | workspace-write, unrestricted            | `ask` / `auto-approve` / `deny` answer ACP `session/request_permission` (`allow_once` / `reject_once`); `--sandbox` on or off (`antigravityPermissionFlags` maps print-mode `--dangerously-skip-permissions`)  |
 | `muse()`        | none                    | none                                     |                                                                                                                                                                                                                |
 
 Claude in `read-only` writes nothing in the workspace, but plan mode may still save its plan
@@ -342,7 +344,7 @@ protocol and resolves with `{ ok, error? }` when the turn ends.
 ## MCP servers
 
 `task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
-(`claude`, `codex`, `codexLive`, `copilot`, `muse`, `museLive`):
+(`claude`, `codex`, `codexLive`, `copilot`, `muse`, `museLive`, `antigravity`):
 
 ```ts
 await claude().run({
@@ -373,6 +375,14 @@ await claude().run({
   whole-value `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code
   1.4.4 or newer (checked with 1.4.13). Under `museLive()` with `permissions.approval: 'ask'`
   every MCP tool call is an approval request: answer it in `onApproval`.
+- Antigravity CLI (`agy acp`, 1.5.0+) receives the task's HTTP and stdio servers in the
+  JSON-RPC `session/new` / `session/resume` request over stdin, so secret headers and env
+  values never appear in argv or on disk, and pre-allows the attached servers' tools for the
+  session. Checked with agy 1.5.0: MCP tool calls never reach `onApproval`, even with
+  `permissions.approval: 'ask'` (only commands and file edits are asked about); tools are named
+  `mcp_<server>_<tool>`; the tool's result is not in the transcript (agy sends no output for
+  it); and agy adds its own `toolSummary` field to the tool arguments, so a server with a
+  strict input schema must accept or ignore it.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 

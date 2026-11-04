@@ -219,8 +219,27 @@ describe('headless translations', () => {
     expect(vibeArgs(task({ approval: 'deny', sandbox: 'read-only' })).slice(2, 4)).toEqual(['--agent', 'plan']);
     expect(antigravityArgs(task({ sandbox: 'unrestricted' }))).not.toContain('--sandbox');
     expect(antigravityArgs(task({ sandbox: 'workspace-write' }))).toContain('--sandbox');
-    expect((await antigravity({ command: 'agy-not-run' }).run(task('yolo')).result).error).toBe(
-      "antigravity cannot run with permissions.approval 'auto-approve' (supported: none).",
+    expect(antigravityArgs(task('yolo')).slice(0, 5)).toEqual([
+      '--mode',
+      'accept-edits',
+      '--dangerously-skip-permissions',
+      '--output-format',
+      'stream-json',
+    ]);
+    expect(antigravityArgs(task({ approval: 'auto-approve' })).slice(0, 6)).toEqual([
+      '--mode',
+      'accept-edits',
+      '--dangerously-skip-permissions',
+      '--sandbox',
+      '--output-format',
+      'stream-json',
+    ]);
+    expect(antigravityArgs(task({ approval: 'deny' }))).not.toContain('--dangerously-skip-permissions');
+    expect((await antigravity({ command: 'agy-not-run' }).run(task({ approval: 'ask' })).result).error).toBe(
+      "permissions.approval 'ask' needs task.onApproval.",
+    );
+    expect((await antigravity({ command: 'agy-not-run' }).run(task({ sandbox: 'read-only' })).result).error).toBe(
+      "antigravity cannot run with permissions.sandbox 'read-only' (supported: workspace-write, unrestricted).",
     );
     expect(claude().capabilities.permissions?.sandbox).toEqual(['workspace-write', 'read-only', 'unrestricted']);
   });
@@ -258,6 +277,12 @@ describe('applyPermissionArgs', () => {
     );
     expect(applyPermissionArgs('cursor', ['--print', '--force'], undefined).args).toEqual(['--print', '--force']);
     expect(() => applyPermissionArgs('cursor', ['--print', '--force'], { approval: 'ask' })).toThrow();
+    expect(
+      applyPermissionArgs('antigravity', ['--print', '--dangerously-skip-permissions'], { approval: 'deny' }).args,
+    ).toEqual(['--print']);
+    expect(() => applyPermissionArgs('antigravity', ['--print'], { approval: 'ask' })).toThrow(
+      "antigravity cannot ask for approval headless (permissions.approval 'ask').",
+    );
     expect(() => applyPermissionArgs('other', [], 'yolo')).toThrow('No permission translation for agent "other".');
   });
 

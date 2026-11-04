@@ -106,8 +106,8 @@ A complete exchange, one JSON object per line (`>` sent by the host, `<` by gena
 with the agent over ACP in GDScript, and a game that serves its own MCP tools so the agent can
 play it.
 
-With an agent that cannot resume (gemini, antigravity) each prompt starts a fresh agent session.
-A session with MCP servers offers only the agents that can attach them (claude, codex, copilot).
+With an agent that cannot resume (gemini, vibe) each prompt starts a fresh agent session.
+A session with MCP servers offers only the agents that can attach them (claude, codex, copilot, antigravity).
 Not supported yet: `session/load` and `session/resume` (sessions live as long as the process),
 images in prompts, SSE MCP servers, and the client's file system and terminal methods (the agent
 CLI reads, writes and runs commands itself).
