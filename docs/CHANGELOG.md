@@ -4,11 +4,6 @@
 
 ### Fixed
 
-- `antigravity()` tool calls now show what they act on: MCP tools of attached servers are named
-  `mcp__<server>__<tool>` like in the other drivers (Antigravity reports `mcp_<server>_<tool>`);
-  arguments gain the usual `path`, `command` and `description` keys (from `Path`, `CommandLine`
-  and Antigravity's `toolSummary`); and a finished `read_file`, which Antigravity reports without
-  its text, gets the lines it read (`StartLine`–`EndLine`) from the file on disk as its output.
 - Headless Copilot can commit and push when an app enables `dev.commit: 'on-request'`:
   its allowlist now includes those commands, since it cannot ask for permission.
 
