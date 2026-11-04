@@ -101,10 +101,10 @@ Chat and UI options:
       --no-open           (ui) Print the link instead of opening a browser
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
-                          Only agents with MCP support (claude, codex, copilot) take it
+                          Only agents with MCP support (claude, codex, copilot, antigravity) take it
 
   Each prompt after the first continues the agent's session (claude, codex, cursor,
-  opencode, copilot). Prompts sent while the agent works wait in a queue. Type /help in
+  opencode, copilot, antigravity). Prompts sent while the agent works wait in a queue. Type /help in
   the chat for commands. The terminal and the browser can show one session: /web in the
   chat opens it in the browser, and Enter in "genaicode ui" brings it into the terminal.
 

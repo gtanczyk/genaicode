@@ -9,6 +9,13 @@
 
 ### Added
 
+- `antigravity()` now drives `agy acp` (Antigravity CLI 1.5.0+) over JSON-RPC on stdio and
+  supports `task.mcpServers` (HTTP with secret headers and stdio with env passed over stdin,
+  never in argv, with session MCP tools pre-allowed), `task.resume` (`session/resume`),
+  `steer()`, and `permissions.approval` (`'ask'` routed to `task.onApproval`, `'auto-approve'`,
+  `'deny'`) and `sandbox` (`'workspace-write'`, `'unrestricted'`). Print-mode helpers
+  (`antigravityArgs`, `antigravityPermissionFlags`) also map `--conversation` and
+  `--dangerously-skip-permissions`.
 - `muse()` and `museLive()` honor `task.mcpServers`: the servers go to Muse Code as `-c
 mcp_servers.<name>.*` overrides for that run, with header and env values passed as `${VAR}`
   references to environment variables, never in argv. `genaicode chat --mcp` and `ui --mcp` now

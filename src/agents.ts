@@ -89,7 +89,9 @@ export { createVibeParser, vibe, vibeArgs, vibePermissionFlags } from './agents/
 export type { VibeAgentOptions } from './agents/drivers/vibe.js';
 export {
   antigravity,
+  antigravityAcpArgs,
   antigravityArgs,
+  antigravityMcpServers,
   antigravityPermissionFlags,
   createAntigravityParser,
 } from './agents/drivers/antigravity.js';

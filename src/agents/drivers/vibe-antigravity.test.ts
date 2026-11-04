@@ -1,7 +1,130 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentOutputParser } from '../cli-agent.js';
-import { antigravityArgs, createAntigravityParser } from './antigravity.js';
+import type { AgentEvent } from '../types.js';
+import {
+  antigravity,
+  antigravityAcpArgs,
+  antigravityArgs,
+  antigravityMcpServers,
+  createAntigravityParser,
+} from './antigravity.js';
 import { createVibeParser, vibe, vibeArgs } from './vibe.js';
+
+const dir = mkdtempSync(join(tmpdir(), 'genaicode-antigravity-test-'));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+const acpServer = join(dir, 'fake-acp.mjs');
+writeFileSync(
+  acpServer,
+  `import { createInterface } from 'node:readline';
+const mode = process.env.FAKE_ACP_MODE ?? 'basic';
+const send = (value) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\\n');
+const update = (u) => send({ method: 'session/update', params: { sessionId: 'c-acp', update: u } });
+const log = { argv: process.argv.slice(2), calls: [] };
+let pendingPromptId;
+let pendingApproval;
+
+const finishPrompt = (id, text) => {
+  update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } });
+  send({
+    id,
+    result: {
+      stopReason: mode === 'cancelled' ? 'cancelled' : 'end_turn',
+      usage: { inputTokens: 11, outputTokens: 4, totalTokens: 15, cachedReadTokens: 3 },
+    },
+  });
+};
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === 77) {
+    const chosen = msg.result?.outcome?.optionId;
+    finishPrompt(pendingPromptId, 'approval:' + chosen + ' log:' + JSON.stringify(log));
+    return;
+  }
+  log.calls.push({ method: msg.method, params: msg.params });
+  if (msg.method === 'initialize') {
+    return send({ id: msg.id, result: { protocolVersion: 1 } });
+  }
+  if (msg.method === 'session/new' || msg.method === 'session/resume') {
+    return send({
+      id: msg.id,
+      result: { sessionId: 'c-acp', models: { currentModelId: 'gemini-default' } },
+    });
+  }
+  if (
+    msg.method === 'session/set_mode' ||
+    msg.method === 'session/set_model' ||
+    msg.method === 'session/set_config_option'
+  ) {
+    return send({ id: msg.id, result: {} });
+  }
+  if (msg.method === 'session/prompt') {
+    const text = msg.params.prompt[0].text;
+    if (mode === 'steer' && !pendingPromptId) {
+      pendingPromptId = msg.id;
+      update({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-1',
+        name: 'mcp_docs_search',
+        kind: 'other',
+        status: 'in_progress',
+        rawInput: { q: text },
+      });
+      return;
+    }
+    if (mode === 'steer' && pendingPromptId) {
+      send({ id: pendingPromptId, result: { stopReason: 'end_turn' } });
+      pendingPromptId = undefined;
+      update({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tc-1',
+        status: 'completed',
+        rawOutput: { output: 'found' },
+      });
+      return finishPrompt(msg.id, 'steered:' + text);
+    }
+    if (mode === 'approval') {
+      pendingPromptId = msg.id;
+      send({
+        id: 77,
+        method: 'session/request_permission',
+        params: {
+          sessionId: 'c-acp',
+          toolCall: { toolCallId: 'tc-cmd', kind: 'execute', title: 'Run npm test' },
+          options: [
+            { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+            { optionId: 'deny', name: 'Deny', kind: 'reject_once' },
+          ],
+        },
+      });
+      return;
+    }
+    update({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc-edit',
+      name: 'edit_file',
+      kind: 'edit',
+      status: 'in_progress',
+      rawInput: { Path: 'src/a.ts' },
+      locations: [{ path: 'src/a.ts' }],
+    });
+    update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tc-edit',
+      status: 'completed',
+      rawOutput: { output: 'edited' },
+    });
+    return finishPrompt(msg.id, JSON.stringify(log));
+  }
+});
+`,
+);
+const agyBin = join(dir, 'agy');
+writeFileSync(agyBin, `#!${process.execPath}\nimport(${JSON.stringify(acpServer)});\n`, { mode: 0o755 });
 
 function feed(parser: AgentOutputParser, values: unknown[]) {
   return values.flatMap((value) => parser.event(value));
@@ -112,6 +235,149 @@ describe('antigravity driver', () => {
       '--print',
       'go',
     ]);
+    expect(antigravityArgs({ prompt: 'next', cwd: '.', resume: 'c-1', permissions: 'yolo' })).toEqual([
+      '--mode',
+      'accept-edits',
+      '--dangerously-skip-permissions',
+      '--output-format',
+      'stream-json',
+      '--conversation',
+      'c-1',
+      '--print',
+      'next',
+    ]);
+    expect(antigravityAcpArgs({ prompt: 'go', cwd: '.' })).toEqual(['acp', '--sandbox']);
+    expect(antigravityAcpArgs({ prompt: 'go', cwd: '.', permissions: 'yolo' })).toEqual(['acp']);
+    expect(
+      antigravityMcpServers([{ name: 'docs', url: 'https://mcp.example', headers: { Authorization: 's' } }]),
+    ).toEqual([
+      { type: 'http', name: 'docs', url: 'https://mcp.example', headers: [{ name: 'Authorization', value: 's' }] },
+    ]);
+    expect(antigravity().capabilities).toMatchObject({
+      mcp: true,
+      resume: true,
+      approvals: true,
+      steer: true,
+      permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['workspace-write', 'unrestricted'] },
+    });
+  });
+
+  it('drives agy acp with mcpServers, session/resume, tool calls, file changes and usage', async () => {
+    const servers = [
+      { name: 'docs', url: 'https://mcp.example/docs', headers: { Authorization: 'Bearer secret' } },
+      { name: 'fs', command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' } },
+    ];
+    const run = antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      model: 'gemini-3',
+      effort: 'high',
+      mcpServers: servers,
+    });
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    const result = await run.result;
+    expect(result.status).toBe('completed');
+    expect(result.sessionId).toBe('c-acp');
+    expect(result.usage).toEqual({ inputTokens: 11, outputTokens: 4, totalTokens: 15, cachedInputTokens: 3 });
+    expect(events).toContainEqual({ type: 'file-change', paths: ['src/a.ts'] });
+    const log = JSON.parse(result.text!) as { argv: string[]; calls: Array<{ method: string; params: unknown }> };
+    expect(log.argv).toEqual(['acp', '--sandbox']);
+    expect(log.argv.join(' ')).not.toContain('secret');
+    expect(log.calls.map((c) => c.method)).toEqual([
+      'initialize',
+      'session/new',
+      'session/set_mode',
+      'session/set_model',
+      'session/set_config_option',
+      'session/prompt',
+    ]);
+    expect(log.calls[1]?.params).toEqual({
+      cwd: dir,
+      mcpServers: [
+        {
+          type: 'http',
+          name: 'docs',
+          url: 'https://mcp.example/docs',
+          headers: [{ name: 'Authorization', value: 'Bearer secret' }],
+        },
+        {
+          type: 'stdio',
+          name: 'fs',
+          command: 'mcp-fs',
+          args: ['--root', '.'],
+          env: [{ name: 'LOG', value: '1' }],
+        },
+      ],
+    });
+
+    const resumed = await antigravity({ command: agyBin }).run({
+      prompt: 'second',
+      cwd: dir,
+      resume: 'c-prev',
+      mcpServers: servers.slice(0, 1),
+    }).result;
+    const resumedLog = JSON.parse(resumed.text!) as { calls: Array<{ method: string; params: unknown }> };
+    expect(resumedLog.calls[1]).toEqual({
+      method: 'session/resume',
+      params: {
+        sessionId: 'c-prev',
+        cwd: dir,
+        mcpServers: [
+          {
+            type: 'http',
+            name: 'docs',
+            url: 'https://mcp.example/docs',
+            headers: [{ name: 'Authorization', value: 'Bearer secret' }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('routes ACP permission requests to onApproval and honors auto-approve / deny', async () => {
+    const seen: unknown[] = [];
+    const asked = await antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'approval' },
+      permissions: { approval: 'ask' },
+      onApproval: (req) => {
+        seen.push(req);
+        return 'approve';
+      },
+    }).result;
+    expect(seen).toMatchObject([{ id: 'tc-cmd', kind: 'command', summary: 'Run npm test', scope: 'once' }]);
+    expect(asked.text).toMatch(/^approval:allow /);
+
+    const denied = await antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'approval' },
+      permissions: { approval: 'deny' },
+    }).result;
+    expect(denied.text).toMatch(/^approval:deny /);
+
+    const auto = await antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'approval' },
+      permissions: 'yolo',
+    }).result;
+    expect(auto.text).toMatch(/^approval:allow /);
+  });
+
+  it('steers a running ACP turn', async () => {
+    const run = antigravity({ command: agyBin }).run({
+      prompt: 'initial',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'steer' },
+    });
+    for await (const event of run) {
+      if (event.type === 'tool-start') void run.steer!('follow-up');
+    }
+    const result = await run.result;
+    expect(result).toMatchObject({ status: 'completed', text: 'steered:follow-up' });
   });
 
   it('decodes stream-json', () => {
