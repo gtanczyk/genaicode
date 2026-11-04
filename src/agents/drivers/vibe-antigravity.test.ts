@@ -8,7 +8,10 @@ import {
   antigravity,
   antigravityAcpArgs,
   antigravityArgs,
+  antigravityInput,
   antigravityMcpServers,
+  antigravityToolName,
+  antigravityUpdateEvents,
   createAntigravityParser,
 } from './antigravity.js';
 import { createVibeParser, vibe, vibeArgs } from './vibe.js';
@@ -501,5 +504,66 @@ describe('antigravity driver', () => {
     const events = feed(parser, [{ event: 'result', result: { status: 'ERROR', error: 'quota exceeded' } }]);
     expect(events).toEqual([{ type: 'error', message: 'quota exceeded' }]);
     expect(parser.outcome?.()).toEqual({ ok: false, error: 'quota exceeded' });
+  });
+
+  it('names MCP tools of attached servers the usual way', () => {
+    expect(antigravityToolName('mcp_diorama_world_status', ['diorama'])).toBe('mcp__diorama__world_status');
+    expect(antigravityToolName('mcp_my_docs_search', ['my', 'my_docs'])).toBe('mcp__my_docs__search');
+    expect(antigravityToolName('mcp_other_x', ['diorama'])).toBe('mcp_other_x');
+    expect(antigravityToolName('read_file', ['diorama'])).toBe('read_file');
+  });
+
+  it('adds the usual input keys to Antigravity arguments', () => {
+    expect(antigravityInput({ Path: '/a.ts', StartLine: 1 })).toEqual({ Path: '/a.ts', StartLine: 1, path: '/a.ts' });
+    expect(antigravityInput({ CommandLine: 'ls', toolSummary: 'List files' })).toEqual({
+      CommandLine: 'ls',
+      toolSummary: 'List files',
+      command: 'ls',
+      description: 'List files',
+    });
+  });
+
+  it('shows the lines a read_file read, which Antigravity does not send', () => {
+    const file = join(dir, 'notes.txt');
+    writeFileSync(file, 'one\ntwo\nthree\nfour');
+    const tools = new Map();
+    const base = { toolCallId: 'r1', name: 'read_file', kind: 'read', title: 'File notes.txt' };
+    const args = { Path: file, StartLine: 2, EndLine: 3 };
+    const start = antigravityUpdateEvents(
+      { ...base, sessionUpdate: 'tool_call', status: 'in_progress', args, rawInput: args, locations: [{ path: file }] },
+      tools,
+      () => {},
+    );
+    expect(start).toEqual([{ type: 'tool-start', id: 'r1', name: 'read_file', input: { ...args, path: file } }]);
+    const end = antigravityUpdateEvents(
+      { ...base, sessionUpdate: 'tool_call_update', status: 'completed' },
+      tools,
+      () => {},
+    );
+    expect(end).toEqual([{ type: 'tool-end', id: 'r1', name: 'read_file', isError: false, output: 'two\nthree' }]);
+  });
+
+  it('reports MCP tool calls under the usual name', () => {
+    const events = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'm1',
+        name: 'mcp_diorama_world_status',
+        kind: 'other',
+        status: 'in_progress',
+        rawInput: { slug: 'h', toolSummary: 'Check' },
+      },
+      new Map(),
+      () => {},
+      ['diorama'],
+    );
+    expect(events).toEqual([
+      {
+        type: 'tool-start',
+        id: 'm1',
+        name: 'mcp__diorama__world_status',
+        input: { slug: 'h', toolSummary: 'Check', description: 'Check' },
+      },
+    ]);
   });
 });

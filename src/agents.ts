@@ -92,6 +92,8 @@ export {
   antigravityAcpArgs,
   antigravityArgs,
   antigravityMcpServers,
+  antigravityInput,
+  antigravityToolName,
   antigravityPermissionFlags,
   createAntigravityParser,
 } from './agents/drivers/antigravity.js';

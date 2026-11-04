@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { AgentOutcome, AgentOutputParser } from '../cli-agent.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
@@ -74,6 +75,7 @@ interface ActiveTool {
   name: string;
   kind?: string;
   paths: string[];
+  input?: JsonObject;
 }
 
 async function driveAntigravity(session: LiveSession, options: AntigravityAgentOptions): Promise<AgentOutcome> {
@@ -83,10 +85,11 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
   let streamed = '';
   const tools = new Map<string, ActiveTool>();
 
+  const servers = (task.mcpServers ?? []).map((server) => server.name);
   session.onNotification((method, params) => {
     if (method !== 'session/update' || !isObject(params)) return;
     if (!ids.session || stringField(params, 'sessionId') !== ids.session) return;
-    for (const event of antigravityUpdateEvents(params.update, tools, (delta) => (streamed += delta))) {
+    for (const event of antigravityUpdateEvents(params.update, tools, (delta) => (streamed += delta), servers)) {
       session.emit(event);
     }
   });
@@ -210,10 +213,23 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
   return { ok: true };
 }
 
-function antigravityUpdateEvents(
+/**
+ * Antigravity names an MCP tool `mcp_<server>_<tool>`; other drivers report `mcp__<server>__<tool>`.
+ * Rename a tool of an attached server to that form, so apps match MCP tools the same way for every agent.
+ */
+export function antigravityToolName(name: string, servers: readonly string[]): string {
+  const server = [...servers]
+    .sort((a, b) => b.length - a.length)
+    .find((s) => name.startsWith(`mcp_${s}_`) && name.length > s.length + 5);
+  return server ? `mcp__${server}__${name.slice(server.length + 5)}` : name;
+}
+
+/** Events for one ACP `session/update` (exported for tests). */
+export function antigravityUpdateEvents(
   update: unknown,
   tools: Map<string, ActiveTool>,
   onDelta: (delta: string) => void,
+  servers: readonly string[] = [],
 ): AgentEvent[] {
   if (!isObject(update)) return [];
   const kind = stringField(update, 'sessionUpdate');
@@ -229,31 +245,39 @@ function antigravityUpdateEvents(
   const withId = id ? { id } : {};
   const key = id ?? stringField(update, 'name') ?? stringField(update, 'title') ?? 'tool';
   const known = tools.get(key);
-  const name = stringField(update, 'name') ?? known?.name ?? stringField(update, 'title') ?? 'tool';
+  const reported = stringField(update, 'name');
+  const name =
+    (reported && antigravityToolName(reported, servers)) ?? known?.name ?? stringField(update, 'title') ?? 'tool';
   const toolKind = stringField(update, 'kind') ?? known?.kind;
   const locations = Array.isArray(update.locations)
     ? update.locations.map((loc) => stringField(loc, 'path')).filter((path): path is string => !!path)
     : [];
   const paths = locations.length ? locations : (known?.paths ?? []);
   const status = stringField(update, 'status');
-  const input =
+  const raw =
     isObject(update.rawInput) && Object.keys(update.rawInput).length > 0
       ? update.rawInput
       : isObject(update.args) && Object.keys(update.args).length > 0
         ? update.args
         : undefined;
+  const input = raw && antigravityInput(raw);
 
   const events: AgentEvent[] = [];
+  const kept = raw ?? known?.input;
   if (!known) {
-    tools.set(key, { name, ...(toolKind ? { kind: toolKind } : {}), paths });
+    tools.set(key, { name, ...(toolKind ? { kind: toolKind } : {}), paths, ...(kept ? { input: kept } : {}) });
     events.push({ type: 'tool-start', ...withId, name, ...(input !== undefined ? { input } : {}) });
   } else {
-    tools.set(key, { name, ...(toolKind ? { kind: toolKind } : {}), paths });
+    tools.set(key, { name, ...(toolKind ? { kind: toolKind } : {}), paths, ...(kept ? { input: kept } : {}) });
   }
 
   if (status === 'completed' || status === 'failed') {
     tools.delete(key);
-    const output = toolOutput(update);
+    const output =
+      toolOutput(update) ??
+      (status === 'completed' && (toolKind === 'read' || name === 'read_file')
+        ? readRange(raw ?? known?.input, paths)
+        : undefined);
     events.push({
       type: 'tool-end',
       ...withId,
@@ -266,6 +290,44 @@ function antigravityUpdateEvents(
     }
   }
   return events;
+}
+
+/**
+ * Antigravity's tool arguments use its own keys (`Path`, `CommandLine`, and a `toolSummary` it adds to every
+ * call); add the usual `path`, `command` and `description` so front ends show what the call is about.
+ */
+export function antigravityInput(input: JsonObject): JsonObject {
+  const path = stringField(input, 'Path') ?? stringField(input, 'AbsolutePath') ?? stringField(input, 'TargetFile');
+  const command = stringField(input, 'CommandLine');
+  const summary = stringField(input, 'toolSummary');
+  return {
+    ...input,
+    ...(path && input.path === undefined ? { path } : {}),
+    ...(command && input.command === undefined ? { command } : {}),
+    ...(summary && input.description === undefined ? { description: summary } : {}),
+  };
+}
+
+const READ_LIMIT = 20_000;
+
+/**
+ * Antigravity reports a `read_file` without the text it read. Show those lines from the file as it is now
+ * (`StartLine`/`EndLine`, 1-based and inclusive, when given), cut to 20 000 characters.
+ */
+function readRange(input: JsonObject | undefined, paths: readonly string[]): string | undefined {
+  const path = (input && (stringField(input, 'Path') ?? stringField(input, 'AbsolutePath'))) ?? paths[0];
+  if (!path) return undefined;
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const lines = text.split('\n');
+  const start = Math.max(1, (input && numberField(input, 'StartLine')) ?? 1);
+  const end = Math.min(lines.length, (input && numberField(input, 'EndLine')) ?? lines.length);
+  const shown = lines.slice(start - 1, end).join('\n');
+  return shown.length > READ_LIMIT ? `${shown.slice(0, READ_LIMIT)}\n…` : shown;
 }
 
 function toolOutput(update: JsonObject): string | undefined {
