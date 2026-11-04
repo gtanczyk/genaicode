@@ -378,7 +378,11 @@ await claude().run({
 - Antigravity CLI (`agy acp`, 1.5.0+) receives the task's HTTP and stdio servers in the
   JSON-RPC `session/new` / `session/resume` request over stdin, so secret headers and env
   values never appear in argv or on disk, and pre-allows the attached servers' tools for the
-  session.
+  session. Checked with agy 1.5.0: MCP tool calls never reach `onApproval`, even with
+  `permissions.approval: 'ask'` (only commands and file edits are asked about); tools are named
+  `mcp_<server>_<tool>`; the tool's result is not in the transcript (agy sends no output for
+  it); and agy adds its own `toolSummary` field to the tool arguments, so a server with a
+  strict input schema must accept or ignore it.
 - A driver without MCP support fails the task before spawning anything, instead of silently
   dropping the servers. Server names must match `/^[A-Za-z0-9_-]+$/`.
 

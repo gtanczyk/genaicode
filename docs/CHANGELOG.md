@@ -15,7 +15,8 @@
   `steer()`, and `permissions.approval` (`'ask'` routed to `task.onApproval`, `'auto-approve'`,
   `'deny'`) and `sandbox` (`'workspace-write'`, `'unrestricted'`). Print-mode helpers
   (`antigravityArgs`, `antigravityPermissionFlags`) also map `--conversation` and
-  `--dangerously-skip-permissions`.
+  `--dangerously-skip-permissions`. With agy 1.5.0, MCP tool calls run without an approval
+  request, carry no output in the transcript, and get an extra `toolSummary` argument.
 - `muse()` and `museLive()` honor `task.mcpServers`: the servers go to Muse Code as `-c
 mcp_servers.<name>.*` overrides for that run, with header and env values passed as `${VAR}`
   references to environment variables, never in argv. `genaicode chat --mcp` and `ui --mcp` now
