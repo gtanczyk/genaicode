@@ -26,7 +26,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            node scripts/release.mjs check --files "$(gh pr diff "${{ github.event.pull_request.number }}" --name-only | paste -sd, -)"
+            git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            node scripts/release.mjs check --base "${{ github.event.pull_request.base.sha }}" \
+              --files "$(gh pr diff "${{ github.event.pull_request.number }}" --name-only | paste -sd, -)"
           else
             node scripts/release.mjs check
           fi

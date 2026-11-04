@@ -4,7 +4,8 @@ name: Publish to npm
 #   - a master push that changes package.json: the release PR was merged, its version is the cutoff
 #   - a v*.*.* tag push (from `npm version` by hand)
 #   - Run workflow in Actions, for the version in package.json
-# A version npm already has is skipped, so a dependency bump in package.json does not republish.
+# A version npm already has is not published again, so a dependency bump in package.json does not
+# republish; its tag and GitHub Release are still made if a failed run left them out.
 # npm trusted publishing (OIDC), no token: the package's npm settings name this repo, this file and
 # the npm environment. Keep the file name: npm matches it.
 on:
@@ -45,22 +46,21 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ -n "$(npm view "$name@$version" version 2>/dev/null)" ]; then
-            echo "$name@$version is already on npm; nothing to publish."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already on npm; only the tag and release are checked."
+            echo "published=true" >> "$GITHUB_OUTPUT"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "published=false" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.version.outputs.skip != 'true'
+      - if: steps.version.outputs.published != 'true'
         run: npm ci
       - name: Changelog agrees with package.json
-        if: steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.published != 'true'
         run: node scripts/release.mjs check
       # prepublishOnly runs `npm run check` (type-check, lint, test, build).
       # An explicit `latest`: the accidental 3.0.0 stays on the registry and would block the default.
-      - if: steps.version.outputs.skip != 'true'
+      - if: steps.version.outputs.published != 'true'
         run: npm publish --provenance --access public --tag latest
       - name: Tag and GitHub Release
-        if: steps.version.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
