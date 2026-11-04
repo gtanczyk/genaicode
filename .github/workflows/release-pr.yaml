@@ -1,0 +1,92 @@
+name: Release PR
+
+# Proposes the next version whenever master carries unreleased CHANGELOG.md lines. Derives the bump
+# from the Unreleased categories and keeps one PR on branch release/next up to date with the cut.
+# Merging that PR is the cutoff: it lands the bumped package.json on master, and publish.yaml
+# publishes. Nothing to release (only Internal lines, or none) means no PR.
+#
+# Pushes and PRs made with the workflow's own token start no other workflows, so CI does not run on
+# the release PR. Set secret RELEASE_TOKEN (a fine-grained PAT with contents + pull-requests write)
+# when CI must run there (a required check). Repository variable RELEASE_AUTOMERGE=true merges the PR
+# by itself once it is open; the publish is then started here through workflow_dispatch.
+on:
+  push:
+    branches: [master]
+    paths: ['CHANGELOG.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: true
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Changelog agrees with package.json
+        run: node scripts/release.mjs check
+      - name: Compute the next version
+        id: next
+        run: |
+          set -euo pipefail
+          version="$(node scripts/release.mjs next)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Next: $version"
+      - name: Close a stale release PR
+        if: steps.next.outputs.version == 'none'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          number="$(gh pr list --head release/next --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr close "$number" --comment "Nothing left to release; a new PR opens with the next changelog line." --delete-branch
+          fi
+      - name: Cut on release/next and open or update the PR
+        if: steps.next.outputs.version != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          VERSION: ${{ steps.next.outputs.version }}
+          AUTOMERGE: ${{ vars.RELEASE_AUTOMERGE }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B release/next
+          node scripts/release.mjs cut
+          git add CHANGELOG.md package.json package-lock.json
+          git commit -m "release: v$VERSION" -m "Cut from CHANGELOG.md. Merging publishes v$VERSION to npm."
+          git push --force origin release/next
+          {
+            echo "Merging this PR is the cutoff: it lands \`$VERSION\` on master and publishes \`v$VERSION\` to npm."
+            echo
+            echo "Edit the wording in \`CHANGELOG.md\` on this branch if a line reads wrong; the category decides the number."
+            echo
+            echo "## Notes"
+            echo
+            node scripts/release.mjs notes "$VERSION"
+          } > "$RUNNER_TEMP/body.md"
+          gh label create release --description "Releases" --color "0e8a16" --force || true
+          number="$(gh pr list --head release/next --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "release: v$VERSION" --body-file "$RUNNER_TEMP/body.md"
+          else
+            url="$(gh pr create --base master --head release/next --title "release: v$VERSION" --body-file "$RUNNER_TEMP/body.md" --label release)"
+            number="${url##*/}"
+          fi
+          echo "Release PR #$number is up to date for v$VERSION."
+          if [ "$AUTOMERGE" = "true" ]; then
+            gh pr merge "$number" --squash --delete-branch
+            gh workflow run publish.yaml --ref master
+          fi

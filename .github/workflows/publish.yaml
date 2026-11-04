@@ -1,17 +1,32 @@
 name: Publish to npm
 
-# Push a tag such as v2.4.1 (from `npm version patch`) to publish that version.
+# Publishes genaicode to npm and a GitHub Release with the CHANGELOG.md section as notes. Three doors, one job:
+#   - a master push that changes package.json: the release PR was merged, its version is the cutoff
+#   - a v*.*.* tag push (from `npm version` by hand)
+#   - Run workflow in Actions, for the version in package.json
+# A version npm already has is not published again, so a dependency bump in package.json does not
+# republish; its tag and GitHub Release are still made if a failed run left them out.
+# npm trusted publishing (OIDC), no token: the package's npm settings name this repo, this file and
+# the npm environment. Keep the file name: npm matches it.
 on:
   push:
+    branches: [master]
+    paths: ['package.json']
     tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     environment: npm
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,14 +34,41 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
-      - name: Tag matches package.json
+      - name: Resolve the version
+        id: version
         run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          if [[ "$GITHUB_REF" == refs/tags/* && "v$version" != "$GITHUB_REF_NAME" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
           fi
-      - run: npm ci
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ -n "$(npm view "$name@$version" version 2>/dev/null)" ]; then
+            echo "$name@$version is already on npm; only the tag and release are checked."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.version.outputs.published != 'true'
+        run: npm ci
+      - name: Changelog agrees with package.json
+        if: steps.version.outputs.published != 'true'
+        run: node scripts/release.mjs check
       # prepublishOnly runs `npm run check` (type-check, lint, test, build).
       # An explicit `latest`: the accidental 3.0.0 stays on the registry and would block the default.
-      - run: npm publish --provenance --access public --tag latest
+      - if: steps.version.outputs.published != 'true'
+        run: npm publish --provenance --access public --tag latest
+      - name: Tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            git tag "v$VERSION" "$GITHUB_SHA"
+            git push origin "v$VERSION"
+          fi
+          node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/notes.md" || echo "See CHANGELOG.md." > "$RUNNER_TEMP/notes.md"
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "v$VERSION" --latest --notes-file "$RUNNER_TEMP/notes.md"
