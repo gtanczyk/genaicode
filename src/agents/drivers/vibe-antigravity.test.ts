@@ -41,7 +41,7 @@ const finishPrompt = (id, text) => {
 createInterface({ input: process.stdin }).on('line', (line) => {
   const msg = JSON.parse(line);
   if (msg.id === 77) {
-    const chosen = msg.result?.outcome?.optionId;
+    const chosen = msg.result?.outcome?.optionId ?? msg.result?.outcome?.outcome;
     finishPrompt(pendingPromptId, 'approval:' + chosen + ' log:' + JSON.stringify(log));
     return;
   }
@@ -64,7 +64,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (msg.method === 'session/prompt') {
     const text = msg.params.prompt[0].text;
-    if (mode === 'steer' && !pendingPromptId) {
+    if ((mode === 'steer' || mode === 'steer-reject') && !pendingPromptId) {
       pendingPromptId = msg.id;
       update({
         sessionUpdate: 'tool_call',
@@ -74,6 +74,15 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         status: 'in_progress',
         rawInput: { q: text },
       });
+      return;
+    }
+    if (mode === 'steer-reject' && pendingPromptId) {
+      send({ id: msg.id, error: { code: -32603, message: 'steer rejected' } });
+      setTimeout(() => {
+        const firstId = pendingPromptId;
+        pendingPromptId = undefined;
+        finishPrompt(firstId, 'original-finished');
+      }, 25);
       return;
     }
     if (mode === 'steer' && pendingPromptId) {
@@ -87,18 +96,27 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       });
       return finishPrompt(msg.id, 'steered:' + text);
     }
-    if (mode === 'approval') {
+    if (mode === 'approval' || mode === 'approval-always-only' || mode === 'approval-no-options') {
       pendingPromptId = msg.id;
+      const options =
+        mode === 'approval-no-options'
+          ? []
+          : mode === 'approval-always-only'
+            ? [
+                { optionId: 'allow', name: 'Always', kind: 'allow_always' },
+                { optionId: 'reject-once', name: 'Deny', kind: 'reject_once' },
+              ]
+            : [
+                { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+                { optionId: 'deny', name: 'Deny', kind: 'reject_once' },
+              ];
       send({
         id: 77,
         method: 'session/request_permission',
         params: {
           sessionId: 'c-acp',
           toolCall: { toolCallId: 'tc-cmd', kind: 'execute', title: 'Run npm test' },
-          options: [
-            { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
-            { optionId: 'deny', name: 'Deny', kind: 'reject_once' },
-          ],
+          options,
         },
       });
       return;
@@ -365,9 +383,32 @@ describe('antigravity driver', () => {
       permissions: 'yolo',
     }).result;
     expect(auto.text).toMatch(/^approval:allow /);
+
+    const alwaysOnlyRun = antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'approval-always-only' },
+      permissions: { approval: 'ask' },
+      onApproval: () => 'approve',
+    });
+    const alwaysOnlyEvents: AgentEvent[] = [];
+    for await (const event of alwaysOnlyRun) alwaysOnlyEvents.push(event);
+    expect(alwaysOnlyEvents).toContainEqual({
+      type: 'error',
+      message: 'Antigravity offered no one-time approval for tc-cmd; denying it.',
+    });
+    expect((await alwaysOnlyRun.result).text).toMatch(/^approval:reject-once /);
+
+    const noOptions = await antigravity({ command: agyBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'approval-no-options' },
+      permissions: { approval: 'deny' },
+    }).result;
+    expect(noOptions.text).toMatch(/^approval:cancelled /);
   });
 
-  it('steers a running ACP turn', async () => {
+  it('steers a running ACP turn and propagates rejected steers without failing the original turn', async () => {
     const run = antigravity({ command: agyBin }).run({
       prompt: 'initial',
       cwd: dir,
@@ -378,6 +419,25 @@ describe('antigravity driver', () => {
     }
     const result = await run.result;
     expect(result).toMatchObject({ status: 'completed', text: 'steered:follow-up' });
+
+    const rejectedRun = antigravity({ command: agyBin }).run({
+      prompt: 'initial',
+      cwd: dir,
+      env: { ...process.env, FAKE_ACP_MODE: 'steer-reject' },
+    });
+    let steerError: unknown;
+    for await (const event of rejectedRun) {
+      if (event.type === 'tool-start') {
+        try {
+          await rejectedRun.steer!('rejected-input');
+        } catch (error) {
+          steerError = error;
+        }
+      }
+    }
+    expect(steerError).toBeInstanceOf(Error);
+    expect((steerError as Error).message).toContain('steer rejected');
+    expect(await rejectedRun.result).toMatchObject({ status: 'completed', text: 'original-finished' });
   });
 
   it('decodes stream-json', () => {

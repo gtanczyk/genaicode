@@ -104,15 +104,29 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
     const kind: ApprovalRequest['kind'] =
       rawKind === 'execute' ? 'command' : rawKind === 'edit' || rawKind === 'delete' ? 'file-change' : 'other';
     const summary = stringField(toolCall, 'title') ?? stringField(toolCall, 'name');
+    const choices = Array.isArray(params.options)
+      ? params.options.map((choice) => ({
+          optionId: stringField(choice, 'optionId'),
+          kind: stringField(choice, 'kind'),
+        }))
+      : [];
     const decision = await session.approve(
       { id, kind, scope: 'once', ...(summary ? { summary } : {}), detail: params },
       context.signal,
     );
-    const targetKind = decision === 'approve' ? 'allow_once' : 'reject_once';
-    const choices = Array.isArray(params.options) ? params.options : [];
-    const matched = choices.find((choice) => stringField(choice, 'kind') === targetKind);
-    const optionId = stringField(matched, 'optionId') ?? (decision === 'approve' ? 'allow' : 'deny');
-    return { outcome: { outcome: 'selected', optionId } };
+    if (context.signal.aborted || session.signal.aborted) {
+      return { outcome: { outcome: 'cancelled' } };
+    }
+    if (decision === 'approve') {
+      const allowOnce = choices.find((choice) => choice.kind === 'allow_once' && choice.optionId);
+      if (allowOnce?.optionId) return { outcome: { outcome: 'selected', optionId: allowOnce.optionId } };
+      session.emit({ type: 'error', message: `Antigravity offered no one-time approval for ${id}; denying it.` });
+    }
+    const reject =
+      choices.find((choice) => choice.kind === 'reject_once' && choice.optionId) ??
+      choices.find((choice) => choice.kind === 'reject_always' && choice.optionId);
+    if (reject?.optionId) return { outcome: { outcome: 'selected', optionId: reject.optionId } };
+    return { outcome: { outcome: 'cancelled' } };
   });
 
   await rpc.request('initialize', { protocolVersion: 1, clientInfo: { name: 'genaicode', version: '2' } }, timeout);
@@ -139,17 +153,30 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
 
   const sendPrompt = (text: string) =>
     rpc.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }, NO_TIMEOUT);
-  let activePrompt: Promise<unknown> | undefined = sendPrompt(task.prompt);
+  let completed: unknown;
+  let activePrompt: Promise<void> | undefined = sendPrompt(task.prompt).then((result) => {
+    completed = result;
+  });
+  activePrompt.catch(() => {});
   session.setSteer(async (text) => {
-    const previous = activePrompt;
-    activePrompt = sendPrompt(text);
-    await previous;
+    const previous = activePrompt ?? Promise.resolve();
+    const next = sendPrompt(text);
+    const settled = next.then(
+      (result) => ({ ok: true as const, result }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    activePrompt = previous.then(async () => {
+      const outcome = await settled;
+      if (outcome.ok) completed = outcome.result;
+    });
+    activePrompt.catch(() => {});
+    const outcome = await settled;
+    if (!outcome.ok) throw outcome.error;
   });
 
-  let completed: unknown;
   while (activePrompt) {
-    const current: Promise<unknown> = activePrompt;
-    completed = await current;
+    const current: Promise<void> = activePrompt;
+    await current;
     if (activePrompt === current) activePrompt = undefined;
   }
   session.setSteer(undefined);
