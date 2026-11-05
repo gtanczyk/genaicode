@@ -110,6 +110,11 @@
     "vitest": "^4.1.12",
     "zod": "^3.25.76"
   },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
+  },
   "prettier": {
     "trailingComma": "all",
     "tabWidth": 2,
