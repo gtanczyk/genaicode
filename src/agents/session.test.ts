@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAgentSession } from './session.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -5,11 +8,11 @@ import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, C
 type Script = (task: AgentTask, emit: (event: AgentEvent) => void) => Promise<Partial<AgentResult> | void>;
 
 /** An agent whose runs play `scripts` in order. */
-function fakeAgent(scripts: Script[], capabilities: AgentCapabilities = { resume: true }) {
+function fakeAgent(scripts: Script[], capabilities: AgentCapabilities = { resume: true }, name = 'fake') {
   const tasks: AgentTask[] = [];
   const steered: string[] = [];
   const agent: CodingAgent = {
-    name: 'fake',
+    name,
     command: 'fake',
     capabilities,
     run(task): AgentRun {
@@ -418,20 +421,289 @@ describe('createAgentSession', () => {
     expect(session.get().queued).toEqual([]);
   });
 
-  it('starts a fresh session after switching agents or reset', async () => {
+  it('starts a fresh session after switching agents without handoff, or reset', async () => {
     const first = fakeAgent([async () => ({ sessionId: 's-1' })]);
     const second = fakeAgent([async () => ({ sessionId: 's-2' }), async () => {}]);
-    const session = createAgentSession({ agent: first.agent, cwd: '.' });
+    const session = createAgentSession({ agent: first.agent, cwd: '.', handoff: false });
     session.send('a');
     await session.idle();
     session.setAgent(second.agent);
     session.send('b');
     await session.idle();
-    expect(second.tasks[0].resume).toBeUndefined();
+    expect(second.tasks[0]).toMatchObject({ prompt: 'b', resume: undefined });
     session.reset();
     session.send('c');
     await session.idle();
     expect(second.tasks[1].resume).toBeUndefined();
+  });
+
+  it('hands the conversation over to the next agent', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'tool-start', id: 't', name: 'Bash', input: { command: 'npm test' } });
+          emit({ type: 'tool-end', id: 't', output: '3 passed' });
+          emit({ type: 'file-change', paths: ['src/a.ts'] });
+          emit({ type: 'message', text: 'Fixed the parser.' });
+          return { sessionId: 's-1' };
+        },
+      ],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => ({ sessionId: 's-2' }), async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('fix the parser');
+    await session.idle();
+    session.setAgent(second.agent);
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('now add a test');
+    await session.idle();
+
+    const prompt = second.tasks[0].prompt;
+    expect(second.tasks[0].resume).toBeUndefined();
+    expect(prompt).toContain('User: fix the parser\nclaude: Fixed the parser.');
+    expect(prompt.endsWith('now add a test')).toBe(true);
+    const turn = session.get().turns[1];
+    expect(turn).toMatchObject({ prompt: 'now add a test', handoff: { turns: 1, agents: ['claude'] } });
+    const file = turn.handoff!.file!;
+    expect(file).toMatch(/^\.genaicode\/handoff\/.+-codex\.handoff\.md$/);
+    expect(prompt).toContain(`\`${file}\``);
+    const transcript = readFileSync(join(cwd, file), 'utf8');
+    expect(transcript).toContain('tool `Bash` {"command":"npm test"}');
+    expect(transcript).toContain('3 passed');
+    expect(transcript).toContain('changed files: `src/a.ts`');
+    expect(existsSync(join(cwd, '.genaicode/handoff/.gitignore'))).toBe(true);
+
+    // Later turns resume the agent's own session without another handoff.
+    session.send('thanks');
+    await session.idle();
+    expect(second.tasks[1]).toMatchObject({ prompt: 'thanks', resume: 's-2' });
+  });
+
+  it('resumes an agent switched back to and tells it only what it missed', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ sessionId: 's-1' }), async () => ({ sessionId: 's-1' })],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'message', text: 'codex answer' });
+          return { sessionId: 's-2' };
+        },
+      ],
+      { resume: true },
+      'codex',
+    );
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    session.setAgent(first.agent);
+    expect(session.get().sessionId).toBe('s-1');
+    session.send('three');
+    await session.idle();
+    const back = first.tasks[1];
+    expect(back.resume).toBe('s-1');
+    expect(back.prompt).toContain('User: two\ncodex: codex answer');
+    expect(back.prompt).not.toContain('User: one');
+    expect(session.get().turns[2].handoff).toMatchObject({ turns: 1, agents: ['codex'] });
+  });
+
+  it('keeps the handoff for the next turn when the first one fails to start', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
+    const second = fakeAgent(
+      [async () => ({ status: 'failed', ok: false }), async () => ({ sessionId: 's-2' })],
+      { resume: true },
+      'codex',
+    );
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    session.send('three');
+    await session.idle();
+    expect(second.tasks[1].prompt).toContain('User: one');
+    expect(second.tasks[1].prompt).toContain('User: two');
+  });
+
+  it('keeps the resumed session when a resumed turn names none', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ sessionId: 's-1' }), async () => {}, async () => {}],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => ({ sessionId: 's-2' })], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[1].resume).toBe('s-1');
+    session.setAgent(second.agent);
+    session.send('three');
+    await session.idle();
+    session.setAgent(first.agent);
+    session.send('four');
+    await session.idle();
+    expect(first.tasks[2].resume).toBe('s-1');
+    expect(first.tasks[2].prompt).not.toContain('User: one');
+  });
+
+  it('does not let a running turn restore a session switched away from fresh', async () => {
+    let finish!: () => void;
+    const first = fakeAgent(
+      [
+        async () => ({ sessionId: 's-1' }),
+        () => new Promise((resolve) => (finish = () => resolve({ sessionId: 's-1' }))),
+        async () => {},
+      ],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd: '.', handoff: false });
+    session.send('one');
+    await session.idle();
+    session.send('two');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    session.setAgent(second.agent);
+    session.setAgent(first.agent, { handoff: false });
+    finish();
+    await session.idle();
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('three');
+    await session.idle();
+    expect(first.tasks[2].resume).toBeUndefined();
+  });
+
+  it('starts the current agent fresh when switched to it without handoff', async () => {
+    const first = fakeAgent([async () => ({ sessionId: 's-1' }), async () => {}], { resume: true }, 'claude');
+    const session = createAgentSession({ agent: first.agent, cwd: '.' });
+    session.send('one');
+    await session.idle();
+    session.setAgent(first.agent, { handoff: false });
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[1]).toMatchObject({ prompt: 'two', resume: undefined });
+  });
+
+  it("recaps a turn's final result text and runs a turn with the agent that started it", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent([async () => ({ sessionId: 's-1', text: 'final answer' })], { resume: true }, 'claude');
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    let switched = false;
+    session.subscribe((state) => {
+      if (state.status === 'running' && !switched) {
+        switched = true;
+        session.setAgent(second.agent);
+      }
+    });
+    session.send('one');
+    await session.idle();
+    expect(first.tasks).toHaveLength(1);
+    expect(second.tasks).toHaveLength(0);
+    session.send('two');
+    await session.idle();
+    expect(second.tasks[0].prompt).toContain('User: one\nclaude: final answer');
+    const file = session.get().turns[1].handoff!.file!;
+    expect(readFileSync(join(cwd, file), 'utf8')).toContain('final answer');
+  });
+
+  it('resumes the session given in options after switching away and back', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent([async () => {}], { resume: true }, 'claude');
+    const second = fakeAgent([async () => ({ sessionId: 's-2' })], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd, resume: 'old' });
+    session.setAgent(second.agent);
+    session.send('one');
+    await session.idle();
+    session.setAgent(first.agent);
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[0].resume).toBe('old');
+    expect(first.tasks[0].prompt).toContain('User: one');
+  });
+
+  it('leaves turns before a reset out of later handoffs', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ sessionId: 's-1' }), async () => ({ sessionId: 's-3' })],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('old topic');
+    await session.idle();
+    session.reset();
+    session.send('new topic');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('go on');
+    await session.idle();
+    expect(second.tasks[0].prompt).toContain('User: new topic');
+    expect(second.tasks[0].prompt).not.toContain('old topic');
+  });
+
+  it('writes owner-only transcripts that keep the failure reason', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ status: 'failed', ok: false, error: 'claude: command not found' })],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    const file = join(cwd, session.get().turns[1].handoff!.file!);
+    expect(readFileSync(file, 'utf8')).toContain('claude: command not found');
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it('ignores transcripts in a handoff folder that has its own .gitignore', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    mkdirSync(join(cwd, 'notes'));
+    writeFileSync(join(cwd, 'notes/.gitignore'), '*.log');
+    const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd, handoff: { dir: 'notes' } });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    expect(session.get().turns[1].handoff!.file).toMatch(/^notes\/.+\.handoff\.md$/);
+    expect(readFileSync(join(cwd, 'notes/.gitignore'), 'utf8')).toBe('*.log\n*.handoff.md\n');
+  });
+
+  it('skips the handoff when asked', async () => {
+    const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd: '.' });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent, { handoff: false });
+    session.send('two');
+    await session.idle();
+    expect(second.tasks[0].prompt).toBe('two');
+    expect(session.get().turns[1].handoff).toBeUndefined();
   });
 
   it("counts each turn's usage once, as agents report running totals", async () => {

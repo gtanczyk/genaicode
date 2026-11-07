@@ -279,6 +279,22 @@ describe('session failover', () => {
     expect(codex.tasks[1]).toMatchObject({ prompt: 'next', resume: 'x-1' });
   });
 
+  it('hands the earlier conversation to the agent that takes over', async () => {
+    const claude = fake('claude', [{ text: 'parser fixed', sessionId: 'c-1' }, out('quota')]);
+    const codex = fake('codex', [{ text: 'ok' }]);
+    const session = createAgentSession({ agent: claude.agent, cwd: dir, fallback: [codex.agent] });
+    session.send('fix the parser');
+    await session.idle();
+    session.send('add a test');
+    await session.idle();
+    const prompt = codex.tasks[0]!.prompt;
+    expect(prompt).toContain('User: fix the parser\nclaude: parser fixed');
+    // The failed attempt is the prompt itself, not history.
+    expect(prompt).not.toContain('User: add a test');
+    expect(prompt.endsWith('add a test')).toBe(true);
+    expect(session.get().turns[2]!.handoff).toMatchObject({ turns: 1, agents: ['claude'] });
+  });
+
   it('tells the next agent what the user steered into the failed turn', async () => {
     const gate = { open: () => {} };
     const claude: CodingAgent = {

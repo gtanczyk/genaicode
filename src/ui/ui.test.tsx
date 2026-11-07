@@ -77,6 +77,7 @@ describe('format helpers', () => {
 
   it('parses slash commands and leaves other text alone', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
+    expect(parseSlash('/agent codex --fresh')).toEqual({ kind: 'agent', name: 'codex', fresh: true });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });

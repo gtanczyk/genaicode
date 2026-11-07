@@ -34,7 +34,11 @@ export function outputTail(output: string | undefined, count: number): { lines: 
 
 /** Slash commands shared by the terminal and web front ends. */
 export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: string }> = [
-  { name: '/agent', args: '[name]', help: 'list agents, or switch (starts a new agent session)' },
+  {
+    name: '/agent',
+    args: '[name] [--fresh]',
+    help: 'list agents, or switch (hands the conversation over; --fresh starts with no context)',
+  },
   { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
@@ -47,7 +51,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
 ];
 
 export type SlashCommand =
-  | { kind: 'agent'; name?: string }
+  | { kind: 'agent'; name?: string; fresh?: boolean }
   | { kind: 'model'; model?: string }
   /** No `names` and no `off`: show the list. */
   | { kind: 'fallback'; names?: string[]; off?: boolean }
@@ -75,8 +79,11 @@ export function parseSlash(text: string): SlashCommand | undefined {
   const arg = rest.join(' ') || undefined;
   switch (name) {
     case '/agent':
-    case '/agents':
-      return { kind: 'agent', name: arg };
+    case '/agents': {
+      const fresh = rest.includes('--fresh');
+      const name = rest.filter((word) => word !== '--fresh').join(' ') || undefined;
+      return fresh ? { kind: 'agent', name, fresh } : { kind: 'agent', name };
+    }
     case '/model':
       return { kind: 'model', model: arg };
     case '/fallback':

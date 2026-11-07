@@ -246,8 +246,14 @@ session.send('Now cover it with a test'); // resumes the same agent session
   queue.
 - Approval requests wait in `state.approvals` until `approve(id, decision)`, unless
   `autoApprove` decides them. `stop()` denies whatever is pending.
-- `setAgent()` switches agents between turns and starts a fresh agent session; `reset()`
-  does the same for the current agent.
+- `setAgent()` (and a failover) switches agents and hands the conversation over: the next agent's first
+  prompt starts with a recap of the turns it missed and the path of a Markdown transcript
+  (tool calls, output, changed files) written to `.genaicode/handoff/` in the cwd (git-ignored),
+  for it to read when the recap is not enough. Switching back to an agent resumes its own
+  session and tells it only what it missed. `setAgent(agent, { handoff: false })`, or
+  `handoff: false` in the options, starts the agent fresh; `handoff: { dir }` moves the
+  transcripts. `turn.handoff` records what a turn was told. `reset()` forgets every agent
+  session, with no handoff.
 - `transformPrompt(text)` rewrites what reaches the agent (a briefing, a context prefix)
   while turns, the queue and steered input keep the text given to `send()`.
 - `<AgentChat>` from `genaicode/react` renders `state` in a React page (see the README).

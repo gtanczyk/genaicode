@@ -1,5 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
+import { HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { addUsage, tokenCount } from './runtime.js';
 import type {
   AgentBudget,
@@ -46,6 +47,8 @@ export interface SessionTurn {
   /** The turn's latest usage report. Agents report running totals, not increments. */
   usage?: TokenUsage;
   costUsd?: number;
+  /** Earlier turns this turn's agent was told about after `setAgent()`. */
+  handoff?: { turns: number; agents: string[]; file?: string };
 }
 
 export interface SessionState {
@@ -113,6 +116,14 @@ export interface AgentSessionOptions {
    * `transformPrompt`.
    */
   failoverPrompt?(prompt: string, earlier: readonly SessionTurn[]): string;
+  /**
+   * What an agent hears, after `setAgent()` or a failover, about the turns it did not run.
+   * Default on: a recap goes before its next prompt, and the full transcript (tool calls,
+   * output, changed files) is written to `dir` (relative to cwd, default `.genaicode/handoff`)
+   * for it to read on demand. Switching back to an agent resumes its own session and tells it
+   * only what it missed. `false`: every switch starts the agent fresh, with no context.
+   */
+  handoff?: boolean | { dir?: string };
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -142,14 +153,18 @@ export interface AgentSession {
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
   approve(id: string, decision: ApprovalDecision): boolean;
-  /** Switch agents between turns. The next turn starts a fresh session. */
-  setAgent(agent: CodingAgent): void;
+  /**
+   * Switch agents. The next turn resumes the agent's own earlier session when it had one, and
+   * hands over the turns it missed (see `AgentSessionOptions.handoff`). `{ handoff: false }`
+   * starts it fresh with no context. A running turn finishes with the agent that started it.
+   */
+  setAgent(agent: CodingAgent, options?: { handoff?: boolean }): void;
   setModel(model: string | undefined): void;
   /** Change the failover agents (`AgentSessionOptions.fallback`). Empty or undefined turns failover off. */
   setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
   setBudget(budget: AgentBudget | undefined): void;
-  /** Forget the agent session so the next turn starts fresh. Keeps the transcript. */
+  /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
@@ -196,8 +211,20 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let closed = false;
   // `options.resume` applies to the first turn as given, so an agent that cannot resume refuses it.
   let explicitResume = options.resume;
-  // `reset()` during a turn: forget the session that turn reports when it ends.
+  // `reset()`, or a fresh switch to the running agent, during a turn: forget the session that
+  // turn reports when it ends.
   let forgetAfterTurn = false;
+  let runningAgent: CodingAgent | undefined;
+  const handoffOn = options.handoff !== false;
+  const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
+  // Per agent: its own session and the last turn that session knows about.
+  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>(
+    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
+  );
+  // Turns after this id are news to the current agent; undefined: it knows everything.
+  let missedAfter: number | undefined;
+  // `reset()` drops the turns up to here from every later handoff.
+  let resetAt = 0;
   // After a user stop, `state.notes` wait for the user's next prompt instead of starting a turn.
   let holdNotes = false;
   // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
@@ -234,10 +261,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const clip = (text: string | undefined) =>
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
-  const onEvent = (turnId: number, event: AgentEvent) => {
+  const onEvent = (turnId: number, event: AgentEvent, own: () => boolean) => {
     switch (event.type) {
       case 'session':
-        if (!forgetAfterTurn) set({ sessionId: event.sessionId });
+        if (!forgetAfterTurn && own()) set({ sessionId: event.sessionId });
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
@@ -370,12 +397,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     for (const resolve of idleWaiters.splice(0)) resolve();
   };
 
-  const switchAgent = (next: CodingAgent) => {
+  const switchAgent = (next: CodingAgent, carry = handoffOn) => {
     agent = next;
     explicitResume = undefined;
-    if (state.status === 'running') forgetAfterTurn = true;
+    if (!carry && runningAgent === next) forgetAfterTurn = true;
+    const before = carry ? known.get(next) : undefined;
+    const sessionId = before?.sessionId && next.capabilities.resume ? before.sessionId : undefined;
+    // Without its own session the agent missed the whole conversation.
+    missedAfter = carry ? Math.max(resetAt, sessionId ? before!.upTo : 0) : undefined;
+    if (!carry) known.delete(next);
     // Limits belong to the agent that reported them.
-    set({ agent: next.name, sessionId: undefined, rateLimits: [] });
+    set({ agent: next.name, sessionId, rateLimits: [] });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
@@ -430,7 +462,35 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const turnId = nextTurnId++;
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
-    const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
+    const turnAgent = agent;
+    runningAgent = turnAgent;
+    const own = () => agent === turnAgent;
+    let preamble = '';
+    let handoff: SessionTurn['handoff'];
+    if (missedAfter !== undefined && rewritten === undefined) {
+      const from = missedAfter;
+      // The attempt being retried is this prompt itself (and the takeover note), not history.
+      const retried = retry ? state.turns.at(-1)?.id : undefined;
+      const missed = state.turns.filter((past) => past.id > from && past.id !== retried);
+      if (missed.length) {
+        let file: string | undefined;
+        try {
+          file = writeHandoff(state.cwd, handoffDir, agent.name, missed);
+        } catch {
+          // An unwritable cwd still gets the recap.
+        }
+        preamble = handoffPreamble(missed, file);
+        handoff = { turns: missed.length, agents: [...new Set(missed.map((past) => past.agent))], file };
+      }
+    }
+    const turn: SessionTurn = {
+      id: turnId,
+      agent: agent.name,
+      prompt,
+      entries: [],
+      startedAt: Date.now(),
+      ...(handoff ? { handoff } : {}),
+    };
     const resume =
       explicitResume !== undefined
         ? explicitResume
@@ -450,10 +510,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     try {
       if (left?.spent) throw new Error(left.spent);
       const budget = tighterBudget(left?.budget, options.task?.budget);
-      current = agent.run({
+      current = turnAgent.run({
         ...options.task,
         ...(budget ? { budget } : {}),
-        prompt: prefix + (rewritten ?? toAgent(prompt)) + suffix,
+        prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
         model: state.model,
         effort: state.effort,
@@ -466,10 +526,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = failedRun(error instanceof Error ? error.message : String(error));
     }
     run = current;
-    if (current.steer && agent.capabilities.steer) set({ canSteer: true });
+    if (current.steer && turnAgent.capabilities.steer) set({ canSteer: true });
+    let turnSession: string | undefined;
     void (async () => {
       try {
-        for await (const event of current) onEvent(turnId, event);
+        for await (const event of current) {
+          if (event.type === 'session') turnSession = event.sessionId;
+          onEvent(turnId, event, own);
+        }
       } catch (error) {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
@@ -492,10 +556,20 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       // A quota known only from an error is over once a turn gets through again.
       if (result.ok && state.rateLimits?.some((limit) => limit.window === 'quota'))
         set({ rateLimits: state.rateLimits.filter((limit) => limit.window !== 'quota') });
+      runningAgent = undefined;
+      // A resumed turn that names no new session continued the one it resumed.
+      const sessionId = result.sessionId ?? turnSession ?? (result.ok ? resume : undefined);
       if (forgetAfterTurn) {
         forgetAfterTurn = false;
-        set({ sessionId: undefined });
-      } else if (result.sessionId) set({ sessionId: result.sessionId });
+        if (own()) set({ sessionId: undefined });
+      } else {
+        // The agent heard everything up to this turn, through its session or this turn's handoff.
+        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId });
+        if (own()) {
+          if (sessionId || result.ok) missedAfter = undefined;
+          if (sessionId) set({ sessionId });
+        }
+      }
       if (failOver(turnId, result)) {
         // The same prompt again, on the next agent; a note stays a note.
         if (finished && noteTurnWas) nextIsNote = true;
@@ -589,9 +663,20 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       resolve(decision);
       return true;
     },
-    setAgent(next) {
-      if (next === agent) return;
-      switchAgent(next);
+    setAgent(next, switchOptions) {
+      const carry = handoffOn && switchOptions?.handoff !== false;
+      if (next === agent) {
+        // Switching to the current agent fresh is a reset of its session.
+        if (!carry) {
+          explicitResume = undefined;
+          known.delete(next);
+          missedAfter = undefined;
+          if (runningAgent === next) forgetAfterTurn = true;
+          set({ sessionId: undefined });
+        }
+        return;
+      }
+      switchAgent(next, carry);
     },
     setFallback(agents) {
       fallback = agents ?? [];
@@ -605,6 +690,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     reset() {
       explicitResume = undefined;
+      known.clear();
+      missedAfter = undefined;
+      resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },
