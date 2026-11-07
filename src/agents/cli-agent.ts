@@ -68,6 +68,12 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   let handle: ProcessHandle | undefined;
   let stopped = false;
 
+  const abort = () => {
+    stopped = true;
+    lifetime.abort();
+    handle?.kill();
+  };
+  recorder.watchBudget(task.budget, abort);
   const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
   const input = definition.input ? stdinInput(definition, definition.input, task) : undefined;
   let reflow = () => {};
@@ -138,11 +144,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
 
   return {
     result,
-    abort() {
-      stopped = true;
-      lifetime.abort();
-      handle?.kill();
-    },
+    abort,
     ...(input
       ? {
           steer(text: string) {

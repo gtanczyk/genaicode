@@ -59,6 +59,8 @@ button.chip:hover { border-color: var(--accent); }
 .cwd { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .spacer { flex: 1; }
 .chip { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.chip[data-level='warning'] { color: #e8590c; border-color: currentColor; }
+.chip[data-level='exceeded'] { color: var(--err); border-color: currentColor; }
 .conn { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
 .conn.off { background: var(--err); }
 .gc-empty h1 { color: var(--text); font-size: 26px; letter-spacing: -.02em; margin: 0 0 8px; }

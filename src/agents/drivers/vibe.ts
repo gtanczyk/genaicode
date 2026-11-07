@@ -77,7 +77,8 @@ export function vibeArgs(task: AgentTask, options: VibeAgentOptions = {}): strin
   args.push(...flags.args);
   if (options.trustWorkspace ?? true) args.push('--trust');
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
-  if (options.maxPriceUsd !== undefined) args.push('--max-price', String(options.maxPriceUsd));
+  const maxPrice = minDefined(options.maxPriceUsd, task.budget?.maxCostUsd);
+  if (maxPrice !== undefined) args.push('--max-price', String(maxPrice));
   if (task.extraArgs) args.push(...task.extraArgs);
   // `--prompt=<text>` keeps a prompt that starts with a dash from reading as a flag.
   return [...args, `--prompt=${task.prompt}`];
@@ -146,4 +147,8 @@ function messageText(content: unknown): string {
     .map((block) => stringField(block, 'text') ?? '')
     .filter((text) => text.trim())
     .join('\n\n');
+}
+
+function minDefined(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.min(a, b);
 }

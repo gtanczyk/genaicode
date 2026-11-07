@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- Token and quota reporting with limits and warnings. New `rate-limit` events carry plan
+  limits: Claude's subscription windows (`rate_limit_event`: 5-hour, weekly, per-model) and
+  Codex's (`account/rateLimits/updated` in `codexLive`), with % used and reset time
+  (`capabilities.rateLimits`). Any agent error that says a quota or rate limit ran out adds a
+  `{ window: 'quota', status: 'exceeded' }` event.
+- `task.budget` (`maxTokens`, `maxCostUsd`, `warnAt`): a `budget-warning` event at 80% by
+  default, then genaicode stops the agent and the run fails with a budget error. Claude also
+  gets `--max-budget-usd`, vibe `--max-price`. `runWithVerify` spreads it over all attempts.
+- `createAgentSession({ budget })` caps a whole session, with `setBudget()`, `state.budget`
+  and `state.rateLimits` (latest report per limit).
+- `limitChips`, `budgetStatus` and `formatResetIn` in `genaicode/react`. `<AgentChat>`,
+  `genaicode chat` and `genaicode ui` show limits and budget next to usage, yellow when close
+  and red when out. `genaicode run|chat|ui --max-tokens <n> --max-cost <usd>`.
+
 ### Fixed
 
 - Headless Copilot can commit and push when an app enables `dev.commit: 'on-request'`:

@@ -10,7 +10,16 @@ import {
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision } from '../agents/types.js';
 import { useFollowScroll } from './follow-scroll.js';
-import { formatDuration, formatUsage, relativePath, shortId, toolArgument, toolLabel, turnFooter } from './format.js';
+import {
+  formatDuration,
+  formatUsage,
+  limitChips,
+  relativePath,
+  shortId,
+  toolArgument,
+  toolLabel,
+  turnFooter,
+} from './format.js';
 import { Markdown } from './markdown.js';
 
 /** A line from the host itself (not the agent), shown between turns. */
@@ -164,6 +173,7 @@ export function AgentChat(props: AgentChatProps) {
         : 'Queue the next prompt…'
       : `Ask ${agentName} to change something…`);
   const usage = formatUsage(state.usage, state.costUsd);
+  const limits = limitChips(state);
   const footer = props.renderFooter?.();
 
   return (
@@ -183,6 +193,11 @@ export function AgentChat(props: AgentChatProps) {
           <span className="gc-spacer" />
           {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
           {usage ? <span className="gc-chip">{usage}</span> : null}
+          {limits.map((chip) => (
+            <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
+              {chip.text}
+            </span>
+          ))}
           {props.headerExtras}
         </div>
       )}

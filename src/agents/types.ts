@@ -49,6 +49,46 @@ export interface AgentTask {
    * sandbox: 'unrestricted' }`.
    */
   permissions?: AgentPermissions | 'yolo';
+  /**
+   * Token and cost caps for this run. Past `warnAt` of a cap the run emits `budget-warning`;
+   * past the cap itself genaicode stops the agent and the run fails with a budget error.
+   * Checked against the agent's usage reports (`capabilities.usage`), so an agent that reports
+   * usage only at the end can overshoot. Drivers with a native cap pass it on as well.
+   */
+  budget?: AgentBudget;
+}
+
+export interface AgentBudget {
+  /** Most tokens the run may use: `totalTokens`, else input + output. */
+  maxTokens?: number;
+  /** Most US dollars the run may cost, as the agent reports it. */
+  maxCostUsd?: number;
+  /** Fraction of a cap at which `budget-warning` fires. Default 0.8. */
+  warnAt?: number;
+}
+
+/**
+ * A plan or account limit the agent reported (Claude's subscription windows, Codex rate
+ * limits), or an error that said a quota ran out.
+ */
+export interface RateLimit {
+  /** Which limit: `5h`, `7d`, `7d-opus`, `overage`..., or `quota` when only an error said so. */
+  window: string;
+  /** `warning`: the vendor flagged it, or 80% or more is used. `exceeded`: requests are refused. */
+  status: 'ok' | 'warning' | 'exceeded';
+  /** Share of the limit used, 0-100. */
+  usedPercent?: number;
+  /** When the limit resets, in epoch milliseconds. */
+  resetsAt?: number;
+  /** The vendor's name for the limit, when it gave one (e.g. a per-model Codex limit). */
+  name?: string;
+}
+
+/** A run crossed `warnAt` of one of its `AgentTask.budget` caps. */
+export interface BudgetWarning {
+  kind: 'tokens' | 'cost';
+  used: number;
+  limit: number;
 }
 
 /**
@@ -125,6 +165,8 @@ export type AgentEvent =
   /** `automatic`: decided by `permissions.approval`, without asking anyone. */
   | { type: 'approval-resolved'; id: string; decision: ApprovalDecision; automatic?: boolean }
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
+  | { type: 'rate-limit'; limit: RateLimit }
+  | { type: 'budget-warning'; warning: BudgetWarning }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
   | { type: 'raw'; line: string }
@@ -154,6 +196,8 @@ export interface AgentCapabilities {
   maxTurns?: boolean;
   /** Reports token usage. */
   usage?: boolean;
+  /** Reports plan or account limits (`rate-limit` events) before they run out. */
+  rateLimits?: boolean;
   /** `AgentRun.steer` can add input to a running task. */
   steer?: boolean;
   /** Permission prompts reach `AgentTask.onApproval`. */

@@ -2,7 +2,7 @@ export { cliAgent } from './agents/cli-agent.js';
 export type { AgentOutcome, AgentOutputParser, CliAgentDefinition } from './agents/cli-agent.js';
 export { detectAgents, findExecutable } from './agents/discovery.js';
 export type { AgentAvailability } from './agents/discovery.js';
-export { claude, claudeArgs, createClaudeParser } from './agents/drivers/claude.js';
+export { claude, claudeArgs, claudeRateLimits, createClaudeParser } from './agents/drivers/claude.js';
 export { mergePermissionFlags, resolvePermissions, unsupportedPermissions, YOLO } from './agents/permissions.js';
 export type { PermissionFlags } from './agents/permissions.js';
 export { applyPermissionArgs, PERMISSION_AGENTS } from './agents/drivers/permission-args.js';
@@ -13,6 +13,7 @@ export { createMuseParser, muse, museArgs } from './agents/drivers/muse.js';
 export { museMcpOverrides } from './agents/drivers/muse-mcp.js';
 export type { MuseAgentOptions } from './agents/drivers/muse.js';
 export type {
+  AgentBudget,
   AgentCapabilities,
   AgentEvent,
   AgentPermissions,
@@ -25,10 +26,13 @@ export type {
   ApprovalPolicy,
   ApprovalRequest,
   ApprovalScope,
+  BudgetWarning,
   CodingAgent,
   McpServer,
+  RateLimit,
   SandboxPolicy,
 } from './agents/types.js';
+export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, uuidv7 } from './agents/live-agent.js';
 export type { LiveAgentDefinition, LiveApprovalIds, LiveApprovals, LiveSession } from './agents/live-agent.js';
 export { RpcError, RpcPeer } from './agents/rpc.js';
@@ -52,7 +56,7 @@ export type {
   ClaudeApprovalToolOptions,
   McpToolResult,
 } from './agents/drivers/claude-approvals.js';
-export { codexLive, codexNotification, codexThreadPolicy } from './agents/drivers/codex-live.js';
+export { codexLive, codexNotification, codexRateLimits, codexThreadPolicy } from './agents/drivers/codex-live.js';
 export type { CodexLiveOptions } from './agents/drivers/codex-live.js';
 export { museLive, museNotification } from './agents/drivers/muse-live.js';
 export type { MuseLiveOptions } from './agents/drivers/muse-live.js';

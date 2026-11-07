@@ -17,7 +17,9 @@ Assistant text goes to stdout and tool calls, edits, and the result line go to s
 `--verify` runs a shell command after the agent finishes and sends its output back for up
 to `--max-repairs` more attempts (`runWithVerify`). The exit code is 0 on success, 1 when
 the agent or the check fails, 2 on a usage error, and 130 when interrupted.
-`npx genaicode --help` lists every option.
+`--max-tokens <n>` and `--max-cost <usd>` stop the agent once it goes over (with `--verify`,
+over all attempts together); a line on stderr warns at 80% and when the agent's plan limit
+gets close. `npx genaicode --help` lists every option.
 
 ## Chat with an agent: terminal and browser
 

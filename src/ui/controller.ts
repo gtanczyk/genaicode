@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { detectAgents } from '../agents/discovery.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
-import type { AgentTask, ApprovalDecision, CodingAgent } from '../agents/types.js';
+import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
 export interface AgentChoice {
@@ -61,6 +61,8 @@ export interface ChatOptions {
   /** Backs `/web`. Without it, `/web` only says the browser UI is not available here. */
   web?: WebHandoff;
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
+  /** Caps on the whole session (`AgentSessionOptions.budget`). */
+  budget?: AgentBudget;
 }
 
 export interface ChatController {
@@ -117,6 +119,7 @@ export function createChatController(options: ChatOptions): ChatController {
     effort: options.effort,
     resume: options.resume,
     task: { ...options.task, env },
+    ...(options.budget ? { budget: options.budget } : {}),
     transformPrompt: options.transformPrompt,
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });

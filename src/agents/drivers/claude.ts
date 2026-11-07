@@ -5,7 +5,8 @@ import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agen
 import { decideApproval, reportApproval } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
-import type { AgentEvent, AgentTask, CodingAgent, McpServer } from '../types.js';
+import { epochMs, limitStatus } from '../runtime.js';
+import type { AgentEvent, AgentTask, CodingAgent, McpServer, RateLimit } from '../types.js';
 import {
   claudeApprovalEnv,
   claudePermissionFlags,
@@ -77,6 +78,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       effort: ['low', 'medium', 'high', 'xhigh', 'max'],
       maxTurns: true,
       usage: true,
+      rateLimits: true,
       mcp: true,
       resume: true,
       approvals: true,
@@ -203,6 +205,7 @@ export function claudeArgs(
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('--effort', task.effort);
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
+  if (task.budget?.maxCostUsd !== undefined) args.push('--max-budget-usd', String(task.budget.maxCostUsd));
   if (task.resume) args.push('--resume', task.resume);
   if (task.extraArgs) args.push(...task.extraArgs);
   return stdinPrompt ? args : [...args, ...positionalPrompt(task.prompt)];
@@ -260,6 +263,9 @@ export function createClaudeParser(): AgentOutputParser {
             });
           }
           break;
+        case 'rate_limit_event':
+          events.push(...claudeRateLimits(value.rate_limit_info));
+          break;
         case 'stream_event': {
           const delta = isObject(value.event) ? value.event.delta : undefined;
           const text = stringField(delta, 'text');
@@ -300,6 +306,57 @@ export function createClaudeParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+const CLAUDE_WINDOWS: Record<string, string> = {
+  five_hour: '5h',
+  seven_day: '7d',
+  seven_day_opus: '7d-opus',
+  seven_day_sonnet: '7d-sonnet',
+  seven_day_overage_included: '7d-overage',
+  overage: 'overage',
+};
+
+const CLAUDE_STATUS: Record<string, RateLimit['status']> = {
+  allowed: 'ok',
+  allowed_warning: 'warning',
+  rejected: 'exceeded',
+};
+
+/**
+ * `rate_limit_event.rate_limit_info` as `rate-limit` events: one per subscription window when
+ * Claude lists them (`unifiedWindows`), else the window that limits now. `utilization` is 0-1.
+ */
+export function claudeRateLimits(info: unknown): AgentEvent[] {
+  if (!isObject(info)) return [];
+  const limit = (window: string, value: Record<string, unknown>, fallback?: unknown): AgentEvent => {
+    const utilization = numberField(value, 'utilization');
+    const usedPercent = utilization === undefined ? undefined : Math.round(utilization * 1000) / 10;
+    const status = CLAUDE_STATUS[String(value.status ?? fallback)] ?? limitStatus(usedPercent);
+    const resetsAt = epochMs(numberField(value, 'resetsAt'));
+    return {
+      type: 'rate-limit',
+      limit: {
+        window,
+        status,
+        ...(usedPercent !== undefined ? { usedPercent } : {}),
+        ...(resetsAt !== undefined ? { resetsAt } : {}),
+      },
+    };
+  };
+  const windows = isObject(info.unifiedWindows) ? info.unifiedWindows : undefined;
+  const listed = windows
+    ? Object.entries(windows).filter((entry): entry is [string, Record<string, unknown>] => isObject(entry[1]))
+    : [];
+  if (listed.length) {
+    const limiting = stringField(info, 'rateLimitType');
+    return listed.map(([key, value]) =>
+      limit(CLAUDE_WINDOWS[key] ?? key, value, key === limiting ? info.status : undefined),
+    );
+  }
+  const type = stringField(info, 'rateLimitType');
+  if (!type && info.status === undefined) return [];
+  return [limit(type ? (CLAUDE_WINDOWS[type] ?? type) : 'quota', info)];
 }
 
 type ContentBlock = { type?: unknown; [key: string]: unknown };

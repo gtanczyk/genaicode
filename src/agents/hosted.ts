@@ -62,6 +62,7 @@ function runHosted(provider: HostedAgentProvider, task: AgentTask, pollIntervalM
   const onAbort = () => stop('aborted');
   task.signal?.addEventListener('abort', onAbort, { once: true });
   if (task.signal?.aborted) onAbort();
+  recorder.watchBudget(task.budget, onAbort);
   const timer = task.timeoutMs !== undefined ? setTimeout(() => stop('timeout'), task.timeoutMs) : undefined;
 
   const exit = (reason: ProcessExit['reason'], error?: Error): ProcessExit => ({

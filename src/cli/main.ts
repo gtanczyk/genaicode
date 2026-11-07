@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
-import type { AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
+import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { serveAcp } from '../acp/server.js';
@@ -61,6 +61,8 @@ export interface UiLaunch {
   exitWithStdin?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
+  /** `--max-tokens`, `--max-cost`: caps on the whole session. */
+  budget?: AgentBudget;
 }
 
 export interface UiModule {
@@ -102,6 +104,8 @@ Chat and UI options:
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
+      --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
+      --max-cost <usd>    Cost budget for the whole session, for agents that report cost
 
   Each prompt after the first continues the agent's session (claude, codex, cursor,
   opencode, copilot, antigravity). Prompts sent while the agent works wait in a queue. Type /help in
@@ -119,6 +123,8 @@ Run options:
       --verify <command>  Shell command that checks the work; on failure its output goes
                           back to the agent for another attempt
       --max-repairs <n>   Repair attempts after a failed check (default 2)
+      --max-tokens <n>    Stop the agent past this many tokens (repairs included)
+      --max-cost <usd>    Stop the agent past this cost in US dollars, for agents that report cost
       --json              Print agent events as JSON lines instead of text
 
 Embed options:
@@ -288,6 +294,7 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
+    ...(options.budget ? { budget: options.budget } : {}),
     ...extra,
   };
   return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
@@ -339,6 +346,7 @@ async function runTask(
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,
+    ...(options.budget ? { budget: options.budget } : {}),
     ...extra,
   };
   const render = options.json

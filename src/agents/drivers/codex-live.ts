@@ -1,5 +1,5 @@
 import { liveAgent, type LiveSession } from '../live-agent.js';
-import type { AgentOutcome } from '../runtime.js';
+import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
@@ -32,6 +32,7 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
     capabilities: {
       effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
       usage: true,
+      rateLimits: true,
       approvals: true,
       mcp: true,
       permissions: {
@@ -205,6 +206,8 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
         },
       ];
     }
+    case 'account/rateLimits/updated':
+      return codexRateLimits(params.rateLimits);
     case 'error': {
       const message = stringField(params.error, 'message') ?? stringField(params, 'message');
       return message ? [{ type: 'error', message }] : [];
@@ -216,4 +219,37 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
 
 function mcpName(item: JsonObject): string {
   return [stringField(item, 'server'), stringField(item, 'tool')].filter(Boolean).join('/') || 'mcp';
+}
+
+/**
+ * A Codex `RateLimitSnapshot` as `rate-limit` events, one per window (`primary`, `secondary`).
+ * A limit other than the default `codex` one carries its `limitName`.
+ */
+export function codexRateLimits(snapshot: unknown): AgentEvent[] {
+  if (!isObject(snapshot)) return [];
+  const limitId = stringField(snapshot, 'limitId');
+  const name = stringField(snapshot, 'limitName') ?? (limitId && limitId !== 'codex' ? limitId : undefined);
+  const reached = snapshot.rateLimitReachedType !== undefined && snapshot.rateLimitReachedType !== null;
+  const events: AgentEvent[] = [];
+  for (const key of ['primary', 'secondary'] as const) {
+    const window = snapshot[key];
+    if (!isObject(window)) continue;
+    const usedPercent = numberField(window, 'usedPercent');
+    const minutes = numberField(window, 'windowDurationMins');
+    const resetsAt = epochMs(numberField(window, 'resetsAt'));
+    const status = limitStatus(usedPercent);
+    events.push({
+      type: 'rate-limit',
+      limit: {
+        window: minutes ? windowLabel(minutes) : key,
+        status,
+        ...(usedPercent !== undefined ? { usedPercent } : {}),
+        ...(resetsAt !== undefined ? { resetsAt } : {}),
+        ...(name ? { name } : {}),
+      },
+    });
+  }
+  if (reached && !events.some((event) => event.type === 'rate-limit' && event.limit.status === 'exceeded'))
+    events.push({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded', ...(name ? { name } : {}) } });
+  return events;
 }
