@@ -1,6 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
-import { tokenCount } from './runtime.js';
+import { addUsage, tokenCount } from './runtime.js';
 import type {
   AgentBudget,
   AgentEvent,
@@ -653,22 +653,4 @@ function findOpenTool(entries: SessionEntry[], id: string | undefined, name: str
     if (id !== undefined ? entry.id === id : name === undefined || entry.name === name) return i;
   }
   return -1;
-}
-
-function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
-  const sum = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
-  const next: TokenUsage = {};
-  const inputTokens = sum(total.inputTokens, usage.inputTokens);
-  const outputTokens = sum(total.outputTokens, usage.outputTokens);
-  const cachedInputTokens = sum(total.cachedInputTokens, usage.cachedInputTokens);
-  // A turn without `totalTokens` counts input + output, so mixed agents add up right.
-  const totalTokens =
-    total.totalTokens === undefined && usage.totalTokens === undefined
-      ? undefined
-      : tokenCount(total) + tokenCount(usage);
-  if (inputTokens !== undefined) next.inputTokens = inputTokens;
-  if (outputTokens !== undefined) next.outputTokens = outputTokens;
-  if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;
-  if (totalTokens !== undefined) next.totalTokens = totalTokens;
-  return next;
 }

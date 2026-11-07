@@ -1,3 +1,4 @@
+import type { TokenUsage } from '../core/types.js';
 import { existsSync, statSync } from 'node:fs';
 import { approximateSize, EventQueue } from './event-queue.js';
 import type { ProcessExit } from './process.js';
@@ -155,6 +156,25 @@ const QUOTA_ERROR =
 /** Errors that say the CLI is not signed in or its credentials were refused. */
 const AUTH_ERROR =
   /\b(not (logged|signed) in|(log|sign)[ -]?in (is )?required|please (log|sign)[ -]?in|unauthori[sz]ed|401|invalid (api[ _-]?key|x-api-key|credentials)|authentication (failed|required|error)|credentials? (expired|invalid))\b/i;
+
+/** Two usage reports added up. A report without `totalTokens` counts input + output. */
+export function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
+  const sum = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
+  const next: TokenUsage = {};
+  const inputTokens = sum(total.inputTokens, usage.inputTokens);
+  const outputTokens = sum(total.outputTokens, usage.outputTokens);
+  const cachedInputTokens = sum(total.cachedInputTokens, usage.cachedInputTokens);
+  // A turn without `totalTokens` counts input + output, so mixed agents add up right.
+  const totalTokens =
+    total.totalTokens === undefined && usage.totalTokens === undefined
+      ? undefined
+      : tokenCount(total) + tokenCount(usage);
+  if (inputTokens !== undefined) next.inputTokens = inputTokens;
+  if (outputTokens !== undefined) next.outputTokens = outputTokens;
+  if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;
+  if (totalTokens !== undefined) next.totalTokens = totalTokens;
+  return next;
+}
 
 /** Tokens a usage report counts: `totalTokens`, else input + output. */
 export function tokenCount(usage: NonNullable<AgentResult['usage']>): number {

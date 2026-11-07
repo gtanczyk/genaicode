@@ -153,6 +153,35 @@ describe('withFallback', () => {
     expect(codex.tasks[0]).toMatchObject({ prompt: 'fix it', resume: undefined });
   });
 
+  it('drops vendor ids, keeps what is left of the budget, and adds up usage', async () => {
+    const claude = fake('claude', [{ ...out('quota'), usage: { inputTokens: 60 }, costUsd: 0.6 }]);
+    const codex = fake('codex', [{ usage: { inputTokens: 10 }, costUsd: 0.1 }]);
+    const result = await withFallback([claude.agent, codex.agent]).run({
+      prompt: 'x',
+      cwd: dir,
+      model: 'opus',
+      effort: 'max',
+      budget: { maxTokens: 100, maxCostUsd: 1 },
+    }).result;
+    expect(codex.tasks[0]).toMatchObject({ model: undefined, effort: undefined });
+    expect(codex.tasks[0]!.budget!.maxTokens).toBe(40);
+    expect(codex.tasks[0]!.budget!.maxCostUsd).toBeCloseTo(0.4);
+    expect(result.usage).toEqual({ inputTokens: 70 });
+    expect(result.costUsd).toBeCloseTo(0.7);
+  });
+
+  it('does not start the next agent once the budget is spent', async () => {
+    const claude = fake('claude', [{ ...out('crash'), usage: { inputTokens: 100 } }]);
+    const codex = fake('codex');
+    const result = await withFallback([claude.agent, codex.agent]).run({
+      prompt: 'x',
+      cwd: dir,
+      budget: { maxTokens: 100 },
+    }).result;
+    expect(result.failure).toEqual({ kind: 'crash' });
+    expect(codex.tasks).toHaveLength(0);
+  });
+
   it('leaves other failures alone', async () => {
     const claude = fake('claude', [{ status: 'failed', ok: false, error: 'tests fail' }]);
     const codex = fake('codex');

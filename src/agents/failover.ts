@@ -1,5 +1,6 @@
 import { approximateSize, EventQueue } from './event-queue.js';
-import type { AgentEvent, AgentFailure, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
+import { addUsage, tokenCount } from './runtime.js';
+import type { AgentBudget, AgentEvent, AgentFailure, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 /** Failures another agent can get past: the agent is out, not the task. `budget` is the user's cap. */
 const FAILOVER_KINDS: ReadonlySet<AgentFailure['kind']> = new Set(['quota', 'auth', 'unavailable', 'crash']);
@@ -25,8 +26,9 @@ export function describeFailover(from: string, to: string, failure: AgentFailure
  * completes one), so a repair loop does not hit the same limit again. Other failures, a stop and a spent budget end
  * the run as they are.
  *
- * The task goes to the next agent as given, without `resume` (another agent's session id means
- * nothing to it). A `failover` event marks each switch. Capabilities are the first agent's.
+ * The task goes to the next agent without `resume` and `model` (another vendor's ids mean nothing
+ * to it), `effort` only where the next agent takes it, and `budget` minus what earlier agents used.
+ * The result adds up every agent's usage and cost. A `failover` event marks each switch. Capabilities are the first agent's.
  */
 export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
   const [first] = agents;
@@ -43,6 +45,8 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
       const result = (async (): Promise<AgentResult> => {
         const order = [...agents.filter((agent) => !out.has(agent)), ...agents.filter((agent) => out.has(agent))];
         let next: AgentTask = task;
+        let usage: AgentResult['usage'];
+        let costUsd: number | undefined;
         for (let i = 0; ; i += 1) {
           const agent = order[i]!;
           const run = agent.run(next);
@@ -56,18 +60,33 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
               await events.room();
             }
           }
-          const ended = done ?? (await run.result);
+          const own = done ?? (await run.result);
+          if (own.usage) usage = usage ? addUsage(usage, own.usage) : own.usage;
+          if (own.costUsd !== undefined) costUsd = (costUsd ?? 0) + own.costUsd;
+          const ended: AgentResult = {
+            ...own,
+            ...(usage ? { usage } : {}),
+            ...(costUsd !== undefined ? { costUsd } : {}),
+          };
+          const left = leftOf(task.budget, usage, costUsd);
           const to = order[i + 1];
           const isOut = shouldFailOver(ended);
           if (isOut) out.add(agent);
           else if (ended.ok) out.delete(agent);
-          if (stopped || !to || !isOut) {
+          if (stopped || !to || !isOut || left === 'spent') {
             events.push({ type: 'done', result: ended });
             events.close();
             return ended;
           }
           events.push({ type: 'failover', from: agent.name, to: to.name, failure: ended.failure! });
-          next = { ...task, resume: undefined };
+          next = {
+            ...task,
+            resume: undefined,
+            model: undefined,
+            effort:
+              task.effort !== undefined && to.capabilities.effort?.includes(task.effort) ? task.effort : undefined,
+            ...(left ? { budget: left } : {}),
+          };
         }
       })();
       // Kept for the caller: a driver that throws still ends the run with a result.
@@ -95,4 +114,18 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
       };
     },
   };
+}
+
+/** `budget` minus what was used so far, or `spent` when a cap has nothing left. */
+function leftOf(
+  budget: AgentBudget | undefined,
+  usage: AgentResult['usage'],
+  costUsd: number | undefined,
+): AgentBudget | 'spent' | undefined {
+  if (!budget) return undefined;
+  const next: AgentBudget = { ...budget };
+  if (budget.maxTokens !== undefined) next.maxTokens = budget.maxTokens - (usage ? tokenCount(usage) : 0);
+  if (budget.maxCostUsd !== undefined) next.maxCostUsd = budget.maxCostUsd - (costUsd ?? 0);
+  if ((next.maxTokens ?? 1) <= 0 || (next.maxCostUsd ?? 1) <= 0) return 'spent';
+  return next;
 }
