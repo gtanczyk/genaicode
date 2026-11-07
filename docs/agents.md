@@ -118,12 +118,96 @@ failure of its own. A zero exit alone is not treated as success.
 | `file-change`             | Paths the agent reported editing                                     |
 | `approval-request`        | The agent is waiting for a permission decision                       |
 | `usage`                   | Token usage, plus `costUsd` when the agent reports it                |
+| `rate-limit`              | A plan or account limit: window, status, % used, reset time          |
+| `budget-warning`          | The run crossed `warnAt` of a `task.budget` cap                      |
+| `failover`                | `withFallback()` moved the task to the next agent (`from`, `to`)     |
 | `error`                   | An error the agent reported                                          |
 | `stderr`                  | Raw stderr chunk                                                     |
 | `raw`                     | A stdout line that was not JSON                                      |
 | `done`                    | Always last; carries the `AgentResult`                               |
 
 Vendor events that have no mapping are dropped.
+
+## Usage, limits and budgets
+
+Every driver except `muse`, `museLive` and `vibe` reports token usage (`usage` events,
+`result.usage`); `claude` and `opencode` also report cost (`costUsd`), so a cost cap works for
+them (and for `vibe`, natively). Usage reports are running
+totals for the run, not increments.
+
+**Plan limits.** `claude` and `codexLive` say how much of the subscription is left
+(`capabilities.rateLimits`) with `rate-limit` events:
+
+```ts
+{ type: 'rate-limit', limit: { window: '5h', status: 'warning', usedPercent: 83, resetsAt: 1794571200000 } }
+```
+
+`window` is `5h`, `7d`, `7d-opus`, `7d-sonnet`, `overage` (Claude) or the Codex window length.
+`status` is `warning` when the vendor flags it or from 80% used, and `exceeded` when requests are
+refused. Codex names a per-model limit in `name`. For any agent, an error that says a quota or
+rate limit ran out (429, `quota`, `rate limit`, `usage limit`...) adds one
+`{ window: 'quota', status: 'exceeded' }` event, so front ends can say why the agent stopped.
+
+**Budgets.** `task.budget` caps one run:
+
+```ts
+const run = agent.run({ prompt, cwd, budget: { maxTokens: 200_000, maxCostUsd: 2, warnAt: 0.8 } });
+```
+
+Past `warnAt` (default 0.8) of a cap the run emits one `budget-warning` per cap; past the cap
+genaicode stops the agent and the run fails with `error: "claude went over its cost budget
+($2.0412 of $2)."`. Tokens count `totalTokens`, else input + output. The check runs on the
+agent's usage reports, so an agent that reports usage only at the end (`claude`, `gemini`,
+`copilot`) can overshoot within that turn. `claude` also gets `--max-budget-usd` and `vibe`
+`--max-price` for the cost cap, which stop it from the inside. `runWithVerify` spreads the
+budget over all attempts.
+
+`createAgentSession({ budget })` caps the whole session: each turn runs with what is left, and
+once a cap is used up new prompts fail without starting (`setBudget()` changes it). The session
+keeps `state.budget` and the latest report per limit in `state.rateLimits`. `limitChips(state)`
+from `genaicode/react` turns both into short labels with a level (`ok`, `warning`,
+`exceeded`); `<AgentChat>`, `genaicode chat` and `genaicode ui` show them next to usage, yellow
+when close and red when out. `genaicode run|chat|ui --max-tokens <n> --max-cost <usd>` set
+budgets from the command line.
+
+## Failover
+
+When a run fails, `result.failure` says whether the agent was at fault rather than the task:
+
+| `failure.kind` | When                                                                      |
+| -------------- | ------------------------------------------------------------------------- |
+| `quota`        | A plan, account or API limit ran out (`resetsAt` when the vendor said)    |
+| `auth`         | The CLI is not signed in, or its key was refused                          |
+| `unavailable`  | The CLI is not installed (`ENOENT`)                                       |
+| `crash`        | The CLI died, was killed, or exited non-zero without reporting any result |
+| `budget`       | The run went over its `task.budget`                                       |
+
+An ordinary failure (tests still red, max turns, an error the agent reported) has no `failure`.
+`shouldFailOver(result)` is true for the first four: another agent can get past them, while a
+spent budget is the user's own cap.
+
+Failover is opt-in, and the user picks the agents:
+
+```ts
+const agent = withFallback([claude(), codex(), gemini()]);
+const result = await agent.run({ prompt, cwd }).result; // claude; codex if claude is out; then gemini
+```
+
+Each agent is tried at most once per run, and gets the task without `resume`. A `failover` event
+marks each switch. An agent that ran out goes last in later runs until it completes one, so
+`runWithVerify(withFallback([...]), ...)` does not hit the same limit on every repair. A stop, a
+spent budget and any other failure end the run as they are.
+
+Sessions do the same with `createAgentSession({ fallback: [codex(), gemini()] })` (`setFallback()`
+changes the list, `state.fallback` shows it). When a turn fails over, its transcript ends with a
+`{ kind: 'failover', from, to, failure }` entry, the session switches to the next agent it has not
+tried for that prompt and runs the prompt again there. If the first agent had already changed
+files, the next one is told which. The new agent stays for later turns; the model is cleared
+(another vendor's model id means nothing to it). The new agent starts its own session; `failoverPrompt(prompt, earlier)` can rewrite what it gets, e.g.
+to brief it again (app agents do: the briefing plus the conversation so far). `createAppAgent({ fallback: ['codex'] })` and
+`configure({ fallback })` take agent names. `genaicode run|chat|ui --fallback codex,gemini` and
+`/fallback` in the chat do it from the command line, and `<AgentChat>`, `chat` and `ui` show the
+switch in the transcript.
 
 ## Follow-up turns
 
@@ -162,7 +246,7 @@ session.send('Now cover it with a test'); // resumes the same agent session
   queue.
 - Approval requests wait in `state.approvals` until `approve(id, decision)`, unless
   `autoApprove` decides them. `stop()` denies whatever is pending.
-- `setAgent()` switches agents and hands the conversation over: the next agent's first
+- `setAgent()` (and a failover) switches agents and hands the conversation over: the next agent's first
   prompt starts with a recap of the turns it missed and the path of a Markdown transcript
   (tool calls, output, changed files) written to `.genaicode/handoff/` in the cwd (git-ignored),
   for it to read when the recap is not enough. Switching back to an agent resumes its own

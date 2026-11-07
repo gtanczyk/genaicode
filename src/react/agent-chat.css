@@ -117,6 +117,16 @@
   padding: 2px 10px;
   white-space: nowrap;
 }
+.gc-limit[data-level='warning'] {
+  color: var(--_warn);
+  background: var(--_warn-soft);
+  border-color: color-mix(in srgb, var(--_warn) 35%, transparent);
+}
+.gc-limit[data-level='exceeded'] {
+  color: var(--_error);
+  background: var(--_error-soft);
+  border-color: color-mix(in srgb, var(--_error) 35%, transparent);
+}
 
 /* Transcript */
 .gc-scroll {
@@ -469,6 +479,13 @@
   padding: 8px 12px;
   font-size: 0.87em;
   white-space: pre-wrap;
+}
+.gc-failover {
+  background: var(--_warn-soft);
+  color: var(--_warn);
+  border-radius: var(--_radius);
+  padding: 8px 12px;
+  font-size: 0.87em;
 }
 .gc-turn-footer,
 .gc-working {

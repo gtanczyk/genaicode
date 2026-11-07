@@ -34,6 +34,8 @@ export interface AppAgentState {
   modes: AppAgentMode[];
   agent: string;
   agents: Array<{ name: string; installed: boolean }>;
+  /** Agents a turn fails over to when the current one is out (`AppAgentOptions.fallback`). Empty: off. */
+  fallback?: string[];
   session: SessionState | null;
   /**
    * Turns from before the last agent or mode switch, oldest first. They keep their place in

@@ -1,4 +1,5 @@
-import type { AgentEvent, AgentResult } from '../agents/types.js';
+import { describeFailover } from '../agents/failover.js';
+import type { AgentEvent, AgentResult, BudgetWarning, RateLimit } from '../agents/types.js';
 
 export interface Output {
   write(text: string): unknown;
@@ -11,6 +12,7 @@ export interface Output {
 export function createRenderer(stdout: Output, stderr: Output): (event: AgentEvent) => void {
   let streamed = false;
   let midLine = false;
+  const limitsShown = new Set<string>();
   const text = (value: string) => {
     stdout.write(value);
     midLine = !value.endsWith('\n');
@@ -44,6 +46,21 @@ export function createRenderer(stdout: Output, stderr: Output): (event: AgentEve
       case 'error':
         note(`error: ${event.message}`);
         break;
+      case 'failover':
+        note(`⇄ ${describeFailover(event.from, event.to, event.failure)}`);
+        break;
+      case 'budget-warning':
+        note(`! ${describeBudgetWarning(event.warning)}`);
+        break;
+      case 'rate-limit': {
+        // Only news worth a line: a limit close to running out, or out.
+        if (event.limit.status === 'ok') break;
+        const key = `${event.limit.name ?? ''}/${event.limit.window}/${event.limit.status}`;
+        if (limitsShown.has(key)) break;
+        limitsShown.add(key);
+        note(`! ${describeRateLimit(event.limit)}`);
+        break;
+      }
       case 'done':
         if (midLine) text('\n');
         break;
@@ -61,6 +78,23 @@ export function describeResult(agent: string, result: AgentResult): string {
   if (result.sessionId) parts.push(`session ${result.sessionId}`);
   const line = parts.join(' · ');
   return result.error ? `${line}\n${result.error}` : line;
+}
+
+export function describeBudgetWarning(warning: BudgetWarning): string {
+  const share = `${Math.round((warning.used / warning.limit) * 100)}%`;
+  return warning.kind === 'tokens'
+    ? `budget: ${share} of ${warning.limit} tokens used`
+    : `budget: ${share} of $${warning.limit} used`;
+}
+
+export function describeRateLimit(limit: RateLimit): string {
+  const name = limit.name ? `${limit.name} ` : '';
+  const used = limit.usedPercent !== undefined ? ` at ${Math.round(limit.usedPercent)}%` : '';
+  const reset = limit.resetsAt !== undefined ? `, resets ${new Date(limit.resetsAt).toLocaleString()}` : '';
+  const state = limit.status === 'exceeded' ? 'reached' : 'close to running out';
+  return limit.window === 'quota'
+    ? `${name}quota reached${reset}`
+    : `${name}${limit.window} limit ${state}${used}${reset}`;
 }
 
 function summarize(input: unknown): string {

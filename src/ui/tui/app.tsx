@@ -2,7 +2,7 @@ import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTurn } from '../../agents/session.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
-import { formatDuration, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
+import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
 
 type StaticItem =
@@ -312,6 +312,13 @@ export function ChatApp({
               {shellMode
                 ? 'shell mode · enter runs it here · /stop ends it · esc or backspace to leave'
                 : statusParts(view.session).join(' · ')}
+              {shellMode
+                ? null
+                : limitChips(view.session).map((chip) => (
+                    <Text key={chip.key} color={LIMIT_COLORS[chip.level]}>
+                      {` · ${chip.text}`}
+                    </Text>
+                  ))}
               {armedExit ? ' · press ctrl+c again to exit' : ''}
             </Text>
           </Box>
@@ -320,3 +327,5 @@ export function ChatApp({
     </>
   );
 }
+
+const LIMIT_COLORS = { ok: 'gray', warning: 'yellow', exceeded: 'red' } as const;

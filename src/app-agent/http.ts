@@ -104,7 +104,14 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
         case '/config': {
           const name = field('agent');
           const mode = field('mode');
+          const fallback = field('fallback');
+          if (
+            fallback !== undefined &&
+            !(Array.isArray(fallback) && fallback.length <= 20 && fallback.every((item) => typeof item === 'string'))
+          )
+            return json(res, 400, { error: 'fallback must be a list of agent names' });
           agent.configure({
+            ...(Array.isArray(fallback) ? { fallback: fallback as string[] } : {}),
             ...(typeof name === 'string' ? { agent: name } : {}),
             ...(typeof mode === 'string' ? { mode: mode as AppAgentMode } : {}),
           });

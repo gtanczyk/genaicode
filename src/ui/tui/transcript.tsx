@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import type { SessionEntry, SessionTurn } from '../../agents/session.js';
+import { describeFailover } from '../../agents/failover.js';
 import { outputTail, relativePath, toolLabel, toolSummary, turnFooter } from '../format.js';
 import type { Notice } from '../controller.js';
 
@@ -86,6 +87,7 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
     case 'approval':
     case 'files':
     case 'input':
+    case 'failover':
       return 1;
     case 'error':
       return rows(entry.message);
@@ -161,6 +163,8 @@ export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; ou
       );
     case 'error':
       return <Text color="red">✗ {entry.message}</Text>;
+    case 'failover':
+      return <Text color="yellow">⇄ {describeFailover(entry.from, entry.to, entry.failure)}</Text>;
   }
 }
 

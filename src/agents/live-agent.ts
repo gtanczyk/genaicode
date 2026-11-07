@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolvePermissions } from './permissions.js';
-import { planSpawn, type PreparedRun } from './prepare.js';
+import { planError, planSpawn, type PreparedRun } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
 import { anySignal, invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
@@ -105,7 +105,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
   const plan = planSpawn(definition, task, invalidCwd(task.cwd));
   if (!plan.ok) {
     const result = recorder.finish(
-      { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
+      { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
       undefined,
     );
     return { result: Promise.resolve(result), abort() {}, steer: steerRun, [Symbol.asyncIterator]: iterate };
@@ -206,6 +206,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     lifetime.abort();
     handle.kill();
   };
+  recorder.watchBudget(task.budget, abort);
   return { result, abort, steer: steerRun, [Symbol.asyncIterator]: iterate };
 }
 

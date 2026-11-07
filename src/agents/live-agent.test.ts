@@ -47,6 +47,8 @@ const finishTurn = (text) => {
   if (codex) {
     note('item/completed', { item: { id: 'm1', type: 'agentMessage', text } });
     note('thread/tokenUsage/updated', { tokenUsage: { total: { inputTokens: 5, outputTokens: 2 } } });
+    // Account-wide, so without a threadId.
+    if (process.env.FAKE_RATE_LIMITS) send({ method: 'account/rateLimits/updated', params: { rateLimits: { primary: { usedPercent: 90, windowDurationMins: 300 } } } });
     note('turn/completed', { turn: { id: 'tu-1', status: 'completed' } });
   } else {
     note('item/completed', { item: { id: 'm1', type: 'agentMessage', text } });
@@ -135,6 +137,16 @@ describe('codexLive', () => {
     expect(result).toMatchObject({ status: 'completed', sessionId: 'th-1', text: 'started with "never"' });
     expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 2, totalTokens: 7 });
     expect(events.map((event) => event.type)).toEqual(['session', 'tool-start', 'message', 'usage', 'done']);
+  });
+
+  it('reports account rate limits, which carry no threadId', async () => {
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'go',
+      cwd: dir,
+      env: { ...env('basic'), FAKE_RATE_LIMITS: '1' },
+    });
+    const events = await collect(run);
+    expect(events).toContainEqual({ type: 'rate-limit', limit: { window: '5h', status: 'warning', usedPercent: 90 } });
   });
 
   it('routes approvals to onApproval', async () => {

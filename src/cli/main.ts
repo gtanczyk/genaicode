@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
-import type { AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
+import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
+import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { serveAcp } from '../acp/server.js';
@@ -61,6 +62,10 @@ export interface UiLaunch {
   exitWithStdin?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
+  /** `--max-tokens`, `--max-cost`: caps on the whole session. */
+  budget?: AgentBudget;
+  /** `--fallback`: agents a turn moves to when the current one is out. */
+  fallback?: readonly string[];
 }
 
 export interface UiModule {
@@ -102,6 +107,10 @@ Chat and UI options:
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
+      --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
+      --max-cost <usd>    Cost budget for the whole session, for agents that report cost
+      --fallback <agents> Agents to switch to when the current one runs out (quota, sign-in,
+                          missing CLI, crash), e.g. --fallback codex,gemini. /fallback changes it
 
   Each prompt after the first continues the agent's session (claude, codex, cursor,
   opencode, copilot, antigravity). Prompts sent while the agent works wait in a queue. Type /help in
@@ -119,6 +128,10 @@ Run options:
       --verify <command>  Shell command that checks the work; on failure its output goes
                           back to the agent for another attempt
       --max-repairs <n>   Repair attempts after a failed check (default 2)
+      --max-tokens <n>    Stop the agent past this many tokens (repairs included)
+      --max-cost <usd>    Stop the agent past this cost in US dollars, for agents that report cost
+      --fallback <agents> Agents to run the task on when the agent runs out (quota, sign-in,
+                          missing CLI, crash), in order, e.g. --fallback codex,gemini
       --json              Print agent events as JSON lines instead of text
 
 Embed options:
@@ -268,6 +281,7 @@ async function runUi(
     }
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
+  if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
   const ui = await (cli.loadUi ?? loadBundledUi)();
   const launch: UiLaunch = {
     agents,
@@ -288,6 +302,8 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
+    ...(options.budget ? { budget: options.budget } : {}),
+    ...(options.fallback ? { fallback: options.fallback } : {}),
     ...extra,
   };
   return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
@@ -326,8 +342,14 @@ async function runTask(
     return EXIT_USAGE;
   }
 
-  const agent = pickAgent(cli, agents, options.agent);
-  if (!agent) return EXIT_USAGE;
+  const picked = pickAgent(cli, agents, options.agent);
+  if (!picked || !knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
+  const agent = options.fallback?.length
+    ? withFallback([
+        picked,
+        ...options.fallback.flatMap((name) => agents.filter((one) => one.name === name && one !== picked)),
+      ])
+    : picked;
 
   const task: AgentTask = {
     prompt,
@@ -339,6 +361,7 @@ async function runTask(
     timeoutMs: options.timeoutMs,
     env: cli.env,
     signal: cli.signal,
+    ...(options.budget ? { budget: options.budget } : {}),
     ...extra,
   };
   const render = options.json
@@ -381,6 +404,20 @@ async function runTask(
   const last = loop.attempts.at(-1)?.result;
   if (loop.ok) return EXIT_OK;
   return last?.status === 'aborted' || cli.signal?.aborted ? EXIT_ABORTED : EXIT_FAILED;
+}
+
+/** Whether every `--fallback` name is a known agent; reports the first one that is not. */
+function knownAgents(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  names: readonly string[] | undefined,
+): boolean {
+  const unknown = names?.find((name) => !agents.some((agent) => agent.name === name));
+  if (unknown === undefined) return true;
+  cli.stderr.write(
+    `Unknown agent "${unknown}" in --fallback. Known agents: ${agents.map((a) => a.name).join(', ')}.\n`,
+  );
+  return false;
 }
 
 function pickAgent(

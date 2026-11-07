@@ -1,4 +1,4 @@
-import { planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
+import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -68,6 +68,12 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
   let handle: ProcessHandle | undefined;
   let stopped = false;
 
+  const abort = () => {
+    stopped = true;
+    lifetime.abort();
+    handle?.kill();
+  };
+  recorder.watchBudget(task.budget, abort);
   const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
   const input = definition.input ? stdinInput(definition, definition.input, task) : undefined;
   let reflow = () => {};
@@ -122,7 +128,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
       lifetime.abort();
       input?.fail();
       return recorder.finish(
-        { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
+        { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
         undefined,
       );
     }
@@ -138,11 +144,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
 
   return {
     result,
-    abort() {
-      stopped = true;
-      lifetime.abort();
-      handle?.kill();
-    },
+    abort,
     ...(input
       ? {
           steer(text: string) {

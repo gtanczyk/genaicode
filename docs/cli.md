@@ -17,6 +17,10 @@ Assistant text goes to stdout and tool calls, edits, and the result line go to s
 `--verify` runs a shell command after the agent finishes and sends its output back for up
 to `--max-repairs` more attempts (`runWithVerify`). The exit code is 0 on success, 1 when
 the agent or the check fails, 2 on a usage error, and 130 when interrupted.
+`--max-tokens <n>` and `--max-cost <usd>` stop the agent once it goes over (with `--verify`,
+over all attempts together); a line on stderr warns at 80% and when the agent's plan limit
+gets close. `--fallback codex,gemini` runs the task on the next agent when one is out of quota,
+not signed in, not installed or crashed (see [failover](agents.md#failover)).
 `npx genaicode --help` lists every option.
 
 ## Chat with an agent: terminal and browser
@@ -40,9 +44,11 @@ denies and `a` approves everything from then on (`/auto`, or the Auto-approve ch
 browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
-model and session; `/help` lists the rest. `/agent codex` hands the conversation over: codex
-gets a recap and a transcript file in `.genaicode/handoff/`, and switching back resumes the
-earlier agent's own session (`/agent codex --fresh` starts with no context).
+model and session; `/fallback codex,gemini` picks the agents to switch to when the current one
+runs out (`/fallback off` stops it); `/help` lists the rest. `/agent codex` hands the
+conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
+switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
+context).
 
 <p align="center">
   <picture>
