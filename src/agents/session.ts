@@ -171,7 +171,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   // Per agent: its own session and the last turn that session knows about.
-  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>();
+  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>(
+    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
+  );
   // Turns after this id are news to the current agent; undefined: it knows everything.
   let missedAfter: number | undefined;
   // After a user stop, `state.notes` wait for the user's next prompt instead of starting a turn.
@@ -380,7 +382,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
     let current: AgentRun;
     try {
-      current = agent.run({
+      current = turnAgent.run({
         ...options.task,
         prompt: preamble + toAgent(prompt),
         cwd: state.cwd,
@@ -395,7 +397,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = failedRun(error instanceof Error ? error.message : String(error));
     }
     run = current;
-    if (current.steer && agent.capabilities.steer) set({ canSteer: true });
+    if (current.steer && turnAgent.capabilities.steer) set({ canSteer: true });
     let turnSession: string | undefined;
     void (async () => {
       try {

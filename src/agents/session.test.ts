@@ -599,6 +599,44 @@ describe('createAgentSession', () => {
     expect(first.tasks[1]).toMatchObject({ prompt: 'two', resume: undefined });
   });
 
+  it("recaps a turn's final result text and runs a turn with the agent that started it", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent([async () => ({ sessionId: 's-1', text: 'final answer' })], { resume: true }, 'claude');
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    let switched = false;
+    session.subscribe((state) => {
+      if (state.status === 'running' && !switched) {
+        switched = true;
+        session.setAgent(second.agent);
+      }
+    });
+    session.send('one');
+    await session.idle();
+    expect(first.tasks).toHaveLength(1);
+    expect(second.tasks).toHaveLength(0);
+    session.send('two');
+    await session.idle();
+    expect(second.tasks[0].prompt).toContain('User: one\nclaude: final answer');
+    const file = session.get().turns[1].handoff!.file!;
+    expect(readFileSync(join(cwd, file), 'utf8')).toContain('final answer');
+  });
+
+  it('resumes the session given in options after switching away and back', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent([async () => {}], { resume: true }, 'claude');
+    const second = fakeAgent([async () => ({ sessionId: 's-2' })], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd, resume: 'old' });
+    session.setAgent(second.agent);
+    session.send('one');
+    await session.idle();
+    session.setAgent(first.agent);
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[0].resume).toBe('old');
+    expect(first.tasks[0].prompt).toContain('User: one');
+  });
+
   it('skips the handoff when asked', async () => {
     const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
     const second = fakeAgent([async () => {}], { resume: true }, 'codex');
