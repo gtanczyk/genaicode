@@ -26,14 +26,29 @@ export function describeFailover(from: string, to: string, failure: AgentFailure
  * completes one), so a repair loop does not hit the same limit again. Other failures, a stop and a spent budget end
  * the run as they are.
  *
- * The task goes to the next agent without `resume` and `model` (another vendor's ids mean nothing
- * to it), `effort` only where the next agent takes it, and `budget` minus what earlier agents used.
+ * Each agent gets `model` only if it is the first one and `resume` only if the session is its own
+ * (another vendor's ids mean nothing to it), `effort` only where it takes it, and `budget` minus what earlier agents used.
  * The result adds up every agent's usage and cost. A `failover` event marks each switch. Capabilities are the first agent's.
  */
 export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
   const [first] = agents;
   if (!first) throw new Error('withFallback needs at least one agent.');
   const out = new Set<CodingAgent>();
+  // The agent whose session the last result named: a `resume` id is only its.
+  let sessionOwner: CodingAgent | undefined;
+  /** `task` as `agent` can take it: vendor ids only for the agent they belong to. */
+  const taskFor = (agent: CodingAgent, task: AgentTask, budget: AgentBudget | undefined): AgentTask => {
+    const own = agent === (sessionOwner ?? first);
+    return {
+      ...task,
+      ...(own ? {} : { resume: undefined }),
+      ...(agent === first ? {} : { model: undefined }),
+      ...(agent !== first && task.effort !== undefined && !agent.capabilities.effort?.includes(task.effort)
+        ? { effort: undefined }
+        : {}),
+      ...(budget ? { budget } : {}),
+    };
+  };
   return {
     name: first.name,
     command: first.command,
@@ -44,12 +59,12 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
       let stopped = false;
       const result = (async (): Promise<AgentResult> => {
         const order = [...agents.filter((agent) => !out.has(agent)), ...agents.filter((agent) => out.has(agent))];
-        let next: AgentTask = task;
+        let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;
         for (let i = 0; ; i += 1) {
           const agent = order[i]!;
-          const run = agent.run(next);
+          const run = agent.run(taskFor(agent, task, budget));
           current = run;
           if (stopped) run.abort();
           let done: AgentResult | undefined;
@@ -76,6 +91,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
           const own = done ?? (await run.result);
           if (own.usage) usage = usage ? addUsage(usage, own.usage) : own.usage;
           if (own.costUsd !== undefined) costUsd = (costUsd ?? 0) + own.costUsd;
+          if (own.sessionId) sessionOwner = agent;
           const ended: AgentResult = {
             ...own,
             ...(usage ? { usage } : {}),
@@ -92,14 +108,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
             return ended;
           }
           events.push({ type: 'failover', from: agent.name, to: to.name, failure: ended.failure! });
-          next = {
-            ...task,
-            resume: undefined,
-            model: undefined,
-            effort:
-              task.effort !== undefined && to.capabilities.effort?.includes(task.effort) ? task.effort : undefined,
-            ...(left ? { budget: left } : {}),
-          };
+          if (left) budget = left;
         }
       })();
       // Kept for the caller: a driver that throws still ends the run with a result.

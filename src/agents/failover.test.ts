@@ -208,6 +208,16 @@ describe('withFallback', () => {
     expect(codex.tasks).toHaveLength(0);
   });
 
+  it('keeps vendor ids from the agent a later run starts on', async () => {
+    const claude = fake('claude', [out('quota')]);
+    const codex = fake('codex', [{ sessionId: 'x-1' }, {}]);
+    const both = withFallback([claude.agent, codex.agent]);
+    await both.run({ prompt: 'a', cwd: dir, model: 'opus' }).result;
+    // A repair: claude ran out, so codex goes first, resuming its own session but not claude's model.
+    await both.run({ prompt: 'b', cwd: dir, model: 'opus', resume: 'x-1' }).result;
+    expect(codex.tasks[1]).toMatchObject({ prompt: 'b', model: undefined, resume: 'x-1' });
+  });
+
   it('leaves other failures alone', async () => {
     const claude = fake('claude', [{ status: 'failed', ok: false, error: 'tests fail' }]);
     const codex = fake('codex');
