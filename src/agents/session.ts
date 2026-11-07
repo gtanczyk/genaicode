@@ -63,7 +63,7 @@ export interface SessionState {
   costUsd?: number;
   /** Caps on the whole session's `usage` and `costUsd` (`AgentSessionOptions.budget`). */
   budget?: AgentBudget;
-  /** The latest report for each plan or account limit the agent told about (`rate-limit` events). */
+  /** The current agent's latest report per plan or account limit (`rate-limit` events). Cleared by `setAgent()`. */
   rateLimits?: RateLimit[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
@@ -273,6 +273,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       }
       case 'rate-limit': {
+        // A turn of the previous agent still finishing: its limits are not the current agent's.
+        if (state.turns.find((turn) => turn.id === turnId)?.agent !== agent.name) return;
         const same = (limit: RateLimit) => limit.window === event.limit.window && limit.name === event.limit.name;
         const known = state.rateLimits ?? [];
         set({
@@ -498,7 +500,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       agent = next;
       explicitResume = undefined;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ agent: next.name, sessionId: undefined });
+      // Limits belong to the agent that reported them.
+      set({ agent: next.name, sessionId: undefined, rateLimits: [] });
     },
     setModel(model) {
       set({ model });

@@ -385,3 +385,16 @@ describe('review fixes', () => {
     expect(tasks[2]!.budget?.maxTokens).toBe(10);
   });
 });
+
+describe('limits per agent', () => {
+  it('drops limits on setAgent and ignores late reports from the old agent', async () => {
+    const first = scriptedAgent([[{ type: 'rate-limit', limit: { window: '5h', status: 'exceeded' } }]]);
+    const session = createAgentSession({ agent: first.agent, cwd: dir });
+    session.send('go');
+    await session.idle();
+    expect(session.get().rateLimits).toHaveLength(1);
+    const second = scriptedAgent([[]]);
+    session.setAgent({ ...second.agent, name: 'other' });
+    expect(session.get().rateLimits).toEqual([]);
+  });
+});
