@@ -1,8 +1,10 @@
 import type { TokenUsage } from '../core/types.js';
-import { tokenCount } from './runtime.js';
+import { shouldFailOver } from './failover.js';
+import { addUsage, tokenCount } from './runtime.js';
 import type {
   AgentBudget,
   AgentEvent,
+  AgentFailure,
   AgentResult,
   AgentRun,
   AgentTask,
@@ -28,7 +30,9 @@ export type SessionEntry =
   /** `automatic`: decided by the task's `permissions.approval`, without asking. */
   | { kind: 'approval'; request: ApprovalRequest; decision?: ApprovalDecision; automatic?: boolean }
   | { kind: 'input'; text: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
+  | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
 
 /** One prompt sent to the agent and everything it did about it. */
 export interface SessionTurn {
@@ -65,6 +69,8 @@ export interface SessionState {
   budget?: AgentBudget;
   /** The current agent's latest report per plan or account limit (`rate-limit` events). Cleared by `setAgent()`. */
   rateLimits?: RateLimit[];
+  /** Agents a failed turn moves to, in order (`AgentSessionOptions.fallback`). Absent: no failover. */
+  fallback?: string[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
 }
@@ -93,6 +99,20 @@ export interface AgentSessionOptions {
    * what is left as its `task.budget`; once a cap is used up, new turns fail without starting.
    */
   budget?: AgentBudget;
+  /**
+   * Opt-in failover. When a turn fails because its agent is out (quota, sign-in, missing CLI,
+   * crash; see `shouldFailOver`), the session switches to the first agent here it has not tried
+   * for this prompt and runs the prompt again. The new agent stays for later turns. A stop, a
+   * spent budget and other failures never fail over. Without it, nothing changes.
+   */
+  fallback?: readonly CodingAgent[];
+  /**
+   * What the fallback agent gets when it takes over a turn, instead of the turn's prompt. The new
+   * agent starts its own session, so this can brief it again: `prompt` is the failed turn's text as
+   * given to `send()`, `earlier` the finished turns before it. Its result is not passed through
+   * `transformPrompt`.
+   */
+  failoverPrompt?(prompt: string, earlier: readonly SessionTurn[]): string;
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -125,6 +145,8 @@ export interface AgentSession {
   /** Switch agents between turns. The next turn starts a fresh session. */
   setAgent(agent: CodingAgent): void;
   setModel(model: string | undefined): void;
+  /** Change the failover agents (`AgentSessionOptions.fallback`). Empty or undefined turns failover off. */
+  setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
   setBudget(budget: AgentBudget | undefined): void;
   /** Forget the agent session so the next turn starts fresh. Keeps the transcript. */
@@ -153,8 +175,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     approvals: [],
     usage: {},
     ...(options.budget ? { budget: options.budget } : {}),
+    ...(options.fallback?.length ? { fallback: options.fallback.map((candidate) => candidate.name) } : {}),
     canSteer: false,
   };
+  let fallback: readonly CodingAgent[] = options.fallback ?? [];
+  // Agents that failed the current prompt; reset when a prompt starts on its own.
+  let tried = new Set<string>();
+  // Said to the next agent ahead of a prompt it takes over mid-way.
+  let takeover: string | undefined;
+  // `failoverPrompt`'s text for the turn that takes over.
+  let retryPrompt: string | undefined;
+  // What the user steered into the failed turn: the next agent hears it after the prompt.
+  let steeredBefore: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
   const idleWaiters: Array<() => void> = [];
@@ -288,6 +320,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         addEntry(turnId, { kind: 'error', message: event.message });
         return;
       case 'budget-warning':
+      case 'failover':
       case 'stderr':
       case 'raw':
       case 'done':
@@ -337,8 +370,63 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     for (const resolve of idleWaiters.splice(0)) resolve();
   };
 
-  const startTurn = (prompt: string) => {
+  const switchAgent = (next: CodingAgent) => {
+    agent = next;
+    explicitResume = undefined;
+    if (state.status === 'running') forgetAfterTurn = true;
+    // Limits belong to the agent that reported them.
+    set({ agent: next.name, sessionId: undefined, rateLimits: [] });
+  };
+
+  /** After a turn: switch agents and return true when the failure is one another agent can get past. */
+  const failOver = (turnId: number, result: AgentResult): boolean => {
+    const failed = state.turns.find((turn) => turn.id === turnId);
+    if (closed || !failed || failed.agent !== agent.name || !shouldFailOver(result)) return false;
+    tried.add(agent.name);
+    const next = fallback.find((candidate) => candidate.name !== agent.name && !tried.has(candidate.name));
+    if (!next) return false;
+    addEntry(turnId, { kind: 'failover', from: agent.name, to: next.name, failure: result.failure! });
+    const changed = [...new Set(failed.entries.flatMap((entry) => (entry.kind === 'files' ? entry.paths : [])))];
+    takeover = changed.length
+      ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ` +
+        `It already changed: ${changed.join(', ')}. Check those files and continue from there.\n\n`
+      : undefined;
+    const steered = failed.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : []));
+    steeredBefore = steered.length
+      ? `\n\nWhile ${agent.name} worked on it, the user added:\n${steered.map((text) => `- ${text}`).join('\n')}`
+      : undefined;
+    retryPrompt = undefined;
+    if (options.failoverPrompt) {
+      const earlier = state.turns.filter(
+        (turn) => turn.id < turnId && turn.result && turn.entries.at(-1)?.kind !== 'failover',
+      );
+      try {
+        retryPrompt = options.failoverPrompt(failed.prompt, earlier);
+      } catch {
+        // The turn's own prompt, as without the hook.
+      }
+    }
+    switchAgent(next);
+    // The failed turn is over: the next agent's session is one to keep.
+    forgetAfterTurn = false;
+    // Another vendor's model name means nothing to the next agent; its default applies.
+    if (state.model !== undefined) set({ model: undefined });
+    if (state.effort !== undefined && !next.capabilities.effort?.includes(state.effort)) set({ effort: undefined });
+    return true;
+  };
+
+  const startTurn = (prompt: string, retry = false) => {
     holdNotes = false;
+    if (!retry) {
+      tried = new Set();
+      takeover = undefined;
+    }
+    const prefix = takeover ?? '';
+    const rewritten = retry ? retryPrompt : undefined;
+    const suffix = (retry && steeredBefore) || '';
+    takeover = undefined;
+    retryPrompt = undefined;
+    steeredBefore = undefined;
     const turnId = nextTurnId++;
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
@@ -365,7 +453,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = agent.run({
         ...options.task,
         ...(budget ? { budget } : {}),
-        prompt: toAgent(prompt),
+        prompt: prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
         model: state.model,
         effort: state.effort,
@@ -386,7 +474,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
       const result = await current.result;
-      if (noteTurn?.id === turnId) noteTurn = undefined;
+      const noteTurnWas = noteTurn?.id === turnId;
+      if (noteTurnWas) noteTurn = undefined;
       denyPending();
       run = undefined;
       controller = undefined;
@@ -407,6 +496,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         forgetAfterTurn = false;
         set({ sessionId: undefined });
       } else if (result.sessionId) set({ sessionId: result.sessionId });
+      if (failOver(turnId, result)) {
+        // The same prompt again, on the next agent; a note stays a note.
+        if (finished && noteTurnWas) nextIsNote = true;
+        return startTurn(finished!.prompt, true);
+      }
       const next = closed ? undefined : takeNext();
       if (next !== undefined) {
         startTurn(next);
@@ -497,11 +591,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     setAgent(next) {
       if (next === agent) return;
-      agent = next;
-      explicitResume = undefined;
-      if (state.status === 'running') forgetAfterTurn = true;
-      // Limits belong to the agent that reported them.
-      set({ agent: next.name, sessionId: undefined, rateLimits: [] });
+      switchAgent(next);
+    },
+    setFallback(agents) {
+      fallback = agents ?? [];
+      set({ fallback: fallback.length ? fallback.map((candidate) => candidate.name) : undefined });
     },
     setModel(model) {
       set({ model });
@@ -589,22 +683,4 @@ function findOpenTool(entries: SessionEntry[], id: string | undefined, name: str
     if (id !== undefined ? entry.id === id : name === undefined || entry.name === name) return i;
   }
   return -1;
-}
-
-function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
-  const sum = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
-  const next: TokenUsage = {};
-  const inputTokens = sum(total.inputTokens, usage.inputTokens);
-  const outputTokens = sum(total.outputTokens, usage.outputTokens);
-  const cachedInputTokens = sum(total.cachedInputTokens, usage.cachedInputTokens);
-  // A turn without `totalTokens` counts input + output, so mixed agents add up right.
-  const totalTokens =
-    total.totalTokens === undefined && usage.totalTokens === undefined
-      ? undefined
-      : tokenCount(total) + tokenCount(usage);
-  if (inputTokens !== undefined) next.inputTokens = inputTokens;
-  if (outputTokens !== undefined) next.outputTokens = outputTokens;
-  if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;
-  if (totalTokens !== undefined) next.totalTokens = totalTokens;
-  return next;
 }

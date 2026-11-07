@@ -1,3 +1,4 @@
+import { describeFailover } from '../agents/failover.js';
 import type { AgentEvent, AgentResult, BudgetWarning, RateLimit } from '../agents/types.js';
 
 export interface Output {
@@ -44,6 +45,9 @@ export function createRenderer(stdout: Output, stderr: Output): (event: AgentEve
         break;
       case 'error':
         note(`error: ${event.message}`);
+        break;
+      case 'failover':
+        note(`⇄ ${describeFailover(event.from, event.to, event.failure)}`);
         break;
       case 'budget-warning':
         note(`! ${describeBudgetWarning(event.warning)}`);

@@ -18,7 +18,11 @@ export function configuredMcpServers<T extends string | { name: string }>(
       ['mcp', 'list', '--json'],
       { cwd: task.cwd, env: task.env ?? process.env, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
       (error, stdout) => {
-        if (error) return reject(new Error(`could not list ${command}'s MCP servers: ${error.message}`));
+        if (error) {
+          // The errno stays: a CLI that is not installed is `unavailable`, not a failed task.
+          const failed = new Error(`could not list ${command}'s MCP servers: ${error.message}`);
+          return reject(Object.assign(failed, typeof error.code === 'string' ? { code: error.code } : {}));
+        }
         try {
           const own = new Set((task.mcpServers ?? []).map((server) => server.name));
           const nameOf = (server: T) => (typeof server === 'string' ? server : server.name);

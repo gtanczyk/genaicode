@@ -78,6 +78,12 @@ export interface AppAgentOptions {
   agents?: (mode: AppAgentMode) => readonly CodingAgent[];
   /** Agent to start with. Default: the first installed one. */
   agent?: string;
+  /**
+   * Opt-in failover: agents (by name, from `agents`) a turn moves to when the current agent is
+   * out (quota, sign-in, missing CLI, crash). The user picks them; `configure({ fallback })`
+   * changes the list. Default: none.
+   */
+  fallback?: readonly string[];
   /** Where the agent reaches the app's MCP endpoint (`<basePath>/mcp` of the handler). */
   mcpUrl: string | (() => string);
   /** MCP server name the agent sees (letters, digits, `_`, `-`); its tools show as `mcp__<name>__<tool>`. Default `app`. */
@@ -142,7 +148,7 @@ export interface AppAgent {
    * Switch agent or mode between turns. Throws while a turn runs. The transcript so far moves
    * to `history`, and the next agent's first prompt carries a short version of it.
    */
-  configure(change: { agent?: string; mode?: AppAgentMode }): void;
+  configure(change: { agent?: string; mode?: AppAgentMode; fallback?: readonly string[] }): void;
   /** The app reports which page is open. */
   setView(path: string): void;
   /** Approve or reject a pending action; `dismiss` drops a settled card from the list. */
@@ -233,6 +239,17 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   if (!startList.some((choice) => choice.name === agentName)) {
     throw new AppAgentError(`Unknown agent "${agentName}".`, 400);
   }
+  let fallbackNames: string[] = [...new Set(options.fallback ?? [])];
+  {
+    const known = new Set(modes.flatMap((each) => agentsFor(each).map((agent) => agent.name)));
+    const unknown = fallbackNames.find((name) => !known.has(name));
+    if (unknown !== undefined) throw new AppAgentError(`Unknown agent "${unknown}".`, 400);
+  }
+  // Fallback agents offered in `target` mode, in the user's order.
+  const fallbackFor = (target: AppAgentMode) => {
+    const offered = agentsFor(target);
+    return fallbackNames.flatMap((name) => offered.filter((agent) => agent.name === name));
+  };
   let session: AgentSession | null = null;
   let unsubscribeSession: (() => void) | null = null;
   let briefed = false;
@@ -273,6 +290,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     modes,
     agent: agentName,
     agents: installed(mode),
+    fallback: [...fallbackNames],
     session:
       session && (saved.length || held.length)
         ? { ...session.get(), queued: [...saved, ...session.get().queued, ...held] }
@@ -284,6 +302,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     navigation,
   });
   const changed = () => {
+    // The session failed over to another agent: it is the agent now.
+    const current = session?.get().agent;
+    if (current !== undefined && current !== agentName) {
+      agentName = current;
+      trace({ kind: 'session', agent: agentName, mode });
+    }
     traceTurns();
     const state = get();
     for (const listener of [...listeners]) {
@@ -349,6 +373,13 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       task: {
         env,
         mcpServers: [{ name: serverName, url, headers: { authorization: `Bearer ${mcpToken}` } }],
+      },
+      fallback: fallbackFor(mode),
+      // The fallback agent starts its own session: brief it again, with the conversation so far.
+      failoverPrompt: (prompt, earlier) => {
+        const told = clip(`${carryOver}\n\n${transcript(earlier)}`.trim(), CARRY_MAX, true);
+        const before = told ? `\n\nEarlier in this conversation, with another agent or mode:\n${told}` : '';
+        return `${briefing()}${before}${PROMPT_MARKER}${userText(prompt)}`;
       },
       ...(options.autoApprove ? { autoApprove: (request: ApprovalRequest) => options.autoApprove!(request) } : {}),
     });
@@ -725,6 +756,14 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       changed();
     },
     configure(change) {
+      if (change.fallback) {
+        const known = new Set(modes.flatMap((each) => agentsFor(each).map((agent) => agent.name)));
+        const unknown = change.fallback.find((name) => !known.has(name));
+        if (unknown !== undefined) throw new AppAgentError(`unknown agent "${unknown}"`, 400);
+        fallbackNames = [...new Set(change.fallback)];
+        session?.setFallback(fallbackFor(mode));
+        if (change.agent === undefined && change.mode === undefined) return changed();
+      }
       const nextMode = change.mode ?? mode;
       if (!modes.includes(nextMode)) throw new AppAgentError(`unknown mode "${nextMode}"`, 400);
       const offered = installed(nextMode);

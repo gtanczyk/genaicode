@@ -63,6 +63,8 @@ export interface ChatOptions {
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
   /** Caps on the whole session (`AgentSessionOptions.budget`). */
   budget?: AgentBudget;
+  /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
+  fallback?: readonly string[];
 }
 
 export interface ChatController {
@@ -111,8 +113,15 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   }
 
+  const fallbackAgents = (names: readonly string[]) => {
+    const unknown = names.filter((name) => !byName.has(name));
+    if (unknown.length)
+      throw new NoAgentError(`Unknown agent "${unknown[0]}". Known agents: ${[...byName.keys()].join(', ')}.`);
+    return [...new Set(names)].map((name) => byName.get(name)!);
+  };
   let autoApprove = options.approveAll === true;
   const session = createAgentSession({
+    ...(options.fallback?.length ? { fallback: fallbackAgents(options.fallback) } : {}),
     agent: initial,
     cwd: options.cwd,
     model: options.model,
@@ -334,6 +343,28 @@ export function createChatController(options: ChatOptions): ChatController {
                     `${a.name === session.get().agent ? '●' : '○'} ${a.name}${a.installed ? '' : ' (not installed)'}`,
                 )
                 .join('\n'),
+            );
+          }
+          return 'ok';
+        case 'fallback':
+          if (command.off) {
+            session.setFallback(undefined);
+            notice('Failover off.');
+          } else if (command.names) {
+            try {
+              session.setFallback(fallbackAgents(command.names));
+              notice(
+                `Failover: when ${session.get().agent} runs out (quota, sign-in, missing CLI, crash), switch to ${command.names.join(', ')}.`,
+              );
+            } catch (error) {
+              notice(errorText(error), 'error');
+            }
+          } else {
+            const list = session.get().fallback;
+            notice(
+              list?.length
+                ? `Failover: ${list.join(' → ')}. /fallback off turns it off.`
+                : 'Failover is off. /fallback codex,gemini turns it on.',
             );
           }
           return 'ok';

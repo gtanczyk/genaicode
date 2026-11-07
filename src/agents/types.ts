@@ -167,6 +167,8 @@ export type AgentEvent =
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
   | { type: 'rate-limit'; limit: RateLimit }
   | { type: 'budget-warning'; warning: BudgetWarning }
+  /** `withFallback()` moved the task from `from` to `to` after `failure`. */
+  | { type: 'failover'; from: string; to: string; failure: AgentFailure }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
   | { type: 'raw'; line: string }
@@ -187,6 +189,22 @@ export interface AgentResult {
   costUsd?: number;
   /** Why the task did not complete. */
   error?: string;
+  /** What kind of failure this was, when the driver could tell. Absent for an ordinary `failed`. */
+  failure?: AgentFailure;
+}
+
+/**
+ * Why a run failed, when it was the agent's fault rather than the task's:
+ * - `quota`: a plan, account or API limit ran out (`resetsAt` when the vendor said).
+ * - `auth`: the CLI is not signed in, or its key was refused.
+ * - `unavailable`: the CLI is not installed or could not start.
+ * - `crash`: the CLI ended without reporting a result, was killed, or broke its own protocol.
+ * - `budget`: the run went over its `AgentTask.budget`.
+ */
+export interface AgentFailure {
+  kind: 'quota' | 'auth' | 'unavailable' | 'crash' | 'budget';
+  /** When the limit resets, in epoch milliseconds (`quota` only). */
+  resetsAt?: number;
 }
 
 export interface AgentCapabilities {

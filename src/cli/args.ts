@@ -23,6 +23,8 @@ export type CliCommand =
       mcpServers: McpServer[];
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
       budget?: AgentBudget;
+      /** `--fallback a,b`: agents a turn moves to when the current one is out. */
+      fallback?: string[];
     }
   | {
       kind: 'embed';
@@ -62,6 +64,8 @@ export type CliCommand =
       json: boolean;
       /** `--max-tokens`, `--max-cost`: caps on the run, repairs included. */
       budget?: AgentBudget;
+      /** `--fallback a,b`: agents the run moves to when the current one is out. */
+      fallback?: string[];
     };
 
 export class UsageError extends Error {}
@@ -93,6 +97,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           mcp: { type: 'string', multiple: true },
           'max-tokens': { type: 'string' },
           'max-cost': { type: 'string' },
+          fallback: { type: 'string', multiple: true },
           ...(command === 'ui'
             ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
             : { web: { type: 'boolean' as const } }),
@@ -116,6 +121,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...budgetOf(values),
+      ...fallbackOf(values.fallback),
     };
   }
 
@@ -197,6 +203,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           json: { type: 'boolean' },
           'max-tokens': { type: 'string' },
           'max-cost': { type: 'string' },
+          fallback: { type: 'string', multiple: true },
         },
       }),
     );
@@ -216,6 +223,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       maxRepairs: optionalNumber(values['max-repairs'], '--max-repairs') ?? 2,
       json: values.json === true,
       ...budgetOf(values),
+      ...fallbackOf(values.fallback),
     };
   }
 
@@ -236,6 +244,14 @@ function parse<T>(call: () => T): T {
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : String(error));
   }
+}
+
+/** `--fallback codex,gemini` (repeatable) as a list of agent names, when given. */
+function fallbackOf(values: readonly string[] | undefined): { fallback?: string[] } {
+  if (!values) return {};
+  const names = values.flatMap((value) => value.split(/[\s,]+/)).filter(Boolean);
+  if (!names.length) throw new UsageError('--fallback expects agent names, e.g. --fallback codex,gemini.');
+  return { fallback: [...new Set(names)] };
 }
 
 /** `--max-tokens <n>` and `--max-cost <usd>` as a budget, when either is given. */

@@ -50,7 +50,8 @@ interface SpawnDefinition {
 
 export type SpawnPlan =
   | { ok: true; args: string[]; env: NodeJS.ProcessEnv; cleanup(): void }
-  | { ok: false; error: string };
+  /** `code`: the errno of a CLI that preparation could not start (`ENOENT`: not installed). */
+  | { ok: false; error: string; code?: string };
 
 /** Check the task, then resolve arguments and environment for the child process. */
 export function planSpawn(definition: SpawnDefinition, task: AgentTask, cwdError: string | undefined): SpawnPlan {
@@ -59,7 +60,7 @@ export function planSpawn(definition: SpawnDefinition, task: AgentTask, cwdError
   try {
     return spawnPlan(definition, task, definition.prepare ? definition.prepare(task) : { args: definition.args(task) });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return failedPlan(error);
   }
 }
 
@@ -78,8 +79,23 @@ export async function planSpawnAsync(
     const prepared = definition.prepare ? await definition.prepare(task, context) : { args: definition.args(task) };
     return spawnPlan(definition, task, prepared);
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return failedPlan(error);
   }
+}
+
+/** A thrown preparation error as a plan, keeping its errno so a missing CLI reads as one. */
+export function failedPlan(error: unknown): Extract<SpawnPlan, { ok: false }> {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+    ...(typeof code === 'string' ? { code } : {}),
+  };
+}
+
+/** The `ProcessExit` error for a plan that failed. */
+export function planError(plan: Extract<SpawnPlan, { ok: false }>): Error {
+  return Object.assign(new Error(plan.error), plan.code ? { code: plan.code } : {});
 }
 
 function spawnPlan(

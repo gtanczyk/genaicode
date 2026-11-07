@@ -18,6 +18,7 @@ export {
 export function statusParts(state: SessionState): string[] {
   const parts = [state.agent];
   if (state.model) parts.push(state.model);
+  if (state.fallback?.length) parts.push(`fallback ${state.fallback.join(',')}`);
   if (state.sessionId) parts.push(`session ${shortId(state.sessionId)}`);
   const usage = formatUsage(state.usage, state.costUsd);
   if (usage) parts.push(usage);
@@ -34,6 +35,7 @@ export function outputTail(output: string | undefined, count: number): { lines: 
 /** Slash commands shared by the terminal and web front ends. */
 export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: string }> = [
   { name: '/agent', args: '[name]', help: 'list agents, or switch (starts a new agent session)' },
+  { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
   { name: '/stop', help: 'stop the running turn, drop queued prompts, end !commands' },
@@ -47,6 +49,8 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
 export type SlashCommand =
   | { kind: 'agent'; name?: string }
   | { kind: 'model'; model?: string }
+  /** No `names` and no `off`: show the list. */
+  | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
@@ -75,6 +79,11 @@ export function parseSlash(text: string): SlashCommand | undefined {
       return { kind: 'agent', name: arg };
     case '/model':
       return { kind: 'model', model: arg };
+    case '/fallback':
+    case '/failover':
+      if (arg === undefined) return { kind: 'fallback' };
+      if (arg === 'off' || arg === 'none') return { kind: 'fallback', off: true };
+      return { kind: 'fallback', names: arg.split(/[\s,]+/).filter(Boolean) };
     case '/new':
     case '/reset':
       return { kind: 'new' };

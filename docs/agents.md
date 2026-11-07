@@ -120,6 +120,7 @@ failure of its own. A zero exit alone is not treated as success.
 | `usage`                   | Token usage, plus `costUsd` when the agent reports it                |
 | `rate-limit`              | A plan or account limit: window, status, % used, reset time          |
 | `budget-warning`          | The run crossed `warnAt` of a `task.budget` cap                      |
+| `failover`                | `withFallback()` moved the task to the next agent (`from`, `to`)     |
 | `error`                   | An error the agent reported                                          |
 | `stderr`                  | Raw stderr chunk                                                     |
 | `raw`                     | A stdout line that was not JSON                                      |
@@ -168,6 +169,45 @@ from `genaicode/react` turns both into short labels with a level (`ok`, `warning
 `exceeded`); `<AgentChat>`, `genaicode chat` and `genaicode ui` show them next to usage, yellow
 when close and red when out. `genaicode run|chat|ui --max-tokens <n> --max-cost <usd>` set
 budgets from the command line.
+
+## Failover
+
+When a run fails, `result.failure` says whether the agent was at fault rather than the task:
+
+| `failure.kind` | When                                                                      |
+| -------------- | ------------------------------------------------------------------------- |
+| `quota`        | A plan, account or API limit ran out (`resetsAt` when the vendor said)    |
+| `auth`         | The CLI is not signed in, or its key was refused                          |
+| `unavailable`  | The CLI is not installed (`ENOENT`)                                       |
+| `crash`        | The CLI died, was killed, or exited non-zero without reporting any result |
+| `budget`       | The run went over its `task.budget`                                       |
+
+An ordinary failure (tests still red, max turns, an error the agent reported) has no `failure`.
+`shouldFailOver(result)` is true for the first four: another agent can get past them, while a
+spent budget is the user's own cap.
+
+Failover is opt-in, and the user picks the agents:
+
+```ts
+const agent = withFallback([claude(), codex(), gemini()]);
+const result = await agent.run({ prompt, cwd }).result; // claude; codex if claude is out; then gemini
+```
+
+Each agent is tried at most once per run, and gets the task without `resume`. A `failover` event
+marks each switch. An agent that ran out goes last in later runs until it completes one, so
+`runWithVerify(withFallback([...]), ...)` does not hit the same limit on every repair. A stop, a
+spent budget and any other failure end the run as they are.
+
+Sessions do the same with `createAgentSession({ fallback: [codex(), gemini()] })` (`setFallback()`
+changes the list, `state.fallback` shows it). When a turn fails over, its transcript ends with a
+`{ kind: 'failover', from, to, failure }` entry, the session switches to the next agent it has not
+tried for that prompt and runs the prompt again there. If the first agent had already changed
+files, the next one is told which. The new agent stays for later turns; the model is cleared
+(another vendor's model id means nothing to it). The new agent starts its own session; `failoverPrompt(prompt, earlier)` can rewrite what it gets, e.g.
+to brief it again (app agents do: the briefing plus the conversation so far). `createAppAgent({ fallback: ['codex'] })` and
+`configure({ fallback })` take agent names. `genaicode run|chat|ui --fallback codex,gemini` and
+`/fallback` in the chat do it from the command line, and `<AgentChat>`, `chat` and `ui` show the
+switch in the transcript.
 
 ## Follow-up turns
 
