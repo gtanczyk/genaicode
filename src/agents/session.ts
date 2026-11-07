@@ -223,6 +223,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   );
   // Turns after this id are news to the current agent; undefined: it knows everything.
   let missedAfter: number | undefined;
+  // `reset()` drops the turns up to here from every later handoff.
+  let resetAt = 0;
   // After a user stop, `state.notes` wait for the user's next prompt instead of starting a turn.
   let holdNotes = false;
   // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
@@ -402,7 +404,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const before = carry ? known.get(next) : undefined;
     const sessionId = before?.sessionId && next.capabilities.resume ? before.sessionId : undefined;
     // Without its own session the agent missed the whole conversation.
-    missedAfter = carry ? (sessionId ? before!.upTo : 0) : undefined;
+    missedAfter = carry ? Math.max(resetAt, sessionId ? before!.upTo : 0) : undefined;
     if (!carry) known.delete(next);
     // Limits belong to the agent that reported them.
     set({ agent: next.name, sessionId, rateLimits: [] });
@@ -689,6 +691,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       explicitResume = undefined;
       known.clear();
       missedAfter = undefined;
+      resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },

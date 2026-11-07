@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -635,6 +635,46 @@ describe('createAgentSession', () => {
     await session.idle();
     expect(first.tasks[0].resume).toBe('old');
     expect(first.tasks[0].prompt).toContain('User: one');
+  });
+
+  it('leaves turns before a reset out of later handoffs', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ sessionId: 's-1' }), async () => ({ sessionId: 's-3' })],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('old topic');
+    await session.idle();
+    session.reset();
+    session.send('new topic');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('go on');
+    await session.idle();
+    expect(second.tasks[0].prompt).toContain('User: new topic');
+    expect(second.tasks[0].prompt).not.toContain('old topic');
+  });
+
+  it('writes owner-only transcripts that keep the failure reason', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ status: 'failed', ok: false, error: 'claude: command not found' })],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    const file = join(cwd, session.get().turns[1].handoff!.file!);
+    expect(readFileSync(file, 'utf8')).toContain('claude: command not found');
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it('skips the handoff when asked', async () => {

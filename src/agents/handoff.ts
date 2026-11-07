@@ -35,12 +35,13 @@ export function handoffPreamble(turns: readonly SessionTurn[], file: string | un
 /** Write the turns as Markdown under `dir` (relative to `cwd`). Returns the path to give the agent. */
 export function writeHandoff(cwd: string, dir: string, agent: string, turns: readonly SessionTurn[]): string {
   const folder = resolve(cwd, dir);
-  mkdirSync(folder, { recursive: true });
+  // Transcripts can hold secrets from prompts and tool output: owner-only.
+  mkdirSync(folder, { recursive: true, mode: 0o700 });
   const ignore = join(folder, '.gitignore');
   if (!existsSync(ignore)) writeFileSync(ignore, '*\n');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const file = join(folder, `${stamp}-${randomBytes(3).toString('hex')}-${agent.replace(/[^\w.-]/g, '_')}.md`);
-  writeFileSync(file, handoffTranscript(turns), { flag: 'wx' });
+  writeFileSync(file, handoffTranscript(turns), { flag: 'wx', mode: 0o600 });
   const inside = relative(resolve(cwd), file);
   return inside && !inside.startsWith(`..${sep}`) && !isAbsolute(inside) ? inside.split(sep).join('/') : file;
 }
@@ -83,7 +84,11 @@ export function handoffTranscript(turns: readonly SessionTurn[]): string {
     if (final && !turn.entries.some((entry) => entry.kind === 'text' && entry.text.trim() === final)) {
       out.push(`**${turn.agent}:**`, '', final, '');
     }
-    if (turn.result && !turn.result.ok) out.push(`_Turn ended: ${turn.result.status}_`, '');
+    if (turn.result && !turn.result.ok) {
+      const error = turn.result.error?.trim();
+      const told = error && turn.entries.some((entry) => entry.kind === 'error' && entry.message.includes(error));
+      out.push(`_Turn ended: ${turn.result.status}${error && !told ? ` (${error})` : ''}_`, '');
+    }
   }
   return out.join('\n');
 }
