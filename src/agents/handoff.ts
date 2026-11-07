@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { SessionTurn } from './session.js';
 
@@ -37,10 +37,17 @@ export function writeHandoff(cwd: string, dir: string, agent: string, turns: rea
   const folder = resolve(cwd, dir);
   // Transcripts can hold secrets from prompts and tool output: owner-only.
   mkdirSync(folder, { recursive: true, mode: 0o700 });
+  // Keep transcripts out of git, also in a folder that already has its own ignore rules.
   const ignore = join(folder, '.gitignore');
   if (!existsSync(ignore)) writeFileSync(ignore, '*\n');
+  else {
+    const rules = readFileSync(ignore, 'utf8');
+    if (!/^(\*|\*\.handoff\.md)\s*$/m.test(rules)) {
+      appendFileSync(ignore, `${rules.endsWith('\n') || !rules ? '' : '\n'}*.handoff.md\n`);
+    }
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const file = join(folder, `${stamp}-${randomBytes(3).toString('hex')}-${agent.replace(/[^\w.-]/g, '_')}.md`);
+  const file = join(folder, `${stamp}-${randomBytes(3).toString('hex')}-${agent.replace(/[^\w.-]/g, '_')}.handoff.md`);
   writeFileSync(file, handoffTranscript(turns), { flag: 'wx', mode: 0o600 });
   const inside = relative(resolve(cwd), file);
   return inside && !inside.startsWith(`..${sep}`) && !isAbsolute(inside) ? inside.split(sep).join('/') : file;

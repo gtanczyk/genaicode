@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -468,7 +468,7 @@ describe('createAgentSession', () => {
     const turn = session.get().turns[1];
     expect(turn).toMatchObject({ prompt: 'now add a test', handoff: { turns: 1, agents: ['claude'] } });
     const file = turn.handoff!.file!;
-    expect(file).toMatch(/^\.genaicode\/handoff\/.+-codex\.md$/);
+    expect(file).toMatch(/^\.genaicode\/handoff\/.+-codex\.handoff\.md$/);
     expect(prompt).toContain(`\`${file}\``);
     const transcript = readFileSync(join(cwd, file), 'utf8');
     expect(transcript).toContain('tool `Bash` {"command":"npm test"}');
@@ -675,6 +675,22 @@ describe('createAgentSession', () => {
     const file = join(cwd, session.get().turns[1].handoff!.file!);
     expect(readFileSync(file, 'utf8')).toContain('claude: command not found');
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it('ignores transcripts in a handoff folder that has its own .gitignore', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    mkdirSync(join(cwd, 'notes'));
+    writeFileSync(join(cwd, 'notes/.gitignore'), '*.log');
+    const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
+    const second = fakeAgent([async () => {}], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd, handoff: { dir: 'notes' } });
+    session.send('one');
+    await session.idle();
+    session.setAgent(second.agent);
+    session.send('two');
+    await session.idle();
+    expect(session.get().turns[1].handoff!.file).toMatch(/^notes\/.+\.handoff\.md$/);
+    expect(readFileSync(join(cwd, 'notes/.gitignore'), 'utf8')).toBe('*.log\n*.handoff.md\n');
   });
 
   it('skips the handoff when asked', async () => {

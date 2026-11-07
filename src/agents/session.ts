@@ -469,8 +469,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     let handoff: SessionTurn['handoff'];
     if (missedAfter !== undefined && rewritten === undefined) {
       const from = missedAfter;
-      // Failed attempts that failed over are told by the takeover note, not the recap.
-      const missed = state.turns.filter((past) => past.id > from && past.entries.at(-1)?.kind !== 'failover');
+      // The attempt being retried is this prompt itself (and the takeover note), not history.
+      const retried = retry ? state.turns.at(-1)?.id : undefined;
+      const missed = state.turns.filter((past) => past.id > from && past.id !== retried);
       if (missed.length) {
         let file: string | undefined;
         try {
