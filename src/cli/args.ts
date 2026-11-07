@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import type { McpServer } from '../agents/types.js';
+import type { AgentBudget, McpServer } from '../agents/types.js';
 
 export type CliCommand =
   | { kind: 'help' }
@@ -21,6 +21,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
+      /** `--max-tokens`, `--max-cost`: caps on the whole session. */
+      budget?: AgentBudget;
     }
   | {
       kind: 'embed';
@@ -58,6 +60,8 @@ export type CliCommand =
       verify?: string;
       maxRepairs: number;
       json: boolean;
+      /** `--max-tokens`, `--max-cost`: caps on the run, repairs included. */
+      budget?: AgentBudget;
     };
 
 export class UsageError extends Error {}
@@ -87,6 +91,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
           yes: { type: 'boolean', short: 'y' },
           port: { type: 'string' },
           mcp: { type: 'string', multiple: true },
+          'max-tokens': { type: 'string' },
+          'max-cost': { type: 'string' },
           ...(command === 'ui'
             ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
             : { web: { type: 'boolean' as const } }),
@@ -109,6 +115,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
+      ...budgetOf(values),
     };
   }
 
@@ -188,6 +195,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
           verify: { type: 'string' },
           'max-repairs': { type: 'string' },
           json: { type: 'boolean' },
+          'max-tokens': { type: 'string' },
+          'max-cost': { type: 'string' },
         },
       }),
     );
@@ -206,6 +215,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       verify: values.verify,
       maxRepairs: optionalNumber(values['max-repairs'], '--max-repairs') ?? 2,
       json: values.json === true,
+      ...budgetOf(values),
     };
   }
 
@@ -226,6 +236,25 @@ function parse<T>(call: () => T): T {
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : String(error));
   }
+}
+
+/** `--max-tokens <n>` and `--max-cost <usd>` as a budget, when either is given. */
+function budgetOf(values: { 'max-tokens'?: string; 'max-cost'?: string }): { budget?: AgentBudget } {
+  const maxTokens = optionalNumber(values['max-tokens'], '--max-tokens');
+  const cost = values['max-cost'];
+  let maxCostUsd: number | undefined;
+  if (cost !== undefined) {
+    maxCostUsd = Number(cost.replace(/^\$/, ''));
+    if (cost.trim() === '' || !Number.isFinite(maxCostUsd) || maxCostUsd <= 0)
+      throw new UsageError(`--max-cost expects a dollar amount above 0, got "${cost}".`);
+  }
+  if (maxTokens === undefined && maxCostUsd === undefined) return {};
+  return {
+    budget: {
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+      ...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+    },
+  };
 }
 
 function optionalNumber(value: string | boolean | undefined, flag: string): number | undefined {

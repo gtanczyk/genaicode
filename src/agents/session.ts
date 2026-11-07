@@ -1,5 +1,7 @@
 import type { TokenUsage } from '../core/types.js';
+import { tokenCount } from './runtime.js';
 import type {
+  AgentBudget,
   AgentEvent,
   AgentResult,
   AgentRun,
@@ -7,6 +9,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   CodingAgent,
+  RateLimit,
 } from './types.js';
 
 /** One item of a turn's transcript, built from the run's `AgentEvent`s. */
@@ -58,6 +61,10 @@ export interface SessionState {
   approvals: ApprovalRequest[];
   usage: TokenUsage;
   costUsd?: number;
+  /** Caps on the whole session's `usage` and `costUsd` (`AgentSessionOptions.budget`). */
+  budget?: AgentBudget;
+  /** The current agent's latest report per plan or account limit (`rate-limit` events). Cleared by `setAgent()`. */
+  rateLimits?: RateLimit[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
 }
@@ -81,6 +88,11 @@ export interface AgentSessionOptions {
    * not see. Turns, queued prompts and steering input keep the text given to `send()`.
    */
   transformPrompt?(prompt: string): string;
+  /**
+   * Caps on the whole session: tokens and cost summed over every turn. Each turn runs with
+   * what is left as its `task.budget`; once a cap is used up, new turns fail without starting.
+   */
+  budget?: AgentBudget;
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -113,6 +125,8 @@ export interface AgentSession {
   /** Switch agents between turns. The next turn starts a fresh session. */
   setAgent(agent: CodingAgent): void;
   setModel(model: string | undefined): void;
+  /** Change the session budget. It applies from the next turn. */
+  setBudget(budget: AgentBudget | undefined): void;
   /** Forget the agent session so the next turn starts fresh. Keeps the transcript. */
   reset(): void;
   /** Resolves when no turn is running and nothing is queued. */
@@ -138,6 +152,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     notes: [],
     approvals: [],
     usage: {},
+    ...(options.budget ? { budget: options.budget } : {}),
     canSteer: false,
   };
   const listeners = new Set<(state: SessionState) => void>();
@@ -257,9 +272,22 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       }
+      case 'rate-limit': {
+        // A turn of the previous agent still finishing: its limits are not the current agent's.
+        if (state.turns.find((turn) => turn.id === turnId)?.agent !== agent.name) return;
+        const same = (limit: RateLimit) => limit.window === event.limit.window && limit.name === event.limit.name;
+        const known = state.rateLimits ?? [];
+        set({
+          rateLimits: known.some(same)
+            ? known.map((limit) => (same(limit) ? event.limit : limit))
+            : [...known, event.limit],
+        });
+        return;
+      }
       case 'error':
         addEntry(turnId, { kind: 'error', message: event.message });
         return;
+      case 'budget-warning':
       case 'stderr':
       case 'raw':
       case 'done':
@@ -330,9 +358,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       canSteer: false,
     });
     let current: AgentRun;
+    const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
+      if (left?.spent) throw new Error(left.spent);
+      const budget = tighterBudget(left?.budget, options.task?.budget);
       current = agent.run({
         ...options.task,
+        ...(budget ? { budget } : {}),
         prompt: toAgent(prompt),
         cwd: state.cwd,
         model: state.model,
@@ -368,6 +400,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (finished?.usage) pastUsage = addUsage(pastUsage, finished.usage);
       if (finished?.costUsd !== undefined) pastCost = (pastCost ?? 0) + finished.costUsd;
       set({ usage: pastUsage, costUsd: pastCost });
+      // A quota known only from an error is over once a turn gets through again.
+      if (result.ok && state.rateLimits?.some((limit) => limit.window === 'quota'))
+        set({ rateLimits: state.rateLimits.filter((limit) => limit.window !== 'quota') });
       if (forgetAfterTurn) {
         forgetAfterTurn = false;
         set({ sessionId: undefined });
@@ -465,10 +500,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       agent = next;
       explicitResume = undefined;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ agent: next.name, sessionId: undefined });
+      // Limits belong to the agent that reported them.
+      set({ agent: next.name, sessionId: undefined, rateLimits: [] });
     },
     setModel(model) {
       set({ model });
+    },
+    setBudget(budget) {
+      set({ budget });
     },
     reset() {
       explicitResume = undefined;
@@ -489,6 +528,42 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 }
 
 /** A run that failed before it started. */
+/** What a session budget leaves for the next turn, or why nothing is left. */
+function remainingBudget(
+  budget: AgentBudget | undefined,
+  usage: TokenUsage,
+  costUsd: number | undefined,
+): { budget?: AgentBudget; spent?: string } | undefined {
+  if (!budget || (budget.maxTokens === undefined && budget.maxCostUsd === undefined)) return undefined;
+  const tokens = tokenCount(usage);
+  if (budget.maxTokens !== undefined && tokens >= budget.maxTokens)
+    return { spent: `The session used its token budget (${tokens} of ${budget.maxTokens}).` };
+  if (budget.maxCostUsd !== undefined && (costUsd ?? 0) >= budget.maxCostUsd)
+    return { spent: `The session used its cost budget ($${(costUsd ?? 0).toFixed(4)} of $${budget.maxCostUsd}).` };
+  return {
+    budget: {
+      ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens - tokens } : {}),
+      ...(budget.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd - (costUsd ?? 0) } : {}),
+      // Warnings belong to the whole session (`budgetStatus`), not to what one turn has left.
+      warnAt: Infinity,
+    },
+  };
+}
+
+/** Both budgets' caps, the lower one where both set the same cap. */
+function tighterBudget(session: AgentBudget | undefined, turn: AgentBudget | undefined): AgentBudget | undefined {
+  if (!session || !turn) return session ?? turn;
+  const lower = (a?: number, b?: number) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
+  const maxTokens = lower(session.maxTokens, turn.maxTokens);
+  const maxCostUsd = lower(session.maxCostUsd, turn.maxCostUsd);
+  return {
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+    // The turn's own warnings stay; the session warns about itself (`budgetStatus`).
+    warnAt: turn.warnAt ?? 0.8,
+  };
+}
+
 function failedRun(message: string): AgentRun {
   const result: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
   return {
@@ -522,7 +597,11 @@ function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
   const inputTokens = sum(total.inputTokens, usage.inputTokens);
   const outputTokens = sum(total.outputTokens, usage.outputTokens);
   const cachedInputTokens = sum(total.cachedInputTokens, usage.cachedInputTokens);
-  const totalTokens = sum(total.totalTokens, usage.totalTokens);
+  // A turn without `totalTokens` counts input + output, so mixed agents add up right.
+  const totalTokens =
+    total.totalTokens === undefined && usage.totalTokens === undefined
+      ? undefined
+      : tokenCount(total) + tokenCount(usage);
   if (inputTokens !== undefined) next.inputTokens = inputTokens;
   if (outputTokens !== undefined) next.outputTokens = outputTokens;
   if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;

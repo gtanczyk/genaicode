@@ -1,4 +1,5 @@
-import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from './types.js';
+import { tokenCount } from './runtime.js';
+import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent } from './types.js';
 
 export interface VerifyReport {
   ok: boolean;
@@ -33,6 +34,7 @@ export interface VerifyLoopResult {
 /**
  * Run a task, check it, and send failures back to the agent until the check passes
  * or repairs run out. Each attempt is a fresh `agent.run`; the working tree carries over.
+ * `task.budget` covers all attempts together: each one runs with what the earlier ones left.
  */
 export async function runWithVerify(
   agent: CodingAgent,
@@ -45,7 +47,9 @@ export async function runWithVerify(
 
   for (let attempt = 0; attempt <= maxRepairs; attempt += 1) {
     if (task.signal?.aborted) return { ok: false, attempts, error: 'Stopped before the next attempt.' };
-    const run = agent.run({ ...task, prompt });
+    const budget = remaining(task.budget, attempts);
+    if (budget === 'spent') return { ok: false, attempts, error: 'The budget is used up; no repair attempt left.' };
+    const run = agent.run({ ...task, prompt, ...(budget ? { budget } : {}) });
     for await (const event of run) options.onEvent?.(event, attempt);
     const result = await run.result;
     const record: VerifyAttempt = { prompt, result };
@@ -61,6 +65,22 @@ export async function runWithVerify(
     prompt = (options.repairPrompt ?? defaultRepairPrompt)({ task, report, attempt: attempt + 1 });
   }
   return { ok: false, attempts };
+}
+
+/** `budget` minus what `attempts` used, or `spent` when a cap has nothing left. */
+function remaining(budget: AgentBudget | undefined, attempts: VerifyAttempt[]): AgentBudget | 'spent' | undefined {
+  if (!budget || !attempts.length) return budget;
+  let tokens = 0;
+  let cost = 0;
+  for (const { result } of attempts) {
+    if (result.usage) tokens += tokenCount(result.usage);
+    cost += result.costUsd ?? 0;
+  }
+  const next: AgentBudget = { ...budget };
+  if (budget.maxTokens !== undefined) next.maxTokens = budget.maxTokens - tokens;
+  if (budget.maxCostUsd !== undefined) next.maxCostUsd = budget.maxCostUsd - cost;
+  if ((next.maxTokens ?? 1) <= 0 || (next.maxCostUsd ?? 1) <= 0) return 'spent';
+  return next;
 }
 
 function defaultRepairPrompt({ task, report }: { task: AgentTask; report: VerifyReport }): string {

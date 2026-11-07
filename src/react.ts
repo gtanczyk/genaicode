@@ -26,8 +26,11 @@ export type {
   TreeChanges,
 } from './app-agent/state.js';
 export {
+  budgetStatus,
   formatDuration,
+  formatResetIn,
   formatUsage,
+  limitChips,
   relativePath,
   shortId,
   toolLabel,
@@ -35,8 +38,9 @@ export {
   toolSummary,
   turnFooter,
 } from './react/format.js';
+export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
 export type { SessionEntry, SessionState, SessionTurn } from './agents/session.js';
-export type { ApprovalDecision, ApprovalRequest } from './agents/types.js';
+export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
 export { useFollowScroll } from './react/follow-scroll.js';
 export { installResizeHandle, storedSize } from './react/resize-handle.js';
 export type { ResizeHandle, ResizeHandleOptions, StoredSize } from './react/resize-handle.js';

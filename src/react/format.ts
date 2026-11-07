@@ -1,5 +1,6 @@
 /** Display helpers shared by the chat front ends (`genaicode/react`, the terminal UI). No React here. */
-import type { SessionTurn } from '../agents/session.js';
+import type { SessionState, SessionTurn } from '../agents/session.js';
+import type { AgentBudget, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
 
 const INPUT_KEYS = ['command', 'cmd', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url', 'description'];
@@ -70,6 +71,108 @@ export function formatUsage(usage: TokenUsage, costUsd?: number): string {
   if (tokens) parts.push(`${formatTokens(tokens)} tokens`);
   if (costUsd !== undefined) parts.push(`$${costUsd.toFixed(costUsd < 1 ? 3 : 2)}`);
   return parts.join(' · ');
+}
+
+export type LimitLevel = 'ok' | 'warning' | 'exceeded';
+
+/** One limit for a status bar: `text` to show, `level` to color it, `title` for a tooltip. */
+export interface LimitChip {
+  key: string;
+  text: string;
+  level: LimitLevel;
+  title: string;
+}
+
+/** "in 2h 5m", "in 3d 4h", "now" until `at`. */
+export function formatResetIn(at: number, now = Date.now()): string {
+  const minutes = Math.max(0, Math.round((at - now) / 60_000));
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ''}`;
+  const days = Math.floor(hours / 24);
+  return `in ${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`;
+}
+
+export interface BudgetRow {
+  kind: 'tokens' | 'cost';
+  used: number;
+  limit: number;
+  level: LimitLevel;
+}
+
+/** How much of each cap of a session `budget` is used. */
+export function budgetStatus(
+  budget: AgentBudget | undefined,
+  usage: TokenUsage,
+  costUsd: number | undefined,
+): BudgetRow[] {
+  if (!budget) return [];
+  const warnAt = budget.warnAt ?? 0.8;
+  const level = (used: number, limit: number): LimitLevel =>
+    used >= limit ? 'exceeded' : used >= limit * warnAt ? 'warning' : 'ok';
+  const rows: BudgetRow[] = [];
+  if (budget.maxTokens !== undefined) {
+    const used = usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+    rows.push({ kind: 'tokens', used, limit: budget.maxTokens, level: level(used, budget.maxTokens) });
+  }
+  if (budget.maxCostUsd !== undefined) {
+    const used = costUsd ?? 0;
+    rows.push({ kind: 'cost', used, limit: budget.maxCostUsd, level: level(used, budget.maxCostUsd) });
+  }
+  return rows;
+}
+
+const LEVEL_ORDER: Record<LimitLevel, number> = { exceeded: 0, warning: 1, ok: 2 };
+
+/**
+ * Plan limits and the session budget as chips, worst first: "5h 82% · resets in 1h 5m",
+ * "budget 45k/100k tokens". A limit at `ok` with no percentage says nothing and is left out.
+ */
+export function limitChips(
+  state: Pick<SessionState, 'usage' | 'costUsd' | 'budget' | 'rateLimits'>,
+  now = Date.now(),
+): LimitChip[] {
+  const chips: LimitChip[] = [];
+  for (const row of budgetStatus(state.budget, state.usage, state.costUsd)) {
+    const text =
+      row.kind === 'tokens'
+        ? `budget ${formatTokens(row.used)}/${formatTokens(row.limit)} tokens`
+        : `budget $${row.used.toFixed(2)}/$${row.limit.toFixed(2)}`;
+    const title =
+      row.level === 'exceeded'
+        ? 'Session budget used up: new prompts will not start.'
+        : `Session ${row.kind === 'tokens' ? 'token' : 'cost'} budget.`;
+    chips.push({ key: `budget-${row.kind}`, text, level: row.level, title });
+  }
+  for (const limit of state.rateLimits ?? []) {
+    if (limit.status === 'ok' && limit.usedPercent === undefined) continue;
+    // A reset in the past: the window has rolled over since the report.
+    if (limit.resetsAt !== undefined && limit.resetsAt <= now) continue;
+    chips.push(rateLimitChip(limit, now));
+  }
+  return chips.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
+}
+
+function rateLimitChip(limit: RateLimit, now: number): LimitChip {
+  const name = limit.name ? `${limit.name} ` : '';
+  const used =
+    limit.usedPercent !== undefined
+      ? ` ${Math.round(limit.usedPercent)}%`
+      : limit.status === 'exceeded'
+        ? ' reached'
+        : '';
+  const resetsIn = limit.resetsAt !== undefined ? formatResetIn(limit.resetsAt, now) : undefined;
+  const title =
+    limit.status === 'exceeded'
+      ? `The agent's ${limit.window} limit is used up${resetsIn ? `; it resets ${resetsIn}` : ''}.`
+      : `The agent's ${limit.window} plan limit${limit.status === 'warning' ? ', close to running out' : ''}.`;
+  return {
+    key: `limit-${limit.name ?? ''}-${limit.window}`,
+    text: `${name}${limit.window}${used}${resetsIn ? ` · resets ${resetsIn}` : ''}`,
+    level: limit.status,
+    title,
+  };
 }
 
 /** "done in 12s", "failed: …", or "working 4s" for a turn. */

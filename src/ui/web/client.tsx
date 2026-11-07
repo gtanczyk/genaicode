@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
-import { formatUsage, needsAttention, shortId } from '../format.js';
+import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
 import type { WebCommand } from './server.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -91,6 +91,7 @@ function App() {
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
   const usage = session ? formatUsage(session.usage, session.costUsd) : '';
+  const limits = session ? limitChips(session) : [];
   const submit = (text: string) => void command({ type: 'submit', text });
 
   return (
@@ -137,6 +138,11 @@ function App() {
             <span className="spacer" />
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
+            {limits.map((chip) => (
+              <span key={chip.key} className="chip" data-level={chip.level} title={chip.title}>
+                {chip.text}
+              </span>
+            ))}
             <button
               className={`chip${view.autoApprove ? '' : ' off'}`}
               title={

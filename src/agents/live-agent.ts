@@ -206,6 +206,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     lifetime.abort();
     handle.kill();
   };
+  recorder.watchBudget(task.budget, abort);
   return { result, abort, steer: steerRun, [Symbol.asyncIterator]: iterate };
 }
 

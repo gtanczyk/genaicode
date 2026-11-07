@@ -118,12 +118,56 @@ failure of its own. A zero exit alone is not treated as success.
 | `file-change`             | Paths the agent reported editing                                     |
 | `approval-request`        | The agent is waiting for a permission decision                       |
 | `usage`                   | Token usage, plus `costUsd` when the agent reports it                |
+| `rate-limit`              | A plan or account limit: window, status, % used, reset time          |
+| `budget-warning`          | The run crossed `warnAt` of a `task.budget` cap                      |
 | `error`                   | An error the agent reported                                          |
 | `stderr`                  | Raw stderr chunk                                                     |
 | `raw`                     | A stdout line that was not JSON                                      |
 | `done`                    | Always last; carries the `AgentResult`                               |
 
 Vendor events that have no mapping are dropped.
+
+## Usage, limits and budgets
+
+Every driver except `muse`, `museLive` and `vibe` reports token usage (`usage` events,
+`result.usage`); `claude` and `opencode` also report cost (`costUsd`), so a cost cap works for
+them (and for `vibe`, natively). Usage reports are running
+totals for the run, not increments.
+
+**Plan limits.** `claude` and `codexLive` say how much of the subscription is left
+(`capabilities.rateLimits`) with `rate-limit` events:
+
+```ts
+{ type: 'rate-limit', limit: { window: '5h', status: 'warning', usedPercent: 83, resetsAt: 1794571200000 } }
+```
+
+`window` is `5h`, `7d`, `7d-opus`, `7d-sonnet`, `overage` (Claude) or the Codex window length.
+`status` is `warning` when the vendor flags it or from 80% used, and `exceeded` when requests are
+refused. Codex names a per-model limit in `name`. For any agent, an error that says a quota or
+rate limit ran out (429, `quota`, `rate limit`, `usage limit`...) adds one
+`{ window: 'quota', status: 'exceeded' }` event, so front ends can say why the agent stopped.
+
+**Budgets.** `task.budget` caps one run:
+
+```ts
+const run = agent.run({ prompt, cwd, budget: { maxTokens: 200_000, maxCostUsd: 2, warnAt: 0.8 } });
+```
+
+Past `warnAt` (default 0.8) of a cap the run emits one `budget-warning` per cap; past the cap
+genaicode stops the agent and the run fails with `error: "claude went over its cost budget
+($2.0412 of $2)."`. Tokens count `totalTokens`, else input + output. The check runs on the
+agent's usage reports, so an agent that reports usage only at the end (`claude`, `gemini`,
+`copilot`) can overshoot within that turn. `claude` also gets `--max-budget-usd` and `vibe`
+`--max-price` for the cost cap, which stop it from the inside. `runWithVerify` spreads the
+budget over all attempts.
+
+`createAgentSession({ budget })` caps the whole session: each turn runs with what is left, and
+once a cap is used up new prompts fail without starting (`setBudget()` changes it). The session
+keeps `state.budget` and the latest report per limit in `state.rateLimits`. `limitChips(state)`
+from `genaicode/react` turns both into short labels with a level (`ok`, `warning`,
+`exceeded`); `<AgentChat>`, `genaicode chat` and `genaicode ui` show them next to usage, yellow
+when close and red when out. `genaicode run|chat|ui --max-tokens <n> --max-cost <usd>` set
+budgets from the command line.
 
 ## Follow-up turns
 
