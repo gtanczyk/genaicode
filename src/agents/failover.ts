@@ -1,5 +1,5 @@
 import { approximateSize, EventQueue } from './event-queue.js';
-import { addUsage, tokenCount } from './runtime.js';
+import { addUsage, tokenCount } from './usage.js';
 import type { AgentBudget, AgentEvent, AgentFailure, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 /** Failures another agent can get past: the agent is out, not the task. `budget` is the user's cap. */
