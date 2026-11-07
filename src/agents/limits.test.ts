@@ -398,3 +398,31 @@ describe('limits per agent', () => {
     expect(session.get().rateLimits).toEqual([]);
   });
 });
+
+describe('review round 3', () => {
+  it('keeps the per-turn caps next to the session budget', async () => {
+    const { agent, tasks } = scriptedAgent([[]]);
+    const session = createAgentSession({
+      agent,
+      cwd: dir,
+      task: { budget: { maxCostUsd: 0.1, maxTokens: 500 } },
+      budget: { maxTokens: 100 },
+    });
+    session.send('go');
+    await session.idle();
+    expect(tasks[0]!.budget).toEqual({ maxTokens: 100, maxCostUsd: 0.1, warnAt: 0.8 });
+  });
+
+  it('reports a quota failure that only the outcome carries', async () => {
+    const quotaAgent = cliAgent({
+      name: 'fake',
+      command: process.execPath,
+      args: () => [script],
+      createParser: () => ({ event: () => [], outcome: () => ({ ok: false, error: '429: quota exhausted' }) }),
+    });
+    const { events, result } = await collect(quotaAgent.run({ prompt: 'go', cwd: dir, env: env([], false) }));
+    expect(result.error).toBe('429: quota exhausted');
+    expect(events).toContainEqual({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
+    expect(events.at(-1)?.type).toBe('done');
+  });
+});

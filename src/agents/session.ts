@@ -361,7 +361,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
       if (left?.spent) throw new Error(left.spent);
-      const budget = left?.budget ?? options.task?.budget;
+      const budget = tighterBudget(left?.budget, options.task?.budget);
       current = agent.run({
         ...options.task,
         ...(budget ? { budget } : {}),
@@ -547,6 +547,20 @@ function remainingBudget(
       // Warnings belong to the whole session (`budgetStatus`), not to what one turn has left.
       warnAt: Infinity,
     },
+  };
+}
+
+/** Both budgets' caps, the lower one where both set the same cap. */
+function tighterBudget(session: AgentBudget | undefined, turn: AgentBudget | undefined): AgentBudget | undefined {
+  if (!session || !turn) return session ?? turn;
+  const lower = (a?: number, b?: number) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
+  const maxTokens = lower(session.maxTokens, turn.maxTokens);
+  const maxCostUsd = lower(session.maxCostUsd, turn.maxCostUsd);
+  return {
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+    // The turn's own warnings stay; the session warns about itself (`budgetStatus`).
+    warnAt: turn.warnAt ?? 0.8,
   };
 }
 

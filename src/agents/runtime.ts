@@ -98,6 +98,11 @@ export class RunRecorder {
       ...(this.costUsd !== undefined ? { costUsd: this.costUsd } : {}),
       ...(error ? { error } : {}),
     };
+    // A quota failure reported only in the outcome or on stderr.
+    if (error && !this.quotaReported && QUOTA_ERROR.test(error)) {
+      this.quotaReported = true;
+      this.events.push({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
+    }
     this.events.push({ type: 'done', result });
     this.events.close();
     return result;
