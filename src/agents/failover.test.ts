@@ -269,6 +269,39 @@ describe('session failover', () => {
     expect(codex.tasks[1]).toMatchObject({ prompt: 'next', resume: 'x-1' });
   });
 
+  it('tells the next agent what the user steered into the failed turn', async () => {
+    const gate = { open: () => {} };
+    const claude: CodingAgent = {
+      ...fake('claude').agent,
+      capabilities: { steer: true },
+      run(): AgentRun {
+        const result = new Promise<AgentResult>((resolve) => {
+          gate.open = () =>
+            resolve({ status: 'failed', ok: false, exitCode: 1, signal: null, failure: { kind: 'quota' } });
+        });
+        return {
+          result,
+          abort() {},
+          steer: async () => {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    const codex = fake('codex');
+    const session = createAgentSession({ agent: claude, cwd: dir, fallback: [codex.agent] });
+    session.send('Change the API');
+    await new Promise((r) => setTimeout(r, 0));
+    session.send('Keep backwards compatibility');
+    await new Promise((r) => setTimeout(r, 0));
+    gate.open();
+    await session.idle();
+    expect(codex.tasks[0]!.prompt).toBe(
+      'Change the API\n\nWhile claude worked on it, the user added:\n- Keep backwards compatibility',
+    );
+  });
+
   it('tries each agent once per prompt', async () => {
     const claude = fake('claude', [out('quota'), {}]);
     const codex = fake('codex', [out('crash')]);

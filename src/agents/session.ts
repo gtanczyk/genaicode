@@ -185,6 +185,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let takeover: string | undefined;
   // `failoverPrompt`'s text for the turn that takes over.
   let retryPrompt: string | undefined;
+  // What the user steered into the failed turn: the next agent hears it after the prompt.
+  let steeredBefore: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
   const idleWaiters: Array<() => void> = [];
@@ -389,6 +391,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ` +
         `It already changed: ${changed.join(', ')}. Check those files and continue from there.\n\n`
       : undefined;
+    const steered = failed.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : []));
+    steeredBefore = steered.length
+      ? `\n\nWhile ${agent.name} worked on it, the user added:\n${steered.map((text) => `- ${text}`).join('\n')}`
+      : undefined;
     retryPrompt = undefined;
     if (options.failoverPrompt) {
       const earlier = state.turns.filter(
@@ -417,8 +423,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
     const prefix = takeover ?? '';
     const rewritten = retry ? retryPrompt : undefined;
+    const suffix = (retry && steeredBefore) || '';
     takeover = undefined;
     retryPrompt = undefined;
+    steeredBefore = undefined;
     const turnId = nextTurnId++;
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
@@ -445,7 +453,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = agent.run({
         ...options.task,
         ...(budget ? { budget } : {}),
-        prompt: prefix + (rewritten ?? toAgent(prompt)),
+        prompt: prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
         model: state.model,
         effort: state.effort,
