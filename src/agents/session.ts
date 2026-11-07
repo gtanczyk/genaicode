@@ -164,8 +164,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let closed = false;
   // `options.resume` applies to the first turn as given, so an agent that cannot resume refuses it.
   let explicitResume = options.resume;
-  // `reset()` during a turn: forget the session that turn reports when it ends.
+  // `reset()`, or a fresh switch to the running agent, during a turn: forget the session that
+  // turn reports when it ends.
   let forgetAfterTurn = false;
+  let runningAgent: CodingAgent | undefined;
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   // Per agent: its own session and the last turn that session knows about.
@@ -336,6 +338,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
     const turnAgent = agent;
+    runningAgent = turnAgent;
     const own = () => agent === turnAgent;
     let preamble = '';
     let handoff: SessionTurn['handoff'];
@@ -418,7 +421,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (finished?.usage) pastUsage = addUsage(pastUsage, finished.usage);
       if (finished?.costUsd !== undefined) pastCost = (pastCost ?? 0) + finished.costUsd;
       set({ usage: pastUsage, costUsd: pastCost });
-      const sessionId = result.sessionId ?? turnSession;
+      runningAgent = undefined;
+      // A resumed turn that names no new session continued the one it resumed.
+      const sessionId = result.sessionId ?? turnSession ?? (result.ok ? resume : undefined);
       if (forgetAfterTurn) {
         forgetAfterTurn = false;
         if (own()) set({ sessionId: undefined });
@@ -519,10 +524,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return true;
     },
     setAgent(next, switchOptions) {
-      if (next === agent) return;
+      const carry = handoffOn && switchOptions?.handoff !== false;
+      if (next === agent) {
+        // Switching to the current agent fresh is a reset of its session.
+        if (!carry) {
+          explicitResume = undefined;
+          known.delete(next);
+          missedAfter = undefined;
+          if (runningAgent === next) forgetAfterTurn = true;
+          set({ sessionId: undefined });
+        }
+        return;
+      }
       agent = next;
       explicitResume = undefined;
-      const carry = handoffOn && switchOptions?.handoff !== false;
+      if (!carry && runningAgent === next) forgetAfterTurn = true;
       const before = carry ? known.get(next) : undefined;
       const sessionId = before?.sessionId && next.capabilities.resume ? before.sessionId : undefined;
       // Without its own session the agent missed the whole conversation.

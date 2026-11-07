@@ -254,7 +254,13 @@ export function createChatController(options: ChatOptions): ChatController {
       notice('Stop the running turn before switching agents.', 'error');
       return false;
     }
-    if (agent.name === session.get().agent) return true;
+    if (agent.name === session.get().agent) {
+      if (options?.fresh) {
+        session.setAgent(agent, { handoff: false });
+        notice(`Still ${name}. New agent session, no context.`);
+      }
+      return true;
+    }
     session.setAgent(agent, { handoff: !options?.fresh });
     const installed = agents.find((choice) => choice.name === name)?.installed;
     const missing = installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;

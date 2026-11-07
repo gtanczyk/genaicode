@@ -6,8 +6,6 @@ import type { SessionTurn } from './session.js';
 export const HANDOFF_DIR = join('.genaicode', 'handoff');
 
 const RECAP_MAX = 4_000;
-const TOOL_INPUT_MAX = 600;
-const TOOL_OUTPUT_MAX = 1_500;
 
 /**
  * The text that goes before the first prompt of an agent taking over a conversation: who talked,
@@ -60,9 +58,10 @@ export function handoffTranscript(turns: readonly SessionTurn[]): string {
           out.push('**User (during the turn):**', '', quote(entry.text), '');
           break;
         case 'tool': {
-          const input = entry.input === undefined ? '' : ` ${clip(inline(entry.input), TOOL_INPUT_MAX)}`;
+          // The session already bounds tool output (`maxToolOutput`); the file keeps all of it.
+          const input = entry.input === undefined ? '' : ` ${inline(entry.input)}`;
           out.push(`- tool \`${entry.name}\`${input}${entry.isError ? ' (failed)' : ''}`);
-          if (entry.output?.trim()) out.push(fence(clip(entry.output.trim(), TOOL_OUTPUT_MAX)));
+          if (entry.output?.trim()) out.push(fence(entry.output.trim()));
           out.push('');
           break;
         }
@@ -104,10 +103,6 @@ function inline(value: unknown): string {
   } catch {
     return String(value);
   }
-}
-
-function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)} … (truncated)`;
 }
 
 function quote(text: string): string {

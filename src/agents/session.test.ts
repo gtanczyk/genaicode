@@ -536,6 +536,69 @@ describe('createAgentSession', () => {
     expect(second.tasks[1].prompt).toContain('User: two');
   });
 
+  it('keeps the resumed session when a resumed turn names none', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'handoff-'));
+    const first = fakeAgent(
+      [async () => ({ sessionId: 's-1' }), async () => {}, async () => {}],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([async () => ({ sessionId: 's-2' })], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd });
+    session.send('one');
+    await session.idle();
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[1].resume).toBe('s-1');
+    session.setAgent(second.agent);
+    session.send('three');
+    await session.idle();
+    session.setAgent(first.agent);
+    session.send('four');
+    await session.idle();
+    expect(first.tasks[2].resume).toBe('s-1');
+    expect(first.tasks[2].prompt).not.toContain('User: one');
+  });
+
+  it('does not let a running turn restore a session switched away from fresh', async () => {
+    let finish!: () => void;
+    const first = fakeAgent(
+      [
+        async () => ({ sessionId: 's-1' }),
+        () => new Promise((resolve) => (finish = () => resolve({ sessionId: 's-1' }))),
+        async () => {},
+      ],
+      { resume: true },
+      'claude',
+    );
+    const second = fakeAgent([], { resume: true }, 'codex');
+    const session = createAgentSession({ agent: first.agent, cwd: '.', handoff: false });
+    session.send('one');
+    await session.idle();
+    session.send('two');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    session.setAgent(second.agent);
+    session.setAgent(first.agent, { handoff: false });
+    finish();
+    await session.idle();
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('three');
+    await session.idle();
+    expect(first.tasks[2].resume).toBeUndefined();
+  });
+
+  it('starts the current agent fresh when switched to it without handoff', async () => {
+    const first = fakeAgent([async () => ({ sessionId: 's-1' }), async () => {}], { resume: true }, 'claude');
+    const session = createAgentSession({ agent: first.agent, cwd: '.' });
+    session.send('one');
+    await session.idle();
+    session.setAgent(first.agent, { handoff: false });
+    expect(session.get().sessionId).toBeUndefined();
+    session.send('two');
+    await session.idle();
+    expect(first.tasks[1]).toMatchObject({ prompt: 'two', resume: undefined });
+  });
+
   it('skips the handoff when asked', async () => {
     const first = fakeAgent([async () => ({ sessionId: 's-1' })], { resume: true }, 'claude');
     const second = fakeAgent([async () => {}], { resume: true }, 'codex');
