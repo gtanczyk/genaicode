@@ -106,6 +106,13 @@ export interface AgentSessionOptions {
    * spent budget and other failures never fail over. Without it, nothing changes.
    */
   fallback?: readonly CodingAgent[];
+  /**
+   * What the fallback agent gets when it takes over a turn, instead of the turn's prompt. The new
+   * agent starts its own session, so this can brief it again: `prompt` is the failed turn's text as
+   * given to `send()`, `earlier` the finished turns before it. Its result is not passed through
+   * `transformPrompt`.
+   */
+  failoverPrompt?(prompt: string, earlier: readonly SessionTurn[]): string;
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -176,6 +183,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let tried = new Set<string>();
   // Said to the next agent ahead of a prompt it takes over mid-way.
   let takeover: string | undefined;
+  // `failoverPrompt`'s text for the turn that takes over.
+  let retryPrompt: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
   const idleWaiters: Array<() => void> = [];
@@ -380,6 +389,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ` +
         `It already changed: ${changed.join(', ')}. Check those files and continue from there.\n\n`
       : undefined;
+    retryPrompt = undefined;
+    if (options.failoverPrompt) {
+      const earlier = state.turns.filter(
+        (turn) => turn.id < turnId && turn.result && turn.entries.at(-1)?.kind !== 'failover',
+      );
+      try {
+        retryPrompt = options.failoverPrompt(failed.prompt, earlier);
+      } catch {
+        // The turn's own prompt, as without the hook.
+      }
+    }
     switchAgent(next);
     // The failed turn is over: the next agent's session is one to keep.
     forgetAfterTurn = false;
@@ -396,7 +416,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       takeover = undefined;
     }
     const prefix = takeover ?? '';
+    const rewritten = retry ? retryPrompt : undefined;
     takeover = undefined;
+    retryPrompt = undefined;
     const turnId = nextTurnId++;
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
@@ -423,7 +445,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = agent.run({
         ...options.task,
         ...(budget ? { budget } : {}),
-        prompt: prefix + toAgent(prompt),
+        prompt: prefix + (rewritten ?? toAgent(prompt)),
         cwd: state.cwd,
         model: state.model,
         effort: state.effort,

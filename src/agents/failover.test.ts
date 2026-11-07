@@ -301,3 +301,31 @@ describe('app agent failover', () => {
     app.close();
   });
 });
+
+describe('app agent failover briefing', () => {
+  it('briefs the fallback again, with the conversation so far, on a later turn', async () => {
+    const claude = fake('claude', [{ text: 'hi there' }, out('quota')]);
+    const codex = fake('codex');
+    const app = createAppAgent({
+      name: 'the console',
+      mcpUrl: 'http://127.0.0.1:1/mcp',
+      agents: () => [claude.agent, codex.agent],
+      agent: 'claude',
+      fallback: ['codex'],
+      instructions: 'Costs are in PLN.',
+    });
+    const idle = async () => {
+      for (let i = 0; i < 200 && app.get().session?.status !== 'idle'; i++) await new Promise((r) => setTimeout(r, 5));
+    };
+    app.send('first');
+    await idle();
+    app.send('second');
+    await idle();
+    const prompt = codex.tasks[0]!.prompt;
+    expect(prompt).toContain('You are the assistant inside the console');
+    expect(prompt).toContain('Costs are in PLN.');
+    expect(prompt).toContain('User: first');
+    expect(prompt.endsWith('User message:\nsecond')).toBe(true);
+    app.close();
+  });
+});

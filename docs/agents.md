@@ -203,7 +203,8 @@ changes the list, `state.fallback` shows it). When a turn fails over, its transc
 `{ kind: 'failover', from, to, failure }` entry, the session switches to the next agent it has not
 tried for that prompt and runs the prompt again there. If the first agent had already changed
 files, the next one is told which. The new agent stays for later turns; the model is cleared
-(another vendor's model id means nothing to it). `createAppAgent({ fallback: ['codex'] })` and
+(another vendor's model id means nothing to it). The new agent starts its own session; `failoverPrompt(prompt, earlier)` can rewrite what it gets, e.g.
+to brief it again (app agents do: the briefing plus the conversation so far). `createAppAgent({ fallback: ['codex'] })` and
 `configure({ fallback })` take agent names. `genaicode run|chat|ui --fallback codex,gemini` and
 `/fallback` in the chat do it from the command line, and `<AgentChat>`, `chat` and `ui` show the
 switch in the transcript.

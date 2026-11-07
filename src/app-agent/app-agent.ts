@@ -375,6 +375,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         mcpServers: [{ name: serverName, url, headers: { authorization: `Bearer ${mcpToken}` } }],
       },
       fallback: fallbackFor(mode),
+      // The fallback agent starts its own session: brief it again, with the conversation so far.
+      failoverPrompt: (prompt, earlier) => {
+        const told = clip(`${carryOver}\n\n${transcript(earlier)}`.trim(), CARRY_MAX, true);
+        const before = told ? `\n\nEarlier in this conversation, with another agent or mode:\n${told}` : '';
+        return `${briefing()}${before}${PROMPT_MARKER}${userText(prompt)}`;
+      },
       ...(options.autoApprove ? { autoApprove: (request: ApprovalRequest) => options.autoApprove!(request) } : {}),
     });
     unsubscribeSession = session.subscribe(changed);
