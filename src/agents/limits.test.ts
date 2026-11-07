@@ -368,3 +368,20 @@ describe('cli flags', () => {
     expect(() => parseCli(['run', '--max-cost', 'lots'])).toThrow(/--max-cost/);
   });
 });
+
+describe('review fixes', () => {
+  it('counts turns without totalTokens in a session that has totals', async () => {
+    const { agent, tasks } = scriptedAgent([
+      [{ type: 'usage', usage: { inputTokens: 40, outputTokens: 10, totalTokens: 50 } }],
+      [{ type: 'usage', usage: { outputTokens: 40 } }],
+      [],
+    ]);
+    const session = createAgentSession({ agent, cwd: dir, budget: { maxTokens: 100 } });
+    for (const prompt of ['one', 'two', 'three']) {
+      session.send(prompt);
+      await session.idle();
+    }
+    expect(session.get().usage.totalTokens).toBe(90);
+    expect(tasks[2]!.budget?.maxTokens).toBe(10);
+  });
+});

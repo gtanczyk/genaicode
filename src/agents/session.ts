@@ -580,7 +580,11 @@ function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
   const inputTokens = sum(total.inputTokens, usage.inputTokens);
   const outputTokens = sum(total.outputTokens, usage.outputTokens);
   const cachedInputTokens = sum(total.cachedInputTokens, usage.cachedInputTokens);
-  const totalTokens = sum(total.totalTokens, usage.totalTokens);
+  // A turn without `totalTokens` counts input + output, so mixed agents add up right.
+  const totalTokens =
+    total.totalTokens === undefined && usage.totalTokens === undefined
+      ? undefined
+      : tokenCount(total) + tokenCount(usage);
   if (inputTokens !== undefined) next.inputTokens = inputTokens;
   if (outputTokens !== undefined) next.outputTokens = outputTokens;
   if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;

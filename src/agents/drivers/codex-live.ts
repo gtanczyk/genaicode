@@ -78,6 +78,11 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   const ours = (params: unknown) => ids.thread !== undefined && stringField(params, 'threadId') === ids.thread;
 
   session.onNotification((method, params) => {
+    // Account-wide: no threadId, and this app-server serves only our task.
+    if (method === 'account/rateLimits/updated') {
+      for (const event of codexNotification(method, params)) session.emit(event);
+      return;
+    }
     if (!ours(params)) return;
     if (approvals.notification(method, params)) return;
     if (method === 'turn/completed') {
