@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision } from '../agents/types.js';
+import { describeFailover } from '../agents/failover.js';
 import { useFollowScroll } from './follow-scroll.js';
 import {
   formatDuration,
@@ -362,6 +363,7 @@ function Folded({
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
     item.kind === 'error' ||
+    item.kind === 'failover' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
   const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
@@ -494,5 +496,7 @@ function Entry({
     }
     case 'error':
       return <div className="gc-error">{entry.message}</div>;
+    case 'failover':
+      return <div className="gc-failover">{describeFailover(entry.from, entry.to, entry.failure)}</div>;
   }
 }

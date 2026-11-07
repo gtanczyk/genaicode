@@ -16,6 +16,7 @@ export type {
   AgentBudget,
   AgentCapabilities,
   AgentEvent,
+  AgentFailure,
   AgentPermissions,
   AgentResult,
   AgentRun,
@@ -63,6 +64,7 @@ export type { MuseLiveOptions } from './agents/drivers/muse-live.js';
 export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from './agents/env.js';
 export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
+export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';

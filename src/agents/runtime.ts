@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { approximateSize, EventQueue } from './event-queue.js';
 import type { ProcessExit } from './process.js';
-import type { AgentBudget, AgentEvent, AgentResult, BudgetWarning, RateLimit } from './types.js';
+import type { AgentBudget, AgentEvent, AgentFailure, AgentResult, BudgetWarning, RateLimit } from './types.js';
 
 const STDERR_TAIL_BYTES = 4 * 1024;
 
@@ -25,6 +25,7 @@ export class RunRecorder {
   private readonly warned = new Set<BudgetWarning['kind']>();
   private overBudget?: string;
   private quotaReported = false;
+  private quotaResetsAt?: number;
 
   constructor(
     private readonly name: string,
@@ -45,7 +46,11 @@ export class RunRecorder {
       this.usage = event.usage;
       if (event.costUsd !== undefined) this.costUsd = event.costUsd;
     }
-    if (event.type === 'rate-limit' && event.limit.status === 'exceeded') this.quotaReported = true;
+    if (event.type === 'rate-limit' && event.limit.status === 'exceeded') {
+      this.quotaReported = true;
+      if (event.limit.resetsAt !== undefined)
+        this.quotaResetsAt = Math.max(this.quotaResetsAt ?? 0, event.limit.resetsAt);
+    }
     if (event.type === 'error') this.lastError = event.message;
     if (event.type === 'stderr') this.stderrTail = (this.stderrTail + event.text).slice(-STDERR_TAIL_BYTES);
     this.events.push(event);
@@ -87,6 +92,12 @@ export class RunRecorder {
     // Stopped for its budget: a failure, not a user stop, even if the agent finished meanwhile.
     const status = this.overBudget ? 'failed' : statusOf(exit, outcome);
     const error = status === 'completed' ? undefined : (this.overBudget ?? this.errorOf(status, exit, outcome));
+    // A quota failure reported only in the outcome or on stderr.
+    if (error && !this.quotaReported && QUOTA_ERROR.test(error)) {
+      this.quotaReported = true;
+      this.events.push({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
+    }
+    const failure = status === 'failed' ? this.failureOf(exit, outcome, error) : undefined;
     const result: AgentResult = {
       status,
       ok: status === 'completed',
@@ -97,15 +108,32 @@ export class RunRecorder {
       ...(this.usage ? { usage: this.usage } : {}),
       ...(this.costUsd !== undefined ? { costUsd: this.costUsd } : {}),
       ...(error ? { error } : {}),
+      ...(failure ? { failure } : {}),
     };
-    // A quota failure reported only in the outcome or on stderr.
-    if (error && !this.quotaReported && QUOTA_ERROR.test(error)) {
-      this.quotaReported = true;
-      this.events.push({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
-    }
     this.events.push({ type: 'done', result });
     this.events.close();
     return result;
+  }
+
+  /** The agent's own failure, as opposed to a task that went wrong. */
+  private failureOf(
+    exit: ProcessExit,
+    outcome: AgentOutcome | undefined,
+    error: string | undefined,
+  ): AgentFailure | undefined {
+    if (this.overBudget) return { kind: 'budget' };
+    if (this.quotaReported)
+      return { kind: 'quota', ...(this.quotaResetsAt !== undefined ? { resetsAt: this.quotaResetsAt } : {}) };
+    if (error && AUTH_ERROR.test(error)) return { kind: 'auth' };
+    if (exit.reason === 'spawn-error') {
+      const code = (exit.error as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOENT' || code === 'EACCES' ? { kind: 'unavailable' } : undefined;
+    }
+    if (exit.reason === 'overflow' || exit.signal) return { kind: 'crash' };
+    // Ended without a result of its own: the CLI died, not the task.
+    if (outcome === undefined && !this.lastError && (exit.reason === 'closed' || exit.exitCode !== 0))
+      return { kind: 'crash' };
+    return undefined;
   }
 
   private errorOf(status: AgentResult['status'], exit: ProcessExit, outcome: AgentOutcome | undefined): string {
@@ -123,6 +151,10 @@ export class RunRecorder {
 /** Errors that say a plan, account or API quota ran out. */
 const QUOTA_ERROR =
   /\b(429|rate[ _-]?limit(ed|s)?|quota|usage limit|resource[ _]exhausted|too many requests|hit your limit)\b/i;
+
+/** Errors that say the CLI is not signed in or its credentials were refused. */
+const AUTH_ERROR =
+  /\b(not (logged|signed) in|(log|sign)[ -]?in (is )?required|please (log|sign)[ -]?in|unauthori[sz]ed|401|invalid (api[ _-]?key|x-api-key|credentials)|authentication (failed|required|error)|credentials? (expired|invalid))\b/i;
 
 /** Tokens a usage report counts: `totalTokens`, else input + output. */
 export function tokenCount(usage: NonNullable<AgentResult['usage']>): number {

@@ -480,6 +480,13 @@
   font-size: 0.87em;
   white-space: pre-wrap;
 }
+.gc-failover {
+  background: var(--_warn-soft);
+  color: var(--_warn);
+  border-radius: var(--_radius);
+  padding: 8px 12px;
+  font-size: 0.87em;
+}
 .gc-turn-footer,
 .gc-working {
   font-size: 0.8em;
