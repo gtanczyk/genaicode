@@ -73,7 +73,8 @@ export interface ChatController {
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
   approve(id: string, decision: ApprovalDecision): boolean;
-  selectAgent(name: string): boolean;
+  /** Switch agents. The conversation is handed over unless `fresh`. */
+  selectAgent(name: string, options?: { fresh?: boolean }): boolean;
   setModel(model: string | undefined): void;
   close(): void;
   readonly session: AgentSession;
@@ -243,7 +244,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }, 3000).unref?.();
   };
 
-  const selectAgent = (name: string): boolean => {
+  const selectAgent = (name: string, options?: { fresh?: boolean }): boolean => {
     const agent = byName.get(name);
     if (!agent) {
       notice(`Unknown agent "${name}". Known agents: ${[...byName.keys()].join(', ')}.`, 'error');
@@ -254,9 +255,15 @@ export function createChatController(options: ChatOptions): ChatController {
       return false;
     }
     if (agent.name === session.get().agent) return true;
-    session.setAgent(agent);
+    session.setAgent(agent, { handoff: !options?.fresh });
     const installed = agents.find((choice) => choice.name === name)?.installed;
-    notice(`Switched to ${name}.${installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`} New agent session.`);
+    const missing = installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
+    const context = options?.fresh
+      ? ' New agent session, no context.'
+      : session.get().turns.length
+        ? ' It hears the conversation so far with your next prompt.'
+        : '';
+    notice(`Switched to ${name}.${missing}${context}`);
     return true;
   };
 
@@ -322,7 +329,7 @@ export function createChatController(options: ChatOptions): ChatController {
           );
           return 'ok';
         case 'agent':
-          if (command.name) selectAgent(command.name);
+          if (command.name) selectAgent(command.name, { fresh: command.fresh });
           else {
             notice(
               agents

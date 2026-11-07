@@ -9,6 +9,11 @@
 
 ### Added
 
+- Switching agents keeps the conversation: after `AgentSession.setAgent()` (and `/agent` in
+  `genaicode chat` / `ui`) the next agent's first prompt carries a recap of the turns it
+  missed plus the path of a full Markdown transcript written to `.genaicode/handoff/` in the
+  cwd. Switching back to an agent resumes its own session and tells it only what it missed.
+  Opt out with `setAgent(agent, { handoff: false })`, `handoff: false`, or `/agent name --fresh`.
 - `antigravity()` now drives `agy acp` (Antigravity CLI 1.5.0+) over JSON-RPC on stdio and
   supports `task.mcpServers` (HTTP with secret headers and stdio with env passed over stdin,
   never in argv, with session MCP tools pre-allowed), `task.resume` (`session/resume`),

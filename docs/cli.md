@@ -40,7 +40,9 @@ denies and `a` approves everything from then on (`/auto`, or the Auto-approve ch
 browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
-model and session; `/help` lists the rest.
+model and session; `/help` lists the rest. `/agent codex` hands the conversation over: codex
+gets a recap and a transcript file in `.genaicode/handoff/`, and switching back resumes the
+earlier agent's own session (`/agent codex --fresh` starts with no context).
 
 <p align="center">
   <picture>

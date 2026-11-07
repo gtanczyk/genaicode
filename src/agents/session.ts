@@ -1,4 +1,5 @@
 import type { TokenUsage } from '../core/types.js';
+import { HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import type {
   AgentEvent,
   AgentResult,
@@ -39,6 +40,8 @@ export interface SessionTurn {
   /** The turn's latest usage report. Agents report running totals, not increments. */
   usage?: TokenUsage;
   costUsd?: number;
+  /** Earlier turns this turn's agent was told about after `setAgent()`. */
+  handoff?: { turns: number; agents: string[]; file?: string };
 }
 
 export interface SessionState {
@@ -85,6 +88,14 @@ export interface AgentSessionOptions {
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
   maxTurns?: number;
+  /**
+   * What an agent hears, after `setAgent()`, about the turns it did not run. Default on: a recap
+   * goes before its next prompt, and the full transcript (tool calls, output, changed files) is
+   * written to `dir` (relative to cwd, default `.genaicode/handoff`) for it to read on demand.
+   * Switching back to an agent resumes its own session and tells it only what it missed.
+   * `false`: every switch starts the agent fresh, with no context.
+   */
+  handoff?: boolean | { dir?: string };
 }
 
 /**
@@ -110,10 +121,14 @@ export interface AgentSession {
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
   approve(id: string, decision: ApprovalDecision): boolean;
-  /** Switch agents between turns. The next turn starts a fresh session. */
-  setAgent(agent: CodingAgent): void;
+  /**
+   * Switch agents. The next turn resumes the agent's own earlier session when it had one, and
+   * hands over the turns it missed (see `AgentSessionOptions.handoff`). `{ handoff: false }`
+   * starts it fresh with no context. A running turn finishes with the agent that started it.
+   */
+  setAgent(agent: CodingAgent, options?: { handoff?: boolean }): void;
   setModel(model: string | undefined): void;
-  /** Forget the agent session so the next turn starts fresh. Keeps the transcript. */
+  /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
@@ -151,6 +166,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let explicitResume = options.resume;
   // `reset()` during a turn: forget the session that turn reports when it ends.
   let forgetAfterTurn = false;
+  const handoffOn = options.handoff !== false;
+  const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
+  // Per agent: its own session and the last turn that session knows about.
+  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>();
+  // Turns after this id are news to the current agent; undefined: it knows everything.
+  let missedAfter: number | undefined;
   // After a user stop, `state.notes` wait for the user's next prompt instead of starting a turn.
   let holdNotes = false;
   // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
@@ -187,10 +208,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const clip = (text: string | undefined) =>
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
-  const onEvent = (turnId: number, event: AgentEvent) => {
+  const onEvent = (turnId: number, event: AgentEvent, own: () => boolean) => {
     switch (event.type) {
       case 'session':
-        if (!forgetAfterTurn) set({ sessionId: event.sessionId });
+        if (!forgetAfterTurn && own()) set({ sessionId: event.sessionId });
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
@@ -314,7 +335,32 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const turnId = nextTurnId++;
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
-    const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
+    const turnAgent = agent;
+    const own = () => agent === turnAgent;
+    let preamble = '';
+    let handoff: SessionTurn['handoff'];
+    if (missedAfter !== undefined) {
+      const from = missedAfter;
+      const missed = state.turns.filter((past) => past.id > from);
+      if (missed.length) {
+        let file: string | undefined;
+        try {
+          file = writeHandoff(state.cwd, handoffDir, agent.name, missed);
+        } catch {
+          // An unwritable cwd still gets the recap.
+        }
+        preamble = handoffPreamble(missed, file);
+        handoff = { turns: missed.length, agents: [...new Set(missed.map((past) => past.agent))], file };
+      }
+    }
+    const turn: SessionTurn = {
+      id: turnId,
+      agent: agent.name,
+      prompt,
+      entries: [],
+      startedAt: Date.now(),
+      ...(handoff ? { handoff } : {}),
+    };
     const resume =
       explicitResume !== undefined
         ? explicitResume
@@ -333,7 +379,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     try {
       current = agent.run({
         ...options.task,
-        prompt: toAgent(prompt),
+        prompt: preamble + toAgent(prompt),
         cwd: state.cwd,
         model: state.model,
         effort: state.effort,
@@ -347,9 +393,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
     run = current;
     if (current.steer && agent.capabilities.steer) set({ canSteer: true });
+    let turnSession: string | undefined;
     void (async () => {
       try {
-        for await (const event of current) onEvent(turnId, event);
+        for await (const event of current) {
+          if (event.type === 'session') turnSession = event.sessionId;
+          onEvent(turnId, event, own);
+        }
       } catch (error) {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
@@ -368,10 +418,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (finished?.usage) pastUsage = addUsage(pastUsage, finished.usage);
       if (finished?.costUsd !== undefined) pastCost = (pastCost ?? 0) + finished.costUsd;
       set({ usage: pastUsage, costUsd: pastCost });
+      const sessionId = result.sessionId ?? turnSession;
       if (forgetAfterTurn) {
         forgetAfterTurn = false;
-        set({ sessionId: undefined });
-      } else if (result.sessionId) set({ sessionId: result.sessionId });
+        if (own()) set({ sessionId: undefined });
+      } else {
+        // The agent heard everything up to this turn, through its session or this turn's handoff.
+        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId });
+        if (own()) {
+          if (sessionId || result.ok) missedAfter = undefined;
+          if (sessionId) set({ sessionId });
+        }
+      }
       const next = closed ? undefined : takeNext();
       if (next !== undefined) {
         startTurn(next);
@@ -460,18 +518,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       resolve(decision);
       return true;
     },
-    setAgent(next) {
+    setAgent(next, switchOptions) {
       if (next === agent) return;
       agent = next;
       explicitResume = undefined;
-      if (state.status === 'running') forgetAfterTurn = true;
-      set({ agent: next.name, sessionId: undefined });
+      const carry = handoffOn && switchOptions?.handoff !== false;
+      const before = carry ? known.get(next) : undefined;
+      const sessionId = before?.sessionId && next.capabilities.resume ? before.sessionId : undefined;
+      // Without its own session the agent missed the whole conversation.
+      missedAfter = carry ? (sessionId ? before!.upTo : 0) : undefined;
+      if (!carry) known.delete(next);
+      set({ agent: next.name, sessionId });
     },
     setModel(model) {
       set({ model });
     },
     reset() {
       explicitResume = undefined;
+      known.clear();
+      missedAfter = undefined;
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },
