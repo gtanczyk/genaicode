@@ -1,4 +1,4 @@
-import { planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
+import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -128,7 +128,7 @@ function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun 
       lifetime.abort();
       input?.fail();
       return recorder.finish(
-        { exitCode: null, signal: null, reason: 'spawn-error', error: new Error(plan.error) },
+        { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
         undefined,
       );
     }

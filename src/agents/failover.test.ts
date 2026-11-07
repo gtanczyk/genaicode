@@ -170,6 +170,32 @@ describe('withFallback', () => {
     expect(result.costUsd).toBeCloseTo(0.7);
   });
 
+  it('reports usage for the whole run, so a session counts every agent', async () => {
+    const claude = fake(
+      'claude',
+      [{ ...out('quota'), usage: { inputTokens: 60 } }],
+      [{ type: 'usage', usage: { inputTokens: 60 } }],
+    );
+    const codex = fake('codex', [{ usage: { inputTokens: 10 } }], [{ type: 'usage', usage: { inputTokens: 10 } }]);
+    const session = createAgentSession({ agent: withFallback([claude.agent, codex.agent]), cwd: dir });
+    session.send('go');
+    await session.idle();
+    expect(session.get().usage).toEqual({ inputTokens: 70 });
+  });
+
+  it('marks a CLI that preparation could not start as unavailable', async () => {
+    const agent = cliAgent({
+      name: 'fake',
+      command: join(dir, 'missing'),
+      args: () => [],
+      prepare: () => {
+        throw Object.assign(new Error('could not list MCP servers: spawn ENOENT'), { code: 'ENOENT' });
+      },
+      createParser: () => ({ event: () => [] }),
+    });
+    expect((await agent.run({ prompt: 'x', cwd: dir }).result).failure).toEqual({ kind: 'unavailable' });
+  });
+
   it('does not start the next agent once the budget is spent', async () => {
     const claude = fake('claude', [{ ...out('crash'), usage: { inputTokens: 100 } }]);
     const codex = fake('codex');

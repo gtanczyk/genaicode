@@ -53,10 +53,23 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
           current = run;
           if (stopped) run.abort();
           let done: AgentResult | undefined;
+          // Usage events are running totals for the run: earlier agents' share goes on top.
+          const priorUsage = usage;
+          const priorCost = costUsd;
           for await (const event of run) {
             if (event.type === 'done') done = event.result;
             else {
-              events.push(event);
+              events.push(
+                event.type === 'usage' && (priorUsage || priorCost !== undefined)
+                  ? {
+                      ...event,
+                      usage: priorUsage ? addUsage(priorUsage, event.usage) : event.usage,
+                      ...(event.costUsd !== undefined || priorCost !== undefined
+                        ? { costUsd: (priorCost ?? 0) + (event.costUsd ?? 0) }
+                        : {}),
+                    }
+                  : event,
+              );
               await events.room();
             }
           }
