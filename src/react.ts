@@ -11,7 +11,7 @@
  *
  * React (18 or newer) comes from the host; genaicode does not install it.
  */
-export { AgentChat } from './react/agent-chat.js';
+export { AgentChat, artifactSubmission } from './react/agent-chat.js';
 export type { AgentChatProps, ChatNotice } from './react/agent-chat.js';
 export { Markdown } from './react/markdown.js';
 export { AppAgentChat, useAppAgent } from './react/app-agent-chat.js';

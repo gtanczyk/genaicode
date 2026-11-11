@@ -86,8 +86,8 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
       if (method === 'GET' && route.startsWith('/artifacts/')) {
         const found = agent.artifacts?.read(route.slice('/artifacts/'.length));
         if (!found) return json(res, 404, { error: 'not found' });
-        const response = artifactResponse(found.artifact, found.body);
-        res.writeHead(200, response.headers).end(response.body);
+        const response = artifactResponse(found.artifact, found.body, { range: req.headers.range });
+        res.writeHead(response.status, response.headers).end(response.body);
         return true;
       }
       if (method === 'GET') {

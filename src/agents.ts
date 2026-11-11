@@ -118,6 +118,7 @@ export type {
   ArtifactChannel,
   ArtifactChannelOptions,
   ArtifactStore,
+  ArtifactResponse,
   ArtifactStoreOptions,
   PublishArtifact,
 } from './agents/artifacts.js';

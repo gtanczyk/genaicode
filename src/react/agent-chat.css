@@ -585,6 +585,39 @@ iframe.gc-artifact-view {
   height: min(60vh, 520px);
   resize: vertical;
 }
+audio.gc-artifact-view {
+  background: transparent;
+  padding: 8px 10px;
+  width: calc(100% - 20px);
+  box-sizing: content-box;
+}
+video.gc-artifact-view {
+  background: #000;
+  max-height: 70vh;
+}
+.gc-artifact-submit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--_border);
+}
+.gc-artifact-submit-text {
+  color: var(--_muted);
+  font-size: 0.87em;
+}
+.gc-artifact-submit-data {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  font-size: 0.87em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gc-artifact-submit-actions {
+  display: flex;
+  gap: 8px;
+}
 img.gc-artifact-view {
   height: auto;
   max-height: 70vh;

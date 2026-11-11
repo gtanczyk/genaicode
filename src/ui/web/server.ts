@@ -157,8 +157,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       // unguessable and opens that one artifact only.
       const found = controller.artifacts?.read(url.pathname.slice('/artifacts/'.length));
       if (!found) return send(res, 404, 'text/plain', 'Not found');
-      const response = artifactResponse(found.artifact, found.body);
-      res.writeHead(200, response.headers);
+      const response = artifactResponse(found.artifact, found.body, { range: req.headers.range });
+      res.writeHead(response.status, response.headers);
       return res.end(response.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {

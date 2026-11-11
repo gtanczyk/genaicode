@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ArtifactError, artifactResponse, createArtifactStore, startArtifactChannel } from './artifacts.js';
 import { createAgentSession } from './session.js';
-import type { AgentRun, AgentTask, CodingAgent } from './types.js';
+import type { AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-artifacts-'));
 const cwd = join(root, 'work');
@@ -19,6 +19,9 @@ writeFileSync(join(cwd, 'server.pem'), 'key');
 writeFileSync(join(cwd, '.git', 'config'), '[core]');
 writeFileSync(join(root, 'outside.txt'), 'outside');
 symlinkSync(join(root, 'outside.txt'), join(cwd, 'link.txt'));
+writeFileSync(join(cwd, 'shot.png'), Buffer.alloc(10));
+writeFileSync(join(cwd, 'beep.mp3'), Buffer.alloc(40));
+writeFileSync(join(cwd, 'demo.webm'), Buffer.from('0123456789'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe('artifact store', () => {
@@ -98,6 +101,70 @@ describe('artifact store', () => {
     expect(artifactResponse(file, Buffer.alloc(0)).headers['content-disposition']).toBe(
       'attachment; filename="data.bin"',
     );
+  });
+});
+
+describe('media artifacts', () => {
+  it('types screenshots, audio and video, with a limit of their own', async () => {
+    const store = createArtifactStore({ cwd, maxBytes: 20, maxMediaBytes: 50 });
+    expect(await store.publish({ title: 'Shot', path: 'shot.png' })).toMatchObject({ kind: 'image' });
+    // Over maxBytes, under maxMediaBytes.
+    expect(await store.publish({ title: 'Beep', path: 'beep.mp3' })).toMatchObject({
+      kind: 'audio',
+      mimeType: 'audio/mpeg',
+      bytes: 40,
+    });
+    expect(await store.publish({ title: 'Demo', path: 'demo.webm' })).toMatchObject({
+      kind: 'video',
+      mimeType: 'video/webm',
+    });
+    const small = createArtifactStore({ cwd, maxBytes: 5, maxMediaBytes: 30 });
+    await expect(small.publish({ title: 'Beep', path: 'beep.mp3' })).rejects.toThrow(/Too large: 40 bytes/);
+    // Media comes from files only.
+    await expect(store.publish({ title: 'x', content: 'x', format: 'mp3' as unknown as 'text' })).rejects.toThrow(
+      ArtifactError,
+    );
+  });
+
+  it('drops the oldest content beyond the total kept in memory', async () => {
+    const store = createArtifactStore({ cwd, maxTotalBytes: 45 });
+    const shot = await store.publish({ title: 'Shot', path: 'shot.png' });
+    const demo = await store.publish({ title: 'Demo', path: 'demo.webm' });
+    await store.publish({ title: 'Beep', path: 'beep.mp3' });
+    expect(store.list().map((artifact) => artifact.title)).toEqual(['Beep']);
+    expect(store.read(shot.id)).toBeUndefined();
+    expect(store.read(demo.id)).toBeUndefined();
+    // The newest stays even when it alone is over the total.
+    const tiny = createArtifactStore({ cwd, maxTotalBytes: 1 });
+    await tiny.publish({ title: 'Beep', path: 'beep.mp3' });
+    expect(tiny.list()).toHaveLength(1);
+  });
+
+  it('answers a Range with that part, so players can seek', async () => {
+    const store = createArtifactStore({ cwd });
+    const demo = await store.publish({ title: 'Demo', path: 'demo.webm' });
+    const body = store.read(demo.id)!.body;
+    const whole = artifactResponse(demo, body);
+    expect(whole.status).toBe(200);
+    expect(whole.headers['accept-ranges']).toBe('bytes');
+    expect(whole.headers['content-security-policy']).toContain("media-src 'self'");
+    expect(whole.headers['content-security-policy']).toMatch(/sandbox$/);
+
+    const part = artifactResponse(demo, body, { range: 'bytes=2-5' });
+    expect(part.status).toBe(206);
+    expect(part.body.toString()).toBe('2345');
+    expect(part.headers['content-range']).toBe('bytes 2-5/10');
+    expect(part.headers['content-length']).toBe('4');
+    expect(artifactResponse(demo, body, { range: 'bytes=7-' }).body.toString()).toBe('789');
+    expect(artifactResponse(demo, body, { range: 'bytes=-3' }).body.toString()).toBe('789');
+    expect(artifactResponse(demo, body, { range: 'bytes=8-99' }).headers['content-range']).toBe('bytes 8-9/10');
+
+    const beyond = artifactResponse(demo, body, { range: 'bytes=10-' });
+    expect(beyond.status).toBe(416);
+    expect(beyond.headers['content-range']).toBe('bytes */10');
+    // Several ranges, or nonsense: the whole content.
+    expect(artifactResponse(demo, body, { range: 'bytes=0-1,4-5' }).status).toBe(200);
+    expect(artifactResponse(demo, body, { range: 'lines=1-2' }).status).toBe(200);
   });
 });
 
@@ -228,6 +295,114 @@ describe('session artifacts', () => {
     expect(decisions).toEqual(['approve']);
     await session.idle();
     expect(decisions).toEqual(['approve', 'deny']);
+    session.close();
+  });
+  it('tells the agent that takes over what was published, with content that exists nowhere else', async () => {
+    const work = mkdtempSync(join(root, 'handoff-'));
+    writeFileSync(join(work, 'report.html'), '<h1>Report</h1>');
+    const store = createArtifactStore({ cwd: work });
+    const agentThat = (name: string, during: () => Promise<unknown>) => {
+      const tasks: AgentTask[] = [];
+      const agent: CodingAgent = {
+        name,
+        command: 'fake',
+        capabilities: { mcp: true },
+        run(task): AgentRun {
+          tasks.push(task);
+          const result = (async () => {
+            await during();
+            return { status: 'completed' as const, ok: true, exitCode: 0, signal: null, text: 'done' };
+          })();
+          return {
+            result,
+            abort() {},
+            async *[Symbol.asyncIterator]() {
+              yield { type: 'done' as const, result: await result };
+            },
+          };
+        },
+      };
+      return { agent, tasks };
+    };
+    const first = agentThat('claude', async () => {
+      await store.publish({ title: 'Survey', name: 'survey', content: '<form>v1</form>', format: 'html' });
+      await store.publish({ title: 'Survey', name: 'survey', content: '<form>v2 ```</form>', format: 'html' });
+      await store.publish({ title: 'Report', path: 'report.html' });
+    });
+    const second = agentThat('codex', async () => {
+      // The same store: the next agent replaces the artifact under its name.
+      await store.publish({ title: 'Survey', name: 'survey', content: '<form>v3</form>', format: 'html' });
+    });
+    const session = createAgentSession({ agent: first.agent, cwd: work, artifacts: { store, mcpServer } });
+    session.send('ask me');
+    await session.idle();
+    const card = session.get().turns[0].entries.at(-2);
+    session.setAgent(second.agent);
+    session.send('change the survey');
+    await session.idle();
+
+    expect(second.tasks[0].mcpServers).toEqual([mcpServer]);
+    const prompt = second.tasks[0].prompt;
+    expect(prompt).toContain('- "Survey" (name: `survey`, html, version 2)');
+    expect(prompt).toContain('- "Report" (name: `report.html`, html, from `report.html`)');
+    const transcript = readFileSync(join(work, session.get().turns[1].handoff!.file!), 'utf8');
+    // The latest version only, fenced past the backticks inside; files stay on disk.
+    expect(transcript).not.toContain('<form>v1</form>');
+    expect(transcript).toContain('````\n<form>v2 ```</form>\n````');
+    expect(transcript).not.toContain('<h1>Report</h1>');
+    // Same address for the card of the earlier turn.
+    const replaced = session.get().turns[1].entries.find((entry) => entry.kind === 'artifact');
+    expect(replaced).toMatchObject({
+      artifact: { version: 3, id: (card as { artifact: { id: string } }).artifact.id },
+    });
+    session.close();
+  });
+  it('tells the fallback what the agent that ran out had already published', async () => {
+    const work = mkdtempSync(join(root, 'failover-'));
+    const store = createArtifactStore({ cwd: work });
+    const prompts: string[] = [];
+    const agentThat = (name: string, during: () => Promise<Partial<AgentResult>>): CodingAgent => ({
+      name,
+      command: 'fake',
+      capabilities: { mcp: true },
+      run(task): AgentRun {
+        if (name === 'codex') prompts.push(task.prompt);
+        const result = (async () => ({
+          status: 'completed' as const,
+          ok: true,
+          exitCode: 0,
+          signal: null,
+          ...(await during()),
+        }))();
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done' as const, result: await result };
+          },
+        };
+      },
+    });
+    const claude = agentThat('claude', async () => {
+      await store.publish({ title: 'Survey', name: 'survey', content: '<form>v1</form>', format: 'html' });
+      return { status: 'failed', ok: false, exitCode: 1, failure: { kind: 'quota' } };
+    });
+    const codex = agentThat('codex', async () => ({ text: 'done' }));
+    const session = createAgentSession({
+      agent: claude,
+      fallback: [codex],
+      cwd: work,
+      artifacts: { store, mcpServer },
+    });
+    session.send('ask me');
+    await session.idle();
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('claude stopped part-way through this request (quota).');
+    expect(prompts[0]).toContain('- "Survey" (name: `survey`, html)');
+    expect(prompts[0]).toMatch(/ask me$/);
+    const file = /is in `([^`]+\.handoff\.md)`/.exec(prompts[0])![1];
+    expect(readFileSync(join(work, file), 'utf8')).toContain('```\n<form>v1</form>\n```');
     session.close();
   });
 });
