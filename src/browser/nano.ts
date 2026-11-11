@@ -224,6 +224,7 @@ async function converse(
       emit({ type: 'text-delta', text: delta });
     }
     signal.throwIfAborted();
+    notAStub(text);
     emit({ type: 'message', text });
     report();
     return text;
@@ -290,6 +291,7 @@ async function choose(
     }),
     signal,
   );
+  notAStub(raw);
   const action = (parseObject(raw) as { action?: unknown } | undefined)?.action;
   return typeof action === 'string' && names.includes(action) ? action : REPLY;
 }
@@ -357,6 +359,13 @@ async function invoke(
     if (decision !== 'approve') throw new Error('The user declined this action.');
   }
   return toolText(await abortable(Promise.resolve(tool.run(args, signal)), signal));
+}
+
+/** Chromium builds without the model ship a Prompt API that says so and echoes the prompt. */
+function notAStub(reply: string): void {
+  if (/^On-device model is not available/i.test(reply)) {
+    throw new Error('This browser build has the Prompt API but no on-device model behind it.');
+  }
 }
 
 /** What the model is told once, as the system prompt. */

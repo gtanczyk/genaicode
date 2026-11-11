@@ -164,6 +164,10 @@ describe('nano', () => {
     const failed = await nano({ languageModel: broken.factory }).run({ prompt: 'x', cwd: '' }).result;
     expect(failed).toMatchObject({ status: 'failed', error: expect.stringContaining('context window') });
 
+    const echo = 'On-device model is not available in Chromium, this API is just echoing back the input:\nUser: x';
+    const stub = await nano({ languageModel: fakeLanguageModel([echo]).factory }).run({ prompt: 'x', cwd: '' }).result;
+    expect(stub).toMatchObject({ status: 'failed', error: expect.stringContaining('no on-device model') });
+
     const missing = await nano().run({ prompt: 'x', cwd: '' }).result;
     expect(missing).toMatchObject({ status: 'failed', error: expect.stringContaining('no built-in language model') });
     expect(await nano().availability()).toBe('unavailable');

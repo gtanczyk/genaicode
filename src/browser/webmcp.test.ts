@@ -127,6 +127,20 @@ describe('webMcpTools', () => {
     ]);
     expect(await found[0].run({ q: 'x' })).toBe('"ok"');
     expect(executeTool).toHaveBeenCalledWith(listed[0], { q: 'x' }, { signal: undefined });
+
+    // Chrome's first builds take the arguments as JSON text.
+    const strict = vi.fn(async (_tool: unknown, input: unknown) => {
+      if (typeof input !== 'string') throw new Error('Failed to parse input arguments');
+      return input;
+    });
+    define('document', { modelContext: { registerTool() {}, getTools: async () => listed, executeTool: strict } });
+    expect(await (await webMcpTools())[0].run({ q: 'x' })).toBe('{"q":"x"}');
+    const failing = vi.fn(async () => {
+      throw new Error('out of stock');
+    });
+    define('document', { modelContext: { registerTool() {}, getTools: async () => listed, executeTool: failing } });
+    await expect((await webMcpTools())[1].run({})).rejects.toThrow('out of stock');
+    expect(failing).toHaveBeenCalledTimes(1);
   });
 });
 

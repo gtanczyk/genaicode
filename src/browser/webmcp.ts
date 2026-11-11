@@ -133,8 +133,24 @@ export async function webMcpTools(): Promise<PageTool[]> {
     description: tool.description ?? '',
     inputSchema: parseSchema(tool.inputSchema),
     write: tool.annotations?.readOnlyHint !== true,
-    run: (args, signal) => context.executeTool!(tool, args, { signal }),
+    run: (args, signal) => execute(context, tool, args, signal),
   }));
+}
+
+/** The draft passes the arguments as an object; Chrome's first builds want them as JSON text. */
+async function execute(
+  context: ModelContext,
+  tool: RegisteredTool,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<string> {
+  try {
+    return await context.executeTool!(tool, args, { signal });
+  } catch (error) {
+    // Refused before the tool ran, so trying the other form cannot run it twice.
+    if (!(error instanceof Error) || !/parse input/i.test(error.message)) throw error;
+    return context.executeTool!(tool, JSON.stringify(args) as unknown as object, { signal });
+  }
 }
 
 function parseSchema(schema: RegisteredTool['inputSchema']): Record<string, unknown> | undefined {
