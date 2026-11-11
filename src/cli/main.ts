@@ -44,6 +44,8 @@ export interface UiLaunch {
   effort?: string;
   resume?: string;
   approveAll?: boolean;
+  /** `--no-artifacts`: false. */
+  artifacts?: boolean;
   env: NodeJS.ProcessEnv;
   version: string;
   stdout: NodeJS.WriteStream;
@@ -107,6 +109,8 @@ Chat and UI options:
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
+      --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
+                          documents it shows in the chat)
       --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
       --max-cost <usd>    Cost budget for the whole session, for agents that report cost
       --fallback <agents> Agents to switch to when the current one runs out (quota, sign-in,
@@ -302,6 +306,7 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
+    ...(options.artifacts === false ? { artifacts: false } : {}),
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback ? { fallback: options.fallback } : {}),
     ...extra,

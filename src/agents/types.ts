@@ -129,6 +129,27 @@ export type McpServer =
       env?: Readonly<Record<string, string>>;
     };
 
+/**
+ * Something an agent published for the user to look at (`publish_artifact`): a page, an image,
+ * a document. The content stays in the `ArtifactStore`; this is what travels in session state.
+ */
+export interface Artifact {
+  /** Unguessable, and the address of the content. Stays the same when the artifact is published again. */
+  id: string;
+  /** The agent's own name for it. Publishing the same name again replaces the content. */
+  name: string;
+  title: string;
+  /** How to show it: `html` and `text` in a sandboxed frame, `image` as a picture, `file` as a download. */
+  kind: 'html' | 'image' | 'text' | 'file';
+  /** Chosen by genaicode from the file extension or format, never taken from the agent. */
+  mimeType: string;
+  bytes: number;
+  /** 1 on the first publish, one more each time the content is replaced. */
+  version: number;
+  /** The source file, relative to the working directory, when it was published from a file. */
+  path?: string;
+}
+
 export interface ApprovalRequest {
   id: string;
   /** `command`: run a shell command; `file-change`: apply edits; `other`: anything else. */

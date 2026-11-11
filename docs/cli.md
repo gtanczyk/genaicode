@@ -80,6 +80,12 @@ The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button
 prompt, e.g. `genaicode ui --mcp game=http://127.0.0.1:7777/mcp` from a game editor whose
 running game serves tools there. Only the agents that take MCP servers in genaicode (claude,
 codex, copilot) are offered then.
+The agent can publish artifacts: a report, chart or mockup as a self-contained HTML page, an
+image, a Markdown document. The browser UI shows each as a card that opens a preview; the
+terminal shows a line, and `/web` opens the browser on the same session. Pages run in a
+sandboxed frame with no network and no access to the UI (see
+[agents.md](agents.md#artifacts)). Agents that take MCP servers get the tool;
+`--no-artifacts` leaves it out.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
 

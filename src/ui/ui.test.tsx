@@ -589,6 +589,52 @@ describe('web UI server', () => {
     }
   });
 
+  it('serves published artifacts by their id, sandboxed, and gives the agent the tool', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'genaicode-ui-artifacts-'));
+    const agent = { ...echoAgent(), capabilities: { mcp: true } };
+    const ui = await startEmbeddedWeb({
+      agents: [agent],
+      cwd: work,
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      frameAncestors: () => [],
+    });
+    try {
+      const base = ui.url.replace(/\?.*$/, '');
+      const store = ui.controller.artifacts!;
+      ui.controller.submit('hi');
+      await ui.controller.session.idle();
+      expect(agent.tasks[0].mcpServers).toEqual([expect.objectContaining({ name: 'artifacts' })]);
+      const artifact = await store.publish({ title: 'Page', content: '<script>top.x=1</script>', format: 'html' });
+      expect(ui.controller.get().session.turns[0].entries.at(-1)).toEqual({ kind: 'artifact', artifact });
+      // No token: the id is the capability.
+      const response = await fetch(`${base}artifacts/${artifact.id}?v=1`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-security-policy')).toContain('sandbox allow-scripts');
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(await response.text()).toBe('<script>top.x=1</script>');
+      expect((await fetch(`${base}artifacts/${'0'.repeat(32)}`)).status).toBe(404);
+      expect((await fetch(`${base}artifacts/..%2F..%2Fpackage.json`)).status).toBe(404);
+    } finally {
+      await ui.close();
+      rmSync(work, { recursive: true, force: true });
+    }
+    const off = await startEmbeddedWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      frameAncestors: () => [],
+      artifacts: false,
+    });
+    expect(off.controller.artifacts).toBeUndefined();
+    await off.close();
+  });
+
   it("embeds with the host's task options and prompt transform", async () => {
     const agent = echoAgent();
     const ui = await startEmbeddedWeb({

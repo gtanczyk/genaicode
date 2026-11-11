@@ -8,10 +8,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision } from '../agents/types.js';
+import type { ApprovalDecision, Artifact } from '../agents/types.js';
 import { describeFailover } from '../agents/failover.js';
 import { useFollowScroll } from './follow-scroll.js';
 import {
+  formatBytes,
   formatDuration,
   formatUsage,
   limitChips,
@@ -58,6 +59,14 @@ export interface AgentChatProps {
   renderPrompt?(text: string, turn?: SessionTurn): ReactNode;
   /** Tool name as shown, e.g. without an MCP server prefix. Default: friendlier names for common tools. */
   formatToolName?(name: string): string;
+  /**
+   * Where the host serves an artifact's content (`store.read()` with `artifactResponse()`, whose
+   * headers keep agent-written HTML away from this page). Without it artifacts show as a card
+   * with no preview. Put `artifact.version` in the URL so a new version reloads.
+   */
+  artifactUrl?(artifact: Artifact): string | undefined;
+  /** Replaces the default artifact card. Return undefined to keep the default. */
+  renderArtifact?(artifact: Artifact, url: string | undefined): ReactNode;
   /** Host content after a turn (approval cards, links...). */
   renderAfterTurn?(turn: SessionTurn, index: number): ReactNode;
   /** Host content at the end of the transcript, after the last turn. */
@@ -150,6 +159,8 @@ export function AgentChat(props: AgentChatProps) {
         onApprove={props.onApprove}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
+        artifactUrl={props.artifactUrl}
+        renderArtifact={props.renderArtifact}
         fold={props.foldSteps ?? false}
       />,
     );
@@ -286,8 +297,12 @@ function Turn({
   onApprove,
   prompt,
   toolName,
+  artifactUrl,
+  renderArtifact,
   fold,
 }: {
+  artifactUrl?: AgentChatProps['artifactUrl'];
+  renderArtifact?: AgentChatProps['renderArtifact'];
   turn: SessionTurn;
   now: number;
   cwd: string;
@@ -310,6 +325,8 @@ function Turn({
       onApprove={onApprove}
       prompt={prompt}
       toolName={toolName}
+      artifactUrl={artifactUrl}
+      renderArtifact={renderArtifact}
     />
   );
   return (
@@ -364,6 +381,7 @@ function Folded({
     i === answer ||
     item.kind === 'error' ||
     item.kind === 'failover' ||
+    item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
   const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
@@ -399,7 +417,11 @@ function Entry({
   onApprove,
   prompt,
   toolName,
+  artifactUrl,
+  renderArtifact,
 }: {
+  artifactUrl?: AgentChatProps['artifactUrl'];
+  renderArtifact?: AgentChatProps['renderArtifact'];
   entry: SessionEntry;
   agent: string;
   cwd: string;
@@ -435,6 +457,11 @@ function Entry({
           ))}
         </div>
       );
+    case 'artifact': {
+      const url = artifactUrl?.(entry.artifact);
+      const custom = renderArtifact?.(entry.artifact, url);
+      return custom !== undefined ? custom : <ArtifactCard artifact={entry.artifact} url={url} />;
+    }
     case 'approval': {
       const what =
         entry.request.kind === 'command' ? 'run' : entry.request.kind === 'file-change' ? 'apply edits to' : 'do';
@@ -499,4 +526,61 @@ function Entry({
     case 'failover':
       return <div className="gc-failover">{describeFailover(entry.from, entry.to, entry.failure)}</div>;
   }
+}
+
+const ARTIFACT_KIND: Record<Artifact['kind'], string> = {
+  html: 'Page',
+  image: 'Image',
+  text: 'Document',
+  file: 'File',
+};
+
+/**
+ * An artifact the agent published. Agent-written content never joins this page: HTML and text
+ * load in a sandboxed frame with an origin of their own, images as plain images.
+ */
+function ArtifactCard({ artifact, url }: { artifact: Artifact; url: string | undefined }) {
+  const [open, setOpen] = useState(false);
+  const canPreview = !!url && artifact.kind !== 'file';
+  return (
+    <div className="gc-artifact">
+      <div className="gc-artifact-head">
+        <span className="gc-artifact-icon" aria-hidden="true">
+          ◆
+        </span>
+        <span className="gc-artifact-title" title={artifact.path ?? artifact.title}>
+          {artifact.title}
+        </span>
+        <span className="gc-artifact-meta">
+          {ARTIFACT_KIND[artifact.kind]} · {formatBytes(artifact.bytes)}
+          {artifact.version > 1 ? ` · v${artifact.version}` : ''}
+        </span>
+        {canPreview ? (
+          <button type="button" className="gc-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Hide' : 'Open'}
+          </button>
+        ) : null}
+        {url ? (
+          <a className="gc-btn" href={url} target="_blank" rel="noopener noreferrer">
+            {artifact.kind === 'file' ? 'Download' : 'New tab'}
+          </a>
+        ) : null}
+      </div>
+      {open && url ? (
+        artifact.kind === 'image' ? (
+          <img className="gc-artifact-view" src={url} alt={artifact.title} />
+        ) : (
+          <iframe
+            className="gc-artifact-view"
+            title={artifact.title}
+            src={url}
+            // Scripts for pages only, and never `allow-same-origin`: the frame gets no cookies,
+            // storage or DOM of this page, and cannot navigate it or open windows.
+            sandbox={artifact.kind === 'html' ? 'allow-scripts' : ''}
+            referrerPolicy="no-referrer"
+          />
+        )
+      ) : null}
+    </div>
+  );
 }

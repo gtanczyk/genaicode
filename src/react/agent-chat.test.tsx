@@ -333,4 +333,37 @@ describe('AgentChat', () => {
     expect(button('Steer')).toBeTruthy();
     expect($<HTMLTextAreaElement>('textarea').placeholder).toBe('Add to the running task…');
   });
+  it('shows a published artifact as a card and previews it in a sandboxed frame', () => {
+    const artifact = {
+      id: 'a'.repeat(32),
+      name: 'report',
+      title: 'Coverage report',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 2048,
+      version: 2,
+    };
+    const image = { ...artifact, id: 'b'.repeat(32), title: 'Chart', kind: 'image' as const };
+    const state = fixture();
+    state.turns[0].entries.push({ kind: 'artifact', artifact }, { kind: 'artifact', artifact: image });
+    // Folded steps keep artifacts in view.
+    render({ state, foldSteps: true, artifactUrl: (a) => `/artifacts/${a.id}?v=${a.version}` });
+    expect(text('.gc-artifact-title')).toEqual(['Coverage report', 'Chart']);
+    expect($('.gc-artifact-meta').textContent).toBe('Page · 2.0 KB · v2');
+    expect($('iframe')).toBeNull();
+    act(() => $$('.gc-artifact button')[0].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const frame = $<HTMLIFrameElement>('iframe.gc-artifact-view');
+    expect(frame.getAttribute('src')).toBe(`/artifacts/${artifact.id}?v=2`);
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    act(() => $$('.gc-artifact button')[1].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect($<HTMLImageElement>('img.gc-artifact-view').getAttribute('src')).toBe(`/artifacts/${image.id}?v=2`);
+    expect($<HTMLAnchorElement>('.gc-artifact a').rel).toBe('noopener noreferrer');
+
+    // No URL from the host: a card with nothing to open. A host renderer replaces the card.
+    render({ state });
+    expect($$('.gc-artifact button, .gc-artifact a')).toEqual([]);
+    render({ state, renderArtifact: (a) => (a.kind === 'image' ? <b className="mine">{a.title}</b> : undefined) });
+    expect(text('.mine')).toEqual(['Chart']);
+    expect(text('.gc-artifact-title')).toEqual(['Coverage report']);
+  });
 });
