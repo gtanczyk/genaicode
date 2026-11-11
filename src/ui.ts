@@ -35,6 +35,8 @@ export interface EmbeddedWebOptions {
   transformPrompt?(prompt: string): string;
   /** Approve every permission request without asking. */
   approveAll?: boolean;
+  /** Let the agent publish artifacts (pages, images, documents) the UI shows. Default true. */
+  artifacts?: boolean;
   /** Bark when the agent needs the user or finishes, while the tab is hidden. Default true. */
   bark?: boolean;
   /** Origins of the pages that show the UI in a frame. Read per request. Default: none. */

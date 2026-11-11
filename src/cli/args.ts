@@ -21,6 +21,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
+      /** `--no-artifacts`. */
+      artifacts?: false;
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
       budget?: AgentBudget;
       /** `--fallback a,b`: agents a turn moves to when the current one is out. */
@@ -98,6 +100,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           'max-tokens': { type: 'string' },
           'max-cost': { type: 'string' },
           fallback: { type: 'string', multiple: true },
+          'no-artifacts': { type: 'boolean' },
           ...(command === 'ui'
             ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
             : { web: { type: 'boolean' as const } }),
@@ -120,6 +123,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
+      ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
     };

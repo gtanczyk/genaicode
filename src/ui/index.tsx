@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
+import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
 import type { CodingAgent } from '../agents/types.js';
 import type { EmbeddedWeb as PublicEmbeddedWeb, EmbeddedWebBundleOptions } from '../ui.js';
 import {
@@ -69,12 +70,20 @@ export function loadAssets(dir: URL): Map<string, WebAsset> {
   return assets;
 }
 
+/** The agent's way to publish artifacts. A port that will not open only means no artifacts. */
+async function openArtifacts(options: ChatOptions): Promise<ArtifactChannel | undefined> {
+  if (options.artifacts === false) return undefined;
+  return startArtifactChannel({ cwd: options.cwd }).catch(() => undefined);
+}
+
 export async function runChat(options: WebRunOptions): Promise<number> {
   let controller: ChatController;
   const web = webLink(options, () => controller);
+  const artifactChannel = await openArtifacts(options);
   try {
-    controller = createChatController({ ...options, web });
+    controller = createChatController({ ...options, web, artifactChannel });
   } catch (error) {
+    await artifactChannel?.close();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
     return 2;
@@ -84,15 +93,18 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   await runTerminal(controller, options);
   await web.close();
   controller.close();
+  await artifactChannel?.close();
   return 0;
 }
 
 export async function runWeb(options: WebRunOptions): Promise<number> {
   let controller: ChatController;
   const web = webLink(options, () => controller);
+  const artifactChannel = await openArtifacts(options);
   try {
-    controller = createChatController({ ...options, web });
+    controller = createChatController({ ...options, web, artifactChannel });
   } catch (error) {
+    await artifactChannel?.close();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
     return 2;
@@ -102,6 +114,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     url = await web.start();
   } catch (error) {
     controller.close();
+    await artifactChannel?.close();
     throw error;
   }
   // From a terminal, Enter brings the same session into it: the browser stays connected.
@@ -139,6 +152,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   if (next === 'terminal') await runTerminal(controller, options);
   await web.close();
   controller.close();
+  await artifactChannel?.close();
   return 0;
 }
 
@@ -212,7 +226,14 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const controller = createChatController(options);
+  const artifactChannel = await openArtifacts(options);
+  let controller: ChatController;
+  try {
+    controller = createChatController({ ...options, artifactChannel });
+  } catch (error) {
+    await artifactChannel?.close();
+    throw error;
+  }
   try {
     const ui = await startWebUi({
       controller,
@@ -228,10 +249,12 @@ export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<Emb
       close: async () => {
         await ui.close();
         controller.close();
+        await artifactChannel?.close();
       },
     };
   } catch (error) {
     controller.close();
+    await artifactChannel?.close();
     throw error;
   }
 }

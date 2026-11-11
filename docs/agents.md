@@ -258,6 +258,55 @@ session.send('Now cover it with a test'); // resumes the same agent session
   while turns, the queue and steered input keep the text given to `send()`.
 - `<AgentChat>` from `genaicode/react` renders `state` in a React page (see the README).
 
+### Artifacts
+
+An agent can publish something for the user to look at instead of describing it: a report or
+chart as a self-contained HTML page, an image, a Markdown document. `genaicode chat` and
+`genaicode ui` turn this on by default (`--no-artifacts` turns it off); in code:
+
+```ts
+import { artifactResponse, createAgentSession, startArtifactChannel } from 'genaicode/agents';
+
+const artifacts = await startArtifactChannel({ cwd });
+const session = createAgentSession({ agent: claude(), cwd, artifacts });
+
+// Your server shows the content. The id is unguessable; serve it without your session cookie in mind.
+app.get('/artifacts/:id', (req, res) => {
+  const found = artifacts.store.read(req.params.id);
+  if (!found) return res.status(404).end();
+  const { headers, body } = artifactResponse(found.artifact, found.body);
+  res.writeHead(200, headers).end(body);
+});
+```
+
+- The agent gets one MCP tool, `publish_artifact({ title, path | content + format, name? })`, on
+  a loopback MCP server behind a bearer token. So it works for the agents that take MCP servers
+  in genaicode (claude, codex, codexLive, copilot, muse, museLive, antigravity); the others
+  simply do not get the tool. An app with its own MCP server can mount `store.tool()` there
+  and pass `{ store }` alone.
+- Each publish adds an `artifact` entry (`{ id, title, kind, mimeType, bytes, version, path? }`)
+  to the running turn. The content is copied into memory at that moment (5 MB each, the newest
+  30 by default); publishing the same `name` again replaces it and keeps the `id`.
+- `<AgentChat artifactUrl={(a) => `/artifacts/${a.id}?v=${a.version}`}>` shows a card with a
+  preview; the terminal chat shows a line and `/web` opens the browser.
+
+Artifacts are agent-written content, so they are handled as untrusted:
+
+- **Files**: only regular files inside `cwd` after resolving symlinks; `.git`, `.genaicode`,
+  `.ssh` and similar folders, `.env*`, key and certificate files are refused. This guards
+  against a confused or prompt-injected agent, not against one with a shell, which can read
+  those files anyway.
+- **Types**: the MIME type comes from the file extension or `format`, never from the agent,
+  and everything is sent with `nosniff`. Unknown types download instead of rendering.
+- **HTML**: `artifactResponse()` sends a Content-Security-Policy with `sandbox allow-scripts`
+  and `default-src 'none'`: the page runs its own inline code in an origin of its own (no
+  cookies, storage or DOM of your app, also when its URL is opened directly) and loads
+  nothing from the network, so no CDN scripts either. `<AgentChat>` adds the same sandbox on
+  the frame. SVG is shown as an image, or with scripts off when opened directly.
+- **What is left**: a page can still navigate its own frame to another site and carry data in
+  that URL; browsers offer no switch for that. The page only knows what the agent put in it,
+  but treat a published page like a link the agent sent you.
+
 ## Drivers
 
 | Driver                | Command        | Mode                                     | Notes                                                                                     |

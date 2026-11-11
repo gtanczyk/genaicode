@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { detectAgents } from '../agents/discovery.js';
+import type { ArtifactStore } from '../agents/artifacts.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
-import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent } from '../agents/types.js';
+import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
 export interface AgentChoice {
@@ -63,6 +64,10 @@ export interface ChatOptions {
   task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
   /** Caps on the whole session (`AgentSessionOptions.budget`). */
   budget?: AgentBudget;
+  /** Let the agent publish artifacts (`genaicode chat` and `ui` do unless `--no-artifacts`). Default true. */
+  artifacts?: boolean;
+  /** The running artifact channel, started by the front end (`AgentSessionOptions.artifacts`). */
+  artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
 }
@@ -82,6 +87,8 @@ export interface ChatController {
   setModel(model: string | undefined): void;
   close(): void;
   readonly session: AgentSession;
+  /** What the agent published, for the front end that serves it. */
+  readonly artifacts?: ArtifactStore;
 }
 
 export class NoAgentError extends Error {
@@ -131,6 +138,7 @@ export function createChatController(options: ChatOptions): ChatController {
     task: { ...options.task, env },
     ...(options.budget ? { budget: options.budget } : {}),
     transformPrompt: options.transformPrompt,
+    ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
   let notices: Notice[] = [];
@@ -430,6 +438,7 @@ export function createChatController(options: ChatOptions): ChatController {
     setModel(model) {
       session.setModel(model || undefined);
     },
+    artifacts: options.artifactChannel?.store,
     close() {
       stopShells();
       unsubscribe();

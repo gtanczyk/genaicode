@@ -27,6 +27,7 @@ export type {
   ApprovalPolicy,
   ApprovalRequest,
   ApprovalScope,
+  Artifact,
   BudgetWarning,
   CodingAgent,
   McpServer,
@@ -106,3 +107,17 @@ export {
 export type { AntigravityAgentOptions } from './agents/drivers/antigravity.js';
 export { createAgentSession } from './agents/session.js';
 export type { AgentSession, AgentSessionOptions, SessionEntry, SessionState, SessionTurn } from './agents/session.js';
+export {
+  ArtifactError,
+  artifactResponse,
+  createArtifactStore,
+  PUBLISH_ARTIFACT_TOOL,
+  startArtifactChannel,
+} from './agents/artifacts.js';
+export type {
+  ArtifactChannel,
+  ArtifactChannelOptions,
+  ArtifactStore,
+  ArtifactStoreOptions,
+  PublishArtifact,
+} from './agents/artifacts.js';

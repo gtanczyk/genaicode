@@ -86,6 +86,7 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
       return 1 + (showsOutput(entry) ? Math.min(outputLines + 1, rows(entry.output ?? '')) : 0);
     case 'approval':
     case 'files':
+    case 'artifact':
     case 'input':
     case 'failover':
       return 1;
@@ -130,6 +131,19 @@ export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; ou
         </Box>
       );
     }
+    case 'artifact':
+      return (
+        <Text>
+          <Text color="cyan">◆ </Text>
+          <Text color="gray">published </Text>
+          {entry.artifact.title}
+          <Text color="gray">
+            {' '}
+            ({entry.artifact.kind}
+            {entry.artifact.path ? `, ${entry.artifact.path}` : ''}) · /web shows it
+          </Text>
+        </Text>
+      );
     case 'files':
       return (
         <Text>

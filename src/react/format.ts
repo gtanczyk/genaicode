@@ -59,6 +59,12 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`;
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function formatTokens(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k`;

@@ -538,6 +538,58 @@
   opacity: 0.5;
   cursor: default;
 }
+.gc-artifact {
+  border: 1px solid var(--_border);
+  border-radius: 10px;
+  background: var(--_panel);
+  overflow: hidden;
+}
+.gc-artifact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+}
+.gc-artifact-icon {
+  color: var(--_accent);
+}
+.gc-artifact-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 8em;
+}
+.gc-artifact-meta {
+  color: var(--_muted);
+  font-size: 0.87em;
+  white-space: nowrap;
+}
+.gc-artifact .gc-btn {
+  padding: 3px 10px;
+  font-size: 0.87em;
+  color: var(--_text);
+  text-decoration: none;
+}
+.gc-artifact-view {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--_border);
+  /* Pages are written for a light canvas unless they style themselves. */
+  background: #fff;
+}
+iframe.gc-artifact-view {
+  height: min(60vh, 520px);
+  resize: vertical;
+}
+img.gc-artifact-view {
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}
 .gc-composer {
   border-top: 1px solid var(--_border);
   background: var(--_panel);

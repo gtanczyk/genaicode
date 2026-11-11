@@ -175,6 +175,7 @@ function App() {
         autoFocus
         disabled={!connected}
         notices={view?.notices}
+        artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
         onSend={submit}
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}

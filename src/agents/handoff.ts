@@ -77,6 +77,12 @@ export function handoffTranscript(turns: readonly SessionTurn[]): string {
         case 'files':
           out.push(`- changed files: ${entry.paths.map((path) => `\`${path}\``).join(', ')}`, '');
           break;
+        case 'artifact':
+          out.push(
+            `- published artifact: "${entry.artifact.title}"${entry.artifact.path ? ` (\`${entry.artifact.path}\`)` : ''}`,
+            '',
+          );
+          break;
         case 'approval': {
           const what = entry.request.summary ?? entry.request.kind;
           out.push(`- approval: ${what} → ${entry.decision ?? 'unanswered'}`, '');

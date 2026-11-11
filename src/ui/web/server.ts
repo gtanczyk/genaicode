@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { artifactResponse } from '../../agents/artifacts.js';
 import type { ChatController } from '../controller.js';
 import { pageHtml } from './page.js';
 
@@ -150,6 +151,15 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         'x-content-type-options': 'nosniff',
       });
       return res.end(asset.body);
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {
+      // No token: the frame that shows an artifact would see it in its own URL. The id is
+      // unguessable and opens that one artifact only.
+      const found = controller.artifacts?.read(url.pathname.slice('/artifacts/'.length));
+      if (!found) return send(res, 404, 'text/plain', 'Not found');
+      const response = artifactResponse(found.artifact, found.body);
+      res.writeHead(200, response.headers);
+      return res.end(response.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       if (!tokenOk(url.searchParams.get('token'))) return send(res, 403, 'text/plain', 'Bad token');

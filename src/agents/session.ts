@@ -2,6 +2,7 @@ import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { addUsage, tokenCount } from './runtime.js';
+import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import type {
   AgentBudget,
   AgentEvent,
@@ -11,7 +12,9 @@ import type {
   AgentTask,
   ApprovalDecision,
   ApprovalRequest,
+  Artifact,
   CodingAgent,
+  McpServer,
   RateLimit,
 } from './types.js';
 
@@ -28,6 +31,8 @@ export type SessionEntry =
       done: boolean;
     }
   | { kind: 'files'; paths: string[] }
+  /** The agent published something to look at; the content is in the session's `ArtifactStore`. */
+  | { kind: 'artifact'; artifact: Artifact }
   /** `automatic`: decided by the task's `permissions.approval`, without asking. */
   | { kind: 'approval'; request: ApprovalRequest; decision?: ApprovalDecision; automatic?: boolean }
   | { kind: 'input'; text: string }
@@ -124,6 +129,14 @@ export interface AgentSessionOptions {
    * only what it missed. `false`: every switch starts the agent fresh, with no context.
    */
   handoff?: boolean | { dir?: string };
+  /**
+   * Let the agent publish artifacts (pages, images, documents) for the user to look at: the
+   * result of `startArtifactChannel()`, or a store plus the MCP server your app mounts its
+   * `tool()` on. Agents that take MCP servers get `mcpServer` on every turn, and each publish
+   * adds an `artifact` entry to the turn that made it. Serving the content is the host's job
+   * (`store.read()` with `artifactResponse()`).
+   */
+  artifacts?: { store: ArtifactStore; mcpServer?: McpServer };
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -355,6 +368,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
   };
 
+  // A publish lands in the turn that is running; one that arrives late, in the last turn.
+  const stopArtifacts = options.artifacts?.store.subscribe((artifact) => {
+    const turn = state.turns.at(-1);
+    if (!closed && turn) addEntry(turn.id, { kind: 'artifact', artifact });
+  });
+
   const addApproval = (turnId: number, request: ApprovalRequest) => {
     const turn = state.turns.find((candidate) => candidate.id === turnId);
     const known = turn?.entries.some(
@@ -366,6 +385,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const onApproval = (turnId: number, request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> => {
     addApproval(turnId, request);
     if (signal?.aborted) return Promise.resolve('deny');
+    // Publishing changes nothing on disk, and the store has its own checks: no question for it.
+    if (isPublishRequest(request, options.artifacts?.mcpServer)) return Promise.resolve('approve');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
     return new Promise((resolve) => {
@@ -510,8 +531,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     try {
       if (left?.spent) throw new Error(left.spent);
       const budget = tighterBudget(left?.budget, options.task?.budget);
+      const artifactServer = turnAgent.capabilities.mcp ? options.artifacts?.mcpServer : undefined;
       current = turnAgent.run({
         ...options.task,
+        ...(artifactServer ? { mcpServers: [...(options.task?.mcpServers ?? []), artifactServer] } : {}),
         ...(budget ? { budget } : {}),
         prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
@@ -702,11 +725,23 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     close() {
       closed = true;
+      stopArtifacts?.();
       if (state.notes?.length) set({ notes: [] });
       this.stop();
       listeners.clear();
     },
   };
+}
+
+/** Claude's permission prompt for the session's own `publish_artifact` tool. */
+function isPublishRequest(request: ApprovalRequest, server: McpServer | undefined): boolean {
+  const detail = request.detail;
+  return (
+    !!server &&
+    typeof detail === 'object' &&
+    detail !== null &&
+    (detail as { tool_name?: unknown }).tool_name === `mcp__${server.name}__${PUBLISH_ARTIFACT_TOOL}`
+  );
 }
 
 /** A run that failed before it started. */
