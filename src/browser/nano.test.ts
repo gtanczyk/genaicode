@@ -134,6 +134,58 @@ describe('nano', () => {
     expect(auto.find((event) => event.type === 'approval-resolved')).toMatchObject({ automatic: true });
   });
 
+  it('refuses write tools when read-only, and sandboxes a page cannot provide', async () => {
+    const run = vi.fn(() => 'done');
+    const write: PageTool = { name: 'save', description: 'Save.', write: true, run };
+    const script = ['{"action":"save"}', '{"action":"reply"}', 'Could not.'];
+    const agent = nano({ languageModel: fakeLanguageModel(script).factory, tools: [write] });
+    const events = await collect(
+      agent.run({ prompt: 'save', cwd: '', permissions: { sandbox: 'read-only', approval: 'auto-approve' } }),
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(events.find((event) => event.type === 'tool-end')).toMatchObject({
+      isError: true,
+      output: 'Not allowed: this task is read-only.',
+    });
+    expect(events.some((event) => event.type === 'approval-request')).toBe(false);
+
+    for (const permissions of ['yolo', { sandbox: 'workspace-write' }] as const) {
+      const refused = await nano({ languageModel: fakeLanguageModel(script).factory, tools: [write] }).run({
+        prompt: 'save',
+        cwd: '',
+        permissions,
+      }).result;
+      expect(refused).toMatchObject({ status: 'failed', error: expect.stringContaining('permissions.sandbox') });
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('stops while its tools are still being looked up', async () => {
+    const agent = nano({ languageModel: fakeLanguageModel(['x']).factory, tools: () => new Promise(() => {}) });
+    expect(await agent.run({ prompt: 'x', cwd: '', timeoutMs: 5 }).result).toMatchObject({ status: 'timeout' });
+    const run = agent.run({ prompt: 'x', cwd: '' });
+    run.abort();
+    expect(await run.result).toMatchObject({ status: 'aborted' });
+  });
+
+  it('joins streamed chunks as they come, whatever they repeat', async () => {
+    const factory = fakeLanguageModel(['unused']).factory;
+    const create = factory.create.bind(factory);
+    factory.create = async (options) => {
+      const session = await create(options);
+      session.promptStreaming = () =>
+        new ReadableStream<string>({
+          start(controller) {
+            for (const chunk of ['abcdefghij', 'abcdefghijk', 'H', 'Hello']) controller.enqueue(chunk);
+            controller.close();
+          },
+        });
+      return session;
+    };
+    const result = await nano({ languageModel: factory }).run({ prompt: 'x', cwd: '' }).result;
+    expect(result.text).toBe('abcdefghijabcdefghijkHHello');
+  });
+
   it('resumes a conversation in the same model session and forgets it on request', async () => {
     const model = fakeLanguageModel(['One.', 'Two.', 'Three.']);
     const agent = nano({ languageModel: model.factory });

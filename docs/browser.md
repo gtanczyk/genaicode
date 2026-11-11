@@ -104,6 +104,8 @@ if ((await agent.availability()) !== 'unavailable') {
   gesture, so call it from a click; `onDownload(progress)` reports 0 to 1.
 - `task.onApproval` answers `write` tools (without it they are declined);
   `task.permissions.approval` `'auto-approve'` and `'deny'` work as in every driver.
+  `permissions.sandbox: 'read-only'` refuses every `write` tool; a page has no other sandbox,
+  so `'workspace-write'`, `'unrestricted'` and `'yolo'` fail the task.
 - `task.resume` continues a conversation in the same model session; `forget(sessionId)` frees it.
   When the context window fills up, the browser drops the oldest messages and keeps the
   instructions. `context(sessionId)` says how full it is.

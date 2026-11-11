@@ -91,23 +91,15 @@ export function contextOf(session: LanguageModelSession): { used: number; window
   return typeof used === 'number' && typeof window === 'number' && window > 0 ? { used, window } : undefined;
 }
 
-/**
- * Read a `promptStreaming()` stream as text deltas. Chrome's first versions sent the whole text
- * so far in every chunk; those are turned into deltas too.
- */
+/** Read a `promptStreaming()` stream: each chunk is the next piece of text, as Chrome 148 sends it. */
 export async function* streamDeltas(stream: ReadableStream<string>, signal?: AbortSignal): AsyncGenerator<string> {
   const reader = stream.getReader();
-  let text = '';
   try {
     for (;;) {
       if (signal?.aborted) return;
       const { done, value } = await abortable(reader.read(), signal);
       if (done) return;
-      if (typeof value !== 'string' || !value) continue;
-      const cumulative = text.length > 8 && value.length > text.length && value.startsWith(text);
-      const delta = cumulative ? value.slice(text.length) : value;
-      text += delta;
-      yield delta;
+      if (typeof value === 'string' && value) yield value;
     }
   } finally {
     // An abandoned stream keeps the model busy.

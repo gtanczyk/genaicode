@@ -1,5 +1,7 @@
 import { approximateSize, EventQueue } from '../agents/event-queue.js';
+import { resolvePermissions, unsupportedPermissions } from '../agents/permissions.js';
 import type {
+  AgentCapabilities,
   AgentEvent,
   AgentResult,
   AgentRun,
@@ -58,6 +60,14 @@ export interface NanoAgent extends CodingAgent {
 }
 
 const REPLY = 'reply';
+// A page has no sandbox to switch on; `read-only` is honored by refusing `write` tools.
+const capabilities: AgentCapabilities = {
+  usage: true,
+  approvals: true,
+  resume: true,
+  maxTurns: true,
+  permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['read-only'] },
+};
 const KEPT_SESSIONS = 4;
 
 /**
@@ -67,7 +77,8 @@ const KEPT_SESSIONS = 4;
  *
  * The Prompt API has no tool calling, so each step is a constrained choice: the model picks a
  * tool or `reply`, then fills in that tool's arguments against its JSON Schema, and the final
- * answer streams as text. `write` tools go through `task.onApproval` first. `task.resume`
+ * answer streams as text. `write` tools go through `task.onApproval` first, and never run under
+ * `permissions.sandbox: 'read-only'`; other sandbox values fail the task, as a page has none. `task.resume`
  * continues a conversation; `task.cwd`, `env` and `mcpServers` mean nothing here.
  */
 export function nano(options: NanoOptions = {}): NanoAgent {
@@ -153,7 +164,12 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     const work = async (): Promise<AgentResult> => {
       let sessionId: string | undefined;
       try {
-        const tools = typeof options.tools === 'function' ? await options.tools() : (options.tools ?? []);
+        const refused = unsupportedPermissions(name, capabilities, task);
+        if (refused) throw new Error(refused);
+        const tools =
+          typeof options.tools === 'function'
+            ? await abortable(Promise.resolve(options.tools()), signal)
+            : (options.tools ?? []);
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
         if (!session) {
@@ -186,7 +202,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
   return {
     name,
     command: 'LanguageModel',
-    capabilities: { usage: true, approvals: true, resume: true, maxTurns: true },
+    capabilities,
     run,
     availability: () => languageModelAvailability(language, factory()),
     async prepare(signal) {
@@ -326,7 +342,9 @@ async function invoke(
   if (problems.length) throw new Error(`Bad arguments: ${problems.join('; ')}.`);
   tool.validate?.(args);
   if (tool.write) {
-    const approval = task.permissions === 'yolo' ? 'auto-approve' : (task.permissions?.approval ?? 'ask');
+    const permissions = resolvePermissions(task.permissions);
+    if (permissions.sandbox === 'read-only') throw new Error('Not allowed: this task is read-only.');
+    const approval = permissions.approval ?? 'ask';
     const request: ApprovalRequest = {
       id,
       kind: 'other',
