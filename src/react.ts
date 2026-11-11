@@ -16,6 +16,9 @@ export type { AgentChatProps, ChatNotice } from './react/agent-chat.js';
 export { Markdown } from './react/markdown.js';
 export { AppAgentChat, useAppAgent } from './react/app-agent-chat.js';
 export type { AppAgentChatProps, AppAgentClient, AppAgentClientOptions } from './react/app-agent-chat.js';
+export { PageAgentChat, usePageAgent } from './react/page-agent-chat.js';
+export type { PageAgentChatProps } from './react/page-agent-chat.js';
+export type { PageAgent, PageAgentState, PageModelStatus } from './browser/page-agent.js';
 export { APP_NOTE, PROMPT_MARKER, userText } from './app-agent/state.js';
 export type {
   AppAction,
