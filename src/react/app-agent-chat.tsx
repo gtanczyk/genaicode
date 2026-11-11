@@ -144,6 +144,8 @@ export interface AppAgentChatProps {
   placeholder?: string;
   /** Replaces the default artifact card; see `AgentChatProps.renderArtifact`. */
   renderArtifact?: AgentChatProps['renderArtifact'];
+  /** A page asked to send data to the agent; see `AgentChatProps.onArtifactSubmit`. */
+  onArtifactSubmit?: AgentChatProps['onArtifactSubmit'];
   /** Fold each turn's work into one "N steps" line; see `AgentChatProps.foldSteps`. */
   foldSteps?: boolean;
   theme?: 'auto' | 'light' | 'dark';
@@ -230,6 +232,7 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
       foldSteps={props.foldSteps}
       artifactUrl={client.artifactUrl}
       renderArtifact={props.renderArtifact}
+      onArtifactSubmit={props.onArtifactSubmit}
       renderPrompt={(text) => {
         const typed = userText(text);
         if (!typed.startsWith(APP_NOTE)) return typed;

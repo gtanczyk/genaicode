@@ -14,6 +14,10 @@ export interface ArtifactStoreOptions {
   cwd: string | (() => string);
   /** Largest artifact, in bytes. Default 5 MB. */
   maxBytes?: number;
+  /** Largest audio or video file, in bytes. Default 50 MB, and never less than `maxBytes`. */
+  maxMediaBytes?: number;
+  /** Most content kept in memory, in bytes; the oldest artifacts are dropped beyond that. Default 200 MB. */
+  maxTotalBytes?: number;
   /** Most artifacts kept; the oldest is dropped beyond that. Default 30. */
   maxArtifacts?: number;
 }
@@ -62,6 +66,19 @@ const TYPES: Record<string, { kind: Artifact['kind']; mimeType: string }> = {
   '.webp': { kind: 'image', mimeType: 'image/webp' },
   '.avif': { kind: 'image', mimeType: 'image/avif' },
   '.svg': { kind: 'image', mimeType: 'image/svg+xml' },
+  '.mp3': { kind: 'audio', mimeType: 'audio/mpeg' },
+  '.wav': { kind: 'audio', mimeType: 'audio/wav' },
+  '.ogg': { kind: 'audio', mimeType: 'audio/ogg' },
+  '.oga': { kind: 'audio', mimeType: 'audio/ogg' },
+  '.opus': { kind: 'audio', mimeType: 'audio/ogg' },
+  '.m4a': { kind: 'audio', mimeType: 'audio/mp4' },
+  '.aac': { kind: 'audio', mimeType: 'audio/aac' },
+  '.flac': { kind: 'audio', mimeType: 'audio/flac' },
+  '.mp4': { kind: 'video', mimeType: 'video/mp4' },
+  '.m4v': { kind: 'video', mimeType: 'video/mp4' },
+  '.webm': { kind: 'video', mimeType: 'video/webm' },
+  '.mov': { kind: 'video', mimeType: 'video/quicktime' },
+  '.ogv': { kind: 'video', mimeType: 'video/ogg' },
   '.md': { kind: 'text', mimeType: 'text/markdown; charset=utf-8' },
   ...Object.fromEntries(
     ['.txt', '.log', '.json', '.csv', '.tsv', '.xml', '.yaml', '.yml', '.toml', '.diff', '.patch'].map((ext) => [
@@ -85,6 +102,8 @@ const SECRET_FILE =
 
 export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStore {
   const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
+  const maxMediaBytes = Math.max(maxBytes, options.maxMediaBytes ?? 50 * 1024 * 1024);
+  const maxTotalBytes = options.maxTotalBytes ?? 200 * 1024 * 1024;
   const maxArtifacts = Math.max(1, options.maxArtifacts ?? 30);
   // Insertion order is age: a republished artifact moves to the end.
   const byName = new Map<string, { artifact: Artifact; body: Buffer }>();
@@ -108,17 +127,20 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
     if (parts.slice(0, -1).some((part) => SECRET_DIRS.has(part)) || SECRET_FILE.test(parts.at(-1)!)) {
       throw new ArtifactError(`${inside} looks like a credential or internal file and cannot be published.`);
     }
+    const kind = TYPES[extname(real).toLowerCase()]?.kind;
+    const limit = kind === 'audio' || kind === 'video' ? maxMediaBytes : maxBytes;
     const file = await fs.open(real, 'r').catch(() => {
       throw new ArtifactError(`Cannot read ${path}.`);
     });
     try {
       const stat = await file.stat();
       if (!stat.isFile()) throw new ArtifactError(`${path} is not a file.`);
-      if (stat.size > maxBytes) throw new ArtifactError(tooLarge(stat.size, maxBytes));
+      if (stat.size > limit) throw new ArtifactError(tooLarge(stat.size, limit));
       const body = await file.readFile();
       // The file may have grown since `stat`.
-      if (body.length > maxBytes) throw new ArtifactError(tooLarge(body.length, maxBytes));
-      return { body, relative: parts.join('/') };
+      if (body.length > limit) throw new ArtifactError(tooLarge(body.length, limit));
+      // The type comes from the name the file really has, not from the link that led to it.
+      return { body, relative: parts.join('/'), extension: extname(real).toLowerCase() };
     } finally {
       await file.close();
     }
@@ -139,7 +161,7 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
         const file = await fromFile(input.path!);
         body = file.body;
         path = file.relative;
-        extension = extname(path).toLowerCase();
+        extension = file.extension;
       } else {
         body = Buffer.from(input.content!, 'utf8');
         if (body.length > maxBytes) throw new ArtifactError(tooLarge(body.length, maxBytes));
@@ -162,7 +184,11 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       };
       byName.delete(name);
       byName.set(name, { artifact, body });
-      while (byName.size > maxArtifacts) byName.delete(byName.keys().next().value!);
+      const total = () => [...byName.values()].reduce((sum, entry) => sum + entry.body.length, 0);
+      // The one just published stays, whatever its size.
+      while (byName.size > 1 && (byName.size > maxArtifacts || total() > maxTotalBytes)) {
+        byName.delete(byName.keys().next().value!);
+      }
       for (const listener of [...listeners]) {
         try {
           listener(artifact);
@@ -185,11 +211,15 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
     tool: () => ({
       name: PUBLISH_ARTIFACT_TOOL,
       description:
-        'Show the user something to look at in the chat: a report, a chart, a diagram, a mockup, an image or a ' +
-        'document. Give `path` (a file in the working directory) or `content` with `format`. The user sees a card ' +
-        'and opens it in a preview. HTML runs in a sandbox with no network: make it one self-contained file with ' +
-        'inline CSS and JS and data: images; nothing loads from a CDN. The content is copied when you call this, ' +
-        'so call it again with the same `name` after you change it. Not for source files the user edits: just edit those.',
+        'Show the user something to look at in the chat: a report, a chart, a diagram, a mockup, a form, an image ' +
+        '(a screenshot), a sound, a video or a document. Give `path` (a file in the working directory; the only ' +
+        'way for images, audio and video) or `content` with `format`. The user sees a card and opens it in a ' +
+        'preview. HTML runs in a sandbox with no network: make it one self-contained file with inline CSS and JS ' +
+        'and data: images; nothing loads from a CDN. To ask the user something with a page (a questionnaire, a ' +
+        'choice between options), have the page call `parent.postMessage({ genaicode: "submit", data: <JSON> }, "*")` ' +
+        'when they are done, e.g. from a button (a <form> cannot submit): the user confirms and you receive `data` ' +
+        'as their next message. The content is copied when you call this, so call it again with the same `name` ' +
+        'after you change it. Not for source files the user edits: just edit those.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -253,27 +283,59 @@ const HTML_CSP = [
 ].join('; ');
 // Everything else is inert: an SVG opened directly must not run its scripts.
 const INERT_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+// A picture, sound or film opened in a tab of its own: the browser's viewer loads this same URL.
+const MEDIA_CSP = "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox";
+
+export interface ArtifactResponse {
+  /** 200, 206 for the part a `Range` asked for, or 416 for a range outside the content. */
+  status: number;
+  headers: Record<string, string>;
+  body: Buffer;
+}
 
 /**
  * The HTTP response for an artifact's content, for the host that serves it (`genaicode ui`
- * does, at `/artifacts/<id>`). Serve it with these headers unchanged: they are what keeps
- * agent-written HTML away from the page that shows it.
+ * does, at `/artifacts/<id>`). Serve it with this status and these headers unchanged: they are
+ * what keeps agent-written HTML away from the page that shows it. Pass the request's `Range`
+ * header so that audio and video can be seeked (some browsers play nothing without it).
  */
-export function artifactResponse(artifact: Artifact, body: Buffer): { headers: Record<string, string>; body: Buffer } {
+export function artifactResponse(artifact: Artifact, body: Buffer, request: { range?: string } = {}): ArtifactResponse {
   const fallback = FORMATS[artifact.kind === 'html' ? 'html' : 'text'];
   const filename =
     basename(artifact.path ?? '') || `${artifact.title.replace(/[^\w.-]+/g, '-') || 'artifact'}${fallback}`;
+  const media = artifact.kind === 'image' || artifact.kind === 'audio' || artifact.kind === 'video';
+  const headers: Record<string, string> = {
+    'content-type': artifact.mimeType,
+    'content-length': String(body.length),
+    'content-security-policy': artifact.kind === 'html' ? HTML_CSP : media ? MEDIA_CSP : INERT_CSP,
+    'content-disposition': `${artifact.kind === 'file' ? 'attachment' : 'inline'}; filename="${filename.replace(/[^\w.-]/g, '_')}"`,
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'cache-control': 'no-store',
+    'accept-ranges': 'bytes',
+  };
+  // One range only; anything else gets the whole content, which HTTP allows.
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.range?.trim() ?? '');
+  if (!range || (!range[1] && !range[2])) return { status: 200, headers, body };
+  const size = body.length;
+  // `-N` is the last N bytes.
+  const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+  const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+  if (start >= size || start > end) {
+    return {
+      status: 416,
+      headers: { ...headers, 'content-range': `bytes */${size}`, 'content-length': '0' },
+      body: Buffer.alloc(0),
+    };
+  }
   return {
-    body,
+    status: 206,
     headers: {
-      'content-type': artifact.mimeType,
-      'content-length': String(body.length),
-      'content-security-policy': artifact.kind === 'html' ? HTML_CSP : INERT_CSP,
-      'content-disposition': `${artifact.kind === 'file' ? 'attachment' : 'inline'}; filename="${filename.replace(/[^\w.-]/g, '_')}"`,
-      'x-content-type-options': 'nosniff',
-      'referrer-policy': 'no-referrer',
-      'cache-control': 'no-store',
+      ...headers,
+      'content-range': `bytes ${start}-${end}/${size}`,
+      'content-length': String(end - start + 1),
     },
+    body: body.subarray(start, end + 1),
   };
 }
 

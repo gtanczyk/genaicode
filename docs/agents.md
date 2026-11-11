@@ -274,8 +274,9 @@ const session = createAgentSession({ agent: claude(), cwd, artifacts });
 app.get('/artifacts/:id', (req, res) => {
   const found = artifacts.store.read(req.params.id);
   if (!found) return res.status(404).end();
-  const { headers, body } = artifactResponse(found.artifact, found.body);
-  res.writeHead(200, headers).end(body);
+  // The Range header lets audio and video seek.
+  const { status, headers, body } = artifactResponse(found.artifact, found.body, { range: req.headers.range });
+  res.writeHead(status, headers).end(body);
 });
 ```
 
@@ -285,10 +286,29 @@ app.get('/artifacts/:id', (req, res) => {
   simply do not get the tool. An app with its own MCP server can mount `store.tool()` there
   and pass `{ store }` alone; `createAppAgent` does exactly that (see [app-agent.md](app-agent.md)).
 - Each publish adds an `artifact` entry (`{ id, title, kind, mimeType, bytes, version, path? }`)
-  to the running turn. The content is copied into memory at that moment (5 MB each, the newest
-  30 by default); publishing the same `name` again replaces it and keeps the `id`.
+  to the running turn. The content is copied into memory at that moment (5 MB each, 50 MB for
+  audio and video, the newest 30 and 200 MB in all by default: `maxBytes`, `maxMediaBytes`,
+  `maxArtifacts`, `maxTotalBytes`); publishing the same `name` again replaces it and keeps the `id`.
 - `<AgentChat artifactUrl={(a) => `/artifacts/${a.id}?v=${a.version}`}>` shows a card with a
   preview; the terminal chat shows a line and `/web` opens the browser.
+- **Media**: files ending in png, jpg, gif, webp, avif or svg show as a picture (screenshots),
+  mp3, wav, ogg, opus, m4a, aac or flac in an audio player, mp4, m4v, webm, mov or ogv in a
+  video player. Media is published from a file (`path`), not as `content`. Your page's own
+  Content-Security-Policy has to allow `img-src`, `media-src` and `frame-src` for the address
+  you serve artifacts at.
+- **Pages that answer back**: a published page can ask the user something (a questionnaire, a
+  choice between mockups) and hand the answer to the agent by calling
+  `parent.postMessage({ genaicode: 'submit', data }, '*')`, e.g. from a button. `<AgentChat>`
+  takes that only from the frame of that card, shows the user the JSON that would be sent and
+  waits for **Send to agent**; then `onArtifactSubmit(artifact, data)` runs, by default
+  `onSend(artifactSubmission(artifact, data))`, so the agent reads it as the user's next
+  message. Pass `onArtifactSubmit={null}` to turn it off. Nothing is sent without that click,
+  and a page opened in a tab of its own has nobody to send to.
+- **Other agents**: the store belongs to the session, not the agent. After `setAgent()` or a
+  failover the cards still open, the next agent gets the same tool, and its handoff lists what
+  was published (title, `name`, kind, version, source file) so it can replace an artifact under
+  the same `name`. Pages and documents that were published as `content` are written into the
+  handoff transcript, since they exist nowhere else.
 
 Artifacts are agent-written content, so they are handled as untrusted:
 
@@ -303,6 +323,8 @@ Artifacts are agent-written content, so they are handled as untrusted:
   cookies, storage or DOM of your app, also when its URL is opened directly) and loads
   nothing from the network, so no CDN scripts either. `<AgentChat>` adds the same sandbox on
   the frame. SVG is shown as an image, or with scripts off when opened directly.
+- **Answers from a page** are data from agent-written code: they reach the agent only after
+  the user saw and confirmed them, at most 20 KB of JSON at a time.
 - **What is left**: a page can still navigate its own frame to another site and carry data in
   that URL; browsers offer no switch for that. The page only knows what the agent put in it,
   but treat a published page like a link the agent sent you.

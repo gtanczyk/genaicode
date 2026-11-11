@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '../agents/session.js';
-import { AgentChat, Markdown, type AgentChatProps } from '../react.js';
+import { AgentChat, artifactSubmission, Markdown, type AgentChatProps } from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -365,5 +365,95 @@ describe('AgentChat', () => {
     render({ state, renderArtifact: (a) => (a.kind === 'image' ? <b className="mine">{a.title}</b> : undefined) });
     expect(text('.mine')).toEqual(['Chart']);
     expect(text('.gc-artifact-title')).toEqual(['Coverage report']);
+  });
+  it('plays audio and video artifacts in the card', () => {
+    const base = { name: 'n', title: 'Demo', mimeType: 'video/webm', bytes: 10, version: 1 };
+    const state = fixture();
+    state.turns[0].entries.push(
+      { kind: 'artifact', artifact: { ...base, id: 'c'.repeat(32), kind: 'video' } },
+      { kind: 'artifact', artifact: { ...base, id: 'd'.repeat(32), kind: 'audio', title: 'Beep' } },
+    );
+    render({ state, artifactUrl: (a) => `/artifacts/${a.id}` });
+    expect(text('.gc-artifact-meta')).toEqual(['Video · 10 B', 'Audio · 10 B']);
+    for (const button of $$('.gc-artifact button')) {
+      act(() => button.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    }
+    const video = $<HTMLVideoElement>('video.gc-artifact-view');
+    expect(video.getAttribute('src')).toBe(`/artifacts/${'c'.repeat(32)}`);
+    expect(video.hasAttribute('controls')).toBe(true);
+    expect($('audio.gc-artifact-view').getAttribute('src')).toBe(`/artifacts/${'d'.repeat(32)}`);
+    expect($('iframe')).toBeNull();
+  });
+
+  it('sends what a page submits to the agent only after the user confirms it', () => {
+    const artifact = {
+      id: 'e'.repeat(32),
+      name: 'survey',
+      title: 'Survey',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 100,
+      version: 1,
+    };
+    const state = fixture();
+    state.turns[0].entries.push({ kind: 'artifact', artifact });
+    const props = render({ state, artifactUrl: (a) => `/artifacts/${a.id}` });
+    const post = (data: unknown, source: unknown) =>
+      act(() => {
+        const event = new MessageEvent('message', { data });
+        Object.defineProperty(event, 'source', { value: source });
+        window.dispatchEvent(event);
+      });
+    const click = (label: string) =>
+      act(() =>
+        $$('.gc-artifact button')
+          .find((button) => button.textContent === label)!
+          .dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      );
+    click('Open');
+    const frame = $<HTMLIFrameElement>('iframe');
+    const page = {};
+    Object.defineProperty(frame, 'contentWindow', { value: page, configurable: true });
+
+    // Another window, or another message: nothing.
+    post({ genaicode: 'submit', data: { plan: 'b' } }, {});
+    post({ type: 'resize' }, page);
+    expect($('.gc-artifact-submit')).toBeNull();
+
+    post({ genaicode: 'submit', data: { plan: 'b', seats: 3 } }, page);
+    expect($('.gc-artifact-submit-data').textContent).toBe('{\n  "plan": "b",\n  "seats": 3\n}');
+    expect(props.onSend).not.toHaveBeenCalled();
+    click('Discard');
+    expect($('.gc-artifact-submit')).toBeNull();
+    expect(props.onSend).not.toHaveBeenCalled();
+
+    post({ genaicode: 'submit', data: { plan: 'a' } }, page);
+    click('Send to agent');
+    expect(props.onSend).toHaveBeenCalledWith(artifactSubmission(artifact, { plan: 'a' }));
+    expect($('.gc-artifact-submit')).toBeNull();
+
+    // Too much for a message is refused, with no Send button.
+    post({ genaicode: 'submit', data: 'x'.repeat(30_000) }, page);
+    expect($('.gc-artifact-submit').textContent).toContain('more than fits');
+    expect($$('.gc-artifact-submit button').map((button) => button.textContent)).toEqual(['Dismiss']);
+
+    // The host handles it itself, or turns it off.
+    const onArtifactSubmit = vi.fn();
+    const mine = render({ state, artifactUrl: (a) => `/artifacts/${a.id}`, onArtifactSubmit });
+    Object.defineProperty($('iframe'), 'contentWindow', { value: page, configurable: true });
+    post({ genaicode: 'submit', data: [1, 2] }, page);
+    click('Send to agent');
+    expect(onArtifactSubmit).toHaveBeenCalledWith(artifact, [1, 2]);
+    expect(mine.onSend).not.toHaveBeenCalled();
+    render({ state, artifactUrl: (a) => `/artifacts/${a.id}`, onArtifactSubmit: null });
+    post({ genaicode: 'submit', data: 1 }, page);
+    expect($('.gc-artifact-submit')).toBeNull();
+  });
+
+  it('words a submission so that its data cannot pass for anything else', () => {
+    const message = artifactSubmission({ title: 'Survey', name: 'survey' }, { note: 'a ``` b' });
+    expect(message).toContain('Submitted from the artifact "Survey" (name: survey)');
+    expect(message).toContain('````json\n{\n  "note": "a ``` b"\n}\n````');
+    expect(artifactSubmission({ title: 'T', name: 'n' }, undefined)).toContain('```json\nnull\n```');
   });
 });

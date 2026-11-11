@@ -496,7 +496,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (missed.length) {
         let file: string | undefined;
         try {
-          file = writeHandoff(state.cwd, handoffDir, agent.name, missed);
+          file = writeHandoff(state.cwd, handoffDir, agent.name, missed, (id) => options.artifacts?.store.read(id));
         } catch {
           // An unwritable cwd still gets the recap.
         }

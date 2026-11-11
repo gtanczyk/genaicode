@@ -67,6 +67,12 @@ export interface AgentChatProps {
   artifactUrl?(artifact: Artifact): string | undefined;
   /** Replaces the default artifact card. Return undefined to keep the default. */
   renderArtifact?(artifact: Artifact, url: string | undefined): ReactNode;
+  /**
+   * A page the agent published asked to send `data` back (a filled-in form, a choice) and the
+   * user confirmed it on the card. Default: `onSend(artifactSubmission(artifact, data))`, so the
+   * agent gets it as the user's next message. Pass null to let no page send anything.
+   */
+  onArtifactSubmit?: ((artifact: Artifact, data: unknown) => void) | null;
   /** Host content after a turn (approval cards, links...). */
   renderAfterTurn?(turn: SessionTurn, index: number): ReactNode;
   /** Host content at the end of the transcript, after the last turn. */
@@ -116,6 +122,12 @@ export function AgentChat(props: AgentChatProps) {
     el.style.height = `${Math.min(200, el.scrollHeight)}px`;
   }, [draft]);
 
+  const { onSend, onArtifactSubmit, disabled } = props;
+  // Nothing is sent while the host keeps the user from sending.
+  const submitArtifact: SubmitArtifact | undefined =
+    onArtifactSubmit === null || disabled
+      ? undefined
+      : (onArtifactSubmit ?? ((artifact, data) => onSend(artifactSubmission(artifact, data))));
   const rootClass = ['gc-chat', props.className].filter(Boolean).join(' ');
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const agentName = state.agent || 'the agent';
@@ -161,6 +173,7 @@ export function AgentChat(props: AgentChatProps) {
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
         renderArtifact={props.renderArtifact}
+        submitArtifact={submitArtifact}
         fold={props.foldSteps ?? false}
       />,
     );
@@ -299,10 +312,12 @@ function Turn({
   toolName,
   artifactUrl,
   renderArtifact,
+  submitArtifact,
   fold,
 }: {
   artifactUrl?: AgentChatProps['artifactUrl'];
   renderArtifact?: AgentChatProps['renderArtifact'];
+  submitArtifact?: SubmitArtifact;
   turn: SessionTurn;
   now: number;
   cwd: string;
@@ -327,6 +342,7 @@ function Turn({
       toolName={toolName}
       artifactUrl={artifactUrl}
       renderArtifact={renderArtifact}
+      submitArtifact={submitArtifact}
     />
   );
   return (
@@ -419,9 +435,11 @@ function Entry({
   toolName,
   artifactUrl,
   renderArtifact,
+  submitArtifact,
 }: {
   artifactUrl?: AgentChatProps['artifactUrl'];
   renderArtifact?: AgentChatProps['renderArtifact'];
+  submitArtifact?: SubmitArtifact;
   entry: SessionEntry;
   agent: string;
   cwd: string;
@@ -460,7 +478,11 @@ function Entry({
     case 'artifact': {
       const url = artifactUrl?.(entry.artifact);
       const custom = renderArtifact?.(entry.artifact, url);
-      return custom !== undefined ? custom : <ArtifactCard artifact={entry.artifact} url={url} />;
+      return custom !== undefined ? (
+        custom
+      ) : (
+        <ArtifactCard artifact={entry.artifact} url={url} onSubmit={submitArtifact} />
+      );
     }
     case 'approval': {
       const what =
@@ -531,17 +553,87 @@ function Entry({
 const ARTIFACT_KIND: Record<Artifact['kind'], string> = {
   html: 'Page',
   image: 'Image',
+  audio: 'Audio',
+  video: 'Video',
   text: 'Document',
   file: 'File',
 };
 
+type SubmitArtifact = (artifact: Artifact, data: unknown) => void;
+
+// Larger than any form needs; a page cannot flood the conversation.
+const SUBMIT_MAX = 20_000;
+
+/** What a page's `postMessage` asks to send, as JSON text; undefined when it is not a submit. */
+function submitted(message: unknown): { data: unknown; json: string } | { tooLarge: true } | undefined {
+  if (typeof message !== 'object' || message === null) return undefined;
+  if ((message as { genaicode?: unknown }).genaicode !== 'submit') return undefined;
+  const data = (message as { data?: unknown }).data;
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(data, null, 2);
+  } catch {
+    return undefined;
+  }
+  if (json === undefined) return undefined;
+  return json.length > SUBMIT_MAX ? { tooLarge: true } : { data: JSON.parse(json) as unknown, json };
+}
+
+/**
+ * The message that carries what the user sent from an artifact (`onArtifactSubmit`) to the
+ * agent: it names the artifact and holds `data` as JSON.
+ */
+export function artifactSubmission(artifact: Pick<Artifact, 'title' | 'name'>, data: unknown): string {
+  const json = JSON.stringify(data, null, 2) ?? 'null';
+  // Longer than any run of backticks inside, so the data cannot close the block.
+  const fence = '`'.repeat(Math.max(3, ...[...json.matchAll(/`+/g)].map((run) => run[0].length + 1)));
+  return [
+    `Submitted from the artifact "${artifact.title}" (name: ${artifact.name}). The user filled in the page you published and confirmed sending this data:`,
+    '',
+    `${fence}json`,
+    json,
+    fence,
+  ].join('\n');
+}
+
 /**
  * An artifact the agent published. Agent-written content never joins this page: HTML and text
- * load in a sandboxed frame with an origin of their own, images as plain images.
+ * load in a sandboxed frame with an origin of their own, images, audio and video as plain media.
+ * The one thing a page can do to this one is ask (`postMessage`) to send data to the agent,
+ * and that waits for the user to confirm what is sent.
  */
-function ArtifactCard({ artifact, url }: { artifact: Artifact; url: string | undefined }) {
+function ArtifactCard({
+  artifact,
+  url,
+  onSubmit,
+}: {
+  artifact: Artifact;
+  url: string | undefined;
+  onSubmit?: SubmitArtifact;
+}) {
   const [open, setOpen] = useState(false);
+  const [asked, setAsked] = useState<ReturnType<typeof submitted>>();
+  const frame = useRef<HTMLIFrameElement>(null);
   const canPreview = !!url && artifact.kind !== 'file';
+  const listening = open && !!onSubmit && artifact.kind === 'html';
+  useEffect(() => {
+    if (!listening) return;
+    const listen = (event: MessageEvent) => {
+      // Only the frame of this card, whatever origin it claims.
+      if (!frame.current || event.source !== frame.current.contentWindow) return;
+      const next = submitted(event.data);
+      if (next) setAsked(next);
+    };
+    window.addEventListener('message', listen);
+    return () => window.removeEventListener('message', listen);
+  }, [listening]);
+  const confirm = useRef<HTMLDivElement>(null);
+  // The confirmation sits under the page, often below the fold.
+  useEffect(() => {
+    if (asked) confirm.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [asked]);
+  // What a page asked belongs to that version, and to the frame while it is open.
+  useEffect(() => setAsked(undefined), [open, artifact.id, artifact.version]);
   return (
     <div className="gc-artifact">
       <div className="gc-artifact-head">
@@ -569,8 +661,13 @@ function ArtifactCard({ artifact, url }: { artifact: Artifact; url: string | und
       {open && url ? (
         artifact.kind === 'image' ? (
           <img className="gc-artifact-view" src={url} alt={artifact.title} />
+        ) : artifact.kind === 'audio' ? (
+          <audio className="gc-artifact-view" src={url} controls preload="metadata" />
+        ) : artifact.kind === 'video' ? (
+          <video className="gc-artifact-view" src={url} controls preload="metadata" playsInline />
         ) : (
           <iframe
+            ref={frame}
             className="gc-artifact-view"
             title={artifact.title}
             src={url}
@@ -580,6 +677,35 @@ function ArtifactCard({ artifact, url }: { artifact: Artifact; url: string | und
             referrerPolicy="no-referrer"
           />
         )
+      ) : null}
+      {open && asked && onSubmit ? (
+        <div ref={confirm} className="gc-artifact-submit" role="group" aria-label="Send to the agent">
+          {'tooLarge' in asked ? (
+            <span className="gc-artifact-submit-text">This page tried to send more than fits in a message.</span>
+          ) : (
+            <>
+              <span className="gc-artifact-submit-text">This page wants to send the agent:</span>
+              <pre className="gc-artifact-submit-data">{asked.json}</pre>
+            </>
+          )}
+          <span className="gc-artifact-submit-actions">
+            {'tooLarge' in asked ? null : (
+              <button
+                type="button"
+                className="gc-btn gc-primary"
+                onClick={() => {
+                  setAsked(undefined);
+                  onSubmit(artifact, asked.data);
+                }}
+              >
+                Send to agent
+              </button>
+            )}
+            <button type="button" className="gc-btn" onClick={() => setAsked(undefined)}>
+              {'tooLarge' in asked ? 'Dismiss' : 'Discard'}
+            </button>
+          </span>
+        </div>
       ) : null}
     </div>
   );

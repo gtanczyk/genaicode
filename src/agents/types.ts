@@ -139,8 +139,8 @@ export interface Artifact {
   /** The agent's own name for it. Publishing the same name again replaces the content. */
   name: string;
   title: string;
-  /** How to show it: `html` and `text` in a sandboxed frame, `image` as a picture, `file` as a download. */
-  kind: 'html' | 'image' | 'text' | 'file';
+  /** How to show it: `html` and `text` in a sandboxed frame, `image`, `audio` and `video` as media, `file` as a download. */
+  kind: 'html' | 'image' | 'audio' | 'video' | 'text' | 'file';
   /** Chosen by genaicode from the file extension or format, never taken from the agent. */
   mimeType: string;
   bytes: number;
