@@ -22,11 +22,10 @@ export function handoffPreamble(turns: readonly SessionTurn[], file: string | un
     recap(turns, file ? RECAP_MAX : RECAP_MAX * 2),
     '',
   ];
-  const published = latestArtifacts(turns);
-  if (published.length) {
+  if (latestArtifacts(turns).length) {
     lines.push(
       'Artifacts shown to the user so far (publish_artifact with the same name replaces one):',
-      ...published.map((artifact) => `- ${describe(artifact)}`),
+      ...artifactLines(turns),
       '',
     );
   }
@@ -147,6 +146,11 @@ function recap(turns: readonly SessionTurn[], max: number): string {
   });
   const text = blocks.join('\n\n');
   return text.length <= max ? text : `… (earlier turns left out)\n${text.slice(text.length - max)}`;
+}
+
+/** One line per artifact the turns published, as it was last published. */
+export function artifactLines(turns: readonly SessionTurn[]): string[] {
+  return latestArtifacts(turns).map((artifact) => `- ${describe(artifact)}`);
 }
 
 /** Each artifact once, as it was last published. */

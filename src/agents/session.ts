@@ -1,6 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
-import { HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
+import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { addUsage, tokenCount } from './runtime.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import type {
@@ -230,6 +230,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningAgent: CodingAgent | undefined;
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
+  const readArtifact = (id: string) => options.artifacts?.store.read(id);
   // Per agent: its own session and the last turn that session knows about.
   const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>(
     options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
@@ -440,9 +441,26 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if (!next) return false;
     addEntry(turnId, { kind: 'failover', from: agent.name, to: next.name, failure: result.failure! });
     const changed = [...new Set(failed.entries.flatMap((entry) => (entry.kind === 'files' ? entry.paths : [])))];
-    takeover = changed.length
-      ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ` +
-        `It already changed: ${changed.join(', ')}. Check those files and continue from there.\n\n`
+    const did: string[] = [];
+    if (changed.length)
+      did.push(`It already changed: ${changed.join(', ')}. Check those files and continue from there.`);
+    // The user already sees these; their content may exist nowhere but in the store.
+    const shown = artifactLines([failed]);
+    if (shown.length) {
+      did.push(
+        `It already showed the user these artifacts (publish_artifact with the same name replaces one):\n${shown.join('\n')}`,
+      );
+      if (handoffOn) {
+        try {
+          const file = writeHandoff(state.cwd, handoffDir, next.name, [failed], readArtifact);
+          did.push(`What it did before stopping, with the content of those artifacts, is in \`${file}\`.`);
+        } catch {
+          // An unwritable cwd still gets the list.
+        }
+      }
+    }
+    takeover = did.length
+      ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ${did.join('\n')}\n\n`
       : undefined;
     const steered = failed.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : []));
     steeredBefore = steered.length
@@ -496,7 +514,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (missed.length) {
         let file: string | undefined;
         try {
-          file = writeHandoff(state.cwd, handoffDir, agent.name, missed, (id) => options.artifacts?.store.read(id));
+          file = writeHandoff(state.cwd, handoffDir, agent.name, missed, readArtifact);
         } catch {
           // An unwritable cwd still gets the recap.
         }

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ArtifactError, artifactResponse, createArtifactStore, startArtifactChannel } from './artifacts.js';
 import { createAgentSession } from './session.js';
-import type { AgentRun, AgentTask, CodingAgent } from './types.js';
+import type { AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-artifacts-'));
 const cwd = join(root, 'work');
@@ -355,6 +355,54 @@ describe('session artifacts', () => {
     expect(replaced).toMatchObject({
       artifact: { version: 3, id: (card as { artifact: { id: string } }).artifact.id },
     });
+    session.close();
+  });
+  it('tells the fallback what the agent that ran out had already published', async () => {
+    const work = mkdtempSync(join(root, 'failover-'));
+    const store = createArtifactStore({ cwd: work });
+    const prompts: string[] = [];
+    const agentThat = (name: string, during: () => Promise<Partial<AgentResult>>): CodingAgent => ({
+      name,
+      command: 'fake',
+      capabilities: { mcp: true },
+      run(task): AgentRun {
+        if (name === 'codex') prompts.push(task.prompt);
+        const result = (async () => ({
+          status: 'completed' as const,
+          ok: true,
+          exitCode: 0,
+          signal: null,
+          ...(await during()),
+        }))();
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done' as const, result: await result };
+          },
+        };
+      },
+    });
+    const claude = agentThat('claude', async () => {
+      await store.publish({ title: 'Survey', name: 'survey', content: '<form>v1</form>', format: 'html' });
+      return { status: 'failed', ok: false, exitCode: 1, failure: { kind: 'quota' } };
+    });
+    const codex = agentThat('codex', async () => ({ text: 'done' }));
+    const session = createAgentSession({
+      agent: claude,
+      fallback: [codex],
+      cwd: work,
+      artifacts: { store, mcpServer },
+    });
+    session.send('ask me');
+    await session.idle();
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('claude stopped part-way through this request (quota).');
+    expect(prompts[0]).toContain('- "Survey" (name: `survey`, html)');
+    expect(prompts[0]).toMatch(/ask me$/);
+    const file = /is in `([^`]+\.handoff\.md)`/.exec(prompts[0])![1];
+    expect(readFileSync(join(work, file), 'utf8')).toContain('```\n<form>v1</form>\n```');
     session.close();
   });
 });
