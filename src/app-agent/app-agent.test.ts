@@ -171,7 +171,7 @@ describe('createAppAgent', () => {
     await settle(agent);
 
     expect(lastText(agent)).toBe(
-      '3 tools; 3 jobs; Waiting for the user as action #1. You will get a message with the outcome.',
+      '2 tools; 3 jobs; Waiting for the user as action #1. You will get a message with the outcome.',
     );
     expect(written).toEqual([]);
     const [action] = agent.get().actions;
@@ -567,7 +567,7 @@ describe('createAppAgent', () => {
     });
     expect(agent.get()).toMatchObject({ mode: 'dev', modes: ['dev'] });
     expect((await post(base, '/config', { mode: 'use' })).status).toBe(400);
-    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit', 'publish_artifact']);
+    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit']);
     await post(base, '/send', { text: 'fix it' });
     await settle(agent);
     expect(dev.tasks[0]!.cwd).toBe(dir);
@@ -1741,7 +1741,7 @@ describe('createAppAgentHandler', () => {
     ]);
     try {
       const { agent, base } = await serve(
-        { name: 'app', agents: () => [fake], dev: { cwd, commit: false } },
+        { name: 'app', agents: () => [fake], dev: { cwd, commit: false }, artifacts: true },
         { authorize: (req) => req.headers.cookie === 'session=ok' },
       );
       agent.send('show me');
@@ -1776,7 +1776,7 @@ describe('createAppAgentHandler', () => {
     }
   });
 
-  it('offers no artifact tool when the app turns artifacts off', async () => {
+  it('offers no artifact tool unless the app turns artifacts on', async () => {
     let listed: unknown[] = [];
     const { agent: fake } = fakeAgent([
       async (task) => {
@@ -1784,7 +1784,7 @@ describe('createAppAgentHandler', () => {
         return 'ok';
       },
     ]);
-    const { agent, base } = await serve({ name: 'app', agents: () => [fake], artifacts: false });
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake] });
     agent.send('hi');
     await settle(agent);
     expect(listed).toEqual([]);
@@ -1794,6 +1794,7 @@ describe('createAppAgentHandler', () => {
     expect(() =>
       createAppAgent({
         name: 'app',
+        artifacts: true,
         mcpUrl: 'http://127.0.0.1:1/mcp',
         tools: [{ name: 'publish_artifact', description: 'x', run: () => 'x' }],
       }),

@@ -91,7 +91,8 @@ export interface AppAgentOptions {
    * Let the agent publish artifacts for the user to look at (a report or chart as a
    * self-contained HTML page, an image, a document) with the `publish_artifact` tool. The
    * handler serves them at `<basePath>/artifacts/<id>`, sandboxed, and `<AppAgentChat>` shows
-   * a card with a preview. Files come from `dev.cwd` in dev mode only. Default true.
+   * a card with a preview; an app with a chat of its own renders the `artifact` entries itself.
+   * Files come from `dev.cwd` in dev mode only. Default false.
    */
   artifacts?: boolean | { maxBytes?: number; maxArtifacts?: number };
   /** MCP server name the agent sees (letters, digits, `_`, `-`); its tools show as `mcp__<name>__<tool>`. Default `app`. */
@@ -205,7 +206,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     'app_links',
     'app_open',
     ...(options.dev?.commit === false ? [] : ['propose_commit']),
-    ...(options.artifacts === false ? [] : [PUBLISH_ARTIFACT_TOOL]),
+    ...(options.artifacts ? [PUBLISH_ARTIFACT_TOOL] : []),
   ]);
   for (const tool of options.tools ?? []) {
     if (names.has(tool.name)) throw new Error(`tool name "${tool.name}" is taken`);
@@ -374,13 +375,12 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
   };
 
   // In use mode the store looks into an empty directory: the agent publishes content, not files.
-  const artifacts =
-    options.artifacts === false
-      ? undefined
-      : createArtifactStore({
-          ...(typeof options.artifacts === 'object' ? options.artifacts : {}),
-          cwd: () => cwdFor(mode),
-        });
+  const artifacts = !options.artifacts
+    ? undefined
+    : createArtifactStore({
+        ...(typeof options.artifacts === 'object' ? options.artifacts : {}),
+        cwd: () => cwdFor(mode),
+      });
 
   const ensureSession = (): AgentSession => {
     if (session) return session;

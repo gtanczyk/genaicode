@@ -53,12 +53,12 @@ import 'genaicode/react/styles.css';
 
 The agent can also show the user something instead of describing it: a report, a chart or a
 table as a self-contained HTML page, an image, a Markdown document. It calls
-`publish_artifact`, the chat shows a card, and the card opens a preview. The handler serves
+`publish_artifact` (turn it on with `artifacts: true`), the chat shows a card, and the card opens a preview. The handler serves
 the content at `/api/agent/artifacts/:id` behind `authorize` like every other route, with
 headers that sandbox it: the page runs in an origin of its own, with no network and no access
 to your app's cookies, storage or DOM (see [agents.md](agents.md#artifacts)). In `dev` mode the
-agent can publish a file from `dev.cwd`; in `use` mode only content it writes. On by default;
-`artifacts: false` leaves the tool out.
+agent can publish a file from `dev.cwd`; in `use` mode only content it writes. An app that
+draws its own chat instead of `AppAgentChat` renders the `artifact` transcript entries itself.
 
 A read tool may return `{ text, images: [{ mimeType: 'image/png', data }] }` instead of a
 string, so the agent can look at what it changed, e.g. a screenshot of the app.
