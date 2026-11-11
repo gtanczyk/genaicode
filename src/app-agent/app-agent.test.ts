@@ -171,7 +171,7 @@ describe('createAppAgent', () => {
     await settle(agent);
 
     expect(lastText(agent)).toBe(
-      '2 tools; 3 jobs; Waiting for the user as action #1. You will get a message with the outcome.',
+      '3 tools; 3 jobs; Waiting for the user as action #1. You will get a message with the outcome.',
     );
     expect(written).toEqual([]);
     const [action] = agent.get().actions;
@@ -567,7 +567,7 @@ describe('createAppAgent', () => {
     });
     expect(agent.get()).toMatchObject({ mode: 'dev', modes: ['dev'] });
     expect((await post(base, '/config', { mode: 'use' })).status).toBe(400);
-    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit']);
+    expect(agent.mcpTools().map((tool) => tool.name)).toEqual(['propose_commit', 'publish_artifact']);
     await post(base, '/send', { text: 'fix it' });
     await settle(agent);
     expect(dev.tasks[0]!.cwd).toBe(dir);
@@ -1720,5 +1720,83 @@ describe('createAppAgentHandler', () => {
     const first = new TextDecoder().decode((await reader.read()).value);
     expect(JSON.parse(first.replace(/^data: /, '').trim())).toMatchObject({ name: 'app', mode: 'use', agent: 'fake' });
     controller.abort();
+  });
+  it('lets the agent publish artifacts and serves them, sandboxed, to the authorized user only', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'genaicode-app-artifacts-'));
+    writeFileSync(path.join(cwd, 'report.html'), '<h1>Report</h1>');
+    writeFileSync(path.join(cwd, '.env'), 'TOKEN=secret');
+    const results: Array<{ isError?: boolean }> = [];
+    const { agent: fake, tasks } = fakeAgent([
+      async (task) => {
+        results.push(await callTool(task, 'publish_artifact', { title: 'Chart', content: '<b>1</b>', format: 'html' }));
+        // Use mode has no files of the app to publish.
+        results.push(await callTool(task, 'publish_artifact', { title: 'Report', path: 'report.html' }));
+        return 'published';
+      },
+      async (task) => {
+        results.push(await callTool(task, 'publish_artifact', { title: 'Report', path: 'report.html' }));
+        results.push(await callTool(task, 'publish_artifact', { title: 'Env', path: '.env' }));
+        return 'published from files';
+      },
+    ]);
+    try {
+      const { agent, base } = await serve(
+        { name: 'app', agents: () => [fake], dev: { cwd, commit: false } },
+        { authorize: (req) => req.headers.cookie === 'session=ok' },
+      );
+      agent.send('show me');
+      await settle(agent);
+      expect(tasks[0]!.prompt).toContain('publish_artifact');
+      expect(results.map((result) => !!result.isError)).toEqual([false, true]);
+      const [entry] = agent.get().session!.turns[0]!.entries.filter((e) => e.kind === 'artifact');
+      const chart = (entry as { artifact: { id: string; title: string } }).artifact;
+      expect(chart.title).toBe('Chart');
+
+      const url = `${base}/api/agent/artifacts/${chart.id}?v=1`;
+      expect((await fetch(url)).status).toBe(403);
+      const response = await fetch(url, { headers: { cookie: 'session=ok' } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-security-policy')).toContain('sandbox allow-scripts');
+      expect(await response.text()).toBe('<b>1</b>');
+      const missing = await fetch(`${base}/api/agent/artifacts/nope`, { headers: { cookie: 'session=ok' } });
+      expect(missing.status).toBe(404);
+
+      agent.configure({ mode: 'dev' });
+      agent.send('now the file');
+      await settle(agent);
+      expect(results.map((result) => !!result.isError)).toEqual([false, true, false, true]);
+      // The card of the earlier turn still opens after the switch.
+      expect((await fetch(url, { headers: { cookie: 'session=ok' } })).status).toBe(200);
+      expect(agent.artifacts!.list().map((artifact) => artifact.title)).toEqual(['Chart', 'Report']);
+
+      agent.reset();
+      expect((await fetch(url, { headers: { cookie: 'session=ok' } })).status).toBe(404);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('offers no artifact tool when the app turns artifacts off', async () => {
+    let listed: unknown[] = [];
+    const { agent: fake } = fakeAgent([
+      async (task) => {
+        listed = (await mcp(task, 'tools/list')).result!.tools!;
+        return 'ok';
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [fake], artifacts: false });
+    agent.send('hi');
+    await settle(agent);
+    expect(listed).toEqual([]);
+    expect(agent.artifacts).toBeUndefined();
+    expect((await fetch(`${base}/api/agent/artifacts/x`)).status).toBe(404);
+    // With artifacts on, an app tool cannot take the name.
+    expect(() =>
+      createAppAgent({
+        name: 'app',
+        mcpUrl: 'http://127.0.0.1:1/mcp',
+        tools: [{ name: 'publish_artifact', description: 'x', run: () => 'x' }],
+      }),
+    ).toThrow(/taken/);
   });
 });

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { artifactResponse } from '../agents/artifacts.js';
 import { AppAgentError, type AppAgent } from './app-agent.js';
 import type { AppAgentMode } from './state.js';
 import { safeJson } from './json.js';
@@ -38,6 +39,7 @@ const MAX_BODY = 256 * 1024;
  * - `POST /send {text}`, `/stop`, `/reset`, `/config {agent?, mode?}`, `/view {path}`
  * - `POST /actions/:id {decision: 'approve' | 'reject' | 'dismiss'}`, `GET /actions/:id/changes`
  * - `POST /approvals/:id {decision: 'approve' | 'deny'}`: the agent CLI's own permission prompts
+ * - `GET  /artifacts/:id`: what the agent published, with headers that sandbox it
  * - `POST /mcp`: the agent's MCP endpoint (bearer `agent.mcpToken`; browser requests refused)
  *
  * Requests another site started are refused (`Sec-Fetch-Site`, `Origin`).
@@ -79,6 +81,13 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
       if (method === 'GET' && route === '/state') return json(res, 200, agent.get());
       if (method === 'GET' && route === '/events') {
         events(req, res, agent, streams);
+        return true;
+      }
+      if (method === 'GET' && route.startsWith('/artifacts/')) {
+        const found = agent.artifacts?.read(route.slice('/artifacts/'.length));
+        if (!found) return json(res, 404, { error: 'not found' });
+        const response = artifactResponse(found.artifact, found.body);
+        res.writeHead(200, response.headers).end(response.body);
         return true;
       }
       if (method === 'GET') {

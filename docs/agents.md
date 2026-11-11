@@ -283,7 +283,7 @@ app.get('/artifacts/:id', (req, res) => {
   a loopback MCP server behind a bearer token. So it works for the agents that take MCP servers
   in genaicode (claude, codex, codexLive, copilot, muse, museLive, antigravity); the others
   simply do not get the tool. An app with its own MCP server can mount `store.tool()` there
-  and pass `{ store }` alone.
+  and pass `{ store }` alone; `createAppAgent` does exactly that (see [app-agent.md](app-agent.md)).
 - Each publish adds an `artifact` entry (`{ id, title, kind, mimeType, bytes, version, path? }`)
   to the running turn. The content is copied into memory at that moment (5 MB each, the newest
   30 by default); publishing the same `name` again replaces it and keeps the `id`.

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createArtifactStore, PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from '../agents/artifacts.js';
 import { detectAgents } from '../agents/discovery.js';
 import { MCP_NAME } from '../agents/prepare.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
@@ -86,6 +87,13 @@ export interface AppAgentOptions {
   fallback?: readonly string[];
   /** Where the agent reaches the app's MCP endpoint (`<basePath>/mcp` of the handler). */
   mcpUrl: string | (() => string);
+  /**
+   * Let the agent publish artifacts for the user to look at (a report or chart as a
+   * self-contained HTML page, an image, a document) with the `publish_artifact` tool. The
+   * handler serves them at `<basePath>/artifacts/<id>`, sandboxed, and `<AppAgentChat>` shows
+   * a card with a preview. Files come from `dev.cwd` in dev mode only. Default true.
+   */
+  artifacts?: boolean | { maxBytes?: number; maxArtifacts?: number };
   /** MCP server name the agent sees (letters, digits, `_`, `-`); its tools show as `mcp__<name>__<tool>`. Default `app`. */
   serverName?: string;
   env?: NodeJS.ProcessEnv;
@@ -159,6 +167,8 @@ export interface AppAgent {
   changes(id: string): Promise<TreeChanges>;
   /** The tools the agent currently sees over MCP. */
   mcpTools(): McpTool[];
+  /** What the agent published (`AppAgentOptions.artifacts`), for the handler that serves it. */
+  readonly artifacts?: ArtifactStore;
   /** Bearer the current session's agent sends to the MCP endpoint; a new one with every session. */
   readonly mcpToken: string;
   readonly serverName: string;
@@ -195,6 +205,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     'app_links',
     'app_open',
     ...(options.dev?.commit === false ? [] : ['propose_commit']),
+    ...(options.artifacts === false ? [] : [PUBLISH_ARTIFACT_TOOL]),
   ]);
   for (const tool of options.tools ?? []) {
     if (names.has(tool.name)) throw new Error(`tool name "${tool.name}" is taken`);
@@ -362,6 +373,15 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     return useCwd;
   };
 
+  // In use mode the store looks into an empty directory: the agent publishes content, not files.
+  const artifacts =
+    options.artifacts === false
+      ? undefined
+      : createArtifactStore({
+          ...(typeof options.artifacts === 'object' ? options.artifacts : {}),
+          cwd: () => cwdFor(mode),
+        });
+
   const ensureSession = (): AgentSession => {
     if (session) return session;
     const agent = agentsFor(mode).find((candidate) => candidate.name === agentName);
@@ -375,6 +395,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         mcpServers: [{ name: serverName, url, headers: { authorization: `Bearer ${mcpToken}` } }],
       },
       fallback: fallbackFor(mode),
+      ...(artifacts ? { artifacts: { store: artifacts } } : {}),
       // The fallback agent starts its own session: brief it again, with the conversation so far.
       failoverPrompt: (prompt, earlier) => {
         const told = clip(`${carryOver}\n\n${transcript(earlier)}`.trim(), CARRY_MAX, true);
@@ -437,6 +458,11 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         `When a page of the app shows what you mean, offer it with ${tool('app_links')} chips.`,
         'Chips appear under your reply on their own; do not point at them.',
         `Call ${tool('app_open')} only when the user asks you to take them somewhere.`,
+      );
+    }
+    if (artifacts) {
+      lines.push(
+        `When something is better seen than described (a report, a chart, a table, a mockup), show it with ${tool(PUBLISH_ARTIFACT_TOOL)}.`,
       );
     }
     if (mode === 'dev' && options.dev) {
@@ -712,6 +738,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       return mcpToken;
     },
     serverName,
+    artifacts,
     get,
     subscribe(listener) {
       listeners.add(listener);
@@ -749,6 +776,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       history = [];
       links = [];
       carryOver = '';
+      artifacts?.clear();
       // A fresh conversation cannot hear their outcome: nothing waits for the user any more.
       actions = actions.map((action) =>
         action.status === 'pending' ? { ...action, status: 'rejected', result: 'Dropped by starting over.' } : action,
@@ -835,6 +863,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
         ...appTools(),
         ...(options.pages ? pageTools() : []),
         ...(mode === 'dev' && commits ? devTools() : []),
+        ...(artifacts ? [artifacts.tool()] : []),
       ];
       if (!options.trace) return tools;
       return tools.map((tool) => ({

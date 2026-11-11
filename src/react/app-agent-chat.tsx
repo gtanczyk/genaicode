@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision } from '../agents/types.js';
+import type { ApprovalDecision, Artifact } from '../agents/types.js';
 import {
   APP_NOTE,
   userText,
@@ -9,7 +9,7 @@ import {
   type AppAgentState,
   type TreeChanges,
 } from '../app-agent/state.js';
-import { AgentChat, type ChatNotice } from './agent-chat.js';
+import { AgentChat, type AgentChatProps, type ChatNotice } from './agent-chat.js';
 import { toolLabel } from './format.js';
 
 // `mcp__app__tool` (Claude, Copilot) or `app/tool` (Codex) shows as `tool`.
@@ -30,6 +30,8 @@ export interface AppAgentClient {
   decide(id: string, decision: 'approve' | 'reject' | 'dismiss'): void;
   approve(id: string, decision: ApprovalDecision): void;
   changes(id: string): Promise<TreeChanges>;
+  /** Where the handler serves a published artifact. Without it artifact cards have no preview. */
+  artifactUrl?(artifact: Artifact): string;
 }
 
 export interface AppAgentClientOptions {
@@ -117,8 +119,9 @@ export function useAppAgent(basePath = '/api/agent', options: AppAgentClientOpti
       decide: (id, decision) => call(`/actions/${encodeURIComponent(id)}`, { decision }),
       approve: (id, decision) => call(`/approvals/${encodeURIComponent(id)}`, { decision }),
       changes,
+      artifactUrl: (artifact) => `${base}/artifacts/${artifact.id}?v=${artifact.version}`,
     }),
-    [state, error, call, changes],
+    [state, error, call, changes, base],
   );
 }
 
@@ -139,6 +142,8 @@ export interface AppAgentChatProps {
   renderAction?(action: AppAction): ReactNode;
   emptyState?: ReactNode;
   placeholder?: string;
+  /** Replaces the default artifact card; see `AgentChatProps.renderArtifact`. */
+  renderArtifact?: AgentChatProps['renderArtifact'];
   /** Fold each turn's work into one "N steps" line; see `AgentChatProps.foldSteps`. */
   foldSteps?: boolean;
   theme?: 'auto' | 'light' | 'dark';
@@ -223,6 +228,8 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
       onStop={client.stop}
       onApprove={client.approve}
       foldSteps={props.foldSteps}
+      artifactUrl={client.artifactUrl}
+      renderArtifact={props.renderArtifact}
       renderPrompt={(text) => {
         const typed = userText(text);
         if (!typed.startsWith(APP_NOTE)) return typed;

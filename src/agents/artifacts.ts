@@ -10,8 +10,8 @@ import type { Artifact, McpServer } from './types.js';
 export const PUBLISH_ARTIFACT_TOOL = 'publish_artifact';
 
 export interface ArtifactStoreOptions {
-  /** Files are published from inside this directory only. */
-  cwd: string;
+  /** Files are published from inside this directory only. A function is read on every publish. */
+  cwd: string | (() => string);
   /** Largest artifact, in bytes. Default 5 MB. */
   maxBytes?: number;
   /** Most artifacts kept; the oldest is dropped beyond that. Default 30. */
@@ -37,6 +37,8 @@ export interface ArtifactStore {
   list(): Artifact[];
   /** The artifact and the content of its latest version. */
   read(id: string): { artifact: Artifact; body: Buffer } | undefined;
+  /** Forget every artifact; their addresses stop working. */
+  clear(): void;
   /** Called after every publish. Returns the unsubscribe function. */
   subscribe(listener: (artifact: Artifact) => void): () => void;
   /** The `publish_artifact` tool, to mount on an MCP server the agent is given. */
@@ -92,7 +94,7 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
     let root: string;
     let real: string;
     try {
-      root = await fs.realpath(options.cwd);
+      root = await fs.realpath(typeof options.cwd === 'function' ? options.cwd() : options.cwd);
       // Through symlinks: a link inside the workspace must not reach a file outside it.
       real = await fs.realpath(resolve(root, path));
     } catch {
@@ -175,6 +177,7 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       for (const entry of byName.values()) if (entry.artifact.id === id) return entry;
       return undefined;
     },
+    clear: () => byName.clear(),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
