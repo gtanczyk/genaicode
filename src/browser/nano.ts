@@ -485,7 +485,7 @@ async function fillArguments(
   if (!args) throw new Error(`Filling in the arguments failed: the model did not answer with a JSON object.`);
   // Asked in words, a model may add arguments the schema does not have; the browser never lets it.
   const open = tool.inputSchema?.additionalProperties;
-  if (open === true || (open && typeof open === 'object')) return args;
+  if (open === true || (open && typeof open === 'object') || tool.inputSchema?.patternProperties) return args;
   const known = schemaProperties(tool);
   return Object.fromEntries(Object.entries(args).filter(([key]) => key in known));
 }

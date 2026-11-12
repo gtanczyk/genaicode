@@ -88,7 +88,23 @@ function same(a: unknown, b: unknown): boolean {
 /** `value / step` is whole, give or take what floating point loses (0.3 / 0.1 is 2.9999999999999996). */
 function isMultiple(value: number, step: number): boolean {
   const quotient = value / step;
-  return Math.abs(quotient - Math.round(quotient)) <= 1e-9 * Math.max(1, Math.abs(quotient));
+  // A few units of rounding error at this size: never a real fraction of a step.
+  return Math.abs(quotient - Math.round(quotient)) <= 4 * Number.EPSILON * Math.max(1, Math.abs(quotient));
+}
+
+/** `patternProperties` as regular expressions; a pattern that does not compile matches nothing. */
+function patternSchemas(map: unknown): [RegExp, Record<string, unknown>][] {
+  if (!isSchema(map)) return [];
+  const out: [RegExp, Record<string, unknown>][] = [];
+  for (const [source, sub] of Object.entries(map)) {
+    if (!isSchema(sub)) continue;
+    try {
+      out.push([new RegExp(source, 'u'), sub]);
+    } catch {
+      // Not a pattern this engine reads.
+    }
+  }
+  return out;
 }
 
 function allowsNull(schema: unknown): boolean {
@@ -161,6 +177,7 @@ function check(schema: Schema, value: unknown, path: string, problems: string[])
   } else if (isSchema(value)) {
     const properties = isSchema(schema.properties) ? schema.properties : {};
     const at = (key: string) => (path ? `${path}.${key}` : key);
+    const patterns = patternSchemas(schema.patternProperties);
     for (const key of Array.isArray(schema.required) ? schema.required : []) {
       if (typeof key !== 'string') continue;
       // A small model writes null for what it leaves out, so null counts as missing unless the schema asks for it.
@@ -172,7 +189,10 @@ function check(schema: Schema, value: unknown, path: string, problems: string[])
       // A model writes null for an argument it leaves out.
       if (item === undefined || item === null) continue;
       const property = properties[key];
+      const matched = patterns.filter(([pattern]) => pattern.test(key));
+      for (const [, sub] of matched) check(sub, item, at(key), problems);
       if (isSchema(property)) check(property, item, at(key), problems);
+      else if (matched.length) continue;
       else if (schema.additionalProperties === false) problems.push(`"${at(key)}" is not an argument`);
       else if (isSchema(schema.additionalProperties)) check(schema.additionalProperties, item, at(key), problems);
     }

@@ -246,6 +246,26 @@ describe('tools', () => {
       '"step" must be a multiple of 0.1',
       '"shape" must be {"a":1,"b":[2,{"c":3}]}',
     ]);
+    const whole = (multipleOf: number): Pick<PageTool, 'inputSchema'> => ({
+      inputSchema: { type: 'object', properties: { n: { type: 'number', multipleOf } } },
+    });
+    // The allowance is rounding error, not a share of the step, however large the number.
+    expect(argumentProblems(whole(1), { n: 1000000000.5 })).toEqual(['"n" must be a multiple of 1']);
+    expect(argumentProblems(whole(0.01), { n: 10000000.005 })).toEqual(['"n" must be a multiple of 0.01']);
+    expect(argumentProblems(whole(0.01), { n: 10000000.01 })).toEqual([]);
+    const patterned: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        patternProperties: { '^x_': { type: 'string' } },
+        additionalProperties: false,
+      },
+    };
+    expect(argumentProblems(patterned, { id: 1, x_label: 'ok' })).toEqual([]);
+    expect(argumentProblems(patterned, { x_label: 1, y_label: 'no' })).toEqual([
+      '"x_label" must be a string',
+      '"y_label" is not an argument',
+    ]);
     const nullable: Pick<PageTool, 'inputSchema'> = {
       inputSchema: {
         type: 'object',
