@@ -42,6 +42,8 @@ export function useAttachments(options: ChatAttachments | undefined) {
   const [recording, setRecording] = useState(false);
   const [problem, setProblem] = useState<string>();
   const recorder = useRef<Recorder | undefined>(undefined);
+  const asking = useRef(false);
+  const gone = useRef(false);
   const max = options?.max ?? 4;
   const accept = options?.accept;
   const enabled = options !== undefined;
@@ -80,8 +82,17 @@ export function useAttachments(options: ChatAttachments | undefined) {
       recorder.current.stop();
       return;
     }
+    if (asking.current) return;
+    asking.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).finally(() => {
+        asking.current = false;
+      });
+      // The composer went away while the browser asked: nobody could stop this recording.
+      if (gone.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       const chunks: Blob[] = [];
       const media = new MediaRecorder(stream);
       media.addEventListener('dataavailable', (event) => {
@@ -90,6 +101,7 @@ export function useAttachments(options: ChatAttachments | undefined) {
       media.addEventListener('stop', () => {
         for (const track of stream.getTracks()) track.stop();
         recorder.current = undefined;
+        if (gone.current) return;
         setRecording(false);
         const type = media.mimeType || 'audio/webm';
         const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
@@ -109,13 +121,13 @@ export function useAttachments(options: ChatAttachments | undefined) {
   }, [add]);
 
   // A recorder left running would keep the microphone on.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
       if (recorder.current && recorder.current.state !== 'inactive') recorder.current.stop();
-    },
-    [],
-  );
-
+    };
+  }, []);
   return { files, add, remove, clear, problem, recording, canRecord, toggleRecording, enabled, accept, max };
 }
 

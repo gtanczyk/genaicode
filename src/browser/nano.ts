@@ -248,7 +248,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           typeof options.tools === 'function'
             ? await abortable(Promise.resolve(options.tools()), signal)
             : (options.tools ?? []);
-        const attached = await abortable(attach(task.attachments ?? [], await inputs(), maxAttachmentText), signal);
+        const taken = await abortable(inputs(), signal);
+        const attached = await abortable(attach(task.attachments ?? [], taken, maxAttachmentText), signal);
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
         // A new conversation's instructions count as this task's tokens.

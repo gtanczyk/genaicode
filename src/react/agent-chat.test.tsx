@@ -456,4 +456,41 @@ describe('AgentChat', () => {
     expect(message).toContain('````json\n{\n  "note": "a ``` b"\n}\n````');
     expect(artifactSubmission({ title: 'T', name: 'n' }, undefined)).toContain('```json\nnull\n```');
   });
+
+  it('lets the microphone go when the composer unmounts while the browser asks for it', async () => {
+    const stop = vi.fn();
+    let grant!: (stream: unknown) => void;
+    const asked = new Promise((resolve) => (grant = resolve));
+    const start = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        state = 'inactive';
+        mimeType = 'audio/webm';
+        addEventListener() {}
+        start = start;
+        stop() {}
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(() => asked) },
+    });
+    try {
+      render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      act(() => $('[aria-label="Record a voice message"]').click());
+      act(() => root.unmount());
+      grant({ getTracks: () => [{ stop }] });
+      await act(async () => {
+        await asked;
+        await Promise.resolve();
+      });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(start).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+      root = createRoot(container);
+    }
+  });
 });
