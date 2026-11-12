@@ -117,15 +117,20 @@ export function nano(options: NanoOptions = {}): NanoAgent {
   async function open(tools: readonly PageTool[], signal: AbortSignal): Promise<LanguageModelSession> {
     const model = factory();
     if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
-    return abortable(
-      model.create({
-        initialPrompts: [{ role: 'system', content: briefing(options.instructions, tools) }],
-        ...expectedText(language),
-        monitor,
-        signal,
-      }),
+    const created = model.create({
+      initialPrompts: [{ role: 'system', content: briefing(options.instructions, tools) }],
+      ...expectedText(language),
+      monitor,
       signal,
+    });
+    // A session that arrives after the task was stopped has no owner: release it.
+    created.then(
+      (late) => {
+        if (signal.aborted) late.destroy();
+      },
+      () => {},
     );
+    return abortable(created, signal);
   }
 
   function run(task: AgentTask): AgentRun {

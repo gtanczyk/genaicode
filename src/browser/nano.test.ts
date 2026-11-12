@@ -272,6 +272,21 @@ describe('nano', () => {
     expect(model.created).toHaveLength(2);
   });
 
+  it('releases a model session that opens after the task was stopped', async () => {
+    const model = fakeLanguageModel(['Hi.']);
+    const create = model.factory.create.bind(model.factory);
+    let open = () => {};
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    // A factory that ignores the signal.
+    model.factory.create = (options) => gate.then(() => create({ ...options, signal: undefined }));
+    const run = nano({ languageModel: model.factory }).run({ prompt: 'x', cwd: '' });
+    run.abort();
+    expect((await run.result).status).toBe('aborted');
+    expect(model.destroyed).toBe(0);
+    open();
+    await vi.waitFor(() => expect(model.destroyed).toBe(1));
+  });
+
   it('keeps a conversation that a task is still running in', async () => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));

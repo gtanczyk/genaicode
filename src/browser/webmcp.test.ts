@@ -193,5 +193,15 @@ describe('tools', () => {
       '"mode" must be one of "a", "b"',
     ]);
     expect(argumentProblems(tool, {})).toEqual(['"n" is required']);
+    const text: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: { text: { type: 'string' }, title: { type: 'string', minLength: 1 } },
+        required: ['text'],
+      },
+    };
+    // An empty string is a value: it clears a field. `minLength` asks for more.
+    expect(argumentProblems(text, { text: '' })).toEqual([]);
+    expect(argumentProblems(text, { text: '', title: '' })).toEqual(['"title" must not be empty']);
   });
 });

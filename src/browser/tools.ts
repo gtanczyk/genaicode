@@ -46,7 +46,7 @@ export function schemaProperties(tool: Pick<PageTool, 'inputSchema'>): Record<st
 
 /**
  * The problems with `args` for `tool`: missing required arguments and values of the wrong basic
- * type or outside an `enum`. A light check for what a small model gets wrong, not a JSON Schema
+ * type, outside an `enum` or shorter than `minLength`. A light check for what a small model gets wrong, not a JSON Schema
  * validator; `tool.validate` does the rest.
  */
 export function argumentProblems(tool: Pick<PageTool, 'inputSchema'>, args: Record<string, unknown>): string[] {
@@ -54,7 +54,7 @@ export function argumentProblems(tool: Pick<PageTool, 'inputSchema'>, args: Reco
   const properties = schemaProperties(tool);
   const required = Array.isArray(tool.inputSchema?.required) ? (tool.inputSchema.required as unknown[]) : [];
   for (const name of required) {
-    if (typeof name === 'string' && (args[name] === undefined || args[name] === null || args[name] === '')) {
+    if (typeof name === 'string' && (args[name] === undefined || args[name] === null)) {
       problems.push(`"${name}" is required`);
     }
   }
@@ -63,6 +63,10 @@ export function argumentProblems(tool: Pick<PageTool, 'inputSchema'>, args: Reco
     if (!schema || value === undefined || value === null) continue;
     if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
       problems.push(`"${name}" must be one of ${schema.enum.map((item) => JSON.stringify(item)).join(', ')}`);
+      continue;
+    }
+    if (typeof value === 'string' && typeof schema.minLength === 'number' && value.length < schema.minLength) {
+      problems.push(value ? `"${name}" is too short` : `"${name}" must not be empty`);
       continue;
     }
     const type = schema.type;
