@@ -14,7 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- `nano()` (`genaicode/browser`) survives Chrome's `UnknownError` on a schema-constrained call by asking the model in words, retries a reply that failed before its first word, names the failed step in the error and reports each model call through `onModelCall` (#PRNUM).
+- `nano()` (`genaicode/browser`) survives Chrome's `UnknownError` on a schema-constrained call by asking the model in words, retries a reply that failed before its first word, names the failed step in the error and reports each model call through `onModelCall` (#170).
 
 ## 2.32.0 — 2026-11-11
 
