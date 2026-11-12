@@ -493,4 +493,33 @@ describe('AgentChat', () => {
       root = createRoot(container);
     }
   });
+
+  it('lets the microphone go when the recorder will not start', async () => {
+    const stop = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        constructor() {
+          throw new Error('no codec');
+        }
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop }] })) },
+    });
+    try {
+      render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      await act(async () => {
+        $('[aria-label="Record a voice message"]').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toContain('The microphone is not available: no codec');
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
 });

@@ -84,8 +84,9 @@ export function useAttachments(options: ChatAttachments | undefined) {
     }
     if (asking.current) return;
     asking.current = true;
+    let stream: MediaStream | undefined;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).finally(() => {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true }).finally(() => {
         asking.current = false;
       });
       // The composer went away while the browser asked: nobody could stop this recording.
@@ -93,13 +94,14 @@ export function useAttachments(options: ChatAttachments | undefined) {
         for (const track of stream.getTracks()) track.stop();
         return;
       }
+      const taken = stream;
       const chunks: Blob[] = [];
-      const media = new MediaRecorder(stream);
+      const media = new MediaRecorder(taken);
       media.addEventListener('dataavailable', (event) => {
         if (event.data.size) chunks.push(event.data);
       });
       media.addEventListener('stop', () => {
-        for (const track of stream.getTracks()) track.stop();
+        for (const track of taken.getTracks()) track.stop();
         recorder.current = undefined;
         if (gone.current) return;
         setRecording(false);
@@ -112,6 +114,8 @@ export function useAttachments(options: ChatAttachments | undefined) {
       setRecording(true);
       setProblem(undefined);
     } catch (error) {
+      // A recorder that would not start must not leave the microphone on.
+      for (const track of stream?.getTracks() ?? []) track.stop();
       recorder.current = undefined;
       setRecording(false);
       setProblem(
