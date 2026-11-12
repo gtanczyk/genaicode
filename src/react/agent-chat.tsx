@@ -285,12 +285,23 @@ export function AgentChat(props: AgentChatProps) {
           </div>
         ) : null}
         <div
-          className="gc-box"
+          className={attached.enabled ? 'gc-box gc-stacked' : 'gc-box'}
           onDrop={onDrop}
           onDragOver={(event) => {
             if (attached.enabled) event.preventDefault();
           }}
         >
+          <textarea
+            ref={input}
+            rows={1}
+            autoFocus={props.autoFocus}
+            value={draft}
+            placeholder={placeholder}
+            aria-label="Message"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+          />
           {attached.enabled ? (
             <>
               <input
@@ -345,19 +356,9 @@ export function AgentChat(props: AgentChatProps) {
                   </svg>
                 </button>
               ) : null}
+              <span className="gc-grow" />
             </>
           ) : null}
-          <textarea
-            ref={input}
-            rows={1}
-            autoFocus={props.autoFocus}
-            value={draft}
-            placeholder={placeholder}
-            aria-label="Message"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-          />
           {(running || props.canStop) && props.onStop ? (
             <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
               Stop
