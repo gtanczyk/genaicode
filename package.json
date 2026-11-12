@@ -56,6 +56,10 @@
       "types": "./dist/app-agent.d.ts",
       "import": "./dist/app-agent.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"

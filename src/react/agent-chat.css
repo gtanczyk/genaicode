@@ -842,3 +842,25 @@ img.gc-artifact-view {
   color: var(--_muted);
   font-size: 0.87em;
 }
+
+/* <PageAgentChat>: the on-device model's download and load */
+.gc-page-model {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: min(320px, 100%);
+  white-space: normal;
+}
+.gc-page-model progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--_accent);
+}
+.gc-page-model small {
+  opacity: 0.8;
+}
+.gc-page-download {
+  max-width: 34em;
+  margin: 12px auto;
+}

@@ -43,6 +43,7 @@ log in to (`npx genaicode agents` lists what it finds).
 | A panel in your dev server     | `genaicode/vite`, `createDevOverlay`   | [vite.md](docs/vite.md)           |
 | A chat component               | `genaicode/react` `<AgentChat>`        | [react.md](docs/react.md)         |
 | An agent inside your own app   | `genaicode/app-agent`                  | [app-agent.md](docs/app-agent.md) |
+| An agent in the web page       | `genaicode/browser` (Gemini Nano)      | [browser.md](docs/browser.md)     |
 | Editors, desktop, game engines | `genaicode acp`, `genaicode/ui`        | [embedding.md](docs/embedding.md) |
 | A thin LLM layer               | `genaicode`, `genaicode/providers`     | [llm.md](docs/llm.md)             |
 
