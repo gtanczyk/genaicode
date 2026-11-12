@@ -522,4 +522,39 @@ describe('AgentChat', () => {
       Reflect.deleteProperty(navigator, 'mediaDevices');
     }
   });
+
+  it('stops a recording when the host turns voice messages off', async () => {
+    const stopTrack = vi.fn();
+    const stopRecorder = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        state = 'inactive';
+        mimeType = 'audio/webm';
+        addEventListener() {}
+        start() {
+          this.state = 'recording';
+        }
+        stop = stopRecorder;
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: stopTrack }] })) },
+    });
+    try {
+      const props = render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      await act(async () => {
+        $('[aria-label="Record a voice message"]').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect($('[aria-label="Stop recording"]')).not.toBeNull();
+      render({ ...props, attachments: { voice: false } });
+      expect(stopRecorder).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
 });

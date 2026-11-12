@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TurnAttachment } from '../agents/session.js';
 import { formatBytes } from './format.js';
 
@@ -89,8 +89,8 @@ export function useAttachments(options: ChatAttachments | undefined) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true }).finally(() => {
         asking.current = false;
       });
-      // The composer went away while the browser asked: nobody could stop this recording.
-      if (gone.current) {
+      // The composer or its record button went away while the browser asked: nobody could stop this.
+      if (gone.current || !voice.current) {
         for (const track of stream.getTracks()) track.stop();
         return;
       }
@@ -124,6 +124,13 @@ export function useAttachments(options: ChatAttachments | undefined) {
     }
   }, [add]);
 
+  // Without voice messages there is no button to stop a recording with.
+  const voice = useRef(canRecord);
+  voice.current = canRecord;
+  useEffect(() => {
+    if (!canRecord && recorder.current && recorder.current.state !== 'inactive') recorder.current.stop();
+  }, [canRecord]);
+
   // A recorder left running would keep the microphone on.
   useEffect(() => {
     gone.current = false;
@@ -137,21 +144,19 @@ export function useAttachments(options: ChatAttachments | undefined) {
 
 /** Object URLs for the images among `files`, released when the list changes. */
 function usePreviews(files: readonly File[]): (string | undefined)[] {
-  const urls = useMemo(
-    () =>
-      files.map((file) =>
-        file.type.startsWith('image/') && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-          ? URL.createObjectURL(file)
-          : undefined,
-      ),
-    [files],
-  );
-  useEffect(
-    () => () => {
-      for (const url of urls) if (url) URL.revokeObjectURL(url);
-    },
-    [urls],
-  );
+  const [urls, setUrls] = useState<(string | undefined)[]>([]);
+  // Made in an effect, so every URL made has a cleanup that releases it (a render may run twice).
+  useEffect(() => {
+    const made = files.map((file) =>
+      file.type.startsWith('image/') && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(file)
+        : undefined,
+    );
+    setUrls(made);
+    return () => {
+      for (const url of made) if (url) URL.revokeObjectURL(url);
+    };
+  }, [files]);
   return urls;
 }
 
