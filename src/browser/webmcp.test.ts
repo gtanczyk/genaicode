@@ -110,6 +110,36 @@ describe('exposeWebMcp', () => {
   });
 });
 
+describe('exposeWebMcp cleanup', () => {
+  it('takes back only what it registered, even when asked before registration settles', async () => {
+    const unregistered: string[] = [];
+    const settle: Array<() => void> = [];
+    define('document', {
+      modelContext: {
+        registerTool: (tool: Registered) =>
+          tool.name === 'buy'
+            ? Promise.reject(new Error('Duplicate tool name'))
+            : new Promise<void>((resolve) => settle.push(resolve)),
+        unregisterTool: (name: string) => unregistered.push(name),
+      },
+    });
+    const remove = exposeWebMcp(tools);
+    remove();
+    expect(unregistered).toEqual([]);
+    settle.forEach((resolve) => resolve());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // `read` registered after the cleanup and is taken back; `buy` was never ours.
+    expect(unregistered).toEqual(['read']);
+
+    const late = exposeWebMcp(tools);
+    settle.at(-1)!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    late();
+    late();
+    expect(unregistered).toEqual(['read', 'read']);
+  });
+});
+
 describe('webMcpTools', () => {
   it('lists the page tools an in-page agent can call', async () => {
     define('document', {});

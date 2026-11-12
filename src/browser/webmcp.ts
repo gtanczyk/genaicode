@@ -51,6 +51,16 @@ export function exposeWebMcp(tools: readonly PageTool[], options: ExposeWebMcpOp
   const { context, legacy } = found;
   const controller = new AbortController();
   const registered: string[] = [];
+  let removed = false;
+  // Browsers that unregister by the signal have no `unregisterTool`.
+  const unregister = (name: string) => {
+    try {
+      const pending = context.unregisterTool?.(name);
+      if (pending instanceof Promise) pending.catch(() => {});
+    } catch {
+      // Already gone with the signal.
+    }
+  };
 
   for (const tool of tools) {
     const execute = async (input: unknown) => {
@@ -87,24 +97,25 @@ export function exposeWebMcp(tools: readonly PageTool[], options: ExposeWebMcpOp
         },
         { signal: controller.signal },
       );
-      // The draft returns a promise; a refused tool (a taken name) must not break the page.
-      if (pending instanceof Promise) pending.catch(() => {});
-      registered.push(tool.name);
+      // The draft returns a promise. Only a tool that really registered is ours to take back:
+      // a refused one (a taken name) belongs to another script.
+      if (pending instanceof Promise) {
+        pending.then(
+          () => (removed ? unregister(tool.name) : registered.push(tool.name)),
+          () => {},
+        );
+      } else {
+        registered.push(tool.name);
+      }
     } catch {
       // A name another script registered, or a schema this browser refuses: skip the tool.
     }
   }
 
   return () => {
+    removed = true;
     controller.abort();
-    for (const name of registered) {
-      try {
-        const pending = context.unregisterTool?.(name);
-        if (pending instanceof Promise) pending.catch(() => {});
-      } catch {
-        // Already gone with the signal.
-      }
-    }
+    for (const name of registered.splice(0)) unregister(name);
   };
 }
 
