@@ -545,4 +545,17 @@ describe('nano', () => {
     expect(result).toMatchObject({ ok: true, text: 'Hello.' });
     expect(model.calls.map((call) => call.copy)).toEqual([false, false]);
   });
+
+  it('counts a new conversation before any tool runs, so a spent budget stops it', async () => {
+    const run = vi.fn(() => 'done');
+    const model = fakeLanguageModel(['{"action":"act"}', '{"action":"reply"}', 'Done.'], { initial: 2000 });
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'act', description: 'Do it.', run }],
+    });
+    const result = await agent.run({ prompt: 'go', cwd: '', budget: { maxTokens: 100 } }).result;
+    expect(result.ok).toBe(false);
+    expect(result.failure).toEqual({ kind: 'budget' });
+    expect(run).not.toHaveBeenCalled();
+  });
 });

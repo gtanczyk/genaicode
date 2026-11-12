@@ -36,6 +36,8 @@ export function fakeLanguageModel(
     keeps?: number;
     /** What the model takes besides text. Default: nothing. */
     media?: readonly LanguageModelMedia[];
+    /** Tokens a new session's context already holds (its instructions). Default 0. */
+    initial?: number;
     /** Sessions have no `clone()`, as in the first browsers with the API. */
     noClone?: boolean;
     /**
@@ -138,7 +140,7 @@ export function fakeLanguageModel(
           contextWindow: options.window ?? 1000,
         };
       };
-      const session = make(false);
+      const session = make(false, undefined, options.initial ?? 0);
       return session;
     },
   };

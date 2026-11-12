@@ -205,7 +205,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       const grown = used.used - meter.last;
       meter.last = used.used;
       // A full window drops old messages, so the count stalls or falls: estimate that step from its text.
-      spend(grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN));
+      const tokens = grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN);
+      if (tokens > 0) spend(tokens);
     };
     const spend = (tokens: number) => {
       meter.tokens += tokens;
@@ -386,6 +387,9 @@ async function converse(
   let pending = 0;
   let story = `User: ${task.prompt.trim() || '(no text: see what is attached)'}${attached.text}`;
   if (!tools.length) return reply(story);
+
+  // A new conversation's instructions are already in its context: count them before any tool runs.
+  if (copies) report(0);
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
