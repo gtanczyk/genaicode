@@ -115,12 +115,14 @@ function check(schema: Schema, value: unknown, path: string, problems: string[])
     return;
   }
   if (typeof value === 'string') {
-    if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
+    // JSON Schema counts characters (code points), not UTF-16 units: an emoji is one.
+    const length = [...value].length;
+    if (typeof schema.minLength === 'number' && length < schema.minLength) {
       problems.push(
         value ? `${name} is too short (at least ${schema.minLength} characters)` : `${name} must not be empty`,
       );
     }
-    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) {
       problems.push(`${name} is too long (at most ${schema.maxLength} characters)`);
     }
     if (typeof schema.pattern === 'string') {

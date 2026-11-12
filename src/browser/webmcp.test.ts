@@ -258,6 +258,12 @@ describe('tools', () => {
         },
       },
     };
+    const short: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: { type: 'object', properties: { label: { type: 'string', minLength: 2, maxLength: 2 } } },
+    };
+    // Length is in characters: two emoji are two, though four UTF-16 units.
+    expect(argumentProblems(short, { label: '😀😀' })).toEqual([]);
+    expect(argumentProblems(short, { label: '😀' })).toEqual(['"label" is too short (at least 2 characters)']);
     // Null is an answer where the schema allows it, and a missing value where it does not.
     expect(argumentProblems(nullable, { filter: { value: null, field: 'name' } })).toEqual([]);
     expect(argumentProblems(nullable, { filter: { value: null, field: null } })).toEqual([
