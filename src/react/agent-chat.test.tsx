@@ -557,4 +557,23 @@ describe('AgentChat', () => {
       Reflect.deleteProperty(navigator, 'mediaDevices');
     }
   });
+
+  it('drops pending files when the host stops taking attachments', () => {
+    const props = render({ state: fixture({ status: 'idle' }), attachments: {} });
+    const note = new File(['hello'], 'note.txt', { type: 'text/plain' });
+    const paste = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+      clipboardData: { files: [note] },
+    });
+    act(() => {
+      $('textarea').dispatchEvent(paste);
+    });
+    expect($('.gc-attachments').textContent).toContain('note.txt');
+    render({ ...props, attachments: undefined });
+    expect($('.gc-attachments')).toBeNull();
+    type('just text');
+    click(button('Send')!);
+    const sent = (props.onSend as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(sent[0]).toBe('just text');
+    expect(sent[1] ?? []).toEqual([]);
+  });
 });

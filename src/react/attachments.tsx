@@ -70,6 +70,10 @@ export function useAttachments(options: ChatAttachments | undefined) {
     setFiles([]);
     setProblem(undefined);
   }, []);
+  // A composer that stops taking files must not send ones the user can no longer see or take off.
+  useEffect(() => {
+    if (!enabled) clear();
+  }, [enabled, clear]);
 
   const canRecord =
     !!options?.voice &&
