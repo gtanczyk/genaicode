@@ -456,4 +456,124 @@ describe('AgentChat', () => {
     expect(message).toContain('````json\n{\n  "note": "a ``` b"\n}\n````');
     expect(artifactSubmission({ title: 'T', name: 'n' }, undefined)).toContain('```json\nnull\n```');
   });
+
+  it('lets the microphone go when the composer unmounts while the browser asks for it', async () => {
+    const stop = vi.fn();
+    let grant!: (stream: unknown) => void;
+    const asked = new Promise((resolve) => (grant = resolve));
+    const start = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        state = 'inactive';
+        mimeType = 'audio/webm';
+        addEventListener() {}
+        start = start;
+        stop() {}
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(() => asked) },
+    });
+    try {
+      render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      act(() => $('[aria-label="Record a voice message"]').click());
+      act(() => root.unmount());
+      grant({ getTracks: () => [{ stop }] });
+      await act(async () => {
+        await asked;
+        await Promise.resolve();
+      });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(start).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+      root = createRoot(container);
+    }
+  });
+
+  it('lets the microphone go when the recorder will not start', async () => {
+    const stop = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        constructor() {
+          throw new Error('no codec');
+        }
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop }] })) },
+    });
+    try {
+      render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      await act(async () => {
+        $('[aria-label="Record a voice message"]').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toContain('The microphone is not available: no codec');
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
+
+  it('stops a recording when the host turns voice messages off', async () => {
+    const stopTrack = vi.fn();
+    const stopRecorder = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        state = 'inactive';
+        mimeType = 'audio/webm';
+        addEventListener() {}
+        start() {
+          this.state = 'recording';
+        }
+        stop = stopRecorder;
+      },
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: stopTrack }] })) },
+    });
+    try {
+      const props = render({ state: fixture({ status: 'idle' }), attachments: { voice: true } });
+      await act(async () => {
+        $('[aria-label="Record a voice message"]').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect($('[aria-label="Stop recording"]')).not.toBeNull();
+      render({ ...props, attachments: { voice: false } });
+      expect(stopRecorder).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
+
+  it('drops pending files when the host stops taking attachments', () => {
+    const props = render({ state: fixture({ status: 'idle' }), attachments: {} });
+    const note = new File(['hello'], 'note.txt', { type: 'text/plain' });
+    const paste = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+      clipboardData: { files: [note] },
+    });
+    act(() => {
+      $('textarea').dispatchEvent(paste);
+    });
+    expect($('.gc-attachments').textContent).toContain('note.txt');
+    render({ ...props, attachments: undefined });
+    expect($('.gc-attachments')).toBeNull();
+    type('just text');
+    click(button('Send')!);
+    const sent = (props.onSend as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(sent[0]).toBe('just text');
+    expect(sent[1] ?? []).toEqual([]);
+  });
 });

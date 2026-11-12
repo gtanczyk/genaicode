@@ -192,6 +192,25 @@ describe('createPageAgent', () => {
     expect(agent.get().session.turns[2].result?.ok).toBe(true);
   });
 
+  it('sends files with a prompt, shows them on the turn and keeps them with a queued prompt', async () => {
+    const model = fakeLanguageModel(['A cat.', 'Read it.'], { media: ['image'] });
+    const agent = createPageAgent({ nano: { languageModel: model.factory, inputs: ['image', 'audio'] } });
+    await agent.refresh();
+    expect(agent.get().model.inputs).toEqual(['image']);
+    const photo = new File([new Uint8Array(3)], 'cat.png', { type: 'image/png' });
+    const notes = new File(['hello'], 'notes.txt', { type: 'text/plain' });
+    agent.send('what is it?', [photo]);
+    agent.send('', [notes]);
+    expect(agent.get().session.queued).toEqual(['1 attached']);
+    const state = await settled(agent, (next) => next.session.status === 'idle' && next.session.turns.length === 2);
+    expect(state.session.turns[0].attachments).toMatchObject([{ name: 'cat.png', mediaType: 'image/png', size: 3 }]);
+    expect(state.session.turns[1]).toMatchObject({ prompt: '', attachments: [{ name: 'notes.txt', size: 5 }] });
+    expect(model.calls[0].media).toEqual([{ type: 'image', value: photo }]);
+    expect(model.calls[1].input).toContain('Attached file "notes.txt":\nhello');
+    agent.send('   ');
+    expect(agent.get().session.turns).toHaveLength(2);
+  });
+
   it('drives any CodingAgent given instead of nano', async () => {
     const tasks: AgentTask[] = [];
     const custom: CodingAgent = {

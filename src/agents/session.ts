@@ -40,11 +40,23 @@ export type SessionEntry =
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
 
+/** A file the user sent with a prompt, as the chat shows it. */
+export interface TurnAttachment {
+  name: string;
+  /** MIME type, e.g. `image/png`. Empty when unknown. */
+  mediaType: string;
+  size: number;
+  /** Where the chat can load it from, for a thumbnail or a player. */
+  url?: string;
+}
+
 /** One prompt sent to the agent and everything it did about it. */
 export interface SessionTurn {
   id: number;
   agent: string;
   prompt: string;
+  /** Files sent with the prompt. */
+  attachments?: TurnAttachment[];
   entries: SessionEntry[];
   startedAt: number;
   endedAt?: number;

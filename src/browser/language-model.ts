@@ -4,8 +4,14 @@
  */
 export interface LanguageModelMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | LanguageModelContent[];
 }
+
+/** What a model may take besides text. */
+export type LanguageModelMedia = 'image' | 'audio';
+
+/** One part of a message: text, an image (a `Blob`, a canvas, an `<img>`) or audio (a `Blob`, an `AudioBuffer`). */
+export type LanguageModelContent = { type: 'text'; value: string } | { type: LanguageModelMedia; value: unknown };
 
 export interface LanguageModelPromptOptions {
   signal?: AbortSignal;
@@ -18,6 +24,8 @@ export interface LanguageModelPromptOptions {
 export interface LanguageModelSession {
   prompt(input: string | LanguageModelMessage[], options?: LanguageModelPromptOptions): Promise<string>;
   promptStreaming(input: string | LanguageModelMessage[], options?: LanguageModelPromptOptions): ReadableStream<string>;
+  /** A copy with the same conversation so far; what is asked of the copy stays out of this session. */
+  clone?(options?: { signal?: AbortSignal }): Promise<LanguageModelSession>;
   destroy(): void;
   /** Tokens of the context window in use. `inputUsage` in Chrome before 148. */
   readonly contextUsage?: number;
@@ -27,7 +35,7 @@ export interface LanguageModelSession {
 }
 
 export interface LanguageModelExpected {
-  type: 'text';
+  type: 'text' | LanguageModelMedia;
   languages?: string[];
 }
 
@@ -55,10 +63,13 @@ export function builtInLanguageModel(): LanguageModelFactory | undefined {
     : undefined;
 }
 
-/** What `availability()` and `create()` are told to expect: text in one language both ways. */
-export function expectedText(language: string): Pick<LanguageModelCreateOptions, 'expectedInputs' | 'expectedOutputs'> {
+/** What `availability()` and `create()` are told to expect: text in one language both ways, and `media` in. */
+export function expectedText(
+  language: string,
+  media: readonly LanguageModelMedia[] = [],
+): Pick<LanguageModelCreateOptions, 'expectedInputs' | 'expectedOutputs'> {
   return {
-    expectedInputs: [{ type: 'text', languages: [language] }],
+    expectedInputs: [{ type: 'text', languages: [language] }, ...media.map((type) => ({ type }))],
     expectedOutputs: [{ type: 'text', languages: [language] }],
   };
 }
@@ -70,10 +81,11 @@ export function expectedText(language: string): Pick<LanguageModelCreateOptions,
 export async function languageModelAvailability(
   language = 'en',
   factory: LanguageModelFactory | undefined = builtInLanguageModel(),
+  media: readonly LanguageModelMedia[] = [],
 ): Promise<LanguageModelAvailability> {
   if (!factory) return 'unavailable';
   try {
-    const answer = await factory.availability(expectedText(language));
+    const answer = await factory.availability(expectedText(language, media));
     // Chrome before 138 answered `readily` and `after-download`.
     if (answer === 'available' || answer === 'readily') return 'available';
     if (answer === 'downloadable' || answer === 'after-download') return 'downloadable';

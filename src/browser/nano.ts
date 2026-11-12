@@ -18,7 +18,10 @@ import {
   languageModelAvailability,
   streamDeltas,
   type LanguageModelAvailability,
+  type LanguageModelContent,
   type LanguageModelFactory,
+  type LanguageModelMedia,
+  type LanguageModelMessage,
   type LanguageModelPromptOptions,
   type LanguageModelSession,
 } from './language-model.js';
@@ -41,6 +44,13 @@ export interface NanoOptions {
   name?: string;
   /** The Prompt API to use. Default: the browser's `LanguageModel`. */
   languageModel?: LanguageModelFactory;
+  /**
+   * What a task may attach besides text files: images, audio (a voice message). Asked of the
+   * browser's model, which may take neither; `inputs()` says what it does take. Default: none.
+   */
+  inputs?: readonly LanguageModelMedia[];
+  /** Longest text of one attached file the model is shown, in characters. Default 4,000. */
+  maxAttachmentText?: number;
   /** Download progress of the model, 0 to 1, while a task or `prepare()` waits for it. */
   onDownload?(progress: number): void;
   /** Called after every call to the model, with how long it took: for logs and tuning. */
@@ -58,8 +68,19 @@ export interface NanoModelCall {
   error?: string;
 }
 
+/**
+ * A task for `nano()`: an `AgentTask` that may carry files. A text file is read into the prompt,
+ * an image or audio goes to the model as it is (`NanoOptions.inputs`). A `File` keeps its name.
+ */
+export interface NanoTask extends AgentTask {
+  attachments?: readonly Blob[];
+}
+
 /** A `CodingAgent` that runs in the page, on the browser's built-in model. */
 export interface NanoAgent extends CodingAgent {
+  run(task: NanoTask): AgentRun;
+  /** Which of `NanoOptions.inputs` this browser's model takes. Empty where it takes text only. */
+  inputs(): Promise<LanguageModelMedia[]>;
   /** Whether the browser has the model, could download it, or cannot run it at all. */
   availability(): Promise<LanguageModelAvailability>;
   /**
@@ -102,7 +123,19 @@ export function nano(options: NanoOptions = {}): NanoAgent {
   const language = options.language ?? 'en';
   const maxSteps = options.maxSteps ?? 6;
   const maxToolOutput = options.maxToolOutput ?? 2_000;
+  const maxAttachmentText = options.maxAttachmentText ?? 4_000;
   const factory = () => options.languageModel ?? builtInLanguageModel();
+  // Asked once: every conversation is opened for the same inputs, so any of them takes any task.
+  let asked: Promise<LanguageModelMedia[]> | undefined;
+  const inputs = (): Promise<LanguageModelMedia[]> =>
+    (asked ??= (async () => {
+      const taken: LanguageModelMedia[] = [];
+      for (const type of new Set(options.inputs ?? [])) {
+        if ((await languageModelAvailability(language, factory(), [...taken, type])) !== 'unavailable')
+          taken.push(type);
+      }
+      return taken;
+    })());
   // Insertion order is age: the oldest conversation is dropped first.
   const sessions = new Map<string, LanguageModelSession>();
   let nextSession = 1;
@@ -133,7 +166,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
     const created = model.create({
       initialPrompts: [{ role: 'system', content: briefing(options.instructions, tools) }],
-      ...expectedText(language),
+      ...expectedText(language, await abortable(inputs(), signal)),
       monitor,
       signal,
     });
@@ -147,7 +180,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     return abortable(created, signal);
   }
 
-  function run(task: AgentTask): AgentRun {
+  function run(task: NanoTask): AgentRun {
     const events = new EventQueue<AgentEvent>(approximateSize);
     const controller = new AbortController();
     const { signal } = controller;
@@ -172,7 +205,11 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       const grown = used.used - meter.last;
       meter.last = used.used;
       // A full window drops old messages, so the count stalls or falls: estimate that step from its text.
-      meter.tokens += grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN);
+      const tokens = grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN);
+      if (tokens > 0) spend(tokens);
+    };
+    const spend = (tokens: number) => {
+      meter.tokens += tokens;
       meter.reported = true;
       emit({ type: 'usage', usage: { totalTokens: meter.tokens } });
       const limit = task.budget?.maxTokens;
@@ -215,6 +252,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           typeof options.tools === 'function'
             ? await abortable(Promise.resolve(options.tools()), signal)
             : (options.tools ?? []);
+        const taken = await abortable(inputs(), signal);
+        const attached = await abortable(attach(task.attachments ?? [], taken, maxAttachmentText), signal);
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
         // A new conversation's instructions count as this task's tokens.
@@ -233,11 +272,21 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         }
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
         const live = session;
-        const text = await converse(live, tools, task, emit, signal, (characters) => report(live, characters), {
-          watch: (call) => options.onModelCall?.(call),
-          maxSteps,
-          maxToolOutput,
-        });
+        const text = await converse(
+          live,
+          tools,
+          task,
+          attached,
+          emit,
+          signal,
+          (characters) => report(live, characters),
+          {
+            watch: (call) => options.onModelCall?.(call),
+            spend,
+            maxSteps,
+            maxToolOutput,
+          },
+        );
         return finish('completed', sessionId, text);
       } catch (error) {
         if (signal.aborted && !meter.over) {
@@ -272,7 +321,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     async prepare(signal) {
       const model = factory();
       if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
-      const session = await model.create({ ...expectedText(language), monitor, signal });
+      const taken = signal ? await abortable(inputs(), signal) : await inputs();
+      const session = await model.create({ ...expectedText(language, taken), monitor, signal });
       session.destroy();
     },
     context: (sessionId) => {
@@ -280,6 +330,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       return session ? contextOf(session) : undefined;
     },
     forget,
+    inputs,
   };
 }
 
@@ -288,19 +339,31 @@ async function converse(
   session: LanguageModelSession,
   tools: readonly PageTool[],
   task: AgentTask,
+  attached: Attached,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
   report: (characters: number) => void,
-  limits: { maxSteps: number; maxToolOutput: number; watch: (call: NanoModelCall) => void },
+  limits: {
+    maxSteps: number;
+    maxToolOutput: number;
+    watch: (call: NanoModelCall) => void;
+    /** Tokens a step used on a copy of the conversation, which the conversation's own count never shows. */
+    spend: (tokens: number) => void;
+  },
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
-  const { watch } = limits;
+  const { watch, spend } = limits;
+  // Steps asked on copies are metered there; asked of the conversation, they show in its own count.
+  const copies = typeof session.clone === 'function';
+  // Every step is asked on a copy of the conversation (see `structured`), so each one is told the
+  // whole task so far, and the conversation itself hears it once, with the request for the reply.
+  const { media } = attached;
   const reply = async (input: string): Promise<string> => {
     let text = '';
     for (let attempt = 1; ; attempt++) {
       const started = Date.now();
       try {
-        for await (const delta of streamDeltas(session.promptStreaming(input, { signal }), signal)) {
+        for await (const delta of streamDeltas(session.promptStreaming(message(input, media), { signal }), signal)) {
           text += delta;
           emit({ type: 'text-delta', text: delta });
         }
@@ -322,19 +385,22 @@ async function converse(
 
   // Text exchanged with the model since the last usage report.
   let pending = 0;
-  let input = `User: ${task.prompt}`;
-  if (!tools.length) return reply(input);
+  let story = `User: ${task.prompt.trim() || '(no text: see what is attached)'}${attached.text}`;
+  if (!tools.length) return reply(story);
+
+  // A new conversation's instructions are already in its context: count them before any tool runs.
+  if (copies) report(0);
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
-    const action = await choose(session, input, tools, signal, watch);
-    report(pending + input.length + action.length);
+    const action = await choose(session, story, tools, media, signal, watch, spend);
+    if (!copies) report(pending + story.length + action.length);
     pending = 0;
-    if (action === REPLY) return reply('Write your reply to the user.');
+    if (action === REPLY) return reply(`${story}\n\nWrite your reply to the user.`);
 
     const tool = tools.find((candidate) => candidate.name === action)!;
-    const args = await fillArguments(session, tool, signal, watch);
-    pending += stableJson(args).length;
+    const args = await fillArguments(session, story, tool, media, signal, watch, spend);
+    if (!copies) pending += stableJson(args).length;
     const id = `call-${step + 1}`;
     emit({ type: 'tool-start', id, name: tool.name, input: args });
 
@@ -358,9 +424,42 @@ async function converse(
     signal.throwIfAborted();
     const shown = clip(output, limits.maxToolOutput);
     emit({ type: 'tool-end', id, name: tool.name, output: shown, ...(isError ? { isError } : {}) });
-    input = isError ? `The call to ${tool.name} failed: ${shown}` : `Result of ${tool.name}:\n${shown}`;
+    story += `\n\nYou called ${tool.name} with ${stableJson(args)}.\n${
+      isError ? `The call to ${tool.name} failed: ${shown}` : `Result of ${tool.name}:\n${shown}`
+    }`;
   }
-  return reply(`${input}\n\nNow write your reply to the user.`);
+  return reply(`${story}\n\nNow write your reply to the user.`);
+}
+
+/**
+ * Run `ask` on a copy of the conversation and let the copy go. Chrome keeps the first
+ * `responseConstraint` a session was given: a later prompt with another schema fails with
+ * `UnknownError` or answers in the first one's shape, and a plain prompt gets JSON appended. So
+ * no constrained prompt is sent to the conversation itself. A browser without `clone()` gets the
+ * conversation, as before.
+ */
+async function onCopy<T>(
+  session: LanguageModelSession,
+  signal: AbortSignal,
+  ask: (copy: LanguageModelSession, own: boolean) => Promise<T>,
+): Promise<T> {
+  if (typeof session.clone !== 'function') return ask(session, true);
+  const made = session.clone({ signal });
+  // A copy that arrives after the task was stopped has no owner: release it.
+  made.then(
+    (copy) => signal.aborted && copy.destroy(),
+    () => {},
+  );
+  const copy = await abortable(made, signal);
+  try {
+    return await ask(copy, false);
+  } finally {
+    try {
+      copy.destroy();
+    } catch {
+      // Already gone.
+    }
+  }
 }
 
 const ANNOTATIONS = new Set(['description', 'title', 'default', 'examples', '$comment', 'deprecated']);
@@ -392,42 +491,106 @@ async function structured(
   step: 'choose' | 'arguments',
   question: string,
   schema: Record<string, unknown>,
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
   /** The question already says what shape is wanted: do not spend context on the schema. */
   told = false,
 ): Promise<string> {
-  const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
-    const started = Date.now();
-    const constrained = constraint !== undefined;
+  // What the copies used. Counted once the answer is in: going over budget is not a failed call.
+  let owed = 0;
+  const answer = await asked();
+  if (owed) spend(owed);
+  return answer;
+
+  async function asked(): Promise<string> {
+    const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
+      const started = Date.now();
+      const constrained = constraint !== undefined;
+      try {
+        const raw = await onCopy(session, signal, async (copy, own) => {
+          const before = contextOf(copy)?.used;
+          const out = await abortable(copy.prompt(message(text, media), { signal, ...constraint }), signal);
+          const after = contextOf(copy)?.used;
+          if (!own && before !== undefined && after !== undefined) {
+            owed += after > before ? after - before : Math.ceil((text.length + out.length) / CHARACTERS_PER_TOKEN);
+          }
+          return out;
+        });
+        watch({ step, ms: Date.now() - started, constrained });
+        return raw;
+      } catch (error) {
+        if (!signal.aborted) watch({ step, ms: Date.now() - started, constrained, error: describe(error) });
+        throw error;
+      }
+    };
     try {
-      const raw = await abortable(session.prompt(text, { signal, ...constraint }), signal);
-      watch({ step, ms: Date.now() - started, constrained });
-      return raw;
+      // The schema goes into the prompt here, in full, and the browser gets only what constrains
+      // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
+      const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
+      return await ask(text, {
+        responseConstraint: constraintOf(schema) as Record<string, unknown>,
+        omitResponseConstraintInput: true,
+      });
     } catch (error) {
-      if (!signal.aborted) watch({ step, ms: Date.now() - started, constrained, error: describe(error) });
-      throw error;
-    }
-  };
-  try {
-    // The schema goes into the prompt here, in full, and the browser gets only what constrains
-    // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
-    const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
-    return await ask(text, {
-      responseConstraint: constraintOf(schema) as Record<string, unknown>,
-      omitResponseConstraintInput: true,
-    });
-  } catch (error) {
-    if (signal.aborted) throw error;
-    const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
-    if (permanent(error)) throw new Error(`${doing} failed: ${describe(error)}`);
-    try {
-      return await ask(`${question}\nAnswer with JSON only, following this JSON Schema: ${JSON.stringify(schema)}`);
-    } catch (second) {
-      if (signal.aborted) throw second;
-      throw new Error(`${doing} failed: ${describe(second)}`);
+      if (signal.aborted) throw error;
+      const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
+      if (permanent(error)) throw new Error(`${doing} failed: ${describe(error)}`);
+      try {
+        return await ask(`${question}\nAnswer with JSON only, following this JSON Schema: ${JSON.stringify(schema)}`);
+      } catch (second) {
+        if (signal.aborted) throw second;
+        throw new Error(`${doing} failed: ${describe(second)}`);
+      }
     }
   }
+}
+
+/** What a task's attachments come to: text for the prompt, and parts the model takes as they are. */
+interface Attached {
+  text: string;
+  media: LanguageModelContent[];
+}
+
+const TEXT_TYPES = /^(text\/|application\/(json|xml|javascript|typescript|x-yaml|yaml|toml|x-sh|sql|csv)\b)/;
+const TEXT_NAMES =
+  /\.(txt|md|markdown|json|jsonl|csv|tsv|ya?ml|toml|xml|html?|css|js|jsx|mjs|cjs|ts|tsx|py|rb|go|rs|java|kt|c|h|cpp|cs|php|sh|sql|log|ini|env|gd)$/i;
+
+async function attach(
+  files: readonly Blob[],
+  taken: readonly LanguageModelMedia[],
+  maxText: number,
+): Promise<Attached> {
+  const attached: Attached = { text: '', media: [] };
+  for (const [index, file] of files.entries()) {
+    const name = (file as { name?: unknown }).name;
+    const label = typeof name === 'string' && name ? name : `attachment ${index + 1}`;
+    const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : undefined;
+    if (kind) {
+      if (!taken.includes(kind)) {
+        throw new Error(
+          `"${label}" cannot be attached: the model in this browser does not take ${kind === 'image' ? 'images' : 'audio'}.`,
+        );
+      }
+      attached.media.push({ type: kind, value: file });
+      attached.text += `\n\nAttached ${kind}: "${label}".`;
+    } else if (TEXT_TYPES.test(file.type) || TEXT_NAMES.test(label)) {
+      const text = await file.text();
+      const cut = text.length > maxText;
+      attached.text += `\n\nAttached file "${label}"${cut ? ` (the first ${maxText} of ${text.length} characters)` : ''}:\n${cut ? text.slice(0, maxText) : text}`;
+    } else {
+      throw new Error(
+        `"${label}" cannot be attached: the model reads text files${taken.length ? `, ${taken.join(' and ')}` : ''} only.`,
+      );
+    }
+  }
+  return attached;
+}
+
+/** A prompt as the Prompt API takes it: plain text, or text with images and audio after it. */
+function message(text: string, media: readonly LanguageModelContent[]): string | LanguageModelMessage[] {
+  return media.length ? [{ role: 'user', content: [{ type: 'text', value: text }, ...media] }] : text;
 }
 
 /** An error a second try cannot fix. */
@@ -440,8 +603,10 @@ async function choose(
   session: LanguageModelSession,
   input: string,
   tools: readonly PageTool[],
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
 ): Promise<string> {
   const names = [...tools.map((tool) => tool.name), REPLY];
   const question = `${input}\n\nWhat is the next action? Answer as JSON {"action": "..."} with one of: ${names.join(', ')}.`;
@@ -455,8 +620,10 @@ async function choose(
       required: ['action'],
       additionalProperties: false,
     },
+    media,
     signal,
     watch,
+    spend,
     true,
   );
   notAStub(raw);
@@ -467,18 +634,23 @@ async function choose(
 /** Step two: the chosen tool's arguments, constrained by its schema. */
 async function fillArguments(
   session: LanguageModelSession,
+  story: string,
   tool: PageTool,
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
 ): Promise<Record<string, unknown>> {
   if (!Object.keys(schemaProperties(tool)).length) return {};
   const raw = await structured(
     session,
     'arguments',
-    `Give the arguments for ${tool.name} as a JSON object.`,
+    `${story}\n\nYou chose to call ${tool.name}. Give the arguments for ${tool.name} as a JSON object.`,
     { type: 'object', additionalProperties: false, ...tool.inputSchema },
+    media,
     signal,
     watch,
+    spend,
   );
   const args = parseObject(raw);
   // No arguments is not the same as an answer that has none: do not run the tool on a guess.

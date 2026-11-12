@@ -1,9 +1,9 @@
-import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
+import type { SessionEntry, SessionState, SessionTurn, TurnAttachment } from '../agents/session.js';
 import type { AgentEvent, AgentRun, ApprovalDecision, ApprovalRequest, CodingAgent } from '../agents/types.js';
 import { addUsage } from '../agents/usage.js';
 import type { TokenUsage } from '../core/types.js';
-import type { LanguageModelAvailability } from './language-model.js';
-import { nano, type NanoAgent, type NanoOptions } from './nano.js';
+import type { LanguageModelAvailability, LanguageModelMedia } from './language-model.js';
+import { nano, type NanoAgent, type NanoOptions, type NanoTask } from './nano.js';
 import type { PageTool } from './tools.js';
 
 export interface PageAgentOptions {
@@ -37,6 +37,8 @@ export interface PageAgentState {
     status: PageModelStatus;
     /** Download progress, 0 to 1, while `status` is `downloading`. */
     progress?: number;
+    /** What the model takes besides text and text files (`nano.inputs`), once known. */
+    inputs?: LanguageModelMedia[];
   };
   /** Tokens in use and the size of the model's context window, once the model reported them. */
   context?: { used: number; window: number };
@@ -47,8 +49,11 @@ export interface PageAgent {
   get(): PageAgentState;
   /** Called with every new state. Returns the function that stops it. */
   subscribe(listener: (state: PageAgentState) => void): () => void;
-  /** Send a prompt. While a turn runs it waits in `session.queued`. */
-  send(text: string): void;
+  /**
+   * Send a prompt, with files when the user attached some (text files, and the images and audio
+   * that `state.model.inputs` lists). While a turn runs it waits in `session.queued`.
+   */
+  send(text: string, files?: readonly Blob[]): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Start a new conversation. */
@@ -81,6 +86,28 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
   let pastUsage: TokenUsage = {};
   // A reset or stop makes the events of the run before it stale.
   let generation = 0;
+  // What the queued prompts really send, by position in `session.queued`.
+  let queuedSends: { prompt: string; files: readonly Blob[] }[] = [];
+  // Object URLs made for thumbnails; released on reset.
+  const urls: string[] = [];
+  const shown = (files: readonly Blob[]): TurnAttachment[] =>
+    files.map((file, index) => {
+      const name = (file as { name?: unknown }).name;
+      const attachment: TurnAttachment = {
+        name: typeof name === 'string' && name ? name : `attachment ${index + 1}`,
+        mediaType: file.type,
+        size: file.size,
+      };
+      if (
+        /^(image|audio)\//.test(file.type) &&
+        typeof URL !== 'undefined' &&
+        typeof URL.createObjectURL === 'function'
+      ) {
+        attachment.url = URL.createObjectURL(file);
+        urls.push(attachment.url);
+      }
+      return attachment;
+    });
 
   const builtIn: NanoAgent | undefined = options.agent
     ? undefined
@@ -114,7 +141,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
   const setSession = (change: Partial<SessionState>) => publish({ ...state, session: { ...state.session, ...change } });
   const setModel = (model: PageAgentState['model']) => {
     if (model.status === state.model.status && model.progress === state.model.progress) return;
-    publish({ ...state, model });
+    publish({ ...state, model: { ...model, inputs: state.model.inputs } });
   };
   const updateTurn = (id: number, change: (turn: SessionTurn) => SessionTurn) =>
     setSession({ turns: state.session.turns.map((turn) => (turn.id === id ? change(turn) : turn)) });
@@ -127,6 +154,10 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     // A download or a load in progress knows better than a fresh `downloadable`.
     const busy = !settled && (state.model.status === 'downloading' || state.model.status === 'loading');
     if (!busy || status === 'available' || status === 'unavailable') setModel({ status });
+    if (!state.model.inputs && status !== 'unavailable') {
+      const inputs = await builtIn.inputs().catch(() => []);
+      publish({ ...state, model: { ...state.model, inputs } });
+    }
     return state.model.status;
   };
   void refresh();
@@ -203,10 +234,17 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     }
   }
 
-  async function start(prompt: string): Promise<void> {
+  async function start(prompt: string, files: readonly Blob[] = []): Promise<void> {
     const mine = ++generation;
     const turnId = nextTurn++;
-    const turn: SessionTurn = { id: turnId, agent: agent.name, prompt, entries: [], startedAt: Date.now() };
+    const turn: SessionTurn = {
+      id: turnId,
+      agent: agent.name,
+      prompt,
+      ...(files.length ? { attachments: shown(files) } : {}),
+      entries: [],
+      startedAt: Date.now(),
+    };
     setSession({ status: 'running', turns: [...state.session.turns, turn] });
     if (builtIn && state.model.status !== 'available') {
       // The first turn opens the model; a download reports itself through `onDownload`.
@@ -214,12 +252,14 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     }
     try {
       // A driver may throw before it returns a run; that ends the turn like any failure.
-      const current = agent.run({
+      const task: NanoTask = {
         prompt,
         cwd: '',
         resume: conversation,
         onApproval: (request, signal) => ask(request, signal),
-      });
+        ...(files.length ? { attachments: files } : {}),
+      };
+      const current = agent.run(task);
       run = current;
       for await (const event of current) {
         if (mine !== generation) continue;
@@ -254,8 +294,10 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       setSession({ status: 'idle' });
       return;
     }
+    const [waiting, ...later] = queuedSends;
+    queuedSends = later;
     setSession({ queued });
-    void start(next);
+    void start(waiting?.prompt ?? next, waiting?.files);
   }
 
   function ask(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> {
@@ -292,18 +334,21 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
         listeners.delete(listener);
       };
     },
-    send(text) {
+    send(text, files = []) {
       const prompt = text.trim();
-      if (!prompt) return;
+      if (!prompt && !files.length) return;
       if (state.session.status === 'running') {
-        setSession({ queued: [...state.session.queued, prompt] });
+        queuedSends = [...queuedSends, { prompt, files }];
+        // A prompt of files alone still shows in the queue.
+        setSession({ queued: [...state.session.queued, prompt || `${files.length} attached`] });
         return;
       }
-      void start(prompt);
+      void start(prompt, files);
     },
     stop() {
       if (state.session.status !== 'running') return;
       // The run's own `done` event closes the turn; nothing queued follows a stop.
+      queuedSends = [];
       setSession({ queued: [] });
       run?.abort();
     },
@@ -313,6 +358,8 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       if (conversation) builtIn?.forget(conversation);
       conversation = undefined;
       pastUsage = {};
+      queuedSends = [];
+      for (const url of urls.splice(0)) URL.revokeObjectURL(url);
       publish({
         ...state,
         context: undefined,

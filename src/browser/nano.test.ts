@@ -278,8 +278,13 @@ describe('nano', () => {
     let open = () => {};
     const gate = new Promise<void>((resolve) => (open = resolve));
     // A factory that ignores the signal.
-    model.factory.create = (options) => gate.then(() => create({ ...options, signal: undefined }));
+    let asked = false;
+    model.factory.create = (options) => {
+      asked = true;
+      return gate.then(() => create({ ...options, signal: undefined }));
+    };
     const run = nano({ languageModel: model.factory }).run({ prompt: 'x', cwd: '' });
+    await vi.waitFor(() => expect(asked).toBe(true));
     run.abort();
     expect((await run.result).status).toBe('aborted');
     expect(model.destroyed).toBe(0);
@@ -358,6 +363,46 @@ describe('nano', () => {
       error: 'Choosing the next action failed: An unknown error occurred: kErrorUnknown',
     });
     expect(model.calls).toHaveLength(2);
+  });
+
+  it('reads attached text files into the prompt and hands images to the model', async () => {
+    const model = fakeLanguageModel(['A cat.', 'Noted.'], { media: ['image'] });
+    const agent = nano({ languageModel: model.factory, inputs: ['image', 'audio'], maxAttachmentText: 10 });
+    expect(await agent.inputs()).toEqual(['image']);
+    const photo = new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' });
+    const notes = new File(['0123456789abcdef'], 'notes.md', { type: '' });
+    const first = await agent.run({ prompt: 'What is this?', cwd: '', attachments: [photo, notes] }).result;
+    expect(first.ok).toBe(true);
+    expect(model.created[0].expectedInputs).toEqual([{ type: 'text', languages: ['en'] }, { type: 'image' }]);
+    expect(model.calls[0].media).toEqual([{ type: 'image', value: photo }]);
+    expect(model.calls[0].input).toBe(
+      'User: What is this?\n\nAttached image: "cat.png".\n\nAttached file "notes.md" (the first 10 of 16 characters):\n0123456789\n[image]',
+    );
+    // The image went once: a later turn of the conversation is text again.
+    await agent.run({
+      prompt: '',
+      cwd: '',
+      resume: first.sessionId,
+      attachments: [new Blob(['hi'], { type: 'text/plain' })],
+    }).result;
+    expect(model.calls[1].media).toEqual([]);
+    expect(model.calls[1].input).toBe('User: (no text: see what is attached)\n\nAttached file "attachment 1":\nhi');
+  });
+
+  it('refuses an attachment the model cannot take', async () => {
+    const agent = nano({ languageModel: fakeLanguageModel(['x']).factory, inputs: ['image'] });
+    const voice = new File([new Uint8Array(4)], 'voice.webm', { type: 'audio/webm' });
+    const zip = new File([new Uint8Array(4)], 'a.zip', { type: 'application/zip' });
+    const photo = new File([new Uint8Array(4)], 'a.png', { type: 'image/png' });
+    const errors = [];
+    for (const file of [voice, zip, photo]) {
+      errors.push((await agent.run({ prompt: 'x', cwd: '', attachments: [file] }).result).error);
+    }
+    expect(errors).toEqual([
+      '"voice.webm" cannot be attached: the model in this browser does not take audio.',
+      '"a.zip" cannot be attached: the model reads text files only.',
+      '"a.png" cannot be attached: the model in this browser does not take images.',
+    ]);
   });
 
   it('keeps a conversation that a task is still running in', async () => {
@@ -442,6 +487,75 @@ describe('nano', () => {
     const result = await agent.run({ prompt: 'find wolves', cwd: '' }).result;
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Filling in the arguments failed');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('asks each constrained step on a copy, so a session that keeps its first schema still works', async () => {
+    const run = vi.fn(({ section }) => `About ${String(section)}.`);
+    const model = fakeLanguageModel(
+      ['{"action":"read"}', '{"section":"start"}', '{"action":"reply"}', 'It starts with npx.'],
+      { stickyConstraint: true },
+    );
+    const calls: NanoModelCall[] = [];
+    const agent = nano({
+      languageModel: model.factory,
+      onModelCall: (call) => calls.push(call),
+      tools: [
+        {
+          name: 'read',
+          description: 'Read a section.',
+          inputSchema: { type: 'object', properties: { section: { type: 'string' } }, required: ['section'] },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'how do I start?', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'It starts with npx.' });
+    expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
+    // No step fell back to asking in words.
+    expect(calls.map((call) => [call.step, call.constrained, call.error])).toEqual([
+      ['choose', true, undefined],
+      ['arguments', true, undefined],
+      ['choose', true, undefined],
+      ['reply', false, undefined],
+    ]);
+    // The conversation itself hears one prompt, unconstrained, with the whole task in it.
+    const own = model.calls.filter((call) => !call.copy);
+    expect(own).toHaveLength(1);
+    expect(own[0].options?.responseConstraint).toBeUndefined();
+    expect(own[0].input).toContain('User: how do I start?');
+    expect(own[0].input).toContain('You called read with {"section":"start"}.');
+    expect(own[0].input).toContain('Result of read:\nAbout start.');
+    // A copy does not know what another copy was asked: each is told the task so far.
+    expect(model.calls[1].input).toContain('User: how do I start?');
+    expect(model.calls[2].input).toContain('Result of read:\nAbout start.');
+    expect(model.copies).toBe(3);
+    expect(model.released).toBe(3);
+    // What the copies used counts toward the task, though the conversation's own count never shows it.
+    expect(result.usage).toEqual({ totalTokens: 40 });
+  });
+
+  it('uses the session itself where the browser has no clone()', async () => {
+    const model = fakeLanguageModel(['{"action":"reply"}', 'Hello.'], { noClone: true });
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'noop', description: 'Nothing.', run: () => 'ok' }],
+    });
+    const result = await agent.run({ prompt: 'hi', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'Hello.' });
+    expect(model.calls.map((call) => call.copy)).toEqual([false, false]);
+  });
+
+  it('counts a new conversation before any tool runs, so a spent budget stops it', async () => {
+    const run = vi.fn(() => 'done');
+    const model = fakeLanguageModel(['{"action":"act"}', '{"action":"reply"}', 'Done.'], { initial: 2000 });
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'act', description: 'Do it.', run }],
+    });
+    const result = await agent.run({ prompt: 'go', cwd: '', budget: { maxTokens: 100 } }).result;
+    expect(result.ok).toBe(false);
+    expect(result.failure).toEqual({ kind: 'budget' });
     expect(run).not.toHaveBeenCalled();
   });
 });

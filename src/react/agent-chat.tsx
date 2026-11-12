@@ -3,13 +3,16 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type ReactNode,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalDecision, Artifact } from '../agents/types.js';
 import { describeFailover } from '../agents/failover.js';
+import { PendingAttachments, TurnAttachments, useAttachments, type ChatAttachments } from './attachments.js';
 import { useFollowScroll } from './follow-scroll.js';
 import {
   formatBytes,
@@ -40,8 +43,17 @@ export interface AgentChatProps {
    * yet) shows an empty, idle chat the user can type into.
    */
   state: SessionState | null | undefined;
-  /** The user sent `text` (Enter or the Send button). Whitespace-only input is not sent. */
-  onSend(text: string): void;
+  /**
+   * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
+   * files go with it: `files` is there when `attachments` is on and the user attached some.
+   */
+  onSend(text: string, files?: File[]): void;
+  /**
+   * Let the user send files with a prompt: an attach button, paste and drop, and with `voice` a
+   * microphone that records a voice message. Without it the composer takes text only. The host
+   * decides what an agent can do with a file, so set `accept` to what it handles.
+   */
+  attachments?: ChatAttachments;
   /** The user pressed Stop or Esc while the agent works. Without it there is no Stop button. */
   onStop?(): void;
   /** Offer Stop (button and Esc) while the agent is idle too: the host runs something of its own. */
@@ -132,11 +144,27 @@ export function AgentChat(props: AgentChatProps) {
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const agentName = state.agent || 'the agent';
 
+  const attached = useAttachments(props.attachments);
+  const picker = useRef<HTMLInputElement>(null);
+  const sendable = (!!draft.trim() || attached.files.length > 0) && !props.disabled && !attached.recording;
   const send = () => {
-    if (!draft.trim() || props.disabled) return;
+    if (!sendable) return;
     follow();
-    props.onSend(draft);
+    if (attached.files.length) props.onSend(draft, attached.files);
+    else props.onSend(draft);
     setDraft('');
+    attached.clear();
+  };
+  const onPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    if (!attached.enabled || !event.clipboardData.files.length) return;
+    // A copied image comes as a file; pasted text goes into the box as usual.
+    event.preventDefault();
+    attached.add(event.clipboardData.files);
+  };
+  const onDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!attached.enabled || !event.dataTransfer.files.length) return;
+    event.preventDefault();
+    attached.add(event.dataTransfer.files);
   };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -250,7 +278,75 @@ export function AgentChat(props: AgentChatProps) {
             })}
           </div>
         ) : null}
-        <div className="gc-box">
+        {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
+        {attached.problem ? (
+          <div className="gc-attach-problem" role="alert">
+            {attached.problem}
+          </div>
+        ) : null}
+        <div
+          className="gc-box"
+          onDrop={onDrop}
+          onDragOver={(event) => {
+            if (attached.enabled) event.preventDefault();
+          }}
+        >
+          {attached.enabled ? (
+            <>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                hidden
+                accept={attached.accept}
+                onChange={(event) => {
+                  if (event.target.files) attached.add(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                className="gc-btn gc-icon"
+                aria-label="Attach files"
+                title="Attach files (or paste, or drop them here)"
+                disabled={attached.files.length >= attached.max}
+                onClick={() => picker.current?.click()}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              {attached.canRecord ? (
+                <button
+                  type="button"
+                  className={`gc-btn gc-icon${attached.recording ? ' gc-recording' : ''}`}
+                  aria-label={attached.recording ? 'Stop recording' : 'Record a voice message'}
+                  aria-pressed={attached.recording}
+                  title={attached.recording ? 'Stop recording' : 'Record a voice message'}
+                  disabled={!attached.recording && attached.files.length >= attached.max}
+                  onClick={() => void attached.toggleRecording()}
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path
+                      d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5.5 11.5a6.5 6.5 0 0013 0M12 18v3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
+            </>
+          ) : null}
           <textarea
             ref={input}
             rows={1}
@@ -260,13 +356,14 @@ export function AgentChat(props: AgentChatProps) {
             aria-label="Message"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
           />
           {(running || props.canStop) && props.onStop ? (
             <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
               Stop
             </button>
           ) : null}
-          <button type="button" className="gc-btn gc-primary" disabled={!draft.trim() || props.disabled} onClick={send}>
+          <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
             {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
           </button>
         </div>
@@ -347,7 +444,10 @@ function Turn({
   );
   return (
     <section className="gc-turn">
-      {shown === null || shown === undefined || shown === false ? null : <div className="gc-prompt">{shown}</div>}
+      {shown === null || shown === undefined || shown === false || (shown === '' && turn.attachments?.length) ? null : (
+        <div className="gc-prompt">{shown}</div>
+      )}
+      <TurnAttachments items={turn.attachments} />
       {turn.entries.length ? (
         <div className="gc-agent-row">
           <div className="gc-avatar" title={turn.agent} aria-hidden="true">

@@ -102,7 +102,11 @@ if ((await agent.availability()) !== 'unavailable') {
 - `availability()`: `available`, `downloadable`, `downloading` or `unavailable`.
 - `prepare()` loads the model, downloading it first when needed. A download needs a user
   gesture, so call it from a click; `onDownload(progress)` reports 0 to 1.
-- Chrome fails some schema-constrained calls with an unexplained `UnknownError`. `nano` then asks
+- Chrome keeps the first `responseConstraint` a session was given: a later prompt with another
+  schema fails with `UnknownError` or answers in the first one's shape. So `nano` asks every
+  constrained step on a copy of the conversation (`session.clone()`), tells it the task so far,
+  and lets the copy go; the conversation itself only hears the request for the reply.
+- A schema-constrained call can still fail with an unexplained `UnknownError`. `nano` then asks
   the model the same thing in words and checks the answer itself, and a reply that fails before
   its first word is tried once more. An error that remains names the step: choosing the action,
   filling in the arguments or writing the reply.
@@ -120,6 +124,35 @@ if ((await agent.availability()) !== 'unavailable') {
 - `task.cwd`, `env` and `mcpServers` mean nothing in a page. Pass `cwd: ''`.
 
 `createPageAgent({ agent })` takes any other `CodingAgent` that runs in a browser instead.
+
+## Files, images and voice
+
+```ts
+const assistant = createPageAgent({ tools, nano: { inputs: ['image', 'audio'] } });
+assistant.send('What is on this screenshot?', [file]);
+```
+
+```tsx
+<PageAgentChat agent={assistant} attachments />
+```
+
+`send(text, files)` takes `File`s or `Blob`s with a prompt, and `nano().run({ prompt, attachments })`
+does the same one level down.
+
+- A text file (by MIME type or extension: Markdown, JSON, CSV, source code) is read into the
+  prompt, up to `maxAttachmentText` characters (default 4,000). The context window is small, so a
+  long file is cut and the model is told so.
+- An image or audio file goes to the model as it is, if `nano: { inputs }` asked for that kind
+  and the browser's model takes it. `assistant.get().model.inputs` (and `nano().inputs()`) lists
+  what it takes; elsewhere such a file fails the turn with a message that says why. Audio needs
+  a GPU in Chrome.
+- Anything else (a PDF, an archive) is refused.
+
+With `attachments`, `<PageAgentChat>` adds an attach button, takes pasted and dropped files, and
+shows a microphone where the model takes audio: it records a voice message that is sent as an
+audio file, so speech stays on the device too. The chat offers only the kinds the model takes.
+`<AgentChat attachments={{ accept, voice, max }}>` has the same composer for any host:
+`onSend(text, files)` gets the files, and a turn's `attachments` are drawn under its prompt.
 
 ## WebMCP
 
