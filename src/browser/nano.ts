@@ -480,7 +480,9 @@ async function fillArguments(
     signal,
     watch,
   );
-  const args = parseObject(raw) ?? {};
+  const args = parseObject(raw);
+  // No arguments is not the same as an answer that has none: do not run the tool on a guess.
+  if (!args) throw new Error(`Filling in the arguments failed: the model did not answer with a JSON object.`);
   // Asked in words, a model may add arguments the schema does not have; the browser never lets it.
   const open = tool.inputSchema?.additionalProperties;
   if (open === true || (open && typeof open === 'object')) return args;

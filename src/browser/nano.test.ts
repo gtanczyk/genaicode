@@ -421,4 +421,27 @@ describe('nano', () => {
     expect(text).toContain('- ping(): Ping.');
     expect(briefing(undefined, [])).not.toContain('tools');
   });
+
+  it('does not run a tool when the arguments asked for in words are not JSON', async () => {
+    const run = vi.fn(() => 'found');
+    const unknown = () => {
+      throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+    };
+    const model = fakeLanguageModel(['{"action":"search"}', unknown, 'Sorry, I cannot produce the arguments.']);
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [
+        {
+          name: 'search',
+          description: 'Search.',
+          inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'find wolves', cwd: '' }).result;
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Filling in the arguments failed');
+    expect(run).not.toHaveBeenCalled();
+  });
 });
