@@ -1,13 +1,18 @@
 import type {
+  LanguageModelContent,
   LanguageModelCreateOptions,
   LanguageModelFactory,
+  LanguageModelMedia,
   LanguageModelMessage,
   LanguageModelPromptOptions,
   LanguageModelSession,
 } from './language-model.js';
 
 export interface FakeCall {
+  /** The prompt's text; an image or audio part shows as `[image]` or `[audio]`. */
   input: string;
+  /** The image and audio parts sent with the prompt. */
+  media: LanguageModelContent[];
   options?: LanguageModelPromptOptions;
   streaming: boolean;
 }
@@ -22,21 +27,31 @@ export type FakeReply = string | ((input: string, options?: LanguageModelPromptO
  */
 export function fakeLanguageModel(
   script: FakeReply[],
-  options: { availability?: string; download?: number[]; window?: number; keeps?: number } = {},
+  options: {
+    availability?: string;
+    download?: number[];
+    window?: number;
+    keeps?: number;
+    /** What the model takes besides text. Default: nothing. */
+    media?: readonly LanguageModelMedia[];
+  } = {},
 ) {
   const calls: FakeCall[] = [];
   const created: LanguageModelCreateOptions[] = [];
   let destroyed = 0;
   let at = 0;
   const next = async (input: string | LanguageModelMessage[], promptOptions?: LanguageModelPromptOptions) => {
-    const text = typeof input === 'string' ? input : input.map((message) => message.content).join('\n');
+    const text = textOf(input);
     promptOptions?.signal?.throwIfAborted();
     const reply = script[Math.min(at++, script.length - 1)];
     if (reply === undefined) throw new Error('fakeLanguageModel: nothing scripted');
     return typeof reply === 'function' ? reply(text, promptOptions) : reply;
   };
   const factory: LanguageModelFactory = {
-    availability: async () => options.availability ?? 'available',
+    availability: async (asked) =>
+      (asked?.expectedInputs ?? []).some((input) => input.type !== 'text' && !options.media?.includes(input.type))
+        ? 'unavailable'
+        : (options.availability ?? 'available'),
     async create(createOptions = {}) {
       created.push(createOptions);
       if (options.download) {
@@ -52,13 +67,13 @@ export function fakeLanguageModel(
       };
       const session: LanguageModelSession = {
         async prompt(input, promptOptions) {
-          calls.push({ input: String(input), options: promptOptions, streaming: false });
+          calls.push({ input: textOf(input), media: mediaOf(input), options: promptOptions, streaming: false });
           const reply = await next(input, promptOptions);
           grow();
           return reply;
         },
         promptStreaming(input, promptOptions) {
-          calls.push({ input: String(input), options: promptOptions, streaming: true });
+          calls.push({ input: textOf(input), media: mediaOf(input), options: promptOptions, streaming: true });
           return new ReadableStream<string>({
             async start(controller) {
               try {
@@ -94,4 +109,21 @@ export function fakeLanguageModel(
       return destroyed;
     },
   };
+}
+
+function parts(input: string | LanguageModelMessage[]): LanguageModelContent[] {
+  if (typeof input === 'string') return [{ type: 'text', value: input }];
+  return input.flatMap((message) =>
+    typeof message.content === 'string' ? [{ type: 'text' as const, value: message.content }] : message.content,
+  );
+}
+
+function textOf(input: string | LanguageModelMessage[]): string {
+  return parts(input)
+    .map((part) => (part.type === 'text' ? String(part.value) : `[${part.type}]`))
+    .join('\n');
+}
+
+function mediaOf(input: string | LanguageModelMessage[]): LanguageModelContent[] {
+  return parts(input).filter((part) => part.type !== 'text');
 }

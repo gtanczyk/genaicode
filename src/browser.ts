@@ -24,7 +24,7 @@
  * Draw it with `<PageAgentChat agent={assistant} />` from `genaicode/react`.
  */
 export { nano, briefing } from './browser/nano.js';
-export type { NanoAgent, NanoModelCall, NanoOptions } from './browser/nano.js';
+export type { NanoAgent, NanoModelCall, NanoOptions, NanoTask } from './browser/nano.js';
 export { createPageAgent } from './browser/page-agent.js';
 export type { PageAgent, PageAgentOptions, PageAgentState, PageModelStatus } from './browser/page-agent.js';
 export { exposeWebMcp, webMcpSupported, webMcpTools } from './browser/webmcp.js';

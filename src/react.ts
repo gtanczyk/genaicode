@@ -13,6 +13,8 @@
  */
 export { AgentChat, artifactSubmission } from './react/agent-chat.js';
 export type { AgentChatProps, ChatNotice } from './react/agent-chat.js';
+export { matchesAccept } from './react/attachments.js';
+export type { ChatAttachments } from './react/attachments.js';
 export { Markdown } from './react/markdown.js';
 export { AppAgentChat, useAppAgent } from './react/app-agent-chat.js';
 export type { AppAgentChatProps, AppAgentClient, AppAgentClientOptions } from './react/app-agent-chat.js';
@@ -42,7 +44,7 @@ export {
   turnFooter,
 } from './react/format.js';
 export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
-export type { SessionEntry, SessionState, SessionTurn } from './agents/session.js';
+export type { SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
 export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
 export { useFollowScroll } from './react/follow-scroll.js';
 export { installResizeHandle, storedSize } from './react/resize-handle.js';

@@ -656,6 +656,113 @@ img.gc-artifact-view {
   border-radius: 14px;
   padding: 8px 8px 8px 14px;
 }
+.gc-box .gc-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex: none;
+  color: var(--_muted);
+  margin-left: -6px;
+  background: transparent;
+  border-color: transparent;
+}
+.gc-box .gc-icon + .gc-icon {
+  margin-left: -4px;
+}
+.gc-box .gc-icon:hover:not(:disabled) {
+  color: var(--_text);
+}
+.gc-box .gc-icon.gc-recording {
+  color: #fff;
+  background: var(--_danger, #e5484d);
+  border-color: transparent;
+  animation: gc-recording 1.2s ease-in-out infinite;
+}
+@keyframes gc-recording {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--_danger, #e5484d) 30%, transparent);
+  }
+}
+.gc-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.gc-attachments.gc-sent {
+  justify-content: flex-end;
+  align-items: flex-end;
+  margin: 6px 0 0;
+}
+.gc-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 0.85em;
+  background: var(--_bg);
+  border: 1px solid var(--_border);
+  border-radius: 10px;
+  padding: 4px 6px 4px 8px;
+}
+.gc-attachment img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  margin-left: -4px;
+}
+.gc-attachment i {
+  font-style: normal;
+  color: var(--_muted);
+}
+.gc-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16em;
+}
+.gc-attachment small {
+  color: var(--_faint);
+  white-space: nowrap;
+}
+.gc-attachment button {
+  border: 0;
+  background: transparent;
+  color: var(--_muted);
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.gc-attachment button:hover {
+  color: var(--_text);
+  background: var(--_border);
+}
+.gc-attachment-image {
+  max-width: min(240px, 70%);
+  max-height: 180px;
+  border-radius: 12px;
+  border: 1px solid var(--_border);
+  object-fit: cover;
+}
+.gc-attachment-audio {
+  height: 36px;
+  max-width: 100%;
+}
+.gc-attach-problem {
+  font-size: 0.85em;
+  color: var(--_danger, #e5484d);
+  margin-bottom: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gc-box .gc-icon.gc-recording {
+    animation: none;
+  }
+}
 .gc-box:focus-within {
   border-color: var(--_accent);
 }

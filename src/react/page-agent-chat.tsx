@@ -1,6 +1,10 @@
-import { useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import type { PageAgent, PageAgentState } from '../browser/page-agent.js';
 import { AgentChat, type AgentChatProps } from './agent-chat.js';
+
+/** The text files a page agent reads into its prompt. */
+const TEXT_FILES =
+  'text/*,application/json,.txt,.md,.json,.jsonl,.csv,.tsv,.yaml,.yml,.toml,.xml,.html,.css,.js,.jsx,.mjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.log,.ini,.gd';
 
 /** The live state of a page agent (`createPageAgent` from `genaicode/browser`). */
 export function usePageAgent(agent: PageAgent): PageAgentState {
@@ -20,6 +24,11 @@ export interface PageAgentChatProps {
   /** Extra content at the end of the default header, after the context chip and "New". */
   headerExtras?: ReactNode;
   hint?: ReactNode;
+  /**
+   * Let the user send files: text files always, images and voice messages where the browser's
+   * model takes them (`nano: { inputs: ['image', 'audio'] }` on the agent). Default false.
+   */
+  attachments?: boolean;
   /** Tool name as shown. Default: friendlier names for common tools. */
   formatToolName?: AgentChatProps['formatToolName'];
   /** Fold each turn's tool calls into one "N steps" line. Default true. */
@@ -42,6 +51,22 @@ export function PageAgentChat(props: PageAgentChatProps) {
   const missing = model.status === 'unavailable';
   const percent = context ? Math.min(100, Math.round((context.used / context.window) * 100)) : undefined;
   const running = session.status === 'running';
+  // A string, so the memo below changes with the content and not with every new array.
+  const takes = (model.inputs ?? []).join();
+  const attachments = useMemo(
+    () =>
+      props.attachments
+        ? {
+            accept: [
+              TEXT_FILES,
+              ...(takes.includes('image') ? ['image/*'] : []),
+              ...(takes.includes('audio') ? ['audio/*'] : []),
+            ].join(','),
+            voice: takes.includes('audio'),
+          }
+        : undefined,
+    [props.attachments, takes],
+  );
 
   const status =
     model.status === 'downloading' ? (
@@ -87,6 +112,7 @@ export function PageAgentChat(props: PageAgentChatProps) {
     <AgentChat
       state={session}
       onSend={agent.send}
+      attachments={attachments}
       onStop={agent.stop}
       onApprove={agent.approve}
       foldSteps={props.foldSteps ?? true}

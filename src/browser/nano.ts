@@ -18,7 +18,10 @@ import {
   languageModelAvailability,
   streamDeltas,
   type LanguageModelAvailability,
+  type LanguageModelContent,
   type LanguageModelFactory,
+  type LanguageModelMedia,
+  type LanguageModelMessage,
   type LanguageModelPromptOptions,
   type LanguageModelSession,
 } from './language-model.js';
@@ -41,6 +44,13 @@ export interface NanoOptions {
   name?: string;
   /** The Prompt API to use. Default: the browser's `LanguageModel`. */
   languageModel?: LanguageModelFactory;
+  /**
+   * What a task may attach besides text files: images, audio (a voice message). Asked of the
+   * browser's model, which may take neither; `inputs()` says what it does take. Default: none.
+   */
+  inputs?: readonly LanguageModelMedia[];
+  /** Longest text of one attached file the model is shown, in characters. Default 4,000. */
+  maxAttachmentText?: number;
   /** Download progress of the model, 0 to 1, while a task or `prepare()` waits for it. */
   onDownload?(progress: number): void;
   /** Called after every call to the model, with how long it took: for logs and tuning. */
@@ -58,8 +68,19 @@ export interface NanoModelCall {
   error?: string;
 }
 
+/**
+ * A task for `nano()`: an `AgentTask` that may carry files. A text file is read into the prompt,
+ * an image or audio goes to the model as it is (`NanoOptions.inputs`). A `File` keeps its name.
+ */
+export interface NanoTask extends AgentTask {
+  attachments?: readonly Blob[];
+}
+
 /** A `CodingAgent` that runs in the page, on the browser's built-in model. */
 export interface NanoAgent extends CodingAgent {
+  run(task: NanoTask): AgentRun;
+  /** Which of `NanoOptions.inputs` this browser's model takes. Empty where it takes text only. */
+  inputs(): Promise<LanguageModelMedia[]>;
   /** Whether the browser has the model, could download it, or cannot run it at all. */
   availability(): Promise<LanguageModelAvailability>;
   /**
@@ -102,7 +123,19 @@ export function nano(options: NanoOptions = {}): NanoAgent {
   const language = options.language ?? 'en';
   const maxSteps = options.maxSteps ?? 6;
   const maxToolOutput = options.maxToolOutput ?? 2_000;
+  const maxAttachmentText = options.maxAttachmentText ?? 4_000;
   const factory = () => options.languageModel ?? builtInLanguageModel();
+  // Asked once: every conversation is opened for the same inputs, so any of them takes any task.
+  let asked: Promise<LanguageModelMedia[]> | undefined;
+  const inputs = (): Promise<LanguageModelMedia[]> =>
+    (asked ??= (async () => {
+      const taken: LanguageModelMedia[] = [];
+      for (const type of new Set(options.inputs ?? [])) {
+        if ((await languageModelAvailability(language, factory(), [...taken, type])) !== 'unavailable')
+          taken.push(type);
+      }
+      return taken;
+    })());
   // Insertion order is age: the oldest conversation is dropped first.
   const sessions = new Map<string, LanguageModelSession>();
   let nextSession = 1;
@@ -133,7 +166,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
     const created = model.create({
       initialPrompts: [{ role: 'system', content: briefing(options.instructions, tools) }],
-      ...expectedText(language),
+      ...expectedText(language, await abortable(inputs(), signal)),
       monitor,
       signal,
     });
@@ -147,7 +180,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     return abortable(created, signal);
   }
 
-  function run(task: AgentTask): AgentRun {
+  function run(task: NanoTask): AgentRun {
     const events = new EventQueue<AgentEvent>(approximateSize);
     const controller = new AbortController();
     const { signal } = controller;
@@ -215,6 +248,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           typeof options.tools === 'function'
             ? await abortable(Promise.resolve(options.tools()), signal)
             : (options.tools ?? []);
+        const attached = await abortable(attach(task.attachments ?? [], await inputs(), maxAttachmentText), signal);
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
         // A new conversation's instructions count as this task's tokens.
@@ -233,11 +267,20 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         }
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
         const live = session;
-        const text = await converse(live, tools, task, emit, signal, (characters) => report(live, characters), {
-          watch: (call) => options.onModelCall?.(call),
-          maxSteps,
-          maxToolOutput,
-        });
+        const text = await converse(
+          live,
+          tools,
+          task,
+          attached,
+          emit,
+          signal,
+          (characters) => report(live, characters),
+          {
+            watch: (call) => options.onModelCall?.(call),
+            maxSteps,
+            maxToolOutput,
+          },
+        );
         return finish('completed', sessionId, text);
       } catch (error) {
         if (signal.aborted && !meter.over) {
@@ -272,7 +315,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     async prepare(signal) {
       const model = factory();
       if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
-      const session = await model.create({ ...expectedText(language), monitor, signal });
+      const session = await model.create({ ...expectedText(language, await inputs()), monitor, signal });
       session.destroy();
     },
     context: (sessionId) => {
@@ -280,6 +323,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       return session ? contextOf(session) : undefined;
     },
     forget,
+    inputs,
   };
 }
 
@@ -288,6 +332,7 @@ async function converse(
   session: LanguageModelSession,
   tools: readonly PageTool[],
   task: AgentTask,
+  attached: Attached,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
   report: (characters: number) => void,
@@ -295,16 +340,19 @@ async function converse(
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
   const { watch } = limits;
+  // Images and audio go with the task's first call to the model; the conversation keeps them.
+  let media = attached.media;
   const reply = async (input: string): Promise<string> => {
     let text = '';
     for (let attempt = 1; ; attempt++) {
       const started = Date.now();
       try {
-        for await (const delta of streamDeltas(session.promptStreaming(input, { signal }), signal)) {
+        for await (const delta of streamDeltas(session.promptStreaming(message(input, media), { signal }), signal)) {
           text += delta;
           emit({ type: 'text-delta', text: delta });
         }
         watch({ step: 'reply', ms: Date.now() - started, constrained: false });
+        media = [];
         break;
       } catch (error) {
         if (signal.aborted) throw error;
@@ -322,12 +370,13 @@ async function converse(
 
   // Text exchanged with the model since the last usage report.
   let pending = 0;
-  let input = `User: ${task.prompt}`;
+  let input = `User: ${task.prompt.trim() || '(no text: see what is attached)'}${attached.text}`;
   if (!tools.length) return reply(input);
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
-    const action = await choose(session, input, tools, signal, watch);
+    const action = await choose(session, input, tools, media, signal, watch);
+    media = [];
     report(pending + input.length + action.length);
     pending = 0;
     if (action === REPLY) return reply('Write your reply to the user.');
@@ -392,6 +441,7 @@ async function structured(
   step: 'choose' | 'arguments',
   question: string,
   schema: Record<string, unknown>,
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
   /** The question already says what shape is wanted: do not spend context on the schema. */
@@ -401,7 +451,7 @@ async function structured(
     const started = Date.now();
     const constrained = constraint !== undefined;
     try {
-      const raw = await abortable(session.prompt(text, { signal, ...constraint }), signal);
+      const raw = await abortable(session.prompt(message(text, media), { signal, ...constraint }), signal);
       watch({ step, ms: Date.now() - started, constrained });
       return raw;
     } catch (error) {
@@ -430,6 +480,52 @@ async function structured(
   }
 }
 
+/** What a task's attachments come to: text for the prompt, and parts the model takes as they are. */
+interface Attached {
+  text: string;
+  media: LanguageModelContent[];
+}
+
+const TEXT_TYPES = /^(text\/|application\/(json|xml|javascript|typescript|x-yaml|yaml|toml|x-sh|sql|csv)\b)/;
+const TEXT_NAMES =
+  /\.(txt|md|markdown|json|jsonl|csv|tsv|ya?ml|toml|xml|html?|css|js|jsx|mjs|cjs|ts|tsx|py|rb|go|rs|java|kt|c|h|cpp|cs|php|sh|sql|log|ini|env|gd)$/i;
+
+async function attach(
+  files: readonly Blob[],
+  taken: readonly LanguageModelMedia[],
+  maxText: number,
+): Promise<Attached> {
+  const attached: Attached = { text: '', media: [] };
+  for (const [index, file] of files.entries()) {
+    const name = (file as { name?: unknown }).name;
+    const label = typeof name === 'string' && name ? name : `attachment ${index + 1}`;
+    const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : undefined;
+    if (kind) {
+      if (!taken.includes(kind)) {
+        throw new Error(
+          `"${label}" cannot be attached: the model in this browser does not take ${kind === 'image' ? 'images' : 'audio'}.`,
+        );
+      }
+      attached.media.push({ type: kind, value: file });
+      attached.text += `\n\nAttached ${kind}: "${label}".`;
+    } else if (TEXT_TYPES.test(file.type) || TEXT_NAMES.test(label)) {
+      const text = await file.text();
+      const cut = text.length > maxText;
+      attached.text += `\n\nAttached file "${label}"${cut ? ` (the first ${maxText} of ${text.length} characters)` : ''}:\n${cut ? text.slice(0, maxText) : text}`;
+    } else {
+      throw new Error(
+        `"${label}" cannot be attached: the model reads text files${taken.length ? `, ${taken.join(' and ')}` : ''} only.`,
+      );
+    }
+  }
+  return attached;
+}
+
+/** A prompt as the Prompt API takes it: plain text, or text with images and audio after it. */
+function message(text: string, media: readonly LanguageModelContent[]): string | LanguageModelMessage[] {
+  return media.length ? [{ role: 'user', content: [{ type: 'text', value: text }, ...media] }] : text;
+}
+
 /** An error a second try cannot fix. */
 function permanent(error: unknown): boolean {
   return error instanceof Error && error.name === 'QuotaExceededError';
@@ -440,6 +536,7 @@ async function choose(
   session: LanguageModelSession,
   input: string,
   tools: readonly PageTool[],
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
 ): Promise<string> {
@@ -455,6 +552,7 @@ async function choose(
       required: ['action'],
       additionalProperties: false,
     },
+    media,
     signal,
     watch,
     true,
@@ -477,6 +575,7 @@ async function fillArguments(
     'arguments',
     `Give the arguments for ${tool.name} as a JSON object.`,
     { type: 'object', additionalProperties: false, ...tool.inputSchema },
+    [],
     signal,
     watch,
   );

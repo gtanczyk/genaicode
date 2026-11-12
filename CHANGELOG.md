@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode/browser`: an agent that runs in the web page on the browser's built-in model (Gemini Nano through Chrome's Prompt API), with no server and no key. `nano()` is a `CodingAgent` that calls page tools through schema-constrained choices, `createPageAgent()` is the conversation (approval of `write` tools, model download, context use), `exposeWebMcp()` offers the same tools to outside agents over WebMCP and `webMcpTools()` reads them back; `<PageAgentChat>` and `usePageAgent` in `genaicode/react` draw it (#168).
+- Files in the page agent: `PageAgent.send(text, files)` and `nano().run({ attachments })` read text files into the prompt and hand images and audio to the browser's model where it takes them (`nano({ inputs: ['image', 'audio'] })`, `inputs()`, `state.model.inputs`). `<AgentChat attachments>` adds an attach button, paste, drop and a voice-message recorder to the composer (`onSend(text, files)`), and draws a turn's `attachments`; `<PageAgentChat attachments>` turns it on for the kinds the model takes (#171).
 
 ### Fixed
 

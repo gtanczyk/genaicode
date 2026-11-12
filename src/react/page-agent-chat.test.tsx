@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPageAgent, fakeLanguageModel, type PageTool } from '../browser.js';
-import { PageAgentChat } from '../react.js';
+import { matchesAccept, PageAgentChat } from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -105,5 +105,47 @@ describe('<PageAgentChat>', () => {
     await tick();
     expect(host.textContent).not.toContain('Downloading');
     expect(button('Download the model')).toBeUndefined();
+  });
+
+  it('attaches pasted and picked files, refuses what the model cannot take, and shows them on the turn', async () => {
+    const model = fakeLanguageModel(['A cat on a sofa.'], { media: ['image'] });
+    const agent = createPageAgent({ nano: { languageModel: model.factory, inputs: ['image', 'audio'] } });
+    await act(async () => root.render(<PageAgentChat agent={agent} attachments />));
+    await tick();
+    const picker = host.querySelector<HTMLInputElement>('input[type=file]')!;
+    expect(picker.accept).toContain('image/*');
+    expect(picker.accept).not.toContain('audio/*');
+    // The model takes no audio here, so there is no microphone.
+    expect(host.querySelector('[aria-label="Record a voice message"]')).toBeNull();
+
+    const photo = new File([new Uint8Array(2048)], 'cat.png', { type: 'image/png' });
+    const archive = new File([new Uint8Array(8)], 'stuff.zip', { type: 'application/zip' });
+    const paste = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+      clipboardData: { files: [photo, archive] },
+    });
+    await act(async () => {
+      host.querySelector('textarea')!.dispatchEvent(paste);
+    });
+    expect(host.querySelector('.gc-attachments')!.textContent).toContain('cat.png');
+    expect(host.querySelector('[role=alert]')!.textContent).toContain('stuff.zip');
+    expect(button('Send')!.disabled).toBe(false);
+
+    await act(async () => button('Send')!.click());
+    await tick();
+    await tick();
+    expect(host.querySelector('.gc-attachments.gc-sent')).not.toBeNull();
+    expect(host.querySelector('.gc-prompt')).toBeNull();
+    expect(host.textContent).toContain('A cat on a sofa.');
+    expect(model.calls[0].media).toEqual([{ type: 'image', value: photo }]);
+    expect(host.querySelector('.gc-composer .gc-attachments')).toBeNull();
+  });
+
+  it('matches files the way <input accept> does', () => {
+    const accept = 'image/*, .md,application/json';
+    expect(matchesAccept({ name: 'a.PNG', type: 'image/png' }, accept)).toBe(true);
+    expect(matchesAccept({ name: 'README.MD', type: '' }, accept)).toBe(true);
+    expect(matchesAccept({ name: 'x', type: 'application/json; charset=utf-8' }, accept)).toBe(true);
+    expect(matchesAccept({ name: 'a.zip', type: 'application/zip' }, accept)).toBe(false);
+    expect(matchesAccept({ name: 'a.zip', type: 'application/zip' }, undefined)).toBe(true);
   });
 });

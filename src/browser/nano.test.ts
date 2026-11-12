@@ -278,8 +278,13 @@ describe('nano', () => {
     let open = () => {};
     const gate = new Promise<void>((resolve) => (open = resolve));
     // A factory that ignores the signal.
-    model.factory.create = (options) => gate.then(() => create({ ...options, signal: undefined }));
+    let asked = false;
+    model.factory.create = (options) => {
+      asked = true;
+      return gate.then(() => create({ ...options, signal: undefined }));
+    };
     const run = nano({ languageModel: model.factory }).run({ prompt: 'x', cwd: '' });
+    await vi.waitFor(() => expect(asked).toBe(true));
     run.abort();
     expect((await run.result).status).toBe('aborted');
     expect(model.destroyed).toBe(0);
@@ -358,6 +363,46 @@ describe('nano', () => {
       error: 'Choosing the next action failed: An unknown error occurred: kErrorUnknown',
     });
     expect(model.calls).toHaveLength(2);
+  });
+
+  it('reads attached text files into the prompt and hands images to the model', async () => {
+    const model = fakeLanguageModel(['A cat.', 'Noted.'], { media: ['image'] });
+    const agent = nano({ languageModel: model.factory, inputs: ['image', 'audio'], maxAttachmentText: 10 });
+    expect(await agent.inputs()).toEqual(['image']);
+    const photo = new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' });
+    const notes = new File(['0123456789abcdef'], 'notes.md', { type: '' });
+    const first = await agent.run({ prompt: 'What is this?', cwd: '', attachments: [photo, notes] }).result;
+    expect(first.ok).toBe(true);
+    expect(model.created[0].expectedInputs).toEqual([{ type: 'text', languages: ['en'] }, { type: 'image' }]);
+    expect(model.calls[0].media).toEqual([{ type: 'image', value: photo }]);
+    expect(model.calls[0].input).toBe(
+      'User: What is this?\n\nAttached image: "cat.png".\n\nAttached file "notes.md" (the first 10 of 16 characters):\n0123456789\n[image]',
+    );
+    // The image went once: a later turn of the conversation is text again.
+    await agent.run({
+      prompt: '',
+      cwd: '',
+      resume: first.sessionId,
+      attachments: [new Blob(['hi'], { type: 'text/plain' })],
+    }).result;
+    expect(model.calls[1].media).toEqual([]);
+    expect(model.calls[1].input).toBe('User: (no text: see what is attached)\n\nAttached file "attachment 1":\nhi');
+  });
+
+  it('refuses an attachment the model cannot take', async () => {
+    const agent = nano({ languageModel: fakeLanguageModel(['x']).factory, inputs: ['image'] });
+    const voice = new File([new Uint8Array(4)], 'voice.webm', { type: 'audio/webm' });
+    const zip = new File([new Uint8Array(4)], 'a.zip', { type: 'application/zip' });
+    const photo = new File([new Uint8Array(4)], 'a.png', { type: 'image/png' });
+    const errors = [];
+    for (const file of [voice, zip, photo]) {
+      errors.push((await agent.run({ prompt: 'x', cwd: '', attachments: [file] }).result).error);
+    }
+    expect(errors).toEqual([
+      '"voice.webm" cannot be attached: the model in this browser does not take audio.',
+      '"a.zip" cannot be attached: the model reads text files only.',
+      '"a.png" cannot be attached: the model in this browser does not take images.',
+    ]);
   });
 
   it('keeps a conversation that a task is still running in', async () => {
