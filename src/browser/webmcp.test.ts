@@ -246,6 +246,23 @@ describe('tools', () => {
       '"step" must be a multiple of 0.1',
       '"shape" must be {"a":1,"b":[2,{"c":3}]}',
     ]);
+    const nullable: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filter: {
+            type: 'object',
+            properties: { value: { type: ['string', 'null'] }, field: { type: 'string' } },
+            required: ['value', 'field'],
+          },
+        },
+      },
+    };
+    // Null is an answer where the schema allows it, and a missing value where it does not.
+    expect(argumentProblems(nullable, { filter: { value: null, field: 'name' } })).toEqual([]);
+    expect(argumentProblems(nullable, { filter: { value: null, field: null } })).toEqual([
+      '"filter.field" is required',
+    ]);
     expect(argumentProblems(deep, { count: 9, items: [] })).toEqual([
       '"count" must be at most 5',
       '"items" needs at least 1 items',

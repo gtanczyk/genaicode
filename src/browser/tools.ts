@@ -91,6 +91,13 @@ function isMultiple(value: number, step: number): boolean {
   return Math.abs(quotient - Math.round(quotient)) <= 1e-9 * Math.max(1, Math.abs(quotient));
 }
 
+function allowsNull(schema: unknown): boolean {
+  if (!isSchema(schema)) return false;
+  if ('const' in schema) return schema.const === null;
+  if (Array.isArray(schema.enum)) return schema.enum.includes(null);
+  return schema.type === 'null' || (Array.isArray(schema.type) && schema.type.includes('null'));
+}
+
 function check(schema: Schema, value: unknown, path: string, problems: string[]): void {
   const name = `"${path}"`;
   if ('const' in schema && !same(schema.const, value)) {
@@ -153,7 +160,9 @@ function check(schema: Schema, value: unknown, path: string, problems: string[])
     const properties = isSchema(schema.properties) ? schema.properties : {};
     const at = (key: string) => (path ? `${path}.${key}` : key);
     for (const key of Array.isArray(schema.required) ? schema.required : []) {
-      if (typeof key === 'string' && (value[key] === undefined || value[key] === null)) {
+      if (typeof key !== 'string') continue;
+      // A small model writes null for what it leaves out, so null counts as missing unless the schema asks for it.
+      if (value[key] === undefined || (value[key] === null && !allowsNull(properties[key]))) {
         problems.push(`"${at(key)}" is required`);
       }
     }
