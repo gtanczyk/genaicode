@@ -158,7 +158,13 @@ describe('createPageAgent', () => {
       capabilities: {},
       run(): AgentRun {
         if (mode === 'throw') throw new Error('cannot start');
-        const events: AgentEvent[] = mode === 'ok' ? [{ type: 'done', result }] : [];
+        const events: AgentEvent[] =
+          mode === 'ok'
+            ? [{ type: 'done', result }]
+            : [
+                { type: 'tool-start', id: 't1', name: 'look', input: {} },
+                { type: 'text-delta', text: 'Half an ans' },
+              ];
         return {
           result: Promise.resolve(result),
           abort() {},
@@ -170,11 +176,15 @@ describe('createPageAgent', () => {
     };
     const agent = createPageAgent({ agent: flaky });
     agent.send('a');
-    agent.send('b');
     mode = 'silent';
+    agent.send('b');
     const state = await settled(agent, (next) => next.session.status === 'idle' && next.session.turns.length === 2);
     expect(state.session.turns[0].entries).toEqual([{ kind: 'error', message: 'cannot start' }]);
     expect(state.session.turns.map((turn) => turn.result?.status)).toEqual(['failed', 'failed']);
+    expect(state.session.turns[1].entries).toMatchObject([
+      { kind: 'tool', done: true, isError: true },
+      { kind: 'text', text: 'Half an ans', streaming: false },
+    ]);
     expect(state.session.queued).toEqual([]);
     mode = 'ok';
     agent.send('c');

@@ -272,6 +272,24 @@ describe('nano', () => {
     expect(model.created).toHaveLength(2);
   });
 
+  it('keeps a conversation that a task is still running in', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const model = fakeLanguageModel([() => gate.then(() => 'Done.')]);
+    const agent = nano({ languageModel: model.factory });
+    const runs = [1, 2, 3, 4, 5].map((n) => agent.run({ prompt: `task ${n}`, cwd: '' }));
+    await vi.waitFor(() => expect(model.calls).toHaveLength(5));
+    expect(model.destroyed).toBe(0);
+    release();
+    const results = await Promise.all(runs.map((run) => run.result));
+    expect(results.map((result) => result.ok)).toEqual([true, true, true, true, true]);
+    // Idle now: the next conversation pushes the two oldest out.
+    await agent.run({ prompt: 'task 6', cwd: '' }).result;
+    expect(model.destroyed).toBe(2);
+    expect(agent.context(results[0].sessionId!)).toBeUndefined();
+    expect(agent.context(results[2].sessionId!)).toBeDefined();
+  });
+
   it('reports aborts, failures and a missing Prompt API', async () => {
     const slow = fakeLanguageModel([() => new Promise<string>(() => {})]);
     const agent = nano({ languageModel: slow.factory });

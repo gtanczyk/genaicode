@@ -193,14 +193,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       case 'done':
         updateTurn(turnId, (turn) => ({
           ...turn,
-          // Open tools of a stopped turn would spin forever.
-          entries: turn.entries.map((entry) =>
-            entry.kind === 'tool' && !entry.done
-              ? { ...entry, done: true, isError: true }
-              : entry.kind === 'text' && entry.streaming
-                ? { ...entry, streaming: false }
-                : entry,
-          ),
+          entries: settled(turn.entries),
           endedAt: Date.now(),
           result: event.result,
         }));
@@ -249,6 +242,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       const message = 'The agent stopped without a result.';
       updateTurn(turnId, (unfinished) => ({
         ...unfinished,
+        entries: settled(unfinished.entries),
         endedAt: Date.now(),
         result: { status: 'failed', ok: false, exitCode: null, signal: null, error: message },
       }));
@@ -351,4 +345,15 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     },
     refresh: () => refresh(),
   };
+}
+
+/** The entries of a turn that ended: an open tool or a streaming text would spin forever. */
+function settled(entries: SessionEntry[]): SessionEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'tool' && !entry.done
+      ? { ...entry, done: true, isError: true }
+      : entry.kind === 'text' && entry.streaming
+        ? { ...entry, streaming: false }
+        : entry,
+  );
 }

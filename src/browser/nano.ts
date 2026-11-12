@@ -100,6 +100,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     });
   };
 
+  // How many running tasks use each conversation.
+  const busy = new Map<string, number>();
   const forget = (sessionId?: string) => {
     for (const [id, session] of sessions) {
       if (sessionId !== undefined && id !== sessionId) continue;
@@ -186,6 +188,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
 
     const work = async (): Promise<AgentResult> => {
       let sessionId: string | undefined;
+      let held: string | undefined;
       try {
         const refused = unsupportedPermissions(name, capabilities, task);
         if (refused) throw new Error(refused);
@@ -201,7 +204,13 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           session = await open(tools, signal);
           sessionId = `nano-${nextSession++}`;
           sessions.set(sessionId, session);
-          while (sessions.size > KEPT_SESSIONS) forget(sessions.keys().next().value as string);
+        }
+        busy.set(sessionId!, (busy.get(sessionId!) ?? 0) + 1);
+        held = sessionId;
+        // The oldest conversations go, but never one a task is still running in.
+        for (const id of [...sessions.keys()]) {
+          if (sessions.size <= KEPT_SESSIONS) break;
+          if (!busy.has(id)) forget(id);
         }
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
         const live = session;
@@ -217,6 +226,12 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         const message = describe(error);
         emit({ type: 'error', message });
         return finish('failed', sessionId, undefined, message);
+      } finally {
+        if (held) {
+          const left = (busy.get(held) ?? 1) - 1;
+          if (left > 0) busy.set(held, left);
+          else busy.delete(held);
+        }
       }
     };
 
