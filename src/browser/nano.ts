@@ -205,7 +205,10 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       const grown = used.used - meter.last;
       meter.last = used.used;
       // A full window drops old messages, so the count stalls or falls: estimate that step from its text.
-      meter.tokens += grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN);
+      spend(grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN));
+    };
+    const spend = (tokens: number) => {
+      meter.tokens += tokens;
       meter.reported = true;
       emit({ type: 'usage', usage: { totalTokens: meter.tokens } });
       const limit = task.budget?.maxTokens;
@@ -278,6 +281,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           (characters) => report(live, characters),
           {
             watch: (call) => options.onModelCall?.(call),
+            spend,
             maxSteps,
             maxToolOutput,
           },
@@ -338,10 +342,18 @@ async function converse(
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
   report: (characters: number) => void,
-  limits: { maxSteps: number; maxToolOutput: number; watch: (call: NanoModelCall) => void },
+  limits: {
+    maxSteps: number;
+    maxToolOutput: number;
+    watch: (call: NanoModelCall) => void;
+    /** Tokens a step used on a copy of the conversation, which the conversation's own count never shows. */
+    spend: (tokens: number) => void;
+  },
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
-  const { watch } = limits;
+  const { watch, spend } = limits;
+  // Steps asked on copies are metered there; asked of the conversation, they show in its own count.
+  const copies = typeof session.clone === 'function';
   // Every step is asked on a copy of the conversation (see `structured`), so each one is told the
   // whole task so far, and the conversation itself hears it once, with the request for the reply.
   const { media } = attached;
@@ -377,14 +389,14 @@ async function converse(
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
-    const action = await choose(session, story, tools, media, signal, watch);
-    report(pending + story.length + action.length);
+    const action = await choose(session, story, tools, media, signal, watch, spend);
+    if (!copies) report(pending + story.length + action.length);
     pending = 0;
     if (action === REPLY) return reply(`${story}\n\nWrite your reply to the user.`);
 
     const tool = tools.find((candidate) => candidate.name === action)!;
-    const args = await fillArguments(session, story, tool, media, signal, watch);
-    pending += stableJson(args).length;
+    const args = await fillArguments(session, story, tool, media, signal, watch, spend);
+    if (!copies) pending += stableJson(args).length;
     const id = `call-${step + 1}`;
     emit({ type: 'tool-start', id, name: tool.name, input: args });
 
@@ -425,9 +437,9 @@ async function converse(
 async function onCopy<T>(
   session: LanguageModelSession,
   signal: AbortSignal,
-  ask: (copy: LanguageModelSession) => Promise<T>,
+  ask: (copy: LanguageModelSession, own: boolean) => Promise<T>,
 ): Promise<T> {
-  if (typeof session.clone !== 'function') return ask(session);
+  if (typeof session.clone !== 'function') return ask(session, true);
   const made = session.clone({ signal });
   // A copy that arrives after the task was stopped has no owner: release it.
   made.then(
@@ -436,7 +448,7 @@ async function onCopy<T>(
   );
   const copy = await abortable(made, signal);
   try {
-    return await ask(copy);
+    return await ask(copy, false);
   } finally {
     try {
       copy.destroy();
@@ -478,40 +490,55 @@ async function structured(
   media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
   /** The question already says what shape is wanted: do not spend context on the schema. */
   told = false,
 ): Promise<string> {
-  const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
-    const started = Date.now();
-    const constrained = constraint !== undefined;
+  // What the copies used. Counted once the answer is in: going over budget is not a failed call.
+  let owed = 0;
+  const answer = await asked();
+  if (owed) spend(owed);
+  return answer;
+
+  async function asked(): Promise<string> {
+    const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
+      const started = Date.now();
+      const constrained = constraint !== undefined;
+      try {
+        const raw = await onCopy(session, signal, async (copy, own) => {
+          const before = contextOf(copy)?.used;
+          const out = await abortable(copy.prompt(message(text, media), { signal, ...constraint }), signal);
+          const after = contextOf(copy)?.used;
+          if (!own && before !== undefined && after !== undefined) {
+            owed += after > before ? after - before : Math.ceil((text.length + out.length) / CHARACTERS_PER_TOKEN);
+          }
+          return out;
+        });
+        watch({ step, ms: Date.now() - started, constrained });
+        return raw;
+      } catch (error) {
+        if (!signal.aborted) watch({ step, ms: Date.now() - started, constrained, error: describe(error) });
+        throw error;
+      }
+    };
     try {
-      const raw = await onCopy(session, signal, (copy) =>
-        abortable(copy.prompt(message(text, media), { signal, ...constraint }), signal),
-      );
-      watch({ step, ms: Date.now() - started, constrained });
-      return raw;
+      // The schema goes into the prompt here, in full, and the browser gets only what constrains
+      // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
+      const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
+      return await ask(text, {
+        responseConstraint: constraintOf(schema) as Record<string, unknown>,
+        omitResponseConstraintInput: true,
+      });
     } catch (error) {
-      if (!signal.aborted) watch({ step, ms: Date.now() - started, constrained, error: describe(error) });
-      throw error;
-    }
-  };
-  try {
-    // The schema goes into the prompt here, in full, and the browser gets only what constrains
-    // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
-    const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
-    return await ask(text, {
-      responseConstraint: constraintOf(schema) as Record<string, unknown>,
-      omitResponseConstraintInput: true,
-    });
-  } catch (error) {
-    if (signal.aborted) throw error;
-    const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
-    if (permanent(error)) throw new Error(`${doing} failed: ${describe(error)}`);
-    try {
-      return await ask(`${question}\nAnswer with JSON only, following this JSON Schema: ${JSON.stringify(schema)}`);
-    } catch (second) {
-      if (signal.aborted) throw second;
-      throw new Error(`${doing} failed: ${describe(second)}`);
+      if (signal.aborted) throw error;
+      const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
+      if (permanent(error)) throw new Error(`${doing} failed: ${describe(error)}`);
+      try {
+        return await ask(`${question}\nAnswer with JSON only, following this JSON Schema: ${JSON.stringify(schema)}`);
+      } catch (second) {
+        if (signal.aborted) throw second;
+        throw new Error(`${doing} failed: ${describe(second)}`);
+      }
     }
   }
 }
@@ -575,6 +602,7 @@ async function choose(
   media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
 ): Promise<string> {
   const names = [...tools.map((tool) => tool.name), REPLY];
   const question = `${input}\n\nWhat is the next action? Answer as JSON {"action": "..."} with one of: ${names.join(', ')}.`;
@@ -591,6 +619,7 @@ async function choose(
     media,
     signal,
     watch,
+    spend,
     true,
   );
   notAStub(raw);
@@ -606,6 +635,7 @@ async function fillArguments(
   media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  spend: (tokens: number) => void,
 ): Promise<Record<string, unknown>> {
   if (!Object.keys(schemaProperties(tool)).length) return {};
   const raw = await structured(
@@ -616,6 +646,7 @@ async function fillArguments(
     media,
     signal,
     watch,
+    spend,
   );
   const args = parseObject(raw);
   // No arguments is not the same as an answer that has none: do not run the tool on a guess.

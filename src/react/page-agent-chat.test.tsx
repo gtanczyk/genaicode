@@ -66,7 +66,8 @@ describe('<PageAgentChat>', () => {
     await tick();
     expect(run).toHaveBeenCalledTimes(1);
     expect(host.querySelector('.gc-md strong')?.textContent).toBe('dark');
-    expect(host.querySelector('.gc-limit')?.textContent).toBe('context 4%');
+    // Only the reply is asked of the conversation itself; the steps before it ran on copies.
+    expect(host.querySelector('.gc-limit')?.textContent).toBe('context 1%');
     expect(host.textContent).not.toContain('session');
 
     await act(async () => button('New')!.click());

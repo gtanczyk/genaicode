@@ -531,6 +531,8 @@ describe('nano', () => {
     expect(model.calls[2].input).toContain('Result of read:\nAbout start.');
     expect(model.copies).toBe(3);
     expect(model.released).toBe(3);
+    // What the copies used counts toward the task, though the conversation's own count never shows it.
+    expect(result.usage).toEqual({ totalTokens: 40 });
   });
 
   it('uses the session itself where the browser has no clone()', async () => {

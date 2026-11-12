@@ -72,12 +72,13 @@ export function fakeLanguageModel(
           target.dispatchEvent(Object.assign(new Event('downloadprogress'), { loaded }));
         }
       }
-      let used = 0;
-      const grow = () => {
-        used = Math.min(used + 10, options.keeps ?? Infinity);
-      };
-      const make = (copy: boolean, held?: string): LanguageModelSession => {
+      const make = (copy: boolean, held?: string, start = 0): LanguageModelSession => {
         let constraint = held;
+        // A copy starts from its parent's context and counts on its own from there.
+        let used = start;
+        const grow = () => {
+          used = Math.min(used + 10, options.keeps ?? Infinity);
+        };
         const record = (
           input: string | LanguageModelMessage[],
           promptOptions: LanguageModelPromptOptions | undefined,
@@ -124,7 +125,7 @@ export function fakeLanguageModel(
             : {
                 async clone() {
                   copies++;
-                  return make(true, constraint);
+                  return make(true, constraint, used);
                 },
               }),
           destroy() {
