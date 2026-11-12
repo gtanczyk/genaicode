@@ -49,6 +49,10 @@ describe('createPageAgent', () => {
     agent.send('again');
     await settled(agent, (next) => next.session.status === 'idle' && next.session.turns.length === 2);
     expect(model.created).toHaveLength(1);
+    // Each turn reports its own tokens; the session adds them up.
+    expect(agent.get().session.turns.map((each) => each.usage)).toEqual([{ totalTokens: 10 }, { totalTokens: 10 }]);
+    expect(agent.get().session.usage).toEqual({ totalTokens: 20 });
+    expect(agent.get().context).toEqual({ used: 20, window: 1000 });
   });
 
   it('holds a write tool until the user approves it', async () => {
@@ -143,6 +147,39 @@ describe('createPageAgent', () => {
     agent.subscribe((state) => seen.push(`${state.model.status}:${state.model.progress ?? ''}`));
     await agent.prepare();
     expect(seen).toEqual(['downloading:0', 'downloading:0.4', 'loading:1', 'available:']);
+  });
+
+  it('closes the turn when a driver throws or ends without a result', async () => {
+    let mode: 'throw' | 'silent' | 'ok' = 'throw';
+    const result: AgentResult = { status: 'completed', ok: true, exitCode: null, signal: null };
+    const flaky: CodingAgent = {
+      name: 'flaky',
+      command: 'none',
+      capabilities: {},
+      run(): AgentRun {
+        if (mode === 'throw') throw new Error('cannot start');
+        const events: AgentEvent[] = mode === 'ok' ? [{ type: 'done', result }] : [];
+        return {
+          result: Promise.resolve(result),
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield* events;
+          },
+        };
+      },
+    };
+    const agent = createPageAgent({ agent: flaky });
+    agent.send('a');
+    agent.send('b');
+    mode = 'silent';
+    const state = await settled(agent, (next) => next.session.status === 'idle' && next.session.turns.length === 2);
+    expect(state.session.turns[0].entries).toEqual([{ kind: 'error', message: 'cannot start' }]);
+    expect(state.session.turns.map((turn) => turn.result?.status)).toEqual(['failed', 'failed']);
+    expect(state.session.queued).toEqual([]);
+    mode = 'ok';
+    agent.send('c');
+    await settled(agent, (next) => next.session.status === 'idle' && next.session.turns.length === 3);
+    expect(agent.get().session.turns[2].result?.ok).toBe(true);
   });
 
   it('drives any CodingAgent given instead of nano', async () => {

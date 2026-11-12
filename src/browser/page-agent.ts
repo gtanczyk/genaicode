@@ -1,5 +1,7 @@
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { AgentEvent, AgentRun, ApprovalDecision, ApprovalRequest, CodingAgent } from '../agents/types.js';
+import { addUsage } from '../agents/usage.js';
+import type { TokenUsage } from '../core/types.js';
 import type { LanguageModelAvailability } from './language-model.js';
 import { nano, type NanoAgent, type NanoOptions } from './nano.js';
 import type { PageTool } from './tools.js';
@@ -75,6 +77,8 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
   let run: AgentRun | undefined;
   // The driver's conversation; not in `session`, where the chat would show it as a chip.
   let conversation: string | undefined;
+  // Usage of the finished turns; a running turn reports its own total so far.
+  let pastUsage: TokenUsage = {};
   // A reset or stop makes the events of the run before it stale.
   let generation = 0;
 
@@ -180,9 +184,8 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
         }));
         return;
       case 'usage':
-        // The built-in model reports what the whole conversation holds, not what a turn added.
         updateTurn(turnId, (turn) => ({ ...turn, usage: event.usage }));
-        setSession({ usage: event.usage });
+        setSession({ usage: addUsage(pastUsage, event.usage) });
         return;
       case 'error':
         addEntry(turnId, { kind: 'error', message: event.message });
@@ -216,14 +219,15 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       // The first turn opens the model; a download reports itself through `onDownload`.
       setModel({ status: state.model.status === 'downloadable' ? 'downloading' : 'loading' });
     }
-    const current = agent.run({
-      prompt,
-      cwd: '',
-      resume: conversation,
-      onApproval: (request, signal) => ask(request, signal),
-    });
-    run = current;
     try {
+      // A driver may throw before it returns a run; that ends the turn like any failure.
+      const current = agent.run({
+        prompt,
+        cwd: '',
+        resume: conversation,
+        onApproval: (request, signal) => ask(request, signal),
+      });
+      run = current;
       for await (const event of current) {
         if (mine !== generation) continue;
         apply(turnId, event);
@@ -239,6 +243,17 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     }
     if (mine !== generation) return;
     run = undefined;
+    const ended = state.session.turns.find((candidate) => candidate.id === turnId);
+    if (ended && !ended.result) {
+      // The run ended without a `done` event: close the turn so the chat is not left working.
+      const message = 'The agent stopped without a result.';
+      updateTurn(turnId, (unfinished) => ({
+        ...unfinished,
+        endedAt: Date.now(),
+        result: { status: 'failed', ok: false, exitCode: null, signal: null, error: message },
+      }));
+    }
+    pastUsage = state.session.usage;
     if (builtIn && state.model.status !== 'available') void refresh(true);
     const [next, ...queued] = state.session.queued;
     if (next === undefined) {
@@ -303,6 +318,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       halt();
       if (conversation) builtIn?.forget(conversation);
       conversation = undefined;
+      pastUsage = {};
       publish({
         ...state,
         context: undefined,

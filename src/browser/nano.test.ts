@@ -186,6 +186,44 @@ describe('nano', () => {
     expect(result.text).toBe('abcdefghijabcdefghijkHHello');
   });
 
+  it('reports what each task used, not what the conversation holds, and stops at the budget', async () => {
+    const agent = nano({ languageModel: fakeLanguageModel(['One.', 'Two.']).factory });
+    const first = await agent.run({ prompt: 'a', cwd: '' }).result;
+    const second = await agent.run({ prompt: 'b', cwd: '', resume: first.sessionId }).result;
+    expect([first.usage, second.usage]).toEqual([{ totalTokens: 10 }, { totalTokens: 10 }]);
+    expect(agent.context(first.sessionId!)).toEqual({ used: 20, window: 1000 });
+
+    const run = vi.fn(() => 'saved');
+    const script = ['{"action":"save"}', '{"action":"reply"}', 'Saved.'];
+    const capped = nano({
+      languageModel: fakeLanguageModel(script).factory,
+      tools: [{ name: 'save', description: 'Save.', run }],
+    });
+    const events = await collect(capped.run({ prompt: 'save', cwd: '', budget: { maxTokens: 15 } }));
+    expect(events.find((event) => event.type === 'budget-warning')).toBeUndefined();
+    const done = events.at(-1) as Extract<AgentEvent, { type: 'done' }>;
+    // 10 after the first choice, 20 after the second: over, before the reply.
+    expect(done.result).toMatchObject({
+      status: 'failed',
+      failure: { kind: 'budget' },
+      usage: { totalTokens: 20 },
+      error: 'nano went over its token budget (20 of 15).',
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    const warned = await collect(
+      nano({ languageModel: fakeLanguageModel(['Hi.']).factory }).run({
+        prompt: 'x',
+        cwd: '',
+        budget: { maxTokens: 12 },
+      }),
+    );
+    expect(warned.find((event) => event.type === 'budget-warning')).toMatchObject({
+      warning: { kind: 'tokens', used: 10, limit: 12 },
+    });
+    expect((warned.at(-1) as Extract<AgentEvent, { type: 'done' }>).result.ok).toBe(true);
+  });
+
   it('resumes a conversation in the same model session and forgets it on request', async () => {
     const model = fakeLanguageModel(['One.', 'Two.', 'Three.']);
     const agent = nano({ languageModel: model.factory });

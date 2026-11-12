@@ -141,9 +141,27 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           }, task.timeoutMs);
 
     const emit = (event: AgentEvent) => events.push(event);
+    // What this task added to the conversation: the context in use now, less what it held at the start.
+    const meter = { base: 0, tokens: 0, reported: false, warned: false, over: false };
+    const report = (session: LanguageModelSession) => {
+      const used = contextOf(session);
+      if (!used) return;
+      // The browser drops old messages when the window fills up, so the count can fall.
+      meter.tokens = Math.max(meter.tokens, used.used - meter.base);
+      meter.reported = true;
+      emit({ type: 'usage', usage: { totalTokens: meter.tokens } });
+      const limit = task.budget?.maxTokens;
+      if (limit === undefined) return;
+      if (meter.tokens > limit) {
+        meter.over = true;
+        throw new Error(`${name} went over its token budget (${meter.tokens} of ${limit}).`);
+      }
+      if (!meter.warned && meter.tokens >= limit * (task.budget?.warnAt ?? 0.8)) {
+        meter.warned = true;
+        emit({ type: 'budget-warning', warning: { kind: 'tokens', used: meter.tokens, limit } });
+      }
+    };
     const finish = (status: AgentStatus, sessionId: string | undefined, text?: string, error?: string): AgentResult => {
-      const session = sessionId ? sessions.get(sessionId) : undefined;
-      const used = session ? contextOf(session) : undefined;
       const result: AgentResult = {
         status,
         ok: status === 'completed',
@@ -151,8 +169,9 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         signal: null,
         ...(sessionId ? { sessionId } : {}),
         ...(text !== undefined ? { text } : {}),
-        ...(used ? { usage: { totalTokens: used.used } } : {}),
+        ...(meter.reported ? { usage: { totalTokens: meter.tokens } } : {}),
         ...(error ? { error } : {}),
+        ...(meter.over ? { failure: { kind: 'budget' as const } } : {}),
       };
       emit({ type: 'done', result });
       events.close();
@@ -172,6 +191,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
             : (options.tools ?? []);
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
+        // A new conversation's instructions count as this task's tokens.
+        meter.base = session ? (contextOf(session)?.used ?? 0) : 0;
         if (!session) {
           session = await open(tools, signal);
           sessionId = `nano-${nextSession++}`;
@@ -179,10 +200,11 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           while (sessions.size > KEPT_SESSIONS) forget(sessions.keys().next().value as string);
         }
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
-        const text = await converse(session, tools, task, emit, signal, { maxSteps, maxToolOutput });
+        const live = session;
+        const text = await converse(live, tools, task, emit, signal, () => report(live), { maxSteps, maxToolOutput });
         return finish('completed', sessionId, text);
       } catch (error) {
-        if (signal.aborted) {
+        if (signal.aborted && !meter.over) {
           return finish(timedOut ? 'timeout' : 'aborted', sessionId, undefined, timedOut ? 'Timed out.' : undefined);
         }
         const message = describe(error);
@@ -226,13 +248,10 @@ async function converse(
   task: AgentTask,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
+  report: () => void,
   limits: { maxSteps: number; maxToolOutput: number },
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
-  const report = () => {
-    const used = contextOf(session);
-    if (used) emit({ type: 'usage', usage: { totalTokens: used.used } });
-  };
   const reply = async (input: string): Promise<string> => {
     let text = '';
     for await (const delta of streamDeltas(session.promptStreaming(input, { signal }), signal)) {

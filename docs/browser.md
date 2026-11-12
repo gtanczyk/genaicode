@@ -109,6 +109,8 @@ if ((await agent.availability()) !== 'unavailable') {
 - `task.resume` continues a conversation in the same model session; `forget(sessionId)` frees it.
   When the context window fills up, the browser drops the oldest messages and keeps the
   instructions. `context(sessionId)` says how full it is.
+- Usage is what the task added to the conversation (`usage.totalTokens`), and
+  `task.budget.maxTokens` stops a task that goes over it. There is no cost to cap.
 - `task.cwd`, `env` and `mcpServers` mean nothing in a page. Pass `cwd: ''`.
 
 `createPageAgent({ agent })` takes any other `CodingAgent` that runs in a browser instead.
