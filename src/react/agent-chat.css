@@ -685,6 +685,18 @@ img.gc-artifact-view {
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--_danger, #e5484d) 30%, transparent);
   }
 }
+/* With attachments the field takes the whole first row; the buttons sit under it. */
+.gc-box.gc-stacked {
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 8px 8px 14px;
+}
+.gc-box.gc-stacked textarea {
+  flex: 1 0 100%;
+}
+.gc-box .gc-grow {
+  flex: 1;
+}
 .gc-attachments {
   display: flex;
   flex-wrap: wrap;
