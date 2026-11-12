@@ -366,7 +366,7 @@ async function converse(
 /**
  * Ask for JSON that follows `schema`. The browser holds the model to it; when that call fails
  * (Chrome answers some with an unexplained error), the model is asked in words instead and the
- * caller checks what comes back.
+ * answer is checked here against the tool's schema (`argumentProblems`) before the tool runs.
  */
 async function structured(
   session: LanguageModelSession,
@@ -375,6 +375,8 @@ async function structured(
   schema: Record<string, unknown>,
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
+  /** The question already says what shape is wanted: do not spend context on the schema. */
+  omit = false,
 ): Promise<string> {
   const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
     const started = Date.now();
@@ -389,7 +391,7 @@ async function structured(
     }
   };
   try {
-    return await ask(question, { responseConstraint: schema, omitResponseConstraintInput: true });
+    return await ask(question, { responseConstraint: schema, ...(omit ? { omitResponseConstraintInput: true } : {}) });
   } catch (error) {
     if (signal.aborted) throw error;
     const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
@@ -430,6 +432,7 @@ async function choose(
     },
     signal,
     watch,
+    true,
   );
   notAStub(raw);
   const action = (parseObject(raw) as { action?: unknown } | undefined)?.action;
@@ -452,7 +455,12 @@ async function fillArguments(
     signal,
     watch,
   );
-  return parseObject(raw) ?? {};
+  const args = parseObject(raw) ?? {};
+  // Asked in words, a model may add arguments the schema does not have; the browser never lets it.
+  const open = tool.inputSchema?.additionalProperties;
+  if (open === true || (open && typeof open === 'object')) return args;
+  const known = schemaProperties(tool);
+  return Object.fromEntries(Object.entries(args).filter(([key]) => key in known));
 }
 
 /** Check the arguments, ask the user about a `write` tool, then run it. */

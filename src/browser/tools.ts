@@ -45,35 +45,110 @@ export function schemaProperties(tool: Pick<PageTool, 'inputSchema'>): Record<st
 }
 
 /**
- * The problems with `args` for `tool`: missing required arguments and values of the wrong basic
- * type, outside an `enum` or shorter than `minLength`. A light check for what a small model gets wrong, not a JSON Schema
- * validator; `tool.validate` does the rest.
+ * The problems with `args` for `tool`, by its `inputSchema`: missing required arguments, wrong
+ * types, values outside an `enum`, a `const`, numeric bounds, string and array lengths, a
+ * `pattern`, and the same inside nested objects and arrays. It covers what tools declare in
+ * practice, not all of JSON Schema (no `$ref`, `oneOf` or `format`); `tool.validate` does the rest.
+ * An argument the schema does not name is a problem only where the schema says
+ * `additionalProperties: false`.
  */
 export function argumentProblems(tool: Pick<PageTool, 'inputSchema'>, args: Record<string, unknown>): string[] {
   const problems: string[] = [];
-  const properties = schemaProperties(tool);
-  const required = Array.isArray(tool.inputSchema?.required) ? (tool.inputSchema.required as unknown[]) : [];
-  for (const name of required) {
-    if (typeof name === 'string' && (args[name] === undefined || args[name] === null)) {
-      problems.push(`"${name}" is required`);
-    }
-  }
-  for (const [name, value] of Object.entries(args)) {
-    const schema = properties[name];
-    if (!schema || value === undefined || value === null) continue;
-    if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-      problems.push(`"${name}" must be one of ${schema.enum.map((item) => JSON.stringify(item)).join(', ')}`);
-      continue;
-    }
-    if (typeof value === 'string' && typeof schema.minLength === 'number' && value.length < schema.minLength) {
-      problems.push(value ? `"${name}" is too short` : `"${name}" must not be empty`);
-      continue;
-    }
-    const type = schema.type;
-    if (typeof type !== 'string') continue;
-    const actual = Array.isArray(value) ? 'array' : typeof value;
-    const matches = type === 'integer' ? Number.isInteger(value) : type === actual;
-    if (!matches) problems.push(`"${name}" must be ${/^[aeio]/.test(type) ? 'an' : 'a'} ${type}`);
-  }
+  if (tool.inputSchema) check({ type: 'object', ...tool.inputSchema }, args, '', problems);
   return problems;
+}
+
+type Schema = Record<string, unknown>;
+const isSchema = (value: unknown): value is Schema => !!value && typeof value === 'object' && !Array.isArray(value);
+const article = (noun: string) => (/^[aeio]/.test(noun) ? 'an' : 'a');
+
+function typeOf(value: unknown): string {
+  return value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+}
+
+function isType(value: unknown, type: string): boolean {
+  if (type === 'integer') return Number.isInteger(value);
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+  return typeOf(value) === type;
+}
+
+function check(schema: Schema, value: unknown, path: string, problems: string[]): void {
+  const name = `"${path}"`;
+  if ('const' in schema && JSON.stringify(schema.const) !== JSON.stringify(value)) {
+    problems.push(`${name} must be ${JSON.stringify(schema.const)}`);
+    return;
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some((item) => JSON.stringify(item) === JSON.stringify(value))) {
+    problems.push(`${name} must be one of ${schema.enum.map((item) => JSON.stringify(item)).join(', ')}`);
+    return;
+  }
+  const types = typeof schema.type === 'string' ? [schema.type] : Array.isArray(schema.type) ? schema.type : [];
+  const named = types.filter((type): type is string => typeof type === 'string');
+  if (named.length && !named.some((type) => isType(value, type))) {
+    problems.push(`${name} must be ${named.map((type) => `${article(type)} ${type}`).join(' or ')}`);
+    return;
+  }
+  if (typeof value === 'string') {
+    if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
+      problems.push(
+        value ? `${name} is too short (at least ${schema.minLength} characters)` : `${name} must not be empty`,
+      );
+    }
+    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
+      problems.push(`${name} is too long (at most ${schema.maxLength} characters)`);
+    }
+    if (typeof schema.pattern === 'string') {
+      let matches = true;
+      try {
+        matches = new RegExp(schema.pattern, 'u').test(value);
+      } catch {
+        // A pattern this engine cannot read decides nothing.
+      }
+      if (!matches) problems.push(`${name} must match ${schema.pattern}`);
+    }
+  } else if (typeof value === 'number') {
+    if (typeof schema.minimum === 'number' && value < schema.minimum)
+      problems.push(`${name} must be at least ${schema.minimum}`);
+    if (typeof schema.maximum === 'number' && value > schema.maximum)
+      problems.push(`${name} must be at most ${schema.maximum}`);
+    if (typeof schema.exclusiveMinimum === 'number' && value <= schema.exclusiveMinimum) {
+      problems.push(`${name} must be more than ${schema.exclusiveMinimum}`);
+    }
+    if (typeof schema.exclusiveMaximum === 'number' && value >= schema.exclusiveMaximum) {
+      problems.push(`${name} must be less than ${schema.exclusiveMaximum}`);
+    }
+    if (
+      typeof schema.multipleOf === 'number' &&
+      schema.multipleOf > 0 &&
+      !Number.isInteger(value / schema.multipleOf)
+    ) {
+      problems.push(`${name} must be a multiple of ${schema.multipleOf}`);
+    }
+  } else if (Array.isArray(value)) {
+    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+      problems.push(`${name} needs at least ${schema.minItems} items`);
+    }
+    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) {
+      problems.push(`${name} takes at most ${schema.maxItems} items`);
+    }
+    if (isSchema(schema.items)) {
+      for (const [index, item] of value.entries()) check(schema.items, item, `${path}[${index}]`, problems);
+    }
+  } else if (isSchema(value)) {
+    const properties = isSchema(schema.properties) ? schema.properties : {};
+    const at = (key: string) => (path ? `${path}.${key}` : key);
+    for (const key of Array.isArray(schema.required) ? schema.required : []) {
+      if (typeof key === 'string' && (value[key] === undefined || value[key] === null)) {
+        problems.push(`"${at(key)}" is required`);
+      }
+    }
+    for (const [key, item] of Object.entries(value)) {
+      // A model writes null for an argument it leaves out.
+      if (item === undefined || item === null) continue;
+      const property = properties[key];
+      if (isSchema(property)) check(property, item, at(key), problems);
+      else if (schema.additionalProperties === false) problems.push(`"${at(key)}" is not an argument`);
+      else if (isSchema(schema.additionalProperties)) check(schema.additionalProperties, item, at(key), problems);
+    }
+  }
 }

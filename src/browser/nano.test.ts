@@ -295,7 +295,7 @@ describe('nano', () => {
     const model = fakeLanguageModel([
       '{"action":"read"}',
       unknown,
-      'Sure: {"section":"start"}',
+      'Sure: {"section":"start","mood":"keen"}',
       '{"action":"reply"}',
       unknown,
       'It starts with npx.',
@@ -318,6 +318,9 @@ describe('nano', () => {
     expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
     expect(model.calls[2].input).toContain('following this JSON Schema: {"type":"object"');
     expect(model.calls[2].options?.responseConstraint).toBeUndefined();
+    // The arguments call keeps the schema in the prompt (it carries descriptions); the choice does not need it.
+    expect(model.calls[0].options?.omitResponseConstraintInput).toBe(true);
+    expect(model.calls[1].options?.omitResponseConstraintInput).toBeUndefined();
     expect(calls.map((call) => [call.step, call.constrained, call.error !== undefined])).toEqual([
       ['choose', true, false],
       ['arguments', true, true],

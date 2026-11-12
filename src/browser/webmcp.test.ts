@@ -203,5 +203,36 @@ describe('tools', () => {
     // An empty string is a value: it clears a field. `minLength` asks for more.
     expect(argumentProblems(text, { text: '' })).toEqual([]);
     expect(argumentProblems(text, { text: '', title: '' })).toEqual(['"title" must not be empty']);
+    const deep: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          count: { type: 'integer', minimum: 1, maximum: 5 },
+          code: { type: 'string', pattern: '^[A-Z]{3}$', maxLength: 3 },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] },
+          },
+          kind: { const: 'a' },
+          note: { type: ['string', 'null'] },
+        },
+      },
+    };
+    expect(argumentProblems(deep, { count: 2, code: 'ABC', items: [{ id: 1 }], kind: 'a', note: null })).toEqual([]);
+    expect(argumentProblems(deep, { count: -1, code: 'abcd', items: [{ id: 'x' }, {}], kind: 'b', extra: 1 })).toEqual([
+      '"count" must be at least 1',
+      '"code" is too long (at most 3 characters)',
+      '"code" must match ^[A-Z]{3}$',
+      '"items[0].id" must be a number',
+      '"items[1].id" is required',
+      '"kind" must be "a"',
+      '"extra" is not an argument',
+    ]);
+    expect(argumentProblems(deep, { count: 9, items: [] })).toEqual([
+      '"count" must be at most 5',
+      '"items" needs at least 1 items',
+    ]);
   });
 });
