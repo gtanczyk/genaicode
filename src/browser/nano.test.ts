@@ -489,4 +489,58 @@ describe('nano', () => {
     expect(result.error).toContain('Filling in the arguments failed');
     expect(run).not.toHaveBeenCalled();
   });
+
+  it('asks each constrained step on a copy, so a session that keeps its first schema still works', async () => {
+    const run = vi.fn(({ section }) => `About ${String(section)}.`);
+    const model = fakeLanguageModel(
+      ['{"action":"read"}', '{"section":"start"}', '{"action":"reply"}', 'It starts with npx.'],
+      { stickyConstraint: true },
+    );
+    const calls: NanoModelCall[] = [];
+    const agent = nano({
+      languageModel: model.factory,
+      onModelCall: (call) => calls.push(call),
+      tools: [
+        {
+          name: 'read',
+          description: 'Read a section.',
+          inputSchema: { type: 'object', properties: { section: { type: 'string' } }, required: ['section'] },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'how do I start?', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'It starts with npx.' });
+    expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
+    // No step fell back to asking in words.
+    expect(calls.map((call) => [call.step, call.constrained, call.error])).toEqual([
+      ['choose', true, undefined],
+      ['arguments', true, undefined],
+      ['choose', true, undefined],
+      ['reply', false, undefined],
+    ]);
+    // The conversation itself hears one prompt, unconstrained, with the whole task in it.
+    const own = model.calls.filter((call) => !call.copy);
+    expect(own).toHaveLength(1);
+    expect(own[0].options?.responseConstraint).toBeUndefined();
+    expect(own[0].input).toContain('User: how do I start?');
+    expect(own[0].input).toContain('You called read with {"section":"start"}.');
+    expect(own[0].input).toContain('Result of read:\nAbout start.');
+    // A copy does not know what another copy was asked: each is told the task so far.
+    expect(model.calls[1].input).toContain('User: how do I start?');
+    expect(model.calls[2].input).toContain('Result of read:\nAbout start.');
+    expect(model.copies).toBe(3);
+    expect(model.released).toBe(3);
+  });
+
+  it('uses the session itself where the browser has no clone()', async () => {
+    const model = fakeLanguageModel(['{"action":"reply"}', 'Hello.'], { noClone: true });
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'noop', description: 'Nothing.', run: () => 'ok' }],
+    });
+    const result = await agent.run({ prompt: 'hi', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'Hello.' });
+    expect(model.calls.map((call) => call.copy)).toEqual([false, false]);
+  });
 });

@@ -15,6 +15,8 @@ export interface FakeCall {
   media: LanguageModelContent[];
   options?: LanguageModelPromptOptions;
   streaming: boolean;
+  /** Whether the prompt went to a copy of the session (`clone()`) rather than the session itself. */
+  copy: boolean;
 }
 
 /** A scripted reply, or a function of the prompt. */
@@ -34,11 +36,20 @@ export function fakeLanguageModel(
     keeps?: number;
     /** What the model takes besides text. Default: nothing. */
     media?: readonly LanguageModelMedia[];
+    /** Sessions have no `clone()`, as in the first browsers with the API. */
+    noClone?: boolean;
+    /**
+     * Behave as Chrome does: a session keeps the first `responseConstraint` it was given, and a
+     * prompt with another one fails with `UnknownError`.
+     */
+    stickyConstraint?: boolean;
   } = {},
 ) {
   const calls: FakeCall[] = [];
   const created: LanguageModelCreateOptions[] = [];
   let destroyed = 0;
+  let copies = 0;
+  let released = 0;
   let at = 0;
   const next = async (input: string | LanguageModelMessage[], promptOptions?: LanguageModelPromptOptions) => {
     const text = textOf(input);
@@ -65,39 +76,68 @@ export function fakeLanguageModel(
       const grow = () => {
         used = Math.min(used + 10, options.keeps ?? Infinity);
       };
-      const session: LanguageModelSession = {
-        async prompt(input, promptOptions) {
-          calls.push({ input: textOf(input), media: mediaOf(input), options: promptOptions, streaming: false });
+      const make = (copy: boolean, held?: string): LanguageModelSession => {
+        let constraint = held;
+        const record = (
+          input: string | LanguageModelMessage[],
+          promptOptions: LanguageModelPromptOptions | undefined,
+          streaming: boolean,
+        ) => {
+          calls.push({ input: textOf(input), media: mediaOf(input), options: promptOptions, streaming, copy });
+        };
+        const answer = async (input: string | LanguageModelMessage[], promptOptions?: LanguageModelPromptOptions) => {
+          const asked = promptOptions?.responseConstraint && JSON.stringify(promptOptions.responseConstraint);
+          if (options.stickyConstraint && asked) {
+            if (constraint !== undefined && constraint !== asked) {
+              throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+            }
+            constraint = asked;
+          }
           const reply = await next(input, promptOptions);
           grow();
           return reply;
-        },
-        promptStreaming(input, promptOptions) {
-          calls.push({ input: textOf(input), media: mediaOf(input), options: promptOptions, streaming: true });
-          return new ReadableStream<string>({
-            async start(controller) {
-              try {
-                const reply = await next(input, promptOptions);
-                grow();
-                // Two chunks, so deltas are joined.
-                const half = Math.ceil(reply.length / 2);
-                controller.enqueue(reply.slice(0, half));
-                if (reply.length > half) controller.enqueue(reply.slice(half));
-                controller.close();
-              } catch (error) {
-                controller.error(error);
-              }
-            },
-          });
-        },
-        destroy() {
-          destroyed++;
-        },
-        get contextUsage() {
-          return used;
-        },
-        contextWindow: options.window ?? 1000,
+        };
+        return {
+          async prompt(input, promptOptions) {
+            record(input, promptOptions, false);
+            return answer(input, promptOptions);
+          },
+          promptStreaming(input, promptOptions) {
+            record(input, promptOptions, true);
+            return new ReadableStream<string>({
+              async start(controller) {
+                try {
+                  const reply = await answer(input, promptOptions);
+                  // Two chunks, so deltas are joined.
+                  const half = Math.ceil(reply.length / 2);
+                  controller.enqueue(reply.slice(0, half));
+                  if (reply.length > half) controller.enqueue(reply.slice(half));
+                  controller.close();
+                } catch (error) {
+                  controller.error(error);
+                }
+              },
+            });
+          },
+          ...(options.noClone
+            ? {}
+            : {
+                async clone() {
+                  copies++;
+                  return make(true, constraint);
+                },
+              }),
+          destroy() {
+            if (copy) released++;
+            else destroyed++;
+          },
+          get contextUsage() {
+            return used;
+          },
+          contextWindow: options.window ?? 1000,
+        };
       };
+      const session = make(false);
       return session;
     },
   };
@@ -107,6 +147,13 @@ export function fakeLanguageModel(
     created,
     get destroyed() {
       return destroyed;
+    },
+    /** Copies made with `clone()`, and how many of them were destroyed. */
+    get copies() {
+      return copies;
+    },
+    get released() {
+      return released;
     },
   };
 }

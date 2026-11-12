@@ -341,8 +341,9 @@ async function converse(
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
   const { watch } = limits;
-  // Images and audio go with the task's first call to the model; the conversation keeps them.
-  let media = attached.media;
+  // Every step is asked on a copy of the conversation (see `structured`), so each one is told the
+  // whole task so far, and the conversation itself hears it once, with the request for the reply.
+  const { media } = attached;
   const reply = async (input: string): Promise<string> => {
     let text = '';
     for (let attempt = 1; ; attempt++) {
@@ -353,7 +354,6 @@ async function converse(
           emit({ type: 'text-delta', text: delta });
         }
         watch({ step: 'reply', ms: Date.now() - started, constrained: false });
-        media = [];
         break;
       } catch (error) {
         if (signal.aborted) throw error;
@@ -371,19 +371,18 @@ async function converse(
 
   // Text exchanged with the model since the last usage report.
   let pending = 0;
-  let input = `User: ${task.prompt.trim() || '(no text: see what is attached)'}${attached.text}`;
-  if (!tools.length) return reply(input);
+  let story = `User: ${task.prompt.trim() || '(no text: see what is attached)'}${attached.text}`;
+  if (!tools.length) return reply(story);
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
-    const action = await choose(session, input, tools, media, signal, watch);
-    media = [];
-    report(pending + input.length + action.length);
+    const action = await choose(session, story, tools, media, signal, watch);
+    report(pending + story.length + action.length);
     pending = 0;
-    if (action === REPLY) return reply('Write your reply to the user.');
+    if (action === REPLY) return reply(`${story}\n\nWrite your reply to the user.`);
 
     const tool = tools.find((candidate) => candidate.name === action)!;
-    const args = await fillArguments(session, tool, signal, watch);
+    const args = await fillArguments(session, story, tool, media, signal, watch);
     pending += stableJson(args).length;
     const id = `call-${step + 1}`;
     emit({ type: 'tool-start', id, name: tool.name, input: args });
@@ -408,9 +407,42 @@ async function converse(
     signal.throwIfAborted();
     const shown = clip(output, limits.maxToolOutput);
     emit({ type: 'tool-end', id, name: tool.name, output: shown, ...(isError ? { isError } : {}) });
-    input = isError ? `The call to ${tool.name} failed: ${shown}` : `Result of ${tool.name}:\n${shown}`;
+    story += `\n\nYou called ${tool.name} with ${stableJson(args)}.\n${
+      isError ? `The call to ${tool.name} failed: ${shown}` : `Result of ${tool.name}:\n${shown}`
+    }`;
   }
-  return reply(`${input}\n\nNow write your reply to the user.`);
+  return reply(`${story}\n\nNow write your reply to the user.`);
+}
+
+/**
+ * Run `ask` on a copy of the conversation and let the copy go. Chrome keeps the first
+ * `responseConstraint` a session was given: a later prompt with another schema fails with
+ * `UnknownError` or answers in the first one's shape, and a plain prompt gets JSON appended. So
+ * no constrained prompt is sent to the conversation itself. A browser without `clone()` gets the
+ * conversation, as before.
+ */
+async function onCopy<T>(
+  session: LanguageModelSession,
+  signal: AbortSignal,
+  ask: (copy: LanguageModelSession) => Promise<T>,
+): Promise<T> {
+  if (typeof session.clone !== 'function') return ask(session);
+  const made = session.clone({ signal });
+  // A copy that arrives after the task was stopped has no owner: release it.
+  made.then(
+    (copy) => signal.aborted && copy.destroy(),
+    () => {},
+  );
+  const copy = await abortable(made, signal);
+  try {
+    return await ask(copy);
+  } finally {
+    try {
+      copy.destroy();
+    } catch {
+      // Already gone.
+    }
+  }
 }
 
 const ANNOTATIONS = new Set(['description', 'title', 'default', 'examples', '$comment', 'deprecated']);
@@ -452,7 +484,9 @@ async function structured(
     const started = Date.now();
     const constrained = constraint !== undefined;
     try {
-      const raw = await abortable(session.prompt(message(text, media), { signal, ...constraint }), signal);
+      const raw = await onCopy(session, signal, (copy) =>
+        abortable(copy.prompt(message(text, media), { signal, ...constraint }), signal),
+      );
       watch({ step, ms: Date.now() - started, constrained });
       return raw;
     } catch (error) {
@@ -566,7 +600,9 @@ async function choose(
 /** Step two: the chosen tool's arguments, constrained by its schema. */
 async function fillArguments(
   session: LanguageModelSession,
+  story: string,
   tool: PageTool,
+  media: readonly LanguageModelContent[],
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
 ): Promise<Record<string, unknown>> {
@@ -574,9 +610,9 @@ async function fillArguments(
   const raw = await structured(
     session,
     'arguments',
-    `Give the arguments for ${tool.name} as a JSON object.`,
+    `${story}\n\nYou chose to call ${tool.name}. Give the arguments for ${tool.name} as a JSON object.`,
     { type: 'object', additionalProperties: false, ...tool.inputSchema },
-    [],
+    media,
     signal,
     watch,
   );

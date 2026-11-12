@@ -102,7 +102,11 @@ if ((await agent.availability()) !== 'unavailable') {
 - `availability()`: `available`, `downloadable`, `downloading` or `unavailable`.
 - `prepare()` loads the model, downloading it first when needed. A download needs a user
   gesture, so call it from a click; `onDownload(progress)` reports 0 to 1.
-- Chrome fails some schema-constrained calls with an unexplained `UnknownError`. `nano` then asks
+- Chrome keeps the first `responseConstraint` a session was given: a later prompt with another
+  schema fails with `UnknownError` or answers in the first one's shape. So `nano` asks every
+  constrained step on a copy of the conversation (`session.clone()`), tells it the task so far,
+  and lets the copy go; the conversation itself only hears the request for the reply.
+- A schema-constrained call can still fail with an unexplained `UnknownError`. `nano` then asks
   the model the same thing in words and checks the answer itself, and a reply that fails before
   its first word is tried once more. An error that remains names the step: choosing the action,
   filling in the arguments or writing the reply.

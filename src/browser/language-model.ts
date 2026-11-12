@@ -24,6 +24,8 @@ export interface LanguageModelPromptOptions {
 export interface LanguageModelSession {
   prompt(input: string | LanguageModelMessage[], options?: LanguageModelPromptOptions): Promise<string>;
   promptStreaming(input: string | LanguageModelMessage[], options?: LanguageModelPromptOptions): ReadableStream<string>;
+  /** A copy with the same conversation so far; what is asked of the copy stays out of this session. */
+  clone?(options?: { signal?: AbortSignal }): Promise<LanguageModelSession>;
   destroy(): void;
   /** Tokens of the context window in use. `inputUsage` in Chrome before 148. */
   readonly contextUsage?: number;
