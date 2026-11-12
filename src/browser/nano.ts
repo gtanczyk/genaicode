@@ -19,6 +19,7 @@ import {
   streamDeltas,
   type LanguageModelAvailability,
   type LanguageModelFactory,
+  type LanguageModelPromptOptions,
   type LanguageModelSession,
 } from './language-model.js';
 import { argumentProblems, schemaProperties, toolText, type PageTool } from './tools.js';
@@ -42,6 +43,19 @@ export interface NanoOptions {
   languageModel?: LanguageModelFactory;
   /** Download progress of the model, 0 to 1, while a task or `prepare()` waits for it. */
   onDownload?(progress: number): void;
+  /** Called after every call to the model, with how long it took: for logs and tuning. */
+  onModelCall?(call: NanoModelCall): void;
+}
+
+/** One call to the model within a task. */
+export interface NanoModelCall {
+  /** `choose`: tool or reply. `arguments`: the tool's arguments. `reply`: the answer. */
+  step: 'choose' | 'arguments' | 'reply';
+  ms: number;
+  /** Whether the browser held the answer to a JSON Schema. */
+  constrained: boolean;
+  /** Why the call failed. */
+  error?: string;
 }
 
 /** A `CodingAgent` that runs in the page, on the browser's built-in model. */
@@ -220,6 +234,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
         const live = session;
         const text = await converse(live, tools, task, emit, signal, (characters) => report(live, characters), {
+          watch: (call) => options.onModelCall?.(call),
           maxSteps,
           maxToolOutput,
         });
@@ -276,14 +291,27 @@ async function converse(
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
   report: (characters: number) => void,
-  limits: { maxSteps: number; maxToolOutput: number },
+  limits: { maxSteps: number; maxToolOutput: number; watch: (call: NanoModelCall) => void },
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
+  const { watch } = limits;
   const reply = async (input: string): Promise<string> => {
     let text = '';
-    for await (const delta of streamDeltas(session.promptStreaming(input, { signal }), signal)) {
-      text += delta;
-      emit({ type: 'text-delta', text: delta });
+    for (let attempt = 1; ; attempt++) {
+      const started = Date.now();
+      try {
+        for await (const delta of streamDeltas(session.promptStreaming(input, { signal }), signal)) {
+          text += delta;
+          emit({ type: 'text-delta', text: delta });
+        }
+        watch({ step: 'reply', ms: Date.now() - started, constrained: false });
+        break;
+      } catch (error) {
+        if (signal.aborted) throw error;
+        watch({ step: 'reply', ms: Date.now() - started, constrained: false, error: describe(error) });
+        // Once the user saw text, a second try would say it twice.
+        if (text || attempt > 1 || permanent(error)) throw new Error(`Writing the reply failed: ${describe(error)}`);
+      }
     }
     signal.throwIfAborted();
     notAStub(text);
@@ -299,13 +327,13 @@ async function converse(
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
-    const action = await choose(session, input, tools, signal);
+    const action = await choose(session, input, tools, signal, watch);
     report(pending + input.length + action.length);
     pending = 0;
     if (action === REPLY) return reply('Write your reply to the user.');
 
     const tool = tools.find((candidate) => candidate.name === action)!;
-    const args = await fillArguments(session, tool, signal);
+    const args = await fillArguments(session, tool, signal, watch);
     pending += stableJson(args).length;
     const id = `call-${step + 1}`;
     emit({ type: 'tool-start', id, name: tool.name, input: args });
@@ -335,27 +363,101 @@ async function converse(
   return reply(`${input}\n\nNow write your reply to the user.`);
 }
 
+const ANNOTATIONS = new Set(['description', 'title', 'default', 'examples', '$comment', 'deprecated']);
+const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions']);
+
+/** `schema` without the keywords that only describe: they tell a model things, they constrain nothing. */
+function constraintOf(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(constraintOf);
+  if (!schema || typeof schema !== 'object') return schema;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (ANNOTATIONS.has(key)) continue;
+    if (key === 'enum' || key === 'const' || key === 'required') out[key] = value;
+    else if (SCHEMA_MAPS.has(key) && value && typeof value === 'object' && !Array.isArray(value))
+      // Keys here are property names, not keywords: a property may be called "title".
+      out[key] = Object.fromEntries(Object.entries(value).map(([name, sub]) => [name, constraintOf(sub)]));
+    else out[key] = constraintOf(value);
+  }
+  return out;
+}
+
+/**
+ * Ask for JSON that follows `schema`. The browser holds the model to it; when that call fails
+ * (Chrome answers some with an unexplained error), the model is asked in words instead and the
+ * answer is checked here against the tool's schema (`argumentProblems`) before the tool runs.
+ */
+async function structured(
+  session: LanguageModelSession,
+  step: 'choose' | 'arguments',
+  question: string,
+  schema: Record<string, unknown>,
+  signal: AbortSignal,
+  watch: (call: NanoModelCall) => void,
+  /** The question already says what shape is wanted: do not spend context on the schema. */
+  told = false,
+): Promise<string> {
+  const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
+    const started = Date.now();
+    const constrained = constraint !== undefined;
+    try {
+      const raw = await abortable(session.prompt(text, { signal, ...constraint }), signal);
+      watch({ step, ms: Date.now() - started, constrained });
+      return raw;
+    } catch (error) {
+      if (!signal.aborted) watch({ step, ms: Date.now() - started, constrained, error: describe(error) });
+      throw error;
+    }
+  };
+  try {
+    // The schema goes into the prompt here, in full, and the browser gets only what constrains
+    // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
+    const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
+    return await ask(text, {
+      responseConstraint: constraintOf(schema) as Record<string, unknown>,
+      omitResponseConstraintInput: true,
+    });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';
+    if (permanent(error)) throw new Error(`${doing} failed: ${describe(error)}`);
+    try {
+      return await ask(`${question}\nAnswer with JSON only, following this JSON Schema: ${JSON.stringify(schema)}`);
+    } catch (second) {
+      if (signal.aborted) throw second;
+      throw new Error(`${doing} failed: ${describe(second)}`);
+    }
+  }
+}
+
+/** An error a second try cannot fix. */
+function permanent(error: unknown): boolean {
+  return error instanceof Error && error.name === 'QuotaExceededError';
+}
+
 /** Step one: which tool, or `reply`. */
 async function choose(
   session: LanguageModelSession,
   input: string,
   tools: readonly PageTool[],
   signal: AbortSignal,
+  watch: (call: NanoModelCall) => void,
 ): Promise<string> {
   const names = [...tools.map((tool) => tool.name), REPLY];
   const question = `${input}\n\nWhat is the next action? Answer as JSON {"action": "..."} with one of: ${names.join(', ')}.`;
-  const raw = await abortable(
-    session.prompt(question, {
-      signal,
-      omitResponseConstraintInput: true,
-      responseConstraint: {
-        type: 'object',
-        properties: { action: { type: 'string', enum: names } },
-        required: ['action'],
-        additionalProperties: false,
-      },
-    }),
+  const raw = await structured(
+    session,
+    'choose',
+    question,
+    {
+      type: 'object',
+      properties: { action: { type: 'string', enum: names } },
+      required: ['action'],
+      additionalProperties: false,
+    },
     signal,
+    watch,
+    true,
   );
   notAStub(raw);
   const action = (parseObject(raw) as { action?: unknown } | undefined)?.action;
@@ -367,16 +469,25 @@ async function fillArguments(
   session: LanguageModelSession,
   tool: PageTool,
   signal: AbortSignal,
+  watch: (call: NanoModelCall) => void,
 ): Promise<Record<string, unknown>> {
   if (!Object.keys(schemaProperties(tool)).length) return {};
-  const raw = await abortable(
-    session.prompt(`Give the arguments for ${tool.name} as a JSON object.`, {
-      signal,
-      responseConstraint: { type: 'object', additionalProperties: false, ...tool.inputSchema },
-    }),
+  const raw = await structured(
+    session,
+    'arguments',
+    `Give the arguments for ${tool.name} as a JSON object.`,
+    { type: 'object', additionalProperties: false, ...tool.inputSchema },
     signal,
+    watch,
   );
-  return parseObject(raw) ?? {};
+  const args = parseObject(raw);
+  // No arguments is not the same as an answer that has none: do not run the tool on a guess.
+  if (!args) throw new Error(`Filling in the arguments failed: the model did not answer with a JSON object.`);
+  // Asked in words, a model may add arguments the schema does not have; the browser never lets it.
+  const open = tool.inputSchema?.additionalProperties;
+  if (open === true || (open && typeof open === 'object') || tool.inputSchema?.patternProperties) return args;
+  const known = schemaProperties(tool);
+  return Object.fromEntries(Object.entries(args).filter(([key]) => key in known));
 }
 
 /** Check the arguments, ask the user about a `write` tool, then run it. */

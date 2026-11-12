@@ -203,5 +203,95 @@ describe('tools', () => {
     // An empty string is a value: it clears a field. `minLength` asks for more.
     expect(argumentProblems(text, { text: '' })).toEqual([]);
     expect(argumentProblems(text, { text: '', title: '' })).toEqual(['"title" must not be empty']);
+    const deep: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          count: { type: 'integer', minimum: 1, maximum: 5 },
+          code: { type: 'string', pattern: '^[A-Z]{3}$', maxLength: 3 },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] },
+          },
+          kind: { const: 'a' },
+          note: { type: ['string', 'null'] },
+        },
+      },
+    };
+    expect(argumentProblems(deep, { count: 2, code: 'ABC', items: [{ id: 1 }], kind: 'a', note: null })).toEqual([]);
+    expect(argumentProblems(deep, { count: -1, code: 'abcd', items: [{ id: 'x' }, {}], kind: 'b', extra: 1 })).toEqual([
+      '"count" must be at least 1',
+      '"code" is too long (at most 3 characters)',
+      '"code" must match ^[A-Z]{3}$',
+      '"items[0].id" must be a number',
+      '"items[1].id" is required',
+      '"kind" must be "a"',
+      '"extra" is not an argument',
+    ]);
+    const exact: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          step: { type: 'number', multipleOf: 0.1 },
+          shape: { const: { a: 1, b: [2, { c: 3 }] } },
+          pick: { enum: [{ x: 1, y: 2 }] },
+        },
+      },
+    };
+    // 0.3 / 0.1 is not whole in floating point, and key order is not part of a JSON value.
+    expect(argumentProblems(exact, { step: 0.3, shape: { b: [2, { c: 3 }], a: 1 }, pick: { y: 2, x: 1 } })).toEqual([]);
+    expect(argumentProblems(exact, { step: 0.35, shape: { a: 1, b: [2, { c: 4 }] } })).toEqual([
+      '"step" must be a multiple of 0.1',
+      '"shape" must be {"a":1,"b":[2,{"c":3}]}',
+    ]);
+    const whole = (multipleOf: number): Pick<PageTool, 'inputSchema'> => ({
+      inputSchema: { type: 'object', properties: { n: { type: 'number', multipleOf } } },
+    });
+    // The allowance is rounding error, not a share of the step, however large the number.
+    expect(argumentProblems(whole(1), { n: 1000000000.5 })).toEqual(['"n" must be a multiple of 1']);
+    expect(argumentProblems(whole(0.01), { n: 10000000.005 })).toEqual(['"n" must be a multiple of 0.01']);
+    expect(argumentProblems(whole(0.01), { n: 10000000.01 })).toEqual([]);
+    const patterned: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        patternProperties: { '^x_': { type: 'string' } },
+        additionalProperties: false,
+      },
+    };
+    expect(argumentProblems(patterned, { id: 1, x_label: 'ok' })).toEqual([]);
+    expect(argumentProblems(patterned, { x_label: 1, y_label: 'no' })).toEqual([
+      '"x_label" must be a string',
+      '"y_label" is not an argument',
+    ]);
+    const nullable: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filter: {
+            type: 'object',
+            properties: { value: { type: ['string', 'null'] }, field: { type: 'string' } },
+            required: ['value', 'field'],
+          },
+        },
+      },
+    };
+    const short: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: { type: 'object', properties: { label: { type: 'string', minLength: 2, maxLength: 2 } } },
+    };
+    // Length is in characters: two emoji are two, though four UTF-16 units.
+    expect(argumentProblems(short, { label: '😀😀' })).toEqual([]);
+    expect(argumentProblems(short, { label: '😀' })).toEqual(['"label" is too short (at least 2 characters)']);
+    // Null is an answer where the schema allows it, and a missing value where it does not.
+    expect(argumentProblems(nullable, { filter: { value: null, field: 'name' } })).toEqual([]);
+    expect(argumentProblems(nullable, { filter: { value: null, field: null } })).toEqual([
+      '"filter.field" is required',
+    ]);
+    expect(argumentProblems(deep, { count: 9, items: [] })).toEqual([
+      '"count" must be at most 5',
+      '"items" needs at least 1 items',
+    ]);
   });
 });

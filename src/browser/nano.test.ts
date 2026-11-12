@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, ApprovalRequest } from '../agents/types.js';
 import { fakeLanguageModel } from './fake-model.js';
 import { languageModelAvailability } from './language-model.js';
-import { briefing, nano } from './nano.js';
+import { briefing, nano, type NanoModelCall } from './nano.js';
 import type { PageTool } from './tools.js';
 
 async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
@@ -287,6 +287,79 @@ describe('nano', () => {
     await vi.waitFor(() => expect(model.destroyed).toBe(1));
   });
 
+  it('asks in words when the browser fails a schema-constrained call, and reports every model call', async () => {
+    const unknown = () => {
+      throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+    };
+    const run = vi.fn(({ section }) => `About ${String(section)}.`);
+    const model = fakeLanguageModel([
+      '{"action":"read"}',
+      unknown,
+      'Sure: {"section":"start","mood":"keen"}',
+      '{"action":"reply"}',
+      unknown,
+      'It starts with npx.',
+    ]);
+    const calls: NanoModelCall[] = [];
+    const agent = nano({
+      languageModel: model.factory,
+      onModelCall: (call) => calls.push(call),
+      tools: [
+        {
+          name: 'read',
+          description: 'Read a section.',
+          inputSchema: {
+            type: 'object',
+            properties: { section: { type: 'string', description: 'Section id.' }, title: { type: 'string' } },
+            required: ['section'],
+          },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'how do I start?', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'It starts with npx.' });
+    expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
+    expect(model.calls[2].input).toContain('following this JSON Schema: {"type":"object"');
+    expect(model.calls[2].options?.responseConstraint).toBeUndefined();
+    // The prompt carries the whole schema; the browser gets it without the describing keywords.
+    expect(model.calls[0].options?.omitResponseConstraintInput).toBe(true);
+    expect(model.calls[1].options?.omitResponseConstraintInput).toBe(true);
+    expect(model.calls[1].input).toContain('"description":"Section id."');
+    expect(model.calls[1].options?.responseConstraint).toEqual({
+      type: 'object',
+      additionalProperties: false,
+      properties: { section: { type: 'string' }, title: { type: 'string' } },
+      required: ['section'],
+    });
+    expect(calls.map((call) => [call.step, call.constrained, call.error !== undefined])).toEqual([
+      ['choose', true, false],
+      ['arguments', true, true],
+      ['arguments', false, false],
+      ['choose', true, false],
+      ['reply', false, true],
+      ['reply', false, false],
+    ]);
+  });
+
+  it('says which step failed when the model keeps failing', async () => {
+    const model = fakeLanguageModel([
+      () => {
+        throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+      },
+    ]);
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'look', description: 'Look.', run: () => 'x' }],
+    });
+    const result = await agent.run({ prompt: 'hi', cwd: '' }).result;
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'Choosing the next action failed: An unknown error occurred: kErrorUnknown',
+    });
+    expect(model.calls).toHaveLength(2);
+  });
+
   it('keeps a conversation that a task is still running in', async () => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -347,5 +420,28 @@ describe('nano', () => {
     expect(text).toContain('- read_section(id: "install"|"agents"): Read a section of the page.');
     expect(text).toContain('- ping(): Ping.');
     expect(briefing(undefined, [])).not.toContain('tools');
+  });
+
+  it('does not run a tool when the arguments asked for in words are not JSON', async () => {
+    const run = vi.fn(() => 'found');
+    const unknown = () => {
+      throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+    };
+    const model = fakeLanguageModel(['{"action":"search"}', unknown, 'Sorry, I cannot produce the arguments.']);
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [
+        {
+          name: 'search',
+          description: 'Search.',
+          inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'find wolves', cwd: '' }).result;
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Filling in the arguments failed');
+    expect(run).not.toHaveBeenCalled();
   });
 });
