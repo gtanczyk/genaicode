@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, ApprovalRequest } from '../agents/types.js';
 import { fakeLanguageModel } from './fake-model.js';
 import { languageModelAvailability } from './language-model.js';
-import { briefing, nano } from './nano.js';
+import { briefing, nano, type NanoModelCall } from './nano.js';
 import type { PageTool } from './tools.js';
 
 async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
@@ -285,6 +285,65 @@ describe('nano', () => {
     expect(model.destroyed).toBe(0);
     open();
     await vi.waitFor(() => expect(model.destroyed).toBe(1));
+  });
+
+  it('asks in words when the browser fails a schema-constrained call, and reports every model call', async () => {
+    const unknown = () => {
+      throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+    };
+    const run = vi.fn(({ section }) => `About ${String(section)}.`);
+    const model = fakeLanguageModel([
+      '{"action":"read"}',
+      unknown,
+      'Sure: {"section":"start"}',
+      '{"action":"reply"}',
+      unknown,
+      'It starts with npx.',
+    ]);
+    const calls: NanoModelCall[] = [];
+    const agent = nano({
+      languageModel: model.factory,
+      onModelCall: (call) => calls.push(call),
+      tools: [
+        {
+          name: 'read',
+          description: 'Read a section.',
+          inputSchema: { type: 'object', properties: { section: { type: 'string' } }, required: ['section'] },
+          run,
+        },
+      ],
+    });
+    const result = await agent.run({ prompt: 'how do I start?', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'It starts with npx.' });
+    expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
+    expect(model.calls[2].input).toContain('following this JSON Schema: {"type":"object"');
+    expect(model.calls[2].options?.responseConstraint).toBeUndefined();
+    expect(calls.map((call) => [call.step, call.constrained, call.error !== undefined])).toEqual([
+      ['choose', true, false],
+      ['arguments', true, true],
+      ['arguments', false, false],
+      ['choose', true, false],
+      ['reply', false, true],
+      ['reply', false, false],
+    ]);
+  });
+
+  it('says which step failed when the model keeps failing', async () => {
+    const model = fakeLanguageModel([
+      () => {
+        throw new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError');
+      },
+    ]);
+    const agent = nano({
+      languageModel: model.factory,
+      tools: [{ name: 'look', description: 'Look.', run: () => 'x' }],
+    });
+    const result = await agent.run({ prompt: 'hi', cwd: '' }).result;
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'Choosing the next action failed: An unknown error occurred: kErrorUnknown',
+    });
+    expect(model.calls).toHaveLength(2);
   });
 
   it('keeps a conversation that a task is still running in', async () => {

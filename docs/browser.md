@@ -102,6 +102,12 @@ if ((await agent.availability()) !== 'unavailable') {
 - `availability()`: `available`, `downloadable`, `downloading` or `unavailable`.
 - `prepare()` loads the model, downloading it first when needed. A download needs a user
   gesture, so call it from a click; `onDownload(progress)` reports 0 to 1.
+- Chrome fails some schema-constrained calls with an unexplained `UnknownError`. `nano` then asks
+  the model the same thing in words and checks the answer itself, and a reply that fails before
+  its first word is tried once more. An error that remains names the step: choosing the action,
+  filling in the arguments or writing the reply.
+- `onModelCall({ step, ms, constrained, error })` reports every call to the model, for logs and
+  for finding the slow step.
 - `task.onApproval` answers `write` tools (without it they are declined);
   `task.permissions.approval` `'auto-approve'` and `'deny'` work as in every driver.
   `permissions.sandbox: 'read-only'` refuses every `write` tool; a page has no other sandbox,
