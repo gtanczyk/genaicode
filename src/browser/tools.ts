@@ -72,13 +72,32 @@ function isType(value: unknown, type: string): boolean {
   return typeOf(value) === type;
 }
 
+/** JSON equality: the order of an object's keys does not matter. */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, index) => same(item, b[index]))
+    );
+  }
+  if (!isSchema(a) || !isSchema(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => key in b && same(a[key], b[key]));
+}
+
+/** `value / step` is whole, give or take what floating point loses (0.3 / 0.1 is 2.9999999999999996). */
+function isMultiple(value: number, step: number): boolean {
+  const quotient = value / step;
+  return Math.abs(quotient - Math.round(quotient)) <= 1e-9 * Math.max(1, Math.abs(quotient));
+}
+
 function check(schema: Schema, value: unknown, path: string, problems: string[]): void {
   const name = `"${path}"`;
-  if ('const' in schema && JSON.stringify(schema.const) !== JSON.stringify(value)) {
+  if ('const' in schema && !same(schema.const, value)) {
     problems.push(`${name} must be ${JSON.stringify(schema.const)}`);
     return;
   }
-  if (Array.isArray(schema.enum) && !schema.enum.some((item) => JSON.stringify(item) === JSON.stringify(value))) {
+  if (Array.isArray(schema.enum) && !schema.enum.some((item) => same(item, value))) {
     problems.push(`${name} must be one of ${schema.enum.map((item) => JSON.stringify(item)).join(', ')}`);
     return;
   }
@@ -117,11 +136,7 @@ function check(schema: Schema, value: unknown, path: string, problems: string[])
     if (typeof schema.exclusiveMaximum === 'number' && value >= schema.exclusiveMaximum) {
       problems.push(`${name} must be less than ${schema.exclusiveMaximum}`);
     }
-    if (
-      typeof schema.multipleOf === 'number' &&
-      schema.multipleOf > 0 &&
-      !Number.isInteger(value / schema.multipleOf)
-    ) {
+    if (typeof schema.multipleOf === 'number' && schema.multipleOf > 0 && !isMultiple(value, schema.multipleOf)) {
       problems.push(`${name} must be a multiple of ${schema.multipleOf}`);
     }
   } else if (Array.isArray(value)) {

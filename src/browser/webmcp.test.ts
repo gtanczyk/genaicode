@@ -230,6 +230,22 @@ describe('tools', () => {
       '"kind" must be "a"',
       '"extra" is not an argument',
     ]);
+    const exact: Pick<PageTool, 'inputSchema'> = {
+      inputSchema: {
+        type: 'object',
+        properties: {
+          step: { type: 'number', multipleOf: 0.1 },
+          shape: { const: { a: 1, b: [2, { c: 3 }] } },
+          pick: { enum: [{ x: 1, y: 2 }] },
+        },
+      },
+    };
+    // 0.3 / 0.1 is not whole in floating point, and key order is not part of a JSON value.
+    expect(argumentProblems(exact, { step: 0.3, shape: { b: [2, { c: 3 }], a: 1 }, pick: { y: 2, x: 1 } })).toEqual([]);
+    expect(argumentProblems(exact, { step: 0.35, shape: { a: 1, b: [2, { c: 4 }] } })).toEqual([
+      '"step" must be a multiple of 0.1',
+      '"shape" must be {"a":1,"b":[2,{"c":3}]}',
+    ]);
     expect(argumentProblems(deep, { count: 9, items: [] })).toEqual([
       '"count" must be at most 5',
       '"items" needs at least 1 items',
