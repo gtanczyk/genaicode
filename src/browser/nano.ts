@@ -316,7 +316,8 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     async prepare(signal) {
       const model = factory();
       if (!model) throw new Error('This browser has no built-in language model (the Prompt API is missing).');
-      const session = await model.create({ ...expectedText(language, await inputs()), monitor, signal });
+      const taken = signal ? await abortable(inputs(), signal) : await inputs();
+      const session = await model.create({ ...expectedText(language, taken), monitor, signal });
       session.destroy();
     },
     context: (sessionId) => {
