@@ -69,6 +69,8 @@ const capabilities: AgentCapabilities = {
   permissions: { approval: ['ask', 'auto-approve', 'deny'], sandbox: ['read-only'] },
 };
 const KEPT_SESSIONS = 4;
+/** A rough size of a token, for steps the browser gives no count for. */
+const CHARACTERS_PER_TOKEN = 4;
 
 /**
  * The browser's built-in model (Gemini Nano through Chrome's Prompt API) as a genaicode agent.
@@ -141,13 +143,15 @@ export function nano(options: NanoOptions = {}): NanoAgent {
           }, task.timeoutMs);
 
     const emit = (event: AgentEvent) => events.push(event);
-    // What this task added to the conversation: the context in use now, less what it held at the start.
-    const meter = { base: 0, tokens: 0, reported: false, warned: false, over: false };
-    const report = (session: LanguageModelSession) => {
+    // What this task spent: the growth of the context in use, step by step.
+    const meter = { last: 0, tokens: 0, reported: false, warned: false, over: false };
+    const report = (session: LanguageModelSession, characters: number) => {
       const used = contextOf(session);
       if (!used) return;
-      // The browser drops old messages when the window fills up, so the count can fall.
-      meter.tokens = Math.max(meter.tokens, used.used - meter.base);
+      const grown = used.used - meter.last;
+      meter.last = used.used;
+      // A full window drops old messages, so the count stalls or falls: estimate that step from its text.
+      meter.tokens += grown > 0 ? grown : Math.ceil(characters / CHARACTERS_PER_TOKEN);
       meter.reported = true;
       emit({ type: 'usage', usage: { totalTokens: meter.tokens } });
       const limit = task.budget?.maxTokens;
@@ -192,7 +196,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         let session = task.resume ? sessions.get(task.resume) : undefined;
         sessionId = session ? task.resume : undefined;
         // A new conversation's instructions count as this task's tokens.
-        meter.base = session ? (contextOf(session)?.used ?? 0) : 0;
+        meter.last = session ? (contextOf(session)?.used ?? 0) : 0;
         if (!session) {
           session = await open(tools, signal);
           sessionId = `nano-${nextSession++}`;
@@ -201,7 +205,10 @@ export function nano(options: NanoOptions = {}): NanoAgent {
         }
         emit({ type: 'session', sessionId: sessionId!, model: options.model ?? 'on-device' });
         const live = session;
-        const text = await converse(live, tools, task, emit, signal, () => report(live), { maxSteps, maxToolOutput });
+        const text = await converse(live, tools, task, emit, signal, (characters) => report(live, characters), {
+          maxSteps,
+          maxToolOutput,
+        });
         return finish('completed', sessionId, text);
       } catch (error) {
         if (signal.aborted && !meter.over) {
@@ -248,7 +255,7 @@ async function converse(
   task: AgentTask,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
-  report: () => void,
+  report: (characters: number) => void,
   limits: { maxSteps: number; maxToolOutput: number },
 ): Promise<string> {
   const steps = Math.max(0, Math.min(limits.maxSteps, task.maxTurns ?? limits.maxSteps));
@@ -261,21 +268,25 @@ async function converse(
     signal.throwIfAborted();
     notAStub(text);
     emit({ type: 'message', text });
-    report();
+    report(pending + input.length + text.length);
     return text;
   };
 
+  // Text exchanged with the model since the last usage report.
+  let pending = 0;
   let input = `User: ${task.prompt}`;
   if (!tools.length) return reply(input);
 
   const called = new Set<string>();
   for (let step = 0; step < steps; step++) {
     const action = await choose(session, input, tools, signal);
-    report();
+    report(pending + input.length + action.length);
+    pending = 0;
     if (action === REPLY) return reply('Write your reply to the user.');
 
     const tool = tools.find((candidate) => candidate.name === action)!;
     const args = await fillArguments(session, tool, signal);
+    pending += stableJson(args).length;
     const id = `call-${step + 1}`;
     emit({ type: 'tool-start', id, name: tool.name, input: args });
 

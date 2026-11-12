@@ -17,11 +17,12 @@ export type FakeReply = string | ((input: string, options?: LanguageModelPromptO
 
 /**
  * A stand-in for the browser's `LanguageModel` in tests: replies come from `script` in order
- * (the last one repeats), and every prompt is recorded in `calls`.
+ * (the last one repeats), and every prompt is recorded in `calls`. Each prompt adds 10 tokens to
+ * the context in use, up to `keeps` (default: no limit), the way a full window drops old messages.
  */
 export function fakeLanguageModel(
   script: FakeReply[],
-  options: { availability?: string; download?: number[]; window?: number } = {},
+  options: { availability?: string; download?: number[]; window?: number; keeps?: number } = {},
 ) {
   const calls: FakeCall[] = [];
   const created: LanguageModelCreateOptions[] = [];
@@ -46,11 +47,14 @@ export function fakeLanguageModel(
         }
       }
       let used = 0;
+      const grow = () => {
+        used = Math.min(used + 10, options.keeps ?? Infinity);
+      };
       const session: LanguageModelSession = {
         async prompt(input, promptOptions) {
           calls.push({ input: String(input), options: promptOptions, streaming: false });
           const reply = await next(input, promptOptions);
-          used += 10;
+          grow();
           return reply;
         },
         promptStreaming(input, promptOptions) {
@@ -59,7 +63,7 @@ export function fakeLanguageModel(
             async start(controller) {
               try {
                 const reply = await next(input, promptOptions);
-                used += 10;
+                grow();
                 // Two chunks, so deltas are joined.
                 const half = Math.ceil(reply.length / 2);
                 controller.enqueue(reply.slice(0, half));

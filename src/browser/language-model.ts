@@ -113,7 +113,11 @@ export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   return new Promise<T>((resolve, reject) => {
     const stop = () =>
       reject(signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'));
-    if (signal.aborted) return stop();
+    if (signal.aborted) {
+      // Nobody waits for it any more; its own rejection must not go unhandled.
+      promise.catch(() => {});
+      return stop();
+    }
     signal.addEventListener('abort', stop, { once: true });
     promise.then(
       (value) => {

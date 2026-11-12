@@ -224,6 +224,39 @@ describe('nano', () => {
     expect((warned.at(-1) as Extract<AgentEvent, { type: 'done' }>).result.ok).toBe(true);
   });
 
+  it('still counts a task once the context window is full and drops old messages', async () => {
+    const agent = nano({ languageModel: fakeLanguageModel(['One.', 'Two.', 'Three.'], { keeps: 20 }).factory });
+    const first = await agent.run({ prompt: 'a', cwd: '' }).result;
+    await agent.run({ prompt: 'b', cwd: '', resume: first.sessionId }).result;
+    // The context stays at 20, so the third turn is estimated from its text: 33 characters.
+    const third = await agent.run({
+      prompt: 'tell me a third thing',
+      cwd: '',
+      resume: first.sessionId,
+      budget: { maxTokens: 5 },
+    }).result;
+    expect(third).toMatchObject({ status: 'failed', failure: { kind: 'budget' }, usage: { totalTokens: 9 } });
+  });
+
+  it('leaves no unhandled rejection when the task was aborted before it started', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const factory = fakeLanguageModel(['Hi.']).factory;
+      factory.create = () => Promise.reject(new DOMException('Aborted', 'AbortError'));
+      const result = await nano({ languageModel: factory }).run({
+        prompt: 'x',
+        cwd: '',
+        signal: AbortSignal.abort(),
+      }).result;
+      expect(result.status).toBe('aborted');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
   it('resumes a conversation in the same model session and forgets it on request', async () => {
     const model = fakeLanguageModel(['One.', 'Two.', 'Three.']);
     const agent = nano({ languageModel: model.factory });
