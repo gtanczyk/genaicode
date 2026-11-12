@@ -11,7 +11,10 @@ const ai = genaicode(openai({ model: process.env.OPENAI_MODEL ?? 'your-model-nam
 
 async function handleJob(job: Job): Promise<string> {
   return withRetry(
-    () => ai.prompt(system('Classify the support ticket as billing, bug, or question.'), job.text).text(),
+    () =>
+      ai
+        .prompt(system('Classify the support ticket as billing, bug, or question.'), job.text)
+        .text(),
     { attempts: 3, delayMs: 200 },
   );
 }

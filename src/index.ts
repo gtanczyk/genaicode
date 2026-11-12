@@ -2,7 +2,13 @@ export { genaicode } from './core/client.js';
 export type { ConfigureRequest, Conversation, GenAIClient, GenAIClientOptions, RequestBuilder } from './core/client.js';
 export { classifyError, isRetryable, withRetry } from './core/errors.js';
 export type { ClassifiedError, ErrorClass, RetryOptions } from './core/errors.js';
-export { cachePlugin, fallbackPlugin, fallbackProvider, rateLimitPlugin, timingPlugin } from './core/middleware.js';
+export {
+  cachePlugin,
+  fallbackPlugin,
+  fallbackProvider,
+  rateLimitPlugin,
+  timingPlugin,
+} from './core/middleware.js';
 export type {
   CachePluginOptions,
   FallbackPluginOptions,

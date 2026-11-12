@@ -16,11 +16,13 @@ describe('compatibility fixtures', () => {
 
     expect(toOpenAIRequest({ prompt: multimodalToolRoundTripPrompt, tools: sampleTools }, 'm').tools).toHaveLength(1);
     expect(
-      toAnthropicRequest({ prompt: multimodalToolRoundTripPrompt, tools: sampleTools }, { model: 'm' }).tools,
+      toAnthropicRequest(
+        { prompt: multimodalToolRoundTripPrompt, tools: sampleTools },
+        { model: 'm' },
+      ).tools,
     ).toHaveLength(1);
-    expect(
-      toGoogleRequest({ prompt: multimodalToolRoundTripPrompt, tools: sampleTools }, { model: 'm' }).config?.tools,
-    ).toBeTruthy();
+    expect(toGoogleRequest({ prompt: multimodalToolRoundTripPrompt, tools: sampleTools }, { model: 'm' }).config?.tools)
+      .toBeTruthy();
 
     expect(toAnthropicSystem(multimodalToolRoundTripPrompt)[0]?.text).toContain('captions');
     expect(toGoogleSystemInstruction(multimodalToolRoundTripPrompt)?.parts?.[0]).toMatchObject({

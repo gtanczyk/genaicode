@@ -96,7 +96,12 @@ describe('genaicode client', () => {
     await expect(
       ai('count items').json({
         parse(value) {
-          if (typeof value !== 'object' || value === null || !('count' in value) || typeof value.count !== 'number') {
+          if (
+            typeof value !== 'object' ||
+            value === null ||
+            !('count' in value) ||
+            typeof value.count !== 'number'
+          ) {
             throw new Error('Invalid payload');
           }
           return value.count;
@@ -110,7 +115,10 @@ describe('genaicode client', () => {
     const { provider, requests } = sequenceProvider([{ parts: [{ type: 'text', text: '{}' }] }]);
     const ai = genaicode(provider);
 
-    await ai('classify').responseFormat({ type: 'json' }).thinking({ level: 'minimal' }).text();
+    await ai('classify')
+      .responseFormat({ type: 'json' })
+      .thinking({ level: 'minimal' })
+      .text();
 
     expect(requests[0]).toMatchObject({
       responseFormat: { type: 'json' },

@@ -33,16 +33,13 @@ function sequenceProvider(results: GenerationResult[], streamChunks?: StreamEven
 
 describe('streaming', () => {
   it('exposes native stream events from the request builder', async () => {
-    const { provider } = sequenceProvider(
-      [],
+    const { provider } = sequenceProvider([], [
       [
-        [
-          { type: 'text-delta', text: 'hel' },
-          { type: 'text-delta', text: 'lo' },
-          { type: 'done', result: { parts: [{ type: 'text', text: 'hello' }] } },
-        ],
+        { type: 'text-delta', text: 'hel' },
+        { type: 'text-delta', text: 'lo' },
+        { type: 'done', result: { parts: [{ type: 'text', text: 'hello' }] } },
       ],
-    );
+    ]);
     const ai = genaicode(provider);
     const events: StreamEvent['type'][] = [];
     let text = '';
@@ -66,15 +63,9 @@ describe('streaming', () => {
   });
 
   it('updates conversation history after a streamed turn', async () => {
-    const { provider } = sequenceProvider(
-      [],
-      [
-        [
-          { type: 'text-delta', text: 'one' },
-          { type: 'done', result: { parts: [{ type: 'text', text: 'one' }] } },
-        ],
-      ],
-    );
+    const { provider } = sequenceProvider([], [
+      [{ type: 'text-delta', text: 'one' }, { type: 'done', result: { parts: [{ type: 'text', text: 'one' }] } }],
+    ]);
     const chain = genaicode(provider).chain();
     const pieces: string[] = [];
     for await (const delta of chain.streamText('prompt')) {
