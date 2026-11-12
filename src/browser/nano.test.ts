@@ -308,7 +308,11 @@ describe('nano', () => {
         {
           name: 'read',
           description: 'Read a section.',
-          inputSchema: { type: 'object', properties: { section: { type: 'string' } }, required: ['section'] },
+          inputSchema: {
+            type: 'object',
+            properties: { section: { type: 'string', description: 'Section id.' }, title: { type: 'string' } },
+            required: ['section'],
+          },
           run,
         },
       ],
@@ -318,9 +322,16 @@ describe('nano', () => {
     expect(run).toHaveBeenCalledWith({ section: 'start' }, expect.anything());
     expect(model.calls[2].input).toContain('following this JSON Schema: {"type":"object"');
     expect(model.calls[2].options?.responseConstraint).toBeUndefined();
-    // The arguments call keeps the schema in the prompt (it carries descriptions); the choice does not need it.
+    // The prompt carries the whole schema; the browser gets it without the describing keywords.
     expect(model.calls[0].options?.omitResponseConstraintInput).toBe(true);
-    expect(model.calls[1].options?.omitResponseConstraintInput).toBeUndefined();
+    expect(model.calls[1].options?.omitResponseConstraintInput).toBe(true);
+    expect(model.calls[1].input).toContain('"description":"Section id."');
+    expect(model.calls[1].options?.responseConstraint).toEqual({
+      type: 'object',
+      additionalProperties: false,
+      properties: { section: { type: 'string' }, title: { type: 'string' } },
+      required: ['section'],
+    });
     expect(calls.map((call) => [call.step, call.constrained, call.error !== undefined])).toEqual([
       ['choose', true, false],
       ['arguments', true, true],

@@ -363,6 +363,25 @@ async function converse(
   return reply(`${input}\n\nNow write your reply to the user.`);
 }
 
+const ANNOTATIONS = new Set(['description', 'title', 'default', 'examples', '$comment', 'deprecated']);
+const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions']);
+
+/** `schema` without the keywords that only describe: they tell a model things, they constrain nothing. */
+function constraintOf(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(constraintOf);
+  if (!schema || typeof schema !== 'object') return schema;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (ANNOTATIONS.has(key)) continue;
+    if (key === 'enum' || key === 'const' || key === 'required') out[key] = value;
+    else if (SCHEMA_MAPS.has(key) && value && typeof value === 'object' && !Array.isArray(value))
+      // Keys here are property names, not keywords: a property may be called "title".
+      out[key] = Object.fromEntries(Object.entries(value).map(([name, sub]) => [name, constraintOf(sub)]));
+    else out[key] = constraintOf(value);
+  }
+  return out;
+}
+
 /**
  * Ask for JSON that follows `schema`. The browser holds the model to it; when that call fails
  * (Chrome answers some with an unexplained error), the model is asked in words instead and the
@@ -376,7 +395,7 @@ async function structured(
   signal: AbortSignal,
   watch: (call: NanoModelCall) => void,
   /** The question already says what shape is wanted: do not spend context on the schema. */
-  omit = false,
+  told = false,
 ): Promise<string> {
   const ask = async (text: string, constraint?: LanguageModelPromptOptions): Promise<string> => {
     const started = Date.now();
@@ -391,7 +410,13 @@ async function structured(
     }
   };
   try {
-    return await ask(question, { responseConstraint: schema, ...(omit ? { omitResponseConstraintInput: true } : {}) });
+    // The schema goes into the prompt here, in full, and the browser gets only what constrains
+    // the answer: Chrome failed calls where it was left to add a schema with annotations itself.
+    const text = told ? question : `${question}\nIt must follow this JSON Schema: ${JSON.stringify(schema)}`;
+    return await ask(text, {
+      responseConstraint: constraintOf(schema) as Record<string, unknown>,
+      omitResponseConstraintInput: true,
+    });
   } catch (error) {
     if (signal.aborted) throw error;
     const doing = step === 'choose' ? 'Choosing the next action' : 'Filling in the arguments';

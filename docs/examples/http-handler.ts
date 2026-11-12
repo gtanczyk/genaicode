@@ -17,9 +17,7 @@ const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { text?: string };
-    const summary = await ai
-      .prompt(system('Summarize for engineers in three bullets.'), body.text ?? '')
-      .text();
+    const summary = await ai.prompt(system('Summarize for engineers in three bullets.'), body.text ?? '').text();
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
     res.end(summary);
     return;
