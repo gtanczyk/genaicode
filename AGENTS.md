@@ -30,14 +30,14 @@ scripts in `package.json`.
 
 ## Changelog and releases
 
-`CHANGELOG.md` is the release source of truth; nobody runs `npm version` by hand.
+`docs/CHANGELOG.md` is the release source of truth; nobody runs `npm version` by hand.
 
 - A PR that changes `src/` (tests excluded) adds one line under `## Unreleased`, or the
   Changelog guard in `lint.yaml` fails. Write it for someone upgrading `genaicode`, present tense,
   ending with the PR number: `- \`genaicode run\` resumes a Muse Code session (#149)`.
 - The category decides the bump: `### Breaking` major, `### Added` minor, `### Fixed` patch,
   `### Internal` (refactors, tooling, nothing a user notices) no release. The highest one present wins.
-- `release-pr.yaml` runs `scripts/release.mjs cut` on every master push that moves `CHANGELOG.md`
+- `release-pr.yaml` runs `scripts/release.mjs cut` on every master push that moves `docs/CHANGELOG.md`
   and keeps one PR, **`release: vX.Y.Z`** on branch `release/next`, up to date. Merging it is the
   cutoff: `publish.yaml` sees `package.json` change, publishes to npm (trusted publishing,
   provenance) and creates the `vX.Y.Z` tag and GitHub Release with that section as notes.

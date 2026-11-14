@@ -27,3 +27,6 @@ src/prompt-debug/current-prompt.js
 *.njsproj
 *.sln
 *.sw?
+
+# Packed tarballs (npm pack)
+*.tgz

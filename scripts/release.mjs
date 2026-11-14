@@ -1,10 +1,10 @@
-// Release plumbing driven by CHANGELOG.md: its Unreleased categories decide the next version.
+// Release plumbing driven by docs/CHANGELOG.md: its Unreleased categories decide the next version.
 //
 //   node scripts/release.mjs next                     next version, or "none"
 //   node scripts/release.mjs cut [--date YYYY-MM-DD]  move Unreleased under that version, bump package.json + lock
 //   node scripts/release.mjs notes 1.2.3              print that version's notes (Internal left out)
 //   node scripts/release.mjs check [--files a,b]      changelog well formed, its newest version = package.json;
-//                                          with --files, a shipped-code change must touch CHANGELOG.md
+//                                          with --files, a shipped-code change must touch docs/CHANGELOG.md
 //
 // The auto-opened release PR runs `cut`; merging it is the cutoff, and publish.yaml publishes.
 import { execFileSync } from 'node:child_process';
@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CHANGELOG = 'CHANGELOG.md';
+const CHANGELOG = 'docs/CHANGELOG.md';
 // Paths that ship in the package: a change there must add a changelog line (tests excluded).
 const SHIPPED = ['src/'];
 const CATEGORIES = ['Breaking', 'Added', 'Fixed', 'Internal'];
