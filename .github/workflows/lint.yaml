@@ -20,7 +20,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # A change to src/ must add a CHANGELOG.md line (see AGENTS.md, Changelog and releases).
+      # A change to src/ must add a docs/CHANGELOG.md line (see AGENTS.md, Changelog and releases).
       - name: Changelog guard
         env:
           GH_TOKEN: ${{ github.token }}

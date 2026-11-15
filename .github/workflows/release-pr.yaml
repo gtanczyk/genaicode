@@ -1,6 +1,6 @@
 name: Release PR
 
-# Proposes the next version whenever master carries unreleased CHANGELOG.md lines. Derives the bump
+# Proposes the next version whenever master carries unreleased docs/CHANGELOG.md lines. Derives the bump
 # from the Unreleased categories and keeps one PR on branch release/next up to date with the cut.
 # Merging that PR is the cutoff: it lands the bumped package.json on master, and publish.yaml
 # publishes. Nothing to release (only Internal lines, or none) means no PR.
@@ -12,7 +12,7 @@ name: Release PR
 on:
   push:
     branches: [master]
-    paths: ['CHANGELOG.md']
+    paths: ['docs/CHANGELOG.md']
   workflow_dispatch:
 
 permissions:
@@ -65,13 +65,13 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git checkout -B release/next
           node scripts/release.mjs cut
-          git add CHANGELOG.md package.json package-lock.json
-          git commit -m "release: v$VERSION" -m "Cut from CHANGELOG.md. Merging publishes v$VERSION to npm."
+          git add docs/CHANGELOG.md package.json package-lock.json
+          git commit -m "release: v$VERSION" -m "Cut from docs/CHANGELOG.md. Merging publishes v$VERSION to npm."
           git push --force origin release/next
           {
             echo "Merging this PR is the cutoff: it lands \`$VERSION\` on master and publishes \`v$VERSION\` to npm."
             echo
-            echo "Edit the wording in \`CHANGELOG.md\` on this branch if a line reads wrong; the category decides the number."
+            echo "Edit the wording in \`docs/CHANGELOG.md\` on this branch if a line reads wrong; the category decides the number."
             echo
             echo "## Notes"
             echo
