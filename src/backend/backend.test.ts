@@ -296,6 +296,22 @@ describe('createAgentBackend', () => {
     expect(JSON.stringify(done.end)).not.toContain('secret upstream detail');
   });
 
+  it('fails the turn on an error event from a provider stream', async () => {
+    const provider: ModelProvider = {
+      name: 'streaming',
+      async generate() {
+        throw new Error('unused');
+      },
+      async *stream() {
+        yield { type: 'error', error: Object.assign(new Error('over'), { status: 429 }) };
+        yield { type: 'done', result: { parts: [] } };
+      },
+    };
+    const backend = createAgentBackend({ client: genaicode(provider), secret: SECRET, public: true });
+    const done = await post(backend, { prompt: 'x' });
+    expect(done.end).toMatchObject({ status: 'failed', failure: { kind: 'quota' } });
+  });
+
   it('keeps conversations in a store when given one', async () => {
     const kept = new Map<string, unknown>();
     const { backend, requests } = backendWith([say('one'), say('two')], {

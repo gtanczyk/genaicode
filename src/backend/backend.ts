@@ -483,6 +483,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
               streamed += event.text;
               context.write({ type: 'text-delta', text: event.text });
             } else if (event.type === 'usage') stepUsage = event.usage;
+            else if (event.type === 'error') throw event.error;
             else if (event.type === 'done') result = event.result;
           }
         } catch (error) {
