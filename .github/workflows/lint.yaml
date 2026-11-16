@@ -8,7 +8,8 @@ defaults:
 
 jobs:
   build_and_test:
-    runs-on: ubuntu-latest
+    # Playwright 1.56 has no Chromium for ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       models: read
