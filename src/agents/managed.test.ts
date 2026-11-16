@@ -168,6 +168,37 @@ describe('managedAgent', () => {
     });
   });
 
+  it('fails and interrupts the session when an approval answer cannot be sent', async () => {
+    const { provider, calls } = fake([], {
+      capabilities: { permissions: { approval: ['auto-approve'] } },
+      async *watch() {
+        yield {
+          snapshot: { id: 's-1', state: 'idle', stopReason: 'requires-action' },
+          events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }],
+        };
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+      async answer() {
+        throw new Error('409 conflict');
+      },
+    });
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({
+      prompt: 'p',
+      cwd: '.',
+      permissions: { approval: 'auto-approve' },
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'Answering cloud approval a-1 failed: 409 conflict' });
+    expect(calls).toContain('interrupt:s-1');
+  });
+
+  it('passes unavailable and crash failures through for failover', async () => {
+    for (const kind of ['unavailable', 'crash'] as const) {
+      const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);
+      const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+      expect(result).toMatchObject({ status: 'failed', error: 'down', failure: { kind } });
+    }
+  });
+
   it('interrupts on abort, releases, and deletes the session when asked', async () => {
     const { provider, calls } = fake([]);
     const run = managedAgent(provider, { pollIntervalMs: 2, deleteSession: true }).run({ prompt: 'p', cwd: '.' });

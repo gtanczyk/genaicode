@@ -10,6 +10,8 @@ const STDERR_TAIL_BYTES = 4 * 1024;
 export interface AgentOutcome {
   ok: boolean;
   error?: string;
+  /** The driver's own classification of a failure, when it knows better than the exit. */
+  failure?: AgentFailure;
 }
 
 /** Collects events for iteration and folds them into the pieces of an `AgentResult`. */
@@ -130,6 +132,7 @@ export class RunRecorder {
     error: string | undefined,
   ): AgentFailure | undefined {
     if (this.overBudget) return { kind: 'budget' };
+    if (outcome?.failure && outcome.failure.kind !== 'quota') return outcome.failure;
     if (this.quotaReported)
       return { kind: 'quota', ...(this.quotaResetsAt !== undefined ? { resetsAt: this.quotaResetsAt } : {}) };
     if (error && AUTH_ERROR.test(error)) return { kind: 'auth' };

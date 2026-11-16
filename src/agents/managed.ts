@@ -172,11 +172,13 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const recorder = new RunRecorder(provider.name, provider.name);
   const controller = new AbortController();
-  let stopReason: 'aborted' | 'timeout' | undefined;
+  let stopReason: 'aborted' | 'timeout' | 'failed' | undefined;
+  // Why the run failed on our side (an approval answer that did not reach the platform).
+  let fatal: string | undefined;
   let sessionId: string | undefined;
   let ended = false;
 
-  const stop = (reason: 'aborted' | 'timeout') => {
+  const stop = (reason: 'aborted' | 'timeout' | 'failed') => {
     if (stopReason || controller.signal.aborted) return;
     stopReason = reason;
     controller.abort();
@@ -207,16 +209,23 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       answered.add(event.request.id);
       const id = sessionId;
       pending.push(
-        decideApproval(task, event.request, controller.signal).then(async ({ decision, automatic }) => {
-          if (controller.signal.aborted) return;
-          await provider.answer!(id, event.request.id, decision);
-          recorder.emit({
-            type: 'approval-resolved',
-            id: event.request.id,
-            decision,
-            ...(automatic ? { automatic } : {}),
-          });
-        }),
+        decideApproval(task, event.request, controller.signal)
+          .then(async ({ decision, automatic }) => {
+            if (controller.signal.aborted) return;
+            await provider.answer!(id, event.request.id, decision);
+            recorder.emit({
+              type: 'approval-resolved',
+              id: event.request.id,
+              decision,
+              ...(automatic ? { automatic } : {}),
+            });
+          })
+          .catch((error: unknown) => {
+            // An answer that never arrived leaves the session waiting: stop the run now.
+            const message = error instanceof Error ? error.message : String(error);
+            fatal ??= `Answering ${provider.name} approval ${event.request.id} failed: ${message}`;
+            stop('failed');
+          }),
       );
     }
   };
@@ -239,6 +248,12 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       }
     }
   };
+
+  /** The run's end after `stop()`: a local failure, an abort or a timeout. */
+  const stopped = (): { exit: ProcessExit; outcome?: AgentOutcome } =>
+    stopReason === 'failed'
+      ? { exit: exit('closed'), outcome: { ok: false, error: fatal ?? `${provider.name} run failed.` } }
+      : { exit: exit(stopReason ?? 'aborted') };
 
   const outcomeOf = (snapshot: ManagedSnapshot): { exit: ProcessExit; outcome?: AgentOutcome } => {
     if (snapshot.text !== undefined && snapshot.text !== sessionText.value) {
@@ -263,7 +278,11 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
         });
       return {
         exit: exit('closed'),
-        outcome: { ok: false, error: snapshot.error ?? `${provider.name} session failed.` },
+        outcome: {
+          ok: false,
+          error: snapshot.error ?? `${provider.name} session failed.`,
+          ...(snapshot.failure ? { failure: snapshot.failure } : {}),
+        },
       };
     }
     return { exit: exit('closed'), outcome: { ok: true } };
@@ -292,7 +311,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
     try {
       return await provider.start(request, controller.signal);
     } catch (error) {
-      if (stopReason) return { exit: exit(stopReason) };
+      if (stopReason) return stopped();
       return { exit: exit('spawn-error', error instanceof Error ? error : new Error(String(error))) };
     }
   };
@@ -343,7 +362,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       }
     }
     await Promise.allSettled(pending);
-    if (stopReason) return { exit: exit(stopReason) };
+    if (stopReason) return stopped();
     return outcomeOf(snapshot);
   };
 
@@ -357,7 +376,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
     try {
       outcome = await follow(started);
     } catch (error) {
-      if (stopReason) outcome = { exit: exit(stopReason) };
+      if (stopReason) outcome = stopped();
       else {
         const message = error instanceof Error ? error.message : String(error);
         const verb = provider.watch ? 'Streaming' : 'Polling';
