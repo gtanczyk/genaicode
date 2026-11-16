@@ -273,6 +273,21 @@ describe('createAgentBackend', () => {
     ).toBe(400);
   });
 
+  it('keeps a waiting token small enough to post back with the results', async () => {
+    const { backend, requests } = backendWith([call('read_section', { id: 'a' }), say('ok')], {
+      images: true,
+      pageTools: [{ name: 'read_section', description: 'Read a section.' }],
+    });
+    const big = 'A'.repeat(1_600_000);
+    const asked = await post(backend, { prompt: 'look', images: [{ mediaType: 'image/png', data: big }] });
+    expect(asked.end.status).toBe('waiting');
+    expect(asked.end.state!.length).toBeLessThan(1024 * 1024);
+    const done = await post(backend, { state: asked.end.state, results: [{ id: 'id-read_section', output: 'x' }] });
+    expect(done.status).toBe(200);
+    expect(done.end.status).toBe('completed');
+    expect(requests[1]!.prompt[1]).toMatchObject({ text: 'look\n[1 image attached earlier]' });
+  });
+
   it('tells the page the kind of a model failure, not its words', async () => {
     const error = Object.assign(new Error('secret upstream detail'), { status: 429 });
     const { backend } = backendWith([error]);

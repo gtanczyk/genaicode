@@ -368,7 +368,13 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
   async function closeConversation(conversation: Conversation): Promise<string> {
     const items = trimmed(stripped(conversation.items, !!conversation.waiting), limits.maxStateBytes);
     const { sid: known, ...kept } = { ...conversation, items, exp: Date.now() + limits.stateTtlMs };
-    if (!options.store) return seal.seal(kept);
+    if (!options.store) {
+      const token = await seal.seal(kept);
+      // The page sends the token back with its tool results: it must fit a request with room to spare.
+      // Too big while images wait in it: the images become notes, and the turn goes on without them.
+      if (token.length <= limits.maxBodyBytes / 2 || !conversation.waiting) return token;
+      return seal.seal({ ...kept, items: trimmed(stripped(conversation.items, false), limits.maxStateBytes) });
+    }
     const sid = known ?? randomId('conv');
     await options.store.set(sid, kept, limits.stateTtlMs);
     const pointer: StoreToken = { v: 1, sid, ...(kept.uid ? { uid: kept.uid } : {}), exp: kept.exp };
