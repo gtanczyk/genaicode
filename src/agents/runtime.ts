@@ -40,6 +40,13 @@ export class RunRecorder {
     this.stopForBudget = stop;
   }
 
+  /** The platform stopped the run at its own budget cap: fail it as over budget. */
+  budgetReached(message: string): void {
+    if (this.overBudget) return;
+    this.overBudget = message;
+    this.events.push({ type: 'error', message });
+  }
+
   emit(event: AgentEvent): void {
     if (event.type === 'session') this.sessionId = event.sessionId;
     if (event.type === 'message') this.text = event.text;

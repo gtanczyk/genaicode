@@ -76,7 +76,21 @@ export { createCursorParser, cursor, cursorArgs, cursorPermissionFlags } from '.
 export type { CursorAgentOptions } from './agents/drivers/cursor.js';
 export { createOpencodeParser, opencode, opencodeArgs, opencodePermissionFlags } from './agents/drivers/opencode.js';
 export type { OpencodeAgentOptions } from './agents/drivers/opencode.js';
-export { hostedAgent } from './agents/hosted.js';
+export { fromHosted, hostedAgent } from './agents/hosted.js';
+export { isManagedSettled, managedAgent } from './agents/managed.js';
+export type {
+  ManagedAgentOptions,
+  ManagedCapabilities,
+  ManagedEventPage,
+  ManagedFile,
+  ManagedProvider,
+  ManagedSnapshot,
+  ManagedStart,
+  ManagedState,
+  ManagedStopReason,
+  ManagedUpdate,
+  ManagedUsage,
+} from './agents/managed.js';
 export type {
   HostedAgentOptions,
   HostedAgentProvider,
