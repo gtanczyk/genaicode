@@ -1,5 +1,5 @@
 import { approximateSize, EventQueue } from '../agents/event-queue.js';
-import { resolvePermissions, unsupportedPermissions } from '../agents/permissions.js';
+import { unsupportedPermissions } from '../agents/permissions.js';
 import type {
   AgentCapabilities,
   AgentEvent,
@@ -7,7 +7,6 @@ import type {
   AgentRun,
   AgentStatus,
   AgentTask,
-  ApprovalRequest,
   CodingAgent,
 } from '../agents/types.js';
 import {
@@ -25,7 +24,8 @@ import {
   type LanguageModelPromptOptions,
   type LanguageModelSession,
 } from './language-model.js';
-import { argumentProblems, schemaProperties, toolText, type PageTool } from './tools.js';
+import { invoke, stableJson } from './invoke.js';
+import { schemaProperties, type PageTool } from './tools.js';
 
 export interface NanoOptions {
   /** What the model may do on the page. A function is called at the start of every task. */
@@ -553,8 +553,8 @@ interface Attached {
   media: LanguageModelContent[];
 }
 
-const TEXT_TYPES = /^(text\/|application\/(json|xml|javascript|typescript|x-yaml|yaml|toml|x-sh|sql|csv)\b)/;
-const TEXT_NAMES =
+export const TEXT_TYPES = /^(text\/|application\/(json|xml|javascript|typescript|x-yaml|yaml|toml|x-sh|sql|csv)\b)/;
+export const TEXT_NAMES =
   /\.(txt|md|markdown|json|jsonl|csv|tsv|ya?ml|toml|xml|html?|css|js|jsx|mjs|cjs|ts|tsx|py|rb|go|rs|java|kt|c|h|cpp|cs|php|sh|sql|log|ini|env|gd)$/i;
 
 async function attach(
@@ -662,56 +662,6 @@ async function fillArguments(
   return Object.fromEntries(Object.entries(args).filter(([key]) => key in known));
 }
 
-/** Check the arguments, ask the user about a `write` tool, then run it. */
-async function invoke(
-  tool: PageTool,
-  args: Record<string, unknown>,
-  id: string,
-  task: AgentTask,
-  emit: (event: AgentEvent) => void,
-  signal: AbortSignal,
-): Promise<string> {
-  const problems = argumentProblems(tool, args);
-  if (problems.length) throw new Error(`Bad arguments: ${problems.join('; ')}.`);
-  tool.validate?.(args);
-  if (tool.write) {
-    const permissions = resolvePermissions(task.permissions);
-    if (permissions.sandbox === 'read-only') throw new Error('Not allowed: this task is read-only.');
-    const approval = permissions.approval ?? 'ask';
-    const request: ApprovalRequest = {
-      id,
-      kind: 'other',
-      summary: tool.summary?.(args) ?? `${tool.name} ${stableJson(args)}`,
-      detail: { tool: tool.name, args },
-      scope: 'once',
-    };
-    if (approval === 'deny') throw new Error('Not allowed: this needs the user’s approval.');
-    emit({ type: 'approval-request', request });
-    let decision: 'approve' | 'deny' = 'deny';
-    if (approval === 'auto-approve') decision = 'approve';
-    else if (task.onApproval) {
-      try {
-        decision =
-          (await abortable(Promise.resolve(task.onApproval(request, signal)), signal)) === 'approve'
-            ? 'approve'
-            : 'deny';
-      } catch {
-        decision = 'deny';
-      }
-    }
-    if (signal.aborted) decision = 'deny';
-    emit({
-      type: 'approval-resolved',
-      id,
-      decision,
-      ...(approval === 'auto-approve' ? { automatic: true } : {}),
-    });
-    signal.throwIfAborted();
-    if (decision !== 'approve') throw new Error('The user declined this action.');
-  }
-  return toolText(await abortable(Promise.resolve(tool.run(args, signal)), signal));
-}
-
 /** Chromium builds without the model ship a Prompt API that says so and echoes the prompt. */
 function notAStub(reply: string): void {
   if (/^On-device model is not available/i.test(reply)) {
@@ -762,10 +712,6 @@ function parseObject(raw: string): Record<string, unknown> | undefined {
   } catch {
     return undefined;
   }
-}
-
-function stableJson(value: Record<string, unknown>): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))));
 }
 
 function clip(text: string, max: number): string {
