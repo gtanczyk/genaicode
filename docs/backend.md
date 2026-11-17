@@ -63,6 +63,8 @@ const assistant = createPageAgent({
 over its allowance (`quota`), unreachable or failing (`unavailable`). Put `nano()` first to use
 the free, private model where the browser has it and the server everywhere else. A prompt that
 already ran a `write` tool is not handed on: the run fails, so the action does not happen twice.
+The chat asks the fallback's `info()`: it is open when any agent is, takes what the agent that
+runs first takes (images only where that model does), and says when it is back when none is.
 
 ## How a turn runs
 

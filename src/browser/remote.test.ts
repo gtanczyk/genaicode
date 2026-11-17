@@ -159,6 +159,72 @@ describe('remote', () => {
     });
   });
 
+  it('tells the page what the agent that runs first takes, and forgets in every agent', async () => {
+    const limiter = memoryLimiter({ globalPerDay: 2_000 });
+    const { fetch } = served([], { limiter });
+    const nanoModel = fakeLanguageModel(['from nano'], { media: ['image'] });
+    const server = remote({ url: '/api/assistant', fetch });
+    const builtIn = nano({ languageModel: nanoModel.factory, inputs: ['image'] });
+    const agent = withFallback([server, builtIn]);
+    // The server is open and takes text only: it runs first.
+    expect(await agent.info!()).toEqual({ available: true, inputs: [] });
+    await limiter.spend(undefined, 2_000, 0);
+    // Over its allowance: the built-in model runs, and it takes images.
+    expect(await agent.info!()).toEqual({ available: true, inputs: ['image'] });
+    const page = createPageAgent({ agent });
+    await page.refresh();
+    expect(page.get().model).toMatchObject({ status: 'available', inputs: ['image'] });
+    // A run starts where info() pointed: the image goes to the built-in model, not to the server.
+    const photo = new File([new Uint8Array(8)], 'cat.png', { type: 'image/png' });
+    const result = await agent.run({ prompt: 'what is it?', cwd: '', attachments: [photo] } as never).result;
+    expect(result.text).toBe('from nano');
+    expect(nanoModel.calls[0]!.media).toEqual([{ type: 'image', value: photo }]);
+
+    // A model still to download is available: the run downloads it.
+    const later = nano({ languageModel: fakeLanguageModel(['x'], { availability: 'downloadable' }).factory });
+    expect(await later.info()).toMatchObject({ available: true });
+
+    const unavailable = withFallback([server, nano({ languageModel: undefined as never })]);
+    const info = await unavailable.info!();
+    expect(info.available).toBe(false);
+    expect(info.resetsAt).toBeGreaterThan(Date.now());
+
+    const forgotten: (string | undefined)[] = [];
+    const both = withFallback([
+      { ...server, forget: (id?: string) => forgotten.push(`server ${id}`) },
+      { ...builtIn, forget: (id?: string) => forgotten.push(`nano ${id}`) },
+    ] as never);
+    both.forget!('s-1');
+    expect(forgotten).toEqual(['server s-1', 'nano s-1']);
+  });
+
+  it('goes back to a server that says it is available again before a model that cannot run', async () => {
+    const { fetch, requests } = served([Object.assign(new Error('busy'), { status: 503 }), say('back')]);
+    const agent = withFallback([remote({ url: '/api/assistant', fetch }), nano({ languageModel: undefined as never })]);
+    expect((await agent.run({ prompt: 'a', cwd: '' }).result).ok).toBe(false);
+    expect(await agent.info!()).toMatchObject({ available: true });
+    expect((await agent.run({ prompt: 'b', cwd: '' }).result).text).toBe('back');
+    expect(requests).toHaveLength(2);
+  });
+
+  it('starts with the agent whose inputs it offered when another could not be asked', async () => {
+    const { fetch, requests } = served([say('from the server')]);
+    let reachable = false;
+    const flaky = (async (input: string, init?: RequestInit) => {
+      if (!reachable && input.endsWith('/info')) throw new TypeError('Failed to fetch');
+      return fetch(input, init);
+    }) as typeof globalThis.fetch;
+    const nanoModel = fakeLanguageModel(['from nano'], { media: ['image'] });
+    const agent = withFallback([
+      remote({ url: '/api/assistant', fetch: flaky }),
+      nano({ languageModel: nanoModel.factory, inputs: ['image'] }),
+    ]);
+    expect(await agent.info!()).toEqual({ available: true, inputs: ['image'] });
+    reachable = true;
+    expect((await agent.run({ prompt: 'a', cwd: '' }).result).text).toBe('from nano');
+    expect(requests).toHaveLength(0);
+  });
+
   it('does not hand a prompt to the fallback after a write ran', async () => {
     let count = 0;
     const tools: PageTool[] = [{ name: 'add', description: 'Add one.', write: true, run: () => String(++count) }];

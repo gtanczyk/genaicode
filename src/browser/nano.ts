@@ -92,6 +92,11 @@ export interface NanoAgent extends CodingAgent {
   context(sessionId: string): { used: number; window: number } | undefined;
   /** Drop a conversation (`sessionId` of a result), or all of them, and free the model's memory. */
   forget(sessionId?: string): void;
+  /**
+   * Whether this browser can run the model (has it, or can download it), and what it takes
+   * besides text: what `withFallback` and `createPageAgent({ agent })` ask of an agent.
+   */
+  info(): Promise<{ available: boolean; inputs: LanguageModelMedia[] }>;
 }
 
 const REPLY = 'reply';
@@ -331,6 +336,11 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     },
     forget,
     inputs,
+    async info() {
+      if ((await languageModelAvailability(language, factory())) === 'unavailable')
+        return { available: false, inputs: [] };
+      return { available: true, inputs: await inputs().catch(() => []) };
+    },
   };
 }
 
