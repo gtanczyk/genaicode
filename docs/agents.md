@@ -654,6 +654,11 @@ platform stopped at its cap (`stopReason: 'budget'`) fails with `failure.kind: '
 `timeoutMs` becomes `maxDurationSeconds`. Only remote MCP servers are accepted, and their
 `headers` must never appear in snapshots or events. `release()` runs after every run; the
 session itself stays for `task.resume` unless `managedAgent(provider, { deleteSession: true })`.
+A resumed run reports its own share: usage and cost are the change since it began, and the
+budget sent to the platform adds what the session had already spent. Provider exceptions are
+classified for `withFallback()`: an explicit `error.failure`, HTTP 401/403 (`auth`), 429
+(`quota`), 5xx or a network error (`unavailable`). Paged `events()` set `hasMore` to be read
+before the next interval, and `watch()` gets the last update's `cursor` when it reconnects.
 
 `hostedAgent()` is `managedAgent(fromHosted(provider))`.
 

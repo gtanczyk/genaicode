@@ -2,7 +2,7 @@ import type { TokenUsage } from '../core/types.js';
 import { decideApproval } from './live-agent.js';
 import { resolvePermissions, unsupportedPermissions } from './permissions.js';
 import type { ProcessExit } from './process.js';
-import { anySignal, RunRecorder, type AgentOutcome } from './runtime.js';
+import { anySignal, RunRecorder, tokenCount, type AgentOutcome } from './runtime.js';
 import type {
   AgentBudget,
   AgentCapabilities,
@@ -58,7 +58,10 @@ export interface ManagedStart {
   /** Remote MCP servers only. `headers` carry per-session credentials and never appear in events. */
   mcpServers?: readonly McpServer[];
   files?: readonly ManagedFile[];
-  /** Passed on to the platform's own cap where `capabilities.budget` has the unit. */
+  /**
+   * Passed on to the platform's own cap where `capabilities.budget` has the unit. Platforms cap the
+   * whole session, so on `resume` `managedAgent()` adds what the session spent before this run.
+   */
   budget?: AgentBudget;
   /** Wall-clock cap the platform enforces, where it has one. */
   maxDurationSeconds?: number;
@@ -88,7 +91,7 @@ export interface ManagedSnapshot {
   /** Why the session failed. */
   error?: string;
   failure?: AgentFailure;
-  /** Cumulative for the session. */
+  /** Cumulative for the session; `managedAgent()` reports a resumed run's share as the change since it began. */
   usage?: ManagedUsage;
   costUsd?: number;
   model?: string;
@@ -105,6 +108,8 @@ export interface ManagedSnapshot {
 export interface ManagedEventPage {
   events: AgentEvent[];
   cursor?: string;
+  /** More events wait past `cursor`: read them before the next interval. */
+  hasMore?: boolean;
   snapshot?: ManagedSnapshot;
 }
 
@@ -112,6 +117,8 @@ export interface ManagedEventPage {
 export interface ManagedUpdate {
   events?: AgentEvent[];
   snapshot?: ManagedSnapshot;
+  /** Position after these events, handed back to `watch` when it reconnects. */
+  cursor?: string;
 }
 
 /**
@@ -128,8 +135,11 @@ export interface ManagedProvider {
   get(id: string, signal?: AbortSignal): Promise<ManagedSnapshot | null>;
   /** Events since `cursor`, for platforms that are polled. */
   events?(id: string, cursor: string | undefined, signal?: AbortSignal): Promise<ManagedEventPage>;
-  /** A live stream of the session; it ends when the session settles or `signal` aborts. */
-  watch?(id: string, signal: AbortSignal): AsyncIterable<ManagedUpdate>;
+  /**
+   * A live stream of the session; it ends when the session settles or `signal` aborts. On a
+   * reconnect `cursor` is the last update's, so the stream resumes after it rather than replaying.
+   */
+  watch?(id: string, signal: AbortSignal, cursor?: string): AsyncIterable<ManagedUpdate>;
   /** Add input: steers a running turn, or starts the next one on an idle session. */
   send?(id: string, text: string): Promise<void>;
   /** Answer an `approval-request` the session emitted. */
@@ -169,11 +179,8 @@ export function managedAgent(provider: ManagedProvider, options: ManagedAgentOpt
 }
 
 function runManaged(provider: ManagedProvider, input: AgentTask, options: ManagedAgentOptions): AgentRun {
-  // Default permissions from `options.start` hold for refusals, the start request and local decisions alike.
-  const task: AgentTask =
-    input.permissions === undefined && options.start?.permissions !== undefined
-      ? { ...input, permissions: options.start.permissions }
-      : input;
+  // Defaults from `options.start` hold for refusals, the start request, local budget and decisions alike.
+  const task = withDefaults(input, options.start);
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const recorder = new RunRecorder(provider.name, provider.name);
   const controller = new AbortController();
@@ -191,7 +198,11 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   const onAbort = () => stop('aborted');
   task.signal?.addEventListener('abort', onAbort, { once: true });
   if (task.signal?.aborted) onAbort();
-  recorder.watchBudget(task.budget, onAbort);
+  // A settled session spent what it spent: its own outcome reports that, nothing is left to stop.
+  recorder.watchBudget(task.budget, () => {
+    if (!last || !isManagedSettled(last)) onAbort();
+  });
+  let last: ManagedSnapshot | undefined;
   const timer = task.timeoutMs !== undefined ? setTimeout(() => stop('timeout'), task.timeoutMs) : undefined;
 
   const exit = (reason: ProcessExit['reason'], error?: Error): ProcessExit => ({
@@ -215,11 +226,26 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   // Token totals as last reported, so cost-only updates keep them.
   let knownUsage: TokenUsage | undefined;
 
+  // Approvals already reported resolved, by the platform's stream or by our own answer.
+  const resolved = new Set<string>();
+
+  /** Fail the run now: the session waits on something this run cannot give it. */
+  const fail = (message: string) => {
+    fatal ??= message;
+    stop('failed');
+  };
+  const cannotAnswer = () => fail(`${provider.name} paused for an approval, and it has no way to answer one.`);
+
   const relay = (event: AgentEvent) => {
+    if (event.type === 'approval-resolved') {
+      questions.get(event.id)?.abort();
+      if (resolved.has(event.id)) return;
+      resolved.add(event.id);
+    }
     recorder.emit(event);
     if (event.type === 'message') sessionText.value = event.text;
     if (event.type === 'usage') knownUsage = event.usage;
-    if (event.type === 'approval-resolved') questions.get(event.id)?.abort();
+    if (event.type === 'approval-request' && !provider.answer && !unchecked(provider)) cannotAnswer();
     if (event.type === 'approval-request' && provider.answer && sessionId && !answered.has(event.request.id)) {
       answered.add(event.request.id);
       const id = sessionId;
@@ -231,6 +257,9 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
           .then(async ({ decision, automatic }) => {
             if (signal.aborted) return;
             await provider.answer!(id, event.request.id, decision);
+            // Withdrawn, settled, or the platform's stream already reported it.
+            if (signal.aborted || resolved.has(event.request.id)) return;
+            resolved.add(event.request.id);
             recorder.emit({
               type: 'approval-resolved',
               id: event.request.id,
@@ -242,8 +271,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
             if (signal.aborted) return;
             // An answer that never arrived leaves the session waiting: stop the run now.
             const message = error instanceof Error ? error.message : String(error);
-            fatal ??= `Answering ${provider.name} approval ${event.request.id} failed: ${message}`;
-            stop('failed');
+            fail(`Answering ${provider.name} approval ${event.request.id} failed: ${message}`);
           }),
       );
     }
@@ -251,6 +279,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
 
   // Resources to free, as every snapshot so far listed them.
   const releases = new Set<string>();
+  // A resumed session's totals before this run: snapshots are cumulative, a run reports its own share.
+  let base: Pick<ManagedSnapshot, 'usage' | 'costUsd'> = {};
   const observe = (snapshot: ManagedSnapshot) => {
     for (const ref of snapshot.release ?? []) releases.add(ref);
     // Text may arrive on any snapshot; a later one need not repeat it.
@@ -258,18 +288,18 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       sessionText.value = snapshot.text;
       recorder.emit({ type: 'message', text: snapshot.text });
     }
+    if (!provider.answer && snapshot.state === 'idle' && snapshot.stopReason === 'requires-action') cannotAnswer();
+    // The platform's own budget stop: report its words, before local budget checks see the usage.
+    if (snapshot.stopReason === 'budget' && isManagedSettled(snapshot))
+      recorder.budgetReached(snapshot.error ?? `${provider.name} stopped at its budget.`);
     if (snapshot.usage || snapshot.costUsd !== undefined) {
-      const usage = snapshot.usage ? { ...snapshot.usage } : { ...knownUsage };
-      delete usage.details;
-      const key = JSON.stringify([usage, snapshot.costUsd]);
+      const usage: TokenUsage = snapshot.usage ? since(snapshot.usage, base.usage) : { ...knownUsage };
+      const costUsd = snapshot.costUsd !== undefined ? Math.max(0, snapshot.costUsd - (base.costUsd ?? 0)) : undefined;
+      const key = JSON.stringify([usage, costUsd]);
       if (key !== lastUsage) {
         lastUsage = key;
         knownUsage = usage;
-        recorder.emit({
-          type: 'usage',
-          usage,
-          ...(snapshot.costUsd !== undefined ? { costUsd: snapshot.costUsd } : {}),
-        });
+        recorder.emit({ type: 'usage', usage, ...(costUsd !== undefined ? { costUsd } : {}) });
       }
     }
   };
@@ -310,23 +340,57 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     return { exit: exit('closed'), outcome: { ok: true } };
   };
 
-  const start = async (): Promise<ManagedSnapshot | { exit: ProcessExit }> => {
-    const refused = unsupportedPermissions(provider.name, provider.capabilities, task) ?? refusedFields(provider, task);
+  /** A provider exception as an outcome `withFallback()` can act on; quota also as a `rate-limit` event. */
+  const classified = (error: unknown): { error: string; failure?: AgentFailure } => {
+    const message = error instanceof Error ? error.message : String(error);
+    const failure = failureOfError(error);
+    if (failure?.kind === 'quota')
+      recorder.emit({
+        type: 'rate-limit',
+        limit: {
+          window: 'quota',
+          status: 'exceeded',
+          ...(failure.resetsAt !== undefined ? { resetsAt: failure.resetsAt } : {}),
+        },
+      });
+    return { error: message, ...(failure ? { failure } : {}) };
+  };
+
+  const start = async (): Promise<ManagedSnapshot | { exit: ProcessExit; outcome?: AgentOutcome }> => {
+    const refused =
+      unsupportedPermissions(provider.name, provider.capabilities, task) ??
+      refusedFields(provider, task, options.start?.files);
     if (refused) return { exit: exit('spawn-error', new Error(refused)) };
     const permissions = task.permissions !== undefined ? resolvePermissions(task.permissions) : undefined;
     if (permissions?.approval === 'ask' && !provider.answer)
       return { exit: exit('spawn-error', new Error(`${provider.name} cannot run with permissions.approval 'ask'.`)) };
+    // `cwd` is required of every task; '.' (or '') only means "the default workspace".
+    const workspace = task.cwd && task.cwd !== '.' ? task.cwd : (options.start?.workspace ?? task.cwd);
+    let budget = task.budget;
+    if (task.resume !== undefined && !unchecked(provider)) {
+      // The session so far: its text is not this run's answer, its spend is not this run's.
+      const prior = await provider.get(task.resume, controller.signal).catch(() => null);
+      if (stopReason) return stopped();
+      if (prior) {
+        base = {
+          ...(prior.usage ? { usage: prior.usage } : {}),
+          ...(prior.costUsd !== undefined ? { costUsd: prior.costUsd } : {}),
+        };
+        sessionText.value = prior.text;
+        budget = budget && sessionBudget(budget, base);
+      }
+    }
     const request: ManagedStart = {
       ...options.start,
       prompt: task.prompt,
-      workspace: task.cwd,
+      workspace,
       ...(task.model !== undefined ? { model: task.model } : {}),
       ...(task.effort !== undefined ? { effort: task.effort } : {}),
       ...(task.maxTurns !== undefined ? { maxTurns: task.maxTurns } : {}),
       ...(task.resume !== undefined ? { resume: task.resume } : {}),
       ...(task.extraArgs !== undefined ? { extraArgs: task.extraArgs } : {}),
       ...(task.mcpServers !== undefined ? { mcpServers: task.mcpServers } : {}),
-      ...(task.budget !== undefined ? { budget: task.budget } : {}),
+      ...(budget !== undefined ? { budget } : {}),
       ...(permissions !== undefined ? { permissions } : {}),
       ...(task.timeoutMs !== undefined ? { maxDurationSeconds: Math.ceil(task.timeoutMs / 1000) } : {}),
     };
@@ -334,19 +398,20 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       return await provider.start(request, controller.signal);
     } catch (error) {
       if (stopReason) return stopped();
-      return { exit: exit('spawn-error', error instanceof Error ? error : new Error(String(error))) };
+      const cause = error instanceof Error ? error : new Error(String(error));
+      return { exit: exit('spawn-error', cause), outcome: { ok: false, ...classified(error) } };
     }
   };
-
-  let last: ManagedSnapshot | undefined;
 
   const follow = async (first: ManagedSnapshot): Promise<{ exit: ProcessExit; outcome?: AgentOutcome }> => {
     let snapshot = first;
     observe(snapshot);
     if (provider.watch) {
+      let cursor: string | undefined;
       while (!stopReason && !isManagedSettled(snapshot)) {
-        for await (const update of provider.watch(snapshot.id, controller.signal)) {
+        for await (const update of provider.watch(snapshot.id, controller.signal, cursor)) {
           for (const event of update.events ?? []) relay(event);
+          cursor = update.cursor ?? cursor;
           if (update.snapshot) {
             snapshot = last = update.snapshot;
             observe(snapshot);
@@ -373,17 +438,28 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
         first = false;
         if (stopReason) break;
         let page: ManagedEventPage | undefined;
-        if (provider.events) {
-          page = await provider.events(snapshot.id, cursor, controller.signal);
-          if (stopReason) break;
+        const read = async () => {
+          page = await provider.events!(snapshot.id, cursor, controller.signal);
+          if (stopReason) return;
           for (const event of page.events) relay(event);
           cursor = page.cursor ?? cursor;
+        };
+        if (provider.events) {
+          // Every page the platform has, before the state that may end the loop.
+          do await read();
+          while (!stopReason && page!.hasMore);
+          if (stopReason) break;
         }
         const fresh = page?.snapshot ?? (await provider.get(snapshot.id, controller.signal));
         if (stopReason) break;
         if (!fresh) return { exit: exit('closed'), outcome: { ok: false, error: `${provider.name} session is gone.` } };
         snapshot = last = fresh;
         observe(snapshot);
+        // A state read apart from the events: the last ones may have landed in between.
+        if (provider.events && !page?.snapshot && isManagedSettled(snapshot)) {
+          do await read();
+          while (!stopReason && page!.hasMore);
+        }
       }
     }
     // The platform settled the turn: questions still open are moot.
@@ -411,16 +487,18 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       else {
         const message = error instanceof Error ? error.message : String(error);
         const verb = provider.watch ? 'Streaming' : 'Polling';
+        const { failure } = classified(error);
         outcome = {
           exit: exit('closed'),
-          outcome: { ok: false, error: `${verb} ${provider.name} failed: ${message}` },
+          outcome: { ok: false, error: `${verb} ${provider.name} failed: ${message}`, ...(failure ? { failure } : {}) },
         };
         // Do not leave a session working (and billing) that nobody watches any more.
         await provider.interrupt(started.id).catch(() => undefined);
       }
     }
     turn.abort();
-    if (stopReason) await provider.interrupt(started.id).catch(() => undefined);
+    // Nothing to stop in a session that already settled (a local budget check on its last report).
+    if (stopReason && !(last && isManagedSettled(last))) await provider.interrupt(started.id).catch(() => undefined);
     if (last) await provider.release?.({ ...last, release: [...releases] }).catch(() => undefined);
     if (options.deleteSession) await provider.delete?.(started.id).catch(() => undefined);
     return outcome;
@@ -451,10 +529,109 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
 /** Marks a provider adapted from `HostedAgentProvider`, which forwards task fields unchecked as it always did. */
 export const UNCHECKED_FIELDS = Symbol('genaicode.managed.uncheckedFields');
 
+function unchecked(provider: ManagedProvider): boolean {
+  return !!(provider as { [UNCHECKED_FIELDS]?: boolean })[UNCHECKED_FIELDS];
+}
+
+/** The task with `options.start` defaults for the fields it leaves out. */
+function withDefaults(task: AgentTask, defaults: ManagedAgentOptions['start']): AgentTask {
+  if (!defaults) return task;
+  const merged: AgentTask = { ...task };
+  for (const key of [
+    'model',
+    'effort',
+    'maxTurns',
+    'resume',
+    'extraArgs',
+    'mcpServers',
+    'budget',
+    'permissions',
+  ] as const)
+    if (merged[key] === undefined && defaults[key] !== undefined)
+      (merged as unknown as Record<string, unknown>)[key] = defaults[key];
+  return merged;
+}
+
+/** Cumulative usage minus what the session had used before. */
+function since(usage: ManagedUsage, before: TokenUsage | undefined): TokenUsage {
+  const out: TokenUsage = {};
+  for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens'] as const) {
+    const value = usage[key];
+    if (value !== undefined) out[key] = Math.max(0, value - (before?.[key] ?? 0));
+  }
+  return out;
+}
+
+/** A per-run budget as the session-wide cap a platform enforces. */
+function sessionBudget(budget: AgentBudget, spent: Pick<ManagedSnapshot, 'usage' | 'costUsd'>): AgentBudget {
+  return {
+    ...budget,
+    ...(budget.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd + (spent.costUsd ?? 0) } : {}),
+    ...(budget.maxTokens !== undefined
+      ? { maxTokens: budget.maxTokens + (spent.usage ? tokenCount(spent.usage) : 0) }
+      : {}),
+  };
+}
+
+const NETWORK_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_HEADERS_TIMEOUT',
+]);
+
+/**
+ * What a provider exception says about the platform: an explicit `failure`, an HTTP status
+ * (`status`, `statusCode`, `response.status`) or a network error code (also on `cause`).
+ */
+export function failureOfError(error: unknown): AgentFailure | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as {
+    failure?: AgentFailure;
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+    code?: unknown;
+    cause?: unknown;
+    message?: unknown;
+  };
+  if (e.failure && typeof e.failure.kind === 'string') return e.failure;
+  const status = [e.status, e.statusCode, e.response?.status].find((value) => typeof value === 'number') as
+    | number
+    | undefined;
+  if (status === 401 || status === 403) return { kind: 'auth' };
+  if (status === 429) return { kind: 'quota' };
+  if (status !== undefined && status >= 500) return { kind: 'unavailable' };
+  const codes = [e.code, (e.cause as { code?: unknown } | undefined)?.code];
+  if (codes.some((code) => typeof code === 'string' && NETWORK_CODES.has(code))) return { kind: 'unavailable' };
+  const message = typeof e.message === 'string' ? e.message : '';
+  if (/\bfetch failed\b|\bsocket hang up\b/i.test(message)) return { kind: 'unavailable' };
+  if (
+    /\b(HTTP|status)\s*5\d\d\b|\b5\d\d (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\b/i.test(
+      message,
+    )
+  )
+    return { kind: 'unavailable' };
+  if (/\b(HTTP|status)\s*403\b|\b403 Forbidden\b/i.test(message)) return { kind: 'auth' };
+  return undefined;
+}
+
 /** Task fields this provider cannot honor, as an error message. */
-function refusedFields(provider: ManagedProvider, task: AgentTask): string | undefined {
-  if ((provider as { [UNCHECKED_FIELDS]?: boolean })[UNCHECKED_FIELDS]) return undefined;
+function refusedFields(
+  provider: ManagedProvider,
+  task: AgentTask,
+  files: readonly ManagedFile[] | undefined,
+): string | undefined {
+  if (unchecked(provider)) return undefined;
   const caps = provider.capabilities;
+  if (files?.length && !caps.files) return `${provider.name} cannot take start files.`;
   const local = task.mcpServers?.find((server) => 'command' in server);
   if (local) return `${provider.name} reaches only remote MCP servers; '${local.name}' is a local command.`;
   if (task.mcpServers?.length && !caps.mcp) return `${provider.name} cannot attach MCP servers.`;

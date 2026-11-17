@@ -7,7 +7,8 @@ import {
   type ManagedStart,
   type ManagedUpdate,
 } from './managed.js';
-import type { AgentEvent } from './types.js';
+import { withFallback } from './failover.js';
+import type { AgentEvent, CodingAgent } from './types.js';
 
 /** A provider that serves snapshots from a script and records every call. */
 function fake(snapshots: ManagedSnapshot[], extra: Partial<ManagedProvider> = {}) {
@@ -271,7 +272,7 @@ describe('managedAgent', () => {
           snapshot: { id: 's-1', state: 'idle', stopReason: 'requires-action' },
           events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }],
         };
-        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' }, events: [] };
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
       },
       answer: () => new Promise<void>(() => undefined),
     });
@@ -366,5 +367,176 @@ describe('managedAgent', () => {
     expect(sent).toEqual(['also add tests']);
     expect(await run.result).toMatchObject({ status: 'failed', error: 'cloud session is gone.' });
     await expect(run.steer!('late')).rejects.toThrow('cloud is not accepting input.');
+  });
+});
+
+describe('managedAgent after review', () => {
+  const backup: CodingAgent = {
+    name: 'backup',
+    command: 'backup',
+    capabilities: {},
+    run: () =>
+      managedAgent(fake([{ id: 'b-1', state: 'idle', stopReason: 'end-turn', text: 'backup' }]).provider, {
+        pollIntervalMs: 1,
+      }).run({ prompt: 'p', cwd: '.' }),
+  };
+
+  it('classifies a cloud outage at start or mid-stream so withFallback moves on', async () => {
+    const down = fake([], {
+      async start() {
+        throw Object.assign(new Error('Service Unavailable'), { status: 503 });
+      },
+    }).provider;
+    const first = await withFallback([managedAgent(down), backup]).run({ prompt: 'p', cwd: '.' }).result;
+    expect(first).toMatchObject({ status: 'completed', text: 'backup' });
+
+    const dropped = fake([], {
+      // eslint-disable-next-line require-yield
+      async *watch() {
+        throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } });
+      },
+    }).provider;
+    const alone = await managedAgent(dropped).run({ prompt: 'p', cwd: '.' }).result;
+    expect(alone).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
+    const auth = await managedAgent(
+      fake([], {
+        async start() {
+          throw Object.assign(new Error('forbidden'), { statusCode: 403 });
+        },
+      }).provider,
+    ).run({ prompt: 'p', cwd: '.' }).result;
+    expect(auth.failure).toEqual({ kind: 'auth' });
+  });
+
+  it('reports a resumed run as its own share of the session', async () => {
+    const snapshots: ManagedSnapshot[] = [
+      { id: 's-0', state: 'running', text: 'old', costUsd: 0.85, usage: { inputTokens: 110, outputTokens: 55 } },
+      {
+        id: 's-0',
+        state: 'idle',
+        stopReason: 'end-turn',
+        text: 'new',
+        costUsd: 0.9,
+        usage: { inputTokens: 120, outputTokens: 60 },
+      },
+    ];
+    const { provider, starts } = fake([], {
+      async start(request) {
+        starts.push(request);
+        return { id: 's-0', state: 'queued', text: 'old' };
+      },
+      async get(id) {
+        if (!starts.length)
+          return {
+            id,
+            state: 'idle',
+            stopReason: 'end-turn',
+            text: 'old',
+            costUsd: 0.8,
+            usage: { inputTokens: 100, outputTokens: 50 },
+          };
+        return snapshots.shift() ?? null;
+      },
+    });
+    const run = managedAgent(provider, { pollIntervalMs: 1 }).run({
+      prompt: 'p',
+      cwd: '.',
+      resume: 's-0',
+      budget: { maxCostUsd: 0.7 },
+    });
+    const events = await drain(run);
+    const result = await run.result;
+    expect(result).toMatchObject({ status: 'completed', text: 'new', usage: { inputTokens: 20, outputTokens: 10 } });
+    expect(result.costUsd).toBeCloseTo(0.1);
+    expect(events.filter((event) => event.type === 'message')).toEqual([{ type: 'message', text: 'new' }]);
+    expect(starts[0]!.budget!.maxCostUsd).toBeCloseTo(1.5);
+  });
+
+  it('reports each approval resolved once, even when the platform echoes it', async () => {
+    const { provider } = fake([], {
+      capabilities: { permissions: { approval: ['auto-approve'] } },
+      async *watch() {
+        yield { events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }] };
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        yield {
+          snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' },
+          events: [{ type: 'approval-resolved', id: 'a-1', decision: 'approve' }],
+        };
+      },
+      async answer() {},
+    });
+    const run = managedAgent(provider).run({ prompt: 'p', cwd: '.', permissions: { approval: 'auto-approve' } });
+    const events = await drain(run);
+    expect(events.filter((event) => event.type === 'approval-resolved')).toHaveLength(1);
+  });
+
+  it('fails at once when the session waits for an approval nobody can answer', async () => {
+    const { provider, calls } = fake([{ id: 's-1', state: 'idle', stopReason: 'requires-action' }]);
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'cloud paused for an approval, and it has no way to answer one.',
+    });
+    expect(calls).toContain('interrupt:s-1');
+  });
+
+  it('reads every event page, also the ones after a settled state', async () => {
+    const pages = [
+      { events: [{ type: 'tool-start', name: 'bash' }] as AgentEvent[], cursor: '1', hasMore: true },
+      { events: [] as AgentEvent[], cursor: '2' },
+      { events: [{ type: 'message', text: 'late' }] as AgentEvent[], cursor: '3' },
+    ];
+    const cursors: (string | undefined)[] = [];
+    const { provider } = fake([{ id: 's-1', state: 'idle', stopReason: 'end-turn' }], {
+      async events(_id, cursor) {
+        cursors.push(cursor);
+        return pages.shift() ?? { events: [] };
+      },
+    });
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({ status: 'completed', text: 'late' });
+    expect(cursors).toEqual([undefined, '1', '2']);
+  });
+
+  it('reconnects a stream after its last cursor', async () => {
+    const cursors: (string | undefined)[] = [];
+    const { provider } = fake([{ id: 's-1', state: 'running' }], {
+      async *watch(_id, _signal, cursor) {
+        cursors.push(cursor);
+        if (cursor === undefined) yield { events: [{ type: 'tool-start', name: 'bash' }], cursor: 'c1' };
+        else yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' }, cursor: 'c2' };
+      },
+    });
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result.status).toBe('completed');
+    expect(cursors).toEqual([undefined, 'c1']);
+  });
+
+  it("keeps the platform's budget message and does not interrupt a settled session", async () => {
+    const { provider, calls } = fake([
+      { id: 's-1', state: 'idle', stopReason: 'budget', costUsd: 3.2, error: 'cloud reached $3 budget' },
+    ]);
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({
+      prompt: 'p',
+      cwd: '.',
+      budget: { maxCostUsd: 3 },
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'cloud reached $3 budget', failure: { kind: 'budget' } });
+    expect(calls.some((call) => call.startsWith('interrupt'))).toBe(false);
+  });
+
+  it('applies options.start defaults to the workspace, the local budget and refusals', async () => {
+    const { provider, starts } = fake([{ id: 's-1', state: 'running', costUsd: 2 }]);
+    const result = await managedAgent(provider, {
+      pollIntervalMs: 1,
+      start: { workspace: 'env-1', budget: { maxCostUsd: 1 } },
+    }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(starts[0]!.workspace).toBe('env-1');
+    expect(result.failure).toEqual({ kind: 'budget' });
+    const files = await managedAgent(fake([]).provider, { start: { files: [{ path: 'a', content: 'b' }] } }).run({
+      prompt: 'p',
+      cwd: '.',
+    }).result;
+    expect(files.error).toBe('cloud cannot take start files.');
   });
 });
