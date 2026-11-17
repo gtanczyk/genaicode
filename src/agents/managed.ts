@@ -189,6 +189,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   let fatal: string | undefined;
   let sessionId: string | undefined;
   let ended = false;
+  // No more input once the turn settled, even while cleanup (release, delete) is still running.
+  let closed = false;
 
   const stop = (reason: 'aborted' | 'timeout' | 'failed') => {
     if (stopReason || controller.signal.aborted) return;
@@ -215,7 +217,6 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   // Usage events carry the session's running total; emit only when it moved.
   let lastUsage = '';
   const answered = new Set<string>();
-  const pending: Promise<void>[] = [];
   // Open approval questions live until the turn settles or the run stops.
   const turn = new AbortController();
   controller.signal.addEventListener('abort', () => turn.abort(), { once: true });
@@ -242,6 +243,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       if (resolved.has(event.id)) return;
       resolved.add(event.id);
     }
+    // Streamed usage is cumulative for the session too: report this run's share, like snapshots.
+    if (event.type === 'usage') event = runUsage(event.usage, event.costUsd);
     recorder.emit(event);
     if (event.type === 'message') sessionText.value = event.text;
     if (event.type === 'usage') knownUsage = event.usage;
@@ -252,28 +255,26 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       const question = new AbortController();
       questions.set(event.request.id, question);
       const signal = anySignal([turn.signal, question.signal]);
-      pending.push(
-        decideApproval(task, event.request, signal)
-          .then(async ({ decision, automatic }) => {
-            if (signal.aborted) return;
-            await provider.answer!(id, event.request.id, decision);
-            // Withdrawn, settled, or the platform's stream already reported it.
-            if (signal.aborted || resolved.has(event.request.id)) return;
-            resolved.add(event.request.id);
-            recorder.emit({
-              type: 'approval-resolved',
-              id: event.request.id,
-              decision,
-              ...(automatic ? { automatic } : {}),
-            });
-          })
-          .catch((error: unknown) => {
-            if (signal.aborted) return;
-            // An answer that never arrived leaves the session waiting: stop the run now.
-            const message = error instanceof Error ? error.message : String(error);
-            fail(`Answering ${provider.name} approval ${event.request.id} failed: ${message}`);
-          }),
-      );
+      void decideApproval(task, event.request, signal)
+        .then(async ({ decision, automatic }) => {
+          if (signal.aborted) return;
+          await provider.answer!(id, event.request.id, decision);
+          // Withdrawn, settled, or the platform's stream already reported it.
+          if (signal.aborted || resolved.has(event.request.id)) return;
+          resolved.add(event.request.id);
+          recorder.emit({
+            type: 'approval-resolved',
+            id: event.request.id,
+            decision,
+            ...(automatic ? { automatic } : {}),
+          });
+        })
+        .catch((error: unknown) => {
+          if (signal.aborted) return;
+          // An answer that never arrived leaves the session waiting: stop the run now.
+          const message = error instanceof Error ? error.message : String(error);
+          fail(`Answering ${provider.name} approval ${event.request.id} failed: ${message}`);
+        });
     }
   };
 
@@ -281,6 +282,12 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   const releases = new Set<string>();
   // A resumed session's totals before this run: snapshots are cumulative, a run reports its own share.
   let base: Pick<ManagedSnapshot, 'usage' | 'costUsd'> = {};
+  /** Session totals as this run's usage event; usage left out keeps the last known tokens. */
+  const runUsage = (usage: ManagedUsage | undefined, costUsd: number | undefined): AgentEvent & { type: 'usage' } => {
+    const tokens: TokenUsage = usage ? since(usage, base.usage) : { ...knownUsage };
+    const cost = costUsd !== undefined ? Math.max(0, costUsd - (base.costUsd ?? 0)) : undefined;
+    return { type: 'usage', usage: tokens, ...(cost !== undefined ? { costUsd: cost } : {}) };
+  };
   const observe = (snapshot: ManagedSnapshot) => {
     for (const ref of snapshot.release ?? []) releases.add(ref);
     // Text may arrive on any snapshot; a later one need not repeat it.
@@ -293,13 +300,12 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     if (snapshot.stopReason === 'budget' && isManagedSettled(snapshot))
       recorder.budgetReached(snapshot.error ?? `${provider.name} stopped at its budget.`);
     if (snapshot.usage || snapshot.costUsd !== undefined) {
-      const usage: TokenUsage = snapshot.usage ? since(snapshot.usage, base.usage) : { ...knownUsage };
-      const costUsd = snapshot.costUsd !== undefined ? Math.max(0, snapshot.costUsd - (base.costUsd ?? 0)) : undefined;
-      const key = JSON.stringify([usage, costUsd]);
+      const event = runUsage(snapshot.usage, snapshot.costUsd);
+      const key = JSON.stringify([event.usage, event.costUsd]);
       if (key !== lastUsage) {
         lastUsage = key;
-        knownUsage = usage;
-        recorder.emit({ type: 'usage', usage, ...(costUsd !== undefined ? { costUsd } : {}) });
+        knownUsage = event.usage;
+        recorder.emit(event);
       }
     }
   };
@@ -369,8 +375,17 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     let budget = task.budget;
     if (task.resume !== undefined && !unchecked(provider)) {
       // The session so far: its text is not this run's answer, its spend is not this run's.
-      const prior = await provider.get(task.resume, controller.signal).catch(() => null);
+      let prior: ManagedSnapshot | null;
+      try {
+        prior = await provider.get(task.resume, controller.signal);
+      } catch (error) {
+        if (stopReason) return stopped();
+        // An outage before any work: classified, so withFallback() can move on.
+        const cause = error instanceof Error ? error : new Error(String(error));
+        return { exit: exit('spawn-error', cause), outcome: { ok: false, ...classified(error) } };
+      }
       if (stopReason) return stopped();
+      // `null`: no such session here; the platform's start decides what resuming it means.
       if (prior) {
         base = {
           ...(prior.usage ? { usage: prior.usage } : {}),
@@ -430,6 +445,20 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       }
     } else {
       let cursor: string | undefined;
+      let page: ManagedEventPage | undefined;
+      const read = async () => {
+        page = await provider.events!(snapshot.id, cursor, controller.signal);
+        if (stopReason) return;
+        for (const event of page.events) relay(event);
+        // Each page's resources, before a later page's snapshot replaces it.
+        for (const ref of page.snapshot?.release ?? []) releases.add(ref);
+        cursor = page.cursor ?? cursor;
+      };
+      // Settled from the start: its final events may still wait in `events()`.
+      if (provider.events && !stopReason && isManagedSettled(snapshot)) {
+        do await read();
+        while (!stopReason && page!.hasMore);
+      }
       // The first read goes out at once; the interval falls between reads.
       let first = true;
       while (!stopReason && !isManagedSettled(snapshot)) {
@@ -437,13 +466,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
         if (!first) await delay(pollIntervalMs, controller.signal);
         first = false;
         if (stopReason) break;
-        let page: ManagedEventPage | undefined;
-        const read = async () => {
-          page = await provider.events!(snapshot.id, cursor, controller.signal);
-          if (stopReason) return;
-          for (const event of page.events) relay(event);
-          cursor = page.cursor ?? cursor;
-        };
+        page = undefined as ManagedEventPage | undefined;
         if (provider.events) {
           // Every page the platform has, before the state that may end the loop.
           do await read();
@@ -462,13 +485,10 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
         }
       }
     }
-    // The platform settled the turn: questions still open are moot.
+    // The turn settled or the run stopped: open questions are moot, and answers still in flight
+    // are not waited for (their rejection handlers stay, and ignore a settled turn).
     turn.abort();
-    // An answer still in flight must not hold up an abort or a timeout.
-    await untilAborted(
-      Promise.allSettled(pending).then(() => undefined),
-      controller.signal,
-    );
+    closed = true;
     if (stopReason) return stopped();
     return outcomeOf(snapshot);
   };
@@ -497,6 +517,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       }
     }
     turn.abort();
+    closed = true;
     // Nothing to stop in a session that already settled (a local budget check on its last report).
     if (stopReason && !(last && isManagedSettled(last))) await provider.interrupt(started.id).catch(() => undefined);
     if (last) await provider.release?.({ ...last, release: [...releases] }).catch(() => undefined);
@@ -517,7 +538,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     ...(provider.send
       ? {
           steer: (text: string) =>
-            sessionId && !stopReason && !ended
+            sessionId && !stopReason && !closed && !ended
               ? provider.send!(sessionId, text)
               : Promise.reject(new Error(`${provider.name} is not accepting input.`)),
         }

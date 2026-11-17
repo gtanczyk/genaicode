@@ -540,3 +540,103 @@ describe('managedAgent after review', () => {
     expect(files.error).toBe('cloud cannot take start files.');
   });
 });
+
+describe('managedAgent after second review', () => {
+  it("reports streamed usage of a resumed session as this run's share", async () => {
+    const { provider } = fake([], {
+      capabilities: { resume: true },
+      async get(id) {
+        return { id, state: 'idle', stopReason: 'end-turn', usage: { inputTokens: 100 } };
+      },
+      async *watch() {
+        yield { events: [{ type: 'usage', usage: { inputTokens: 105 } }] };
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' } };
+      },
+    });
+    const result = await managedAgent(provider).run({
+      prompt: 'p',
+      cwd: '.',
+      resume: 's-0',
+      budget: { maxTokens: 10 },
+    }).result;
+    expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 5 } });
+  });
+
+  it('reads the final events of a session that start already reports settled', async () => {
+    let reads = 0;
+    const { provider } = fake([], {
+      async start() {
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn' };
+      },
+      async events() {
+        reads++;
+        return { events: [{ type: 'message', text: 'final' }] };
+      },
+    });
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({ status: 'completed', text: 'final' });
+    expect(reads).toBe(1);
+  });
+
+  it('takes no more input once the turn settled, while cleanup still runs', async () => {
+    const sent: string[] = [];
+    const { provider } = fake([{ id: 's-1', state: 'idle', stopReason: 'end-turn' }], {
+      async send(_id, text) {
+        sent.push(text);
+      },
+      release: () => new Promise((resolve) => setTimeout(resolve, 40)),
+    });
+    const run = managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await expect(run.steer!('more')).rejects.toThrow('cloud is not accepting input.');
+    expect(sent).toEqual([]);
+    expect((await run.result).status).toBe('completed');
+  });
+
+  it('frees the resources every event page listed', async () => {
+    const pages = [
+      { events: [] as AgentEvent[], hasMore: true, snapshot: { id: 's-1', state: 'running' as const, release: ['a'] } },
+      {
+        events: [] as AgentEvent[],
+        snapshot: { id: 's-1', state: 'idle' as const, stopReason: 'end-turn', release: ['b'] },
+      },
+    ];
+    const { provider, calls } = fake([], {
+      async events() {
+        return pages.shift() ?? { events: [] };
+      },
+    });
+    await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(calls).toContain('release:vault-1,a,b');
+  });
+
+  it('finishes a settled turn without waiting for an answer in flight', async () => {
+    const { provider } = fake([], {
+      capabilities: { permissions: { approval: ['auto-approve'] } },
+      async *watch() {
+        yield { events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }] };
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' } };
+      },
+      answer: () => new Promise<void>(() => undefined),
+    });
+    const result = await managedAgent(provider).run({
+      prompt: 'p',
+      cwd: '.',
+      permissions: { approval: 'auto-approve' },
+    }).result;
+    expect(result.status).toBe('completed');
+  });
+
+  it('fails over when the resumed session cannot be read', async () => {
+    const { provider, calls } = fake([], {
+      capabilities: { resume: true },
+      async get() {
+        throw Object.assign(new Error('Service Unavailable'), { status: 503 });
+      },
+    });
+    const result = await managedAgent(provider).run({ prompt: 'p', cwd: '.', resume: 's-0' }).result;
+    expect(result).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
+    expect(calls).not.toContain('start');
+  });
+});
