@@ -604,6 +604,48 @@ describe('anthropicManaged after review', () => {
   });
 });
 
+describe('anthropicManaged after second review', () => {
+  it('reconnects after a dropped stream instead of failing the run', async () => {
+    const fake = fakeClient({
+      streams: [
+        [
+          ev('agent.message', { content: [{ type: 'text', text: 'Working' }] }),
+          async () => {
+            throw Object.assign(new Error('socket reset'), { code: 'ECONNRESET' });
+          },
+        ],
+        [ev('agent.message', { content: [{ type: 'text', text: 'Done' }] }), idle()],
+      ],
+    });
+    const run = anthropicManaged(base(fake.client)).run(task());
+    const events = await drain(run);
+    const result = await run.result;
+    expect(result).toMatchObject({ ok: true, text: 'Done' });
+    expect(fake.sent).toEqual([]);
+    expect(fake.called('events.stream')).toHaveLength(2);
+    expect(events.filter((e) => e.type === 'message')).toHaveLength(2);
+  });
+
+  it('follows the latest turn when it attaches to a session without a cursor', async () => {
+    const history = [
+      ev('user.message'),
+      ev('agent.message', { content: [{ type: 'text', text: 'First' }] }),
+      idle(),
+      ev('user.message'),
+      ev('session.status_running'),
+      ev('agent.message', { content: [{ type: 'text', text: 'Second' }] }),
+    ];
+    const fake = fakeClient({ history, streams: [[idle()]] });
+    const provider = anthropicManagedProvider(base(fake.client));
+    const updates = [];
+    for await (const update of provider.watch!('sesn_1', new AbortController().signal)) updates.push(update);
+    const settled = updates.filter((u) => u.snapshot?.state === 'idle');
+    expect(settled).toHaveLength(1);
+    expect(updates.flatMap((u) => u.events ?? [])).toContainEqual({ type: 'message', text: 'Second' });
+    expect(updates.at(-1)?.snapshot).toMatchObject({ state: 'idle', stopReason: 'end-turn' });
+  });
+});
+
 describe('anthropicManagedProvider.get', () => {
   it('reads an idle session with the reason of its last turn', async () => {
     const fake = fakeClient({ session: { status: 'idle' }, history: [ev('user.message'), idle('end_turn')] });

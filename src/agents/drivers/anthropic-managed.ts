@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import {
+  failureOfError,
   managedAgent,
   type ManagedProvider,
   type ManagedSnapshot,
@@ -438,6 +439,10 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
             ];
             return { update: { ...at, events } };
           }
+          case 'user.message':
+            // A new turn: an earlier turn's error does not explain how this one ends.
+            lastError = undefined;
+            return { update: at };
           case 'user.tool_confirmation':
             return {
               update: {
@@ -514,27 +519,48 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
         }
       };
 
+      // A dropped connection ends the stream quietly: `managedAgent()` reads the state and reconnects.
+      const dropped = (error: unknown) => failureOfError(error)?.kind === 'unavailable';
       try {
         // Stream first, then history: nothing in between is lost, and duplicates are skipped by id.
-        const stream = await c.beta.sessions.events.stream(
-          id,
-          options.textDeltas === false ? {} : { event_deltas: ['agent.message'] },
-          { signal: both },
-        );
+        let stream: AsyncIterable<AnthropicManagedEvent>;
+        try {
+          stream = await c.beta.sessions.events.stream(
+            id,
+            options.textDeltas === false ? {} : { event_deltas: ['agent.message'] },
+            { signal: both },
+          );
+        } catch (error) {
+          if (!signal.aborted && dropped(error)) return;
+          throw error;
+        }
         const history: AnthropicManagedEvent[] = [];
         for await (const event of after(id, cursor, both)) history.push(event);
         // Custom tool calls the history already answered only show; they do not run again.
         for (const event of history)
           if (event.type === 'user.custom_tool_result')
             answeredTools.add(String((event as { custom_tool_use_id?: unknown }).custom_tool_use_id));
-        for (const event of history) {
+        // Turns that later history continued are over: their idle is no end for this watch.
+        const lastStart = history.findLastIndex((event) => TURN_STARTS.has(event.type));
+        for (const [index, event] of history.entries()) {
           if (event.id) seen.add(event.id);
           const { update, done, afterward } = await translate(event);
-          if (update) yield update;
-          if (done) return;
+          const past = index < lastStart && SESSION_STOPS.has(event.type);
+          if (update) yield past ? { ...update, snapshot: undefined } : update;
+          if (done && !past) return;
           await afterward?.();
         }
-        for await (const event of stream) {
+        const live = stream[Symbol.asyncIterator]();
+        for (;;) {
+          let next: IteratorResult<AnthropicManagedEvent>;
+          try {
+            next = await live.next();
+          } catch (error) {
+            if (!signal.aborted && dropped(error)) return;
+            throw error;
+          }
+          if (next.done) break;
+          const event = next.value;
           if (event.id && seen.has(event.id)) continue;
           // Live previews of messages the history already holds are stale.
           if (event.type === 'event_delta' && seen.has(String((event as { event_id?: unknown }).event_id))) continue;
@@ -637,6 +663,11 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
 }
 
 const ABORTED = Symbol('aborted');
+
+/** Events that begin work in a session. */
+const TURN_STARTS = new Set(['user.message', 'session.status_running', 'session.status_rescheduled']);
+/** Events that report the session stopped. */
+const SESSION_STOPS = new Set(['session.status_idle', 'session.status_terminated']);
 
 /** `work`'s value, or `ABORTED` as soon as `signal` aborts. */
 function untilAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T | typeof ABORTED> {
