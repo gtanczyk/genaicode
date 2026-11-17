@@ -168,6 +168,8 @@ export function remote(options: RemoteOptions): RemoteAgent {
     const emit = (event: AgentEvent) => events.push(event);
     let tokens = 0;
     let usage: TokenUsage = {};
+    // A write ran (a page tool, or a server tool the user approved) during this run.
+    let acted = false;
     let over = false;
 
     const finish = (
@@ -272,12 +274,14 @@ export function remote(options: RemoteOptions): RemoteAgent {
           const results: NonNullable<TurnRequest['results']> = [];
           for (const call of end.calls ?? []) {
             emit({ type: 'tool-start', id: call.id, name: call.name, input: call.input });
-            const tool = tools.find((candidate) => candidate.name === call.name);
+            const own = tools.find((candidate) => candidate.name === call.name);
+            // Either side calling it a write is enough to ask first.
+            const tool = own && call.write && !own.write ? { ...own, write: true } : own;
             let output: string;
             let isError = false;
             try {
               if (!tool) throw new Error(`This page has no tool called ${call.name}.`);
-              output = await invoke(tool, call.input ?? {}, call.id, task, emit, signal);
+              output = await invoke(tool, call.input ?? {}, call.id, task, emit, signal, () => (acted = true));
             } catch (error) {
               signal.throwIfAborted();
               output = describe(error);
@@ -289,6 +293,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
           const approvals: NonNullable<TurnRequest['approvals']> = [];
           for (const request of end.approvals ?? []) {
             const decision = await ask(request, task, emit, signal);
+            if (decision === 'approve') acted = true;
             approvals.push({ id: request.id, decision: decision === 'approve' ? 'approve' : 'deny' });
           }
           body = {
@@ -303,11 +308,14 @@ export function remote(options: RemoteOptions): RemoteAgent {
         if (signal.aborted && !over) {
           return finish(timedOut ? 'timeout' : 'aborted', sessionId, timedOut ? { error: 'Timed out.' } : {});
         }
-        const message = describe(error);
+        // After a write ran, another agent given the same prompt would do it again: no failover.
+        const message = acted
+          ? `${describe(error)} It had already changed something, so it is not handed to another model.`
+          : describe(error);
         emit({ type: 'error', message });
         return finish('failed', sessionId, {
           error: message,
-          ...(error instanceof Failed && error.failure ? { failure: error.failure } : {}),
+          ...(error instanceof Failed && error.failure && !acted ? { failure: error.failure } : {}),
         });
       }
     };

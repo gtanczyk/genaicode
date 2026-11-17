@@ -5,14 +5,21 @@ export interface LimitCheck {
 }
 
 /**
- * Daily token allowances. The backend asks `check` before every model call and reports what the
- * call used with `spend`. Back it with your store (Firestore, Redis, KV) when the backend runs on
- * more than one instance: `memoryLimiter` counts per process.
+ * Daily token allowances. Before every model call the backend `reserve`s what the call may use
+ * at most; after it, `spend` replaces that hold with what the call used. Two calls that start
+ * together cannot both take the same rest of an allowance, as long as `reserve` checks and holds
+ * in one step (a transaction in your store). Back it with your store (Firestore, Redis, KV) when
+ * the backend runs on more than one instance: `memoryLimiter` counts per process.
+ *
+ * `key` is the user's id, the visitor's (`identify`), or undefined for an unknown visitor.
  */
 export interface BackendLimiter {
-  /** `key` is the user's id, the visitor's (`identify`), or undefined for an unknown visitor. */
+  /** Whether the key has anything left now (for `GET /info` and before a turn starts). */
   check(key: string | undefined): LimitCheck | Promise<LimitCheck>;
-  spend(key: string | undefined, tokens: number): void | Promise<void>;
+  /** Hold `tokens` for one model call, if the key and the backend have anything left. */
+  reserve(key: string | undefined, tokens: number): LimitCheck | Promise<LimitCheck>;
+  /** The call ended: count the `tokens` it used and let go of the `reserved` hold. */
+  spend(key: string | undefined, tokens: number, reserved: number): void | Promise<void>;
 }
 
 export interface MemoryLimiterOptions {
@@ -36,7 +43,10 @@ export function memoryLimiter(options: MemoryLimiterOptions = {}): BackendLimite
   const now = options.now ?? Date.now;
   let day = -1;
   let total = 0;
+  let totalHeld = 0;
   const used = new Map<string, number>();
+  // Tokens held by calls still running; they carry over midnight, their spend comes after it.
+  const held = new Map<string, number>();
   const roll = () => {
     const today = Math.floor(now() / DAY);
     if (today !== day) {
@@ -46,19 +56,38 @@ export function memoryLimiter(options: MemoryLimiterOptions = {}): BackendLimite
     }
     return (today + 1) * DAY;
   };
+  const left = (key: string | undefined): LimitCheck => {
+    const resetsAt = roll();
+    if (total + totalHeld >= global) return { ok: false, resetsAt };
+    if (key === undefined) return { ok: true };
+    if ((used.get(key) ?? 0) + (held.get(key) ?? 0) >= perKey) return { ok: false, resetsAt };
+    // Many visitors (one key per address, say) must not grow these maps without end.
+    if (!used.has(key) && !held.has(key) && used.size >= maxKeys) return { ok: false, resetsAt };
+    return { ok: true };
+  };
   return {
-    check(key) {
-      const resetsAt = roll();
-      if (total >= global) return { ok: false, resetsAt };
-      if (key !== undefined && (used.get(key) ?? 0) >= perKey) return { ok: false, resetsAt };
-      // Many visitors (one key per address, say) must not grow this map without end.
-      if (key !== undefined && !used.has(key) && used.size >= maxKeys) return { ok: false, resetsAt };
-      return { ok: true };
+    check: left,
+    reserve(key, tokens) {
+      const answer = left(key);
+      if (!answer.ok) return answer;
+      // The hold must fit, or two calls could each take the same rest.
+      if (total + totalHeld + tokens > global) return { ok: false, resetsAt: roll() };
+      if (key !== undefined && (used.get(key) ?? 0) + (held.get(key) ?? 0) + tokens > perKey) {
+        return { ok: false, resetsAt: roll() };
+      }
+      totalHeld += tokens;
+      if (key !== undefined) held.set(key, (held.get(key) ?? 0) + tokens);
+      return answer;
     },
-    spend(key, tokens) {
+    spend(key, tokens, reserved) {
       roll();
       total += tokens;
-      if (key !== undefined) used.set(key, (used.get(key) ?? 0) + tokens);
+      totalHeld = Math.max(0, totalHeld - reserved);
+      if (key === undefined) return;
+      used.set(key, (used.get(key) ?? 0) + tokens);
+      const still = (held.get(key) ?? 0) - reserved;
+      if (still > 0) held.set(key, still);
+      else held.delete(key);
     },
   };
 }

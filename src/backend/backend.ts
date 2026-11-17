@@ -480,6 +480,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
 
     try {
       const pageNames = new Set(pageTools.map((tool) => tool.name));
+      const pageWrites = new Set(pageTools.filter((tool) => tool.write).map((tool) => tool.name));
       const definitions: ToolDefinition[] = [
         ...[...serverTools.values()].map((tool) => definition(tool.name, tool.description, tool.inputSchema)),
         ...pageTools.map((tool) => definition(tool.name, tool.description, tool.inputSchema)),
@@ -525,7 +526,11 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
             failure: { kind: 'quota' },
           });
         }
-        const check = await limiter.check(context.key);
+        // The most this call may cost: its input now and a full answer.
+        const reserved =
+          limits.maxOutputTokens +
+          Math.ceil((systemText.length + JSON.stringify(stripped(conversation.items, false)).length) / 4);
+        const check = await limiter.reserve(context.key, reserved);
         if (!check.ok) {
           return end({
             status: 'failed',
@@ -555,6 +560,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
             else if (event.type === 'done') result = event.result;
           }
         } catch (error) {
+          await limiter.spend(context.key, count(stepUsage), reserved);
           if (context.signal.aborted) return end({ status: 'failed', error: 'Stopped.' }, false);
           failed(error);
           return end({ status: 'failed', ...modelFailure(error) }, false);
@@ -569,7 +575,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         tokens += spent;
         add(usage, result?.usage ?? stepUsage);
         conversation.used += spent;
-        await limiter.spend(context.key, spent);
+        await limiter.spend(context.key, spent, reserved);
 
         // A model asked for no tools on its last step may still name one: those calls go unanswered.
         const calls = last
@@ -615,7 +621,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
             }
           } else if (pageNames.has(call.name)) {
             waiting.page.push(id);
-            pageCalls.push({ id, name: call.name, input: args });
+            pageCalls.push({ id, name: call.name, input: args, ...(pageWrites.has(call.name) ? { write: true } : {}) });
           } else {
             waiting.results[id] = errorResult(call, `There is no tool called ${call.name}.`);
           }

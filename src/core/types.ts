@@ -19,6 +19,11 @@ export interface ToolCall<T = Record<string, unknown>> {
   id?: string;
   name: string;
   arguments: T;
+  /**
+   * Opaque data the provider attached to the call and wants back with it in the history
+   * (Gemini's `thoughtSignature`). Keep it when you store a transcript.
+   */
+  signature?: string;
 }
 
 export interface ToolResult {

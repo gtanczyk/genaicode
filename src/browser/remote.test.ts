@@ -19,7 +19,7 @@ const call = (name: string, args: Record<string, unknown>, id = `id-${name}`): G
   usage,
 });
 
-function served(steps: GenerationResult[], options: Partial<AgentBackendOptions> = {}) {
+function served(steps: (GenerationResult | Error)[], options: Partial<AgentBackendOptions> = {}) {
   const requests: GenerationRequest[] = [];
   const provider: ModelProvider = {
     name: 'fake',
@@ -28,6 +28,7 @@ function served(steps: GenerationResult[], options: Partial<AgentBackendOptions>
       requests.push(request);
       const step = steps.shift();
       if (!step) throw new Error('the script ran out');
+      if (step instanceof Error) throw step;
       return step;
     },
   };
@@ -140,14 +141,14 @@ describe('remote', () => {
   });
 
   it('fails over to the built-in model when the backend is over its allowance', async () => {
-    const { fetch } = served([say('from the server')], {
-      limiter: memoryLimiter({ perKeyPerDay: 1, globalPerDay: 1 }),
-    });
+    const limiter = memoryLimiter({ globalPerDay: 2_000 });
+    const { fetch } = served([say('from the server')], { limiter });
     const agent = withFallback([
       remote({ url: '/api/assistant', fetch }),
       nano({ languageModel: fakeLanguageModel(['from nano']).factory }),
     ]);
     expect((await agent.run({ prompt: 'a', cwd: '' }).result).text).toBe('from the server');
+    await limiter.spend(undefined, 2_000, 0);
     const run = agent.run({ prompt: 'b', cwd: '' });
     const events = await collect(run);
     expect((await run.result).text).toBe('from nano');
@@ -156,6 +157,35 @@ describe('remote', () => {
       to: 'nano',
       failure: { kind: 'quota' },
     });
+  });
+
+  it('does not hand a prompt to the fallback after a write ran', async () => {
+    let count = 0;
+    const tools: PageTool[] = [{ name: 'add', description: 'Add one.', write: true, run: () => String(++count) }];
+    const { fetch } = served([call('add', {}), Object.assign(new Error('busy'), { status: 503 })]);
+    const nanoModel = fakeLanguageModel(['from nano']);
+    const agent = withFallback([
+      remote({ url: '/api/assistant', tools, fetch }),
+      nano({ languageModel: nanoModel.factory, tools }),
+    ]);
+    const result = await agent.run({ prompt: 'add one', cwd: '', onApproval: () => 'approve' }).result;
+    expect(count).toBe(1);
+    expect(result).toMatchObject({ status: 'failed', error: expect.stringMatching(/already changed something/) });
+    expect(result.failure).toBeUndefined();
+  });
+
+  it('asks before a page tool the server marks write, even if the page does not', async () => {
+    const tools: PageTool[] = [{ name: 'wipe', description: 'Wipe.', run: () => 'gone' }];
+    const { fetch } = served([call('wipe', {}), say('ok')], {
+      pageTools: [{ name: 'wipe', description: 'Wipe.', write: true }],
+    });
+    const asked: string[] = [];
+    await remote({ url: '/api/assistant', tools, fetch, sendTools: false }).run({
+      prompt: 'wipe',
+      cwd: '',
+      onApproval: (request) => (asked.push(request.id), 'deny'),
+    }).result;
+    expect(asked).toEqual(['id-wipe']);
   });
 
   it('says the server is unavailable when it cannot be reached', async () => {

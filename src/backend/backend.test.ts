@@ -173,14 +173,13 @@ describe('createAgentBackend', () => {
   });
 
   it('holds costs: the daily allowance and the conversation limit', async () => {
-    const limiter = memoryLimiter({ perKeyPerDay: 20, globalPerDay: 1_000 });
-    const { backend } = backendWith([say('one'), say('two')], {
-      limiter,
-      identify: () => 'visitor',
-      limits: { conversationTokens: 1_000 },
-    });
+    const limiter = memoryLimiter({ perKeyPerDay: 2_000, globalPerDay: 100_000 });
+    const { backend } = backendWith([say('one'), say('two')], { limiter, identify: () => 'visitor' });
     expect((await post(backend, { prompt: 'a' })).end.status).toBe('completed');
-    expect((await post(backend, { prompt: 'b' })).end.status).toBe('completed');
+    await limiter.spend('visitor', 1_000, 0);
+    // About 985 tokens left: a full answer (1,024) no longer fits.
+    expect((await post(backend, { prompt: 'b' })).end).toMatchObject({ status: 'failed', failure: { kind: 'quota' } });
+    await limiter.spend('visitor', 1_000, 0);
     const spent = await post(backend, { prompt: 'c' });
     expect(spent.status).toBe(429);
     expect(spent.json).toMatchObject({ failure: { kind: 'quota' } });
@@ -193,10 +192,43 @@ describe('createAgentBackend', () => {
 
   it('counts at most maxKeys visitors a day in memory', () => {
     const limiter = memoryLimiter({ maxKeys: 2 });
-    limiter.spend('a', 1);
-    limiter.spend('b', 1);
+    limiter.spend('a', 1, 0);
+    limiter.spend('b', 1, 0);
     expect(limiter.check('a')).toMatchObject({ ok: true });
     expect(limiter.check('c')).toMatchObject({ ok: false });
+  });
+
+  it('holds the allowance for calls still running', async () => {
+    const limiter = memoryLimiter({ perKeyPerDay: 100, globalPerDay: 10_000 });
+    expect(await limiter.reserve('a', 80)).toMatchObject({ ok: true });
+    expect(await limiter.reserve('a', 80)).toMatchObject({ ok: false }); // 160 would not fit in 100
+    await limiter.spend('a', 10, 80);
+    expect(await limiter.reserve('a', 80)).toMatchObject({ ok: true }); // 10 used, 80 held
+    await limiter.spend('a', 10, 80);
+    expect(limiter.check('a')).toMatchObject({ ok: true });
+
+    // Two prompts at once from one visitor: the second waits for nothing it cannot have.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const provider: ModelProvider = {
+      name: 'slow',
+      async generate() {
+        await gate;
+        return say('done');
+      },
+    };
+    const backend = createAgentBackend({
+      client: genaicode(provider),
+      secret: SECRET,
+      public: true,
+      identify: () => 'visitor',
+      limiter: memoryLimiter({ perKeyPerDay: 1_500 }),
+    });
+    const both = Promise.all([post(backend, { prompt: 'a' }), post(backend, { prompt: 'b' })]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release();
+    const statuses = (await both).map((done) => done.end?.status ?? done.status);
+    expect(statuses).toEqual(['completed', 'failed']);
   });
 
   it('refuses cross-site posts, other content types and large bodies', async () => {
@@ -426,6 +458,20 @@ describe('createAgentBackend', () => {
     expect(done.end).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
     expect(JSON.stringify(done.end)).not.toContain('store down');
     expect(reported).toEqual([expect.objectContaining({ message: 'store down' })]);
+  });
+
+  it('keeps a provider signature on a tool call through the token', async () => {
+    const signed: GenerationResult = {
+      parts: [{ type: 'toolCall', toolCall: { id: 'id-look', name: 'look', arguments: {}, signature: 'sig-1' } }],
+      usage,
+    };
+    const { backend, requests } = backendWith([signed, say('ok')], {
+      pageTools: [{ name: 'look', description: 'Look.' }],
+    });
+    const asked = await post(backend, { prompt: 'x' });
+    await post(backend, { state: asked.end.state, results: [{ id: 'id-look', output: 'seen' }] });
+    const assistant = requests[1]!.prompt.find((item) => item.type === 'assistant');
+    expect(assistant!.toolCalls![0]).toMatchObject({ signature: 'sig-1' });
   });
 
   it('tells the page the kind of a model failure, not its words', async () => {

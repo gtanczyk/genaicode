@@ -61,7 +61,8 @@ const assistant = createPageAgent({
 
 `withFallback` goes on with the built-in model when the backend is out: signed out (`auth`),
 over its allowance (`quota`), unreachable or failing (`unavailable`). Put `nano()` first to use
-the free, private model where the browser has it and the server everywhere else.
+the free, private model where the browser has it and the server everywhere else. A prompt that
+already ran a `write` tool is not handed on: the run fails, so the action does not happen twice.
 
 ## How a turn runs
 
@@ -87,7 +88,9 @@ tool results, not approvals.
   limits that are on by default: `limits.maxOutputTokens` (1,024), `maxSteps` model calls per
   prompt (8), `conversationTokens` (100,000), body, prompt and image sizes, and a `limiter`
   with daily allowances per user and in all (`memoryLimiter()`: 200,000 and 2,000,000 tokens;
-  back it with your store when you run more than one instance). A provider that reports no
+  back it with your store when you run more than one instance). Each model call first reserves
+  its input and a full answer, so calls running at once cannot spend the same rest of an
+  allowance; a custom `limiter` must `reserve` in one step (a transaction). A provider that reports no
   usage is counted at about four characters a token. `createAgentBackend` refuses to start
   without `authorize`, unless you set `public: true`.
 - **The conversation** travels in a token encrypted and authenticated with `secret`

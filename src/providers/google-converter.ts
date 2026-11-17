@@ -67,6 +67,8 @@ export function toGoogleContents(prompt: PromptItem[]): Content[] {
         parts.push(
           ...(item.toolCalls ?? []).map((call) => ({
             functionCall: { id: call.id ?? call.name, name: call.name, args: call.arguments },
+            // Gemini 3 refuses a history whose signed calls come back unsigned.
+            ...(call.signature ? { thoughtSignature: call.signature } : {}),
           })),
         );
       }
@@ -214,6 +216,7 @@ export function fromGoogleResponse(response: GenerateContentResponse): Generatio
           id: part.functionCall.id,
           name: part.functionCall.name,
           arguments: part.functionCall.args ?? {},
+          ...(part.thoughtSignature ? { signature: part.thoughtSignature } : {}),
         },
       });
     }

@@ -282,4 +282,24 @@ describe('Google converter', () => {
       },
     ]);
   });
+  it('sends a signed call back with its thought signature', () => {
+    const result = fromGoogleResponse({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { id: 'c1', name: 'lookup', args: { id: 7 } }, thoughtSignature: 'sig-1' }],
+          },
+        },
+      ],
+    } as unknown as GenerateContentResponse);
+    const call = result.parts.find((part) => part.type === 'toolCall')!;
+    expect(call).toMatchObject({ toolCall: { signature: 'sig-1' } });
+    const toolCall = call.type === 'toolCall' ? call.toolCall : undefined;
+    // Through JSON, as a stored transcript goes.
+    const stored = JSON.parse(JSON.stringify([{ type: 'assistant', toolCalls: [toolCall] }]));
+    expect(toGoogleContents(stored)[0]!.parts).toEqual([
+      { functionCall: { id: 'c1', name: 'lookup', args: { id: 7 } }, thoughtSignature: 'sig-1' },
+    ]);
+  });
 });

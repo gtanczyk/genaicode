@@ -33,6 +33,8 @@ export interface PageCall {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  /** The server's list marks this tool `write`: the page asks first even if its own copy does not. */
+  write?: boolean;
 }
 
 /**

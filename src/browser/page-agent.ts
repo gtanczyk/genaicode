@@ -39,6 +39,11 @@ export interface PageAgentState {
     progress?: number;
     /** What the model takes besides text and text files (`nano.inputs`), once known. */
     inputs?: LanguageModelMedia[];
+    /**
+     * Set while a server behind the agent (`remote()`) is `unavailable` because its allowance is
+     * spent, with when it opens again (epoch ms) if it said.
+     */
+    spent?: { resetsAt?: number };
   };
   /** Tokens in use and the size of the model's context window, once the model reported them. */
   context?: { used: number; window: number };
@@ -157,7 +162,11 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
         const info = await given.info();
         publish({
           ...state,
-          model: { status: info.available ? 'available' : 'unavailable', inputs: [...(info.inputs ?? [])] },
+          model: {
+            status: info.available ? 'available' : 'unavailable',
+            inputs: [...(info.inputs ?? [])],
+            ...(info.available ? {} : { spent: info.resetsAt !== undefined ? { resetsAt: info.resetsAt } : {} }),
+          },
         });
       } catch {
         // Not reachable now: a prompt finds out, and `withFallback` may go on elsewhere.
@@ -422,6 +431,8 @@ function settled(entries: SessionEntry[]): SessionEntry[] {
 
 /** What `createPageAgent` reads from an agent of the page's own when it has it, as `remote()` does. */
 interface DescribedAgent extends CodingAgent {
-  info?(signal?: AbortSignal): Promise<{ available: boolean; inputs?: readonly LanguageModelMedia[] }>;
+  info?(
+    signal?: AbortSignal,
+  ): Promise<{ available: boolean; inputs?: readonly LanguageModelMedia[]; resetsAt?: number }>;
   forget?(sessionId?: string): void;
 }

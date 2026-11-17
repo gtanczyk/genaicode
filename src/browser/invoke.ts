@@ -11,6 +11,8 @@ export async function invoke(
   task: AgentTask,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
+  /** Called just before a `write` tool runs: from then on it may have changed something. */
+  onWrite?: () => void,
 ): Promise<string> {
   const problems = argumentProblems(tool, args);
   if (problems.length) throw new Error(`Bad arguments: ${problems.join('; ')}.`);
@@ -27,6 +29,7 @@ export async function invoke(
     if (decision === 'read-only') throw new Error('Not allowed: this task is read-only.');
     if (decision === 'not-allowed') throw new Error('Not allowed: this needs the user’s approval.');
     if (decision !== 'approve') throw new Error('The user declined this action.');
+    onWrite?.();
   }
   return toolText(await abortable(Promise.resolve(tool.run(args, signal)), signal));
 }
