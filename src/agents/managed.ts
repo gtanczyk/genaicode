@@ -200,6 +200,9 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
   let lastUsage = '';
   const answered = new Set<string>();
   const pending: Promise<void>[] = [];
+  // Open approval questions live until the turn settles or the run stops.
+  const turn = new AbortController();
+  controller.signal.addEventListener('abort', () => turn.abort(), { once: true });
   const sessionText = { value: undefined as string | undefined };
 
   const relay = (event: AgentEvent) => {
@@ -209,9 +212,9 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       answered.add(event.request.id);
       const id = sessionId;
       pending.push(
-        decideApproval(task, event.request, controller.signal)
+        decideApproval(task, event.request, turn.signal)
           .then(async ({ decision, automatic }) => {
-            if (controller.signal.aborted) return;
+            if (turn.signal.aborted) return;
             await provider.answer!(id, event.request.id, decision);
             recorder.emit({
               type: 'approval-resolved',
@@ -221,6 +224,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
             });
           })
           .catch((error: unknown) => {
+            if (turn.signal.aborted) return;
             // An answer that never arrived leaves the session waiting: stop the run now.
             const message = error instanceof Error ? error.message : String(error);
             fatal ??= `Answering ${provider.name} approval ${event.request.id} failed: ${message}`;
@@ -361,6 +365,8 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
         observe(snapshot);
       }
     }
+    // The platform settled the turn: questions still open are moot.
+    turn.abort();
     await Promise.allSettled(pending);
     if (stopReason) return stopped();
     return outcomeOf(snapshot);
@@ -388,6 +394,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
         await provider.interrupt(started.id).catch(() => undefined);
       }
     }
+    turn.abort();
     if (stopReason) await provider.interrupt(started.id).catch(() => undefined);
     if (last) await provider.release?.({ ...last, release: [...releases] }).catch(() => undefined);
     if (options.deleteSession) await provider.delete?.(started.id).catch(() => undefined);

@@ -191,6 +191,39 @@ describe('managedAgent', () => {
     expect(calls).toContain('interrupt:s-1');
   });
 
+  it('drops open approval questions when the platform settles the turn', async () => {
+    const answers: string[] = [];
+    let aborted = false;
+    const { provider } = fake([], {
+      capabilities: { permissions: { approval: ['ask'] } },
+      async *watch() {
+        yield {
+          snapshot: { id: 's-1', state: 'idle', stopReason: 'requires-action' },
+          events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }],
+        };
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' }, events: [] };
+      },
+      async answer(_id, approvalId) {
+        answers.push(approvalId);
+      },
+    });
+    const result = await managedAgent(provider).run({
+      prompt: 'p',
+      cwd: '.',
+      permissions: { approval: 'ask' },
+      onApproval: (_request, signal) =>
+        new Promise((resolve) =>
+          signal?.addEventListener('abort', () => {
+            aborted = true;
+            resolve('approve');
+          }),
+        ),
+    }).result;
+    expect(result.status).toBe('completed');
+    expect(aborted).toBe(true);
+    expect(answers).toEqual([]);
+  });
+
   it('passes unavailable and crash failures through for failover', async () => {
     for (const kind of ['unavailable', 'crash'] as const) {
       const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);
