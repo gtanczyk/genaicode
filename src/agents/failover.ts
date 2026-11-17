@@ -19,6 +19,20 @@ export function describeFailover(from: string, to: string, failure: AgentFailure
   return `${from} → ${to} (${failure.kind}${resets})`;
 }
 
+/** What an agent that can describe itself says (`remote()` and `nano()` in `genaicode/browser`). */
+export interface AgentInfo {
+  available: boolean;
+  /** Media the agent takes besides text, such as `image` or `audio`. */
+  inputs?: readonly string[];
+  /** When an agent that is out (over its allowance) is back, epoch ms. */
+  resetsAt?: number;
+}
+
+interface Describable {
+  info?(signal?: AbortSignal): Promise<AgentInfo>;
+  forget?(sessionId?: string): void;
+}
+
 /**
  * One `CodingAgent` over several: runs `agents[0]`, and when a run fails with a quota, sign-in,
  * missing CLI or crash (`shouldFailOver`), runs the same task on the next agent. Each agent is
@@ -29,8 +43,12 @@ export function describeFailover(from: string, to: string, failure: AgentFailure
  * Each agent gets `model` only if it is the first one and `resume` only if the session is its own
  * (another vendor's ids mean nothing to it), `effort` only where it takes it, and `budget` minus what earlier agents used.
  * The result adds up every agent's usage and cost. A `failover` event marks each switch. Capabilities are the first agent's.
+ *
+ * Where an agent has `info()`, so does the result: available when any agent is, with the inputs of
+ * the first available one (it runs first), and an agent without `info()` counts as available.
+ * `forget()` reaches every agent that has it.
  */
-export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
+export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Describable {
   const [first] = agents;
   if (!first) throw new Error('withFallback needs at least one agent.');
   const out = new Set<CodingAgent>();
@@ -49,7 +67,46 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent {
       ...(budget ? { budget } : {}),
     };
   };
+  const described = agents as readonly (CodingAgent & Describable)[];
+  const extra: Describable = {};
+  if (described.some((agent) => agent.info)) {
+    extra.info = async (signal) => {
+      const answers = await Promise.all(
+        described.map(async (agent): Promise<AgentInfo | Error> => {
+          if (!agent.info) return { available: true };
+          try {
+            return await agent.info(signal);
+          } catch (error) {
+            return error instanceof Error ? error : new Error(String(error));
+          }
+        }),
+      );
+      // Within the order runs take: one out since its last run is tried last.
+      const order = [...described.keys()].sort(
+        (a, b) => Number(out.has(described[a]!)) - Number(out.has(described[b]!)),
+      );
+      for (const i of order) {
+        const answer = answers[i]!;
+        if (!(answer instanceof Error) && answer.available) {
+          return { available: true, ...(answer.inputs ? { inputs: answer.inputs } : {}) };
+        }
+      }
+      // None says it is available; one that could not be asked may still be.
+      const unknown = answers.find((answer): answer is Error => answer instanceof Error);
+      if (unknown) throw unknown;
+      const resets = (answers as AgentInfo[]).flatMap((answer) =>
+        answer.resetsAt !== undefined ? [answer.resetsAt] : [],
+      );
+      return { available: false, ...(resets.length ? { resetsAt: Math.min(...resets) } : {}) };
+    };
+  }
+  if (described.some((agent) => agent.forget)) {
+    extra.forget = (sessionId) => {
+      for (const agent of described) agent.forget?.(sessionId);
+    };
+  }
   return {
+    ...extra,
     name: first.name,
     command: first.command,
     capabilities: first.capabilities,

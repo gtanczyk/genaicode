@@ -159,6 +159,36 @@ describe('remote', () => {
     });
   });
 
+  it('tells the page what the agent that runs first takes, and forgets in every agent', async () => {
+    const limiter = memoryLimiter({ globalPerDay: 2_000 });
+    const { fetch } = served([], { limiter });
+    const nanoModel = fakeLanguageModel(['from nano'], { media: ['image'] });
+    const server = remote({ url: '/api/assistant', fetch });
+    const builtIn = nano({ languageModel: nanoModel.factory, inputs: ['image'] });
+    const agent = withFallback([server, builtIn]);
+    // The server is open and takes text only: it runs first.
+    expect(await agent.info!()).toEqual({ available: true, inputs: [] });
+    await limiter.spend(undefined, 2_000, 0);
+    // Over its allowance: the built-in model runs, and it takes images.
+    expect(await agent.info!()).toEqual({ available: true, inputs: ['image'] });
+    const page = createPageAgent({ agent });
+    await page.refresh();
+    expect(page.get().model).toMatchObject({ status: 'available', inputs: ['image'] });
+
+    const unavailable = withFallback([server, nano({ languageModel: undefined as never })]);
+    const info = await unavailable.info!();
+    expect(info.available).toBe(false);
+    expect(info.resetsAt).toBeGreaterThan(Date.now());
+
+    const forgotten: (string | undefined)[] = [];
+    const both = withFallback([
+      { ...server, forget: (id?: string) => forgotten.push(`server ${id}`) },
+      { ...builtIn, forget: (id?: string) => forgotten.push(`nano ${id}`) },
+    ] as never);
+    both.forget!('s-1');
+    expect(forgotten).toEqual(['server s-1', 'nano s-1']);
+  });
+
   it('does not hand a prompt to the fallback after a write ran', async () => {
     let count = 0;
     const tools: PageTool[] = [{ name: 'add', description: 'Add one.', write: true, run: () => String(++count) }];
