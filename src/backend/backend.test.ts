@@ -73,11 +73,16 @@ describe('createAgentBackend', () => {
 
   it('answers, and keeps the conversation in an encrypted token', async () => {
     const { backend, requests } = backendWith([say('Hello!'), say('You said hi.')]);
-    const first = await post(backend, { prompt: 'hi' });
+    const first = await post(backend, { prompt: 'my zebra password' });
     expect(first.lines.map((line) => line.type)).toEqual(['text-delta', 'message', 'turn-end']);
     expect(first.end).toMatchObject({ status: 'completed', text: 'Hello!', usage: { totalTokens: 15 } });
     expect(first.end.state).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(first.end.state).not.toContain('hi');
+    // Neither the token nor its bytes hold the prompt in the clear.
+    const bytes = Buffer.from(first.end.state!, 'base64url').toString('latin1');
+    expect(bytes).not.toContain('zebra');
+    expect(Buffer.from(first.end.state!, 'base64url').toString('base64')).not.toContain(
+      Buffer.from('my zebra password').toString('base64').slice(0, 12),
+    );
 
     const second = await post(backend, { state: first.end.state, prompt: 'what did I say?' });
     expect(second.end.text).toBe('You said hi.');
