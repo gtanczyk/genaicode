@@ -379,6 +379,35 @@ describe('createAgentBackend', () => {
     expect(done.end.usage?.totalTokens).toBeGreaterThan(0);
   });
 
+  it('estimates the input a broken stream did not report', async () => {
+    const provider: ModelProvider = {
+      name: 'fake',
+      capabilities: { tools: true },
+      generate: () => Promise.reject(new Error('unused')),
+      async *stream() {
+        yield { type: 'usage', usage: { outputTokens: 25 } };
+        throw new Error('connection reset');
+      },
+    };
+    const charged: number[] = [];
+    const limiter = memoryLimiter();
+    const backend = createAgentBackend({
+      client: genaicode(provider),
+      secret: SECRET,
+      public: true,
+      limiter: {
+        ...limiter,
+        spend: (key, tokens, reserved) => {
+          charged.push(tokens);
+          return limiter.spend(key, tokens, reserved);
+        },
+      },
+    });
+    const done = await post(backend, { prompt: 'p'.repeat(4000) });
+    expect(charged[0]).toBeGreaterThanOrEqual(1025); // 25 out, about 1,000 in
+    expect(done.end.usage?.totalTokens).toBe(charged[0]);
+  });
+
   it('charges the tool calls a step names when its provider reports no usage', async () => {
     const charged: number[] = [];
     const limiter = memoryLimiter();

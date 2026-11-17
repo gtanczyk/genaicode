@@ -565,7 +565,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         } catch (error) {
           // A stream that broke after it answered something cost that much, even with no usage report.
           const answered = streamed.length + (streamedCalls.length ? JSON.stringify(streamedCalls).length : 0);
-          const cost = count(stepUsage) || (answered ? input + Math.ceil(answered / 4) : 0);
+          const cost = stepUsage || answered ? charge(stepUsage, input, answered) : 0;
           await limiter.spend(context.key, cost, reserved);
           // The caller's budget pays for it too, or a fallback would get it again in full.
           tokens += cost;
@@ -581,7 +581,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         // A provider that reports no usage still pays: about four characters a token, in and out.
         const named = result ? resultToolCalls(result) : streamedCalls;
         const answered = text.length + (named.length ? JSON.stringify(named).length : 0);
-        const spent = count(result?.usage ?? stepUsage) || input + Math.ceil(answered / 4);
+        const spent = charge(result?.usage ?? stepUsage, input, answered);
         tokens += spent;
         add(usage, result?.usage ?? stepUsage);
         conversation.used += spent;
@@ -907,9 +907,13 @@ function trimmed(items: PromptItem[], maxBytes: number): PromptItem[] {
   return items.slice(from);
 }
 
-function count(usage: TokenUsage | undefined): number {
-  if (!usage) return 0;
-  return usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+/**
+ * What a model call costs: the reported total, else each reported side, estimating a side the
+ * provider left out (input from the prompt, output from the characters it answered).
+ */
+function charge(usage: TokenUsage | undefined, input: number, answeredChars: number): number {
+  if (usage?.totalTokens) return usage.totalTokens;
+  return (usage?.inputTokens ?? input) + (usage?.outputTokens ?? Math.ceil(answeredChars / 4));
 }
 
 function add(into: TokenUsage, usage: TokenUsage | undefined): void {
