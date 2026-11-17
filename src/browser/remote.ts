@@ -274,14 +274,16 @@ export function remote(options: RemoteOptions): RemoteAgent {
           const results: NonNullable<TurnRequest['results']> = [];
           for (const call of end.calls ?? []) {
             emit({ type: 'tool-start', id: call.id, name: call.name, input: call.input });
-            const own = tools.find((candidate) => candidate.name === call.name);
-            // Either side calling it a write is enough to ask first.
-            const tool = own && call.write && !own.write ? { ...own, write: true } : own;
+            const tool = tools.find((candidate) => candidate.name === call.name);
             let output: string;
             let isError = false;
             try {
               if (!tool) throw new Error(`This page has no tool called ${call.name}.`);
-              output = await invoke(tool, call.input ?? {}, call.id, task, emit, signal, () => (acted = true));
+              // Either side calling it a write is enough to ask first.
+              output = await invoke(tool, call.input ?? {}, call.id, task, emit, signal, {
+                write: call.write,
+                onWrite: () => (acted = true),
+              });
             } catch (error) {
               signal.throwIfAborted();
               output = describe(error);

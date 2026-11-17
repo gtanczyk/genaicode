@@ -56,13 +56,19 @@ export function memoryLimiter(options: MemoryLimiterOptions = {}): BackendLimite
     }
     return (today + 1) * DAY;
   };
+  // Keys counted today: spent ones, plus new ones whose first call is still running.
+  const keys = () => {
+    let count = used.size;
+    for (const key of held.keys()) if (!used.has(key)) count++;
+    return count;
+  };
   const left = (key: string | undefined): LimitCheck => {
     const resetsAt = roll();
     if (total + totalHeld >= global) return { ok: false, resetsAt };
     if (key === undefined) return { ok: true };
     if ((used.get(key) ?? 0) + (held.get(key) ?? 0) >= perKey) return { ok: false, resetsAt };
     // Many visitors (one key per address, say) must not grow these maps without end.
-    if (!used.has(key) && !held.has(key) && used.size >= maxKeys) return { ok: false, resetsAt };
+    if (!used.has(key) && !held.has(key) && keys() >= maxKeys) return { ok: false, resetsAt };
     return { ok: true };
   };
   return {

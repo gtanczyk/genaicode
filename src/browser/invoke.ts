@@ -11,13 +11,17 @@ export async function invoke(
   task: AgentTask,
   emit: (event: AgentEvent) => void,
   signal: AbortSignal,
-  /** Called just before a `write` tool runs: from then on it may have changed something. */
-  onWrite?: () => void,
+  options: {
+    /** Ask first even if the tool is not marked `write` (another side says it is one). */
+    write?: boolean;
+    /** Called just before a `write` tool runs: from then on it may have changed something. */
+    onWrite?: () => void;
+  } = {},
 ): Promise<string> {
   const problems = argumentProblems(tool, args);
   if (problems.length) throw new Error(`Bad arguments: ${problems.join('; ')}.`);
   tool.validate?.(args);
-  if (tool.write) {
+  if (tool.write || options.write) {
     const request: ApprovalRequest = {
       id,
       kind: 'other',
@@ -29,7 +33,7 @@ export async function invoke(
     if (decision === 'read-only') throw new Error('Not allowed: this task is read-only.');
     if (decision === 'not-allowed') throw new Error('Not allowed: this needs the user’s approval.');
     if (decision !== 'approve') throw new Error('The user declined this action.');
-    onWrite?.();
+    options.onWrite?.();
   }
   return toolText(await abortable(Promise.resolve(tool.run(args, signal)), signal));
 }

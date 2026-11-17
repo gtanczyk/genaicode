@@ -198,6 +198,17 @@ describe('createAgentBackend', () => {
     expect(limiter.check('c')).toMatchObject({ ok: false });
   });
 
+  it('counts keys whose first call is still running toward maxKeys', () => {
+    const limiter = memoryLimiter({ maxKeys: 2 });
+    expect(limiter.reserve('a', 10)).toMatchObject({ ok: true });
+    limiter.spend('b', 1, 0);
+    expect(limiter.reserve('b', 10)).toMatchObject({ ok: true }); // in both maps, counted once
+    expect(limiter.reserve('a', 10)).toMatchObject({ ok: true });
+    expect(limiter.reserve('c', 10)).toMatchObject({ ok: false });
+    limiter.spend('a', 0, 20);
+    expect(limiter.check('c')).toMatchObject({ ok: false }); // a has used today, even if nothing
+  });
+
   it('holds the allowance for calls still running', async () => {
     const limiter = memoryLimiter({ perKeyPerDay: 100, globalPerDay: 10_000 });
     expect(await limiter.reserve('a', 80)).toMatchObject({ ok: true });

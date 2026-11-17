@@ -188,6 +188,31 @@ describe('remote', () => {
     expect(asked).toEqual(['id-wipe']);
   });
 
+  it('runs a class-based page tool the server marks write on its own instance', async () => {
+    class Wipe {
+      name = 'wipe';
+      description = 'Wipe.';
+      wiped = 0;
+      validate() {}
+      run() {
+        return `wiped ${++this.wiped}`;
+      }
+    }
+    const wipe = new Wipe();
+    const { fetch } = served([call('wipe', {}), say('ok')], {
+      pageTools: [{ name: 'wipe', description: 'Wipe.', write: true }],
+    });
+    const events = await collect(
+      remote({ url: '/api/assistant', tools: [wipe], fetch, sendTools: false }).run({
+        prompt: 'wipe',
+        cwd: '',
+        onApproval: () => 'approve',
+      }),
+    );
+    expect(wipe.wiped).toBe(1);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'tool-end', name: 'wipe', output: 'wiped 1' }));
+  });
+
   it('says the server is unavailable when it cannot be reached', async () => {
     const fetch = (async () => {
       throw new TypeError('Failed to fetch');
