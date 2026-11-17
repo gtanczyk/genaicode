@@ -19,7 +19,7 @@
  * app.use(toNodeListener(backend)); // POST /api/assistant/turn, GET /api/assistant/info
  * ```
  */
-export { createAgentBackend } from './backend/backend.js';
+export { createAgentBackend, ToolError } from './backend/backend.js';
 export type {
   AgentBackend,
   AgentBackendLimits,

@@ -130,10 +130,8 @@ describe('Google converter', () => {
     });
 
     expect(
-      toGoogleRequest(
-        { prompt: [{ type: 'user', text: 'hello' }], thinking: false },
-        { model: 'gemini-3.7-flash' },
-      ).config,
+      toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model: 'gemini-3.7-flash' })
+        .config,
     ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } });
 
     expect(

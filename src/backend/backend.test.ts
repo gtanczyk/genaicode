@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { genaicode } from '../core/client.js';
 import type { GenerationRequest, GenerationResult, ModelProvider } from '../core/types.js';
-import { createAgentBackend, type AgentBackendOptions } from './backend.js';
+import { createAgentBackend, ToolError, type AgentBackendOptions } from './backend.js';
 import { memoryLimiter } from './limiter.js';
 import type { TurnEnd, TurnLine, TurnRequest } from './protocol.js';
 
@@ -191,6 +191,14 @@ describe('createAgentBackend', () => {
     expect(over.end).toMatchObject({ status: 'failed', failure: { kind: 'quota' } });
   });
 
+  it('counts at most maxKeys visitors a day in memory', () => {
+    const limiter = memoryLimiter({ maxKeys: 2 });
+    limiter.spend('a', 1);
+    limiter.spend('b', 1);
+    expect(limiter.check('a')).toMatchObject({ ok: true });
+    expect(limiter.check('c')).toMatchObject({ ok: false });
+  });
+
   it('refuses cross-site posts, other content types and large bodies', async () => {
     const { backend } = backendWith([], { limits: { maxBodyBytes: 100 } });
     expect((await post(backend, { prompt: 'x' }, { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
@@ -278,6 +286,78 @@ describe('createAgentBackend', () => {
     expect(
       (await post(strict.backend, { prompt: 'x', images: [{ mediaType: 'image/png', data: 'AA==' }] })).status,
     ).toBe(400);
+  });
+
+  it('keeps earlier turns while a big image waits in the token', async () => {
+    const { backend, requests } = backendWith([say('Hi Alice.'), call('look', {}), say('Nice.'), say('Alice.')], {
+      images: true,
+      pageTools: [{ name: 'look', description: 'Look.' }],
+    });
+    const first = await post(backend, { prompt: 'My name is Alice.' });
+    const big = 'A'.repeat(300_000);
+    const asked = await post(backend, {
+      state: first.end.state,
+      prompt: 'see this',
+      images: [{ mediaType: 'image/png', data: big }],
+    });
+    const done = await post(backend, { state: asked.end.state, results: [{ id: 'id-look', output: 'a cat' }] });
+    expect(requests[2]!.prompt.some((item) => item.text === 'My name is Alice.')).toBe(true);
+    await post(backend, { state: done.end.state, prompt: 'my name?' });
+    expect(requests[3]!.prompt.some((item) => item.text === 'My name is Alice.')).toBe(true);
+  });
+
+  it('stores a placeholder for an empty answer, so later turns stay valid', async () => {
+    const { backend, requests } = backendWith([{ parts: [], usage }, say('two')]);
+    const first = await post(backend, { prompt: 'one' });
+    await post(backend, { state: first.end.state, prompt: 'again' });
+    expect(requests[1]!.prompt.find((item) => item.type === 'assistant')).toMatchObject({ text: '(no answer)' });
+  });
+
+  it('counts a step whose provider reports no usage', async () => {
+    const { backend } = backendWith([{ parts: [{ type: 'text', text: 'hello' }] }]);
+    const done = await post(backend, { prompt: 'hi' });
+    expect(done.end.usage?.totalTokens).toBeGreaterThan(0);
+  });
+
+  it('declines an approved write tool this server no longer has', async () => {
+    const tools = [{ name: 'buy', description: 'Buy.', write: true, run: () => 'bought' }];
+    const before = backendWith([call('buy', {})], { tools });
+    const asked = await post(before.backend, { prompt: 'buy' });
+    const after = backendWith([say('It is gone.')], { tools: [] });
+    const done = await post(after.backend, {
+      state: asked.end.state,
+      approvals: [{ id: 'id-buy', decision: 'approve' }],
+    });
+    expect(done.end).toMatchObject({ status: 'completed', text: 'It is gone.' });
+    expect(after.requests[0]!.prompt.at(-1)!.toolResults![0]).toMatchObject({ isError: true });
+  });
+
+  it('shows a server tool error only when it is a ToolError', async () => {
+    const reported: unknown[] = [];
+    const { backend, requests } = backendWith([call('a', {}), call('b', {}), say('ok')], {
+      onError: (error) => reported.push(error),
+      tools: [
+        {
+          name: 'a',
+          description: 'A.',
+          run: () => {
+            throw new Error('connect ECONNREFUSED db.internal:5432');
+          },
+        },
+        {
+          name: 'b',
+          description: 'B.',
+          run: () => {
+            throw new ToolError('No order with that number.');
+          },
+        },
+      ],
+    });
+    const done = await post(backend, { prompt: 'x' });
+    expect(JSON.stringify(done.lines)).not.toContain('db.internal');
+    expect(requests[1]!.prompt.at(-1)!.toolResults![0]!.content).toBe('The tool failed.');
+    expect(requests[2]!.prompt.at(-1)!.toolResults![0]!.content).toBe('No order with that number.');
+    expect(reported).toHaveLength(2);
   });
 
   it('keeps a waiting token small enough to post back with the results', async () => {

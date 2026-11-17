@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { withFallback } from '../agents/failover.js';
 import type { AgentEvent, ApprovalRequest } from '../agents/types.js';
 import { createAgentBackend, type AgentBackendOptions } from '../backend/backend.js';
+import type { TurnRequest } from '../backend/protocol.js';
 import { memoryLimiter } from '../backend/limiter.js';
 import { genaicode } from '../core/client.js';
 import type { GenerationRequest, GenerationResult, ModelProvider } from '../core/types.js';
@@ -215,6 +216,64 @@ describe('remote', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+
+  it('tells a page agent what the backend takes, and forgets on reset', async () => {
+    const { fetch } = served([say('hi')], { images: true });
+    const agent = remote({ url: '/api/assistant', fetch });
+    const forget = vi.spyOn(agent, 'forget');
+    const page = createPageAgent({ agent });
+    expect(page.get().model.status).toBe('checking');
+    expect(await page.refresh()).toBe('available');
+    expect(page.get().model.inputs).toEqual(['image']);
+    page.send('hi');
+    await new Promise<void>((resolve) => {
+      const stop = page.subscribe((state) => {
+        if (state.session.status === 'idle' && state.session.turns[0]?.result) {
+          stop();
+          resolve();
+        }
+      });
+    });
+    page.reset();
+    expect(forget).toHaveBeenCalledWith(expect.stringMatching(/^remote-/));
+  });
+
+  it('shows a page agent as unavailable while the allowance is spent', async () => {
+    const { fetch } = served([], { limiter: memoryLimiter({ perKeyPerDay: 0, globalPerDay: 0 }) });
+    const page = createPageAgent({ agent: remote({ url: '/api/assistant', fetch }) });
+    expect(await page.refresh()).toBe('unavailable');
+  });
+
+  it('keeps the kinds of tokens the server reports', async () => {
+    const { fetch } = served([say('hi')]);
+    const result = await remote({ url: '/api/assistant', fetch }).run({ prompt: 'x', cwd: '' }).result;
+    expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
+  });
+
+  it('drops an expired token on a continuation too', async () => {
+    let turn = 0;
+    const tools: PageTool[] = [{ name: 'look', description: 'Look.', run: () => 'seen' }];
+    const sent: TurnRequest[] = [];
+    const ndjson = (lines: unknown[]) => new Response(lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
+    const fetch = (async (_input: string, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init!.body)) as TurnRequest);
+      turn++;
+      if (turn === 1) return ndjson([{ type: 'turn-end', status: 'completed', state: 'old', text: 'one' }]);
+      if (turn === 2) {
+        return ndjson([
+          { type: 'turn-end', status: 'waiting', state: 'waiting', calls: [{ id: 'c', name: 'look', input: {} }] },
+        ]);
+      }
+      if (turn === 3) return new Response(JSON.stringify({ error: 'expired' }), { status: 409 });
+      return ndjson([{ type: 'turn-end', status: 'completed', state: 'new', text: 'fresh' }]);
+    }) as typeof globalThis.fetch;
+    const agent = remote({ url: '/api/assistant', tools, fetch });
+    const first = await agent.run({ prompt: 'a', cwd: '' }).result;
+    const second = await agent.run({ prompt: 'b', cwd: '', resume: first.sessionId }).result;
+    expect(second.ok).toBe(false);
+    await agent.run({ prompt: 'c', cwd: '', resume: first.sessionId }).result;
+    expect(sent[3]!.state).toBeUndefined();
   });
 
   it('drives a page agent', async () => {

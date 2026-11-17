@@ -9,7 +9,8 @@ import type {
   AgentStatus,
   CodingAgent,
 } from '../agents/types.js';
-import type { ImageMediaType } from '../core/types.js';
+import type { ImageMediaType, TokenUsage } from '../core/types.js';
+import { addUsage } from '../agents/usage.js';
 import type { BackendInfo, BackendRefusal, PageToolSpec, TurnEnd, TurnLine, TurnRequest } from '../backend/protocol.js';
 import { ask, invoke } from './invoke.js';
 import { abortable } from './language-model.js';
@@ -166,6 +167,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
           }, task.timeoutMs);
     const emit = (event: AgentEvent) => events.push(event);
     let tokens = 0;
+    let usage: TokenUsage = {};
     let over = false;
 
     const finish = (
@@ -180,7 +182,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
         signal: null,
         ...(sessionId ? { sessionId } : {}),
         ...(extra.text !== undefined ? { text: extra.text } : {}),
-        ...(tokens ? { usage: { totalTokens: tokens } } : {}),
+        ...(tokens ? { usage: { ...usage, totalTokens: tokens } } : {}),
         ...(extra.error ? { error: extra.error } : {}),
         ...(extra.failure ? { failure: extra.failure } : over ? { failure: { kind: 'budget' as const } } : {}),
       };
@@ -237,6 +239,8 @@ export function remote(options: RemoteOptions): RemoteAgent {
             end = await post(body, signal, emit);
           } catch (error) {
             // An expired or foreign conversation: start a new one with this prompt, once.
+            // The token is no good for any later turn either.
+            if (error instanceof Failed && error.status === 409) sessions.delete(sessionId);
             if (error instanceof Failed && error.status === 409 && body.prompt !== undefined && !restarted) {
               restarted = true;
               sessions.delete(sessionId);
@@ -251,7 +255,8 @@ export function remote(options: RemoteOptions): RemoteAgent {
           const spent = end.usage?.totalTokens ?? (end.usage?.inputTokens ?? 0) + (end.usage?.outputTokens ?? 0);
           if (spent) {
             tokens += spent;
-            emit({ type: 'usage', usage: { totalTokens: tokens } });
+            usage = addUsage(usage, { ...end.usage, totalTokens: spent });
+            emit({ type: 'usage', usage: { ...usage, totalTokens: tokens } });
             const limit = task.budget?.maxTokens;
             if (limit !== undefined && tokens > limit) {
               over = true;

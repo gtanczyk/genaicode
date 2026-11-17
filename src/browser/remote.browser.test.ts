@@ -84,7 +84,10 @@ it('bundles the backend with no Node in it', async () => {
 
 it('runs a page tool the server-side model calls, after the user approves it', async () => {
   script.push(
-    { parts: [{ type: 'toolCall', toolCall: { id: 'c1', name: 'rename', arguments: { title: 'Wolf shop' } } }] },
+    {
+      parts: [{ type: 'toolCall', toolCall: { id: 'c1', name: 'rename', arguments: { title: 'Wolf shop' } } }],
+      usage: { inputTokens: 10, outputTokens: 2 },
+    },
     { parts: [{ type: 'text', text: 'Renamed it.' }], usage: { inputTokens: 20, outputTokens: 4 } },
   );
   const page = await browser.newPage();
@@ -129,7 +132,7 @@ it('runs a page tool the server-side model calls, after the user approves it', a
     heading: 'Wolf shop',
     kinds: ['tool', 'approval', 'text'],
     text: 'Renamed it.',
-    usage: { totalTokens: 24 },
+    usage: { inputTokens: 30, outputTokens: 6, totalTokens: 36 },
   });
   await page.close();
 });

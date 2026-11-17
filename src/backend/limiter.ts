@@ -20,6 +20,8 @@ export interface MemoryLimiterOptions {
   perKeyPerDay?: number;
   /** Tokens the whole backend may use per day (UTC). Default 2,000,000. */
   globalPerDay?: number;
+  /** Keys counted per day; once full, a key not seen today waits for tomorrow. Default 100,000. */
+  maxKeys?: number;
   /** For tests. */
   now?: () => number;
 }
@@ -30,6 +32,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export function memoryLimiter(options: MemoryLimiterOptions = {}): BackendLimiter {
   const perKey = options.perKeyPerDay ?? 200_000;
   const global = options.globalPerDay ?? 2_000_000;
+  const maxKeys = options.maxKeys ?? 100_000;
   const now = options.now ?? Date.now;
   let day = -1;
   let total = 0;
@@ -48,6 +51,8 @@ export function memoryLimiter(options: MemoryLimiterOptions = {}): BackendLimite
       const resetsAt = roll();
       if (total >= global) return { ok: false, resetsAt };
       if (key !== undefined && (used.get(key) ?? 0) >= perKey) return { ok: false, resetsAt };
+      // Many visitors (one key per address, say) must not grow this map without end.
+      if (key !== undefined && !used.has(key) && used.size >= maxKeys) return { ok: false, resetsAt };
       return { ok: true };
     },
     spend(key, tokens) {

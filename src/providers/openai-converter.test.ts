@@ -98,7 +98,9 @@ describe('OpenAI converter', () => {
   it('drops temperature for Luna models, which reject anything but the default', () => {
     const prompt = [{ type: 'user' as const, text: 'hello' }];
     expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6-luna').temperature).toBeUndefined();
-    expect(toOpenAIRequest({ prompt, temperature: 0.2, model: 'openai/gpt-6-luna-2026-09-01' }, 'x').temperature).toBeUndefined();
+    expect(
+      toOpenAIRequest({ prompt, temperature: 0.2, model: 'openai/gpt-6-luna-2026-09-01' }, 'x').temperature,
+    ).toBeUndefined();
     expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6').temperature).toBe(0);
     expect(acceptsTemperature('gpt-6-lunar')).toBe(true);
     expect(acceptsTemperature('gpt-6-luna')).toBe(false);

@@ -10,7 +10,7 @@ export function toNodeListener(
   backend: AgentBackend,
 ): (req: IncomingMessage & { body?: unknown }, res: ServerResponse, next?: (error?: unknown) => void) => void {
   return (req, res, next) => {
-    const path = (req.url ?? '/').split('?')[0]!;
+    const path = target(req).split('?')[0]!;
     if (!path.startsWith(`${backend.basePath}/`)) {
       if (next) next();
       else res.writeHead(404).end();
@@ -43,7 +43,12 @@ async function serve(
   let body: BodyInit | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
     if (req.body !== undefined) {
-      body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      body =
+        typeof req.body === 'string'
+          ? req.body
+          : req.body instanceof Uint8Array
+            ? new Uint8Array(req.body)
+            : JSON.stringify(req.body);
       headers.delete('content-length');
     } else {
       // Read only as fast as the backend reads, so its body limit also bounds what is buffered here.
@@ -67,7 +72,7 @@ async function serve(
       );
     }
   }
-  const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url ?? '/'}`, {
+  const request = new Request(`http://${req.headers.host ?? 'localhost'}${target(req)}`, {
     method,
     headers,
     body,
@@ -88,7 +93,25 @@ async function serve(
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    if (!res.write(value)) await new Promise<void>((resolve) => res.once('drain', resolve));
+    if (!res.write(value)) {
+      // A page that left while the socket was full sends no 'drain', only 'close'.
+      await new Promise<void>((resolve) => {
+        const go = () => {
+          res.off('drain', go).off('close', go).off('error', go);
+          resolve();
+        };
+        res.on('drain', go).on('close', go).on('error', go);
+      });
+      if (res.destroyed) {
+        await reader.cancel().catch(() => {});
+        return;
+      }
+    }
   }
   res.end();
+}
+
+/** The full path: Express and Connect take a mount prefix (`app.use('/api/assistant', ...)`) off `req.url`. */
+function target(req: IncomingMessage & { originalUrl?: string }): string {
+  return req.originalUrl ?? req.url ?? '/';
 }
