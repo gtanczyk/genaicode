@@ -239,6 +239,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
     const cors: Record<string, string> = corsOrigin
       ? { 'access-control-allow-origin': corsOrigin, vary: 'Origin' }
       : {};
+    // The hold on a stored conversation, from loading it to saving it.
+    let release: (() => void) | undefined;
     try {
       if (request.method === 'OPTIONS') {
         if (!corsOrigin) throw new Refusal(403, 'cross-site request');
@@ -279,7 +281,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
       }
       const body = parseTurn(await readBody(request, limits.maxBodyBytes));
       const pageTools = fixedPageTools ?? checkPageTools(body.tools ?? [], serverTools, limits.maxPageTools);
-      const conversation = await openConversation(body.state, user);
+      const conversation = await openConversation(body.state, user, (free) => (release = free));
       const answering = !!conversation.waiting && (body.results !== undefined || body.approvals !== undefined);
       if (!answering && body.prompt === undefined && !body.images?.length) {
         throw new Refusal(400, conversation.waiting ? 'send results for the waiting step' : 'send a prompt');
@@ -327,6 +329,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
               });
             })
             .finally(() => {
+              release?.();
               request.signal?.removeEventListener('abort', abort);
               try {
                 out.close();
@@ -342,6 +345,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         headers: { ...cors, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' },
       });
     } catch (error) {
+      release?.();
       if (error instanceof Refusal) {
         return json(error.status, { error: error.message, ...(error.failure ? { failure: error.failure } : {}) }, cors);
       }
@@ -350,7 +354,29 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
     }
   }
 
-  async function openConversation(token: string | undefined, user: BackendUser | undefined): Promise<Conversation> {
+  /**
+   * One request at a time per stored conversation in this process: two posts of the same
+   * approval would otherwise both run its tool. Instances that share a store do not see this.
+   */
+  const busy = new Map<string, Promise<void>>();
+  async function hold(sid: string): Promise<() => void> {
+    for (let ahead = busy.get(sid); ahead; ahead = busy.get(sid)) await ahead;
+    let done!: () => void;
+    busy.set(sid, new Promise<void>((resolve) => (done = resolve)));
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      busy.delete(sid);
+      done();
+    };
+  }
+
+  async function openConversation(
+    token: string | undefined,
+    user: BackendUser | undefined,
+    held: (release: () => void) => void,
+  ): Promise<Conversation> {
     const fresh = (): Conversation => ({
       v: 1,
       ...(user ? { uid: user.id } : {}),
@@ -364,6 +390,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
     if (options.store) {
       const pointer = await seal.open<StoreToken>(token);
       if (pointer?.v === 1 && pointer.uid === user?.id && pointer.exp > Date.now()) {
+        held(await hold(pointer.sid));
         const kept = (await options.store.get(pointer.sid)) as Conversation | undefined;
         // A copy: a store may hand out its own object, and a failed turn must leave it as it was.
         conversation = kept ? { ...structuredClone(kept), sid: pointer.sid } : undefined;

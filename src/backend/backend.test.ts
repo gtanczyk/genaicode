@@ -446,6 +446,31 @@ describe('createAgentBackend', () => {
     expect(texts).toEqual(['hi', 'again']);
   });
 
+  it('runs an approved write once when the same approval is posted twice at once', async () => {
+    const kept = new Map<string, unknown>();
+    let bought = 0;
+    const { backend } = backendWith([call('buy', {}), say('Bought.'), say('Bought.')], {
+      store: { get: (id) => kept.get(id), set: (id, value) => void kept.set(id, value) },
+      tools: [
+        {
+          name: 'buy',
+          description: 'Buy.',
+          write: true,
+          run: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            return bought++, 'bought';
+          },
+        },
+      ],
+    });
+    const asked = await post(backend, { prompt: 'buy it' });
+    const answer = { state: asked.end.state, approvals: [{ id: 'id-buy', decision: 'approve' as const }] };
+    const both = await Promise.all([post(backend, answer), post(backend, answer)]);
+    expect(bought).toBe(1);
+    // The second finds the step already settled.
+    expect(both.map((done) => done.status)).toEqual([200, 400]);
+  });
+
   it('serves info', async () => {
     const { backend } = backendWith([], { images: true });
     const response = await backend.handle(new Request('http://app.test/api/assistant/info'));

@@ -96,8 +96,10 @@ tool results, not approvals.
 - **Server tools** act for `context.user`. Check what that user may do there, never from the
   arguments: the model wrote them, and the model reads text other people wrote. A `write`
   server tool waits for the user's approval in the page. A step that fails after a tool ran keeps
-  its result, so a retry does not run it again; but an old token can be posted again, so without
-  `store` make `write` tools safe to repeat (an order id, a check of what is done).
+  its result, so a retry does not run it again, and with `store` one instance takes one request
+  per conversation at a time. An old token can still be posted again, and instances sharing a
+  store do not see each other's requests, so make `write` tools safe to repeat (an order id, a
+  check of what is done).
 - **Prompt injection.** Tool results are marked as data in the system prompt, `write` tools on
   both sides need a click, and the model's provider error text never reaches the page.
 - **Cross-site requests** are refused (`Sec-Fetch-Site`, `Origin`) unless their origin is in
