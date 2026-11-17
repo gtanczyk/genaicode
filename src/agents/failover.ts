@@ -56,8 +56,10 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
   // Agents whose last info() said they are not available: runs try them after the rest, even
   // after one that failed earlier but says it is available now.
   const down = new Set<CodingAgent>();
+  // Agents info() could not ask: after the ones that said they are available, before `down`.
+  const unasked = new Set<CodingAgent>();
   const ordered = () => {
-    const rank = (agent: CodingAgent) => (down.has(agent) ? 2 : 0) + (out.has(agent) ? 1 : 0);
+    const rank = (agent: CodingAgent) => (down.has(agent) ? 4 : unasked.has(agent) ? 2 : 0) + (out.has(agent) ? 1 : 0);
     return [...agents].sort((a, b) => rank(a) - rank(b));
   };
   // The agent whose session the last result named: a `resume` id is only its.
@@ -90,8 +92,10 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
         }),
       );
       down.clear();
+      unasked.clear();
       answers.forEach((answer, i) => {
-        if (!(answer instanceof Error) && !answer.available) down.add(described[i]!);
+        if (answer instanceof Error) unasked.add(described[i]!);
+        else if (!answer.available) down.add(described[i]!);
       });
       // The inputs of the agent a run starts with.
       for (const agent of ordered()) {
@@ -170,6 +174,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           else if (ended.ok) {
             out.delete(agent);
             down.delete(agent);
+            unasked.delete(agent);
           }
           if (stopped || !to || !isOut || left === 'spent') {
             events.push({ type: 'done', result: ended });

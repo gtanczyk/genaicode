@@ -207,6 +207,24 @@ describe('remote', () => {
     expect(requests).toHaveLength(2);
   });
 
+  it('starts with the agent whose inputs it offered when another could not be asked', async () => {
+    const { fetch, requests } = served([say('from the server')]);
+    let reachable = false;
+    const flaky = (async (input: string, init?: RequestInit) => {
+      if (!reachable && input.endsWith('/info')) throw new TypeError('Failed to fetch');
+      return fetch(input, init);
+    }) as typeof globalThis.fetch;
+    const nanoModel = fakeLanguageModel(['from nano'], { media: ['image'] });
+    const agent = withFallback([
+      remote({ url: '/api/assistant', fetch: flaky }),
+      nano({ languageModel: nanoModel.factory, inputs: ['image'] }),
+    ]);
+    expect(await agent.info!()).toEqual({ available: true, inputs: ['image'] });
+    reachable = true;
+    expect((await agent.run({ prompt: 'a', cwd: '' }).result).text).toBe('from nano');
+    expect(requests).toHaveLength(0);
+  });
+
   it('does not hand a prompt to the fallback after a write ran', async () => {
     let count = 0;
     const tools: PageTool[] = [{ name: 'add', description: 'Add one.', write: true, run: () => String(++count) }];
