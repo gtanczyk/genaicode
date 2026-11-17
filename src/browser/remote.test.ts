@@ -157,6 +157,20 @@ describe('remote', () => {
     expect(result).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
   });
 
+  it('says the server is unavailable when the stream breaks mid-turn', async () => {
+    const fetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(out) {
+            out.enqueue(new TextEncoder().encode('{"type":"text-delta","text":"Hel"}\n'));
+            out.error(new TypeError('terminated'));
+          },
+        }),
+      )) as typeof globalThis.fetch;
+    const result = await remote({ url: '/api/assistant', fetch }).run({ prompt: 'x', cwd: '' }).result;
+    expect(result).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
+  });
+
   it('starts over when the conversation expired', async () => {
     let now = Date.now();
     const realNow = Date.now;

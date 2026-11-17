@@ -476,13 +476,15 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
 
         let result: GenerationResult | undefined;
         let streamed = '';
+        const streamedCalls: ToolCall[] = [];
         let stepUsage: TokenUsage | undefined;
         try {
           for await (const event of request.stream()) {
             if (event.type === 'text-delta') {
               streamed += event.text;
               context.write({ type: 'text-delta', text: event.text });
-            } else if (event.type === 'usage') stepUsage = event.usage;
+            } else if (event.type === 'tool-call') streamedCalls.push(event.toolCall);
+            else if (event.type === 'usage') stepUsage = event.usage;
             else if (event.type === 'error') throw event.error;
             else if (event.type === 'done') result = event.result;
           }
@@ -503,7 +505,10 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         // A model asked for no tools on its last step may still name one: those calls go unanswered.
         const calls = last
           ? []
-          : (result ? resultToolCalls(result) : []).map((call) => ({ ...call, id: call.id || randomId('call') }));
+          : (result ? resultToolCalls(result) : streamedCalls).map((call) => ({
+              ...call,
+              id: call.id || randomId('call'),
+            }));
         conversation.items.push({
           type: 'assistant',
           ...(text ? { text } : {}),

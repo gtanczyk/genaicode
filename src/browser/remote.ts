@@ -99,7 +99,14 @@ export function remote(options: RemoteOptions): RemoteAgent {
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = '';
     for (;;) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<string>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        signal.throwIfAborted();
+        throw new Failed(`The connection to the assistant broke: ${describe(error)}`, { kind: 'unavailable' });
+      }
+      const { done, value } = chunk;
       if (value) buffer += value;
       let newline: number;
       while ((newline = buffer.indexOf('\n')) >= 0) {

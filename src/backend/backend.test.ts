@@ -317,6 +317,33 @@ describe('createAgentBackend', () => {
     expect(done.end).toMatchObject({ status: 'failed', failure: { kind: 'quota' } });
   });
 
+  it('runs tool calls a provider stream sends without a done snapshot', async () => {
+    let step = 0;
+    const provider: ModelProvider = {
+      name: 'streaming',
+      async generate() {
+        throw new Error('unused');
+      },
+      async *stream() {
+        step++;
+        if (step === 1) {
+          yield { type: 'tool-call', toolCall: { id: 'p1', name: 'ping', arguments: {} } };
+          yield { type: 'usage', usage };
+        } else yield { type: 'text-delta', text: 'pong seen' };
+      },
+    };
+    let pinged = 0;
+    const backend = createAgentBackend({
+      client: genaicode(provider),
+      secret: SECRET,
+      public: true,
+      tools: [{ name: 'ping', description: 'Ping.', run: () => (pinged++, 'pong') }],
+    });
+    const done = await post(backend, { prompt: 'x' });
+    expect(pinged).toBe(1);
+    expect(done.end).toMatchObject({ status: 'completed', text: 'pong seen' });
+  });
+
   it('keeps conversations in a store when given one', async () => {
     const kept = new Map<string, unknown>();
     const { backend, requests } = backendWith([say('one'), say('two')], {
