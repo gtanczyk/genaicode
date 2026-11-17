@@ -46,20 +46,25 @@ async function serve(
       body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
       headers.delete('content-length');
     } else {
-      body = new ReadableStream<Uint8Array>({
-        async start(out) {
-          try {
-            for await (const chunk of req)
-              out.enqueue(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
-            out.close();
-          } catch (error) {
-            out.error(error);
-          }
+      // Read only as fast as the backend reads, so its body limit also bounds what is buffered here.
+      const chunks = req[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
+      body = new ReadableStream<Uint8Array>(
+        {
+          async pull(out) {
+            try {
+              const { done, value } = await chunks.next();
+              if (done) out.close();
+              else out.enqueue(typeof value === 'string' ? new TextEncoder().encode(value) : value);
+            } catch (error) {
+              out.error(error);
+            }
+          },
+          cancel() {
+            req.destroy();
+          },
         },
-        cancel() {
-          req.destroy();
-        },
-      });
+        { highWaterMark: 0 },
+      );
     }
   }
   const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url ?? '/'}`, {

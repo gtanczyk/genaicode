@@ -95,7 +95,9 @@ tool results, not approvals.
   request (checked: at most 32, names, sizes, no clash with server tools).
 - **Server tools** act for `context.user`. Check what that user may do there, never from the
   arguments: the model wrote them, and the model reads text other people wrote. A `write`
-  server tool waits for the user's approval in the page.
+  server tool waits for the user's approval in the page. A step that fails after a tool ran keeps
+  its result, so a retry does not run it again; but an old token can be posted again, so without
+  `store` make `write` tools safe to repeat (an order id, a check of what is done).
 - **Prompt injection.** Tool results are marked as data in the system prompt, `write` tools on
   both sides need a click, and the model's provider error text never reaches the page.
 - **Cross-site requests** are refused (`Sec-Fetch-Site`, `Origin`) unless their origin is in

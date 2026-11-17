@@ -86,7 +86,10 @@ export function remote(options: RemoteOptions): RemoteAgent {
     try {
       response = await doFetch(`${base}/turn`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...(await options.headers?.()) },
+        headers: {
+          'content-type': 'application/json',
+          ...(await abortable(Promise.resolve(options.headers?.()), signal)),
+        },
         body: JSON.stringify(body),
         credentials: options.credentials ?? 'same-origin',
         signal,
@@ -315,7 +318,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
       let response: Response;
       try {
         response = await doFetch(`${base}/info`, {
-          headers: { ...(await options.headers?.()) },
+          headers: { ...(await abortable(Promise.resolve(options.headers?.()), signal)) },
           credentials: options.credentials ?? 'same-origin',
           ...(signal ? { signal } : {}),
         });

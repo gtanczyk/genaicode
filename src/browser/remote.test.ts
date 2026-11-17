@@ -181,6 +181,19 @@ describe('remote', () => {
     expect((await timed.result).status).toBe('timeout');
   });
 
+  it('stops while the page is still finding its request headers', async () => {
+    const { fetch } = served([]);
+    const agent = remote({
+      url: '/api/assistant',
+      fetch,
+      headers: () => new Promise<Record<string, string>>(() => {}),
+    });
+    const run = agent.run({ prompt: 'x', cwd: '' });
+    run.abort();
+    expect((await run.result).status).toBe('aborted');
+    expect((await agent.run({ prompt: 'x', cwd: '', timeoutMs: 10 }).result).status).toBe('timeout');
+  });
+
   it('starts over when the conversation expired', async () => {
     let now = Date.now();
     const realNow = Date.now;

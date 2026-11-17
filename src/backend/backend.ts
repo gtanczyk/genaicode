@@ -401,7 +401,15 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
     let tokens = 0;
     let steps = 0;
     const called: string[] = [];
+    // Tool results this request already settled: a failure goes back to them, not to the token it
+    // came with, so sending the same answer again does not run an approved write a second time.
+    let checkpoint: { items: number; waiting: Waiting } | undefined;
     const end = async (result: Omit<TurnEnd, 'type' | 'usage'>, keep = true): Promise<TurnEnd> => {
+      if (!keep && checkpoint) {
+        conversation.items.length = checkpoint.items;
+        conversation.waiting = checkpoint.waiting;
+        keep = true;
+      }
       const state = keep ? await closeConversation(conversation) : before;
       report({
         ...(context.user ? { user: context.user.id } : {}),
@@ -438,6 +446,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
 
       if (conversation.waiting) {
         const results = await settle(conversation.waiting, body, prompt !== undefined, context, called);
+        checkpoint = { items: conversation.items.length, waiting: conversation.waiting };
         conversation.waiting = undefined;
         conversation.items.push({
           type: 'user',

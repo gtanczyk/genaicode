@@ -293,6 +293,21 @@ describe('createAgentBackend', () => {
     expect(requests[1]!.prompt[1]).toMatchObject({ text: 'look\n[1 image attached earlier]' });
   });
 
+  it('does not run an approved write twice when the model fails after it', async () => {
+    let bought = 0;
+    const { backend, requests } = backendWith([call('buy', {}), new Error('down'), say('Bought it.')], {
+      tools: [{ name: 'buy', description: 'Buy.', write: true, run: () => (bought++, 'bought') }],
+    });
+    const asked = await post(backend, { prompt: 'buy it' });
+    const answer = { approvals: [{ id: 'id-buy', decision: 'approve' as const }] };
+    const failed = await post(backend, { state: asked.end.state, ...answer });
+    expect(failed.end).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
+    const retried = await post(backend, { state: failed.end.state, ...answer });
+    expect(retried.end).toMatchObject({ status: 'completed', text: 'Bought it.' });
+    expect(bought).toBe(1);
+    expect(requests[2]!.prompt.at(-1)!.toolResults).toEqual([{ callId: 'id-buy', name: 'buy', content: 'bought' }]);
+  });
+
   it('tells the page the kind of a model failure, not its words', async () => {
     const error = Object.assign(new Error('secret upstream detail'), { status: 429 });
     const { backend } = backendWith([error]);
