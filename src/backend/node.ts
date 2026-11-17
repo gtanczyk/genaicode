@@ -41,6 +41,8 @@ async function serve(
   }
   const method = req.method ?? 'GET';
   let body: BodyInit | undefined;
+  // The backend stopped reading the body (over its limit): answer, then close the connection.
+  let abandoned = false;
   if (method !== 'GET' && method !== 'HEAD') {
     if (req.body !== undefined) {
       body =
@@ -65,7 +67,9 @@ async function serve(
             }
           },
           cancel() {
-            req.destroy();
+            // Not req.destroy(): that takes the socket the answer still has to go out on.
+            abandoned = true;
+            req.pause();
           },
         },
         { highWaterMark: 0 },
@@ -84,6 +88,7 @@ async function serve(
   response.headers.forEach((value, name) => {
     out[name] = value;
   });
+  if (abandoned) out.connection = 'close';
   res.writeHead(response.status, out);
   if (!response.body) {
     res.end();

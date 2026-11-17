@@ -69,6 +69,38 @@ describe('toNodeListener', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+  it('answers 413 to a chunked body over the limit', async () => {
+    const backend = createAgentBackend({
+      client: genaicode(provider),
+      secret: 'test-secret-test-secret-test-secret!',
+      public: true,
+      limits: { maxBodyBytes: 1024 },
+    });
+    const server = createServer(toNodeListener(backend));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const text = JSON.stringify({ prompt: 'x'.repeat(2048) });
+      // A stream body has no Content-Length: the limit is found while reading.
+      const body = new ReadableStream<Uint8Array>({
+        start(out) {
+          out.enqueue(new TextEncoder().encode(text));
+          out.close();
+        },
+      });
+      const response = await fetch(`http://127.0.0.1:${port}/api/assistant/turn`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        duplex: 'half',
+      } as RequestInit);
+      expect(response.status).toBe(413);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   it('serves a backend mounted on a path, with a body a framework read into a Buffer', async () => {
     const backend = createAgentBackend({
       client: genaicode(provider),
