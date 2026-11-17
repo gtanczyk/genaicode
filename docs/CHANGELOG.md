@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `managedAgent()` and `ManagedProvider` in `genaicode/agents`: one contract for hosted agent platforms whose sessions outlive the process (Anthropic, Gemini, OpenAI and Cursor managed agents). Sessions are addressed by id (`start`, `get`, `events` or a live `watch`, `send`, `answer`, `interrupt`, `release`, `delete`), report usage and cost, pass `task.budget` to the platform's own cap (a stop there fails with `failure.kind: 'budget'`) and bring approvals back to `task.onApproval`. `hostedAgent()` now runs on it (`fromHosted()`) (#174).
 - `genaicode/backend`: a model behind your server for the page agent. `createAgentBackend()` runs the tool loop on any `genaicode()` client, hands page-tool calls to the page and runs server tools for the signed-in user, keeps the conversation in an encrypted token (or a `store`), and holds costs with output, step, conversation and daily limits (`memoryLimiter()`); `handle(request)` takes a web `Request`, `toNodeListener()` serves Node. In `genaicode/browser`, `remote({ url, tools })` is its driver and `withFallback` is exported, so a page can fall back between the server and Gemini Nano (#175).
 
 ### Fixed

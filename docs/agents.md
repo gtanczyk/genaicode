@@ -619,6 +619,51 @@ const run = hostedAgent(provider, { pollIntervalMs: 10_000 }).run({ prompt, cwd:
 `env`, `signal`, `timeoutMs` and `onApproval` stay local. Abort and timeout call `cancel`.
 `send` backs `steer()`.
 
+### Managed agent platforms
+
+Platforms such as Anthropic Managed Agents, Gemini Managed Agents, OpenAI and Cursor Cloud
+Agents keep sessions that outlive the process that started them, report usage, enforce their
+own budgets and some ask for approvals. Implement `ManagedProvider` for those. Every method
+takes a session id, so a server can start a session, store `snapshot.id`, and read it with
+`get()` after a restart:
+
+```ts
+import { managedAgent, type ManagedProvider } from 'genaicode/agents';
+
+const provider: ManagedProvider = {
+  name: 'my-platform',
+  capabilities: { mcp: true, resume: true, usage: true, budget: ['usd'] },
+  start: (request, signal) => api.createSession(request, { signal }), // -> ManagedSnapshot
+  get: (id, signal) => api.getSession(id, { signal }), // { id, state, stopReason?, usage?, costUsd?, ... }
+  watch: (id, signal) => api.streamSession(id, { signal }), // optional: AsyncIterable<{ events?, snapshot? }>
+  send: (id, text) => api.message(id, text),
+  answer: (id, approvalId, decision) => api.confirm(id, approvalId, decision),
+  interrupt: (id) => api.interrupt(id),
+  release: (snapshot) => api.archiveVaults(snapshot.release), // per-session credentials, uploads
+};
+
+const run = managedAgent(provider).run({ prompt, cwd: 'env_123', budget: { maxCostUsd: 2 } });
+```
+
+`managedAgent()` turns it into a `CodingAgent`: it follows `watch()` when the provider has one
+and polls `get()` (and `events()`) otherwise. A turn ends when the session is `idle` with any
+stop reason other than `requires-action`, or when it ends. `approval-request` events are
+answered through `task.onApproval` and `answer()`, under `task.permissions.approval`.
+`task.budget` goes to the platform as well as to the usual budget check, and a session the
+platform stopped at its cap (`stopReason: 'budget'`) fails with `failure.kind: 'budget'`.
+`timeoutMs` becomes `maxDurationSeconds`. Only remote MCP servers are accepted, and their
+`headers` must never appear in snapshots or events. `release()` runs after every run; the
+session itself stays for `task.resume` unless `managedAgent(provider, { deleteSession: true })`.
+A resumed run reports its own share: usage and cost are the change since it began, and the
+budget sent to the platform adds what the session had already spent. Provider exceptions are
+classified for `withFallback()`: an explicit `error.failure`, HTTP 401/403 (`auth`), 429
+(`quota`), 5xx or a network error (`unavailable`). Paged `events()` set `hasMore` to be read
+before the next interval, and `watch()` gets the last update's `cursor` when it reconnects.
+The snapshot `start()` returns may carry a `cursor` just before the new turn's first event;
+reading starts there, so a resumed session's history (and its approvals) is not replayed.
+
+`hostedAgent()` is `managedAgent(fromHosted(provider))`.
+
 ## Writing a driver
 
 ```ts
@@ -654,5 +699,5 @@ way the built-in drivers are tested.
 1. Headless drivers for claude, codex, and muse, the event IR, and discovery. Done.
 2. Live sessions (`codex app-server`, `muse serve`): `steer()` mid-task, approval replies. Done.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
-4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`). Done.
+4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`, `managedAgent`). Done.
 5. A Copilot CLI driver (`copilot`). Done.

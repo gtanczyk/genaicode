@@ -10,6 +10,8 @@ const STDERR_TAIL_BYTES = 4 * 1024;
 export interface AgentOutcome {
   ok: boolean;
   error?: string;
+  /** The driver's own classification of a failure, when it knows better than the exit. */
+  failure?: AgentFailure;
 }
 
 /** Collects events for iteration and folds them into the pieces of an `AgentResult`. */
@@ -38,6 +40,13 @@ export class RunRecorder {
     if (!budget || (budget.maxTokens === undefined && budget.maxCostUsd === undefined)) return;
     this.budget = budget;
     this.stopForBudget = stop;
+  }
+
+  /** The platform stopped the run at its own budget cap: fail it as over budget. */
+  budgetReached(message: string): void {
+    if (this.overBudget) return;
+    this.overBudget = message;
+    this.events.push({ type: 'error', message });
   }
 
   emit(event: AgentEvent): void {
@@ -123,6 +132,7 @@ export class RunRecorder {
     error: string | undefined,
   ): AgentFailure | undefined {
     if (this.overBudget) return { kind: 'budget' };
+    if (outcome?.failure && outcome.failure.kind !== 'quota') return outcome.failure;
     if (this.quotaReported)
       return { kind: 'quota', ...(this.quotaResetsAt !== undefined ? { resetsAt: this.quotaResetsAt } : {}) };
     if (error && AUTH_ERROR.test(error)) return { kind: 'auth' };
