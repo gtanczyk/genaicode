@@ -640,3 +640,64 @@ describe('managedAgent after second review', () => {
     expect(calls).not.toContain('start');
   });
 });
+
+describe('managedAgent after third review', () => {
+  it('subtracts a resume baseline by total when a report gives only totalTokens', async () => {
+    const { provider } = fake([], {
+      capabilities: { resume: true },
+      async get(id) {
+        return { id, state: 'idle', stopReason: 'end-turn', usage: { inputTokens: 60, outputTokens: 40 } };
+      },
+      async *watch() {
+        yield { events: [{ type: 'usage', usage: { totalTokens: 105 } }] };
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' } };
+      },
+    });
+    const result = await managedAgent(provider).run({
+      prompt: 'p',
+      cwd: '.',
+      resume: 's-0',
+      budget: { maxTokens: 10 },
+    }).result;
+    expect(result).toMatchObject({ status: 'completed', usage: { totalTokens: 5 } });
+  });
+
+  it('lets the terminal snapshot outrank older drained events', async () => {
+    const { provider } = fake([], {
+      async start() {
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn', text: 'final', usage: { inputTokens: 105 } };
+      },
+      async events() {
+        return {
+          events: [
+            { type: 'message', text: 'working' },
+            { type: 'usage', usage: { inputTokens: 10 } },
+          ],
+        };
+      },
+    });
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({ status: 'completed', text: 'final', usage: { inputTokens: 105 } });
+  });
+
+  it('closes steering as soon as a settled state is seen', async () => {
+    const sent: string[] = [];
+    const { provider } = fake([], {
+      async start() {
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn' };
+      },
+      async events() {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return { events: [] };
+      },
+      async send(_id, text) {
+        sent.push(text);
+      },
+    });
+    const run = managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(run.steer!('more')).rejects.toThrow('cloud is not accepting input.');
+    expect(sent).toEqual([]);
+    expect((await run.result).status).toBe('completed');
+  });
+});

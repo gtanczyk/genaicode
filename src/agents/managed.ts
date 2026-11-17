@@ -247,7 +247,10 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     if (event.type === 'usage') event = runUsage(event.usage, event.costUsd);
     recorder.emit(event);
     if (event.type === 'message') sessionText.value = event.text;
-    if (event.type === 'usage') knownUsage = event.usage;
+    if (event.type === 'usage') {
+      knownUsage = event.usage;
+      lastUsage = JSON.stringify([event.usage, event.costUsd]);
+    }
     if (event.type === 'approval-request' && !provider.answer && !unchecked(provider)) cannotAnswer();
     if (event.type === 'approval-request' && provider.answer && sessionId && !answered.has(event.request.id)) {
       answered.add(event.request.id);
@@ -289,6 +292,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
     return { type: 'usage', usage: tokens, ...(cost !== undefined ? { costUsd: cost } : {}) };
   };
   const observe = (snapshot: ManagedSnapshot) => {
+    // The turn is over once a settled state is seen, even while final events are still read.
+    if (isManagedSettled(snapshot)) closed = true;
     for (const ref of snapshot.release ?? []) releases.add(ref);
     // Text may arrive on any snapshot; a later one need not repeat it.
     if (snapshot.text !== undefined && snapshot.text !== sessionText.value) {
@@ -458,6 +463,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       if (provider.events && !stopReason && isManagedSettled(snapshot)) {
         do await read();
         while (!stopReason && page!.hasMore);
+        // The terminal snapshot outranks older events for what it reports itself.
+        observe(snapshot);
       }
       // The first read goes out at once; the interval falls between reads.
       let first = true;
@@ -482,6 +489,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
         if (provider.events && !page?.snapshot && isManagedSettled(snapshot)) {
           do await read();
           while (!stopReason && page!.hasMore);
+          observe(snapshot);
         }
       }
     }
@@ -576,10 +584,18 @@ function withDefaults(task: AgentTask, defaults: ManagedAgentOptions['start']): 
 /** Cumulative usage minus what the session had used before. */
 function since(usage: ManagedUsage, before: TokenUsage | undefined): TokenUsage {
   const out: TokenUsage = {};
-  for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens'] as const) {
-    const value = usage[key];
-    if (value !== undefined) out[key] = Math.max(0, value - (before?.[key] ?? 0));
+  if (!before) {
+    for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens'] as const)
+      if (usage[key] !== undefined) out[key] = usage[key];
+    return out;
   }
+  // Components only where both reports have them; the total always, as `tokenCount` reads each report.
+  for (const key of ['inputTokens', 'outputTokens', 'cachedInputTokens'] as const) {
+    const now = usage[key];
+    const then = before[key];
+    if (now !== undefined && then !== undefined) out[key] = Math.max(0, now - then);
+  }
+  out.totalTokens = Math.max(0, tokenCount(usage) - tokenCount(before));
   return out;
 }
 
