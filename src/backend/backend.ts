@@ -575,7 +575,9 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         conversation.steps++;
         const text = result ? resultText(result) : streamed;
         // A provider that reports no usage still pays: about four characters a token, in and out.
-        const spent = count(result?.usage ?? stepUsage) || input + Math.ceil(text.length / 4);
+        const named = result ? resultToolCalls(result) : streamedCalls;
+        const answered = text.length + (named.length ? JSON.stringify(named).length : 0);
+        const spent = count(result?.usage ?? stepUsage) || input + Math.ceil(answered / 4);
         tokens += spent;
         add(usage, result?.usage ?? stepUsage);
         conversation.used += spent;
@@ -584,7 +586,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         // A model asked for no tools on its last step may still name one: those calls go unanswered.
         const calls = last
           ? []
-          : (result ? resultToolCalls(result) : streamedCalls).map((call) => ({
+          : named.map((call) => ({
               ...call,
               id: call.id || randomId('call'),
             }));

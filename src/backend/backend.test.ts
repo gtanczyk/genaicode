@@ -379,6 +379,27 @@ describe('createAgentBackend', () => {
     expect(done.end.usage?.totalTokens).toBeGreaterThan(0);
   });
 
+  it('charges the tool calls a step names when its provider reports no usage', async () => {
+    const charged: number[] = [];
+    const limiter = memoryLimiter();
+    const { backend } = backendWith(
+      [{ parts: [{ type: 'toolCall', toolCall: { id: 'id-a', name: 'a', arguments: { text: 'y'.repeat(3000) } } }] }],
+      {
+        tools: [{ name: 'a', description: 'A.', run: () => 'ok' }],
+        limiter: {
+          ...limiter,
+          spend: (key, tokens, reserved) => {
+            charged.push(tokens);
+            return limiter.spend(key, tokens, reserved);
+          },
+        },
+        limits: { maxSteps: 1 },
+      },
+    );
+    await post(backend, { prompt: 'go' });
+    expect(charged[0]).toBeGreaterThanOrEqual(750); // 3,000 characters of arguments
+  });
+
   it('charges a stream that breaks after it answered, even with no usage report', async () => {
     const provider: ModelProvider = {
       name: 'fake',
