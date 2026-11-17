@@ -303,6 +303,26 @@ describe('managedAgent', () => {
     expect(budget).toMatchObject({ status: 'failed', failure: { kind: 'budget' } });
   });
 
+  it('reads status as soon as a stream closes and applies default permissions locally', async () => {
+    const answers: string[] = [];
+    const { provider } = fake([{ id: 's-1', state: 'idle', stopReason: 'end-turn', text: 'done' }], {
+      capabilities: { permissions: { approval: ['auto-approve'] } },
+      async *watch() {
+        yield { events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }] };
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      },
+      async answer(_id, approvalId, decision) {
+        answers.push(`${approvalId}:${decision}`);
+      },
+    });
+    const result = await managedAgent(provider, {
+      pollIntervalMs: 60_000,
+      start: { permissions: { approval: 'auto-approve' } },
+    }).run({ prompt: 'p', cwd: '.', timeoutMs: 1_000 }).result;
+    expect(result).toMatchObject({ status: 'completed', text: 'done' });
+    expect(answers).toEqual(['a-1:approve']);
+  });
+
   it('passes unavailable and crash failures through for failover', async () => {
     for (const kind of ['unavailable', 'crash'] as const) {
       const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);

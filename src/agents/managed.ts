@@ -168,7 +168,12 @@ export function managedAgent(provider: ManagedProvider, options: ManagedAgentOpt
   };
 }
 
-function runManaged(provider: ManagedProvider, task: AgentTask, options: ManagedAgentOptions): AgentRun {
+function runManaged(provider: ManagedProvider, input: AgentTask, options: ManagedAgentOptions): AgentRun {
+  // Default permissions from `options.start` hold for refusals, the start request and local decisions alike.
+  const task: AgentTask =
+    input.permissions === undefined && options.start?.permissions !== undefined
+      ? { ...input, permissions: options.start.permissions }
+      : input;
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const recorder = new RunRecorder(provider.name, provider.name);
   const controller = new AbortController();
@@ -349,13 +354,13 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
           await untilAborted(recorder.events.room(), controller.signal);
         }
         if (stopReason || isManagedSettled(snapshot)) break;
-        // The stream closed without a settled state: wait, read it, and reconnect if still working.
-        await delay(pollIntervalMs, controller.signal);
-        if (stopReason) break;
+        // The stream closed without a settled state: read it now, and wait only before reconnecting.
         const fresh = await provider.get(snapshot.id, controller.signal);
+        if (stopReason) break;
         if (!fresh) return { exit: exit('closed'), outcome: { ok: false, error: `${provider.name} session is gone.` } };
         snapshot = last = fresh;
         observe(snapshot);
+        if (!isManagedSettled(snapshot)) await delay(pollIntervalMs, controller.signal);
       }
     } else {
       let cursor: string | undefined;
