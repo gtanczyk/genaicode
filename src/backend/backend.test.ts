@@ -310,6 +310,44 @@ describe('createAgentBackend', () => {
     expect(requests[2]!.prompt.at(-1)!.toolResults).toEqual([{ callId: 'id-buy', name: 'buy', content: 'bought' }]);
   });
 
+  it('starts no approved write for a request that was already stopped', async () => {
+    let bought = 0;
+    const { backend } = backendWith([call('buy', {}), say('Bought it.')], {
+      tools: [{ name: 'buy', description: 'Buy.', write: true, run: () => (bought++, 'bought') }],
+    });
+    const asked = await post(backend, { prompt: 'buy it' });
+    const page = new AbortController();
+    page.abort();
+    const response = await backend.handle(
+      new Request('http://app.test/api/assistant/turn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ state: asked.end.state, approvals: [{ id: 'id-buy', decision: 'approve' }] }),
+        signal: page.signal,
+      }),
+    );
+    await response.text().catch(() => '');
+    expect(bought).toBe(0);
+    const again = await post(backend, { state: asked.end.state, approvals: [{ id: 'id-buy', decision: 'approve' }] });
+    expect(again.end).toMatchObject({ status: 'completed', text: 'Bought it.' });
+    expect(bought).toBe(1);
+  });
+
+  it('fails the turn, not the server, when the store fails', async () => {
+    const reported: unknown[] = [];
+    const { backend } = backendWith([say('hi')], {
+      store: {
+        get: () => undefined,
+        set: () => Promise.reject(new Error('store down')),
+      },
+      onError: (error) => reported.push(error),
+    });
+    const done = await post(backend, { prompt: 'x' });
+    expect(done.end).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
+    expect(JSON.stringify(done.end)).not.toContain('store down');
+    expect(reported).toEqual([expect.objectContaining({ message: 'store down' })]);
+  });
+
   it('tells the page the kind of a model failure, not its words', async () => {
     const error = Object.assign(new Error('secret upstream detail'), { status: 429 });
     const { backend } = backendWith([error]);

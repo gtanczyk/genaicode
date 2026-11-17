@@ -316,6 +316,16 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
           };
           void turn(conversation, body, pageTools, { user, key, signal: controller.signal, write })
             .then((end) => write(end))
+            .catch((error: unknown) => {
+              // A store or limiter that failed while the turn closed: this request fails, not the server.
+              failed(error);
+              write({
+                type: 'turn-end',
+                status: 'failed',
+                error: 'The assistant failed.',
+                failure: { kind: 'unavailable' },
+              });
+            })
             .finally(() => {
               request.signal?.removeEventListener('abort', abort);
               try {
@@ -447,6 +457,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
       if (conversation.waiting) {
         const results = await settle(conversation.waiting, body, prompt !== undefined, context, called);
         checkpoint = { items: conversation.items.length, waiting: conversation.waiting };
+        // Approved writes a stopped request did not start stay open for the next one.
+        if (context.signal.aborted) return end({ status: 'failed', error: 'Stopped.' }, false);
         conversation.waiting = undefined;
         conversation.items.push({
           type: 'user',
@@ -606,6 +618,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         const decision = decisions.get(id);
         const tool = serverTools.get(call.name)!;
         if (decision === 'approve' && !movedOn) {
+          // The page went away: start no new side effect for it.
+          if (context.signal.aborted) continue;
           called.push(call.name);
           waiting.results[id] = await runServerTool(
             tool,
