@@ -53,10 +53,11 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
   const [first] = agents;
   if (!first) throw new Error('withFallback needs at least one agent.');
   const out = new Set<CodingAgent>();
-  // Agents whose last info() said they are not available: runs try them after the rest.
+  // Agents whose last info() said they are not available: runs try them after the rest, even
+  // after one that failed earlier but says it is available now.
   const down = new Set<CodingAgent>();
   const ordered = () => {
-    const rank = (agent: CodingAgent) => (out.has(agent) ? 2 : 0) + (down.has(agent) ? 1 : 0);
+    const rank = (agent: CodingAgent) => (down.has(agent) ? 2 : 0) + (out.has(agent) ? 1 : 0);
     return [...agents].sort((a, b) => rank(a) - rank(b));
   };
   // The agent whose session the last result named: a `resume` id is only its.

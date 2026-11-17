@@ -198,6 +198,15 @@ describe('remote', () => {
     expect(forgotten).toEqual(['server s-1', 'nano s-1']);
   });
 
+  it('goes back to a server that says it is available again before a model that cannot run', async () => {
+    const { fetch, requests } = served([Object.assign(new Error('busy'), { status: 503 }), say('back')]);
+    const agent = withFallback([remote({ url: '/api/assistant', fetch }), nano({ languageModel: undefined as never })]);
+    expect((await agent.run({ prompt: 'a', cwd: '' }).result).ok).toBe(false);
+    expect(await agent.info!()).toMatchObject({ available: true });
+    expect((await agent.run({ prompt: 'b', cwd: '' }).result).text).toBe('back');
+    expect(requests).toHaveLength(2);
+  });
+
   it('does not hand a prompt to the fallback after a write ran', async () => {
     let count = 0;
     const tools: PageTool[] = [{ name: 'add', description: 'Add one.', write: true, run: () => String(++count) }];
