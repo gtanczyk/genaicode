@@ -174,6 +174,27 @@ describe('remote', () => {
     expect(result.failure).toBeUndefined();
   });
 
+  it('counts a failed step against the budget, so the fallback does not start', async () => {
+    const broken: ModelProvider = {
+      name: 'fake',
+      capabilities: { tools: true },
+      generate: () => Promise.reject(new Error('unused')),
+      async *stream() {
+        yield { type: 'usage', usage: { totalTokens: 30 } };
+        throw Object.assign(new Error('busy'), { status: 503 });
+      },
+    };
+    const turns: number[] = [];
+    const { fetch } = served([], { client: genaicode(broken), onTurn: (report) => turns.push(report.tokens) });
+    const nanoModel = fakeLanguageModel(['from nano']);
+    const agent = withFallback([remote({ url: '/api/assistant', fetch }), nano({ languageModel: nanoModel.factory })]);
+    const result = await agent.run({ prompt: 'hi', cwd: '', budget: { maxTokens: 20 } }).result;
+    expect(turns).toEqual([30]);
+    expect(result).toMatchObject({ status: 'failed', failure: { kind: 'budget' } });
+    expect(result.usage?.totalTokens).toBe(30);
+    expect(nanoModel.calls).toHaveLength(0);
+  });
+
   it('asks before a page tool the server marks write, even if the page does not', async () => {
     const tools: PageTool[] = [{ name: 'wipe', description: 'Wipe.', run: () => 'gone' }];
     const { fetch } = served([call('wipe', {}), say('ok')], {

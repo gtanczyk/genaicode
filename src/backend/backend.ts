@@ -567,6 +567,10 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
           const answered = streamed.length + (streamedCalls.length ? JSON.stringify(streamedCalls).length : 0);
           const cost = count(stepUsage) || (answered ? input + Math.ceil(answered / 4) : 0);
           await limiter.spend(context.key, cost, reserved);
+          // The caller's budget pays for it too, or a fallback would get it again in full.
+          tokens += cost;
+          add(usage, stepUsage);
+          conversation.used += cost;
           if (context.signal.aborted) return end({ status: 'failed', error: 'Stopped.' }, false);
           failed(error);
           return end({ status: 'failed', ...modelFailure(error) }, false);
