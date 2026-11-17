@@ -99,6 +99,11 @@ export interface ManagedSnapshot {
   vendorState?: string;
   /** Per-session resources `release()` frees: credential vaults, uploaded files, sandboxes. */
   release?: readonly string[];
+  /**
+   * Event position this snapshot stands at, for `events()` and `watch()`. `start()` should set it
+   * just before the new turn's first event, so a resumed session's history is not read again.
+   */
+  cursor?: string;
   /** Epoch milliseconds. */
   startedAt?: number;
   endedAt?: number;
@@ -425,9 +430,11 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
 
   const follow = async (first: ManagedSnapshot): Promise<{ exit: ProcessExit; outcome?: AgentOutcome }> => {
     let snapshot = first;
+    const startCursor = first.cursor;
     observe(snapshot);
     if (provider.watch) {
-      let cursor: string | undefined;
+      // From the turn's own start: a resumed session's earlier events are not this run's.
+      let cursor: string | undefined = startCursor;
       while (!stopReason && !isManagedSettled(snapshot)) {
         for await (const update of provider.watch(snapshot.id, controller.signal, cursor)) {
           for (const event of update.events ?? []) relay(event);
@@ -449,7 +456,8 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
         if (!isManagedSettled(snapshot)) await delay(pollIntervalMs, controller.signal);
       }
     } else {
-      let cursor: string | undefined;
+      // From the turn's own start: a resumed session's earlier events are not this run's.
+      let cursor: string | undefined = startCursor;
       let page: ManagedEventPage | undefined;
       const read = async () => {
         page = await provider.events!(snapshot.id, cursor, controller.signal);

@@ -659,6 +659,8 @@ budget sent to the platform adds what the session had already spent. Provider ex
 classified for `withFallback()`: an explicit `error.failure`, HTTP 401/403 (`auth`), 429
 (`quota`), 5xx or a network error (`unavailable`). Paged `events()` set `hasMore` to be read
 before the next interval, and `watch()` gets the last update's `cursor` when it reconnects.
+The snapshot `start()` returns may carry a `cursor` just before the new turn's first event;
+reading starts there, so a resumed session's history (and its approvals) is not replayed.
 
 `hostedAgent()` is `managedAgent(fromHosted(provider))`.
 

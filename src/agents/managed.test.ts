@@ -701,3 +701,45 @@ describe('managedAgent after third review', () => {
     expect((await run.result).status).toBe('completed');
   });
 });
+
+describe('managedAgent resume cursor', () => {
+  it('reads a resumed session from the new turn, answering each approval once', async () => {
+    const log: AgentEvent[] = [];
+    const answers: string[] = [];
+    let turn = 0;
+    const { provider } = fake([], {
+      capabilities: { resume: true, permissions: { approval: ['auto-approve'] } },
+      async start() {
+        turn++;
+        if (turn === 1) {
+          log.push({ type: 'approval-request', request: { id: 'a-1', kind: 'command' } });
+          return { id: 's-1', state: 'running', cursor: '0' };
+        }
+        const cursor = String(log.length);
+        log.push({ type: 'message', text: 'two' });
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn', cursor };
+      },
+      async get(id) {
+        if (turn === 1 && !answers.length) return { id, state: 'idle', stopReason: 'requires-action' };
+        return { id, state: 'idle', stopReason: 'end-turn' };
+      },
+      // One event per page, the whole history when no cursor is given.
+      async events(_id, cursor) {
+        const at = Number(cursor ?? 0);
+        if (at >= log.length) return { events: [], cursor: String(at) };
+        return { events: [log[at]!], cursor: String(at + 1), hasMore: at + 1 < log.length };
+      },
+      async answer(_id, approvalId) {
+        answers.push(approvalId);
+        log.push({ type: 'approval-resolved', id: approvalId, decision: 'approve' }, { type: 'message', text: 'one' });
+      },
+    });
+    const agent = managedAgent(provider, { pollIntervalMs: 1 });
+    const options = { cwd: '.', permissions: { approval: 'auto-approve' as const } };
+    const one = await agent.run({ prompt: 'p', ...options }).result;
+    expect(one).toMatchObject({ status: 'completed', text: 'one' });
+    const two = await agent.run({ prompt: 'q', resume: 's-1', ...options }).result;
+    expect(two).toMatchObject({ status: 'completed', text: 'two' });
+    expect(answers).toEqual(['a-1']);
+  });
+});
