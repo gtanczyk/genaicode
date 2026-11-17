@@ -344,6 +344,27 @@ describe('createAgentBackend', () => {
     expect(done.end).toMatchObject({ status: 'completed', text: 'pong seen' });
   });
 
+  it('calls no model for a page that went away while it was authorized', async () => {
+    const page = new AbortController();
+    const { backend, requests } = backendWith([say('too late')], {
+      public: false,
+      authorize: async () => {
+        page.abort();
+        return { id: 'u1' };
+      },
+    });
+    const response = await backend.handle(
+      new Request('http://app.test/api/assistant/turn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: 'x' }),
+        signal: page.signal,
+      }),
+    );
+    await response.text().catch(() => '');
+    expect(requests).toHaveLength(0);
+  });
+
   it('keeps conversations in a store when given one', async () => {
     const kept = new Map<string, unknown>();
     const { backend, requests } = backendWith([say('one'), say('two')], {

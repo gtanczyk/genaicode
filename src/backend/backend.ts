@@ -301,7 +301,9 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
 
       const controller = new AbortController();
       const abort = () => controller.abort();
-      request.signal?.addEventListener('abort', abort, { once: true });
+      // The page may have gone while authorize, the body or the limiter were awaited.
+      if (request.signal?.aborted) abort();
+      else request.signal?.addEventListener('abort', abort, { once: true });
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         start(out) {
@@ -452,6 +454,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
       const systemText = [instructions.trim(), definitions.length ? DATA_NOTE : ''].filter(Boolean).join('\n\n');
 
       for (;;) {
+        // Nobody is listening any more: no model call is worth paying for.
+        if (context.signal.aborted) return end({ status: 'failed', error: 'Stopped.' }, false);
         if (conversation.used >= limits.conversationTokens) {
           return end({
             status: 'failed',

@@ -12,6 +12,7 @@ import type {
 import type { ImageMediaType } from '../core/types.js';
 import type { BackendInfo, BackendRefusal, PageToolSpec, TurnEnd, TurnLine, TurnRequest } from '../backend/protocol.js';
 import { ask, invoke } from './invoke.js';
+import { abortable } from './language-model.js';
 import { TEXT_NAMES, TEXT_TYPES, type NanoTask } from './nano.js';
 import type { PageTool } from './tools.js';
 
@@ -187,7 +188,9 @@ export function remote(options: RemoteOptions): RemoteAgent {
         const refused = unsupportedPermissions(name, capabilities, task);
         if (refused) throw new Error(refused);
         const tools =
-          typeof options.tools === 'function' ? await Promise.resolve(options.tools()) : (options.tools ?? []);
+          typeof options.tools === 'function'
+            ? await abortable(Promise.resolve(options.tools()), signal)
+            : (options.tools ?? []);
         const specs: PageToolSpec[] | undefined =
           options.sendTools === false
             ? undefined
@@ -197,7 +200,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
                 ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
                 ...(tool.write ? { write: true } : {}),
               }));
-        const attached = await attach(task.attachments ?? [], maxAttachmentText);
+        const attached = await abortable(attach(task.attachments ?? [], maxAttachmentText), signal);
         sessionId = task.resume && sessions.has(task.resume) ? task.resume : `remote-${nextSession++}`;
         emit({ type: 'session', sessionId, model: name });
         const keep = (state: string | undefined) => {

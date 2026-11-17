@@ -171,6 +171,16 @@ describe('remote', () => {
     expect(result).toMatchObject({ status: 'failed', failure: { kind: 'unavailable' } });
   });
 
+  it('stops while the page is still finding its tools', async () => {
+    const { fetch } = served([]);
+    const agent = remote({ url: '/api/assistant', fetch, tools: () => new Promise<PageTool[]>(() => {}) });
+    const run = agent.run({ prompt: 'x', cwd: '' });
+    run.abort();
+    expect((await run.result).status).toBe('aborted');
+    const timed = agent.run({ prompt: 'x', cwd: '', timeoutMs: 10 });
+    expect((await timed.result).status).toBe('timeout');
+  });
+
   it('starts over when the conversation expired', async () => {
     let now = Date.now();
     const realNow = Date.now;
