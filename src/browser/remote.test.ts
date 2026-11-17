@@ -101,6 +101,14 @@ describe('remote', () => {
     expect(requests[0]!.tools!.map((tool) => tool.name)).toEqual(['rename']);
   });
 
+  it('cuts a long page tool output before posting it', async () => {
+    const tools: PageTool[] = [{ name: 'read_page', description: 'The page text.', run: () => 'x'.repeat(3_000_000) }];
+    const { fetch, requests } = served([call('read_page', {}), say('Long page.')]);
+    const result = await remote({ url: '/api/assistant', tools, fetch }).run({ prompt: 'read it', cwd: '' }).result;
+    expect(result).toMatchObject({ ok: true, text: 'Long page.' });
+    expect(requests[1]!.prompt.at(-1)!.toolResults![0]!.content.length).toBeLessThan(9_000);
+  });
+
   it('continues a conversation with resume', async () => {
     const { fetch, requests } = served([say('one'), say('two')]);
     const agent = remote({ url: '/api/assistant', fetch });

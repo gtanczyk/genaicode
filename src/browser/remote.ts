@@ -31,6 +31,11 @@ export interface RemoteOptions {
   sendTools?: boolean;
   /** Longest text of one attached file sent, in characters. Default 4,000. */
   maxAttachmentText?: number;
+  /**
+   * Longest output of one page tool sent to the server, in characters; the rest is cut here so
+   * the request stays under the server's body limit. Default 8,000 (the server's `maxToolOutput`).
+   */
+  maxToolOutput?: number;
   /** Default: the page's `fetch`. */
   fetch?: typeof fetch;
 }
@@ -76,6 +81,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
   const name = options.name ?? 'assistant';
   const base = options.url.replace(/\/$/, '');
   const maxAttachmentText = options.maxAttachmentText ?? 4_000;
+  const maxToolOutput = options.maxToolOutput ?? 8_000;
   // The backend's token for each conversation; insertion order is age.
   const sessions = new Map<string, string>();
   let nextSession = 1;
@@ -273,7 +279,7 @@ export function remote(options: RemoteOptions): RemoteAgent {
               isError = true;
             }
             emit({ type: 'tool-end', id: call.id, name: call.name, output, ...(isError ? { isError } : {}) });
-            results.push({ id: call.id, output, ...(isError ? { isError } : {}) });
+            results.push({ id: call.id, output: clip(output, maxToolOutput), ...(isError ? { isError } : {}) });
           }
           const approvals: NonNullable<TurnRequest['approvals']> = [];
           for (const request of end.approvals ?? []) {
@@ -389,4 +395,8 @@ async function base64(file: Blob): Promise<string> {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message || error.name : String(error);
+}
+
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}\n[cut: ${text.length - max} more characters]`;
 }
