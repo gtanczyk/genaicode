@@ -379,6 +379,36 @@ describe('createAgentBackend', () => {
     expect(done.end.usage?.totalTokens).toBeGreaterThan(0);
   });
 
+  it('charges a stream that breaks after it answered, even with no usage report', async () => {
+    const provider: ModelProvider = {
+      name: 'fake',
+      capabilities: { tools: true },
+      generate: () => Promise.reject(new Error('unused')),
+      async *stream() {
+        yield { type: 'text-delta', text: 'x'.repeat(1000) };
+        throw new Error('connection reset');
+      },
+    };
+    const charged: number[] = [];
+    const limiter = memoryLimiter();
+    const backend = createAgentBackend({
+      client: genaicode(provider),
+      secret: SECRET,
+      public: true,
+      limiter: {
+        ...limiter,
+        spend: (key, tokens, reserved) => {
+          charged.push(tokens);
+          return limiter.spend(key, tokens, reserved);
+        },
+      },
+    });
+    const done = await post(backend, { prompt: 'p'.repeat(400) });
+    expect(done.end.status).toBe('failed');
+    expect(charged).toHaveLength(1);
+    expect(charged[0]).toBeGreaterThanOrEqual(350); // 1,000 characters out, 400 in
+  });
+
   it('declines an approved write tool this server no longer has', async () => {
     const tools = [{ name: 'buy', description: 'Buy.', write: true, run: () => 'bought' }];
     const before = backendWith([call('buy', {})], { tools });

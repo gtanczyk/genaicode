@@ -91,7 +91,8 @@ tool results, not approvals.
   back it with your store when you run more than one instance). Each model call first reserves
   its input and a full answer, so calls running at once cannot spend the same rest of an
   allowance; a custom `limiter` must `reserve` in one step (a transaction). A provider that reports no
-  usage is counted at about four characters a token. `createAgentBackend` refuses to start
+  usage is counted at about four characters a token, also when its stream breaks after it
+  answered something. `createAgentBackend` refuses to start
   without `authorize`, unless you set `public: true`.
 - **The conversation** travels in a token encrypted and authenticated with `secret`
   (AES-256-GCM), with the user's id and an expiry (`stateTtlMs`, 24 hours) inside; a changed,

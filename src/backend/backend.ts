@@ -529,9 +529,10 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
           });
         }
         // The most this call may cost: its input now and a full answer.
-        const reserved =
-          limits.maxOutputTokens +
-          Math.ceil((fixedChars + systemText.length + JSON.stringify(stripped(conversation.items, false)).length) / 4);
+        const input = Math.ceil(
+          (fixedChars + systemText.length + JSON.stringify(stripped(conversation.items, false)).length) / 4,
+        );
+        const reserved = limits.maxOutputTokens + input;
         const check = await limiter.reserve(context.key, reserved);
         if (!check.ok) {
           return end({
@@ -562,7 +563,10 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
             else if (event.type === 'done') result = event.result;
           }
         } catch (error) {
-          await limiter.spend(context.key, count(stepUsage), reserved);
+          // A stream that broke after it answered something cost that much, even with no usage report.
+          const answered = streamed.length + (streamedCalls.length ? JSON.stringify(streamedCalls).length : 0);
+          const cost = count(stepUsage) || (answered ? input + Math.ceil(answered / 4) : 0);
+          await limiter.spend(context.key, cost, reserved);
           if (context.signal.aborted) return end({ status: 'failed', error: 'Stopped.' }, false);
           failed(error);
           return end({ status: 'failed', ...modelFailure(error) }, false);
@@ -571,15 +575,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         conversation.steps++;
         const text = result ? resultText(result) : streamed;
         // A provider that reports no usage still pays: about four characters a token, in and out.
-        const spent =
-          count(result?.usage ?? stepUsage) ||
-          Math.ceil(
-            (fixedChars +
-              systemText.length +
-              JSON.stringify(stripped(conversation.items, false)).length +
-              text.length) /
-              4,
-          );
+        const spent = count(result?.usage ?? stepUsage) || input + Math.ceil(text.length / 4);
         tokens += spent;
         add(usage, result?.usage ?? stepUsage);
         conversation.used += spent;
