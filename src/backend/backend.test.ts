@@ -433,6 +433,19 @@ describe('createAgentBackend', () => {
     expect(requests[1]!.prompt.map((item) => item.type)).toEqual(['systemPrompt', 'user', 'assistant', 'user']);
   });
 
+  it('leaves a stored conversation as it was when a turn fails', async () => {
+    const kept = new Map<string, unknown>();
+    const { backend, requests } = backendWith([say('one'), new Error('down'), say('two')], {
+      store: { get: (id) => kept.get(id), set: (id, value) => void kept.set(id, value) },
+    });
+    const first = await post(backend, { prompt: 'hi' });
+    const failed = await post(backend, { state: first.end.state, prompt: 'lost' });
+    expect(failed.end.status).toBe('failed');
+    await post(backend, { state: failed.end.state, prompt: 'again' });
+    const texts = requests[2]!.prompt.filter((item) => item.type === 'user').map((item) => item.text);
+    expect(texts).toEqual(['hi', 'again']);
+  });
+
   it('serves info', async () => {
     const { backend } = backendWith([], { images: true });
     const response = await backend.handle(new Request('http://app.test/api/assistant/info'));

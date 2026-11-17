@@ -365,7 +365,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
       const pointer = await seal.open<StoreToken>(token);
       if (pointer?.v === 1 && pointer.uid === user?.id && pointer.exp > Date.now()) {
         const kept = (await options.store.get(pointer.sid)) as Conversation | undefined;
-        conversation = kept ? { ...kept, sid: pointer.sid } : undefined;
+        // A copy: a store may hand out its own object, and a failed turn must leave it as it was.
+        conversation = kept ? { ...structuredClone(kept), sid: pointer.sid } : undefined;
       }
     } else {
       conversation = await seal.open<Conversation>(token);
