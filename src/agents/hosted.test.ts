@@ -67,6 +67,24 @@ describe('hostedAgent', () => {
     expect(calls).toEqual([]);
   });
 
+  it('forwards resume and MCP servers without declared capabilities, as before', async () => {
+    const seen: unknown[] = [];
+    const { impl } = provider([{ state: 'completed' }], {
+      async start(task) {
+        seen.push(task.resume, task.mcpServers?.[0]?.name);
+        return { id: 'r-1' };
+      },
+    });
+    const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({
+      prompt: 'p',
+      cwd: '.',
+      resume: 'r-0',
+      mcpServers: [{ name: 'game', command: 'node' }],
+    }).result;
+    expect(result.status).toBe('completed');
+    expect(seen).toEqual(['r-0', 'game']);
+  });
+
   it('reports a failed task', async () => {
     const { impl } = provider([{ state: 'failed', error: 'tests red' }]);
     const result = await hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;

@@ -253,6 +253,11 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   const releases = new Set<string>();
   const observe = (snapshot: ManagedSnapshot) => {
     for (const ref of snapshot.release ?? []) releases.add(ref);
+    // Text may arrive on any snapshot; a later one need not repeat it.
+    if (snapshot.text !== undefined && snapshot.text !== sessionText.value) {
+      sessionText.value = snapshot.text;
+      recorder.emit({ type: 'message', text: snapshot.text });
+    }
     if (snapshot.usage || snapshot.costUsd !== undefined) {
       const usage = snapshot.usage ? { ...snapshot.usage } : { ...knownUsage };
       delete usage.details;
@@ -276,10 +281,6 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       : { exit: exit(stopReason ?? 'aborted') };
 
   const outcomeOf = (snapshot: ManagedSnapshot): { exit: ProcessExit; outcome?: AgentOutcome } => {
-    if (snapshot.text !== undefined && snapshot.text !== sessionText.value) {
-      sessionText.value = snapshot.text;
-      recorder.emit({ type: 'message', text: snapshot.text });
-    }
     // A budget stop wins over the state it was reported with (cancelled, timeout).
     if (snapshot.stopReason === 'budget') {
       recorder.budgetReached(snapshot.error ?? `${provider.name} stopped at its budget.`);
@@ -447,8 +448,12 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   };
 }
 
+/** Marks a provider adapted from `HostedAgentProvider`, which forwards task fields unchecked as it always did. */
+export const UNCHECKED_FIELDS = Symbol('genaicode.managed.uncheckedFields');
+
 /** Task fields this provider cannot honor, as an error message. */
 function refusedFields(provider: ManagedProvider, task: AgentTask): string | undefined {
+  if ((provider as { [UNCHECKED_FIELDS]?: boolean })[UNCHECKED_FIELDS]) return undefined;
   const caps = provider.capabilities;
   const local = task.mcpServers?.find((server) => 'command' in server);
   if (local) return `${provider.name} reaches only remote MCP servers; '${local.name}' is a local command.`;

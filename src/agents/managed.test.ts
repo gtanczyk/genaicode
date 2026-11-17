@@ -323,6 +323,17 @@ describe('managedAgent', () => {
     expect(answers).toEqual(['a-1:approve']);
   });
 
+  it('keeps text a running snapshot reported when the final one omits it', async () => {
+    const { provider } = fake([
+      { id: 's-1', state: 'running', text: 'answer' },
+      { id: 's-1', state: 'idle', stopReason: 'end-turn' },
+    ]);
+    const run = managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' });
+    const events = await drain(run);
+    expect(await run.result).toMatchObject({ status: 'completed', text: 'answer' });
+    expect(events.filter((event) => event.type === 'message')).toHaveLength(1);
+  });
+
   it('passes unavailable and crash failures through for failover', async () => {
     for (const kind of ['unavailable', 'crash'] as const) {
       const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);

@@ -1,4 +1,10 @@
-import { managedAgent, type ManagedProvider, type ManagedSnapshot, type ManagedStart } from './managed.js';
+import {
+  managedAgent,
+  UNCHECKED_FIELDS,
+  type ManagedProvider,
+  type ManagedSnapshot,
+  type ManagedStart,
+} from './managed.js';
 import type { AgentCapabilities, AgentEvent, AgentTask, CodingAgent } from './types.js';
 
 export type HostedTaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -47,7 +53,7 @@ export function fromHosted(provider: HostedAgentProvider): ManagedProvider {
     state: poll.state,
     ...(poll.error !== undefined ? { error: poll.error } : {}),
   });
-  return {
+  const managed: ManagedProvider = {
     name: provider.name,
     capabilities: provider.capabilities ?? {},
     async start(request: ManagedStart, signal?: AbortSignal) {
@@ -83,4 +89,6 @@ export function fromHosted(provider: HostedAgentProvider): ManagedProvider {
       return { enforced: true };
     },
   };
+  // Hosted providers never declared resume or MCP support: keep forwarding those fields as before.
+  return Object.assign(managed, { [UNCHECKED_FIELDS]: true });
 }
