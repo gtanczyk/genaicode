@@ -39,6 +39,11 @@ export interface PageAgentState {
     progress?: number;
     /** What the model takes besides text and text files (`nano.inputs`), once known. */
     inputs?: LanguageModelMedia[];
+    /**
+     * Set while a server behind the agent (`remote()`) is `unavailable` because its allowance is
+     * spent, with when it opens again (epoch ms) if it said.
+     */
+    spent?: { resetsAt?: number };
   };
   /** Tokens in use and the size of the model's context window, once the model reported them. */
   context?: { used: number; window: number };
@@ -119,6 +124,8 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
         onDownload: (progress) => setModel({ status: progress >= 1 ? 'loading' : 'downloading', progress }),
       });
   const agent: CodingAgent = options.agent ?? builtIn!;
+  // An agent of the page's own (`remote()`) may say what it takes and whether it is open now.
+  const given = options.agent as DescribedAgent | undefined;
 
   let state: PageAgentState = {
     session: {
@@ -131,7 +138,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       usage: {},
       canSteer: false,
     },
-    model: { status: builtIn ? 'checking' : 'available' },
+    model: { status: builtIn || given?.info ? 'checking' : 'available' },
   };
 
   const publish = (next: PageAgentState) => {
@@ -149,7 +156,24 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     updateTurn(id, (turn) => ({ ...turn, entries: [...turn.entries, entry] }));
 
   const refresh = async (settled = false): Promise<PageModelStatus> => {
-    if (!builtIn) return 'available';
+    if (!builtIn) {
+      if (!given?.info) return 'available';
+      try {
+        const info = await given.info();
+        publish({
+          ...state,
+          model: {
+            status: info.available ? 'available' : 'unavailable',
+            inputs: [...(info.inputs ?? [])],
+            ...(info.available ? {} : { spent: info.resetsAt !== undefined ? { resetsAt: info.resetsAt } : {} }),
+          },
+        });
+      } catch {
+        // Not reachable now: a prompt finds out, and `withFallback` may go on elsewhere.
+        if (state.model.status === 'checking') setModel({ status: 'available' });
+      }
+      return state.model.status;
+    }
     const status = await builtIn.availability();
     // A download or a load in progress knows better than a fresh `downloadable`.
     const busy = !settled && (state.model.status === 'downloading' || state.model.status === 'loading');
@@ -288,7 +312,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
       }));
     }
     pastUsage = state.session.usage;
-    if (builtIn && state.model.status !== 'available') void refresh(true);
+    if ((builtIn || given?.info) && state.model.status !== 'available') void refresh(true);
     const [next, ...queued] = state.session.queued;
     if (next === undefined) {
       setSession({ status: 'idle' });
@@ -355,7 +379,7 @@ export function createPageAgent(options: PageAgentOptions = {}): PageAgent {
     reset() {
       generation++;
       halt();
-      if (conversation) builtIn?.forget(conversation);
+      if (conversation) (builtIn ?? given)?.forget?.(conversation);
       conversation = undefined;
       pastUsage = {};
       queuedSends = [];
@@ -403,4 +427,12 @@ function settled(entries: SessionEntry[]): SessionEntry[] {
         ? { ...entry, streaming: false }
         : entry,
   );
+}
+
+/** What `createPageAgent` reads from an agent of the page's own when it has it, as `remote()` does. */
+interface DescribedAgent extends CodingAgent {
+  info?(
+    signal?: AbortSignal,
+  ): Promise<{ available: boolean; inputs?: readonly LanguageModelMedia[]; resetsAt?: number }>;
+  forget?(sessionId?: string): void;
 }

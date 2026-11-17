@@ -1,7 +1,7 @@
 /**
  * `genaicode/browser`: an agent that runs in the page, on the browser's built-in model (Gemini
- * Nano through Chrome's Prompt API), and the page's tools offered to outside agents over WebMCP.
- * No server, no key, no cost per token. Nothing here imports Node.
+ * Nano through Chrome's Prompt API) or on a model behind your server (`remote()`), and the page's
+ * tools offered to outside agents over WebMCP. Nothing here imports Node.
  *
  * ```ts
  * import { createPageAgent, exposeWebMcp, type PageTool } from 'genaicode/browser';
@@ -22,9 +22,16 @@
  * ```
  *
  * Draw it with `<PageAgentChat agent={assistant} />` from `genaicode/react`.
+ *
+ * With a model behind your server (`createAgentBackend()` from `genaicode/backend`), the same page
+ * agent runs on `remote({ url, tools })`, and `withFallback([remote(...), nano(...)])` goes on with
+ * the built-in model when the server is out.
  */
 export { nano, briefing } from './browser/nano.js';
 export type { NanoAgent, NanoModelCall, NanoOptions, NanoTask } from './browser/nano.js';
+export { remote } from './browser/remote.js';
+export type { RemoteAgent, RemoteOptions } from './browser/remote.js';
+export { withFallback } from './agents/failover.js';
 export { createPageAgent } from './browser/page-agent.js';
 export type { PageAgent, PageAgentOptions, PageAgentState, PageModelStatus } from './browser/page-agent.js';
 export { exposeWebMcp, webMcpSupported, webMcpTools } from './browser/webmcp.js';

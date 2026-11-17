@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPageAgent, fakeLanguageModel, type PageTool } from '../browser.js';
 import { matchesAccept, PageAgentChat } from '../react.js';
+import type { CodingAgent } from '../agents/types.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -82,6 +83,26 @@ describe('<PageAgentChat>', () => {
     expect(host.textContent).not.toContain('Ask');
     expect(host.querySelector('textarea')!.placeholder).toBe('Not available in this browser');
     expect(button('Send')!.disabled).toBe(true);
+  });
+
+  it('says when a server behind the agent is over its allowance', async () => {
+    const resetsAt = new Date(2030, 0, 1, 7, 30).getTime();
+    const agent = createPageAgent({
+      agent: {
+        name: 'assistant',
+        command: 'remote',
+        capabilities: {},
+        run: () => {
+          throw new Error('unused');
+        },
+        info: async () => ({ available: false, inputs: [], resetsAt }),
+      } as unknown as CodingAgent,
+    });
+    await act(async () => root.render(<PageAgentChat agent={agent} />));
+    await act(async () => void (await agent.refresh()));
+    expect(host.textContent).toContain('allowance for today is used up');
+    expect(host.textContent).not.toContain('Nothing is sent to a server');
+    expect(host.querySelector('textarea')!.placeholder).toBe('Back later');
   });
 
   it('offers the download and shows its progress', async () => {
