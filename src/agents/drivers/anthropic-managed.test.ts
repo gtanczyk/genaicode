@@ -96,12 +96,18 @@ function fakeClient(options: FakeOptions = {}) {
             sent.push(...events);
             options.onSend?.(events);
           },
-          async stream(id, params) {
+          async stream(id, params, requestOptions) {
             record('events.stream', id, params);
             const steps = streams.shift() ?? [];
+            const signal = requestOptions?.signal;
+            // Like the SDK's stream, an aborted request ends the wait with an error.
+            const aborted = new Promise<never>((_, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('Request was aborted.')), { once: true });
+            });
+            aborted.catch(() => undefined);
             return (async function* () {
               for (const step of steps) {
-                if (typeof step === 'function') await step();
+                if (typeof step === 'function') await Promise.race([step(), aborted]);
                 else yield step;
               }
             })();
@@ -541,6 +547,63 @@ describe('anthropicManaged', () => {
   });
 });
 
+describe('anthropicManaged after review', () => {
+  it('stops an aborted run without waiting for a custom tool handler', async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const fake = fakeClient({
+      streams: [
+        [ev('agent.custom_tool_use', { id: 'sevt_slow', name: 'slow', input: {} }), () => new Promise(() => {})],
+      ],
+    });
+    const run = anthropicManaged(
+      base(fake.client, {
+        tools: {
+          slow: () => {
+            started();
+            return new Promise<string>(() => {});
+          },
+        },
+      }),
+    ).run(task());
+    await running;
+    run.abort();
+    const result = await run.result;
+    expect(result.status).toBe('aborted');
+    expect(fake.sent).toEqual([{ type: 'user.interrupt' }]);
+  });
+
+  it('does not run again a custom tool call the history already answered', async () => {
+    const history = [
+      ev('agent.custom_tool_use', { id: 'sevt_old', name: 'deploy', input: {} }),
+      ev('user.custom_tool_result', { custom_tool_use_id: 'sevt_old', content: [{ type: 'text', text: 'done' }] }),
+      idle(),
+    ];
+    const fake = fakeClient({ history, streams: [[]] });
+    let calls = 0;
+    const provider = anthropicManagedProvider(
+      base(fake.client, {
+        tools: {
+          deploy: () => {
+            calls += 1;
+            return 'again';
+          },
+        },
+      }),
+    );
+    const updates = [];
+    for await (const update of provider.watch!('sesn_1', new AbortController().signal)) updates.push(update);
+    expect(calls).toBe(0);
+    expect(fake.sent).toEqual([]);
+    expect(updates.flatMap((u) => u.events ?? [])).toContainEqual({
+      type: 'tool-end',
+      id: 'sevt_old',
+      name: 'deploy',
+      output: 'done',
+    });
+  });
+});
+
 describe('anthropicManagedProvider.get', () => {
   it('reads an idle session with the reason of its last turn', async () => {
     const fake = fakeClient({ session: { status: 'idle' }, history: [ev('user.message'), idle('end_turn')] });
@@ -567,6 +630,26 @@ describe('anthropicManagedProvider.get', () => {
       state: 'failed',
       error: 'model_overloaded_error: Busy',
       failure: { kind: 'unavailable' },
+    });
+  });
+
+  it('reads the error that exhausted the retries of an idle turn', async () => {
+    const fake = fakeClient({
+      session: { status: 'idle' },
+      history: [
+        ev('user.message'),
+        ev('session.status_running'),
+        ev('session.error', {
+          error: { type: 'billing_error', message: 'No credit', retry_status: { type: 'exhausted' } },
+        }),
+        idle('retries_exhausted'),
+      ],
+    });
+    expect(await anthropicManagedProvider(base(fake.client)).get('sesn_1')).toMatchObject({
+      state: 'idle',
+      stopReason: 'error',
+      error: 'billing_error: No credit',
+      failure: { kind: 'quota' },
     });
   });
 

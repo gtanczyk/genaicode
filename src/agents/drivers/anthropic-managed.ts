@@ -226,13 +226,16 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     await recent(
       session.id,
       (event) => {
-        if (event.type === 'session.error') error ??= sessionError(event);
+        if (event.type === 'session.error' && (idle || session.status === 'terminated')) error ??= sessionError(event);
         if (event.type === 'user.message' && session.status === 'idle' && !idle) pending = true;
         // An ended session: its errors come before the end, back to where its last turn started.
         if (session.status === 'terminated')
           return event.type === 'session.status_running' || event.type === 'session.status_idle';
+        if (pending) return true;
+        // Past the last idle, back to where its turn ran: the errors that explain it lie between.
+        if (idle) return event.type === 'session.status_running' || event.type === 'user.message';
         if (event.type === 'session.status_idle') idle = event as unknown as Record<string, unknown>;
-        return event.type === 'session.status_idle' || pending;
+        return false;
       },
       signal,
     );
@@ -382,6 +385,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
       const tools = new Map<string, string>();
       let lastError: SessionError | undefined;
       const seen = new Set<string>();
+      const answeredTools = new Set<string>();
       let position = cursor;
 
       /** One event as an update; `done` once the session settled. */
@@ -414,7 +418,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
               events.push({ type: 'approval-request', request: approvalOf(event.id, shown, toolName, e.input) });
             // The session waits idle for the result; the step shows first, then the tool runs.
             const toolUseId = event.id;
-            if (event.type === 'agent.custom_tool_use' && toolUseId)
+            if (event.type === 'agent.custom_tool_use' && toolUseId && !answeredTools.has(toolUseId))
               return { update: { ...at, events }, afterward: () => runTool(c, id, toolUseId, toolName, e.input, both) };
             return { update: { ...at, events } };
           }
@@ -517,7 +521,13 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
           options.textDeltas === false ? {} : { event_deltas: ['agent.message'] },
           { signal: both },
         );
-        for await (const event of after(id, cursor, both)) {
+        const history: AnthropicManagedEvent[] = [];
+        for await (const event of after(id, cursor, both)) history.push(event);
+        // Custom tool calls the history already answered only show; they do not run again.
+        for (const event of history)
+          if (event.type === 'user.custom_tool_result')
+            answeredTools.add(String((event as { custom_tool_use_id?: unknown }).custom_tool_use_id));
+        for (const event of history) {
           if (event.id) seen.add(event.id);
           const { update, done, afterward } = await translate(event);
           if (update) yield update;
@@ -594,7 +604,13 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     let isError = false;
     try {
       if (!handler) throw new Error(`No handler for custom tool '${toolName}'.`);
-      text = await handler((input ?? {}) as Record<string, unknown>, { sessionId, signal });
+      // A handler that ignores `signal` must not keep an aborted run from stopping the session.
+      const result = await untilAbort(
+        Promise.resolve(handler((input ?? {}) as Record<string, unknown>, { sessionId, signal })),
+        signal,
+      );
+      if (result === ABORTED) return;
+      text = result;
     } catch (error) {
       text = error instanceof Error ? error.message : String(error);
       isError = true;
@@ -618,6 +634,27 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
   }
 
   return provider;
+}
+
+const ABORTED = Symbol('aborted');
+
+/** `work`'s value, or `ABORTED` as soon as `signal` aborts. */
+function untilAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T | typeof ABORTED> {
+  if (signal.aborted) return Promise.resolve(ABORTED);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(ABORTED);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function defaultClient(): Promise<AnthropicManagedClient> {
