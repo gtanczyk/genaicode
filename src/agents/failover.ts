@@ -45,13 +45,20 @@ interface Describable {
  * The result adds up every agent's usage and cost. A `failover` event marks each switch. Capabilities are the first agent's.
  *
  * Where an agent has `info()`, so does the result: available when any agent is, with the inputs of
- * the first available one (it runs first), and an agent without `info()` counts as available.
+ * the first available one, and an agent without `info()` counts as available. Runs after it start
+ * with that agent: one that said it is not available is tried after the others.
  * `forget()` reaches every agent that has it.
  */
 export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Describable {
   const [first] = agents;
   if (!first) throw new Error('withFallback needs at least one agent.');
   const out = new Set<CodingAgent>();
+  // Agents whose last info() said they are not available: runs try them after the rest.
+  const down = new Set<CodingAgent>();
+  const ordered = () => {
+    const rank = (agent: CodingAgent) => (out.has(agent) ? 2 : 0) + (down.has(agent) ? 1 : 0);
+    return [...agents].sort((a, b) => rank(a) - rank(b));
+  };
   // The agent whose session the last result named: a `resume` id is only its.
   let sessionOwner: CodingAgent | undefined;
   /** `task` as `agent` can take it: vendor ids only for the agent they belong to. */
@@ -81,12 +88,13 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           }
         }),
       );
-      // Within the order runs take: one out since its last run is tried last.
-      const order = [...described.keys()].sort(
-        (a, b) => Number(out.has(described[a]!)) - Number(out.has(described[b]!)),
-      );
-      for (const i of order) {
-        const answer = answers[i]!;
+      down.clear();
+      answers.forEach((answer, i) => {
+        if (!(answer instanceof Error) && !answer.available) down.add(described[i]!);
+      });
+      // The inputs of the agent a run starts with.
+      for (const agent of ordered()) {
+        const answer = answers[described.indexOf(agent as CodingAgent & Describable)]!;
         if (!(answer instanceof Error) && answer.available) {
           return { available: true, ...(answer.inputs ? { inputs: answer.inputs } : {}) };
         }
@@ -115,7 +123,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
       let current: AgentRun | undefined;
       let stopped = false;
       const result = (async (): Promise<AgentResult> => {
-        const order = [...agents.filter((agent) => !out.has(agent)), ...agents.filter((agent) => out.has(agent))];
+        const order = ordered();
         let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;
@@ -158,7 +166,10 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           const to = order[i + 1];
           const isOut = shouldFailOver(ended);
           if (isOut) out.add(agent);
-          else if (ended.ok) out.delete(agent);
+          else if (ended.ok) {
+            out.delete(agent);
+            down.delete(agent);
+          }
           if (stopped || !to || !isOut || left === 'spent') {
             events.push({ type: 'done', result: ended });
             events.close();

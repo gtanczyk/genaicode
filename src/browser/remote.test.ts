@@ -174,6 +174,15 @@ describe('remote', () => {
     const page = createPageAgent({ agent });
     await page.refresh();
     expect(page.get().model).toMatchObject({ status: 'available', inputs: ['image'] });
+    // A run starts where info() pointed: the image goes to the built-in model, not to the server.
+    const photo = new File([new Uint8Array(8)], 'cat.png', { type: 'image/png' });
+    const result = await agent.run({ prompt: 'what is it?', cwd: '', attachments: [photo] } as never).result;
+    expect(result.text).toBe('from nano');
+    expect(nanoModel.calls[0]!.media).toEqual([{ type: 'image', value: photo }]);
+
+    // A model still to download is available: the run downloads it.
+    const later = nano({ languageModel: fakeLanguageModel(['x'], { availability: 'downloadable' }).factory });
+    expect(await later.info()).toMatchObject({ available: true });
 
     const unavailable = withFallback([server, nano({ languageModel: undefined as never })]);
     const info = await unavailable.info!();

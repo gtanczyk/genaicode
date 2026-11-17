@@ -337,7 +337,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
     forget,
     inputs,
     async info() {
-      if ((await languageModelAvailability(language, factory())) !== 'available')
+      if ((await languageModelAvailability(language, factory())) === 'unavailable')
         return { available: false, inputs: [] };
       return { available: true, inputs: await inputs().catch(() => []) };
     },
