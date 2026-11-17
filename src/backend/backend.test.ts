@@ -164,7 +164,9 @@ describe('createAgentBackend', () => {
     const { backend } = backendWith([say('one'), say('two')], { public: false, authorize: () => ({ id: who }) });
     const first = await post(backend, { prompt: 'hi' });
     const token = first.end.state!;
-    const changed = token.slice(0, -2) + (token.endsWith('A') ? 'BB' : 'AA');
+    // A character in the middle: the last one may carry only padding bits.
+    const at = Math.floor(token.length / 2);
+    const changed = token.slice(0, at) + (token[at] === 'A' ? 'B' : 'A') + token.slice(at + 1);
     expect((await post(backend, { state: changed, prompt: 'hi' })).status).toBe(409);
     who = 'b';
     expect((await post(backend, { state: token, prompt: 'hi' })).status).toBe(409);
