@@ -651,8 +651,8 @@ describe('createAgentBackend', () => {
     const answer = { state: asked.end.state, approvals: [{ id: 'id-buy', decision: 'approve' as const }] };
     const both = await Promise.all([post(backend, answer), post(backend, answer)]);
     expect(bought).toBe(1);
-    // The second finds the step already settled.
-    expect(both.map((done) => done.status)).toEqual([200, 400]);
+    // Whichever comes second finds the step already settled.
+    expect(both.map((done) => done.status).sort()).toEqual([200, 400]);
   });
 
   it('serves info', async () => {
