@@ -290,6 +290,19 @@ describe('managedAgent', () => {
     expect(result).toMatchObject({ usage: { inputTokens: 10, outputTokens: 5 }, costUsd: 0.02 });
   });
 
+  it('reads status at once and treats a cancelled budget stop as over budget', async () => {
+    const { provider } = fake([{ id: 's-1', state: 'idle', stopReason: 'end-turn', text: 'done' }]);
+    const quick = await managedAgent(provider, { pollIntervalMs: 60_000 }).run({
+      prompt: 'p',
+      cwd: '.',
+      timeoutMs: 1_000,
+    }).result;
+    expect(quick).toMatchObject({ status: 'completed', text: 'done' });
+    const { provider: capped } = fake([{ id: 's-1', state: 'cancelled', stopReason: 'budget' }]);
+    const budget = await managedAgent(capped, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(budget).toMatchObject({ status: 'failed', failure: { kind: 'budget' } });
+  });
+
   it('passes unavailable and crash failures through for failover', async () => {
     for (const kind of ['unavailable', 'crash'] as const) {
       const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);

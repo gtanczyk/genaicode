@@ -275,12 +275,13 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       sessionText.value = snapshot.text;
       recorder.emit({ type: 'message', text: snapshot.text });
     }
-    if (snapshot.state === 'cancelled') return { exit: exit('aborted') };
-    if (snapshot.state === 'timeout') return { exit: exit('timeout') };
+    // A budget stop wins over the state it was reported with (cancelled, timeout).
     if (snapshot.stopReason === 'budget') {
       recorder.budgetReached(snapshot.error ?? `${provider.name} stopped at its budget.`);
       return { exit: exit('closed'), outcome: { ok: false } };
     }
+    if (snapshot.state === 'cancelled') return { exit: exit('aborted') };
+    if (snapshot.state === 'timeout') return { exit: exit('timeout') };
     if (snapshot.state === 'failed' || snapshot.stopReason === 'error') {
       if (snapshot.failure?.kind === 'quota')
         recorder.emit({
@@ -358,9 +359,12 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
       }
     } else {
       let cursor: string | undefined;
+      // The first read goes out at once; the interval falls between reads.
+      let first = true;
       while (!stopReason && !isManagedSettled(snapshot)) {
         await untilAborted(recorder.events.room(), controller.signal);
-        await delay(pollIntervalMs, controller.signal);
+        if (!first) await delay(pollIntervalMs, controller.signal);
+        first = false;
         if (stopReason) break;
         let page: ManagedEventPage | undefined;
         if (provider.events) {
