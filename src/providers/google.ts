@@ -1,5 +1,5 @@
 import { GoogleGenAI, type GenerateContentConfig, type GoogleGenAIOptions } from '@google/genai';
-import type { ModelProvider, StreamEvent } from '../core/types.js';
+import type { GenerationResult, ModelProvider, StreamEvent } from '../core/types.js';
 import { fromGoogleResponse, toGoogleRequest, type GoogleRequestDefaults } from './google-converter.js';
 
 type GoogleGenerationDefaults = Omit<
@@ -77,9 +77,14 @@ function googleProvider(
 
       let text = '';
       let lastResponse: Parameters<typeof fromGoogleResponse>[0] | undefined;
+      // Tool calls (with their signatures) and images can come in any chunk, not only the last.
+      const collected: GenerationResult['parts'] = [];
 
       for await (const chunk of stream) {
         lastResponse = chunk;
+        for (const part of fromGoogleResponse(chunk).parts) {
+          if (part.type !== 'text') collected.push(part);
+        }
         const piece = chunk.text ?? '';
         if (piece) {
           // Google SDK `text` is cumulative per stream chunk in some versions; prefer delta when possible.
@@ -97,15 +102,7 @@ function googleProvider(
       }
 
       const result = fromGoogleResponse(lastResponse);
-      // If the final chunk only had partial text, prefer accumulated streamed text when present.
-      if (text && result.parts.every((part) => part.type !== 'text')) {
-        result.parts = [{ type: 'text', text }, ...result.parts];
-      } else if (text) {
-        const textPart = result.parts.find((part) => part.type === 'text');
-        if (textPart && textPart.type === 'text' && textPart.text.length < text.length) {
-          textPart.text = text;
-        }
-      }
+      result.parts = [...(text ? [{ type: 'text' as const, text }] : []), ...collected];
 
       for (const part of result.parts) {
         if (part.type === 'toolCall') {

@@ -82,12 +82,23 @@ export function PageAgentChat(props: PageAgentChatProps) {
     ) : null;
 
   const empty = missing ? (
-    (props.unavailable ?? (
+    (props.unavailable ??
+    (model.spent ? (
+      <div className="gc-empty">
+        <div className="gc-empty-title">The assistant is resting</div>
+        <p>
+          Its allowance for today is used up.
+          {model.spent.resetsAt !== undefined
+            ? ` It is back at ${new Date(model.spent.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+            : ' It is back tomorrow.'}
+        </p>
+      </div>
+    ) : (
       <div className="gc-empty">
         <div className="gc-empty-title">This assistant needs a browser with a built-in AI model</div>
         <p>It runs on your device, in Chrome 148 or newer on a desktop computer. Nothing is sent to a server.</p>
       </div>
-    ))
+    )))
   ) : model.status === 'downloadable' && !session.turns.length ? (
     <div className="gc-empty">
       {props.emptyState}
@@ -144,7 +155,10 @@ export function PageAgentChat(props: PageAgentChatProps) {
         </>
       }
       emptyState={empty}
-      placeholder={props.placeholder ?? (missing ? 'Not available in this browser' : `Ask ${session.agent}…`)}
+      placeholder={
+        props.placeholder ??
+        (missing ? (model.spent ? 'Back later' : 'Not available in this browser') : `Ask ${session.agent}…`)
+      }
       hint={props.hint}
       disabled={missing || model.status === 'checking'}
       autoFocus={props.autoFocus}

@@ -10,7 +10,9 @@ Nothing in it imports Node.
 
 It is a small model. It is good at "show me X", "what does this page say about Y", "switch
 that on": one or two tool calls and a short answer. It does not write code; for that, put a
-coding agent behind your app with [`genaicode/app-agent`](app-agent.md).
+coding agent behind your app with [`genaicode/app-agent`](app-agent.md). For a bigger model,
+or for browsers without one, the same page agent runs on a model behind your server:
+`remote()` and [`genaicode/backend`](backend.md).
 
 ```ts
 import { createPageAgent, exposeWebMcp, type PageTool } from 'genaicode/browser';
@@ -178,6 +180,9 @@ empty list where the browser cannot list tools.
 | First use       | The browser downloads the model once (a few GB); after that it works offline.              |
 | WebMCP          | A draft: Chrome origin trial (149 to 156), Edge behind a flag. Register a trial token.     |
 | Everything else | `availability()` is `unavailable`: show the page without the assistant, or use a fallback. |
+
+The fallback can be a model behind your server: `withFallback([nano({ tools }), remote({ url, tools })])`
+([backend.md](backend.md)).
 
 Check `availability()` (or `<PageAgentChat>`'s `unavailable` slot) and treat the assistant as
 an extra. A common setup loads it only where `'LanguageModel' in self`.
