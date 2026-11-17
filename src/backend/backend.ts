@@ -485,6 +485,8 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         ...[...serverTools.values()].map((tool) => definition(tool.name, tool.description, tool.inputSchema)),
         ...pageTools.map((tool) => definition(tool.name, tool.description, tool.inputSchema)),
       ];
+      // Sent with every model call: part of each call's input.
+      const fixedChars = JSON.stringify(definitions).length;
       const prompt: PromptItem | undefined =
         body.prompt !== undefined || body.images?.length
           ? {
@@ -529,7 +531,7 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         // The most this call may cost: its input now and a full answer.
         const reserved =
           limits.maxOutputTokens +
-          Math.ceil((systemText.length + JSON.stringify(stripped(conversation.items, false)).length) / 4);
+          Math.ceil((fixedChars + systemText.length + JSON.stringify(stripped(conversation.items, false)).length) / 4);
         const check = await limiter.reserve(context.key, reserved);
         if (!check.ok) {
           return end({
@@ -571,7 +573,13 @@ export function createAgentBackend(options: AgentBackendOptions): AgentBackend {
         // A provider that reports no usage still pays: about four characters a token, in and out.
         const spent =
           count(result?.usage ?? stepUsage) ||
-          Math.ceil((systemText.length + JSON.stringify(conversation.items).length + text.length) / 4);
+          Math.ceil(
+            (fixedChars +
+              systemText.length +
+              JSON.stringify(stripped(conversation.items, false)).length +
+              text.length) /
+              4,
+          );
         tokens += spent;
         add(usage, result?.usage ?? stepUsage);
         conversation.used += spent;

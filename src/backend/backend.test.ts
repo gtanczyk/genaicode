@@ -231,6 +231,23 @@ describe('createAgentBackend', () => {
     expect(statuses).toEqual(['completed', 'failed']);
   });
 
+  it('counts tool definitions in what a call reserves and costs', async () => {
+    const reserved: number[] = [];
+    const spent: number[] = [];
+    const limiter = memoryLimiter();
+    const { backend } = backendWith([{ parts: [{ type: 'text', text: 'hi' }] }], {
+      pageTools: [{ name: 'big', description: 'x'.repeat(8_000) }],
+      limiter: {
+        check: limiter.check,
+        reserve: (key, tokens) => (reserved.push(tokens), limiter.reserve(key, tokens)),
+        spend: (key, tokens, held) => (spent.push(tokens), limiter.spend(key, tokens, held)),
+      },
+    });
+    await post(backend, { prompt: 'x' });
+    expect(reserved[0]).toBeGreaterThan(1_024 + 2_000);
+    expect(spent[0]).toBeGreaterThan(2_000);
+  });
+
   it('refuses cross-site posts, other content types and large bodies', async () => {
     const { backend } = backendWith([], { limits: { maxBodyBytes: 100 } });
     expect((await post(backend, { prompt: 'x' }, { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
