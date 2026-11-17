@@ -2,7 +2,7 @@ import type { TokenUsage } from '../core/types.js';
 import { decideApproval } from './live-agent.js';
 import { resolvePermissions, unsupportedPermissions } from './permissions.js';
 import type { ProcessExit } from './process.js';
-import { RunRecorder, type AgentOutcome } from './runtime.js';
+import { anySignal, RunRecorder, type AgentOutcome } from './runtime.js';
 import type {
   AgentBudget,
   AgentCapabilities,
@@ -205,16 +205,26 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
   controller.signal.addEventListener('abort', () => turn.abort(), { once: true });
   const sessionText = { value: undefined as string | undefined };
 
+  // Each open question's lifetime: ends when the platform resolves it or the turn settles.
+  const questions = new Map<string, AbortController>();
+  // Token totals as last reported, so cost-only updates keep them.
+  let knownUsage: TokenUsage | undefined;
+
   const relay = (event: AgentEvent) => {
     recorder.emit(event);
     if (event.type === 'message') sessionText.value = event.text;
+    if (event.type === 'usage') knownUsage = event.usage;
+    if (event.type === 'approval-resolved') questions.get(event.id)?.abort();
     if (event.type === 'approval-request' && provider.answer && sessionId && !answered.has(event.request.id)) {
       answered.add(event.request.id);
       const id = sessionId;
+      const question = new AbortController();
+      questions.set(event.request.id, question);
+      const signal = anySignal([turn.signal, question.signal]);
       pending.push(
-        decideApproval(task, event.request, turn.signal)
+        decideApproval(task, event.request, signal)
           .then(async ({ decision, automatic }) => {
-            if (turn.signal.aborted) return;
+            if (signal.aborted) return;
             await provider.answer!(id, event.request.id, decision);
             recorder.emit({
               type: 'approval-resolved',
@@ -224,7 +234,7 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
             });
           })
           .catch((error: unknown) => {
-            if (turn.signal.aborted) return;
+            if (signal.aborted) return;
             // An answer that never arrived leaves the session waiting: stop the run now.
             const message = error instanceof Error ? error.message : String(error);
             fatal ??= `Answering ${provider.name} approval ${event.request.id} failed: ${message}`;
@@ -239,11 +249,12 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
   const observe = (snapshot: ManagedSnapshot) => {
     for (const ref of snapshot.release ?? []) releases.add(ref);
     if (snapshot.usage || snapshot.costUsd !== undefined) {
-      const key = JSON.stringify([snapshot.usage, snapshot.costUsd]);
+      const usage = snapshot.usage ? { ...snapshot.usage } : { ...knownUsage };
+      delete usage.details;
+      const key = JSON.stringify([usage, snapshot.costUsd]);
       if (key !== lastUsage) {
         lastUsage = key;
-        const usage = { ...snapshot.usage };
-        delete usage.details;
+        knownUsage = usage;
         recorder.emit({
           type: 'usage',
           usage,
@@ -367,7 +378,11 @@ function runManaged(provider: ManagedProvider, task: AgentTask, options: Managed
     }
     // The platform settled the turn: questions still open are moot.
     turn.abort();
-    await Promise.allSettled(pending);
+    // An answer still in flight must not hold up an abort or a timeout.
+    await untilAborted(
+      Promise.allSettled(pending).then(() => undefined),
+      controller.signal,
+    );
     if (stopReason) return stopped();
     return outcomeOf(snapshot);
   };

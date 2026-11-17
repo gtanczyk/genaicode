@@ -224,6 +224,72 @@ describe('managedAgent', () => {
     expect(answers).toEqual([]);
   });
 
+  it('withdraws a question the platform resolved on its own', async () => {
+    const answers: string[] = [];
+    let withdrawn = false;
+    const { provider } = fake([], {
+      capabilities: { permissions: { approval: ['ask'] } },
+      async *watch() {
+        yield {
+          snapshot: { id: 's-1', state: 'running' },
+          events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }],
+        };
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        yield {
+          snapshot: { id: 's-1', state: 'running' },
+          events: [{ type: 'approval-resolved', id: 'a-1', decision: 'approve' }],
+        };
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        expect(withdrawn).toBe(true);
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' }, events: [] };
+      },
+      async answer(_id, approvalId) {
+        answers.push(approvalId);
+      },
+    });
+    const result = await managedAgent(provider).run({
+      prompt: 'p',
+      cwd: '.',
+      permissions: { approval: 'ask' },
+      onApproval: (_request, signal) =>
+        new Promise((resolve) =>
+          signal?.addEventListener('abort', () => {
+            withdrawn = true;
+            resolve('approve');
+          }),
+        ),
+    }).result;
+    expect(result.status).toBe('completed');
+    expect(answers).toEqual([]);
+  });
+
+  it('aborts without waiting for an answer that never returns', async () => {
+    const { provider, calls } = fake([], {
+      capabilities: { permissions: { approval: ['auto-approve'] } },
+      async *watch() {
+        yield {
+          snapshot: { id: 's-1', state: 'idle', stopReason: 'requires-action' },
+          events: [{ type: 'approval-request', request: { id: 'a-1', kind: 'command' } }],
+        };
+        yield { snapshot: { id: 's-1', state: 'idle', stopReason: 'end-turn' }, events: [] };
+      },
+      answer: () => new Promise<void>(() => undefined),
+    });
+    const run = managedAgent(provider).run({ prompt: 'p', cwd: '.', permissions: { approval: 'auto-approve' } });
+    setTimeout(() => run.abort(), 10);
+    expect(await run.result).toMatchObject({ status: 'aborted' });
+    expect(calls).toContain('interrupt:s-1');
+  });
+
+  it('keeps token totals when a later snapshot reports only cost', async () => {
+    const { provider } = fake([
+      { id: 's-1', state: 'running', usage: { inputTokens: 10, outputTokens: 5 } },
+      { id: 's-1', state: 'idle', stopReason: 'end-turn', costUsd: 0.02 },
+    ]);
+    const result = await managedAgent(provider, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.' }).result;
+    expect(result).toMatchObject({ usage: { inputTokens: 10, outputTokens: 5 }, costUsd: 0.02 });
+  });
+
   it('passes unavailable and crash failures through for failover', async () => {
     for (const kind of ['unavailable', 'crash'] as const) {
       const { provider } = fake([{ id: 's-1', state: 'failed', error: 'down', failure: { kind } }]);
