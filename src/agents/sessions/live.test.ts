@@ -103,6 +103,19 @@ describe('what a hook says about a session', () => {
     expect(readdirSync(liveDir(env))).toHaveLength(0);
   });
 
+  it('counts a reminder that came before its question once', async () => {
+    const env = home('reminder-first');
+    const say = (hook_event_name: string, now: number, more: object = {}) =>
+      recordHook('claude', { session_id: 's-2', hook_event_name, ...more }, { env, now });
+    await say('UserPromptSubmit', 1);
+    await say('Notification', 2, { notification_type: 'permission_prompt' });
+    await say('PermissionRequest', 3, { tool_name: 'Bash', tool_input: { command: 'ls' } });
+    expect((await readLive(env, 10)).get('claude:s-2')!.asks).toHaveLength(1);
+    expect(await say('PostToolUse', 4, { tool_name: 'Bash', tool_input: { command: 'ls' } })).toMatchObject({
+      state: 'working',
+    });
+  });
+
   it('takes hooks that run at the same moment one at a time', async () => {
     const env = home('together');
     const say = (hook_event_name: string, now: number) =>

@@ -212,7 +212,9 @@ export async function recordHook(
     } else if (event.state === 'approval') {
       const asked = before?.state === 'approval' ? (before.asks ?? []) : [];
       // A reminder of a question already known adds none.
-      const asks = event.reminder && asked.length ? asked : [...asked, event.ask ?? {}].slice(-MAX_ASKS);
+      // A question that names its tool is the one an earlier reminder was about.
+      const named = event.ask?.tool ? asked.filter((ask) => ask.tool !== undefined) : asked;
+      const asks = event.reminder && asked.length ? asked : [...named, event.ask ?? {}].slice(-MAX_ASKS);
       record = { ...known, state: 'approval', at, ...asking(asks) };
     } else {
       record = { ...known, state: event.state as LiveState, at };
