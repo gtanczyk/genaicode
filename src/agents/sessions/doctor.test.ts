@@ -80,7 +80,24 @@ describe('checkSessions', () => {
         throw new Error('no such table: threads');
       },
     });
-    const checks = await checkSessions([broken, silent, gone], { env: env(), now: NOW });
+    // An error's message may carry a path of the user's: its code, or the message without paths.
+    const denied = source([], {
+      name: 'denied',
+      list: async () => {
+        throw Object.assign(new Error("ENOENT: no such file, open '/Users/someone/.copilot/x/events.jsonl'"), {
+          code: 'ENOENT',
+        });
+      },
+    });
+    const wordy = source([], {
+      name: 'wordy',
+      list: async () => {
+        throw new Error('unable to open /Users/someone/.codex/state_5.sqlite today');
+      },
+    });
+    const checks = await checkSessions([broken, silent, gone, denied, wordy], { env: env(), now: NOW });
+    expect(checks[3]!.problems).toEqual(['cannot list: ENOENT']);
+    expect(checks[4]!.problems).toEqual(['cannot list: unable to open <path> today']);
     expect(checks[0]!.problems).toEqual(['none of the 2 newest conversations could be read']);
     expect(checks[1]!.problems).toEqual(['no agent message in the 2 conversations read']);
     expect(checks[2]!.problems).toEqual(['cannot list: no such table: threads']);

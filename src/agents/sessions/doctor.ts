@@ -92,7 +92,7 @@ export async function checkSessions(
       try {
         sessions = await source.list(query);
       } catch (error) {
-        check.problems.push(`cannot list: ${error instanceof Error ? error.message : String(error)}`);
+        check.problems.push(`cannot list: ${errorKind(error)}`);
         return check;
       }
       check.listed = sessions.length;
@@ -175,6 +175,18 @@ export async function checkSessions(
       return check;
     }),
   );
+}
+
+/** What went wrong, without the paths and names an error message may carry. */
+function errorKind(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && code) return code;
+  const message = error instanceof Error ? error.message : String(error);
+  const safe = message
+    .split(' ')
+    .map((word) => (word.includes('/') || word.includes('\\') ? '<path>' : word))
+    .join(' ');
+  return safe.length > 120 ? `${safe.slice(0, 119)}…` : safe;
 }
 
 function hasPrompt(session: SessionInfo): boolean {
