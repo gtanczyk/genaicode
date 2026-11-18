@@ -217,6 +217,30 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     };
   };
 
+  /** The terminal error of the session's last turn, read back from its latest events. */
+  const turnError = async (id: string, signal?: AbortSignal): Promise<SessionError | undefined> => {
+    let stopped = false;
+    let found: SessionError | undefined;
+    await recent(
+      id,
+      (event) => {
+        // From the newest stop back to where that turn began.
+        if (!stopped) {
+          stopped = SESSION_STOPS.has(event.type);
+          return false;
+        }
+        if (event.type === 'session.error') {
+          const error = sessionError(event);
+          if (error.terminal) found = error;
+          return !!found;
+        }
+        return TURN_STARTS.has(event.type);
+      },
+      signal,
+    );
+    return found;
+  };
+
   /** The state of a session at rest, read from its latest events. */
   const settledSnapshot = async (session: AnthropicManagedSession, signal?: AbortSignal): Promise<ManagedSnapshot> => {
     if (session.status === 'running') return snapshotOf(session, { state: 'running' });
@@ -490,6 +514,9 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
               },
             };
           case 'session.status_idle': {
+            // A watch that reconnected past the turn's error reads it back from the history.
+            if ((e.stop_reason as { type?: string } | undefined)?.type === 'retries_exhausted' && !lastError)
+              lastError = await turnError(id, both);
             const stop = stopOf(e, lastError);
             if (stop.stopReason === 'requires-action')
               return { update: { ...at, snapshot: { id, state: 'idle', vendorState: 'idle', ...stop } } };
@@ -501,6 +528,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
             };
           }
           case 'session.status_terminated': {
+            lastError ??= await turnError(id, both);
             const session = await retrieve(id, both);
             const failed = lastError;
             const snapshot: ManagedSnapshot = {

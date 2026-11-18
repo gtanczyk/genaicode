@@ -652,6 +652,26 @@ describe('anthropicManaged after second review', () => {
     expect(fake.called('events.stream')).toHaveLength(1);
   });
 
+  it("reads back the turn's error when a reconnect skipped it", async () => {
+    const error = ev('session.error', {
+      error: { type: 'model_overloaded_error', message: 'Busy', retry_status: { type: 'exhausted' } },
+    });
+    const history: AnthropicManagedEvent[] = [ev('user.message'), ev('session.status_running'), error];
+    const final = idle('retries_exhausted');
+    history.push(final);
+    const fake = fakeClient({ history, streams: [[final]] });
+    const provider = anthropicManagedProvider(base(fake.client));
+    const updates = [];
+    const cursor = `${error.processed_at}|${error.id}`;
+    for await (const update of provider.watch!('sesn_1', new AbortController().signal, cursor)) updates.push(update);
+    expect(updates.at(-1)?.snapshot).toMatchObject({
+      state: 'idle',
+      stopReason: 'error',
+      error: 'model_overloaded_error: Busy',
+      failure: { kind: 'unavailable' },
+    });
+  });
+
   it('follows the latest turn when it attaches to a session without a cursor', async () => {
     const history = [
       ev('user.message'),
