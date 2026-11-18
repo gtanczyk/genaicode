@@ -31,16 +31,19 @@ describe('what a hook says about a session', () => {
     const at = (hook_event_name: string, more: object = {}) =>
       liveEvent({ session_id: 's-1', cwd: '/work', hook_event_name, ...more });
     expect(at('UserPromptSubmit', { prompt: 'secret words' })).toEqual({ id: 's-1', cwd: '/work', state: 'working' });
-    expect(at('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf x' } })).toEqual({
-      id: 's-1',
-      cwd: '/work',
-      state: 'approval',
-      tool: 'Bash',
-    });
+    const asked = at('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf x' } });
+    expect(asked).toMatchObject({ id: 's-1', cwd: '/work', state: 'approval', ask: { tool: 'Bash' } });
+    expect(asked!.ask!.key).toMatch(/^[0-9a-f]{16}$/);
+    // The finished call is the one asked about, whatever reason Codex gave for the approval.
+    expect(at('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'rm -rf x' } })!.answered).toEqual(asked!.ask);
+    expect(
+      at('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf x', description: 'why' } })!.ask,
+    ).toEqual(asked!.ask);
+    expect(at('Interrupt')?.state).toBe('idle');
     expect(at('Notification', { notification_type: 'permission_prompt' })?.state).toBe('approval');
     expect(at('Notification', { notification_type: 'idle_prompt' })?.state).toBe('idle');
     expect(at('Notification', { notification_type: 'auth_success' })).toBeUndefined();
-    expect(at('PostToolUse')).toMatchObject({ state: 'working', onlyAfterApproval: true });
+    expect(at('PostToolUse')).toMatchObject({ state: 'working', answered: {} });
     expect(at('Stop', { last_assistant_message: 'Done.' })?.state).toBe('idle');
     expect(at('SessionStart', { source: 'startup' })?.state).toBe('idle');
     expect(at('SessionStart', { source: 'compact' })).toBeUndefined();
@@ -61,8 +64,8 @@ describe('what a hook says about a session', () => {
     // A question whose hook ran late, after its tool was already seen finishing, is not kept.
     expect(await say('PermissionRequest', 105, { tool_name: 'Read' })).toBeUndefined();
     await say('PermissionRequest', 120, { tool_name: 'Bash', tool_input: { command: 'secret command' } });
-    expect([...(await readLive(env, 200)).values()]).toEqual([
-      { agent: 'claude', id: 's-1', state: 'approval', at: 120, cwd: '/work', tool: 'Bash' },
+    expect([...(await readLive(env, 200)).values()]).toMatchObject([
+      { agent: 'claude', id: 's-1', state: 'approval', at: 120, cwd: '/work', tool: 'Bash', asks: [{ tool: 'Bash' }] },
     ]);
     const [file] = readdirSync(liveDir(env));
     expect(file).toBe('claude-s-1.json');
@@ -70,7 +73,18 @@ describe('what a hook says about a session', () => {
     if (process.platform !== 'win32') expect(statSync(join(liveDir(env), file!)).mode & 0o777).toBe(0o600);
     // An event that ran earlier does not replace a later one's record.
     expect(await say('UserPromptSubmit', 90)).toBeUndefined();
-    expect(await say('PostToolUse', 130)).toMatchObject({ state: 'working' });
+    // Another tool finishing beside it leaves the question open; a reminder adds none.
+    expect(await say('PostToolUse', 125, { tool_name: 'Read', tool_input: { file_path: 'a' } })).toBeUndefined();
+    await say('Notification', 126, { notification_type: 'permission_prompt' });
+    expect((await readLive(env, 200)).get('claude:s-1')).toMatchObject({ state: 'approval', asks: [{ tool: 'Bash' }] });
+    // Two questions: the session asks until both are answered.
+    await say('PermissionRequest', 127, { tool_name: 'Edit', tool_input: { file_path: 'b' } });
+    expect(
+      await say('PostToolUse', 128, { tool_name: 'Bash', tool_input: { command: 'secret command' } }),
+    ).toMatchObject({ state: 'approval', tool: 'Edit' });
+    expect(await say('PostToolUseFailure', 130, { tool_name: 'Edit', tool_input: { file_path: 'b' } })).toMatchObject({
+      state: 'working',
+    });
     expect((await say('Stop', 140))?.tool).toBeUndefined();
     await say('SessionEnd', 150);
     expect((await readLive(env, 200)).size).toBe(0);
@@ -143,6 +157,10 @@ describe('sessions with what the hooks reported', () => {
     expect(
       withLive([session({ updatedAt: 2_000_000 })], live('approval', 1_000_000), 2_000_100)[0]!.waitingFor,
     ).toBeUndefined();
+    // Still written to long after the last hook ran: the hooks no longer report it.
+    expect(
+      withLive([session({ state: 'waiting', updatedAt: 9_000_000 })], live('working', 1_000_000), 9_000_100)[0]!.state,
+    ).toBe('waiting');
     // "Working" with nothing written for half an hour: the agent is gone.
     const later = 1_000_000 + 31 * 60_000;
     expect(withLive([session()], live('working', 1_000_000), later)[0]!.state).toBe('unfinished');
@@ -217,6 +235,7 @@ describe('installing the hook', () => {
       'PermissionRequest',
       'PostToolUse',
       'Stop',
+      'Interrupt',
       'SessionEnd',
     ]);
     expect(await uninstallHooks('codex', { env })).toBe(true);

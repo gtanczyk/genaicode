@@ -24,7 +24,7 @@ const EVENTS: Record<HookAgent, readonly string[]> = {
     'StopFailure',
     'SessionEnd',
   ],
-  codex: ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd'],
+  codex: ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'],
 };
 
 export interface HooksOptions {
@@ -160,7 +160,13 @@ export async function installHooks(agent: HookAgent, options: HooksOptions = {})
   const hooks: Json = isObject(config.hooks) ? { ...config.hooks } : {};
   for (const event of EVENTS[agent]) {
     const groups = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
-    const handler = { type: 'command', command, timeout: 10, ...(event === 'SessionEnd' ? {} : { async: true }) };
+    // Codex gives an `Interrupt` hook three seconds at most.
+    const handler = {
+      type: 'command',
+      command,
+      timeout: event === 'Interrupt' ? 3 : 10,
+      ...(event === 'SessionEnd' ? {} : { async: true }),
+    };
     hooks[event] = [...groups, { hooks: [handler] }];
   }
   await writeConfig(file, { ...config, hooks });

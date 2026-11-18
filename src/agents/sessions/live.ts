@@ -21,8 +21,16 @@ export interface LiveRecord {
   /** When the latest hook of the session ran, where that is later than `at`. */
   seen?: number;
   cwd?: string;
-  /** The tool the agent asks to use, while `state` is `approval`. */
+  /** The tool the agent asks to use, while `state` is `approval`: the first of `asks`. */
   tool?: string;
+  /** The questions not answered yet, while `state` is `approval`. */
+  asks?: LiveAsk[];
+}
+
+/** One "may I use this tool?": the tool's name and a digest of its input, to tell which one was answered. */
+export interface LiveAsk {
+  tool?: string;
+  key?: string;
 }
 
 /** A record older than this says nothing any more. */
@@ -31,6 +39,10 @@ const KEEP_MS = 7 * 24 * 3600_000;
 const WORKING_MS = 30 * 60_000;
 /** The agent's file can be written a little after its hook ran. */
 const LAG_MS = 60_000;
+/** A working agent's file is written to between hooks, but not for this long with none running. */
+const UNSEEN_MS = 10 * 60_000;
+/** More questions than this at once are not kept apart. */
+const MAX_ASKS = 20;
 
 /** Where the records are kept: one small file per session under `~/.genaicode/live`. */
 export function liveDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -58,37 +70,37 @@ const ASKING = new Set(['permission_prompt', 'elicitation_dialog', 'elicitation_
  * What a hook's input (the JSON object Claude Code and Codex give a command hook on stdin) says
  * about its session. Undefined for an event that changes nothing.
  */
-export function liveEvent(
-  input: unknown,
-): { id: string; state: LiveState | 'ended'; cwd?: string; tool?: string; onlyAfterApproval?: boolean } | undefined {
+export function liveEvent(input: unknown): LiveEvent | undefined {
   if (typeof input !== 'object' || input === null) return undefined;
   const event = input as Record<string, unknown>;
   const id = text(event.session_id);
   if (!id) return undefined;
   const cwd = text(event.cwd);
   const base = { id, ...(cwd ? { cwd } : {}) };
+  const tool = text(event.tool_name);
+  const ask: LiveAsk = { ...(tool ? { tool } : {}), ...(tool ? { key: inputKey(event.tool_input) } : {}) };
   switch (event.hook_event_name) {
     case 'SessionStart':
       // After a compaction the agent goes on working.
       return event.source === 'compact' ? undefined : { ...base, state: 'idle' };
     case 'UserPromptSubmit':
       return { ...base, state: 'working' };
-    case 'PermissionRequest': {
-      const tool = text(event.tool_name);
-      return { ...base, state: 'approval', ...(tool ? { tool } : {}) };
-    }
+    case 'PermissionRequest':
+      return { ...base, state: 'approval', ask };
     case 'Notification': {
       const type = text(event.notification_type);
       if (type === 'idle_prompt') return { ...base, state: 'idle' };
-      return type && ASKING.has(type) ? { ...base, state: 'approval' } : undefined;
+      // It names no tool: the question it is about may already be known from `PermissionRequest`.
+      return type && ASKING.has(type) ? { ...base, state: 'approval', ask: {}, reminder: true } : undefined;
     }
     case 'PostToolUse':
     case 'PostToolUseFailure':
     case 'PermissionDenied':
-      // The tool ran or was refused: the question, if there was one, is answered.
-      return { ...base, state: 'working', onlyAfterApproval: true };
+      // The tool ran or was refused: its question, if there was one, is answered.
+      return { ...base, state: 'working', answered: ask };
     case 'Stop':
     case 'StopFailure':
+    case 'Interrupt':
       return { ...base, state: 'idle' };
     case 'SessionEnd':
       return { ...base, state: 'ended' };
@@ -97,12 +109,47 @@ export function liveEvent(
   }
 }
 
+export interface LiveEvent {
+  id: string;
+  state: LiveState | 'ended';
+  cwd?: string;
+  /** `approval`: the question asked. */
+  ask?: LiveAsk;
+  /** `approval`: a reminder of a question, which adds none when one is known. */
+  reminder?: boolean;
+  /** A tool finished: the question about it, when there was one, is answered. Changes nothing else. */
+  answered?: LiveAsk;
+}
+
+/** A digest of a tool's input: enough to tell two calls apart, nothing of what they hold. */
+function inputKey(input: unknown): string {
+  let value = input;
+  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
+    // Codex adds a reason for the approval that the finished call does not carry.
+    const rest = { ...(input as Record<string, unknown>) };
+    delete rest.description;
+    value = rest;
+  }
+  return createHash('sha256')
+    .update(JSON.stringify(value) ?? '')
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/** `asks` without the one a finished tool answers: the same call, or failing that the same tool. */
+function answer(asks: readonly LiveAsk[], done: LiveAsk): LiveAsk[] {
+  let at = asks.findIndex((ask) => ask.tool === done.tool && ask.key === done.key);
+  if (at < 0) at = asks.findIndex((ask) => ask.tool === undefined);
+  return at < 0 ? [...asks] : [...asks.slice(0, at), ...asks.slice(at + 1)];
+}
+
 async function readRecord(file: string): Promise<LiveRecord | undefined> {
   try {
     const value = JSON.parse(await fs.readFile(file, 'utf8')) as Partial<LiveRecord> | null;
     if (!value || typeof value.agent !== 'string' || typeof value.id !== 'string') return undefined;
     if (typeof value.at !== 'number') return undefined;
     if (value.seen !== undefined && typeof value.seen !== 'number') return undefined;
+    if (value.asks !== undefined && !Array.isArray(value.asks)) return undefined;
     if (value.state !== 'working' && value.state !== 'approval' && value.state !== 'idle') return undefined;
     return value as LiveRecord;
   } catch {
@@ -135,28 +182,40 @@ export async function recordHook(
     const before = await readRecord(file);
     // An event that ran before the latest one seen says nothing new.
     if (before && Math.max(before.at, before.seen ?? 0) > at) return undefined;
-    const kept = event.onlyAfterApproval && before?.state !== 'approval';
-    // A tool that ran with no question asked changes no state, but it was seen.
-    if (kept && !before) return undefined;
     const cwd = event.cwd ?? before?.cwd;
-    const tool = event.tool ?? before?.tool;
-    const record: LiveRecord = kept
-      ? { ...before!, seen: at }
-      : {
-          agent,
-          id: event.id,
-          state: event.state as LiveState,
-          at,
-          ...(cwd ? { cwd } : {}),
-          ...(event.state === 'approval' && tool ? { tool } : {}),
-        };
+    const known = { agent, id: event.id, ...(cwd ? { cwd } : {}) };
+    let record: LiveRecord;
+    let changed = true;
+    if (event.answered) {
+      // A tool that ran with no question asked changes no state, but it was seen.
+      if (!before) return undefined;
+      const asked = before.state === 'approval' ? (before.asks ?? [{}]) : [];
+      const left = answer(asked, event.answered);
+      changed = asked.length > 0 && left.length < asked.length;
+      if (!changed) record = { ...before, seen: at };
+      else if (left.length) record = { ...known, state: 'approval', at: before.at, seen: at, ...asking(left) };
+      else record = { ...known, state: 'working', at };
+    } else if (event.state === 'approval') {
+      const asked = before?.state === 'approval' ? (before.asks ?? []) : [];
+      // A reminder of a question already known adds none.
+      const asks = event.reminder && asked.length ? asked : [...asked, event.ask ?? {}].slice(-MAX_ASKS);
+      record = { ...known, state: 'approval', at, ...asking(asks) };
+    } else {
+      record = { ...known, state: event.state as LiveState, at };
+    }
     const temporary = `${file}.${process.pid}.tmp`;
     await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     await fs.rename(temporary, file);
-    return kept ? undefined : record;
+    return changed ? record : undefined;
   } finally {
     await release();
   }
+}
+
+/** What a record that waits for approval says about the questions. */
+function asking(asks: LiveAsk[]): Pick<LiveRecord, 'tool' | 'asks'> {
+  const tool = asks.find((ask) => ask.tool)?.tool;
+  return { ...(tool ? { tool } : {}), asks };
 }
 
 /** A lock older than this was left by a hook that died. */
@@ -225,7 +284,10 @@ export function withLive(
     const record = live.get(`${session.source}:${session.id}`);
     if (!record) return session;
     if (record.state === 'working') {
-      if (now - Math.max(record.at, record.seen ?? 0, session.updatedAt) > WORKING_MS) return session;
+      const seen = Math.max(record.at, record.seen ?? 0);
+      // Written to long after the last hook ran: the hooks no longer report this session.
+      if (session.updatedAt > seen + UNSEEN_MS) return session;
+      if (now - Math.max(seen, session.updatedAt) > WORKING_MS) return session;
       return { ...session, state: 'active', updatedAt: Math.max(session.updatedAt, record.at) };
     }
     // Written to after the agent stopped: something the hooks did not see went on.
