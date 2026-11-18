@@ -60,6 +60,7 @@ export async function readCodexSession(file: SessionFile, now = Date.now()): Pro
   };
   let agentLast = false;
   let conversed = false;
+  let subagent = false;
   const scan = (lines: unknown[], first: boolean) => {
     for (const line of lines) {
       if (!isRecord(line)) continue;
@@ -67,6 +68,8 @@ export async function readCodexSession(file: SessionFile, now = Date.now()): Pro
       const payload = isRecord(line.payload) ? line.payload : line.type === undefined ? line : undefined;
       if (!payload) continue;
       if (line.type === 'session_meta' || line.type === undefined) {
+        // A helper thread another session started, as the thread index marks them.
+        if (JSON.stringify(payload.source ?? '').includes('subagent')) subagent = true;
         if (typeof payload.id === 'string') info.id = payload.id;
         if (typeof payload.cwd === 'string') info.cwd = payload.cwd;
         if (typeof payload.timestamp === 'string') {
@@ -117,7 +120,7 @@ export async function readCodexSession(file: SessionFile, now = Date.now()): Pro
   scan(head, true);
   agentLast = false;
   scan(tail, false);
-  if (!conversed) return null;
+  if (!conversed || subagent) return null;
   info.lastPrompt ??= info.firstPrompt;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
   return info;

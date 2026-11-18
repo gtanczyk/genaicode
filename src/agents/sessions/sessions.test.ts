@@ -92,8 +92,30 @@ file(
   ),
   90,
 );
+// A helper thread another session started is not a session of the user's.
+file(
+  rollout('99999999-89ab-cdef-0123-456789abcdef'),
+  lines(
+    { type: 'session_meta', payload: { cwd: '/work/app', source: { subagent: { thread_spawn: { depth: 1 } } } } },
+    { type: 'event_msg', payload: { type: 'user_message', message: 'Look up the parser' } },
+    { type: 'event_msg', payload: { type: 'agent_message', message: 'Found it.' } },
+  ),
+  80,
+);
 
 describe('session sources', () => {
+  it('keeps a title from the start of a long Claude Code transcript', async () => {
+    const dir = join(root, 'claude-long');
+    const filler = Array.from({ length: 700 }, () => assistant([{ type: 'text', text: 'x'.repeat(1000) }]));
+    file(
+      join(dir, 'projects', '-work-app', 'eeee.jsonl'),
+      lines(user('Plan the release'), { type: 'custom-title', customTitle: 'Release plan' }, ...filler),
+      30,
+    );
+    const [session] = await claudeSessions({ dir }).list();
+    expect(session).toMatchObject({ title: 'Release plan', firstPrompt: 'Plan the release' });
+  });
+
   it('reads Claude Code transcripts', async () => {
     const sessions = await claudeSessions({ dir: claudeDir }).list();
     expect(sessions.map((session) => session.id)).toEqual(['dddd', 'aaaa', 'bbbb']);

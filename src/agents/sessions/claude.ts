@@ -39,6 +39,13 @@ function promptOf(line: Record<string, unknown>): string | undefined {
   return text && !NOT_A_PROMPT.test(text) ? text : undefined;
 }
 
+/** A title record sets the session's name; a later one replaces an earlier one. */
+function titleOf(line: Record<string, unknown>, info: SessionInfo): void {
+  if (line.type === 'summary' && typeof line.summary === 'string') info.title = oneLine(line.summary, 120);
+  if (line.type === 'ai-title' && typeof line.aiTitle === 'string') info.title = oneLine(line.aiTitle, 120);
+  if (line.type === 'custom-title' && typeof line.customTitle === 'string') info.title = oneLine(line.customTitle, 120);
+}
+
 /** Read one Claude Code transcript (`<config>/projects/<project>/<session>.jsonl`). */
 export async function readClaudeSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
   const { head, tail } = await headAndTail(file);
@@ -60,6 +67,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
       if (!Number.isNaN(at)) info.startedAt = at;
     }
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
+    titleOf(line, info);
     const prompt = promptOf(line);
     if (prompt && !info.firstPrompt) info.firstPrompt = oneLine(prompt);
   }
@@ -69,10 +77,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     // The directory it started in names the project; later lines follow the agent's `cd`.
     if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
     if (typeof line.gitBranch === 'string' && line.gitBranch && line.gitBranch !== 'HEAD') info.branch = line.gitBranch;
-    if (line.type === 'summary' && typeof line.summary === 'string') info.title = oneLine(line.summary, 120);
-    if (line.type === 'ai-title' && typeof line.aiTitle === 'string') info.title = oneLine(line.aiTitle, 120);
-    if (line.type === 'custom-title' && typeof line.customTitle === 'string')
-      info.title = oneLine(line.customTitle, 120);
+    titleOf(line, info);
     if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     const prompt = promptOf(line);
