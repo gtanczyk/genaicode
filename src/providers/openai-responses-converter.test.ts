@@ -131,6 +131,9 @@ describe('OpenAI Responses converter', () => {
   });
 
   it('throws on a failed response', async () => {
+    expect(() =>
+      fromOpenAIResponse(response({ status: 'failed', error: { code: 'server_error', message: 'boom' } })),
+    ).toThrow('boom');
     async function* source() {
       yield {
         type: 'response.failed',

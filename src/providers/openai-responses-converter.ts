@@ -143,6 +143,9 @@ function toFinishReason(response: OpenAI.Responses.Response, hasToolCalls: boole
 }
 
 export function fromOpenAIResponse(response: OpenAI.Responses.Response): GenerationResult {
+  if (response.status === 'failed') {
+    throw new Error(response.error?.message ?? 'OpenAI response failed');
+  }
   const parts: ResultPart[] = [];
   const text = response.output
     .flatMap((item) => (item.type === 'message' ? item.content : []))
