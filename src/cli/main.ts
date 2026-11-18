@@ -6,6 +6,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { agentSessionSources, groupSessions, listSessions } from '../agents/sessions/index.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -92,9 +93,20 @@ Usage:
   genaicode chat [options]             Chat with an agent in this terminal
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
+  genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
+
+Sessions options:
+  -a, --agent <name>      Only this agent's sessions
+  -C, --cwd <dir>         Only sessions in this directory or below it
+      --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
+  -n, --limit <n>         At most this many sessions, newest first (default 30)
+      --json              One JSON object per session
+
+  Each line ends with the session id: continue it with
+  "genaicode chat -a <agent> -C <dir> -r <id>".
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
@@ -186,6 +198,8 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return EXIT_OK;
     case 'agents':
       return listAgents(cli, agents, command.json);
+    case 'sessions':
+      return showSessions(cli, agents, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -318,6 +332,62 @@ async function runUi(
 function loadBundledUi(): Promise<UiModule> {
   const bundle: string = new URL('../ui/index.js', import.meta.url).href;
   return import(bundle) as Promise<UiModule>;
+}
+
+const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌' };
+
+/** `5m`, `3h`, `12d`: how long ago, in the largest unit that fits. */
+function ago(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h`;
+  return `${Math.round(minutes / 1440)}d`;
+}
+
+async function showSessions(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'sessions' }>,
+): Promise<number> {
+  const sources = agentSessionSources(
+    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
+  );
+  if (!sources.length) {
+    cli.stderr.write(`No session store for agent "${command.agent}".\n`);
+    return EXIT_USAGE;
+  }
+  const now = Date.now();
+  const { sessions, errors } = await listSessions(sources, {
+    limit: command.limit,
+    env: cli.env,
+    ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
+    ...(command.sinceMs !== undefined ? { since: now - command.sinceMs } : {}),
+    ...(cli.signal ? { signal: cli.signal } : {}),
+  });
+  for (const error of errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
+  if (command.json) {
+    for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
+    return EXIT_OK;
+  }
+  if (!sessions.length) {
+    cli.stdout.write('No sessions found.\n');
+    return EXIT_OK;
+  }
+  for (const project of groupSessions(sessions)) {
+    const counts = Object.entries(project.agents)
+      .map(([agent, count]) => `${agent} ${count}`)
+      .join(', ');
+    cli.stdout.write(`\n${project.name}  ${project.key}  (${counts})\n`);
+    for (const session of project.sessions) {
+      const label = session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)';
+      const text = label.length > 70 ? `${label.slice(0, 69)}…` : label;
+      cli.stdout.write(
+        `  ${STATE_MARK[session.state ?? ''] ?? ' '} ${session.agent.padEnd(7)} ${ago(now - session.updatedAt).padStart(4)}  ${(session.state ?? '').padEnd(10)}  ${text}  ${session.id}\n`,
+      );
+    }
+  }
+  cli.stdout.write('\n● active  ○ waiting for you  ◌ unfinished\n');
+  return EXIT_OK;
 }
 
 function listAgents(cli: CliEnvironment, agents: readonly CodingAgent[], json: boolean): number {

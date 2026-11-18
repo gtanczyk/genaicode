@@ -6,6 +6,15 @@ export type CliCommand =
   | { kind: 'version' }
   | { kind: 'agents'; json: boolean }
   | {
+      kind: 'sessions';
+      json: boolean;
+      agent?: string;
+      cwd?: string;
+      /** `--since 7d`: only sessions active in this many milliseconds. */
+      sinceMs?: number;
+      limit: number;
+    }
+  | {
       kind: 'chat' | 'ui';
       agent?: string;
       cwd?: string;
@@ -81,6 +90,31 @@ export function parseCli(argv: readonly string[]): CliCommand {
   if (command === 'agents') {
     const { values } = parse(() => parseArgs({ args: rest, options: { json: { type: 'boolean' } }, strict: true }));
     return { kind: 'agents', json: values.json === true };
+  }
+
+  if (command === 'sessions') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: {
+          json: { type: 'boolean' },
+          agent: { type: 'string', short: 'a' },
+          cwd: { type: 'string', short: 'C' },
+          since: { type: 'string' },
+          limit: { type: 'string', short: 'n' },
+        },
+      }),
+    );
+    const limit = optionalNumber(values.limit, '--limit');
+    return {
+      kind: 'sessions',
+      json: values.json === true,
+      ...(values.agent !== undefined ? { agent: values.agent } : {}),
+      ...(values.cwd !== undefined ? { cwd: values.cwd } : {}),
+      ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
+      limit: limit ?? 30,
+    };
   }
 
   if (command === 'chat' || command === 'ui') {
@@ -240,6 +274,15 @@ function parseMcp(value: string): McpServer {
   const match = /^([\w-]+)=(https?:\/\/\S+)$/.exec(value);
   if (!match) throw new UsageError(`--mcp expects name=http(s)://url, got "${value}".`);
   return { name: match[1]!, url: match[2]! };
+}
+
+const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 };
+
+/** `--since 90m`, `12h`, `7d`, `2w` in milliseconds. */
+function durationOf(value: string): number {
+  const match = /^(\d+)([mhdw])$/.exec(value);
+  if (!match) throw new UsageError('--since expects a number and a unit, e.g. 90m, 12h, 7d or 2w.');
+  return Number(match[1]) * UNIT_MS[match[2]!]!;
 }
 
 function parse<T>(call: () => T): T {

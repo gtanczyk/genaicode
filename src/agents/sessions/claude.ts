@@ -1,0 +1,165 @@
+import path from 'node:path';
+import {
+  ACTIVE_MS,
+  ending,
+  findFiles,
+  homeOf,
+  headAndTail,
+  isRecord,
+  isWithin,
+  mapLimited,
+  oneLine,
+  type SessionFile,
+} from './files.js';
+import type { SessionInfo, SessionSource } from './types.js';
+
+export interface ClaudeSessionsOptions {
+  /** Claude Code's config directory. Default `$CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+  dir?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+// Text Claude Code writes into user turns itself: commands, hook output, injected context.
+const NOT_A_PROMPT = /^(<[a-z][\w-]*[\s>]|Caveat: |\[Request interrupted)/;
+
+function textOf(content: unknown, type: string): string | undefined {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+  const parts = content.flatMap((block) =>
+    isRecord(block) && block.type === type && typeof block.text === 'string' ? [block.text] : [],
+  );
+  return parts.length ? parts.join('\n') : undefined;
+}
+
+// Prompts that reach Claude Code wrapped: a scheduled task, a message relayed from another session, a paste, `!cmd`.
+const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[\s>]/;
+
+/** A wrapped prompt without its tags. */
+function unwrapped(text: string): string | undefined {
+  if (!WRAPPED_PROMPT.test(text)) return undefined;
+  return text.replace(/<[^>]*>/g, ' ').trim() || undefined;
+}
+
+/**
+ * What a transcript line asks of the agent: `typed` by the user, or `wrapped` (a scheduled task or a
+ * relayed message, which is all some sessions have). Tool results and Claude Code's own notes are neither.
+ */
+function promptOf(line: Record<string, unknown>): { typed?: string; wrapped?: string } {
+  if (line.type === 'last-prompt' && typeof line.lastPrompt === 'string') {
+    const text = line.lastPrompt.trim();
+    return NOT_A_PROMPT.test(text) ? { wrapped: unwrapped(text) } : text ? { typed: text } : {};
+  }
+  if (line.type !== 'user' || line.isSidechain === true || !isRecord(line.message)) return {};
+  const text = textOf(line.message.content, 'text')?.trim();
+  if (!text) return {};
+  // Relayed messages are stored as meta lines; the rest of the meta lines are Claude Code's own.
+  if (line.isMeta === true || NOT_A_PROMPT.test(text)) return { wrapped: unwrapped(text) };
+  return { typed: text };
+}
+
+/** A title record sets the session's name; a later one replaces an earlier one. */
+function titleOf(line: Record<string, unknown>, info: SessionInfo): void {
+  if (line.type === 'summary' && typeof line.summary === 'string') info.title = oneLine(line.summary, 120);
+  if (line.type === 'ai-title' && typeof line.aiTitle === 'string') info.title = oneLine(line.aiTitle, 120);
+  if (line.type === 'custom-title' && typeof line.customTitle === 'string') info.title = oneLine(line.customTitle, 120);
+}
+
+/** Read one Claude Code transcript (`<config>/projects/<project>/<session>.jsonl`). */
+export async function readClaudeSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
+  const { head, tail } = await headAndTail(file);
+  const info: SessionInfo = {
+    source: 'claude',
+    agent: 'claude',
+    id: path.basename(file.path, '.jsonl'),
+    where: 'local',
+    updatedAt: file.mtimeMs,
+    path: file.path,
+  };
+  let conversed = false;
+  let firstWrapped: string | undefined;
+  let lastWrapped: string | undefined;
+  for (const line of head) {
+    if (!isRecord(line)) continue;
+    if (line.isSidechain === true) return null;
+    if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
+    if (typeof line.timestamp === 'string' && info.startedAt === undefined) {
+      const at = Date.parse(line.timestamp);
+      if (!Number.isNaN(at)) info.startedAt = at;
+    }
+    if (line.type === 'user' || line.type === 'assistant') conversed = true;
+    titleOf(line, info);
+    const prompt = promptOf(line);
+    if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
+    if (prompt.wrapped && line.type === 'user') firstWrapped ??= oneLine(prompt.wrapped);
+  }
+  let agentLast = false;
+  for (const line of tail) {
+    if (!isRecord(line)) continue;
+    // The directory it started in names the project; later lines follow the agent's `cd`.
+    if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
+    if (typeof line.gitBranch === 'string' && line.gitBranch && line.gitBranch !== 'HEAD') info.branch = line.gitBranch;
+    titleOf(line, info);
+    if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
+    if (line.type === 'user' || line.type === 'assistant') conversed = true;
+    const prompt = promptOf(line);
+    if (prompt.wrapped) lastWrapped = oneLine(prompt.wrapped);
+    if (line.type === 'last-prompt') {
+      // Claude Code's own note of the latest prompt; it says nothing about whose turn it is.
+      if (prompt.typed) info.lastPrompt = oneLine(prompt.typed);
+    } else if (prompt.typed) {
+      info.lastPrompt = oneLine(prompt.typed);
+      agentLast = false;
+    } else if (prompt.wrapped) {
+      agentLast = false;
+    } else if (line.type === 'user' && line.isMeta !== true) {
+      // A tool result: the agent was in the middle of its turn.
+      agentLast = false;
+    }
+    if (line.type === 'assistant' && line.isSidechain !== true && isRecord(line.message)) {
+      if (typeof line.message.model === 'string' && line.message.model !== '<synthetic>')
+        info.model = line.message.model;
+      const text = textOf(line.message.content, 'text')?.trim();
+      if (text) info.lastReply = ending(text);
+      const content = line.message.content;
+      const callsTool = Array.isArray(content) && content.some((block) => isRecord(block) && block.type === 'tool_use');
+      agentLast = !callsTool && !!text;
+    }
+  }
+  if (!conversed) return null;
+  // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
+  info.firstPrompt ??= firstWrapped;
+  info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
+  info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
+  return info;
+}
+
+/** Sessions Claude Code keeps on this machine. */
+export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSource {
+  return {
+    name: 'claude',
+    where: 'local',
+    async list(query = {}) {
+      const env = query.env ?? options.env ?? process.env;
+      const dir = options.dir ?? env.CLAUDE_CONFIG_DIR ?? path.join(homeOf(env), '.claude');
+      // projects/<project>/<session>.jsonl; deeper files are subagent transcripts.
+      const files = (await findFiles(path.join(dir, 'projects'), 1, (name) => name.endsWith('.jsonl'))).filter(
+        (file) => query.since === undefined || file.mtimeMs >= query.since,
+      );
+      const sessions: SessionInfo[] = [];
+      const wanted = query.limit ?? Infinity;
+      // Newest first, a batch at a time, so a small `limit` does not open every file.
+      for (let at = 0; at < files.length && sessions.length < wanted; at += 32) {
+        query.signal?.throwIfAborted();
+        const batch = await mapLimited(files.slice(at, at + 32), 8, (file) =>
+          readClaudeSession(file).catch(() => null),
+        );
+        for (const session of batch) {
+          if (!session) continue;
+          if (query.cwd !== undefined && !(session.cwd && isWithin(session.cwd, query.cwd))) continue;
+          sessions.push(session);
+        }
+      }
+      return sessions.slice(0, query.limit);
+    },
+  };
+}

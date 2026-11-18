@@ -20,6 +20,8 @@ const EDIT_TOOLS = new Set(['edit', 'write', 'patch', 'multiedit']);
  */
 export function opencode(options: OpencodeAgentOptions = {}): CodingAgent {
   return cliAgent({
+    // Not read yet: its store has not been checked against a real installation.
+    sessions: null,
     name: 'opencode',
     command: options.command ?? 'opencode',
     capabilities: {

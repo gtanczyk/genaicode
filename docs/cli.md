@@ -23,6 +23,20 @@ gets close. `--fallback codex,gemini` runs the task on the next agent when one i
 not signed in, not installed or crashed (see [failover](agents.md#failover)).
 `npx genaicode --help` lists every option.
 
+## Sessions across agents
+
+```bash
+npx genaicode sessions                       # what every agent has going on, by project
+npx genaicode sessions --since 7d -C ../api  # last week, one project
+npx genaicode sessions -a codex --json       # one JSON object per session
+```
+
+It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot, Cursor, Gemini
+CLI, Antigravity, Muse and Vibe) and changes nothing.
+`●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
+half way. Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
+continues it (see [sessions](agents.md#sessions-across-agents)).
+
 ## Chat with an agent: terminal and browser
 
 ```bash

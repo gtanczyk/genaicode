@@ -15,6 +15,7 @@ import type {
   CodingAgent,
   McpServer,
 } from './types.js';
+import type { SessionSource } from './sessions/types.js';
 
 /**
  * Where a managed session stands.
@@ -135,6 +136,8 @@ export interface ManagedUpdate {
 export interface ManagedProvider {
   readonly name: string;
   readonly capabilities: ManagedCapabilities;
+  /** The platform's sessions, for `listSessions()` (`CodingAgent.sessions`). */
+  readonly sessions?: SessionSource | null;
   start(request: ManagedStart, signal?: AbortSignal): Promise<ManagedSnapshot>;
   /** `null`: the session does not exist (any more). */
   get(id: string, signal?: AbortSignal): Promise<ManagedSnapshot | null>;
@@ -179,6 +182,7 @@ export function managedAgent(provider: ManagedProvider, options: ManagedAgentOpt
     name: provider.name,
     command: provider.name,
     capabilities: { ...provider.capabilities, steer: !!provider.send, approvals: !!provider.answer },
+    ...(provider.sessions !== undefined ? { sessions: provider.sessions } : {}),
     run: (task) => runManaged(provider, task, options),
   };
 }

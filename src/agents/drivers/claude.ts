@@ -1,3 +1,4 @@
+import { claudeSessions } from '../sessions/claude.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,6 +72,7 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   const steer = options.steer ?? true;
   return cliAgent({
+    sessions: claudeSessions(),
     name: 'claude',
     command: options.command ?? 'claude',
     capabilities: {

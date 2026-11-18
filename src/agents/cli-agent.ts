@@ -2,6 +2,7 @@ import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type 
 import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
+import type { SessionSource } from './sessions/types.js';
 
 export type { AgentOutcome } from './runtime.js';
 
@@ -33,6 +34,8 @@ export interface CliAgentDefinition {
   name: string;
   command: string;
   capabilities?: AgentCapabilities;
+  /** Where the agent keeps its sessions (`CodingAgent.sessions`). */
+  sessions?: SessionSource | null;
   /** Full argument list for a task, prompt included. */
   args(task: AgentTask): string[];
   /**
@@ -56,6 +59,7 @@ export function cliAgent(definition: CliAgentDefinition): CodingAgent {
     name: definition.name,
     command: definition.command,
     capabilities: definition.capabilities ?? {},
+    ...(definition.sessions !== undefined ? { sessions: definition.sessions } : {}),
     run: (task) => runCliAgent(definition, task),
   };
 }

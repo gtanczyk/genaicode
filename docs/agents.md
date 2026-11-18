@@ -253,6 +253,60 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 - `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
   finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 
+## Sessions across agents
+
+Every agent keeps its conversations somewhere of its own. `listSessions()` reads those stores and
+returns one list, so an app can show what is going on in every project, whichever agent did it:
+
+```ts
+import { claudeSessions, codexSessions, groupSessions, listSessions } from 'genaicode/agents';
+
+const sources = [claudeSessions(), codexSessions()];
+const { sessions, errors } = await listSessions(sources, { since: Date.now() - 7 * 86_400_000 });
+for (const project of groupSessions(sessions)) {
+  console.log(project.name, project.agents); // app { claude: 12, codex: 3 }
+  for (const s of project.sessions) console.log(' ', s.agent, s.state, s.title ?? s.lastPrompt, s.id);
+}
+```
+
+A `SessionInfo` has the agent, its session `id` (what `AgentTask.resume` takes), the directory it
+started in, branch, title, first and latest prompt, the end of the latest reply, model, usage or
+cost where the store has them, and a `state`: `active` (written to in the last two minutes),
+`waiting` (the agent had the last word) or `unfinished` (it stops at the user's message or in the
+middle of the agent's work).
+
+Every driver says where its sessions are in `agent.sessions`: a `SessionSource`, or `null` when
+it keeps none genaicode reads. `agentSessionSources(agents)` collects them (one per store, so
+`codex()` and `codexLive()` count once):
+
+```ts
+const agents = [claude(), codex(), codexLive(), gemini()];
+const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50 });
+```
+
+| Driver               | Source                  | Reads                                                                           |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------- |
+| `claude`             | `claudeSessions()`      | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents         |
+| `codex`, `codexLive` | `codexSessions()`       | the thread index `~/.codex/state_<n>.sqlite` (`CODEX_HOME`), else rollout files |
+| `copilot`            | `copilotSessions()`     | `~/.copilot/session-state/<id>/workspace.yaml` and `events.jsonl`               |
+| `cursor`             | `cursorSessions()`      | `~/.cursor/chats/<hash>/<id>/meta.json`, the model from the chat's `store.db`   |
+| `gemini`             | `geminiSessions()`      | `~/.gemini/tmp/<project>/chats/session-*.jsonl`                                 |
+| `antigravity`        | `antigravitySessions()` | `conversation_summaries.db` in `~/.gemini/antigravity` and `antigravity-cli`    |
+| `muse`, `museLive`   | `museSessions()`        | `~/.local/share/muse/session-index.db`                                          |
+| `vibe`               | `vibeSessions()`        | `~/.vibe/logs/session/*/meta.json` (`VIBE_HOME`), with token and cost totals    |
+| `opencode`           | `null`                  | not read yet                                                                    |
+
+What a store does not keep stays undefined: Cursor has no usage, Antigravity and Vibe no model,
+and an index without transcripts (Muse, Antigravity) gives no latest reply. Codex, Muse,
+Antigravity and Cursor keep SQLite files, read with `node:sqlite` (Node 22.5 or newer; on an
+older Node those sources land in `errors`). Subagent sessions and archived threads are left out.
+
+Reading is read-only. Transcripts are read at their start and end only, so a store with hundreds
+of long sessions lists quickly. `query` takes `since`, `cwd` and `limit`. A source that cannot be
+read lands in `errors` and the others are still listed. A `SessionSource` is `{ name, where,
+list(query) }`: implement one for another agent or for a vendor's cloud and pass it in the list.
+`genaicode sessions` prints the same from the command line (see [cli.md](./cli.md)).
+
 ## Follow-up turns
 
 `result.sessionId` names the agent's own session. Pass it as `resume` to continue that
