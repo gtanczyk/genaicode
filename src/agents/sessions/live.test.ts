@@ -130,6 +130,11 @@ describe('what a hook says about a session', () => {
     await say('PostToolUse', 7.5, { tool_name: 'Edit', tool_input: { file_path: 'b' } });
     await say('PostToolUse', 7, { tool_name: 'Bash', tool_input: { command: 'ls' } });
     expect((await readLive(env, 10)).get('claude:s-3')).toMatchObject({ state: 'working', at: 7.5 });
+    // A call whose end is learned before its question, both late: the question is over.
+    await say('PostToolUse', 7.7, { tool_name: 'Read', tool_input: { file_path: 'c' } });
+    await say('PostToolUse', 7.4, { tool_name: 'Bash', tool_input: { command: 'cat' } });
+    await say('PermissionRequest', 7.3, { tool_name: 'Bash', tool_input: { command: 'cat' } });
+    expect((await readLive(env, 10)).get('claude:s-3')).toMatchObject({ state: 'working' });
     // Once the turn is over, an old question is not asked any more.
     await say('Stop', 8);
     expect(await say('PermissionRequest', 6, { tool_name: 'Bash', tool_input: { command: 'pwd' } })).toBeUndefined();

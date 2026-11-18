@@ -147,9 +147,9 @@ function inputKey(input: unknown): string {
  * named no tool. A call another hook rewrote on approval no longer matches, so its question stays
  * until the turn ends: better that than hiding the question of another call of the same tool.
  */
-function answer(asks: readonly LiveAsk[], done: LiveAsk): LiveAsk[] {
+function answer(asks: readonly LiveAsk[], done: LiveAsk, exact = false): LiveAsk[] {
   let at = asks.findIndex((ask) => ask.tool === done.tool && ask.key === done.key);
-  if (at < 0) at = asks.findIndex((ask) => ask.tool === undefined);
+  if (at < 0 && !exact) at = asks.findIndex((ask) => ask.tool === undefined);
   return at < 0 ? [...asks] : [...asks.slice(0, at), ...asks.slice(at + 1)];
 }
 
@@ -199,13 +199,8 @@ export async function recordHook(
     const over = (before?.done ?? []).some((done) => done.tool === ask?.tool && done.key === ask?.key && done.at >= at);
     const thisTurn = at >= (before?.turn ?? 0);
     const stillAsked = !!ask?.tool && !over && thisTurn && before?.state !== 'idle' && before?.state !== 'ended';
-    // So is the end of a call that was asked about: its question is over, whenever that is learned.
-    const fin = event.answered;
-    const answers =
-      !!fin?.tool &&
-      thisTurn &&
-      before?.state === 'approval' &&
-      (before.asks ?? []).some((asked) => asked.tool === fin.tool && asked.key === fin.key);
+    // So is the end of a call in this turn: its question is over, asked already or learned of later.
+    const answers = !!event.answered?.tool && thisTurn && (before?.state === 'approval' || before?.state === 'working');
     if (late && !stillAsked && !answers) return undefined;
     // A late event does not move the session back in time.
     const when = late ? Math.max(before!.at, before!.seen ?? 0) : at;
@@ -221,13 +216,14 @@ export async function recordHook(
       // A tool that ran with no question asked changes no state, but it was seen.
       if (!before || before.state === 'ended') return undefined;
       const asked = before.state === 'approval' ? (before.asks ?? [{}]) : [];
-      const left = answer(asked, event.answered);
+      // Learned late, it answers its own question only, not one that names no tool.
+      const left = answer(asked, event.answered, late);
       changed = asked.length > 0 && left.length < asked.length;
       // A tool running after the turn was over: something (another Stop hook) kept the agent going.
       if (before.state === 'idle') {
         record = { ...known, state: 'working', at };
         changed = true;
-      } else if (!changed) record = { ...before, seen: at };
+      } else if (!changed) record = { ...before, seen: when };
       else if (left.length) record = { ...known, state: 'approval', at: before.at, seen: when, ...asking(left) };
       else record = { ...known, state: 'working', at: when };
     } else if (event.state === 'approval') {
