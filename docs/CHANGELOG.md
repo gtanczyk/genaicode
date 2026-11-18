@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode sessions doctor` and `checkSessions()`: per session store, how many sessions it lists, how many have a prompt and a directory, whether the newest conversations open, and whether the agent's CLI is newer than the one the reader was checked with (`SessionSource.verified`). Counts only; exits 1 when a store reads differently than expected.
+- `genaicode sessions doctor` and `checkSessions()`: per session store, how many sessions it lists, how many have a prompt and a directory, whether the newest conversations open, and whether the agent's CLI is newer than the one the reader was checked with (`SessionSource.verified`). Counts only; exits 1 when a store reads differently than expected. (#193)
 - `pack({ lead, members })` in `genaicode/agents`: one agent over the installed ones. The lead delegates to the others in parallel git worktrees through MCP tools and merges their work; new `subtask-start`, `subtask` and `subtask-update` events (#184)
 - `listSessions()` and `genaicode sessions`: one list of the sessions coding agents keep on this machine, grouped by project, with state (active, waiting for you, unfinished), latest prompt and the id to resume. Every driver names its store in `agent.sessions` (Claude Code, Codex, Copilot, Cursor, Gemini CLI, Antigravity, Muse, Vibe; `null` for opencode); `SessionSource` is the seam for vendor clouds (#186)
 - `listSessions()` reads vendor clouds too: `anthropicManaged` lists its agent's sessions and `cursorCloud` the account's Cloud Agents (`where: 'cloud'`, with a link to open them); `geminiManaged`, `openaiManaged` and `hostedAgent` say `sessions: null`, as their APIs list nothing (#187)
