@@ -138,6 +138,10 @@ describe('what a hook says about a session', () => {
     await say('UserPromptSubmit', 9);
     expect(await say('PermissionRequest', 6.5, { tool_name: 'Bash', tool_input: { command: 'id' } })).toBeUndefined();
     expect((await readLive(env, 10)).get('claude:s-3')!.state).toBe('working');
+    // And the end of a call from the finished turn does not answer the same call asked again.
+    await say('PermissionRequest', 9.5, { tool_name: 'Bash', tool_input: { command: 'ls' } });
+    await say('PostToolUse', 7.2, { tool_name: 'Bash', tool_input: { command: 'ls' } });
+    expect((await readLive(env, 10)).get('claude:s-3')).toMatchObject({ state: 'approval', tool: 'Bash' });
   });
 
   it('takes hooks that run at the same moment one at a time', async () => {

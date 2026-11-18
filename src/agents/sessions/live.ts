@@ -203,6 +203,7 @@ export async function recordHook(
     const fin = event.answered;
     const answers =
       !!fin?.tool &&
+      thisTurn &&
       before?.state === 'approval' &&
       (before.asks ?? []).some((asked) => asked.tool === fin.tool && asked.key === fin.key);
     if (late && !stillAsked && !answers) return undefined;
