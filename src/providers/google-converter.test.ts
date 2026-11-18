@@ -118,17 +118,19 @@ describe('Google converter', () => {
       ).config,
     ).toMatchObject({ thinkingConfig: { thinkingBudget: 128 } });
 
-    // Model-aware thinking level floor: Gemini 3.7 and Gemini 3+ Pro models floor to LOW
-    expect(
-      toGoogleRequest(
-        { prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } },
-        { model: 'gemini-3.8-flash' },
-      ).config,
-    ).toMatchObject({
-      responseMimeType: 'application/json',
-      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-    });
-
+    // Model-aware thinking level floor: Gemini 3+ Pro, Gemini 3.7+ and Gemini 4 floor to LOW
+    for (const model of ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-4-carbon', 'models/gemini-4-hydrogen']) {
+      expect(
+        toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], responseFormat: { type: 'json' } }, { model })
+          .config,
+      ).toMatchObject({
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      });
+      expect(
+        toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model }).config,
+      ).toMatchObject({ thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } });
+    }
     expect(
       toGoogleRequest({ prompt: [{ type: 'user', text: 'hello' }], thinking: false }, { model: 'gemini-3.7-flash' })
         .config,
