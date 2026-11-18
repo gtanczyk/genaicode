@@ -259,9 +259,10 @@ Every agent keeps its conversations somewhere of its own. `listSessions()` reads
 returns one list, so an app can show what is going on in every project, whichever agent did it:
 
 ```ts
-import { groupSessions, listSessions } from 'genaicode/agents';
+import { claudeSessions, codexSessions, groupSessions, listSessions } from 'genaicode/agents';
 
-const { sessions, errors } = await listSessions(undefined, { since: Date.now() - 7 * 86_400_000 });
+const sources = [claudeSessions(), codexSessions()];
+const { sessions, errors } = await listSessions(sources, { since: Date.now() - 7 * 86_400_000 });
 for (const project of groupSessions(sessions)) {
   console.log(project.name, project.agents); // app { claude: 12, codex: 3 }
   for (const s of project.sessions) console.log(' ', s.agent, s.state, s.title ?? s.lastPrompt, s.id);
@@ -279,7 +280,8 @@ it keeps none genaicode reads. `agentSessionSources(agents)` collects them (one 
 `codex()` and `codexLive()` count once):
 
 ```ts
-const { sessions } = await listSessions(agentSessionSources(defaultAgents()), { limit: 50 });
+const agents = [claude(), codex(), codexLive(), gemini()];
+const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50 });
 ```
 
 | Driver               | Source                  | Reads                                                                           |

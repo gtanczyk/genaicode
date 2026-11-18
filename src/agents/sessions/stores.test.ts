@@ -245,6 +245,9 @@ describe('agent session stores', () => {
         { type: 'assistant.message', data: { content: '', model: 'claude-sonnet-5' } },
         { type: 'tool.execution_start', data: {} },
         { type: 'assistant.message', data: { content: 'Shipped.', model: 'claude-sonnet-5' } },
+        // A subagent's messages are not the conversation.
+        { type: 'assistant.message', agentId: 'a1', data: { content: 'Helper says.', model: 'gpt-6-mini' } },
+        { type: 'assistant.message', data: { content: 'Old helper.', model: 'gpt-6-mini', parentToolCallId: 't1' } },
       ),
     );
     write(join(state, 'c2', 'workspace.yaml'), 'id: c2\ncwd: /work/other\nupdated_at: 2026-11-09T12:00:00.000Z\n');

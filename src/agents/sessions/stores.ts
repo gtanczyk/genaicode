@@ -245,6 +245,8 @@ async function copilotEvents(info: SessionInfo): Promise<void> {
   const scan = (lines: unknown[], first: boolean) => {
     for (const line of lines) {
       if (!isRecord(line) || !isRecord(line.data)) continue;
+      // A subagent's traffic (envelope `agentId`; older CLIs: `data.parentToolCallId`) is not the conversation.
+      if (typeof line.agentId === 'string' || typeof line.data.parentToolCallId === 'string') continue;
       const content = text(line.data.content);
       if (line.type === 'user.message' && content) {
         if (first) info.firstPrompt ??= oneLine(content);
