@@ -8,7 +8,15 @@ import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { ago } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
-import { agentSessionSources, groupSessions, listSessions } from '../agents/sessions/index.js';
+import {
+  agentSessionSources,
+  findSession,
+  groupSessions,
+  listSessions,
+  readSession,
+} from '../agents/sessions/index.js';
+import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
+import { isWithin } from '../agents/sessions/files.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -46,6 +54,8 @@ export interface UiLaunch {
   model?: string;
   effort?: string;
   resume?: string;
+  /** `--from`: the session to take over before the first prompt. */
+  continueFrom?: string;
   approveAll?: boolean;
   /** `--no-artifacts`: false. */
   artifacts?: boolean;
@@ -117,6 +127,8 @@ Chat and UI options:
   -m, --model <id>        Model id passed to the agent CLI
       --effort <level>    Reasoning effort, in the agent's own vocabulary
   -r, --resume <id>       Continue this agent session
+      --from <id>         Take over a session of any agent in this directory (ids: "genaicode
+                          sessions"): its own agent resumes it, another one gets a handoff
   -y, --yes               Approve every permission request the agent asks for
       --web               (chat) Also open the session in the browser
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
@@ -143,6 +155,8 @@ Run options:
       --effort <level>    Reasoning effort, in the agent's own vocabulary
       --max-turns <n>     Turn limit, where the agent supports one
   -r, --resume <id>       Continue the agent session with this id (printed after each run)
+      --from <id>         Continue a session of another agent: the agent gets a recap of it and
+                          the transcript to read (ids: "genaicode sessions")
       --timeout <sec>     Stop the agent after this many seconds
       --verify <command>  Shell command that checks the work; on failure its output goes
                           back to the agent for another attempt
@@ -311,6 +325,7 @@ async function runUi(
     model: options.model,
     effort: options.effort,
     resume: options.resume,
+    ...(options.from ? { continueFrom: options.from } : {}),
     approveAll: options.approveAll,
     env: cli.env,
     version: packageVersion(),
@@ -407,6 +422,34 @@ function listAgents(cli: CliEnvironment, agents: readonly CodingAgent[], json: b
   return EXIT_OK;
 }
 
+/** `run --from`: what goes before the prompt so the agent continues another agent's session. */
+async function handoffFrom(
+  agents: readonly CodingAgent[],
+  id: string,
+  agent: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<string> {
+  const sources = agentSessionSources(agents);
+  const found = await findSession(sources, id, { env });
+  if (!found) throw new Error(`No session "${id}" found. "genaicode sessions" lists them.`);
+  const theirs = found.session;
+  // The agent would otherwise continue one project's conversation in another project.
+  if (!theirs.cwd || !isWithin(theirs.cwd, cwd)) {
+    const where = theirs.cwd ? ` It belongs to ${theirs.cwd}: run there (-C).` : '';
+    throw new Error(`That ${theirs.agent} session is not from ${cwd}.${where}`);
+  }
+  const turns = await readSession(sources, found.session);
+  if (!turns.length) throw new Error(`Nothing to read in that ${found.session.agent} session.`);
+  let file: string | undefined;
+  try {
+    file = writeHandoff(cwd, HANDOFF_DIR, agent, turns);
+  } catch {
+    // An unwritable directory still gets the recap.
+  }
+  return handoffPreamble(turns, file);
+}
+
 async function runTask(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
@@ -428,9 +471,19 @@ async function runTask(
       ])
     : picked;
 
+  const cwd = resolve(cli.cwd, options.cwd ?? '.');
+  let handoff = '';
+  if (options.from) {
+    try {
+      handoff = await handoffFrom(agents, options.from, picked.name, cwd, cli.env);
+    } catch (error) {
+      cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      return EXIT_USAGE;
+    }
+  }
   const task: AgentTask = {
-    prompt,
-    cwd: resolve(cli.cwd, options.cwd ?? '.'),
+    prompt: handoff + prompt,
+    cwd,
     model: options.model,
     effort: options.effort,
     maxTurns: options.maxTurns,

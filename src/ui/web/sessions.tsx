@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { groupSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
-import { ago, filterSessions, resumeCommand } from '../sessions.js';
+import { ago, canContinueHere, filterSessions, resumeCommand } from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌' };
 const RANGES = [
@@ -13,9 +13,19 @@ const RANGES = [
 const FOLD = 5;
 
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
-export function Sessions({ token }: { token: string }) {
+export function Sessions({
+  token,
+  cwd,
+  onContinue,
+}: {
+  token: string;
+  /** Where the chat works: sessions from here can be taken over. */
+  cwd: string;
+  /** Take the session over in the chat. */
+  onContinue(session: SessionInfo): void;
+}) {
   const [days, setDays] = useState(7);
-  const [listing, setListing] = useState<SessionListing>();
+  const [listing, setListing] = useState<SessionListing & { readable?: string[] }>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
   const [agent, setAgent] = useState('');
@@ -29,7 +39,7 @@ export function Sessions({ token }: { token: string }) {
     fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
-        return (await res.json()) as SessionListing;
+        return (await res.json()) as SessionListing & { readable?: string[] };
       })
       .then(
         (found) => {
@@ -129,6 +139,14 @@ export function Sessions({ token }: { token: string }) {
                   {session.branch ? <small>{session.branch}</small> : null}
                 </span>
                 <span className="act">
+                  {canContinueHere(session, cwd, listing?.readable ?? []) ? (
+                    <button
+                      title="Bring this conversation into the chat: the agent chosen there continues it"
+                      onClick={() => onContinue(session)}
+                    >
+                      Continue here
+                    </button>
+                  ) : null}
                   {session.url ? (
                     <a href={session.url} target="_blank" rel="noreferrer">
                       Open

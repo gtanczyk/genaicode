@@ -14,10 +14,13 @@ import {
   mapLimited,
   oneLine,
   select,
+  timeOf,
   type SessionFile,
 } from './files.js';
+import type { SessionTurn } from '../session.js';
+import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
 import { number, queryDatabase, tableColumns, text } from './sqlite.js';
-import type { SessionInfo, SessionSource } from './types.js';
+import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
 export interface CodexSessionsOptions {
   /** Codex's home directory. Default `$CODEX_HOME`, else `~/.codex`. */
@@ -44,7 +47,8 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
     .flatMap((block) => (isRecord(block) && typeof block.text === 'string' ? [block.text] : []))
     .join('\n')
     .trim();
-  return text && !text.startsWith('<') ? text : undefined;
+  // Only user records carry the injected context (`<environment_context>`); an answer may start with markup.
+  return text && !(role === 'user' && text.startsWith('<')) ? text : undefined;
 }
 
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
@@ -210,22 +214,9 @@ async function indexedSessions(dir: string): Promise<SessionInfo[] | null> {
 
 /** The lines of a rollout Codex has compressed (`.jsonl.zst`), where this Node can read zstd. */
 async function compressedRollout(file: string): Promise<{ head: unknown[]; tail: unknown[] } | undefined> {
-  // Node 22.15 and later.
-  const zlib = (await import('node:zlib')) as {
-    zstdDecompress?: (data: Buffer, done: (error: Error | null, out: Buffer) => void) => void;
-  };
-  const decompress = zlib.zstdDecompress;
-  if (!decompress) return undefined;
-  const stat = await fs.stat(file);
-  if (stat.size > MAX_COMPRESSED) return undefined;
-  const data = await fs.readFile(file);
-  const text = await new Promise<Buffer>((resolve, reject) =>
-    decompress(data, (error, out) => (error ? reject(error) : resolve(out))),
-  );
-  return chunksOf(text);
+  const text = await zstdFile(file);
+  return text ? chunksOf(text) : undefined;
 }
-
-const MAX_COMPRESSED = 32 * 1024 * 1024;
 
 /** Add the latest prompt, reply and state from a thread's rollout: a `.jsonl`, or the `.jsonl.zst` Codex made of it. */
 async function fromRollout(info: SessionInfo): Promise<void> {
@@ -248,6 +239,78 @@ async function fromRollout(info: SessionInfo): Promise<void> {
   } catch {
     // Gone, or compressed where this Node has no zstd: the index row is what there is.
   }
+}
+
+function outputText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value;
+  // Newer rollouts: `{ content, success }` or content blocks.
+  if (isRecord(value) && typeof value.content === 'string') return value.content;
+  return JSON.stringify(value);
+}
+
+function callInput(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+/** The turns in the lines of a Codex rollout. */
+export function codexTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('codex', options);
+  const payloadOf = (line: unknown) => (isRecord(line) && isRecord(line.payload) ? line.payload : undefined);
+  // Newer rollouts say each message twice, as an event and as an item of the model's history;
+  // one file can hold both formats. The second saying of a message is left out.
+  let saidPrompt: string | undefined;
+  let saidReply: string | undefined;
+  const prompt = (text: string, at: number | undefined) => {
+    if (text === saidPrompt) return;
+    builder.prompt(text, at);
+    saidPrompt = text;
+    saidReply = undefined;
+  };
+  const reply = (text: string, at: number | undefined) => {
+    if (text === saidReply) return;
+    builder.text(text, at);
+    saidReply = text;
+    saidPrompt = undefined;
+  };
+  for (const line of lines) {
+    const payload = payloadOf(line);
+    if (!isRecord(line) || !payload) continue;
+    const at = timeOf(line.timestamp);
+    if (line.type === 'event_msg') {
+      if (payload.type === 'user_message' && typeof payload.message === 'string' && payload.message.trim()) {
+        prompt(payload.message.trim(), at);
+      }
+      if (payload.type === 'agent_message' && typeof payload.message === 'string' && payload.message.trim()) {
+        reply(payload.message.trim(), at);
+      }
+    } else if (line.type === 'response_item') {
+      const asked = itemText(payload, 'user');
+      if (asked) prompt(asked, at);
+      const answered = itemText(payload, 'assistant');
+      if (answered) reply(answered, at);
+      const id = typeof payload.call_id === 'string' ? payload.call_id : undefined;
+      const called =
+        payload.type === 'function_call' || payload.type === 'custom_tool_call' || payload.type === 'local_shell_call';
+      // Work between two sayings of a message means the second one is a new message.
+      if (called) saidPrompt = saidReply = undefined;
+      if (payload.type === 'function_call' && typeof payload.name === 'string') {
+        builder.tool(id, payload.name, callInput(payload.arguments), at);
+      } else if (payload.type === 'custom_tool_call' && typeof payload.name === 'string') {
+        builder.tool(id, payload.name, payload.input, at);
+      } else if (payload.type === 'local_shell_call') {
+        builder.tool(id, 'shell', payload.action, at);
+      } else if (payload.type === 'function_call_output' || payload.type === 'custom_tool_call_output') {
+        builder.toolResult(id, outputText(payload.output), false, at);
+      }
+    }
+  }
+  return builder.turns();
 }
 
 /**
@@ -282,6 +345,14 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
         }
       }
       return sessions.slice(0, query.limit);
+    },
+    async read(session, readOptions) {
+      if (!session.path) throw new Error(`Session ${session.id} has no rollout file.`);
+      const plain = await transcriptLines(session.path).catch(() => undefined);
+      if (plain) return codexTranscript(plain, readOptions);
+      const packed = await zstdFile(`${session.path}.zst`);
+      if (!packed) throw new Error(`Cannot read the rollout of session ${session.id}.`);
+      return codexTranscript(linesOf(packed), readOptions);
     },
   };
 }

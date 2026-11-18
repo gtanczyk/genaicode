@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { detectAgents } from '../agents/discovery.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
+import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
+import { isWithin } from '../agents/sessions/files.js';
 import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
@@ -85,6 +87,12 @@ export interface ChatController {
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
   setModel(model: string | undefined): void;
+  /**
+   * Take over the session with this id (any agent's, in this directory or below it): its turns
+   * join the chat and the current agent continues it, resuming when the session is its own and
+   * getting a handoff otherwise. Resolves false, with a notice, when it cannot.
+   */
+  continueSession(id: string): Promise<boolean>;
   close(): void;
   readonly session: AgentSession;
   /** What the agent published, for the front end that serves it. */
@@ -293,6 +301,45 @@ export function createChatController(options: ChatOptions): ChatController {
     return true;
   };
 
+  const continueSession = async (id: string): Promise<boolean> => {
+    const sources = agentSessionSources(options.agents);
+    try {
+      const found = await findSession(sources, id, { env });
+      if (!found) {
+        notice(`No session "${id}" found. \`genaicode sessions\` lists them.`, 'error');
+        return false;
+      }
+      const { session: theirs } = found;
+      if (!theirs.cwd || !isWithin(theirs.cwd, options.cwd)) {
+        const where = theirs.cwd ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.` : '';
+        notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
+        return false;
+      }
+      const turns = await readSession(sources, theirs);
+      const agent = byName.get(session.get().agent);
+      // Its own store and it can resume: no handoff needed.
+      const own = !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+      if (!turns.length && !own) {
+        notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
+        return false;
+      }
+      if (!session.adopt(turns, own ? { sessionId: theirs.id } : {})) {
+        notice('Stop the running turn before taking over another session.', 'error');
+        return false;
+      }
+      const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+      notice(
+        own
+          ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+          : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+      );
+      return true;
+    } catch (error) {
+      notice(`Could not take over the session: ${errorText(error)}`, 'error');
+      return false;
+    }
+  };
+
   const web = (command: { off: boolean; invalid?: string }, source: ChatSource) => {
     if (command.invalid !== undefined) {
       notice(`Use /web or /web off (not "${command.invalid}").`, 'error');
@@ -393,6 +440,10 @@ export function createChatController(options: ChatOptions): ChatController {
           session.setModel(command.model);
           notice(command.model ? `Model set to ${command.model}.` : "Model cleared; using the agent's default.");
           return 'ok';
+        case 'continue':
+          if (command.id) void continueSession(command.id);
+          else notice('Use /continue <session id>. `genaicode sessions` lists them.', 'error');
+          return 'ok';
         case 'new':
           session.reset();
           notice('Next prompt starts a new agent session.');
@@ -435,6 +486,7 @@ export function createChatController(options: ChatOptions): ChatController {
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     selectAgent,
+    continueSession,
     setModel(model) {
       session.setModel(model || undefined);
     },

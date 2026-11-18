@@ -9,9 +9,12 @@ import {
   isWithin,
   mapLimited,
   oneLine,
+  timeOf,
   type SessionFile,
 } from './files.js';
-import type { SessionInfo, SessionSource } from './types.js';
+import type { SessionTurn } from '../session.js';
+import { transcriptBuilder, transcriptLines } from './transcript.js';
+import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
 export interface ClaudeSessionsOptions {
   /** Claude Code's config directory. Default `$CLAUDE_CONFIG_DIR`, else `~/.claude`. */
@@ -37,7 +40,17 @@ const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[
 /** A wrapped prompt without its tags. */
 function unwrapped(text: string): string | undefined {
   if (!WRAPPED_PROMPT.test(text)) return undefined;
-  return text.replace(/<[^>]*>/g, ' ').trim() || undefined;
+  // One pass, not a regular expression: a transcript can hold megabytes of `<`.
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const open = text.indexOf('<', at);
+    const close = open < 0 ? -1 : text.indexOf('>', open);
+    if (close < 0) break;
+    out += `${text.slice(at, open)} `;
+    at = close + 1;
+  }
+  return (out + text.slice(at)).trim() || undefined;
 }
 
 /**
@@ -133,6 +146,42 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   return info;
 }
 
+/** The turns in the lines of a Claude Code transcript. Subagent lines and Claude Code's own notes are left out. */
+export function claudeTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('claude', options);
+  for (const line of lines) {
+    if (!isRecord(line) || line.isSidechain === true || line.type === 'last-prompt') continue;
+    const at = timeOf(line.timestamp);
+    // The summary Claude Code writes when it compacts is its own text, not something the user asked.
+    const prompt = line.isCompactSummary === true ? {} : promptOf(line);
+    const asked = prompt.typed ?? prompt.wrapped;
+    if (asked) {
+      builder.prompt(asked, at);
+      continue;
+    }
+    if (!isRecord(line.message)) continue;
+    const content = line.message.content;
+    if (line.type === 'assistant') {
+      if (typeof content === 'string') builder.text(content, at);
+      else if (Array.isArray(content)) {
+        for (const block of content) {
+          if (!isRecord(block)) continue;
+          if (block.type === 'text' && typeof block.text === 'string') builder.text(block.text, at);
+          if (block.type === 'tool_use' && typeof block.name === 'string') {
+            builder.tool(typeof block.id === 'string' ? block.id : undefined, block.name, block.input, at);
+          }
+        }
+      }
+    } else if (line.type === 'user' && Array.isArray(content)) {
+      for (const block of content) {
+        if (!isRecord(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
+        builder.toolResult(block.tool_use_id, textOf(block.content, 'text'), block.is_error === true, at);
+      }
+    }
+  }
+  return builder.turns();
+}
+
 /** Sessions Claude Code keeps on this machine. */
 export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSource {
   return {
@@ -160,6 +209,10 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
         }
       }
       return sessions.slice(0, query.limit);
+    },
+    async read(session, readOptions) {
+      if (!session.path) throw new Error(`Session ${session.id} has no transcript file.`);
+      return claudeTranscript(await transcriptLines(session.path), readOptions);
     },
   };
 }

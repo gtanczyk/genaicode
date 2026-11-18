@@ -191,6 +191,14 @@ export interface AgentSession {
   setBudget(budget: AgentBudget | undefined): void;
   /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
+  /**
+   * Take over a conversation that happened elsewhere (`readSession()` gives the turns of another
+   * agent's session). The turns join the transcript, and the next turn hands them over to the
+   * current agent the way a switch does. With `sessionId`, the turns are the current agent's own
+   * session: the next turn resumes it instead (`capabilities.resume`), with nothing to hand over.
+   * Returns false while a turn is running.
+   */
+  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string }): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
   /** Stop everything and drop subscribers. */
@@ -748,6 +756,29 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
+    },
+    adopt(turns, adoptOptions) {
+      if (state.status === 'running' || closed) return false;
+      const own = adoptOptions?.sessionId && agent.capabilities.resume ? adoptOptions.sessionId : undefined;
+      if (!turns.length && !own) return true;
+      const before = state.turns.at(-1)?.id ?? 0;
+      const adopted = turns.map((turn) => {
+        // A handoff of its own belongs to the session it came from.
+        const copy: SessionTurn = { ...turn, id: nextTurnId++ };
+        delete copy.handoff;
+        return copy;
+      });
+      if (own) {
+        // Its own session holds these turns; what it missed before them is left behind.
+        explicitResume = undefined;
+        missedAfter = undefined;
+        known.set(agent, { sessionId: own, upTo: nextTurnId - 1 });
+      } else {
+        // Turns the current agent already missed stay missed.
+        missedAfter ??= Math.max(before, resetAt);
+      }
+      set({ turns: [...state.turns, ...adopted].slice(-maxTurns), ...(own ? { sessionId: own } : {}) });
+      return true;
     },
     idle() {
       if (state.status === 'idle' && !state.queued.length) return Promise.resolve();

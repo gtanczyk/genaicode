@@ -14,6 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - `listSessions()` and `genaicode sessions`: one list of the sessions coding agents keep on this machine, grouped by project, with state (active, waiting for you, unfinished), latest prompt and the id to resume. Every driver names its store in `agent.sessions` (Claude Code, Codex, Copilot, Cursor, Gemini CLI, Antigravity, Muse, Vibe; `null` for opencode); `SessionSource` is the seam for vendor clouds (#186)
 - `listSessions()` reads vendor clouds too: `anthropicManaged` lists its agent's sessions and `cursorCloud` the account's Cloud Agents (`where: 'cloud'`, with a link to open them); `geminiManaged`, `openaiManaged` and `hostedAgent` say `sessions: null`, as their APIs list nothing (#187)
 - `genaicode ui` and `chat --web`: a Sessions view in the browser lists every agent's sessions by project, with search, filters by agent, state and period, and the command that continues each one (#188)
+- Continue a session in another agent: `--from <session id>` in `genaicode chat`, `ui` and `run`, `/continue <id>` in the chat and **Continue here** in the browser's Sessions view bring a Claude Code or Codex session into the chat; its own agent resumes it, any other gets a recap and the transcript. In code: `SessionSource.read()`, `readSession()`, `findSession()` and `AgentSession.adopt()` (#189)
 
 ### Fixed
 

@@ -47,3 +47,15 @@ export function resumeCommand(session: SessionInfo): string | undefined {
   const quote = (text: string) => (/^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`);
   return `genaicode chat -a ${quote(session.agent)}${session.cwd ? ` -C ${quote(session.cwd)}` : ''} -r ${quote(session.id)}`;
 }
+
+/**
+ * Whether the chat working in `cwd` can take a session over: a local one from that directory or
+ * below it, in a store whose conversations can be read (`readable` source names).
+ */
+export function canContinueHere(session: SessionInfo, cwd: string, readable: readonly string[]): boolean {
+  if (session.where !== 'local' || !session.cwd || !cwd || !readable.includes(session.source)) return false;
+  let end = cwd.length;
+  while (end > 1 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
+  const root = cwd.slice(0, end);
+  return session.cwd === root || session.cwd.startsWith(`${root}/`) || session.cwd.startsWith(`${root}\\`);
+}

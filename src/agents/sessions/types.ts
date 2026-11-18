@@ -1,4 +1,5 @@
 import type { TokenUsage } from '../../core/types.js';
+import type { SessionTurn } from '../session.js';
 
 /**
  * - `active`: written to in the last couple of minutes; an agent is probably working in it.
@@ -58,4 +59,17 @@ export interface SessionSource {
   where: 'local' | 'cloud';
   /** Newest first. Rejects when the store cannot be read at all; a missing store is an empty list. */
   list(query?: SessionQuery): Promise<SessionInfo[]>;
+  /**
+   * What was said in a session this source listed, as turns `AgentSession.adopt()` takes: prompts,
+   * the agent's messages and tool calls, oldest first. Only the end of a very long one is read.
+   * Absent where the store's conversations cannot be read (yet).
+   */
+  read?(session: SessionInfo, options?: SessionReadOptions): Promise<SessionTurn[]>;
+}
+
+export interface SessionReadOptions {
+  /** At most this many turns, the latest ones. Default 100. */
+  maxTurns?: number;
+  /** Tool output longer than this is cut. Default 4000 characters. */
+  maxToolOutput?: number;
 }

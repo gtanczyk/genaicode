@@ -50,7 +50,8 @@ npx genaicode chat --web           # both: the terminal and the browser on one s
 In the browser, **Sessions** in the header shows what every agent on this machine has going on:
 the same list as `genaicode sessions`, by project, with search over titles, prompts, directories
 and branches, and filters by agent, state and period. A local session gives the command that
-continues it in a terminal; a cloud session links to its page.
+continues it in a terminal, and **Continue here** when it is from this directory; a cloud session
+links to its page.
 
 The terminal and the browser can show one session. `/web` in the terminal chat opens it in
 the browser (`/web off` stops the server), and Enter in the terminal that runs
@@ -69,6 +70,19 @@ runs out (`/fallback off` stops it); `/help` lists the rest. `/agent codex` hand
 conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
 switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
 context).
+
+A session from `genaicode sessions` continues the same way, in whichever agent you like:
+
+```sh
+npx genaicode chat -a codex --from a1b2c3d4      # codex takes over a Claude Code session
+npx genaicode run -a gemini --from a1b2c3d4 "Finish the export and run the tests"
+```
+
+`--from` takes a session id or the start of one. The session's turns show in the chat, and the
+agent hears them with your first prompt: its own agent resumes the session, another one gets the
+recap and the transcript file. `/continue <id>` does it inside a chat, and **Continue here** in
+the browser's Sessions view. It works for sessions from the directory genaicode runs in (`-C`) or below it, in the
+stores genaicode can read conversations from (Claude Code and Codex today).
 
 <p align="center">
   <picture>

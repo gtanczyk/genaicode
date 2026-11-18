@@ -182,7 +182,17 @@ function App() {
         )}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
-      {showSessions ? <Sessions token={token} /> : null}
+      {showSessions ? (
+        <Sessions
+          token={token}
+          cwd={cwd}
+          onContinue={(found) => {
+            // The chat says what happened, also when it could not.
+            void command({ type: 'continue', id: found.id });
+            setShowSessions(false);
+          }}
+        />
+      ) : null}
       <AgentChat
         state={session}
         style={showSessions ? { display: 'none' } : undefined}

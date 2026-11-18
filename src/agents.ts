@@ -84,6 +84,10 @@ export {
   listSessions,
   readClaudeSession,
   readCodexSession,
+  claudeTranscript,
+  codexTranscript,
+  findSession,
+  readSession,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -92,6 +96,7 @@ export type {
   SessionListing,
   SessionProject,
   SessionQuery,
+  SessionReadOptions,
   SessionSource,
   SessionActivity,
   StoreOptions,

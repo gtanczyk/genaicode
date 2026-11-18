@@ -33,6 +33,8 @@ export interface UiRunOptions extends ChatOptions {
   signal?: AbortSignal;
   /** Sent as soon as the chat opens. */
   firstPrompt?: string;
+  /** A session to take over before anything is sent (`ChatController.continueSession`). */
+  continueFrom?: string;
 }
 
 export interface WebRunOptions extends UiRunOptions {
@@ -89,8 +91,10 @@ export async function runChat(options: WebRunOptions): Promise<number> {
     options.stderr.write(`${error.message}\n`);
     return 2;
   }
+  // A first prompt about a session that could not be taken over would start without it.
+  const taken = !options.continueFrom || (await controller.continueSession(options.continueFrom));
   if (options.openWeb) controller.submit('/web');
-  if (options.firstPrompt) controller.submit(options.firstPrompt);
+  if (options.firstPrompt && taken) controller.submit(options.firstPrompt);
   await runTerminal(controller, options);
   await web.close();
   controller.close();
@@ -125,7 +129,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
-  if (options.firstPrompt) controller.submit(options.firstPrompt);
+  const taken = !options.continueFrom || (await controller.continueSession(options.continueFrom));
+  if (options.firstPrompt && taken) controller.submit(options.firstPrompt);
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
@@ -185,8 +190,11 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       port: options.port,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
-      sessions: (query) =>
-        listSessions(agentSessionSources(options.agents), { ...query, ...(options.env ? { env: options.env } : {}) }),
+      sessions: async (query) => {
+        const sources = agentSessionSources(options.agents);
+        const listing = await listSessions(sources, { ...query, ...(options.env ? { env: options.env } : {}) });
+        return { ...listing, readable: sources.filter((source) => source.read).map((source) => source.name) };
+      },
     }).catch((error: unknown) => {
       running = undefined;
       throw error;

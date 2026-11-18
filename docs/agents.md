@@ -284,6 +284,27 @@ const agents = [claude(), codex(), codexLive(), gemini()];
 const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50 });
 ```
 
+### Continuing a session in another agent
+
+Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the
+agent's messages, tool calls with their output), as `createAgentSession` keeps them. Claude Code
+and Codex have it today. `session.adopt(turns)` takes them over: they join the transcript, and the
+next prompt hands them to the current agent like `/agent` does, a recap in the prompt and the
+whole transcript in `.genaicode/handoff/`.
+
+```ts
+const sources = agentSessionSources([claude(), codex()]);
+const found = await findSession(sources, 'a1b2c3d4'); // an id, or the start of one
+if (found) {
+  const session = createAgentSession({ agent: codex(), cwd: found.session.cwd! });
+  session.adopt(await readSession(sources, found.session));
+  session.send('Finish what Claude started.');
+}
+```
+
+`adopt(turns, { sessionId })` is for the agent's own session: the next prompt resumes it, and the
+turns are there to show. Only the end of a very long transcript is read (the last 8 MB, 100 turns).
+
 | Driver               | Source                  | Reads                                                                           |
 | -------------------- | ----------------------- | ------------------------------------------------------------------------------- |
 | `claude`             | `claudeSessions()`      | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents         |
