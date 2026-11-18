@@ -234,7 +234,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
       if (query.cwd !== undefined) return [];
       const c = await client();
       if (!c.beta.sessions.list) throw new Error(`${name}: this @anthropic-ai/sdk version cannot list sessions.`);
-      const wanted = query.limit ?? 100;
+      const wanted = query.limit ?? Infinity;
       const found: SessionInfo[] = [];
       let seen = 0;
       for await (const session of c.beta.sessions.list(

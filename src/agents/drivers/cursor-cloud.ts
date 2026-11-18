@@ -145,7 +145,7 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
     async list(query = {}) {
       // A local directory names no Cloud Agent.
       if (query.cwd !== undefined) return [];
-      const wanted = query.limit ?? 100;
+      const wanted = query.limit ?? Infinity;
       const found: SessionInfo[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < MAX_LIST_PAGES && found.length < wanted; page++) {
