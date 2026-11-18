@@ -339,6 +339,52 @@ describe('acp', () => {
   });
 });
 
+describe('genaicode sessions doctor', () => {
+  it('parses doctor and refuses options of the listing', () => {
+    expect(parseCli(['sessions', 'doctor', '-a', 'codex', '--json'])).toEqual({
+      kind: 'doctor',
+      json: true,
+      agent: 'codex',
+    });
+    expect(() => parseCli(['sessions', 'doctor', '--limit', '3'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'nurse'])).toThrow(UsageError);
+  });
+
+  it('prints counts per store and fails when one looks broken', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-doctor-'));
+    dirs.push(home);
+    const listed = (prompt?: string) =>
+      Array.from({ length: 6 }, (_, at) => ({
+        source: 'alpha',
+        agent: 'alpha',
+        id: `s${at}`,
+        where: 'local' as const,
+        updatedAt: Date.now(),
+        cwd: '/work',
+        ...(prompt ? { lastPrompt: prompt } : {}),
+      }));
+    const run = async (prompt?: string) => {
+      const agent = {
+        ...fakeAgent('alpha', []),
+        sessions: { name: 'alpha', where: 'local' as const, list: async () => listed(prompt) },
+      };
+      const { cli, out } = environment({
+        argv: ['sessions', 'doctor'],
+        env: { HOME: home, PATH: '' },
+        agents: [agent],
+      });
+      return { code: await main(cli), out: out() };
+    };
+    const fine = await run('do it');
+    expect(fine.code).toBe(EXIT_OK);
+    expect(fine.out).toContain('alpha  not installed  ok');
+    expect(fine.out).toContain('6 sessions: 6 with a prompt or title, 6 with a directory');
+    const broken = await run();
+    expect(broken.code).toBe(EXIT_FAILED);
+    expect(broken.out).toContain('! only 0 of 6 sessions have a prompt or a title');
+  });
+});
+
 describe('genaicode hooks', () => {
   it('parses the action and refuses what it does not know', () => {
     expect(parseCli(['hooks'])).toEqual({ kind: 'hooks', action: 'status' });

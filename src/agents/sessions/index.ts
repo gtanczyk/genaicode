@@ -29,6 +29,8 @@ export { liveDir, liveEvent, readLive, recordHook, withLive } from './live.js';
 export type { LiveRecord, LiveState } from './live.js';
 export { HOOK_AGENTS, hookCommand, hooksFile, hooksStatus, installHooks, uninstallHooks } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
+export { checkSessions, cliVersion } from './doctor.js';
+export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource, SessionActivity } from './types.js';
 
 /**

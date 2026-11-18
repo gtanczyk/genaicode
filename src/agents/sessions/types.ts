@@ -66,6 +66,11 @@ export interface SessionQuery {
 export interface SessionSource {
   name: string;
   where: 'local' | 'cloud';
+  /**
+   * The version of the agent's CLI whose store this source was last checked against. A newer CLI
+   * may keep its sessions differently: `checkSessions()` says whether the source still reads them.
+   */
+  verified?: string;
   /** Newest first. Rejects when the store cannot be read at all; a missing store is an empty list. */
   list(query?: SessionQuery): Promise<SessionInfo[]>;
   /**

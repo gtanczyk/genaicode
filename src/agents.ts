@@ -104,6 +104,8 @@ export {
   readLive,
   recordHook,
   withLive,
+  checkSessions,
+  cliVersion,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -121,6 +123,8 @@ export type {
   HooksStatus,
   LiveRecord,
   LiveState,
+  SessionCheck,
+  SessionCheckOptions,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';

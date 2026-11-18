@@ -317,6 +317,30 @@ The command in the settings is the `genaicode` that installed it (`node` and the
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
 global install), and run `hooks install` again after moving it.
 
+### When an agent changes its store: `sessions doctor`
+
+No agent promises how it keeps its sessions, so an update of its CLI can change the store, and a
+reader that no longer understands it goes quiet instead of failing. `sessions doctor` shows it:
+
+```bash
+npx genaicode sessions doctor            # every store; exits 1 when one looks broken
+npx genaicode sessions doctor -a codex --since 7d --json
+```
+
+```
+claude  2.1.340 (checked with 2.1.327)  ok
+  412 sessions: 398 with a prompt or title, 412 with a directory, 412 with a state
+  read 5 of the 5 newest: agent messages in 5, tool calls in 4
+  hooks: installed, 3 sessions reported
+```
+
+Per store it counts the sessions of the last 30 days and how many have a prompt, a directory and
+a state, opens the five newest conversations, and compares the installed CLI with the version the
+reader was last checked against (`SessionSource.verified`). A store where most sessions lost their
+prompt or directory, or whose conversations no longer open, is a problem; a newer CLI alone is
+not. It prints counts only, never what was said, so the output is safe to paste into an issue.
+From code: `checkSessions(sources, { version })` returns the same as `SessionCheck[]`.
+
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the

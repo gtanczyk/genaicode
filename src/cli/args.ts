@@ -16,6 +16,8 @@ export type CliCommand =
       sinceMs?: number;
       limit: number;
     }
+  /** `sessions doctor`: whether the session stores still read as expected. */
+  | { kind: 'doctor'; json: boolean; agent?: string; sinceMs?: number }
   | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
       kind: 'chat' | 'ui';
@@ -100,10 +102,11 @@ export function parseCli(argv: readonly string[]): CliCommand {
   }
 
   if (command === 'sessions') {
-    const { values } = parse(() =>
+    const { values, positionals } = parse(() =>
       parseArgs({
         args: rest,
         strict: true,
+        allowPositionals: true,
         options: {
           json: { type: 'boolean' },
           cloud: { type: 'boolean' },
@@ -115,6 +118,18 @@ export function parseCli(argv: readonly string[]): CliCommand {
       }),
     );
     const limit = optionalNumber(values.limit, '--limit');
+    if (positionals.length) {
+      const extra = values.cloud || values.cwd !== undefined || values.limit !== undefined;
+      if (positionals.length > 1 || positionals[0] !== 'doctor' || extra) {
+        throw new UsageError('Usage: genaicode sessions [doctor] [options]. "doctor" takes -a, --since and --json.');
+      }
+      return {
+        kind: 'doctor',
+        json: values.json === true,
+        ...(values.agent !== undefined ? { agent: values.agent } : {}),
+        ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
+      };
+    }
     return {
       kind: 'sessions',
       json: values.json === true,

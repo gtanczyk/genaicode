@@ -10,6 +10,8 @@ import { ago } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import {
   agentSessionSources,
+  checkSessions,
+  cliVersion,
   findSession,
   groupSessions,
   HOOK_AGENTS,
@@ -113,6 +115,7 @@ Usage:
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
+  genaicode sessions doctor            Check that the agents' session stores still read as expected
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
@@ -128,6 +131,11 @@ Sessions options:
 
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
+
+  "sessions doctor" (-a, --since, --json) checks each store: how many sessions it lists, how
+  many have a prompt and a directory, whether the newest conversations open, and whether the
+  agent's CLI is newer than the one the reader was checked with. It prints counts, never what
+  was said, and exits 1 when a store reads differently than expected.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex); default: both
@@ -233,6 +241,8 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return listAgents(cli, agents, command.json);
     case 'sessions':
       return showSessions(cli, agents, command);
+    case 'doctor':
+      return checkStores(cli, agents, command);
     case 'hooks':
       return manageHooks(cli, command);
     case 'run':
@@ -473,6 +483,69 @@ async function showSessions(
   }
   cli.stdout.write('\n● active  ◆ asks for approval  ○ waiting for you  ◌ unfinished\n');
   return EXIT_OK;
+}
+
+/** `sessions doctor`: counts per store, and what looks broken. Nothing of what was said. */
+async function checkStores(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'doctor' }>,
+): Promise<number> {
+  const chosen = agents.filter((agent) => command.agent === undefined || agent.name === command.agent);
+  const sources = agentSessionSources(chosen);
+  if (!sources.length) {
+    cli.stderr.write(`No session store for agent "${command.agent}".\n`);
+    return EXIT_USAGE;
+  }
+  // The CLI of the first installed agent that keeps its sessions in this store.
+  const paths = detectAgents(chosen, cli.env);
+  const commandOf = (name: string) => paths.find((found) => found.agent.sessions?.name === name && found.path)?.path;
+  const checks = await checkSessions(sources, {
+    env: cli.env,
+    ...(command.sinceMs !== undefined ? { since: Date.now() - command.sinceMs } : {}),
+    ...(cli.signal ? { signal: cli.signal } : {}),
+    version: async (source) => {
+      const path = commandOf(source.name);
+      return path ? cliVersion(path, cli.env) : undefined;
+    },
+  });
+  const failed = checks.some((check) => check.problems.length);
+  if (command.json) {
+    for (const check of checks) cli.stdout.write(`${JSON.stringify(check)}\n`);
+    return failed ? EXIT_FAILED : EXIT_OK;
+  }
+  for (const check of checks) {
+    const version = check.version
+      ? `${check.version}${check.verified ? (check.newer ? ` (checked with ${check.verified})` : '') : ' (never checked)'}`
+      : commandOf(check.source)
+        ? 'version unknown'
+        : 'not installed';
+    const verdict = check.problems.length ? 'PROBLEM' : check.listed ? 'ok' : 'no sessions';
+    cli.stdout.write(`\n${check.source}  ${version}  ${verdict}\n`);
+    if (check.listed) {
+      cli.stdout.write(
+        `  ${check.listed} session${check.listed === 1 ? '' : 's'}: ${check.withPrompt} with a prompt or title, ${check.withCwd} with a directory, ${check.withState} with a state\n`,
+      );
+    }
+    if (check.sampled) {
+      cli.stdout.write(
+        `  read ${check.read} of the ${check.sampled} newest: agent messages in ${check.withReply}, tool calls in ${check.withTools}\n`,
+      );
+    }
+    if (check.hooks) {
+      cli.stdout.write(
+        `  hooks: ${check.hooks.installed ? `installed, ${check.hooks.reported} sessions reported` : 'not installed'}\n`,
+      );
+    }
+    for (const problem of check.problems) cli.stdout.write(`  ! ${problem}\n`);
+    for (const note of check.notes) cli.stdout.write(`  - ${note}\n`);
+  }
+  cli.stdout.write(
+    failed
+      ? '\nA store reads differently than expected: its agent may have changed how it keeps sessions.\n'
+      : '\nEvery store reads as expected.\n',
+  );
+  return failed ? EXIT_FAILED : EXIT_OK;
 }
 
 function listAgents(cli: CliEnvironment, agents: readonly CodingAgent[], json: boolean): number {
