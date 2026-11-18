@@ -94,6 +94,13 @@ export type {
   GeminiManagedOptions,
   GeminiUsage,
 } from './agents/drivers/gemini-managed.js';
+export { openaiManaged, openaiManagedProvider } from './agents/drivers/openai-managed.js';
+export type {
+  OpenAiManagedOptions,
+  OpenAiResponse,
+  OpenAiResponseItem,
+  OpenAiUsage,
+} from './agents/drivers/openai-managed.js';
 export { isManagedSettled, managedAgent } from './agents/managed.js';
 export type {
   ManagedAgentOptions,
