@@ -293,6 +293,19 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
       const state = streams.get(runId) ?? { text: '', tools: new Map<string, string>() };
       streams.set(runId, state);
       const at = () => ({ cursor: position ? `${runId} ${position}` : runId });
+      // The stream carries no usage: read it now and then, so a local budget can stop a long run.
+      const usageEvery = options.pollIntervalMs ?? DEFAULT_POLL_MS;
+      let usageAt = Date.now();
+      let usageSeen = '';
+      const usageUpdate = async (): Promise<AgentEvent | undefined> => {
+        if (Date.now() - usageAt < usageEvery) return undefined;
+        usageAt = Date.now();
+        const spent = await usage(id, signal).catch(() => undefined);
+        const key = JSON.stringify(spent ?? null);
+        if (!spent || key === usageSeen) return undefined;
+        usageSeen = key;
+        return { type: 'usage', usage: spent };
+      };
       const flush = (events: AgentEvent[]) => {
         if (state.text) events.push({ type: 'message', text: state.text });
         state.text = '';
@@ -330,6 +343,10 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
               tries = -1;
             }
             const events: AgentEvent[] = [];
+            if (message.event !== 'result' && message.event !== 'done') {
+              const spent = await usageUpdate();
+              if (spent) events.push(spent);
+            }
             switch (message.event) {
               case 'assistant':
                 if (typeof data.text === 'string' && data.text) {
@@ -434,6 +451,9 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
   };
   return provider;
 }
+
+/** `managedAgent()`'s default poll interval, which also paces usage reads during a stream. */
+const DEFAULT_POLL_MS = 5_000;
 
 /** How long a run's end waits for the run a queued steer starts, and how often it looks. */
 const QUEUED_WAIT_MS = 30_000;

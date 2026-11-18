@@ -819,7 +819,8 @@ const run = agent.run({
   agent keeps its current ones.
 - MCP servers go along with their headers. Tools run without approvals (`permissions.approval`
   is `auto-approve` only), and there is no platform budget: `task.budget` is checked against
-  reported usage.
+  usage, which is read every `pollIntervalMs` while the stream runs, and a run over it is
+  cancelled.
 - A local `cwd` is ignored (the agent works in its own VM). `effort`, `maxTurns`, `files` and
   `extraArgs` are refused; a system prompt goes before the task text. `vendor` fields go into
   the create (or follow-up) request as they are.

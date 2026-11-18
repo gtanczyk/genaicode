@@ -466,6 +466,30 @@ describe('cursorCloud', () => {
     });
   });
 
+  it('reads usage while the stream runs, so a local budget stops the run', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const fake = fakeFetch({
+      usage: (reads) =>
+        reads <= 1
+          ? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0 }
+          : { inputTokens: 900, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 1000 },
+      runs: { 'run-1': { status: 'RUNNING', result: undefined } },
+      streams: { 'run-1': [{ events: [{ event: 'heartbeat', data: {} }, ...turn().slice(1, 3)], hold }] },
+    });
+    const run = cursorCloud(base(fake.fetch)).run(task({ budget: { maxTokens: 10 } }));
+    const events = await drain(run);
+    const result = await run.result;
+    release();
+    expect(events).toContainEqual({
+      type: 'usage',
+      usage: { inputTokens: 900, outputTokens: 100, totalTokens: 1000, cachedInputTokens: 0 },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failure).toEqual({ kind: 'budget' });
+    expect(fake.called('POST', '/runs/run-1/cancel')).toHaveLength(1);
+  });
+
   it('reports an interrupt of a run that already ended as enforced', async () => {
     const fake = fakeFetch({ agent: { id: 'bc-1', latestRunId: 'run-1' }, cancelStatus: 409 });
     expect(await cursorCloudProvider(base(fake.fetch)).interrupt('bc-1')).toEqual({ enforced: true });
