@@ -233,6 +233,8 @@ export function pack(options: PackOptions): Pack {
     name: options.name ?? 'pack',
     command: lead.command,
     capabilities: lead.capabilities,
+    // A pack turn is a session of its lead.
+    ...(lead.sessions !== undefined ? { sessions: lead.sessions } : {}),
     tasks: () => [...subs.values()].map(report),
     async close() {
       const all = [...subs.values()];
