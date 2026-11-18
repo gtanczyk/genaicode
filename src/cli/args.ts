@@ -16,6 +16,7 @@ export type CliCommand =
       sinceMs?: number;
       limit: number;
     }
+  | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
       kind: 'chat' | 'ui';
       agent?: string;
@@ -123,6 +124,22 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
       limit: limit ?? 30,
     };
+  }
+
+  if (command === 'hooks') {
+    const { values, positionals } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        allowPositionals: true,
+        options: { agent: { type: 'string', short: 'a' } },
+      }),
+    );
+    const action = positionals[0] ?? 'status';
+    if (positionals.length > 1 || (action !== 'status' && action !== 'install' && action !== 'uninstall')) {
+      throw new UsageError('Usage: genaicode hooks [status|install|uninstall] [-a <agent>]');
+    }
+    return { kind: 'hooks', action, ...(values.agent !== undefined ? { agent: values.agent } : {}) };
   }
 
   if (command === 'chat' || command === 'ui') {

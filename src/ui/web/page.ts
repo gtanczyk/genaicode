@@ -82,6 +82,8 @@ button.chip:hover { border-color: var(--accent); }
 .session-row { display: grid; grid-template-columns: 16px 92px 40px 1fr auto; gap: 8px; align-items: baseline; padding: 5px 12px; border-top: 1px solid var(--line); font-size: 13px; }
 .session-row .mark[data-state='active'] { color: var(--ok); }
 .session-row .mark[data-state='unfinished'] { color: #e8590c; }
+.session-row .mark[data-state='approval'] { color: #e03131; }
+.session-row .label small.asks { color: #e03131; font-weight: 600; }
 .session-row .agent, .session-row .age { color: var(--muted); white-space: nowrap; }
 .session-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-row .act { display: flex; gap: 6px; }

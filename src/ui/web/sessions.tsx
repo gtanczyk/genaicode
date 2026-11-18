@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { groupSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
 import { ago, canContinueHere, filterSessions, resumeCommand } from '../sessions.js';
 
-const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌' };
+const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
+
+/** `approval` for a session that asks to use a tool; its `state` otherwise. */
+const shownState = (session: SessionInfo): string =>
+  session.waitingFor === 'approval' ? 'approval' : (session.state ?? '');
+const stateTitle = (session: SessionInfo): string =>
+  session.waitingFor === 'approval'
+    ? `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`
+    : (session.state ?? 'state unknown');
 const RANGES = [
   { days: 2, label: 'Last 2 days' },
   { days: 7, label: 'Last 7 days' },
@@ -88,6 +96,7 @@ export function Sessions({
         <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)}>
           <option value="">Any state</option>
           <option value="active">● Active</option>
+          <option value="approval">◆ Asks for approval</option>
           <option value="waiting">○ Waiting for you</option>
           <option value="unfinished">◌ Unfinished</option>
         </select>
@@ -127,8 +136,8 @@ export function Sessions({
             </summary>
             {rows.map((session) => (
               <div key={`${session.source}:${session.id}`} className="session-row">
-                <span className="mark" data-state={session.state} title={session.state ?? 'state unknown'}>
-                  {MARK[session.state ?? ''] ?? '·'}
+                <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
+                  {MARK[shownState(session)] ?? '·'}
                 </span>
                 <span className="agent">{session.agent}</span>
                 <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
@@ -136,6 +145,7 @@ export function Sessions({
                 </span>
                 <span className="label" title={session.lastPrompt ?? session.title}>
                   {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                  {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
                   {session.branch ? <small>{session.branch}</small> : null}
                 </span>
                 <span className="act">
