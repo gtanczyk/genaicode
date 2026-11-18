@@ -357,9 +357,17 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       server?.close();
     }
   };
+  // Where each session listed through the app server came from, so reading it asks the same one.
+  const listedIn = new Map<string, NodeJS.ProcessEnv>();
   const listed = async (query: SessionQuery, always = false) => {
-    const threads = await ask(envOf(query), query.signal, (server) => codexThreads(server, query), always);
-    if (threads?.length) await mapLimited(threads.slice(0, 200), 8, fromRollout);
+    const env = envOf(query);
+    const threads = await ask(env, query.signal, (server) => codexThreads(server, query), always);
+    if (threads?.length) {
+      for (const thread of threads) listedIn.set(thread.id, env);
+      // Kept small: the latest listings are the ones read from.
+      for (const id of [...listedIn.keys()].slice(0, Math.max(0, listedIn.size - 2000))) listedIn.delete(id);
+      await mapLimited(threads.slice(0, 200), 8, fromRollout);
+    }
     return threads;
   };
   return {
@@ -396,7 +404,8 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       return sessions.slice(0, query.limit);
     },
     async read(session, readOptions) {
-      const turns = await ask(envOf(), undefined, (server) => readCodexThread(server, session.id, readOptions));
+      const env = listedIn.get(session.id) ?? envOf();
+      const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));
       if (turns?.length) return turns;
       if (!session.path) throw new Error(`Session ${session.id} has no rollout file.`);
       const plain = await transcriptLines(session.path).catch(() => undefined);

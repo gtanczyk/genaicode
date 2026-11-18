@@ -181,6 +181,10 @@ describe.skipIf(process.platform === 'win32')('codexSessions over the app server
     expect(await codexSessions({ via: 'app-server', env }).read!(viaApi[0]!)).toMatchObject([
       { prompt: 'hello', entries: [{ kind: 'text', text: 'hi' }] },
     ]);
+    // Listed with an environment of its own, a session is read through the same server.
+    const own = codexSessions();
+    const [mine] = await own.list({ env: { ...env, GENAICODE_CODEX_SESSIONS: 'app-server' } });
+    expect(await own.read!(mine!)).toMatchObject([{ prompt: 'hello' }]);
     // By default nothing is started: the (empty) files are what there is.
     expect(await codexSessions().list({ env })).toEqual([]);
     expect(await codexSessions().list({ env: { ...env, GENAICODE_CODEX_SESSIONS: 'auto' } })).toHaveLength(1);
