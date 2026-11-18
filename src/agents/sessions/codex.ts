@@ -261,27 +261,43 @@ function callInput(value: unknown): unknown {
 export function codexTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
   const builder = transcriptBuilder('codex', options);
   const payloadOf = (line: unknown) => (isRecord(line) && isRecord(line.payload) ? line.payload : undefined);
-  // Newer rollouts say each message twice: as an event, and as an item of the model's history.
-  const events = lines.some(
-    (line) => isRecord(line) && line.type === 'event_msg' && payloadOf(line)?.type === 'user_message',
-  );
+  // Newer rollouts say each message twice, as an event and as an item of the model's history;
+  // one file can hold both formats. The second saying of a message is left out.
+  let saidPrompt: string | undefined;
+  let saidReply: string | undefined;
+  const prompt = (text: string, at: number | undefined) => {
+    if (text === saidPrompt) return;
+    builder.prompt(text, at);
+    saidPrompt = text;
+    saidReply = undefined;
+  };
+  const reply = (text: string, at: number | undefined) => {
+    if (text === saidReply) return;
+    builder.text(text, at);
+    saidReply = text;
+    saidPrompt = undefined;
+  };
   for (const line of lines) {
     const payload = payloadOf(line);
     if (!isRecord(line) || !payload) continue;
     const at = timeOf(line.timestamp);
-    if (line.type === 'event_msg' && events) {
+    if (line.type === 'event_msg') {
       if (payload.type === 'user_message' && typeof payload.message === 'string' && payload.message.trim()) {
-        builder.prompt(payload.message.trim(), at);
+        prompt(payload.message.trim(), at);
       }
-      if (payload.type === 'agent_message' && typeof payload.message === 'string') builder.text(payload.message, at);
+      if (payload.type === 'agent_message' && typeof payload.message === 'string' && payload.message.trim()) {
+        reply(payload.message.trim(), at);
+      }
     } else if (line.type === 'response_item') {
-      if (!events) {
-        const prompt = itemText(payload, 'user');
-        if (prompt) builder.prompt(prompt, at);
-        const reply = itemText(payload, 'assistant');
-        if (reply) builder.text(reply, at);
-      }
+      const asked = itemText(payload, 'user');
+      if (asked) prompt(asked, at);
+      const answered = itemText(payload, 'assistant');
+      if (answered) reply(answered, at);
       const id = typeof payload.call_id === 'string' ? payload.call_id : undefined;
+      const called =
+        payload.type === 'function_call' || payload.type === 'custom_tool_call' || payload.type === 'local_shell_call';
+      // Work between two sayings of a message means the second one is a new message.
+      if (called) saidPrompt = saidReply = undefined;
       if (payload.type === 'function_call' && typeof payload.name === 'string') {
         builder.tool(id, payload.name, callInput(payload.arguments), at);
       } else if (payload.type === 'custom_tool_call' && typeof payload.name === 'string') {

@@ -144,6 +144,22 @@ describe('reading a session', () => {
     ]);
     expect(newer).toMatchObject([{ prompt: 'List files', entries: expected }]);
     expect(newer).toHaveLength(1);
+    // A session resumed after a Codex upgrade holds both formats.
+    const mixed = codexTranscript([
+      message('user', 'First'),
+      message('assistant', 'Did it.'),
+      message('user', 'Again'),
+      message('assistant', 'Did it.'),
+      message('user', 'Third'),
+      { type: 'event_msg', payload: { type: 'user_message', message: 'Third' } },
+      { type: 'event_msg', payload: { type: 'agent_message', message: 'Done.' } },
+      message('assistant', 'Done.'),
+    ]);
+    expect(mixed.map((turn) => [turn.prompt, turn.result?.text])).toEqual([
+      ['First', 'Did it.'],
+      ['Again', 'Did it.'],
+      ['Third', 'Done.'],
+    ]);
   });
 
   it('finds a session by the start of its id and reads it through its source', async () => {
