@@ -756,7 +756,7 @@ import { openaiManaged } from 'genaicode/agents';
 
 const agent = openaiManaged({
   model: 'gpt-6.2-astra',
-  network: ['pypi.org', 'github.com'], // the hosted shell's allowlist
+  network: ['pypi.org', 'github.com'], // the session container's allowlist (none by default)
   // tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], // instead of the defaults
 });
 

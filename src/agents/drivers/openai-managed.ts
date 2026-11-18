@@ -63,7 +63,7 @@ export interface OpenAiManagedOptions {
   baseUrl?: string;
   /** Hosted tools every response gets. Default: a hosted shell in a container kept for the session, and web search. */
   tools?: readonly Readonly<Record<string, unknown>>[];
-  /** Domains the default hosted shell may reach. Default: the platform's own policy. */
+  /** Domains the default shell's container may reach, set when it is made. Default: no network. */
   network?: readonly string[];
   /** Minutes the default shell's container lives after its last use. Default 20; resuming later fails. */
   containerMinutes?: number;
@@ -174,9 +174,6 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
             environment: {
               type: 'container_reference',
               container_id: container,
-              ...(options.network
-                ? { network_policy: { type: 'allowlist', allowed_domains: [...options.network] } }
-                : {}),
             },
           },
           { type: 'web_search' },
@@ -222,6 +219,11 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
       // The default shell keeps its files in one container for the whole session: the one given as
       // the workspace, else the one the resumed response used, else a new one.
       let container = /^cntr_/.test(start.workspace ?? '') ? start.workspace : undefined;
+      // A container's network policy is set when it is made; one made elsewhere keeps its own.
+      if (container && options.network && !options.tools)
+        throw new Error(
+          `${name}: 'network' applies to containers it makes; container '${container}' has its own policy.`,
+        );
       let made: string | undefined;
       if (start.resume !== undefined) {
         const prior = await retrieve(start.resume, signal);
@@ -251,6 +253,9 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
           {
             name: `genaicode ${start.correlationId ?? 'session'}`.slice(0, 64),
             expires_after: { anchor: 'last_active_at', minutes: options.containerMinutes ?? 20 },
+            ...(options.network
+              ? { network_policy: { type: 'allowlist', allowed_domains: [...options.network] } }
+              : {}),
           },
           signal,
         );

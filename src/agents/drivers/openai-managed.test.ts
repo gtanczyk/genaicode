@@ -197,14 +197,13 @@ describe('openaiManaged', () => {
     );
     await drain(run);
     expect((await run.result).ok).toBe(true);
+    expect(fake.called('POST', '/containers')[0].body).toMatchObject({
+      network_policy: { type: 'allowlist', allowed_domains: ['pypi.org'] },
+    });
     expect(fake.called('POST', '/responses')[0].body?.tools).toEqual([
       {
         type: 'shell',
-        environment: {
-          type: 'container_reference',
-          container_id: 'cntr_new',
-          network_policy: { type: 'allowlist', allowed_domains: ['pypi.org'] },
-        },
+        environment: { type: 'container_reference', container_id: 'cntr_new' },
       },
       { type: 'web_search' },
       {
@@ -226,6 +225,9 @@ describe('openaiManaged', () => {
     const fake = fakeFetch({ responses: { resp_1: done() } });
     const provider = openaiManagedProvider(base(fake.fetch));
     await provider.start({ prompt: 'Go', workspace: 'cntr_9' });
+    await expect(
+      openaiManagedProvider(base(fake.fetch, { network: ['pypi.org'] })).start({ prompt: 'Go', workspace: 'cntr_9' }),
+    ).rejects.toThrow(/has its own policy/);
     await openaiManagedProvider(
       base(fake.fetch, { tools: [{ type: 'code_interpreter', container: { type: 'auto' } }] }),
     ).start({
