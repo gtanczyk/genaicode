@@ -64,16 +64,20 @@ export async function listSessions(
   const live = query.live === false ? undefined : await readLive(query.env).catch(() => undefined);
   let found = lists.flat();
   if (live?.size) {
-    if (query.limit !== undefined) found = found.concat(await reported(sources, found, live, query));
-    found = withLive(found, live);
+    if (query.limit !== undefined || query.since !== undefined) {
+      found = found.concat(await reported(sources, found, live, query));
+    }
+    // A session counts from its latest news, which may be a hook's.
+    found = withLive(found, live).filter((session) => query.since === undefined || session.updatedAt >= query.since);
   }
   const sessions = found.sort((a, b) => b.updatedAt - a.updatedAt);
   return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
 }
 
 /**
- * Sessions a limited listing left out though their hooks reported something newer than the oldest
- * one listed: they belong in it once the reports are counted.
+ * Sessions a listing with a `limit` or a `since` left out though their hooks reported something
+ * recent enough: newer than the oldest one listed, and not before `since`. They belong in it once
+ * the reports are counted.
  */
 async function reported(
   sources: readonly SessionSource[],
@@ -82,11 +86,14 @@ async function reported(
   query: SessionQuery,
 ): Promise<SessionInfo[]> {
   const have = new Set(listed.map((session) => `${session.source}:${session.id}`));
-  const oldest = listed.length < (query.limit ?? 0) ? 0 : Math.min(...listed.map((session) => session.updatedAt));
-  const whole = { ...query, limit: undefined };
-  const missing = [...live.values()].filter(
-    (record) => !have.has(`${record.agent}:${record.id}`) && Math.max(record.at, record.seen ?? 0) > oldest,
-  );
+  const full = query.limit !== undefined && listed.length >= query.limit;
+  const oldest = full ? Math.min(...listed.map((session) => session.updatedAt)) : 0;
+  // Looked up whatever the age of their files: the report is what makes them recent.
+  const whole = { ...query, limit: undefined, since: undefined };
+  const missing = [...live.values()].filter((record) => {
+    const seen = Math.max(record.at, record.seen ?? 0);
+    return !have.has(`${record.agent}:${record.id}`) && seen > oldest && seen >= (query.since ?? 0);
+  });
   const lookups = sources.map(async (source) => {
     const ids = missing.filter((record) => record.agent === source.name).map((record) => record.id);
     if (!ids.length) return [];

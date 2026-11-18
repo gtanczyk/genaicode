@@ -218,6 +218,15 @@ describe('sessions with what the hooks reported', () => {
     };
     expect((await listSessions([finder], { env, limit: 1 })).sessions[0]!.id).toBe('old');
     expect(looked).toEqual(['old']);
+    // The same for `since`: the file is older, the question is not.
+    const dated: SessionSource = {
+      ...source,
+      list: async (query) => all.filter((entry) => entry.updatedAt >= (query?.since ?? 0)),
+    };
+    const recent = await listSessions([dated], { env, since: now - 120_000 });
+    expect(recent.sessions.map((entry) => entry.id)).toEqual(['old', 'new']);
+    expect((await listSessions([dated], { env, since: now - 120_000, live: false })).sessions).toHaveLength(1);
+    expect((await listSessions([dated], { env, since: now + 60_000 })).sessions).toEqual([]);
   });
 });
 
