@@ -39,6 +39,10 @@ half way. After `npx genaicode hooks install`, Claude Code and Codex report what
 do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
 continues it (see [sessions](agents.md#sessions-across-agents)).
 
+`npx genaicode sessions doctor` checks that those stores still read as expected after an agent
+updates: counts per store, never content, exit code 1 when one looks broken (see
+[sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).
+
 ## Chat with an agent: terminal and browser
 
 ```bash

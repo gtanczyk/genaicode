@@ -187,6 +187,7 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
   return {
     name: 'claude',
     where: 'local',
+    verified: '2.1.327',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? env.CLAUDE_CONFIG_DIR ?? path.join(homeOf(env), '.claude');

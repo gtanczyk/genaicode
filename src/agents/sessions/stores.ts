@@ -59,6 +59,7 @@ export function museSessions(options: StoreOptions = {}): SessionSource {
   return {
     name: 'muse',
     where: 'local',
+    verified: '1.4.14',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? path.join(env.XDG_DATA_HOME ?? path.join(homeOf(env), '.local', 'share'), 'muse');
@@ -179,6 +180,7 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
   return {
     name: 'antigravity',
     where: 'local',
+    verified: '1.5.3',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dirs = options.dir
@@ -279,6 +281,7 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
   return {
     name: 'copilot',
     where: 'local',
+    verified: '1.0.88',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? path.join(homeOf(env), '.copilot');
@@ -442,6 +445,7 @@ export function vibeSessions(options: StoreOptions = {}): SessionSource {
   return {
     name: 'vibe',
     where: 'local',
+    verified: '2.25',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? env.VIBE_HOME ?? path.join(homeOf(env), '.vibe');

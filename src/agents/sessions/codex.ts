@@ -321,6 +321,7 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
   return {
     name: 'codex',
     where: 'local',
+    verified: '0.170',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? env.CODEX_HOME ?? path.join(homeOf(env), '.codex');
