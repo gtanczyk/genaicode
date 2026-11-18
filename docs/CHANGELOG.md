@@ -17,6 +17,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Continue a session in another agent: `--from <session id>` in `genaicode chat`, `ui` and `run`, `/continue <id>` in the chat and **Continue here** in the browser's Sessions view bring a Claude Code or Codex session into the chat; its own agent resumes it, any other gets a recap and the transcript. In code: `SessionSource.read()`, `readSession()`, `findSession()` and `AgentSession.adopt()` (#189)
 - Sessions of Gemini CLI and Copilot CLI can be taken over too (`--from`, `/continue`, **Continue here**): their sources have `read()`, with `geminiTranscript()` and `copilotTranscript()` (#190)
 - Sessions of Muse, Antigravity and Vibe can be taken over too (`museTranscript()`, `antigravityTranscript()`, `vibeTranscript()`); Copilot CLI sessions without an event log are read from its `session-store.db`, and its tool results are kept; `SessionSource.find()` lets `--from` look a Claude Code session up by id without reading every transcript (#191)
+- `genaicode hooks install`: Claude Code and Codex report through their own hooks what a session does, so `listSessions()`, `genaicode sessions` and the Sessions view show which sessions ask for approval (`waitingFor`, `waitingTool`) and which finished their turn; `installHooks()`, `recordHook()`, `readLive()`, `withLive()` in `genaicode/agents` (#PRNUM)
 
 ### Fixed
 

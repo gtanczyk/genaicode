@@ -32,6 +32,13 @@ export interface SessionInfo {
   /** Last activity, epoch milliseconds. */
   updatedAt: number;
   state?: SessionActivity;
+  /**
+   * What a `waiting` session waits for, where the agent's hooks report it (`genaicode hooks
+   * install`): `approval` when it asked whether it may use a tool, `reply` when its turn is over.
+   */
+  waitingFor?: 'approval' | 'reply';
+  /** The tool it asks to use, while `waitingFor` is `approval`. */
+  waitingTool?: string;
   model?: string;
   usage?: TokenUsage;
   costUsd?: number;
@@ -50,6 +57,8 @@ export interface SessionQuery {
   limit?: number;
   /** Environment that says where the stores are (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HOME`). Default `process.env`. */
   env?: NodeJS.ProcessEnv;
+  /** `false`: leave out what the agents' hooks reported (`listSessions()` adds it by default). */
+  live?: boolean;
   signal?: AbortSignal;
 }
 

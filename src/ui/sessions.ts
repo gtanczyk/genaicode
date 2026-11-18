@@ -5,7 +5,7 @@ export interface SessionFilter {
   /** Words that must all appear in the title, prompts, directory, branch, agent or id. */
   text?: string;
   agent?: string;
-  /** A `SessionActivity`, or `open` for everything but sessions that wait for the user. */
+  /** A `SessionActivity`, `approval` for sessions that ask to use a tool, or `open` for those that wait for the user. */
   state?: string;
 }
 
@@ -13,7 +13,9 @@ export function filterSessions(sessions: readonly SessionInfo[], filter: Session
   const words = (filter.text ?? '').toLowerCase().split(/\s+/).filter(Boolean);
   return sessions.filter((session) => {
     if (filter.agent && session.agent !== filter.agent) return false;
-    if (filter.state === 'open' ? session.state === 'waiting' : filter.state && session.state !== filter.state)
+    if (filter.state === 'approval') {
+      if (session.waitingFor !== 'approval') return false;
+    } else if (filter.state === 'open' ? session.state === 'waiting' : filter.state && session.state !== filter.state)
       return false;
     if (!words.length) return true;
     const hay = [

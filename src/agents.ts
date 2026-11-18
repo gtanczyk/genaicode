@@ -93,6 +93,17 @@ export {
   vibeTranscript,
   findSession,
   readSession,
+  HOOK_AGENTS,
+  hookCommand,
+  hooksFile,
+  hooksStatus,
+  installHooks,
+  uninstallHooks,
+  liveDir,
+  liveEvent,
+  readLive,
+  recordHook,
+  withLive,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -105,6 +116,11 @@ export type {
   SessionSource,
   SessionActivity,
   StoreOptions,
+  HookAgent,
+  HooksOptions,
+  HooksStatus,
+  LiveRecord,
+  LiveState,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';

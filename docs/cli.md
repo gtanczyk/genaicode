@@ -35,7 +35,8 @@ npx genaicode sessions --cloud               # also Cursor Cloud Agents (CURSOR_
 It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot, Cursor, Gemini
 CLI, Antigravity, Muse and Vibe) and changes nothing.
 `●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
-half way. Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
+half way. After `npx genaicode hooks install`, Claude Code and Codex report what their sessions
+do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
 continues it (see [sessions](agents.md#sessions-across-agents)).
 
 ## Chat with an agent: terminal and browser

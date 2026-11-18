@@ -2,6 +2,7 @@ import type { CodingAgent } from '../types.js';
 import type { SessionListing } from './group.js';
 import type { SessionTurn } from '../session.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
+import { readLive, withLive } from './live.js';
 
 export { groupSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -24,6 +25,10 @@ export {
   vibeSessions,
 } from './stores.js';
 export type { StoreOptions } from './stores.js';
+export { liveDir, liveEvent, readLive, recordHook, withLive } from './live.js';
+export type { LiveRecord, LiveState } from './live.js';
+export { HOOK_AGENTS, hookCommand, hooksFile, hooksStatus, installHooks, uninstallHooks } from './hooks.js';
+export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource, SessionActivity } from './types.js';
 
 /**
@@ -38,7 +43,10 @@ export function agentSessionSources(agents: readonly Pick<CodingAgent, 'sessions
   return [...sources.values()];
 }
 
-/** Sessions from several sources as one list, newest first. A source that fails is reported, not fatal. */
+/**
+ * Sessions from several sources as one list, newest first. A source that fails is reported, not
+ * fatal. Where an agent's hooks report what its sessions do, that is in `state` and `waitingFor`.
+ */
 export async function listSessions(
   sources: readonly SessionSource[],
   query: SessionQuery = {},
@@ -52,7 +60,9 @@ export async function listSessions(
       }),
     ),
   );
-  const sessions = lists.flat().sort((a, b) => b.updatedAt - a.updatedAt);
+  // What the agents' own hooks reported goes over what their files suggest.
+  const live = query.live === false ? undefined : await readLive(query.env).catch(() => undefined);
+  const sessions = (live ? withLive(lists.flat(), live) : lists.flat()).sort((a, b) => b.updatedAt - a.updatedAt);
   return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
 }
 

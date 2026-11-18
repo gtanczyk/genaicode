@@ -12,6 +12,13 @@ import {
   agentSessionSources,
   findSession,
   groupSessions,
+  HOOK_AGENTS,
+  hooksFile,
+  hooksStatus,
+  installHooks,
+  liveDir,
+  readLive,
+  uninstallHooks,
   listSessions,
   readSession,
 } from '../agents/sessions/index.js';
@@ -106,6 +113,7 @@ Usage:
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
+  genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
@@ -120,6 +128,14 @@ Sessions options:
 
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
+
+Hooks options:
+  -a, --agent <name>      Only this agent (claude, codex); default: both
+
+  "hooks install" adds a hook to the agent's own user settings (~/.claude/settings.json,
+  ~/.codex/hooks.json; Codex asks you to trust it under /hooks). The agent then tells genaicode
+  when a session works, asks for approval or has finished its turn, so "sessions" and the
+  browser's Sessions view show which ones need you. "hooks uninstall" takes it out again.
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
@@ -217,6 +233,8 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return listAgents(cli, agents, command.json);
     case 'sessions':
       return showSessions(cli, agents, command);
+    case 'hooks':
+      return manageHooks(cli, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -352,7 +370,55 @@ function loadBundledUi(): Promise<UiModule> {
   return import(bundle) as Promise<UiModule>;
 }
 
-const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌' };
+const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
+
+async function manageHooks(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'hooks' }>): Promise<number> {
+  const known: readonly string[] = HOOK_AGENTS;
+  if (command.agent !== undefined && !known.includes(command.agent)) {
+    cli.stderr.write(`No hooks for agent "${command.agent}". Agents with hooks: ${known.join(', ')}.\n`);
+    return EXIT_USAGE;
+  }
+  const chosen = HOOK_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
+  const installedHere = new Map(
+    detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
+  );
+  let failed = false;
+  for (const agent of chosen) {
+    try {
+      if (command.action === 'install') {
+        // Asked for by name, an agent gets its hooks even when its CLI is not found.
+        if (command.agent === undefined && !installedHere.get(agent)) {
+          cli.stdout.write(`${agent}: not installed, skipped\n`);
+          continue;
+        }
+        const status = await installHooks(agent, { env: cli.env });
+        cli.stdout.write(`${agent}: hook added to ${status.file} (${status.events.join(', ')})\n`);
+        if (agent === 'codex') cli.stdout.write('  Codex runs it once you trust it: open Codex and use /hooks.\n');
+      } else if (command.action === 'uninstall') {
+        const removed = await uninstallHooks(agent, { env: cli.env });
+        cli.stdout.write(
+          `${agent}: ${removed ? `hook removed from ${hooksFile(agent, cli.env)}` : 'no hook installed'}\n`,
+        );
+      } else {
+        const status = await hooksStatus(agent, { env: cli.env });
+        const state = status.installed
+          ? 'installed'
+          : status.events.length
+            ? 'installed by another genaicode or incomplete: run "genaicode hooks install"'
+            : 'not installed';
+        cli.stdout.write(`${agent}: ${state}  ${status.file}\n`);
+      }
+    } catch (error) {
+      failed = true;
+      cli.stderr.write(`${agent}: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
+  if (command.action === 'status') {
+    const live = await readLive(cli.env);
+    cli.stdout.write(`${live.size} session${live.size === 1 ? '' : 's'} reported in ${liveDir(cli.env)}\n`);
+  }
+  return failed ? EXIT_FAILED : EXIT_OK;
+}
 
 async function showSessions(
   cli: CliEnvironment,
@@ -398,12 +464,14 @@ async function showSessions(
     for (const session of project.sessions) {
       const label = session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)';
       const text = label.length > 70 ? `${label.slice(0, 69)}…` : label;
+      // A session that asks for approval stands out from one that just finished its turn.
+      const state = session.waitingFor === 'approval' ? 'approval' : (session.state ?? '');
       cli.stdout.write(
-        `  ${STATE_MARK[session.state ?? ''] ?? ' '} ${session.agent.padEnd(7)} ${ago(now - session.updatedAt).padStart(4)}  ${(session.state ?? '').padEnd(10)}  ${text}  ${session.id}\n`,
+        `  ${STATE_MARK[state] ?? ' '} ${session.agent.padEnd(7)} ${ago(now - session.updatedAt).padStart(4)}  ${state.padEnd(10)}  ${text}  ${session.id}\n`,
       );
     }
   }
-  cli.stdout.write('\n● active  ○ waiting for you  ◌ unfinished\n');
+  cli.stdout.write('\n● active  ◆ asks for approval  ○ waiting for you  ◌ unfinished\n');
   return EXIT_OK;
 }
 

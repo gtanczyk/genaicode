@@ -338,3 +338,39 @@ describe('acp', () => {
     expect(err()).toContain('Unknown agent "nope"');
   });
 });
+
+describe('genaicode hooks', () => {
+  it('parses the action and refuses what it does not know', () => {
+    expect(parseCli(['hooks'])).toEqual({ kind: 'hooks', action: 'status' });
+    expect(parseCli(['hooks', 'install', '-a', 'codex'])).toEqual({ kind: 'hooks', action: 'install', agent: 'codex' });
+    expect(() => parseCli(['hooks', 'explode'])).toThrow(UsageError);
+  });
+
+  it('installs for the agents found, reports and removes', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-hooks-'));
+    dirs.push(home);
+    const env = { PATH: pathWith('claude-cli'), HOME: home };
+    const agents = [fakeAgent('claude', []), fakeAgent('codex', [])];
+    const run = async (...argv: string[]) => {
+      const { cli, out, err } = environment({ argv, env, agents });
+      return { code: await main(cli), out: out(), err: err() };
+    };
+
+    const installed = await run('hooks', 'install');
+    expect(installed.code).toBe(EXIT_OK);
+    expect(installed.out).toContain(`claude: hook added to ${join(home, '.claude', 'settings.json')}`);
+    expect(installed.out).toContain('codex: not installed, skipped');
+    const settings = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+    expect(settings.hooks.PermissionRequest[0].hooks[0].command).toMatch(/ hook claude --genaicode-live$/);
+
+    const status = await run('hooks');
+    expect(status.out).toMatch(/claude: installed/);
+    expect(status.out).toMatch(/codex: not installed/);
+    expect(status.out).toContain('0 sessions reported');
+
+    expect((await run('hooks', 'uninstall', '-a', 'claude')).out).toContain('claude: hook removed');
+    expect((await run('hooks', 'install', '-a', 'gemini')).code).toBe(EXIT_USAGE);
+    // Asked for by name, Codex gets its hook though its CLI is not on the PATH.
+    expect((await run('hooks', 'install', '-a', 'codex')).out).toContain('trust it');
+  });
+});

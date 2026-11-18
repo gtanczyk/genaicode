@@ -284,6 +284,39 @@ const agents = [claude(), codex(), codexLive(), gemini()];
 const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50 });
 ```
 
+### Which sessions need you: hooks
+
+The stores say what was written, not what the agent is doing right now: a session that asks
+"may I run this command?" looks the same as one that is thinking. Claude Code and Codex can say
+it themselves through their hooks:
+
+```bash
+npx genaicode hooks install        # for the agents installed here; -a claude or -a codex for one
+npx genaicode hooks                # what is installed
+npx genaicode hooks uninstall
+```
+
+`install` adds one command hook to the agent's own user settings (`~/.claude/settings.json`,
+`~/.codex/hooks.json`), beside whatever is declared there; Codex runs it once you trust it under
+`/hooks`. The hook runs `genaicode hook <agent>` in the background when a session starts, takes a
+prompt, asks for approval, gets its answer, finishes a turn and ends. It keeps one small file
+per session in `~/.genaicode/live` with the state, the time, the directory and the name of the
+tool asked for: nothing of what was said, and nothing leaves the machine.
+
+`listSessions()` puts that over what the stores suggest: `state` is exact, and a `waiting`
+session has `waitingFor`: `'approval'` (with `waitingTool`, such as `Bash`) or `'reply'`.
+`genaicode sessions` marks the first with `◆`, and the browser's Sessions view has a filter for
+them. A record the session's file has since moved past is ignored, so sessions driven without
+the hook fall back to the stores. `{ live: false }` in the query leaves the reports out.
+
+In code: `installHooks('claude')`, `hooksStatus()`, `uninstallHooks()`, and `recordHook(agent,
+input)` with `readLive()` and `withLive(sessions, records)` to do the same for an agent of your
+own whose hooks give the same JSON (`session_id`, `hook_event_name`, `cwd`).
+
+The command in the settings is the `genaicode` that installed it (`node` and the path of its
+`cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
+global install), and run `hooks install` again after moving it.
+
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the
