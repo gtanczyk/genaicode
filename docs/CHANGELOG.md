@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- OpenAI: `openai()` runs on the Responses API, so function tools work on GPT-6 models (`gpt-6.2-astra`, `gpt-6.2-sol`), which reject them on chat completions; `openai({ api: 'chat' })` keeps chat completions and `openaiCompatible()` stays on them. Temperature is left out for reasoning models (o-series, GPT-5 and later), which accept only their default. `raw` is now the Responses API `Response` (#183).
 - Gemini: `thinking: false` and JSON responses work on Gemini 3.7+, Gemini 3.8 Flash and Gemini 4 (`gemini-4-argon`, `gemini-4-carbon`, `gemini-4-hydrogen`), which reject the `MINIMAL` thinking level: they now get `LOW` (#182).
 
 ## 2.34.0 — 2026-11-18
@@ -26,7 +27,6 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- OpenAI: `openai()` runs on the Responses API, so function tools work on GPT-6 models (`gpt-6.2-astra`, `gpt-6.2-sol`), which reject them on chat completions; `openai({ api: 'chat' })` keeps chat completions and `openaiCompatible()` stays on them. Temperature is left out for reasoning models (o-series, GPT-5 and later), which accept only their default. `raw` is now the Responses API `Response` (#183).
 - Gemini: a tool call's `thoughtSignature` now goes back with it in the history (`ToolCall.signature`), so Gemini 3 accepts the next step of a tool loop; a streamed reply keeps the tool calls and images of every chunk, not only the last one's (#175).
 
 ## 2.33.0 — 2026-11-12
