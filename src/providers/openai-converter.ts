@@ -138,8 +138,9 @@ function toOpenAIResponseFormat(
   };
 }
 
-// Models that 400 on any temperature but their default. The request drops it for them.
-const FIXED_TEMPERATURE_MODELS = /(^|\/)gpt-6-luna(\b|$)/;
+// Reasoning models (o-series, GPT-5 and later) 400 on any temperature but their default, on both
+// chat completions and the Responses API. The request drops it for them; `-chat` variants take it.
+const FIXED_TEMPERATURE_MODELS = /(^|\/)(o\d|gpt-([5-9]|\d{2,}))(?![\w.-]*-chat)/;
 
 export function acceptsTemperature(model: string): boolean {
   return !FIXED_TEMPERATURE_MODELS.test(model);

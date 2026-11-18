@@ -95,14 +95,18 @@ describe('OpenAI converter', () => {
     });
   });
 
-  it('drops temperature for Luna models, which reject anything but the default', () => {
+  it('drops temperature for reasoning models, which reject anything but the default', () => {
     const prompt = [{ type: 'user' as const, text: 'hello' }];
     expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6-luna').temperature).toBeUndefined();
     expect(
       toOpenAIRequest({ prompt, temperature: 0.2, model: 'openai/gpt-6-luna-2026-09-01' }, 'x').temperature,
     ).toBeUndefined();
-    expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-6').temperature).toBe(0);
-    expect(acceptsTemperature('gpt-6-lunar')).toBe(true);
-    expect(acceptsTemperature('gpt-6-luna')).toBe(false);
+    for (const model of ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-5.3-codex', 'o3-mini']) {
+      expect(acceptsTemperature(model)).toBe(false);
+    }
+    for (const model of ['gpt-4o', 'gpt-4.1-mini', 'gpt-5-chat-latest', 'llama-3.3-70b']) {
+      expect(acceptsTemperature(model)).toBe(true);
+    }
+    expect(toOpenAIRequest({ prompt, temperature: 0 }, 'gpt-4.1').temperature).toBe(0);
   });
 });
