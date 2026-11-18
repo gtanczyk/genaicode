@@ -1,9 +1,8 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { handleMcpMessage, type McpTool } from './mcp-tools.js';
+import { startLocalMcpServer } from './mcp-server.js';
+import type { McpTool } from './mcp-tools.js';
 import type { Artifact, McpServer } from './types.js';
 
 /** The MCP tool agents call to publish an artifact. */
@@ -359,66 +358,8 @@ export interface ArtifactChannel {
 export async function startArtifactChannel(options: ArtifactChannelOptions): Promise<ArtifactChannel> {
   const name = options.name ?? 'artifacts';
   const store = createArtifactStore(options);
-  const tools = [store.tool()];
-  const expected = Buffer.from(`Bearer ${randomBytes(32).toString('hex')}`);
   // JSON escaping can double the content; the store enforces the real limit.
   const maxBody = (options.maxBytes ?? 5 * 1024 * 1024) * 2 + 64 * 1024;
-  let port = 0;
-
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    const reply = (status: number, body?: unknown) => {
-      if (response.headersSent || response.destroyed) return;
-      if (body === undefined) response.writeHead(status).end();
-      else response.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
-    };
-    // A rebinding domain sends its own name as Host; a browser always sends Origin on POST.
-    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host ?? '')) return reply(403);
-    if (request.headers.origin !== undefined) return reply(403);
-    const given = Buffer.from(request.headers.authorization ?? '');
-    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return reply(401);
-    if (request.method !== 'POST' || request.url?.split('?')[0] !== '/mcp') return reply(405);
-    const chunks: Buffer[] = [];
-    let size = 0;
-    request.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > maxBody) {
-        reply(413);
-        request.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.once('error', () => reply(400));
-    request.once('end', () => {
-      let message: unknown;
-      try {
-        message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      } catch {
-        return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
-      }
-      handleMcpMessage(message, tools, { name: `genaicode-${name}`, version: '1' }).then(
-        (answer) => (answer === null ? reply(202) : reply(200, answer)),
-        () => reply(500),
-      );
-    });
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
-  port = (server.address() as AddressInfo).port;
-  server.unref();
-
-  return {
-    store,
-    mcpServer: { name, url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: expected.toString() } },
-    close: () =>
-      new Promise((resolve) => {
-        server.close(() => resolve());
-        server.closeAllConnections();
-      }),
-  };
+  const server = await startLocalMcpServer({ name, tools: [store.tool()], maxBody });
+  return { store, mcpServer: server.mcpServer, close: server.close };
 }

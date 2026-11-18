@@ -1,0 +1,88 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { handleMcpMessage, type McpTool } from './mcp-tools.js';
+import type { McpServer } from './types.js';
+
+export interface LocalMcpServerOptions {
+  /** MCP server name the agent sees. */
+  name: string;
+  tools: readonly McpTool[];
+  /** Largest request body, in bytes. Default 1 MiB. */
+  maxBody?: number;
+}
+
+export interface LocalMcpServer {
+  /** Give this to the agent in `AgentTask.mcpServers`. */
+  mcpServer: McpServer;
+  close(): Promise<void>;
+}
+
+/**
+ * Serve `tools` over MCP (streamable HTTP, JSON responses) on a random loopback port, behind a
+ * random bearer token.
+ */
+export async function startLocalMcpServer(options: LocalMcpServerOptions): Promise<LocalMcpServer> {
+  const { name, tools } = options;
+  const expected = Buffer.from(`Bearer ${randomBytes(32).toString('hex')}`);
+  const maxBody = options.maxBody ?? 1024 * 1024;
+  let port = 0;
+
+  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+    const reply = (status: number, body?: unknown) => {
+      if (response.headersSent || response.destroyed) return;
+      if (body === undefined) response.writeHead(status).end();
+      else response.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    };
+    // A rebinding domain sends its own name as Host; a browser always sends Origin on POST.
+    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host ?? '')) return reply(403);
+    if (request.headers.origin !== undefined) return reply(403);
+    const given = Buffer.from(request.headers.authorization ?? '');
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return reply(401);
+    if (request.method !== 'POST' || request.url?.split('?')[0] !== '/mcp') return reply(405);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBody) {
+        reply(413);
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.once('error', () => reply(400));
+    request.once('end', () => {
+      let message: unknown;
+      try {
+        message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
+      }
+      handleMcpMessage(message, tools, { name: `genaicode-${name}`, version: '1' }).then(
+        (answer) => (answer === null ? reply(202) : reply(200, answer)),
+        () => reply(500),
+      );
+    });
+  });
+  // A tool may hold its answer for minutes (waiting on other agents).
+  server.requestTimeout = 0;
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+  port = (server.address() as AddressInfo).port;
+  server.unref();
+
+  return {
+    mcpServer: { name, url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: expected.toString() } },
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  };
+}
