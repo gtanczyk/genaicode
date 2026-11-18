@@ -238,7 +238,12 @@ describe('pack', () => {
     const lead = fake(
       'lead',
       async (task) => {
-        await tool(task, 'delegate', { agent: 'slow', prompt: 'x', mode: 'shared' });
+        // Two calls at once get one slot between them.
+        const both = await Promise.allSettled([
+          tool(task, 'delegate', { agent: 'slow', prompt: 'x', mode: 'shared' }),
+          tool(task, 'delegate', { agent: 'slow', prompt: 'x2', mode: 'shared' }),
+        ]);
+        expect(both.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected']);
         await expect(tool(task, 'delegate', { agent: 'slow', prompt: 'y', mode: 'shared' })).rejects.toThrow(
           'running already',
         );

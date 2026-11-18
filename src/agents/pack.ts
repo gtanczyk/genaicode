@@ -160,6 +160,8 @@ export function pack(options: PackOptions): Pack {
   // One merge at a time: each patch applies to what the one before left.
   let merging: Promise<unknown> = Promise.resolve();
   let nextId = 1;
+  // Delegations still setting up their worktree: they hold a `maxParallel` slot already.
+  let starting = 0;
 
   const noteLimit = (agent: string, limit: RateLimit) => {
     let known = limits.get(agent);
@@ -287,12 +289,21 @@ export function pack(options: PackOptions): Pack {
           throw new Error(`No agent ${String(args.agent)}. Available: ${members.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
         if (ended.signal.aborted) throw new Error('The run has ended.');
-        const running = [...subs.values()].filter((sub) => sub.status === 'running').length;
+        const running = [...subs.values()].filter((sub) => sub.status === 'running').length + starting;
         if (running >= maxParallel)
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
+        // Taken before the first await, so calls made at the same moment cannot share a slot.
+        starting += 1;
+        try {
+          return await start(agent, prompt, args.mode);
+        } finally {
+          starting -= 1;
+        }
+      };
+
+      const start = async (agent: CodingAgent, prompt: string, wanted: unknown): Promise<string> => {
         const repo = await repoRoot(task.cwd);
-        const mode =
-          args.mode === 'shared' ? 'shared' : args.mode === undefined || args.mode === 'worktree' ? 'worktree' : null;
+        const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
         if (!mode) throw new Error('`mode` is `worktree` or `shared`.');
         if (mode === 'worktree' && !repo)
           throw new Error(
