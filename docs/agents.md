@@ -744,6 +744,45 @@ const run = agent.run({
   a saved agent, whose `agent_config` is fixed: its runs have no platform token cap
   (`capabilities.budget` is empty), so `task.budget` is checked against reported usage only.
 
+#### OpenAI background responses
+
+`openaiManaged()` runs tasks as background responses of the
+[Responses API](https://developers.openai.com/api/docs/guides/background), with OpenAI's hosted
+tools doing the work: by default a hosted shell in an automatic container, and web search. It
+reads `OPENAI_API_KEY` by default:
+
+```ts
+import { openaiManaged } from 'genaicode/agents';
+
+const agent = openaiManaged({
+  model: 'gpt-6.2-astra',
+  network: ['pypi.org', 'github.com'], // the hosted shell's allowlist
+  // tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], // instead of the defaults
+});
+
+const run = agent.run({
+  prompt: 'Clone the repo, run its tests and summarize the failures',
+  cwd: '.', // or cntr_... to reuse a container you created
+  effort: 'high', // reasoning.effort
+  maxTurns: 40, // max_tool_calls
+  mcpServers: [{ name: 'game', url: 'https://example.com/mcp', headers: { Authorization: `Bearer ${token}` } }],
+});
+```
+
+- The response is polled (`pollIntervalMs`, default 3 s): each output item arrives as a whole
+  event once it is finished (messages, MCP, shell, code interpreter and web search calls), so
+  there are no `text-delta` events. `abort()` cancels the response.
+- `task.resume` (the last run's `sessionId`) chains a new response with `previous_response_id`,
+  so the next run's `sessionId` is a new id. Usage adds up the whole chain, and a resumed run
+  reports its own share.
+- MCP servers run without approvals (`require_approval: 'never'`; `permissions.approval` is
+  `auto-approve` only). Their only header can be `Authorization: Bearer`, which the platform takes
+  as `authorization`: it drops other headers on tool calls.
+- The platform has no session-wide cap, so `task.budget` is checked against reported usage.
+  A response cut at `max_output_tokens` fails with `failure.kind: 'budget'`, one cut by a content
+  filter fails with its reason, and a failed response's error code maps rate limits to `quota`.
+- `files` and `extraArgs` are refused; a model is required (`model` option or `task.model`).
+
 ## Writing a driver
 
 ```ts

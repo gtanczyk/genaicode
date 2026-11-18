@@ -12,6 +12,7 @@ import {
 } from '../managed.js';
 import type { AgentEvent, AgentFailure, CodingAgent } from '../types.js';
 import { tokenCount } from '../usage.js';
+import { addUsage, httpError, pause, remoteServers, textOf, trimSlashes } from './managed-http.js';
 
 /** A step of an interaction as the Interactions API reports it; the fields this driver reads. */
 export interface GeminiInteractionStep {
@@ -152,7 +153,7 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
       await response.body?.cancel().catch(() => undefined);
       return null;
     }
-    if (!response.ok) throw await apiError(name, method, path, response);
+    if (!response.ok) throw await httpError(name, method, path, response);
     return response;
   };
 
@@ -582,23 +583,6 @@ function usageOf(usage: GeminiUsage | undefined): ManagedUsage | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** Two usage reports added up, details included. */
-function addUsage(a: ManagedUsage | undefined, b: ManagedUsage | undefined): ManagedUsage | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  const sum = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0));
-  const out: ManagedUsage = {};
-  for (const key of ['inputTokens', 'outputTokens', 'cachedInputTokens'] as const) {
-    const value = sum(a[key], b[key]);
-    if (value !== undefined) out[key] = value;
-  }
-  out.totalTokens = tokenCount(a) + tokenCount(b);
-  const details: Record<string, number> = { ...a.details };
-  for (const [key, value] of Object.entries(b.details ?? {})) details[key] = (details[key] ?? 0) + value;
-  if (Object.keys(details).length) out.details = details;
-  return out;
-}
-
 function lastText(steps: readonly GeminiInteractionStep[] | undefined): string | undefined {
   for (let i = (steps?.length ?? 0) - 1; i >= 0; i--) {
     if (steps![i].type !== 'model_output') continue;
@@ -608,24 +592,6 @@ function lastText(steps: readonly GeminiInteractionStep[] | undefined): string |
   return undefined;
 }
 
-function textOf(content: unknown): string {
-  if (content === undefined || content === null) return '';
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content))
-    return content
-      .map((part) =>
-        part && typeof part === 'object' && (part as { type?: unknown }).type === 'text'
-          ? String((part as { text?: unknown }).text ?? '')
-          : typeof part === 'string'
-            ? part
-            : '',
-      )
-      .join('');
-  if (typeof content === 'object' && Array.isArray((content as { content?: unknown }).content))
-    return textOf((content as { content: unknown }).content);
-  return JSON.stringify(content);
-}
-
 function textContent(name: string, file: { path: string; content: string | Uint8Array }): string {
   if (typeof file.content === 'string') return file.content;
   try {
@@ -633,12 +599,6 @@ function textContent(name: string, file: { path: string; content: string | Uint8
   } catch {
     throw new Error(`${name} takes text files only; '${file.path}' is binary.`);
   }
-}
-
-function remoteServers(
-  start: ManagedStart,
-): { name: string; url: string; headers?: Readonly<Record<string, string>> }[] {
-  return (start.mcpServers ?? []).filter((server): server is { name: string; url: string } => 'url' in server);
 }
 
 /** `https://github.com/owner/repo[#branch]` (also GitLab, Bitbucket) or any `https://.../name.git`. */
@@ -652,57 +612,8 @@ function repositoryOf(workspace: string | undefined): { url: string; name: strin
   return { url, name: posix.basename(url).replace(/\.git$/, ''), ...(branch ? { branch } : {}) };
 }
 
-/** Without trailing slashes (a loop: a regular expression is slow on long runs of them). */
-function trimSlashes(value: string): string {
-  let end = value.length;
-  while (end > 0 && value[end - 1] === '/') end--;
-  return value.slice(0, end);
-}
-
-function pause(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(done, ms);
-    signal.addEventListener('abort', done, { once: true });
-    function done() {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', done);
-      resolve();
-    }
-  });
-}
-
 function hostOf(location: string): string {
   return location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
-}
-
-class GeminiApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'GeminiApiError';
-  }
-}
-
-async function apiError(name: string, method: string, path: string, response: Response): Promise<GeminiApiError> {
-  let detail = '';
-  try {
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { error?: { message?: string } };
-      detail = parsed.error?.message ?? text;
-    } catch {
-      detail = text;
-    }
-  } catch {
-    // The status says enough.
-  }
-  const route = path.split('?')[0];
-  return new GeminiApiError(
-    `${name}: ${method} ${route} failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 500)}` : ''}`,
-    response.status,
-  );
 }
 
 /** Server-sent events from a response body. */
