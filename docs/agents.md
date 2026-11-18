@@ -704,6 +704,45 @@ const run = agent.run({
   `failure.kind: 'budget'`, rate-limit and billing errors with `quota`, overload with `unavailable`.
 - `maxTurns` and `extraArgs` are refused; `permissions.sandbox` is the environment's business.
 
+#### Gemini Managed Agents
+
+`geminiManaged()` runs tasks on
+[Gemini Managed Agents](https://ai.google.dev/gemini-api/docs/agents) (the Antigravity agent) through
+the Interactions API, with plain `fetch`. It reads `GEMINI_API_KEY` by default; `agentPlatform`
+switches to Gemini Enterprise Agent Platform on Google Cloud with an OAuth access token:
+
+```ts
+import { geminiManaged } from 'genaicode/agents';
+
+const agent = geminiManaged({
+  // agent: 'agents/my-agent', // a saved agent; default antigravity-preview-09-2026
+  // agentPlatform: { project: 'my-project', accessToken: () => getAccessToken() },
+  network: ['pypi.org', 'registry.npmjs.org'], // a fresh sandbox's allowlist (MCP hosts are added)
+});
+
+const run = agent.run({
+  prompt: 'Fix the failing test',
+  cwd: 'https://github.com/acme/game', // cloned into /workspace/game; env_... reuses an environment
+  model: 'gemini-4-carbon',
+  budget: { maxTokens: 200_000 }, // the interaction's own max_total_tokens
+  mcpServers: [{ name: 'game', url: 'https://example.com/mcp', headers: { Authorization: `Bearer ${token}` } }],
+});
+```
+
+- Each turn is a background interaction; `abort()` cancels it. `task.resume` (the last run's
+  `sessionId`) chains a new interaction to it in the same environment, so the next run's
+  `sessionId` is a new id. Usage adds up the whole chain, and a resumed run reports its own share.
+- Steps stream live (text, MCP, code execution and search calls with their results) and the
+  stream picks up from the last event after a drop.
+- MCP servers replace the agent's default tools for that turn, so `tools` (default code execution,
+  Google Search, URL context) is sent beside them. Server names must match `^[a-z0-9_-]+$`.
+- `ManagedStart.files` (text only) and the repository go into a fresh sandbox under `filesRoot`
+  (default `/workspace`); they cannot be added to an existing environment or on resume.
+- `incomplete` (the token cap) fails with `failure.kind: 'budget'`; a failed interaction's error
+  code maps `RESOURCE_EXHAUSTED` to `quota`. The agent asks no approvals (`permissions.approval`
+  is `auto-approve` only); `effort`, `maxTurns` and `extraArgs` are refused, and so is `model` for
+  a saved agent, whose model is fixed.
+
 ## Writing a driver
 
 ```ts

@@ -87,6 +87,13 @@ export type {
   AnthropicManagedSession,
   AnthropicManagedToolHandler,
 } from './agents/drivers/anthropic-managed.js';
+export { geminiManaged, geminiManagedProvider } from './agents/drivers/gemini-managed.js';
+export type {
+  GeminiInteraction,
+  GeminiInteractionStep,
+  GeminiManagedOptions,
+  GeminiUsage,
+} from './agents/drivers/gemini-managed.js';
 export { isManagedSettled, managedAgent } from './agents/managed.js';
 export type {
   ManagedAgentOptions,
