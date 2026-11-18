@@ -196,6 +196,8 @@ describe('installing the hook', () => {
     // The session's end is waited for: a background hook would be cut off.
     expect(written.hooks.SessionEnd[0].hooks[0].async).toBeUndefined();
     expect(written.hooks.Notification).toHaveLength(1);
+    expect(written.hooks.StopFailure).toHaveLength(1);
+    expect(written.hooks.PostToolUseFailure).toHaveLength(1);
 
     expect(await uninstallHooks('claude', { env })).toBe(true);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({

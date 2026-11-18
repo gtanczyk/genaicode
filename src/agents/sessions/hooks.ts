@@ -18,7 +18,10 @@ const EVENTS: Record<HookAgent, readonly string[]> = {
     'PermissionRequest',
     'Notification',
     'PostToolUse',
+    'PostToolUseFailure',
     'Stop',
+    // A turn an API error ended: without it the session would look busy.
+    'StopFailure',
     'SessionEnd',
   ],
   codex: ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd'],
