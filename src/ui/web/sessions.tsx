@@ -53,10 +53,10 @@ export function Sessions({ token }: { token: string }) {
   const copy = (session: SessionInfo) => {
     const command = resumeCommand(session);
     if (!command) return;
-    void navigator.clipboard?.writeText(command).then(
-      () => setCopied(session.id),
-      () => window.prompt('Continue it in a terminal with:', command),
-    );
+    // No Clipboard API on a page that is not a secure context: show the command to copy by hand.
+    const show = () => void window.prompt('Continue it in a terminal with:', command);
+    if (!navigator.clipboard) return show();
+    void navigator.clipboard.writeText(command).then(() => setCopied(session.id), show);
   };
 
   return (
