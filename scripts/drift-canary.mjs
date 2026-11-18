@@ -65,7 +65,11 @@ const contract = {
   ],
   'v2/ThreadStatus.ts': ['notLoaded', 'idle', 'active', 'activeFlags'],
   'v2/ThreadActiveFlag.ts': ['waitingOnApproval', 'waitingOnUserInput'],
-  'v2/Turn.ts': ['items'],
+  'v2/Turn.ts': ['items', 'startedAt', 'completedAt'],
+  'v2/GitInfo.ts': ['branch', 'originUrl'],
+  'v2/UserInput.ts': ['text'],
+  // Times every item carries, ahead of its variants.
+  'v2/ThreadItem.ts': ['startedAtMs', 'completedAtMs'],
 };
 const items = {
   userMessage: ['id', 'content'],
@@ -73,7 +77,7 @@ const items = {
   commandExecution: ['id', 'command', 'cwd', 'aggregatedOutput', 'exitCode'],
   fileChange: ['id', 'changes', 'status'],
   mcpToolCall: ['id', 'server', 'tool', 'arguments', 'result', 'error'],
-  dynamicToolCall: ['id', 'tool', 'arguments'],
+  dynamicToolCall: ['id', 'tool', 'arguments', 'contentItems', 'success'],
   webSearch: ['id', 'query'],
 };
 const dir = mkdtempSync(join(tmpdir(), 'codex-protocol-'));
