@@ -24,6 +24,8 @@ interface Stream {
   hold?: Promise<void>;
   /** Answer with this status instead of a stream. */
   status?: number;
+  /** Events sent once `hold` resolves. */
+  after?: Sse[];
 }
 
 interface FakeOptions {
@@ -39,6 +41,8 @@ interface FakeOptions {
   createStatus?: number;
   /** A status for `POST .../cancel` instead of success. */
   cancelStatus?: number;
+  /** Steers come back `queued`, and the agent starts the next run a few reads later. */
+  steerQueued?: boolean;
 }
 
 function fakeFetch(options: FakeOptions = {}) {
@@ -53,6 +57,8 @@ function fakeFetch(options: FakeOptions = {}) {
   let agent = options.agent ? { status: 'IDLE', ...options.agent } : undefined;
   let runCount = options.agent?.latestRunId ? Number(options.agent.latestRunId.split('-')[1]) : 0;
   const cancelled = new Set<string>();
+  // Agent reads left before a queued steer's run starts.
+  let nextRunAfter = 0;
   const runOf = (id: string): CursorRun => {
     const spec = options.runs?.[id];
     const found = typeof spec === 'function' ? spec(read(`run:${id}`)) : spec;
@@ -101,6 +107,10 @@ function fakeFetch(options: FakeOptions = {}) {
       return Response.json({ totalUsage, runs: [] });
     }
     if (method === 'POST' && parts[3] === 'runs' && parts.length === 4) {
+      if (body?.delivery === 'steer' && options.steerQueued) {
+        nextRunAfter = 2;
+        return Response.json({ delivery: 'queued' }, { status: 202 });
+      }
       if (body?.delivery === 'steer')
         return Response.json({ delivery: 'steered', runId: agent.latestRunId }, { status: 202 });
       runCount += 1;
@@ -136,6 +146,12 @@ function fakeFetch(options: FakeOptions = {}) {
               const aborted = new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve()));
               await Promise.race([stream.hold, aborted]);
               if (signal?.aborted) return controller.error(new DOMException('aborted', 'AbortError'));
+              for (const event of stream.after ?? [])
+                chunks.push(
+                  encoder.encode(`id: ${++eventId}-0\nevent: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`),
+                );
+              const chunk = chunks.shift();
+              if (chunk) return controller.enqueue(chunk);
             }
             if (stream.drop) controller.error(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
             else controller.close();
@@ -145,7 +161,13 @@ function fakeFetch(options: FakeOptions = {}) {
       );
     }
     if (parts[3] === 'runs' && parts[4]) return Response.json(runOf(parts[4]));
-    if (parts.length === 3) return Response.json({ ...agent, createdAt: '2026-11-18T10:00:00.000Z' });
+    if (parts.length === 3) {
+      if (nextRunAfter > 0 && --nextRunAfter === 0) {
+        runCount += 1;
+        agent = { ...agent, latestRunId: `run-${runCount}` };
+      }
+      return Response.json({ ...agent, createdAt: '2026-11-18T10:00:00.000Z' });
+    }
     return Response.json({ error: { code: 'not_found' } }, { status: 404 });
   };
   const called = (method: string, pathPart: string) =>
@@ -392,6 +414,56 @@ describe('cursorCloud', () => {
     release();
     expect(result.status).toBe('aborted');
     expect(fake.called('POST', '/runs/run-1/cancel')).toHaveLength(1);
+  });
+
+  it('goes on in the next run when a steer was queued behind the ending one', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const fake = fakeFetch({
+      steerQueued: true,
+      // Still running when the turn moves to it, and again when the stream to it opens.
+      runs: { 'run-2': (reads) => (reads <= 2 ? { status: 'RUNNING', result: undefined } : { result: 'Docs too.' }) },
+      streams: {
+        'run-1': [{ events: turn().slice(0, 2), hold, after: turn().slice(3) }],
+        'run-2': [
+          {
+            events: [
+              { event: 'assistant', data: { text: 'Docs too.' } },
+              { event: 'result', data: { runId: 'run-2', status: 'FINISHED', text: 'Docs too.' } },
+            ],
+          },
+        ],
+      },
+    });
+    const run = cursorCloud(base(fake.fetch)).run(task());
+    const events: AgentEvent[] = [];
+    for await (const event of run) {
+      events.push(event);
+      if (event.type === 'text-delta' && event.text === 'Look') {
+        await run.steer!('Also the docs');
+        release();
+      }
+    }
+    const result = await run.result;
+    expect(fake.called('GET', '/runs/run-2/stream')).toHaveLength(1);
+    expect(result).toMatchObject({ ok: true, text: 'Docs too.' });
+    expect(events.filter((e) => e.type === 'message').map((e) => (e as { text: string }).text)).toEqual([
+      'Look',
+      'All fixed.',
+      'Docs too.',
+    ]);
+  });
+
+  it('sends an empty MCP list on resume, so earlier servers are dropped', async () => {
+    const fake = fakeFetch({
+      agent: { id: 'bc-1', latestRunId: 'run-1' },
+      streams: { 'run-2': [{ events: [{ event: 'result', data: { runId: 'run-2', status: 'FINISHED' } }] }] },
+    });
+    await cursorCloud(base(fake.fetch)).run(task({ resume: 'bc-1', mcpServers: [] })).result;
+    expect(fake.called('POST', '/v1/agents/bc-1/runs')[0].body).toEqual({
+      prompt: { text: 'Fix the bug' },
+      mcpServers: [],
+    });
   });
 
   it('reports an interrupt of a run that already ended as enforced', async () => {

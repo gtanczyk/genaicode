@@ -813,7 +813,10 @@ const run = agent.run({
   a resumed run reports its own share.
 - The run's events stream live (`text-delta`, messages, tool calls) and the stream resumes from
   the last event after a drop. Past the stream's retention the final state is read instead.
-- `steer()` reaches the running turn (`delivery: 'steer'`), `abort()` cancels the run.
+- `steer()` reaches the running turn (`delivery: 'steer'`), `abort()` cancels the run. A steer
+  the platform queues as the next follow-up keeps the turn going into the run it starts.
+- On resume, `mcpServers` replaces the agent's servers (an empty list drops them); left out, the
+  agent keeps its current ones.
 - MCP servers go along with their headers. Tools run without approvals (`permissions.approval`
   is `auto-approve` only), and there is no platform budget: `task.budget` is checked against
   reported usage.

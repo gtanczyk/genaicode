@@ -170,6 +170,20 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
 
   // Per run, kept across reconnects: text not yet ended by a tool call, and tool names by call.
   const streams = new Map<string, { text: string; tools: Map<string, string> }>();
+  // Steers queued as an agent's next follow-up: a run that ends is not the turn's end while one waits.
+  const queued = new Set<string>();
+
+  /** The run after `run`, once the agent has started it; undefined when none comes in time. */
+  const nextRun = async (id: string, run: string, signal: AbortSignal): Promise<string | undefined> => {
+    const step = Math.min(options.pollIntervalMs ?? QUEUED_POLL_MS, QUEUED_POLL_MS);
+    for (let waited = 0; waited <= QUEUED_WAIT_MS && !signal.aborted; waited += step) {
+      const agent = await getAgent(id, signal);
+      if (agent?.latestRunId && agent.latestRunId !== run) return agent.latestRunId;
+      if (!agent || agent.status !== 'ACTIVE') return undefined;
+      await pause(step, signal);
+    }
+    return undefined;
+  };
 
   const provider: ManagedProvider = {
     name,
@@ -209,7 +223,8 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
           {
             ...vendor,
             prompt,
-            ...(mcpServers.length ? { mcpServers } : {}),
+            // An empty list too: it drops the servers of earlier turns, where leaving it out keeps them.
+            ...(start.mcpServers !== undefined ? { mcpServers } : {}),
             ...(options.mode ? { mode: options.mode } : {}),
           },
           signal,
@@ -349,9 +364,15 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
               }
               case 'result': {
                 // The run's final reply comes with the snapshot; text before it that differs still counts.
-                if (!(typeof data.text === 'string' && data.text && data.text === state.text)) flush(events);
+                const final = typeof data.text === 'string' && data.text && data.text === state.text ? data.text : '';
+                if (!final) flush(events);
                 state.text = '';
-                const found = await provider.get(id, signal);
+                let found = await provider.get(id, signal);
+                // A steer queued as the next follow-up: the turn goes on in the run it starts.
+                if (found?.cursor === runId && isSettledRun(found.vendorState) && queued.delete(id)) {
+                  const next = await nextRun(id, runId, signal);
+                  if (next) found = await provider.get(id, signal);
+                }
                 if (found && found.cursor === runId && isSettledRun(found.vendorState)) {
                   streams.delete(runId);
                   yield { ...at(), ...(events.length ? { events } : {}), snapshot: found };
@@ -359,6 +380,8 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
                 }
                 // A steer that came too late started the next run: the turn goes on there.
                 if (found?.cursor && found.cursor !== runId) {
+                  // This run's own reply, which the next run's snapshot does not carry.
+                  if (final) events.push({ type: 'message', text: final });
                   streams.delete(runId);
                   yield { cursor: found.cursor, ...(events.length ? { events } : {}), snapshot: found };
                   return;
@@ -386,7 +409,8 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
       // Steers the running turn, or becomes the next one when none is running.
       const response = await request('POST', `${agentPath(id)}/runs`, { prompt: { text }, delivery: 'steer' });
       if (!response) throw new Error(`${name}: agent '${id}' not found.`);
-      await response.body?.cancel().catch(() => undefined);
+      const answer = (await response.json().catch(() => ({}))) as { delivery?: string };
+      if (answer.delivery === 'queued') queued.add(id);
     },
 
     async interrupt(id) {
@@ -410,6 +434,10 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
   };
   return provider;
 }
+
+/** How long a run's end waits for the run a queued steer starts, and how often it looks. */
+const QUEUED_WAIT_MS = 30_000;
+const QUEUED_POLL_MS = 1_000;
 
 /** A run's status as a managed state. */
 function stateOf(status: string): { state: ManagedState; stopReason?: ManagedStopReason } {
