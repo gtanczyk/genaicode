@@ -88,6 +88,16 @@ describe('what a hook says about a session', () => {
     expect((await say('Stop', 140))?.tool).toBeUndefined();
     await say('SessionEnd', 150);
     expect((await readLive(env, 200)).size).toBe(0);
+    // A hook that started before the end and finishes after it does not bring the session back.
+    expect(await say('UserPromptSubmit', 145)).toBeUndefined();
+    expect(await say('PostToolUse', 160)).toBeUndefined();
+    expect((await readLive(env, 200)).size).toBe(0);
+    // Resumed later, it reports again; the note of the end goes after an hour.
+    expect(await say('SessionStart', 170, { source: 'resume' })).toMatchObject({ state: 'idle' });
+    await say('SessionEnd', 180);
+    expect(readdirSync(liveDir(env))).toHaveLength(1);
+    await readLive(env, 180 + 3600_001);
+    expect(readdirSync(liveDir(env))).toHaveLength(0);
   });
 
   it('takes hooks that run at the same moment one at a time', async () => {
@@ -184,6 +194,30 @@ describe('sessions with what the hooks reported', () => {
       waitingTool: 'Edit',
     });
     expect((await listSessions([source], { env, live: false })).sessions[0]!.waitingFor).toBeUndefined();
+  });
+
+  it('keeps a session whose hook is the latest news in a limited listing', async () => {
+    const env = home('limited');
+    const now = Date.now();
+    const all = [session({ id: 'new', updatedAt: now - 60_000 }), session({ id: 'old', updatedAt: now - 300_000 })];
+    const lists: Array<number | undefined> = [];
+    const source: SessionSource = {
+      name: 'claude',
+      where: 'local',
+      list: async (query) => (lists.push(query?.limit), all.slice(0, query?.limit)),
+    };
+    await recordHook('claude', { session_id: 'old', hook_event_name: 'PermissionRequest', tool_name: 'Bash' }, { env });
+    const { sessions } = await listSessions([source], { env, limit: 1 });
+    expect(sessions.map((entry) => [entry.id, entry.waitingFor])).toEqual([['old', 'approval']]);
+    expect(lists).toEqual([1, undefined]);
+    // A store that looks ids up is not listed whole.
+    const looked: string[] = [];
+    const finder: SessionSource = {
+      ...source,
+      find: async (id) => (looked.push(id), all.filter((entry) => entry.id === id)),
+    };
+    expect((await listSessions([finder], { env, limit: 1 })).sessions[0]!.id).toBe('old');
+    expect(looked).toEqual(['old']);
   });
 });
 

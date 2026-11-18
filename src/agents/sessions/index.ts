@@ -2,7 +2,7 @@ import type { CodingAgent } from '../types.js';
 import type { SessionListing } from './group.js';
 import type { SessionTurn } from '../session.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
-import { readLive, withLive } from './live.js';
+import { readLive, withLive, type LiveRecord } from './live.js';
 
 export { groupSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -62,8 +62,41 @@ export async function listSessions(
   );
   // What the agents' own hooks reported goes over what their files suggest.
   const live = query.live === false ? undefined : await readLive(query.env).catch(() => undefined);
-  const sessions = (live ? withLive(lists.flat(), live) : lists.flat()).sort((a, b) => b.updatedAt - a.updatedAt);
+  let found = lists.flat();
+  if (live?.size) {
+    if (query.limit !== undefined) found = found.concat(await reported(sources, found, live, query));
+    found = withLive(found, live);
+  }
+  const sessions = found.sort((a, b) => b.updatedAt - a.updatedAt);
   return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
+}
+
+/**
+ * Sessions a limited listing left out though their hooks reported something newer than the oldest
+ * one listed: they belong in it once the reports are counted.
+ */
+async function reported(
+  sources: readonly SessionSource[],
+  listed: readonly SessionInfo[],
+  live: ReadonlyMap<string, LiveRecord>,
+  query: SessionQuery,
+): Promise<SessionInfo[]> {
+  const have = new Set(listed.map((session) => `${session.source}:${session.id}`));
+  const oldest = listed.length < (query.limit ?? 0) ? 0 : Math.min(...listed.map((session) => session.updatedAt));
+  const whole = { ...query, limit: undefined };
+  const missing = [...live.values()].filter(
+    (record) => !have.has(`${record.agent}:${record.id}`) && Math.max(record.at, record.seen ?? 0) > oldest,
+  );
+  const lookups = sources.map(async (source) => {
+    const ids = missing.filter((record) => record.agent === source.name).map((record) => record.id);
+    if (!ids.length) return [];
+    // A store that can look an id up does; another is listed whole, once.
+    const sessions = source.find
+      ? (await Promise.all(ids.map((id) => source.find!(id, whole)))).flat()
+      : await source.list(whole);
+    return sessions.filter((session) => ids.includes(session.id));
+  });
+  return (await Promise.all(lookups.map((lookup) => lookup.catch(() => [] as SessionInfo[])))).flat();
 }
 
 /**

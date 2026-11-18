@@ -35,6 +35,8 @@ export interface LiveAsk {
 
 /** A record older than this says nothing any more. */
 const KEEP_MS = 7 * 24 * 3600_000;
+/** How long the note that a session ended is kept. */
+const ENDED_MS = 3600_000;
 /** A session "working" this long with nothing written is taken for one that died. */
 const WORKING_MS = 30 * 60_000;
 /** The agent's file can be written a little after its hook ran. */
@@ -143,15 +145,19 @@ function answer(asks: readonly LiveAsk[], done: LiveAsk): LiveAsk[] {
   return at < 0 ? [...asks] : [...asks.slice(0, at), ...asks.slice(at + 1)];
 }
 
-async function readRecord(file: string): Promise<LiveRecord | undefined> {
+/** A record as kept: also `ended`, which only says from when on earlier hooks no longer count. */
+type Kept = Omit<LiveRecord, 'state'> & { state: LiveState | 'ended' };
+
+async function readRecord(file: string): Promise<Kept | undefined> {
   try {
-    const value = JSON.parse(await fs.readFile(file, 'utf8')) as Partial<LiveRecord> | null;
+    const value = JSON.parse(await fs.readFile(file, 'utf8')) as Partial<Kept> | null;
     if (!value || typeof value.agent !== 'string' || typeof value.id !== 'string') return undefined;
     if (typeof value.at !== 'number') return undefined;
     if (value.seen !== undefined && typeof value.seen !== 'number') return undefined;
     if (value.asks !== undefined && !Array.isArray(value.asks)) return undefined;
-    if (value.state !== 'working' && value.state !== 'approval' && value.state !== 'idle') return undefined;
-    return value as LiveRecord;
+    const states: unknown[] = ['working', 'approval', 'idle', 'ended'];
+    if (!states.includes(value.state)) return undefined;
+    return value as Kept;
   } catch {
     return undefined;
   }
@@ -170,10 +176,6 @@ export async function recordHook(
   if (!event) return undefined;
   const dir = liveDir(options.env);
   const file = fileOf(dir, agent, event.id);
-  if (event.state === 'ended') {
-    await fs.rm(file, { force: true });
-    return undefined;
-  }
   const at = options.now ?? Date.now();
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   // Hooks run side by side, each in its own process: one at a time reads, decides and writes.
@@ -184,11 +186,15 @@ export async function recordHook(
     if (before && Math.max(before.at, before.seen ?? 0) > at) return undefined;
     const cwd = event.cwd ?? before?.cwd;
     const known = { agent, id: event.id, ...(cwd ? { cwd } : {}) };
-    let record: LiveRecord;
+    let record: Kept;
     let changed = true;
-    if (event.answered) {
+    if (event.state === 'ended') {
+      // Kept for a while, so a hook still running from before the end does not bring the session back.
+      record = { agent, id: event.id, state: 'ended', at };
+      changed = false;
+    } else if (event.answered) {
       // A tool that ran with no question asked changes no state, but it was seen.
-      if (!before) return undefined;
+      if (!before || before.state === 'ended') return undefined;
       const asked = before.state === 'approval' ? (before.asks ?? [{}]) : [];
       const left = answer(asked, event.answered);
       changed = asked.length > 0 && left.length < asked.length;
@@ -206,7 +212,7 @@ export async function recordHook(
     const temporary = `${file}.${process.pid}.tmp`;
     await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     await fs.rename(temporary, file);
-    return changed ? record : undefined;
+    return changed && record.state !== 'ended' ? (record as LiveRecord) : undefined;
   } finally {
     await release();
   }
@@ -262,8 +268,9 @@ export async function readLive(
         const file = path.join(dir, name);
         const record = await readRecord(file);
         if (!record) return;
-        if (now - record.at > KEEP_MS) await fs.rm(file, { force: true }).catch(() => undefined);
-        else records.set(`${record.agent}:${record.id}`, record);
+        const keep = record.state === 'ended' ? ENDED_MS : KEEP_MS;
+        if (now - record.at > keep) await fs.rm(file, { force: true }).catch(() => undefined);
+        else if (record.state !== 'ended') records.set(`${record.agent}:${record.id}`, record as LiveRecord);
       }),
   );
   return records;
