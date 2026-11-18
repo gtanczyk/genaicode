@@ -259,6 +259,29 @@ describe('pack', () => {
     expect(team.tasks()[0]!.status).toBe('aborted');
   });
 
+  it('drops a delegation whose worktree was still being set up when the lead finished', async () => {
+    const cwd = repo();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => (release = resolve));
+    let started = false;
+    const member = fake('b', async () => void (started = true));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        void tool(task, 'delegate', { agent: 'b', prompt: 'x' }).catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [member], prepareWorktree: () => blocked });
+    const result = team.run({ prompt: 'go', cwd }).result;
+    setTimeout(release, 400);
+    await result;
+    expect(started).toBe(false);
+    expect(team.tasks()).toEqual([]);
+    expect(readdirSync(join(cwd, '.genaicode', 'worktrees'))).toEqual(['.gitignore']);
+  });
+
   it('caps the whole pack with the task budget', async () => {
     const cwd = repo();
     const lead = fake(

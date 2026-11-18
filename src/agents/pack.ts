@@ -224,6 +224,7 @@ export function pack(options: PackOptions): Pack {
       const events = new EventQueue<AgentEvent>(approximateSize);
       const ended = new AbortController();
       const mine = new Set<Sub>();
+      const settingUp = new Set<Promise<string>>();
       let leadRun: AgentRun | undefined;
       let stopped = false;
       let leadUsage: TokenUsage | undefined;
@@ -294,11 +295,12 @@ export function pack(options: PackOptions): Pack {
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
         // Taken before the first await, so calls made at the same moment cannot share a slot.
         starting += 1;
-        try {
-          return await start(agent, prompt, args.mode);
-        } finally {
+        const setup = start(agent, prompt, args.mode).finally(() => {
           starting -= 1;
-        }
+          settingUp.delete(setup);
+        });
+        settingUp.add(setup);
+        return setup;
       };
 
       const start = async (agent: CodingAgent, prompt: string, wanted: unknown): Promise<string> => {
@@ -335,6 +337,8 @@ export function pack(options: PackOptions): Pack {
           mkdirSync(sub.cwd, { recursive: true });
           try {
             await options.prepareWorktree?.(dir, repo);
+            // The lead finished while the worktree was being set up: nobody would follow the task.
+            if (ended.signal.aborted) throw new Error('The run has ended.');
           } catch (error) {
             await drop(sub);
             throw error;
@@ -633,6 +637,8 @@ export function pack(options: PackOptions): Pack {
         } finally {
           // The lead is gone: nobody is left to wait for, merge or steer what still runs.
           ended.abort();
+          // A delegation still setting up sees the run ended and removes its worktree.
+          await Promise.allSettled([...settingUp]);
           for (const sub of mine) sub.run?.abort();
           await Promise.all([...mine].map((sub) => sub.ended));
           await server.close();
