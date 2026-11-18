@@ -20,13 +20,27 @@ import {
 import type { SessionTurn } from '../session.js';
 import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
 import { number, queryDatabase, tableColumns, text } from './sqlite.js';
-import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
+import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
+import { findExecutable } from '../discovery.js';
+import { codexThreads, openCodexServer, readCodexThread, type CodexServer } from './codex-api.js';
 
 export interface CodexSessionsOptions {
   /** Codex's home directory. Default `$CODEX_HOME`, else `~/.codex`. */
   dir?: string;
   env?: NodeJS.ProcessEnv;
+  /**
+   * How to get at the sessions. `files` (default): read Codex's index and rollouts, which changes
+   * nothing. `app-server`: ask Codex's own app server (`thread/list`, `thread/turns/list`), which
+   * holds across Codex versions but starts a Codex process that keeps its state and logs in
+   * Codex's home; the files are read when it cannot be asked. `auto`: the app server when the
+   * `codex` command is installed. `$GENAICODE_CODEX_SESSIONS` sets it from outside.
+   */
+  via?: CodexSessionsVia;
+  /** The Codex executable for `app-server`. Default `codex`. */
+  command?: string;
 }
+
+export type CodexSessionsVia = 'files' | 'app-server' | 'auto';
 
 const ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 
@@ -235,7 +249,8 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
-    if (info.state !== 'active') info.state = read.state;
+    // A state the app server reported (it asks for approval) is not the rollout's to change.
+    if (info.state !== 'active' && !info.waitingFor) info.state = read.state;
   } catch {
     // Gone, or compressed where this Node has no zstd: the index row is what there is.
   }
@@ -318,13 +333,54 @@ export function codexTranscript(lines: readonly unknown[], options: SessionReadO
  * is one, else the rollout files under `sessions/`.
  */
 export function codexSessions(options: CodexSessionsOptions = {}): SessionSource {
+  const envOf = (query?: SessionQuery) => query?.env ?? options.env ?? process.env;
+  const dirOf = (env: NodeJS.ProcessEnv) => options.dir ?? env.CODEX_HOME ?? path.join(homeOf(env), '.codex');
+  /** Ask Codex's app server, when this source may and can; undefined says to read the files. */
+  const ask = async <T>(
+    env: NodeJS.ProcessEnv,
+    signal: AbortSignal | undefined,
+    question: (server: CodexServer) => Promise<T>,
+    always = false,
+  ): Promise<T | undefined> => {
+    const chosen = options.via ?? env.GENAICODE_CODEX_SESSIONS ?? 'files';
+    const command = options.command ?? 'codex';
+    if (!always && chosen !== 'app-server' && chosen !== 'auto') return undefined;
+    if (!findExecutable(command, env)) return undefined;
+    let server: CodexServer | undefined;
+    try {
+      server = await openCodexServer({ command, dir: dirOf(env), env, ...(signal ? { signal } : {}) });
+      return await question(server);
+    } catch {
+      signal?.throwIfAborted();
+      return undefined;
+    } finally {
+      server?.close();
+    }
+  };
+  // Where each session listed through the app server came from, so reading it asks the same one.
+  const listedIn = new Map<string, NodeJS.ProcessEnv>();
+  const listed = async (query: SessionQuery, always = false) => {
+    const env = envOf(query);
+    const threads = await ask(env, query.signal, (server) => codexThreads(server, query), always);
+    if (threads?.length) {
+      for (const thread of threads) listedIn.set(thread.id, env);
+      // Kept small: the latest listings are the ones read from.
+      for (const id of [...listedIn.keys()].slice(0, Math.max(0, listedIn.size - 2000))) listedIn.delete(id);
+      await mapLimited(threads.slice(0, 200), 8, fromRollout);
+    }
+    return threads;
+  };
   return {
     name: 'codex',
     where: 'local',
     verified: '0.170',
+    reference: (query = {}) => listed(query, true),
     async list(query = {}) {
-      const env = query.env ?? options.env ?? process.env;
-      const dir = options.dir ?? env.CODEX_HOME ?? path.join(homeOf(env), '.codex');
+      const env = envOf(query);
+      const dir = dirOf(env);
+      // An app server that lists nothing may just not know this home: the files say.
+      const threads = await listed(query);
+      if (threads?.length) return threads;
       const indexed = await indexedSessions(dir);
       if (indexed) {
         const chosen = select(indexed, query);
@@ -348,6 +404,9 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       return sessions.slice(0, query.limit);
     },
     async read(session, readOptions) {
+      const env = listedIn.get(session.id) ?? envOf();
+      const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));
+      if (turns?.length) return turns;
       if (!session.path) throw new Error(`Session ${session.id} has no rollout file.`);
       const plain = await transcriptLines(session.path).catch(() => undefined);
       if (plain) return codexTranscript(plain, readOptions);

@@ -17,7 +17,7 @@ export type CliCommand =
       limit: number;
     }
   /** `sessions doctor`: whether the session stores still read as expected. */
-  | { kind: 'doctor'; json: boolean; agent?: string; sinceMs?: number }
+  | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
   | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
       kind: 'chat' | 'ui';
@@ -110,6 +110,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
         options: {
           json: { type: 'boolean' },
           cloud: { type: 'boolean' },
+          api: { type: 'boolean' },
           agent: { type: 'string', short: 'a' },
           cwd: { type: 'string', short: 'C' },
           since: { type: 'string' },
@@ -126,10 +127,12 @@ export function parseCli(argv: readonly string[]): CliCommand {
       return {
         kind: 'doctor',
         json: values.json === true,
+        api: values.api === true,
         ...(values.agent !== undefined ? { agent: values.agent } : {}),
         ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
       };
     }
+    if (values.api) throw new UsageError('--api belongs to "genaicode sessions doctor".');
     return {
       kind: 'sessions',
       json: values.json === true,
