@@ -150,6 +150,8 @@ describe('reading a session', () => {
       message('assistant', 'Did it.'),
       message('user', 'Again'),
       message('assistant', 'Did it.'),
+      message('user', 'Make a page'),
+      message('assistant', '<main>The page</main>'),
       message('user', 'Third'),
       { type: 'event_msg', payload: { type: 'user_message', message: 'Third' } },
       { type: 'event_msg', payload: { type: 'agent_message', message: 'Done.' } },
@@ -158,6 +160,7 @@ describe('reading a session', () => {
     expect(mixed.map((turn) => [turn.prompt, turn.result?.text])).toEqual([
       ['First', 'Did it.'],
       ['Again', 'Did it.'],
+      ['Make a page', '<main>The page</main>'],
       ['Third', 'Done.'],
     ]);
   });

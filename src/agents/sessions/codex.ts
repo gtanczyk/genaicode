@@ -47,7 +47,8 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
     .flatMap((block) => (isRecord(block) && typeof block.text === 'string' ? [block.text] : []))
     .join('\n')
     .trim();
-  return text && !text.startsWith('<') ? text : undefined;
+  // Only user records carry the injected context (`<environment_context>`); an answer may start with markup.
+  return text && !(role === 'user' && text.startsWith('<')) ? text : undefined;
 }
 
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
