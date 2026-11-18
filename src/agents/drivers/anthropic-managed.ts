@@ -10,6 +10,7 @@ import {
   type ManagedUsage,
 } from '../managed.js';
 import { anySignal } from '../runtime.js';
+import type { SessionInfo, SessionSource } from '../sessions/types.js';
 import type { AgentEvent, AgentFailure, ApprovalRequest, CodingAgent, McpServer } from '../types.js';
 
 /** An event as Claude Managed Agents reports it; the fields this driver reads. */
@@ -24,6 +25,8 @@ export interface AnthropicManagedSession {
   id: string;
   status: string;
   created_at?: string;
+  updated_at?: string;
+  title?: string | null;
   agent?: {
     model?: AnthropicManagedModel;
     mcp_servers?: readonly { name: string; url: string }[];
@@ -79,6 +82,8 @@ export interface AnthropicManagedClient {
       retrieve(id: string, params?: undefined, options?: RequestOptions): PromiseLike<AnthropicManagedSession>;
       update(id: string, params: object, options?: RequestOptions): PromiseLike<unknown>;
       delete(id: string): PromiseLike<unknown>;
+      /** Newest first, every page. Absent in SDK versions before session listing. */
+      list?(params?: object, options?: RequestOptions): AsyncIterable<AnthropicManagedSession>;
       events: {
         send(id: string, params: { events: object[] }, options?: RequestOptions): PromiseLike<unknown>;
         stream(
@@ -131,6 +136,9 @@ export interface AnthropicManagedOptions {
   /** Provider name in events and results. Default `anthropicManaged`. */
   name?: string;
 }
+
+/** `sessions.list` reads at most this many sessions. */
+const MAX_LISTED = 1000;
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
@@ -217,6 +225,50 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     };
   };
 
+  // The sessions of this driver's agent, as the API lists them (newest first by creation).
+  const sessions: SessionSource = {
+    name,
+    where: 'cloud',
+    async list(query = {}) {
+      // A local directory names no hosted session.
+      if (query.cwd !== undefined) return [];
+      const c = await client();
+      if (!c.beta.sessions.list) throw new Error(`${name}: this @anthropic-ai/sdk version cannot list sessions.`);
+      const wanted = query.limit ?? Infinity;
+      const found: SessionInfo[] = [];
+      let seen = 0;
+      for await (const session of c.beta.sessions.list(
+        { agent_id: agentRef.id, limit: 100 },
+        query.signal ? { signal: query.signal } : undefined,
+      )) {
+        if (++seen > MAX_LISTED) break;
+        const snapshot = snapshotOf(session);
+        const updated = Date.parse(session.updated_at ?? session.created_at ?? '');
+        if (!Number.isFinite(updated) || (query.since !== undefined && updated < query.since)) continue;
+        const state =
+          session.status === 'running' || session.status === 'rescheduling'
+            ? 'active'
+            : session.status === 'idle'
+              ? 'waiting'
+              : undefined;
+        found.push({
+          source: name,
+          agent: name,
+          id: session.id,
+          where: 'cloud',
+          updatedAt: updated,
+          ...(snapshot.startedAt !== undefined ? { startedAt: snapshot.startedAt } : {}),
+          ...(session.title ? { title: session.title } : {}),
+          ...(snapshot.model ? { model: snapshot.model } : {}),
+          ...(snapshot.usage ? { usage: snapshot.usage } : {}),
+          ...(snapshot.costUsd !== undefined ? { costUsd: snapshot.costUsd } : {}),
+          ...(state ? { state } : {}),
+        });
+      }
+      return found.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, wanted);
+    },
+  };
+
   /** The terminal error of the session's last turn, read back from its latest events. */
   const turnError = async (id: string, signal?: AbortSignal): Promise<SessionError | undefined> => {
     let stopped = false;
@@ -279,6 +331,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
 
   const provider: ManagedProvider = {
     name,
+    sessions,
     capabilities: {
       usage: true,
       mcp: true,

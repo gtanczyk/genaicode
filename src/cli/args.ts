@@ -10,6 +10,8 @@ export type CliCommand =
       json: boolean;
       agent?: string;
       cwd?: string;
+      /** `--cloud`: also the vendor clouds this environment has keys for. */
+      cloud: boolean;
       /** `--since 7d`: only sessions active in this many milliseconds. */
       sinceMs?: number;
       limit: number;
@@ -99,6 +101,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
         strict: true,
         options: {
           json: { type: 'boolean' },
+          cloud: { type: 'boolean' },
           agent: { type: 'string', short: 'a' },
           cwd: { type: 'string', short: 'C' },
           since: { type: 'string' },
@@ -110,6 +113,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
     return {
       kind: 'sessions',
       json: values.json === true,
+      cloud: values.cloud === true,
       ...(values.agent !== undefined ? { agent: values.agent } : {}),
       ...(values.cwd !== undefined ? { cwd: values.cwd } : {}),
       ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),

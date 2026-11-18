@@ -761,4 +761,35 @@ describe('anthropicManagedProvider.get', () => {
     const fake = fakeClient();
     expect(await anthropicManagedProvider(base(fake.client)).get('sesn_404')).toBeNull();
   });
+
+  it("lists the agent's sessions", async () => {
+    const fake = fakeClient();
+    const listed: unknown[] = [];
+    fake.client.beta.sessions.list = async function* (params) {
+      listed.push(params);
+      yield { ...fake.session, title: 'Order inquiry', updated_at: '2026-11-17T11:00:00Z' };
+      yield { ...fake.session, id: 'sesn_2', status: 'idle', updated_at: '2026-11-17T12:00:00Z' };
+      yield { ...fake.session, id: 'sesn_0', status: 'terminated', updated_at: '2026-11-01T12:00:00Z' };
+    };
+    const provider = anthropicManagedProvider(base(fake.client));
+    const sessions = await provider.sessions!.list({ since: Date.parse('2026-11-10T00:00:00Z') });
+    expect(listed).toEqual([{ agent_id: 'agent_1', limit: 100 }]);
+    expect(sessions.map((session) => [session.id, session.state])).toEqual([
+      ['sesn_2', 'waiting'],
+      ['sesn_1', 'active'],
+    ]);
+    expect(sessions[1]).toMatchObject({
+      source: 'anthropicManaged',
+      agent: 'anthropicManaged',
+      where: 'cloud',
+      title: 'Order inquiry',
+      model: 'claude-opus-5-5',
+      costUsd: 0.12,
+      startedAt: Date.parse('2026-11-17T10:00:00Z'),
+      updatedAt: Date.parse('2026-11-17T11:00:00Z'),
+    });
+    // An SDK from before session listing says so; the other sources are still listed.
+    delete fake.client.beta.sessions.list;
+    await expect(provider.sessions!.list()).rejects.toThrow(/cannot list sessions/);
+  });
 });

@@ -6,6 +6,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import { agentSessionSources, groupSessions, listSessions } from '../agents/sessions/index.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
@@ -100,6 +101,7 @@ Usage:
 
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
+      --cloud             Also Cursor Cloud Agents (needs CURSOR_API_KEY)
   -C, --cwd <dir>         Only sessions in this directory or below it
       --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
   -n, --limit <n>         At most this many sessions, newest first (default 30)
@@ -349,8 +351,15 @@ async function showSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions' }>,
 ): Promise<number> {
+  // `--cloud` adds the vendor clouds the environment has a key for.
+  const cloud: CodingAgent[] = [];
+  if (command.cloud) {
+    const key = cli.env.CURSOR_API_KEY;
+    if (key) cloud.push(cursorCloud({ apiKey: key }));
+    else cli.stderr.write('--cloud: no CURSOR_API_KEY in the environment, so no cloud is listed.\n');
+  }
   const sources = agentSessionSources(
-    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
+    [...agents, ...cloud].filter((agent) => command.agent === undefined || agent.name === command.agent),
   );
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);

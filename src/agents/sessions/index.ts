@@ -70,10 +70,16 @@ export interface SessionProject {
 export function groupSessions(sessions: readonly SessionInfo[]): SessionProject[] {
   const projects = new Map<string, SessionProject>();
   for (const session of sessions) {
-    const key = session.cwd ?? session.repository ?? '';
+    const place = session.cwd ?? session.repository;
+    // A cloud session that names no repository groups under its platform.
+    const key = place ?? (session.where === 'cloud' ? `cloud:${session.source}` : '');
     let project = projects.get(key);
     if (!project) {
-      const name = key ? path.basename(key.replace(/\.git$/, '')) || key : '(no directory)';
+      const name = place
+        ? path.basename(place.replace(/\.git$/, '')) || place
+        : key
+          ? session.source
+          : '(no directory)';
       projects.set(key, (project = { key, name, sessions: [], updatedAt: 0, agents: {} }));
     }
     project.sessions.push(session);
