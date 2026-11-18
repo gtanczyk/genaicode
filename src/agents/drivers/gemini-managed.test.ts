@@ -408,6 +408,12 @@ describe('geminiManaged', () => {
     expect(create.url).toBe('https://aiplatform.googleapis.com/v1beta1/projects/my-proj/locations/global/interactions');
     expect(create.headers.authorization).toBe('Bearer ya29.token');
     expect(create.headers['x-goog-api-key']).toBeUndefined();
+
+    const custom = fakeFetch({ interactions: { int_1: done() } });
+    await geminiManagedProvider(base(custom.fetch, { baseUrl: 'https://proxy.test/v1beta///' })).start({
+      prompt: 'Go',
+    });
+    expect(custom.calls[0].url).toBe('https://proxy.test/v1beta/interactions');
   });
 
   it('refuses a model override for a saved agent, and effort or turn caps', async () => {

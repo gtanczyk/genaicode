@@ -109,12 +109,12 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
   const filesRoot = options.filesRoot ?? '/workspace';
   const fetchImpl = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   const platform = options.agentPlatform;
-  const root = (
+  const rootUrl =
     options.baseUrl ??
     (platform
       ? `https://${hostOf(platform.location ?? 'global')}/v1beta1/projects/${encodeURIComponent(platform.project)}/locations/${encodeURIComponent(platform.location ?? 'global')}`
-      : 'https://generativelanguage.googleapis.com/v1beta')
-  ).replace(/\/+$/, '');
+      : 'https://generativelanguage.googleapis.com/v1beta');
+  const root = trimSlashes(rootUrl);
 
   const auth = async (): Promise<Record<string, string>> => {
     if (platform) {
@@ -639,12 +639,20 @@ function remoteServers(
 
 /** `https://github.com/owner/repo[#branch]` (also GitLab, Bitbucket) or any `https://.../name.git`. */
 function repositoryOf(workspace: string | undefined): { url: string; name: string; branch?: string } | undefined {
-  const match = workspace && /^(https:\/\/[^\s#]+?)\/?(?:#(.+))?$/.exec(workspace);
-  if (!match) return undefined;
-  const url = match[1];
+  if (!workspace?.startsWith('https://') || /\s/.test(workspace)) return undefined;
+  const hash = workspace.indexOf('#');
+  const url = trimSlashes(hash < 0 ? workspace : workspace.slice(0, hash));
+  const branch = hash < 0 ? '' : workspace.slice(hash + 1);
   if (!/^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/[^/]+\/[^/]+$/.test(url) && !url.endsWith('.git'))
     return undefined;
-  return { url, name: posix.basename(url).replace(/\.git$/, ''), ...(match[2] ? { branch: match[2] } : {}) };
+  return { url, name: posix.basename(url).replace(/\.git$/, ''), ...(branch ? { branch } : {}) };
+}
+
+/** Without trailing slashes (a loop: a regular expression is slow on long runs of them). */
+function trimSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
 }
 
 function pause(ms: number, signal: AbortSignal): Promise<void> {
