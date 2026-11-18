@@ -177,7 +177,7 @@ describe('openaiManaged', () => {
     const fake = fakeFetch({ responses: { resp_1: done() } });
     const run = openaiManaged(base(fake.fetch, { network: ['pypi.org'] })).run(
       task({
-        mcpServers: [{ name: 'docs', url: 'https://mcp.example.com/mcp', headers: { Authorization: 'Bearer t0k' } }],
+        mcpServers: [{ name: 'docs', url: 'https://mcp.example.com/mcp', headers: { Authorization: 'bearer   t0k' } }],
       }),
     );
     await drain(run);

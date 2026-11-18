@@ -182,7 +182,7 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
       const headers: Record<string, string> = { ...server.headers };
       // The platform takes a bearer token in `authorization`; it drops other headers on tool calls.
       const key = Object.keys(headers).find((header) => header.toLowerCase() === 'authorization');
-      const bearer = key ? /^Bearer\s+(.+)$/i.exec(headers[key]) : null;
+      const bearer = key ? bearerToken(headers[key]) : undefined;
       if (key && !bearer) throw new Error(`${name}: MCP server '${server.name}' takes only a Bearer authorization.`);
       if (key) delete headers[key];
       if (Object.keys(headers).length)
@@ -193,7 +193,7 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
         server_url: server.url,
         // The agent cannot stop for an approval: a paused response would need a new one to answer it.
         require_approval: 'never',
-        ...(bearer ? { authorization: bearer[1] } : {}),
+        ...(bearer ? { authorization: bearer } : {}),
       });
     }
     return tools;
@@ -279,6 +279,14 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
       await json('DELETE', `/responses/${encodeURIComponent(id)}`);
     },
   };
+}
+
+/** The token of `Bearer <token>`, parsed without a regular expression (slow on long runs of spaces). */
+function bearerToken(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (trimmed.slice(0, 7).toLowerCase() !== 'bearer ') return undefined;
+  const token = trimmed.slice(7).trim();
+  return token || undefined;
 }
 
 function running(status: string | undefined): boolean {
