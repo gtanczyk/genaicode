@@ -439,7 +439,12 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
             const events: AgentEvent[] = [
               { type: 'tool-start', ...(event.id ? { id: event.id } : {}), name: shown, input: e.input },
             ];
-            if (event.type !== 'agent.custom_tool_use' && e.evaluated_permission === 'ask' && event.id)
+            if (
+              event.type !== 'agent.custom_tool_use' &&
+              e.evaluated_permission === 'ask' &&
+              event.id &&
+              !answeredTools.has(event.id)
+            )
               events.push({ type: 'approval-request', request: approvalOf(event.id, shown, toolName, e.input) });
             // The session waits idle for the result; the step shows first, then the tool runs.
             const toolUseId = event.id;
@@ -555,9 +560,13 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
         const history: AnthropicManagedEvent[] = [];
         for await (const event of after(id, from, both)) if (!event.id || !seen.has(event.id)) history.push(event);
         // Custom tool calls the history already answered only show; they do not run again.
-        for (const event of history)
+        for (const event of history) {
           if (event.type === 'user.custom_tool_result')
             answeredTools.add(String((event as { custom_tool_use_id?: unknown }).custom_tool_use_id));
+          // Approvals the history already settled are not asked again.
+          if (event.type === 'user.tool_confirmation')
+            answeredTools.add(String((event as { tool_use_id?: unknown }).tool_use_id));
+        }
         // Turns that later history continued are over: their idle is no end for this watch.
         const lastStart = history.findLastIndex((event) => TURN_STARTS.has(event.type));
         for (const [index, event] of history.entries()) {

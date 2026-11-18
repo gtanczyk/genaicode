@@ -672,6 +672,22 @@ describe('anthropicManaged after second review', () => {
     });
   });
 
+  it('does not ask again an approval the history already settled', async () => {
+    const history = [
+      ev('agent.tool_use', { id: 'sevt_done', name: 'bash', input: { command: 'ls' }, evaluated_permission: 'ask' }),
+      ev('user.tool_confirmation', { tool_use_id: 'sevt_done', result: 'allow' }),
+      ev('agent.tool_result', { tool_use_id: 'sevt_done', content: [] }),
+      idle(),
+    ];
+    const fake = fakeClient({ history, streams: [[]] });
+    const provider = anthropicManagedProvider(base(fake.client));
+    const events = [];
+    for await (const update of provider.watch!('sesn_1', new AbortController().signal))
+      events.push(...(update.events ?? []));
+    expect(events.some((e) => e.type === 'approval-request')).toBe(false);
+    expect(events).toContainEqual({ type: 'approval-resolved', id: 'sevt_done', decision: 'approve' });
+  });
+
   it('follows the latest turn when it attaches to a session without a cursor', async () => {
     const history = [
       ev('user.message'),
