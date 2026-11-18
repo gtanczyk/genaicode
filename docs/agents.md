@@ -664,6 +664,46 @@ reading starts there, so a resumed session's history (and its approvals) is not 
 
 `hostedAgent()` is `managedAgent(fromHosted(provider))`.
 
+#### Claude Managed Agents
+
+`anthropicManaged()` runs tasks as sessions of an agent you created once on
+[Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview), in one of
+your environments. It calls `@anthropic-ai/sdk`'s `beta.sessions`; pass a client from a version
+that has them (genaicode's own SDK dependency may be older):
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import { anthropicManaged } from 'genaicode/agents';
+
+const agent = anthropicManaged({
+  client: new Anthropic(),
+  agent: 'agent_011...', // or { id, version } to pin one
+  environment: 'env_011...',
+  githubToken: () => process.env.GITHUB_TOKEN!, // for https://github.com/... workspaces
+  tools: { run_tests: async ({ path }) => runTests(String(path)) }, // the agent's custom tools
+});
+
+const run = agent.run({
+  prompt: 'Fix the failing test',
+  cwd: 'https://github.com/acme/game#main', // cloned into the session; other cwd values are ignored
+  budget: { maxCostUsd: 5 }, // the session's own list-cost cap
+  mcpServers: [{ name: 'game', url: 'https://example.com/mcp', headers: { Authorization: `Bearer ${token}` } }],
+});
+```
+
+- The prompt starts the session; `steer()` adds a `user.message`, `abort()` sends `user.interrupt`.
+  `task.resume` (a session id) sends the next message to the same session.
+- Tool calls the agent's permission policy pauses (`always_ask`, or `auto` without a verdict) come
+  back as `approval-request` and are answered with `user.tool_confirmation`.
+- `model`, `effort` and `system` (added to the agent's prompt) override the agent for that
+  session only. MCP servers the agent does not have are added for the session; a bearer token
+  goes into a vault made for the session, which `release()` deletes after the run, so a resumed
+  session cannot take new MCP credentials. Only `Authorization: Bearer` headers can be vaulted.
+- `ManagedStart.files` are uploaded and mounted under `filesRoot` (default `/workspace`).
+- Usage and list cost come from the session; an `idle` at `budget_reached` fails with
+  `failure.kind: 'budget'`, rate-limit and billing errors with `quota`, overload with `unavailable`.
+- `maxTurns` and `extraArgs` are refused; `permissions.sandbox` is the environment's business.
+
 ## Writing a driver
 
 ```ts

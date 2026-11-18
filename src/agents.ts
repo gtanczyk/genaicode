@@ -77,6 +77,16 @@ export type { CursorAgentOptions } from './agents/drivers/cursor.js';
 export { createOpencodeParser, opencode, opencodeArgs, opencodePermissionFlags } from './agents/drivers/opencode.js';
 export type { OpencodeAgentOptions } from './agents/drivers/opencode.js';
 export { fromHosted, hostedAgent } from './agents/hosted.js';
+export { anthropicManaged, anthropicManagedProvider } from './agents/drivers/anthropic-managed.js';
+export type {
+  AnthropicManagedAgentConfig,
+  AnthropicManagedClient,
+  AnthropicManagedEvent,
+  AnthropicManagedModel,
+  AnthropicManagedOptions,
+  AnthropicManagedSession,
+  AnthropicManagedToolHandler,
+} from './agents/drivers/anthropic-managed.js';
 export { isManagedSettled, managedAgent } from './agents/managed.js';
 export type {
   ManagedAgentOptions,
