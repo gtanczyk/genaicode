@@ -381,7 +381,7 @@ describe('genaicode sessions doctor', () => {
     expect(fine.out).toContain('6 sessions: 6 with a prompt or title, 6 with a directory');
     const broken = await run();
     expect(broken.code).toBe(EXIT_FAILED);
-    expect(broken.out).toContain('! only 0 of 6 sessions have a prompt or a title');
+    expect(broken.out).toContain('! only 0 of the 6 newest sessions have a prompt or a title');
   });
 });
 

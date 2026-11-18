@@ -7,6 +7,8 @@ import { readLive } from './live.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Fewer sessions than this say too little about a store to call its format changed. */
 const MIN_FOR_SHARES = 5;
+/** Readers fill in the latest prompt of about this many newest sessions; older ones may lack it. */
+const JUDGED = 200;
 
 /** How well one source reads its store right now. Counts only: nothing of what was said. */
 export interface SessionCheck {
@@ -97,21 +99,32 @@ export async function checkSessions(
       check.withPrompt = sessions.filter(hasPrompt).length;
       check.withCwd = sessions.filter((session) => session.cwd !== undefined).length;
       check.withState = sessions.filter((session) => session.state !== undefined).length;
-      if (sessions.length >= MIN_FOR_SHARES) {
-        if (check.withPrompt * 2 < sessions.length) {
-          check.problems.push(`only ${check.withPrompt} of ${sessions.length} sessions have a prompt or a title`);
-        }
-        if (source.where === 'local' && check.withCwd * 2 < sessions.length) {
-          check.problems.push(`only ${check.withCwd} of ${sessions.length} sessions have a directory`);
+      // Judged on the newest ones: a reader may fill in only those from the conversations.
+      const newest = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, JUDGED);
+      if (newest.length >= MIN_FOR_SHARES) {
+        const prompts = newest.filter(hasPrompt).length;
+        const dirs = newest.filter((session) => session.cwd !== undefined).length;
+        const of = `of the ${newest.length} newest sessions`;
+        if (prompts * 2 < newest.length) check.problems.push(`only ${prompts} ${of} have a prompt or a title`);
+        if (source.where === 'local' && dirs * 2 < newest.length) {
+          check.problems.push(`only ${dirs} ${of} have a directory`);
         }
       }
 
       if (source.read) {
-        // Sessions with a prompt have a conversation to open.
-        const chosen = sessions.filter(hasPrompt).slice(0, options.sample ?? 5);
+        // Sessions with a prompt surely have a conversation to open; the others fill the sample,
+        // so a store whose listing lost its prompts still has its conversations tried.
+        const chosen = [...newest.filter(hasPrompt), ...newest.filter((session) => !hasPrompt(session))].slice(
+          0,
+          options.sample ?? 5,
+        );
         check.sampled = chosen.length;
+        let failed = false;
         for (const session of chosen) {
-          const turns = await source.read(session, { maxTurns: 20 }).catch(() => []);
+          const turns = await source.read(session, { maxTurns: 20 }).catch(() => {
+            failed = true;
+            return [];
+          });
           if (!turns.length) continue;
           check.read += 1;
           const entries = turns.flatMap((turn) => turn.entries);
@@ -119,7 +132,10 @@ export async function checkSessions(
           if (entries.some((entry) => entry.kind === 'tool')) check.withTools += 1;
         }
         if (check.sampled && !check.read) {
-          check.problems.push(`none of the ${check.sampled} newest conversations could be read`);
+          const none = `none of the ${check.sampled} newest conversations could be read`;
+          // Sessions with no prompt and nothing in them may just be empty, when nothing failed.
+          if (failed || chosen.some(hasPrompt)) check.problems.push(none);
+          else check.notes.push(`${none}: empty sessions, or a store that changed`);
         } else if (check.read && !check.withReply) {
           check.problems.push(`no agent message in the ${check.read} conversations read`);
         } else if (check.read >= 3 && !check.withTools) {

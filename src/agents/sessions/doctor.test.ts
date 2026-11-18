@@ -59,8 +59,8 @@ describe('checkSessions', () => {
       version: async () => '1.3.0',
     });
     expect(check!.problems).toEqual([
-      'only 1 of 6 sessions have a prompt or a title',
-      'only 1 of 6 sessions have a directory',
+      'only 1 of the 6 newest sessions have a prompt or a title',
+      'only 1 of the 6 newest sessions have a directory',
     ]);
     expect(check!.newer).toBe(true);
     expect(check!.notes.join('\n')).toContain('newer than the one checked (1.2.3)');
@@ -84,6 +84,27 @@ describe('checkSessions', () => {
     expect(checks[0]!.problems).toEqual(['none of the 2 newest conversations could be read']);
     expect(checks[1]!.problems).toEqual(['no agent message in the 2 conversations read']);
     expect(checks[2]!.problems).toEqual(['cannot list: no such table: threads']);
+  });
+
+  it('judges prompts on the newest sessions and tries conversations the listing lost the prompt of', async () => {
+    // Older sessions are listed without a prompt on purpose: only the newest are filled in.
+    const many = Array.from({ length: 450 }, (_, at) =>
+      info(`s${at}`, { cwd: '/w', updatedAt: NOW - at * 1000, ...(at < 200 ? { lastPrompt: 'p' } : {}) }),
+    );
+    const [big] = await checkSessions([source(many)], { env: env(), now: NOW });
+    expect(big).toMatchObject({ listed: 450, withPrompt: 200, problems: [] });
+
+    const unnamed = [info('a', { cwd: '/w' }), info('b', { cwd: '/w' })];
+    const throwing = source(unnamed, {
+      read: async () => {
+        throw new Error('bad line');
+      },
+    });
+    const empty = source(unnamed, { name: 'empty', read: async () => [] });
+    const checks = await checkSessions([throwing, empty], { env: env(), now: NOW });
+    expect(checks[0]).toMatchObject({ sampled: 2, problems: ['none of the 2 newest conversations could be read'] });
+    expect(checks[1]!.problems).toEqual([]);
+    expect(checks[1]!.notes[0]).toContain('empty sessions, or a store that changed');
   });
 
   it('calls a few sessions without prompts and a list-only store fine', async () => {
