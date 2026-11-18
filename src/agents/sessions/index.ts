@@ -17,6 +17,9 @@ export {
   cursorSessions,
   geminiSessions,
   geminiTranscript,
+  museTranscript,
+  antigravityTranscript,
+  vibeTranscript,
   museSessions,
   vibeSessions,
 } from './stores.js';
@@ -63,13 +66,19 @@ export async function findSession(
   id: string,
   query: SessionQuery = {},
 ): Promise<{ session: SessionInfo; source: SessionSource } | undefined> {
-  const { sessions } = await listSessions(sources, query);
+  // A store that can look an id up does; the others are listed whole.
+  const found = await Promise.all(
+    sources.map((source) =>
+      (source.find && id.length >= 8 ? source.find(id, query) : source.list(query)).catch(() => [] as SessionInfo[]),
+    ),
+  );
+  const sessions = found.flat().sort((a, b) => b.updatedAt - a.updatedAt);
   const exact = sessions.filter((session) => session.id === id);
-  const found = exact.length ? exact : id.length >= 8 ? sessions.filter((session) => session.id.startsWith(id)) : [];
-  if (found.length > 1 && new Set(found.map((session) => `${session.source}:${session.id}`)).size > 1) {
-    throw new Error(`${found.length} sessions start with "${id}". Give more of the id.`);
+  const matches = exact.length ? exact : id.length >= 8 ? sessions.filter((session) => session.id.startsWith(id)) : [];
+  if (matches.length > 1 && new Set(matches.map((session) => `${session.source}:${session.id}`)).size > 1) {
+    throw new Error(`${matches.length} sessions start with "${id}". Give more of the id.`);
   }
-  const session = found[0];
+  const session = matches[0];
   const source = session && sources.find((candidate) => candidate.name === session.source);
   return session && source ? { session, source } : undefined;
 }

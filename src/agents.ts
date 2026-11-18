@@ -86,8 +86,11 @@ export {
   readCodexSession,
   claudeTranscript,
   codexTranscript,
+  antigravityTranscript,
   copilotTranscript,
   geminiTranscript,
+  museTranscript,
+  vibeTranscript,
   findSession,
   readSession,
 } from './agents/sessions/index.js';

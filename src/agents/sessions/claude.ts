@@ -210,6 +210,18 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
       }
       return sessions.slice(0, query.limit);
     },
+    async find(id, query = {}) {
+      const env = query.env ?? options.env ?? process.env;
+      const dir = options.dir ?? env.CLAUDE_CONFIG_DIR ?? path.join(homeOf(env), '.claude');
+      // The file is named after the session, so only the matching ones are opened.
+      const files = await findFiles(
+        path.join(dir, 'projects'),
+        1,
+        (name) => name.endsWith('.jsonl') && name.startsWith(id),
+      );
+      const sessions = await mapLimited(files, 8, (file) => readClaudeSession(file).catch(() => null));
+      return sessions.filter((session): session is SessionInfo => session !== null);
+    },
     async read(session, readOptions) {
       if (!session.path) throw new Error(`Session ${session.id} has no transcript file.`);
       return claudeTranscript(await transcriptLines(session.path), readOptions);

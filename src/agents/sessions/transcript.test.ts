@@ -7,12 +7,16 @@ import { createChatController } from '../../ui/controller.js';
 import { createAgentSession } from '../session.js';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../types.js';
 import {
+  antigravityTranscript,
   claudeSessions,
   claudeTranscript,
   codexTranscript,
+  copilotSessions,
   copilotTranscript,
   findSession,
   geminiTranscript,
+  museTranscript,
+  vibeTranscript,
   readSession,
   type SessionInfo,
   type SessionSource,
@@ -181,6 +185,7 @@ describe('reading a session', () => {
     const copilot = copilotTranscript([
       { type: 'user.message', data: { content: 'Fix the build' } },
       { type: 'tool.execution_start', data: { toolCallId: 'c1', toolName: 'bash', arguments: { command: 'make' } } },
+      { type: 'tool.execution_complete', data: { toolCallId: 'c1', success: false, result: { content: 'exit 2' } } },
       { type: 'assistant.message', agentId: 'sub', data: { content: 'from a subagent' } },
       { type: 'assistant.message', data: { content: 'Builds now.' } },
     ]);
@@ -189,11 +194,120 @@ describe('reading a session', () => {
         agent: 'copilot',
         prompt: 'Fix the build',
         entries: [
-          { kind: 'tool', id: 'c1', name: 'bash', input: { command: 'make' }, done: true },
+          { kind: 'tool', id: 'c1', name: 'bash', input: { command: 'make' }, output: 'exit 2', isError: true },
           { kind: 'text', text: 'Builds now.' },
         ],
       },
     ]);
+  });
+
+  it('turns Muse, Antigravity and Vibe sessions into turns', () => {
+    const run = (event: object) => ({ record_type: 'event', payload: { kind: 'run', event } });
+    const muse = museTranscript([
+      { retained_frame: true, children: [] },
+      run({ kind: 'started', prompt: 'Add a level' }),
+      run({
+        kind: 'assistant_tool_calls_committed',
+        tool_calls: [{ id: 'i1', call_id: 'c1', name: 'shell', args: '{"cmd":"ls"}' }],
+      }),
+      run({ kind: 'tool_result_batch_committed', results: [{ tool_call_id: 'i1', text: 'levels/' }] }),
+      { record_type: 'event', payload: { kind: 'task', event: { kind: 'output', chunk: 'subagent text' } } },
+      run({ kind: 'assistant_message_committed', text: 'Level added.' }),
+    ]);
+    expect(muse).toMatchObject([
+      {
+        agent: 'muse',
+        prompt: 'Add a level',
+        entries: [
+          { kind: 'tool', id: 'c1', name: 'shell', input: { cmd: 'ls' }, output: 'levels/' },
+          { kind: 'text', text: 'Level added.' },
+        ],
+      },
+    ]);
+
+    const step = (type: string, extra: object) => ({
+      type,
+      status: 'DONE',
+      created_at: '2026-11-01T10:00:00Z',
+      ...extra,
+    });
+    const antigravity = antigravityTranscript([
+      step('USER_INPUT', { content: 'Fix the test' }),
+      step('PLANNER_RESPONSE', {
+        content: 'Looking.',
+        tool_calls: [
+          { name: 'view_file', args: { AbsolutePath: '/w/a.ts' } },
+          { name: 'run_command', args: { CommandLine: 'npm test' } },
+        ],
+      }),
+      { ...step('GENERIC', { content: 'half' }), status: 'RUNNING' },
+      step('GENERIC', { content: 'file text' }),
+      { ...step('GENERIC', { error: 'exit 1' }), status: 'ERROR' },
+      step('PLANNER_RESPONSE', { content: 'Fixed.' }),
+    ]);
+    expect(antigravity).toMatchObject([
+      {
+        agent: 'antigravity',
+        prompt: 'Fix the test',
+        entries: [
+          { kind: 'text', text: 'Looking.' },
+          { kind: 'tool', name: 'view_file', output: 'file text' },
+          { kind: 'tool', name: 'run_command', output: 'exit 1', isError: true },
+          { kind: 'text', text: 'Fixed.' },
+        ],
+      },
+    ]);
+
+    const vibe = vibeTranscript([
+      { role: 'user', injected: true, content: 'context Vibe added' },
+      { role: 'user', injected: false, content: 'Format the file' },
+      {
+        role: 'assistant',
+        content: 'Running the formatter.',
+        tool_calls: [{ id: 'v1', function: { name: 'bash', arguments: '{"command":"fmt"}' } }],
+      },
+      { role: 'tool', tool_call_id: 'v1', name: 'bash', content: 'done' },
+    ]);
+    expect(vibe).toMatchObject([
+      {
+        agent: 'vibe',
+        prompt: 'Format the file',
+        entries: [
+          { kind: 'text', text: 'Running the formatter.' },
+          { kind: 'tool', id: 'v1', name: 'bash', input: { command: 'fmt' }, output: 'done' },
+        ],
+      },
+    ]);
+  });
+
+  it("reads a Copilot session from the CLI's index when it kept no event log", async () => {
+    const dir = join(root, 'copilot');
+    mkdirSync(join(dir, 'session-state', 'cp-1'), { recursive: true });
+    writeFileSync(join(dir, 'session-state', 'cp-1', 'workspace.yaml'), `id: cp-1\ncwd: ${work}\n`);
+    mkdirSync(join(dir, 'session-state', 'cp-2'), { recursive: true });
+    writeFileSync(join(dir, 'session-state', 'cp-2', 'workspace.yaml'), `id: cp-2\ncwd: ${work}\n`);
+    // Typed here: the project's Node types predate `node:sqlite`.
+    const sqliteModule = 'node:sqlite';
+    const { DatabaseSync } = (await import(sqliteModule)) as {
+      DatabaseSync: new (file: string) => { exec(sql: string): void; close(): void };
+    };
+    const db = new DatabaseSync(join(dir, 'session-store.db'));
+    db.exec(
+      `CREATE TABLE turns (session_id TEXT, turn_index INTEGER, user_message TEXT, assistant_response TEXT, timestamp TEXT);
+       INSERT INTO turns VALUES ('cp-1', 1, 'Then the docs', 'Documented.', '2026-11-01T10:05:00Z');
+       INSERT INTO turns VALUES ('cp-1', 0, 'Fix the build', 'Builds now.', '2026-11-01T10:00:00Z');`,
+    );
+    db.close();
+    const source = copilotSessions({ dir });
+    const listed = await source.list();
+    const turns = await source.read!(listed.find((session) => session.id === 'cp-1')!);
+    expect(turns.map((turn) => [turn.prompt, turn.result?.text])).toEqual([
+      ['Fix the build', 'Builds now.'],
+      ['Then the docs', 'Documented.'],
+    ]);
+    await expect(source.read!(listed.find((session) => session.id === 'cp-2')!)).rejects.toThrow(
+      /keeps no readable conversation/,
+    );
   });
 
   it('finds a session by the start of its id and reads it through its source', async () => {
@@ -206,6 +320,8 @@ describe('reading a session', () => {
     ]);
     await expect(findSession(sources, 'aaaa1111')).rejects.toThrow(/2 sessions start with/);
     expect(await findSession(sources, 'aaaa')).toBeUndefined();
+    // Claude Code's store looks an id up by file name instead of reading every transcript.
+    expect((await sources[0]!.find!('aaaa1111-9')).map((session) => session.id)).toEqual(['aaaa1111-9999']);
     expect(await findSession(sources, 'nope-nope')).toBeUndefined();
     const listed: SessionSource = { name: 'muse', where: 'local', list: async () => [] };
     const theirs: SessionInfo = { source: 'muse', agent: 'muse', id: 'm', where: 'local', updatedAt: 1 };
