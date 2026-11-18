@@ -29,3 +29,10 @@ export {
   toOpenAIToolChoice,
   toOpenAITools,
 } from './providers/openai-converter.js';
+export {
+  fromOpenAIResponse,
+  fromOpenAIResponsesStream,
+  toOpenAIResponsesInput,
+  toOpenAIResponsesRequest,
+  toOpenAIResponsesStreamRequest,
+} from './providers/openai-responses-converter.js';

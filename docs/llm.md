@@ -317,8 +317,13 @@ Provider-specific options stay at provider construction. For example, Anthropic 
 thinking and output-token defaults, while Gemini and Vertex expose SDK HTTP, auth, API
 version, and generation configuration options.
 
+`openai()` talks to the Responses API (stateless, `store: false`), where GPT-6 models take
+function tools; chat completions reject them there. `openai({ api: 'chat' })` keeps chat
+completions. Temperature is left out for reasoning models (o-series, GPT-5 and later), which accept
+only their default.
+
 GitHub Models, Ollama, vLLM, and other compatible gateways use the OpenAI-compatible
-adapter:
+adapter, which stays on chat completions:
 
 ```ts
 import { openaiCompatible } from 'genaicode/providers';
