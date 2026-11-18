@@ -134,6 +134,10 @@ describe('what a hook says about a session', () => {
     await say('Stop', 8);
     expect(await say('PermissionRequest', 6, { tool_name: 'Bash', tool_input: { command: 'pwd' } })).toBeUndefined();
     expect((await readLive(env, 10)).get('claude:s-3')!.state).toBe('idle');
+    // Nor in the next turn, where the session works again.
+    await say('UserPromptSubmit', 9);
+    expect(await say('PermissionRequest', 6.5, { tool_name: 'Bash', tool_input: { command: 'id' } })).toBeUndefined();
+    expect((await readLive(env, 10)).get('claude:s-3')!.state).toBe('working');
   });
 
   it('takes hooks that run at the same moment one at a time', async () => {

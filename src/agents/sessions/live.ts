@@ -27,6 +27,8 @@ export interface LiveRecord {
   asks?: LiveAsk[];
   /** Tool calls seen finishing in this turn, the latest ones: a question about one of them is over. */
   done?: Array<LiveAsk & { at: number }>;
+  /** When the turn began or ended last: a question from before it belongs to a finished turn. */
+  turn?: number;
 }
 
 /** One "may I use this tool?": the tool's name and a digest of its input, to tell which one was answered. */
@@ -162,6 +164,7 @@ async function readRecord(file: string): Promise<Kept | undefined> {
     if (value.seen !== undefined && typeof value.seen !== 'number') return undefined;
     if (value.asks !== undefined && !Array.isArray(value.asks)) return undefined;
     if (value.done !== undefined && !Array.isArray(value.done)) return undefined;
+    if (value.turn !== undefined && typeof value.turn !== 'number') return undefined;
     const states: unknown[] = ['working', 'approval', 'idle', 'ended'];
     if (!states.includes(value.state)) return undefined;
     return value as Kept;
@@ -194,7 +197,8 @@ export async function recordHook(
     const late = !!before && Math.max(before.at, before.seen ?? 0) > at;
     const ask = event.reminder ? undefined : event.ask;
     const over = (before?.done ?? []).some((done) => done.tool === ask?.tool && done.key === ask?.key && done.at >= at);
-    const stillAsked = !!ask?.tool && !over && before?.state !== 'idle' && before?.state !== 'ended';
+    const thisTurn = at >= (before?.turn ?? 0);
+    const stillAsked = !!ask?.tool && !over && thisTurn && before?.state !== 'idle' && before?.state !== 'ended';
     // So is the end of a call that was asked about: its question is over, whenever that is learned.
     const fin = event.answered;
     const answers =
@@ -234,8 +238,9 @@ export async function recordHook(
       const seen = late ? { at: before!.at, ...(before!.seen !== undefined ? { seen: before!.seen } : {}) } : { at };
       record = { ...known, state: 'approval', ...seen, ...asking(asks) };
     } else {
-      record = { ...known, state: event.state as LiveState, at };
+      record = { ...known, state: event.state as LiveState, at, turn: at };
     }
+    if (record.turn === undefined && before?.turn !== undefined && record.state !== 'ended') record.turn = before.turn;
     if (record.state === 'working' || record.state === 'approval') {
       const done = [...(before?.done ?? []), ...(event.answered ? [{ ...event.answered, at }] : [])].slice(-MAX_ASKS);
       if (done.length) record.done = done;
