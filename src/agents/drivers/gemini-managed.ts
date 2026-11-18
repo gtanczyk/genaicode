@@ -12,7 +12,7 @@ import {
 } from '../managed.js';
 import type { AgentEvent, AgentFailure, CodingAgent } from '../types.js';
 import { tokenCount } from '../usage.js';
-import { addUsage, httpError, pause, remoteServers, textOf, trimSlashes } from './managed-http.js';
+import { addUsage, httpError, pause, remoteServers, sse, textOf, trimSlashes } from './managed-http.js';
 
 /** A step of an interaction as the Interactions API reports it; the fields this driver reads. */
 export interface GeminiInteractionStep {
@@ -614,47 +614,4 @@ function repositoryOf(workspace: string | undefined): { url: string; name: strin
 
 function hostOf(location: string): string {
   return location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
-}
-
-/** Server-sent events from a response body. */
-async function* sse(body: ReadableStream<Uint8Array>): AsyncGenerator<{ event?: string; id?: string; data: string }> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      let end: number;
-      while ((end = buffer.search(/\r?\n\r?\n/)) >= 0) {
-        const block = buffer.slice(0, end);
-        buffer = buffer.slice(end).replace(/^\r?\n\r?\n/, '');
-        const message = parseBlock(block);
-        if (message) yield message;
-      }
-      if (done) {
-        const message = parseBlock(buffer);
-        if (message) yield message;
-        return;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-}
-
-function parseBlock(block: string): { event?: string; id?: string; data: string } | undefined {
-  let event: string | undefined;
-  let id: string | undefined;
-  const data: string[] = [];
-  for (const line of block.split(/\r?\n/)) {
-    if (!line || line.startsWith(':')) continue;
-    const colon = line.indexOf(':');
-    const field = colon < 0 ? line : line.slice(0, colon);
-    const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
-    if (field === 'event') event = value;
-    else if (field === 'id') id = value;
-    else if (field === 'data') data.push(value);
-  }
-  return data.length ? { ...(event ? { event } : {}), ...(id ? { id } : {}), data: data.join('\n') } : undefined;
 }

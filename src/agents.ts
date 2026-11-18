@@ -101,6 +101,8 @@ export type {
   OpenAiResponseItem,
   OpenAiUsage,
 } from './agents/drivers/openai-managed.js';
+export { cursorCloud, cursorCloudProvider } from './agents/drivers/cursor-cloud.js';
+export type { CursorAgent, CursorCloudOptions, CursorRun, CursorUsage } from './agents/drivers/cursor-cloud.js';
 export { isManagedSettled, managedAgent } from './agents/managed.js';
 export type {
   ManagedAgentOptions,

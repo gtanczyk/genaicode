@@ -2,7 +2,7 @@ import type { ManagedStart, ManagedUsage } from '../managed.js';
 import type { McpServer } from '../types.js';
 import { tokenCount } from '../usage.js';
 
-/** Helpers the HTTP-based managed drivers (Gemini, OpenAI) share. */
+/** Helpers the HTTP-based managed drivers (Gemini, OpenAI, Cursor) share. */
 
 /** An HTTP error with its status, which `failureOfError` classifies (429 quota, 5xx unavailable...). */
 export class ManagedHttpError extends Error {
@@ -26,8 +26,8 @@ export async function httpError(
   try {
     const text = await response.text();
     try {
-      const parsed = JSON.parse(text) as { error?: { message?: string } };
-      detail = parsed.error?.message ?? text;
+      const parsed = JSON.parse(text) as { error?: string | { message?: string } };
+      detail = (typeof parsed.error === 'string' ? parsed.error : parsed.error?.message) ?? text;
     } catch {
       detail = text;
     }
@@ -98,4 +98,49 @@ export function textOf(content: unknown): string {
   if (typeof content === 'object' && Array.isArray((content as { content?: unknown }).content))
     return textOf((content as { content: unknown }).content);
   return JSON.stringify(content);
+}
+
+/** Server-sent events from a response body. */
+export async function* sse(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<{ event?: string; id?: string; data: string }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      let end: number;
+      while ((end = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end).replace(/^\r?\n\r?\n/, '');
+        const message = parseBlock(block);
+        if (message) yield message;
+      }
+      if (done) {
+        const message = parseBlock(buffer);
+        if (message) yield message;
+        return;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+function parseBlock(block: string): { event?: string; id?: string; data: string } | undefined {
+  let event: string | undefined;
+  let id: string | undefined;
+  const data: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (!line || line.startsWith(':')) continue;
+    const colon = line.indexOf(':');
+    const field = colon < 0 ? line : line.slice(0, colon);
+    const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
+    if (field === 'event') event = value;
+    else if (field === 'id') id = value;
+    else if (field === 'data') data.push(value);
+  }
+  return data.length ? { ...(event ? { event } : {}), ...(id ? { id } : {}), data: data.join('\n') } : undefined;
 }
