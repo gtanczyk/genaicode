@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** The agents whose hooks can report what a session is doing. */
 export const HOOK_AGENTS = ['claude', 'codex'] as const;
@@ -111,8 +112,9 @@ function without(config: Json): Json {
   return Object.keys(hooks).length ? { ...rest, hooks } : rest;
 }
 
+/** This package's own `cli.js`, whoever calls: the CLI or an app that imports `installHooks`. */
 function defaultCommand(): string {
-  const script = process.argv[1] ? path.resolve(process.argv[1]) : 'genaicode';
+  const script = fileURLToPath(new URL('../../cli.js', import.meta.url));
   return `"${process.execPath}" "${script}" hook`;
 }
 

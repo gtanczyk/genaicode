@@ -16,8 +16,10 @@ export interface LiveRecord {
   /** The agent's own session id. */
   id: string;
   state: LiveState;
-  /** When the hook ran, epoch milliseconds. */
+  /** When the hook that set `state` ran, epoch milliseconds. */
   at: number;
+  /** When the latest hook of the session ran, where that is later than `at`. */
+  seen?: number;
   cwd?: string;
   /** The tool the agent asks to use, while `state` is `approval`. */
   tool?: string;
@@ -100,6 +102,7 @@ async function readRecord(file: string): Promise<LiveRecord | undefined> {
     const value = JSON.parse(await fs.readFile(file, 'utf8')) as Partial<LiveRecord> | null;
     if (!value || typeof value.agent !== 'string' || typeof value.id !== 'string') return undefined;
     if (typeof value.at !== 'number') return undefined;
+    if (value.seen !== undefined && typeof value.seen !== 'number') return undefined;
     if (value.state !== 'working' && value.state !== 'approval' && value.state !== 'idle') return undefined;
     return value as LiveRecord;
   } catch {
@@ -125,24 +128,59 @@ export async function recordHook(
     return undefined;
   }
   const at = options.now ?? Date.now();
-  const before = await readRecord(file);
-  // Hooks run side by side: a later event's record is not replaced by an earlier one's.
-  if (before && before.at > at) return undefined;
-  if (event.onlyAfterApproval && before?.state !== 'approval') return undefined;
-  const cwd = event.cwd ?? before?.cwd;
-  const record: LiveRecord = {
-    agent,
-    id: event.id,
-    state: event.state,
-    at,
-    ...(cwd ? { cwd } : {}),
-    ...(event.state === 'approval' && (event.tool ?? before?.tool) ? { tool: event.tool ?? before?.tool } : {}),
-  };
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  const temporary = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
-  await fs.rename(temporary, file);
-  return record;
+  // Hooks run side by side, each in its own process: one at a time reads, decides and writes.
+  const release = await lock(`${file}.lock`);
+  try {
+    const before = await readRecord(file);
+    // An event that ran before the latest one seen says nothing new.
+    if (before && Math.max(before.at, before.seen ?? 0) > at) return undefined;
+    const kept = event.onlyAfterApproval && before?.state !== 'approval';
+    // A tool that ran with no question asked changes no state, but it was seen.
+    if (kept && !before) return undefined;
+    const cwd = event.cwd ?? before?.cwd;
+    const tool = event.tool ?? before?.tool;
+    const record: LiveRecord = kept
+      ? { ...before!, seen: at }
+      : {
+          agent,
+          id: event.id,
+          state: event.state as LiveState,
+          at,
+          ...(cwd ? { cwd } : {}),
+          ...(event.state === 'approval' && tool ? { tool } : {}),
+        };
+    const temporary = `${file}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    await fs.rename(temporary, file);
+    return kept ? undefined : record;
+  } finally {
+    await release();
+  }
+}
+
+/** A lock older than this was left by a hook that died. */
+const LOCK_STALE_MS = 5000;
+
+/** Hold `lockDir` (a directory: making one is atomic), waiting briefly for another hook to let go. */
+async function lock(lockDir: string): Promise<() => Promise<void>> {
+  const release = () => fs.rmdir(lockDir).catch(() => undefined);
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await fs.mkdir(lockDir);
+      return release;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const age = await fs.stat(lockDir).then(
+      (stat) => Date.now() - stat.mtimeMs,
+      () => 0,
+    );
+    if (age > LOCK_STALE_MS) await fs.rmdir(lockDir).catch(() => undefined);
+    else await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  // Better a rare lost update than a hook that hangs.
+  return async () => undefined;
 }
 
 /** Every record kept, by `agent:id`. Records too old to mean anything are removed on the way. */
@@ -187,7 +225,7 @@ export function withLive(
     const record = live.get(`${session.source}:${session.id}`);
     if (!record) return session;
     if (record.state === 'working') {
-      if (now - Math.max(record.at, session.updatedAt) > WORKING_MS) return session;
+      if (now - Math.max(record.at, record.seen ?? 0, session.updatedAt) > WORKING_MS) return session;
       return { ...session, state: 'active', updatedAt: Math.max(session.updatedAt, record.at) };
     }
     // Written to after the agent stopped: something the hooks did not see went on.

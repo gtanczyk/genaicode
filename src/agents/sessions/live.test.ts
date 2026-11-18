@@ -55,8 +55,11 @@ describe('what a hook says about a session', () => {
     const say = (hook_event_name: string, now: number, more: object = {}) =>
       recordHook('claude', { session_id: 's-1', cwd: '/work', hook_event_name, ...more }, { env, now });
     await say('UserPromptSubmit', 100, { prompt: 'secret words' });
-    // A tool that needed no approval changes nothing.
+    // A tool that needed no approval changes no state.
     expect(await say('PostToolUse', 110, { tool_name: 'Read' })).toBeUndefined();
+    expect((await readLive(env, 200)).get('claude:s-1')).toMatchObject({ state: 'working', at: 100, seen: 110 });
+    // A question whose hook ran late, after its tool was already seen finishing, is not kept.
+    expect(await say('PermissionRequest', 105, { tool_name: 'Read' })).toBeUndefined();
     await say('PermissionRequest', 120, { tool_name: 'Bash', tool_input: { command: 'secret command' } });
     expect([...(await readLive(env, 200)).values()]).toEqual([
       { agent: 'claude', id: 's-1', state: 'approval', at: 120, cwd: '/work', tool: 'Bash' },
@@ -71,6 +74,20 @@ describe('what a hook says about a session', () => {
     expect((await say('Stop', 140))?.tool).toBeUndefined();
     await say('SessionEnd', 150);
     expect((await readLive(env, 200)).size).toBe(0);
+  });
+
+  it('takes hooks that run at the same moment one at a time', async () => {
+    const env = home('together');
+    const say = (hook_event_name: string, now: number) =>
+      recordHook('claude', { session_id: 's-9', hook_event_name }, { env, now });
+    await say('UserPromptSubmit', 1);
+    await Promise.all(
+      Array.from({ length: 12 }, (_, at) => say(at % 2 ? 'PermissionRequest' : 'PostToolUse', 10 + at)),
+    );
+    await say('Stop', 100);
+    await Promise.all([say('PermissionRequest', 50), say('PostToolUse', 60), say('UserPromptSubmit', 70)]);
+    expect((await readLive(env, 200)).get('claude:s-9')).toMatchObject({ state: 'idle', at: 100 });
+    expect(readdirSync(liveDir(env))).toEqual(['claude-s-9.json']);
   });
 
   it('names the file after a hash when the id is not a plain one, and drops old records', async () => {
