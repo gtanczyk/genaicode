@@ -626,6 +626,32 @@ describe('anthropicManaged after second review', () => {
     expect(events.filter((e) => e.type === 'message')).toHaveLength(2);
   });
 
+  it('reads what a dropped stream missed before the run settles', async () => {
+    const working = ev('agent.message', { content: [{ type: 'text', text: 'Working' }] });
+    const history: AnthropicManagedEvent[] = [];
+    const fake = fakeClient({
+      history,
+      streams: [
+        [
+          working,
+          async () => {
+            // The rest of the turn lands while the connection is down.
+            history.push(working, ev('agent.message', { content: [{ type: 'text', text: 'Done' }] }), idle());
+            throw Object.assign(new Error('socket reset'), { code: 'ECONNRESET' });
+          },
+        ],
+      ],
+    });
+    const run = anthropicManaged(base(fake.client)).run(task());
+    const events = await drain(run);
+    expect(await run.result).toMatchObject({ ok: true, text: 'Done' });
+    expect(events.filter((e) => e.type === 'message').map((e) => (e as { text: string }).text)).toEqual([
+      'Working',
+      'Done',
+    ]);
+    expect(fake.called('events.stream')).toHaveLength(1);
+  });
+
   it('follows the latest turn when it attaches to a session without a cursor', async () => {
     const history = [
       ev('user.message'),

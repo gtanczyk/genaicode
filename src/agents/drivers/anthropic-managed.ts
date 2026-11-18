@@ -521,21 +521,11 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
 
       // A dropped connection ends the stream quietly: `managedAgent()` reads the state and reconnects.
       const dropped = (error: unknown) => failureOfError(error)?.kind === 'unavailable';
-      try {
-        // Stream first, then history: nothing in between is lost, and duplicates are skipped by id.
-        let stream: AsyncIterable<AnthropicManagedEvent>;
-        try {
-          stream = await c.beta.sessions.events.stream(
-            id,
-            options.textDeltas === false ? {} : { event_deltas: ['agent.message'] },
-            { signal: both },
-          );
-        } catch (error) {
-          if (!signal.aborted && dropped(error)) return;
-          throw error;
-        }
+
+      /** Persisted events after `from` not seen yet; true once the session settled. */
+      async function* replay(from: string | undefined): AsyncGenerator<ManagedUpdate, boolean> {
         const history: AnthropicManagedEvent[] = [];
-        for await (const event of after(id, cursor, both)) history.push(event);
+        for await (const event of after(id, from, both)) if (!event.id || !seen.has(event.id)) history.push(event);
         // Custom tool calls the history already answered only show; they do not run again.
         for (const event of history)
           if (event.type === 'user.custom_tool_result')
@@ -547,21 +537,40 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
           const { update, done, afterward } = await translate(event);
           const past = index < lastStart && SESSION_STOPS.has(event.type);
           if (update) yield past ? { ...update, snapshot: undefined } : update;
-          if (done && !past) return;
+          if (done && !past) return true;
           await afterward?.();
         }
+        return false;
+      }
+
+      try {
+        // Stream first, then history: nothing in between is lost, and duplicates are skipped by id.
+        let stream: AsyncIterable<AnthropicManagedEvent> | undefined;
+        try {
+          stream = await c.beta.sessions.events.stream(
+            id,
+            options.textDeltas === false ? {} : { event_deltas: ['agent.message'] },
+            { signal: both },
+          );
+        } catch (error) {
+          if (signal.aborted || !dropped(error)) throw error;
+        }
+        if (yield* replay(cursor)) return;
+        // No stream: what is persisted so far was read; `managedAgent()` checks the state and reconnects.
+        if (!stream) return;
         const live = stream[Symbol.asyncIterator]();
         for (;;) {
           let next: IteratorResult<AnthropicManagedEvent>;
           try {
             next = await live.next();
           } catch (error) {
-            if (!signal.aborted && dropped(error)) return;
-            throw error;
+            if (signal.aborted || !dropped(error)) throw error;
+            break;
           }
           if (next.done) break;
           const event = next.value;
           if (event.id && seen.has(event.id)) continue;
+          if (event.id) seen.add(event.id);
           // Live previews of messages the history already holds are stale.
           if (event.type === 'event_delta' && seen.has(String((event as { event_id?: unknown }).event_id))) continue;
           const { update, done, afterward } = await translate(event);
@@ -569,6 +578,8 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
           if (done) return;
           await afterward?.();
         }
+        // The stream ended or dropped: what it missed is persisted, so read it before the state check.
+        yield* replay(position);
       } catch (error) {
         if (signal.aborted) return;
         throw error;
