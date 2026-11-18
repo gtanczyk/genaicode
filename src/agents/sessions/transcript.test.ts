@@ -252,11 +252,10 @@ describe('taking a session over', () => {
   });
 
   it('gives `run --from` the recap ahead of the prompt', async () => {
-    const cwd = mkdtempSync(join(root, 'run-'));
     const claude = recorder('claude', { sessions: claudeSessions({ dir: claudeDir }) });
     const codex = recorder('codex', { sessions: null });
     let err = '';
-    const run = (...argv: string[]) =>
+    const run = (cwd: string, ...argv: string[]) =>
       runCli({
         argv: ['run', '-a', 'codex', '-C', cwd, ...argv],
         agents: [claude.agent, codex.agent],
@@ -266,10 +265,13 @@ describe('taking a session over', () => {
         stderr: { write: (text: string) => void (err += text) },
         readStdin: async () => undefined,
       });
-    expect(await run('--from', 'aaaa1111-0000', 'Finish the docs')).toBe(EXIT_OK);
+    expect(await run(work, '--from', 'aaaa1111-0000', 'Finish the docs')).toBe(EXIT_OK);
     expect(codex.tasks[0]!.prompt).toMatch(/taking over a conversation[^]*\.handoff\.md[^]*Finish the docs$/);
-    expect(await run('--from', 'missing-id', 'x')).toBe(EXIT_USAGE);
+    expect(await run(work, '--from', 'missing-id', 'x')).toBe(EXIT_USAGE);
     expect(err).toMatch(/No session "missing-id" found/);
+    // Another project's conversation is not continued here.
+    expect(await run(mkdtempSync(join(root, 'other-')), '--from', 'aaaa1111-0000', 'x')).toBe(EXIT_USAGE);
+    expect(err).toMatch(/It belongs to .*work: run there/);
     expect(codex.tasks).toHaveLength(1);
   });
 });

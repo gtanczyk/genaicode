@@ -16,6 +16,7 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
+import { isWithin } from '../agents/sessions/files.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -432,6 +433,12 @@ async function handoffFrom(
   const sources = agentSessionSources(agents);
   const found = await findSession(sources, id, { env });
   if (!found) throw new Error(`No session "${id}" found. "genaicode sessions" lists them.`);
+  const theirs = found.session;
+  // The agent would otherwise continue one project's conversation in another project.
+  if (!theirs.cwd || !isWithin(theirs.cwd, cwd)) {
+    const where = theirs.cwd ? ` It belongs to ${theirs.cwd}: run there (-C).` : '';
+    throw new Error(`That ${theirs.agent} session is not from ${cwd}.${where}`);
+  }
   const turns = await readSession(sources, found.session);
   if (!turns.length) throw new Error(`Nothing to read in that ${found.session.agent} session.`);
   let file: string | undefined;

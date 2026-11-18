@@ -81,7 +81,7 @@ npx genaicode run -a gemini --from a1b2c3d4 "Finish the export and run the tests
 `--from` takes a session id or the start of one. The session's turns show in the chat, and the
 agent hears them with your first prompt: its own agent resumes the session, another one gets the
 recap and the transcript file. `/continue <id>` does it inside a chat, and **Continue here** in
-the browser's Sessions view. It works for sessions from the chat's directory or below it, in the
+the browser's Sessions view. It works for sessions from the directory genaicode runs in (`-C`) or below it, in the
 stores genaicode can read conversations from (Claude Code and Codex today).
 
 <p align="center">
