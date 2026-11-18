@@ -245,4 +245,20 @@ describe('genaicode sessions', () => {
     expect((await run('-a', 'gemini')).out).toContain('No sessions found.');
     expect((await run('--since', 'soon')).err).toContain('--since expects');
   });
+
+  it('says so when --cloud has no key to list a cloud with', async () => {
+    const { code, out, err } = await run('--cloud', '--json');
+    expect(code).toBe(EXIT_OK);
+    expect(err).toContain('no CURSOR_API_KEY');
+    expect(out.trim().split('\n').length).toBeGreaterThan(1);
+  });
+
+  it('groups cloud sessions without a repository under their platform', () => {
+    const cloud = { source: 'cursorCloud', agent: 'cursorCloud', where: 'cloud' as const, updatedAt: 2 };
+    const projects = groupSessions([
+      { ...cloud, id: 'bc-1' },
+      { ...cloud, id: 'bc-2', repository: 'https://github.com/org/app.git' },
+    ]);
+    expect(projects.map((project) => project.name).sort()).toEqual(['app', 'cursorCloud']);
+  });
 });

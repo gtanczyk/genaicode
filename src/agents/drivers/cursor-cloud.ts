@@ -9,6 +9,7 @@ import {
   type ManagedUpdate,
   type ManagedUsage,
 } from '../managed.js';
+import type { SessionInfo, SessionSource } from '../sessions/types.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
 import { httpError, ManagedHttpError, remoteServers, sse, textOf, trimSlashes, pause } from './managed-http.js';
 
@@ -82,6 +83,9 @@ export function cursorCloud(options: CursorCloudOptions = {}): CodingAgent {
   });
 }
 
+/** `sessions.list` reads at most this many pages of 100 agents. */
+const MAX_LIST_PAGES = 10;
+
 /**
  * Cursor Cloud Agents as a `ManagedProvider`. A session is an agent (`bc-...`) and keeps its id:
  * every turn is a run on it, a snapshot reports the latest run, and `usage` the whole agent.
@@ -133,6 +137,49 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
   };
 
   const agentPath = (id: string) => `/v1/agents/${encodeURIComponent(id)}`;
+
+  // `GET /v1/agents`: the account's agents, newest first, without their repositories.
+  const sessions: SessionSource = {
+    name,
+    where: 'cloud',
+    async list(query = {}) {
+      // A local directory names no Cloud Agent.
+      if (query.cwd !== undefined) return [];
+      const wanted = query.limit ?? 100;
+      const found: SessionInfo[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_LIST_PAGES && found.length < wanted; page++) {
+        const params = new URLSearchParams({ limit: '100', includeArchived: 'false' });
+        if (cursor) params.set('cursor', cursor);
+        const listed = await json<{ items?: readonly CursorAgent[]; nextCursor?: string }>(
+          'GET',
+          `/v1/agents?${params.toString()}`,
+          undefined,
+          query.signal,
+        );
+        for (const agent of listed?.items ?? []) {
+          if (agent.status === 'ARCHIVED') continue;
+          const started = agent.createdAt ? Date.parse(agent.createdAt) : NaN;
+          const updated = agent.updatedAt ? Date.parse(agent.updatedAt) : started;
+          if (!Number.isFinite(updated) || (query.since !== undefined && updated < query.since)) continue;
+          found.push({
+            source: name,
+            agent: name,
+            id: agent.id,
+            where: 'cloud',
+            updatedAt: updated,
+            ...(Number.isFinite(started) ? { startedAt: started } : {}),
+            ...(agent.name ? { title: agent.name } : {}),
+            ...(agent.url ? { url: agent.url } : {}),
+            state: agent.status === 'ACTIVE' ? 'active' : 'waiting',
+          });
+        }
+        cursor = listed?.nextCursor;
+        if (!cursor) break;
+      }
+      return found.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, query.limit);
+    },
+  };
   const runPath = (id: string, run: string) => `${agentPath(id)}/runs/${encodeURIComponent(run)}`;
   const getAgent = (id: string, signal?: AbortSignal) => json<CursorAgent>('GET', agentPath(id), undefined, signal);
   const getRun = (id: string, run: string, signal?: AbortSignal) =>
@@ -187,6 +234,7 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
 
   const provider: ManagedProvider = {
     name,
+    sessions,
     capabilities: {
       usage: true,
       mcp: true,

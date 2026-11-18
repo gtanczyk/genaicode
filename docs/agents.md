@@ -295,11 +295,20 @@ const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50
 | `muse`, `museLive`   | `museSessions()`        | `~/.local/share/muse/session-index.db`                                          |
 | `vibe`               | `vibeSessions()`        | `~/.vibe/logs/session/*/meta.json` (`VIBE_HOME`), with token and cost totals    |
 | `opencode`           | `null`                  | not read yet                                                                    |
+| `anthropicManaged`   | cloud                   | `GET /v1/sessions` of the driver's agent: title, status, model, usage, cost     |
+| `cursorCloud`        | cloud                   | `GET /v1/agents`: the account's agents that are not archived, with their links  |
+| `geminiManaged`      | `null`                  | the Interactions API lists nothing                                              |
+| `openaiManaged`      | `null`                  | the Responses API lists nothing                                                 |
 
 What a store does not keep stays undefined: Cursor has no usage, Antigravity and Vibe no model,
 and an index without transcripts (Muse, Antigravity) gives no latest reply. Codex, Muse,
 Antigravity and Cursor keep SQLite files, read with `node:sqlite` (Node 22.5 or newer; on an
 older Node those sources land in `errors`). Subagent sessions and archived threads are left out.
+
+A hosted driver lists what its platform lists, with `where: 'cloud'` and, where there is one, a
+`url` to open the session: pass `anthropicManaged(...)` or `cursorCloud()` to
+`agentSessionSources` next to the local agents. A cloud session has no local directory, so a
+query with `cwd` leaves the clouds out.
 
 Reading is read-only. Transcripts are read at their start and end only, so a store with hundreds
 of long sessions lists quickly. `query` takes `since`, `cwd` and `limit`. A source that cannot be

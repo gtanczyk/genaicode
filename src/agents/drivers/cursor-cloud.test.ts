@@ -503,4 +503,66 @@ describe('cursorCloud', () => {
     await cursorCloudProvider(base(fake.fetch)).delete!('bc-1');
     expect(fake.called('DELETE', '/v1/agents/bc-1')).toHaveLength(1);
   });
+
+  it("lists the account's agents as sessions", async () => {
+    const urls: string[] = [];
+    const pages = [
+      {
+        items: [
+          {
+            id: 'bc-2',
+            name: 'Fix login',
+            status: 'ACTIVE',
+            url: 'https://cursor.com/agents/bc-2',
+            createdAt: '2026-11-10T10:00:00.000Z',
+            updatedAt: '2026-11-10T12:00:00.000Z',
+          },
+          { id: 'bc-gone', status: 'ARCHIVED', updatedAt: '2026-11-10T11:30:00.000Z' },
+        ],
+        nextCursor: 'next',
+      },
+      {
+        items: [
+          { id: 'bc-1', name: 'Add export', status: 'IDLE', updatedAt: '2026-11-10T11:00:00.000Z' },
+          { id: 'bc-0', status: 'IDLE', updatedAt: '2026-11-01T11:00:00.000Z' },
+        ],
+      },
+    ];
+    const provider = cursorCloudProvider({
+      apiKey: 'key',
+      fetch: (async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        return new Response(JSON.stringify(pages[urls.length - 1]));
+      }) as typeof fetch,
+    });
+    const sessions = await provider.sessions!.list({ since: Date.parse('2026-11-05T00:00:00.000Z') });
+    expect(urls).toEqual([
+      'https://api.cursor.com/v1/agents?limit=100&includeArchived=false',
+      'https://api.cursor.com/v1/agents?limit=100&includeArchived=false&cursor=next',
+    ]);
+    expect(sessions).toEqual([
+      {
+        source: 'cursorCloud',
+        agent: 'cursorCloud',
+        id: 'bc-2',
+        where: 'cloud',
+        title: 'Fix login',
+        url: 'https://cursor.com/agents/bc-2',
+        startedAt: Date.parse('2026-11-10T10:00:00.000Z'),
+        updatedAt: Date.parse('2026-11-10T12:00:00.000Z'),
+        state: 'active',
+      },
+      {
+        source: 'cursorCloud',
+        agent: 'cursorCloud',
+        id: 'bc-1',
+        where: 'cloud',
+        title: 'Add export',
+        updatedAt: Date.parse('2026-11-10T11:00:00.000Z'),
+        state: 'waiting',
+      },
+    ]);
+    expect(cursorCloud({ apiKey: 'key' }).sessions?.where).toBe('cloud');
+    expect(await provider.sessions!.list({ cwd: '/work/app' })).toEqual([]);
+  });
 });

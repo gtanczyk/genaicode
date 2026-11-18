@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import * as zlib from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultAgents } from '../defaults.js';
+import { anthropicManaged } from '../drivers/anthropic-managed.js';
 import { codexLive } from '../drivers/codex-live.js';
+import { cursorCloud } from '../drivers/cursor-cloud.js';
+import { geminiManaged } from '../drivers/gemini-managed.js';
+import { openaiManaged } from '../drivers/openai-managed.js';
 import { museLive } from '../drivers/muse-live.js';
 import {
   agentSessionSources,
@@ -376,6 +380,19 @@ describe('agent session stores', () => {
       cwd: '/work',
     });
     expect(errors).toEqual([]);
+    // Hosted drivers too: a cloud source where the platform lists sessions, `null` where it does not.
+    const hosted = [
+      anthropicManaged({ agent: 'agent_1', environment: 'env_1' }),
+      cursorCloud(),
+      geminiManaged(),
+      openaiManaged(),
+    ];
+    expect(hosted.map((agent) => [agent.name, agent.sessions === null ? null : agent.sessions?.where])).toEqual([
+      ['anthropicManaged', 'cloud'],
+      ['cursorCloud', 'cloud'],
+      ['geminiManaged', null],
+      ['openaiManaged', null],
+    ]);
     const names = new Set(agents.map((agent) => agent.name));
     expect(sessions.length).toBeGreaterThan(8);
     expect(sessions.filter((session) => !names.has(session.agent))).toEqual([]);
