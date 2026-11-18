@@ -219,8 +219,12 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
         1,
         (name) => name.endsWith('.jsonl') && name.startsWith(id),
       );
-      const sessions = await mapLimited(files, 8, (file) => readClaudeSession(file).catch(() => null));
-      return sessions.filter((session): session is SessionInfo => session !== null);
+      const recent = files.filter((file) => query.since === undefined || file.mtimeMs >= query.since);
+      const sessions = await mapLimited(recent, 8, (file) => readClaudeSession(file).catch(() => null));
+      return sessions.filter(
+        (session): session is SessionInfo =>
+          session !== null && (query.cwd === undefined || (!!session.cwd && isWithin(session.cwd, query.cwd))),
+      );
     },
     async read(session, readOptions) {
       if (!session.path) throw new Error(`Session ${session.id} has no transcript file.`);

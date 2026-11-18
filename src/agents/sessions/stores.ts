@@ -310,10 +310,13 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
       return chosen;
     },
     async read(info, readOptions) {
-      if (info.path) return copilotTranscript(await transcriptLines(info.path), readOptions);
-      // Without an event log, what was said may be in the CLI's own index.
-      const env = options.env ?? process.env;
-      const dir = options.dir ?? path.join(homeOf(env), '.copilot');
+      // Newer CLIs write no event log: what was said may then be in the CLI's own index.
+      const lines = info.path ? await transcriptLines(info.path).catch(() => null) : null;
+      if (lines) return copilotTranscript(lines, readOptions);
+      // The index of the store the session was listed from: <store>/session-state/<id>/events.jsonl.
+      const dir = info.path
+        ? path.resolve(info.path, '../../..')
+        : (options.dir ?? path.join(homeOf(options.env ?? process.env), '.copilot'));
       const turns = await queryDatabase(
         path.join(dir, 'session-store.db'),
         'SELECT user_message, assistant_response, timestamp FROM turns WHERE session_id = ? ORDER BY turn_index',
@@ -359,7 +362,6 @@ async function copilotEvents(info: SessionInfo): Promise<void> {
   try {
     stat = await fs.stat(info.path);
   } catch {
-    delete info.path;
     return;
   }
   const { head, tail } = await headAndTail({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size });

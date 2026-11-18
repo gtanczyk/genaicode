@@ -281,7 +281,9 @@ describe('reading a session', () => {
   });
 
   it("reads a Copilot session from the CLI's index when it kept no event log", async () => {
-    const dir = join(root, 'copilot');
+    // Another home, given with the query: the index read is the one of the store the session came from.
+    const home = join(root, 'copilot-home');
+    const dir = join(home, '.copilot');
     mkdirSync(join(dir, 'session-state', 'cp-1'), { recursive: true });
     writeFileSync(join(dir, 'session-state', 'cp-1', 'workspace.yaml'), `id: cp-1\ncwd: ${work}\n`);
     mkdirSync(join(dir, 'session-state', 'cp-2'), { recursive: true });
@@ -298,9 +300,12 @@ describe('reading a session', () => {
        INSERT INTO turns VALUES ('cp-1', 0, 'Fix the build', 'Builds now.', '2026-11-01T10:00:00Z');`,
     );
     db.close();
-    const source = copilotSessions({ dir });
-    const listed = await source.list();
-    const turns = await source.read!(listed.find((session) => session.id === 'cp-1')!);
+    const source = copilotSessions();
+    const listed = await source.list({ env: { HOME: home } });
+    const first = listed.find((session) => session.id === 'cp-1')!;
+    // The listing does not look for every session's event log, so the path may name a missing file.
+    expect(first.path).toBe(join(dir, 'session-state', 'cp-1', 'events.jsonl'));
+    const turns = await source.read!(first);
     expect(turns.map((turn) => [turn.prompt, turn.result?.text])).toEqual([
       ['Fix the build', 'Builds now.'],
       ['Then the docs', 'Documented.'],
@@ -322,6 +327,9 @@ describe('reading a session', () => {
     expect(await findSession(sources, 'aaaa')).toBeUndefined();
     // Claude Code's store looks an id up by file name instead of reading every transcript.
     expect((await sources[0]!.find!('aaaa1111-9')).map((session) => session.id)).toEqual(['aaaa1111-9999']);
+    expect(await sources[0]!.find!('aaaa1111-9', { cwd: join(root, 'elsewhere') })).toEqual([]);
+    expect(await sources[0]!.find!('aaaa1111-9', { since: Date.now() + 60_000 })).toEqual([]);
+    expect(await findSession(sources, 'aaaa1111', { cwd: join(root, 'elsewhere') })).toBeUndefined();
     expect(await findSession(sources, 'nope-nope')).toBeUndefined();
     const listed: SessionSource = { name: 'muse', where: 'local', list: async () => [] };
     const theirs: SessionInfo = { source: 'muse', agent: 'muse', id: 'm', where: 'local', updatedAt: 1 };
