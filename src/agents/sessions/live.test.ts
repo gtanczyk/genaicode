@@ -86,6 +86,9 @@ describe('what a hook says about a session', () => {
       state: 'working',
     });
     expect((await say('Stop', 140))?.tool).toBeUndefined();
+    // A tool after the turn's end: another Stop hook sent the agent back to work.
+    expect(await say('PostToolUse', 142, { tool_name: 'Read' })).toMatchObject({ state: 'working', at: 142 });
+    await say('Stop', 143);
     await say('SessionEnd', 150);
     expect((await readLive(env, 200)).size).toBe(0);
     // A hook that started before the end and finishes after it does not bring the session back.

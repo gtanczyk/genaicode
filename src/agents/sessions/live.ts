@@ -138,7 +138,11 @@ function inputKey(input: unknown): string {
     .slice(0, 16);
 }
 
-/** `asks` without the one a finished tool answers: the same call, or failing that the same tool. */
+/**
+ * `asks` without the one a finished tool answers: the same call, or failing that a question that
+ * named no tool. A call another hook rewrote on approval no longer matches, so its question stays
+ * until the turn ends: better that than hiding the question of another call of the same tool.
+ */
 function answer(asks: readonly LiveAsk[], done: LiveAsk): LiveAsk[] {
   let at = asks.findIndex((ask) => ask.tool === done.tool && ask.key === done.key);
   if (at < 0) at = asks.findIndex((ask) => ask.tool === undefined);
@@ -198,7 +202,11 @@ export async function recordHook(
       const asked = before.state === 'approval' ? (before.asks ?? [{}]) : [];
       const left = answer(asked, event.answered);
       changed = asked.length > 0 && left.length < asked.length;
-      if (!changed) record = { ...before, seen: at };
+      // A tool running after the turn was over: something (another Stop hook) kept the agent going.
+      if (before.state === 'idle') {
+        record = { ...known, state: 'working', at };
+        changed = true;
+      } else if (!changed) record = { ...before, seen: at };
       else if (left.length) record = { ...known, state: 'approval', at: before.at, seen: at, ...asking(left) };
       else record = { ...known, state: 'working', at };
     } else if (event.state === 'approval') {
