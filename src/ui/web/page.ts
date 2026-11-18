@@ -1,5 +1,5 @@
 /** The single HTML page of the web UI. Styles are inline; the app is /app.js. */
-export function pageHtml(title: { version: string; cwd: string }): string {
+export function pageHtml(title: { version: string; cwd: string; sessions?: boolean }): string {
   const escape = (text: string) =>
     text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   return `<!doctype html>
@@ -13,7 +13,7 @@ export function pageHtml(title: { version: string; cwd: string }): string {
 <style>${STYLES}</style>
 </head>
 <body>
-<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"></div>
+<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"${title.sessions ? ' data-sessions="1"' : ''}></div>
 <script type="module" src="/app.js"></script>
 </body>
 </html>`;
@@ -67,7 +67,31 @@ button.chip:hover { border-color: var(--accent); }
 .ideas { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
 .ideas button { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; box-shadow: var(--shadow); }
 .ideas button:hover { border-color: var(--accent); }
+.sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
+.sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.sessions .tools input[type='search'] { flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.sessions .tools select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.sessions .count { color: var(--muted); font-size: 13px; }
+.sessions .errors { color: var(--err); font-size: 13px; margin-bottom: 8px; }
+.project { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; box-shadow: var(--shadow); }
+.project > summary { cursor: pointer; padding: 8px 12px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+.project > summary::-webkit-details-marker { display: none; }
+.project > summary b { font-weight: 600; }
+.project > summary .path { font-family: var(--mono); font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.project > summary .counts { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.session-row { display: grid; grid-template-columns: 16px 92px 40px 1fr auto; gap: 8px; align-items: baseline; padding: 5px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.session-row .mark[data-state='active'] { color: var(--ok); }
+.session-row .mark[data-state='unfinished'] { color: #e8590c; }
+.session-row .agent, .session-row .age { color: var(--muted); white-space: nowrap; }
+.session-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row .label small { color: var(--faint); margin-left: 8px; }
+.session-row button, .session-row a { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; cursor: pointer; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.session-row button:hover, .session-row a:hover { border-color: var(--accent); color: var(--text); }
+.more { padding: 6px 12px; border-top: 1px solid var(--line); }
+.more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 @media (max-width: 640px) {
+  .session-row { grid-template-columns: 16px 70px 34px 1fr; }
+  .session-row .act { display: none; }
   header.bar { padding: 8px 16px; gap: 8px; }
   .cwd { display: none; }
   .field input { width: 120px; }

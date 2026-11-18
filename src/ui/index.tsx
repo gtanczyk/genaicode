@@ -12,6 +12,7 @@ import {
   type WebHandoff,
 } from './controller.js';
 import { ChatApp } from './tui/app.js';
+import { agentSessionSources, listSessions } from '../agents/sessions/index.js';
 import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
 
 export { NoAgentError };
@@ -183,6 +184,9 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       host: options.host,
       port: options.port,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
+      // The Sessions view: what every one of these agents has going on, on this machine.
+      sessions: (query) =>
+        listSessions(agentSessionSources(options.agents), { ...query, ...(options.env ? { env: options.env } : {}) }),
     }).catch((error: unknown) => {
       running = undefined;
       throw error;
