@@ -12,6 +12,7 @@ import type {
   AgentFailure,
   AgentResult,
   AgentRun,
+  AgentTask,
   BudgetWarning,
   CodingAgent,
   RateLimit,
@@ -121,6 +122,28 @@ function defaultBrief(members: readonly PackMember[]): string {
     '- Delegate what gains from it: independent pieces in parallel, a second opinion or review from a different',
     '  agent, or work for an agent that still has quota when another ran out. Small tasks are faster done yourself.',
   ].join('\n');
+}
+
+/** `agent.run(task)`, with a driver that throws on start turned into a run that failed. */
+function startRun(agent: CodingAgent, task: AgentTask): AgentRun {
+  try {
+    return agent.run(task);
+  } catch (error) {
+    const result: AgentResult = {
+      status: 'failed',
+      ok: false,
+      exitCode: null,
+      signal: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    return {
+      result: Promise.resolve(result),
+      abort() {},
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'done', result } satisfies AgentEvent;
+      },
+    };
+  }
 }
 
 /** A short line on what a running task is doing, from its latest event. */
@@ -349,7 +372,7 @@ export function pack(options: PackOptions): Pack {
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
 
         const onApproval = task.onApproval;
-        const run = agent.run({
+        const run = startRun(agent, {
           prompt,
           cwd: sub.cwd,
           ...(task.env ? { env: task.env } : {}),
@@ -608,7 +631,7 @@ export function pack(options: PackOptions): Pack {
         let own: AgentResult;
         try {
           const brief = task.resume ? '' : `${(options.brief ?? defaultBrief)(describeMembers(task.env))}\n\n`;
-          const run = lead.run({
+          const run = startRun(lead, {
             ...task,
             prompt: `${brief}${task.prompt}`,
             budget: undefined,

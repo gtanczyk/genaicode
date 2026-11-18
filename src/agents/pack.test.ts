@@ -282,6 +282,33 @@ describe('pack', () => {
     expect(readdirSync(join(cwd, '.genaicode', 'worktrees'))).toEqual(['.gitignore']);
   });
 
+  it('fails a delegated task whose agent throws on start', async () => {
+    const broken: CodingAgent = {
+      name: 'broken',
+      command: process.execPath,
+      capabilities: {},
+      run() {
+        throw new Error('bad config');
+      },
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'broken', prompt: 'x', mode: 'shared' });
+        const [report] = JSON.parse(await tool(task, 'wait')) as [{ status: string; error: string }];
+        expect(report).toMatchObject({ status: 'failed', error: 'bad config' });
+      },
+      { mcp: true },
+    );
+    const result = await pack({ lead, members: [broken] }).run({ prompt: 'go', cwd: repo() }).result;
+    expect(result.error).toBeUndefined();
+    const refused = await pack({ lead: { ...broken, capabilities: { mcp: true } }, members: [] }).run({
+      prompt: 'go',
+      cwd: repo(),
+    }).result;
+    expect(refused).toMatchObject({ status: 'failed', error: 'bad config' });
+  });
+
   it('caps the whole pack with the task budget', async () => {
     const cwd = repo();
     const lead = fake(
