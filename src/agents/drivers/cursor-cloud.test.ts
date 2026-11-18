@@ -563,6 +563,11 @@ describe('cursorCloud', () => {
       },
     ]);
     expect(cursorCloud({ apiKey: 'key' }).sessions?.where).toBe('cloud');
+    // A limit applies after every page is read: the newest activity may be on a later page.
+    urls.length = 0;
+    pages[1]!.items[0]!.updatedAt = '2026-11-10T13:00:00.000Z';
+    expect((await provider.sessions!.list({ limit: 1 })).map((session) => session.id)).toEqual(['bc-1']);
+    urls.length = 0;
     expect(await provider.sessions!.list({ cwd: '/work/app' })).toEqual([]);
   });
 });

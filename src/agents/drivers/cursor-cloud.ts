@@ -145,10 +145,10 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
     async list(query = {}) {
       // A local directory names no Cloud Agent.
       if (query.cwd !== undefined) return [];
-      const wanted = query.limit ?? Infinity;
       const found: SessionInfo[] = [];
       let cursor: string | undefined;
-      for (let page = 0; page < MAX_LIST_PAGES && found.length < wanted; page++) {
+      // Every page: the API orders by creation, and an old agent may be the one just resumed.
+      for (let page = 0; page < MAX_LIST_PAGES; page++) {
         const params = new URLSearchParams({ limit: '100', includeArchived: 'false' });
         if (cursor) params.set('cursor', cursor);
         const listed = await json<{ items?: readonly CursorAgent[]; nextCursor?: string }>(
