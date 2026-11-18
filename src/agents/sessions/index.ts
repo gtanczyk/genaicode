@@ -13,8 +13,10 @@ export type { CodexSessionsOptions } from './codex.js';
 export {
   antigravitySessions,
   copilotSessions,
+  copilotTranscript,
   cursorSessions,
   geminiSessions,
+  geminiTranscript,
   museSessions,
   vibeSessions,
 } from './stores.js';

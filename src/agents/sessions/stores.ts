@@ -15,7 +15,9 @@ import {
   timeOf,
 } from './files.js';
 import { number, queryDatabase, tableColumns, text, type Row } from './sqlite.js';
-import type { SessionInfo, SessionSource } from './types.js';
+import type { SessionTurn } from '../session.js';
+import { transcriptBuilder, transcriptLines } from './transcript.js';
+import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
 export interface StoreOptions {
   /** The agent's data directory, instead of its default place under the home directory. */
@@ -228,7 +230,28 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
       await mapLimited(chosen.slice(0, ENRICH), 8, (info) => copilotEvents(info));
       return chosen;
     },
+    async read(info, readOptions) {
+      if (!info.path) throw new Error(`Copilot kept no events for session ${info.id}.`);
+      return copilotTranscript(await transcriptLines(info.path), readOptions);
+    },
   };
+}
+
+/** The turns in the lines of a Copilot CLI `events.jsonl`: what was said, and the names of the tools used. */
+export function copilotTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('copilot', options);
+  for (const line of lines) {
+    if (!isRecord(line) || !isRecord(line.data)) continue;
+    if (typeof line.agentId === 'string' || typeof line.data.parentToolCallId === 'string') continue;
+    const at = timeOf(line.timestamp);
+    const content = text(line.data.content);
+    if (line.type === 'user.message' && content) builder.prompt(content, at);
+    if (line.type === 'assistant.message' && content) builder.text(content, at);
+    if (line.type === 'tool.execution_start' && typeof line.data.toolName === 'string') {
+      builder.tool(text(line.data.toolCallId), line.data.toolName, line.data.arguments, at);
+    }
+  }
+  return builder.turns();
 }
 
 async function copilotEvents(info: SessionInfo): Promise<void> {
@@ -438,5 +461,30 @@ export function geminiSessions(options: StoreOptions = {}): SessionSource {
         query,
       );
     },
+    async read(info, readOptions) {
+      if (!info.path) throw new Error(`Session ${info.id} has no chat file.`);
+      return geminiTranscript(await transcriptLines(info.path), readOptions);
+    },
   };
+}
+
+/** The turns in the lines of a Gemini CLI chat file: what the user and the model said. */
+export function geminiTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('gemini', options);
+  for (const line of lines) {
+    if (!isRecord(line)) continue;
+    const at = timeOf(line.timestamp);
+    if (line.type === 'user' && Array.isArray(line.content)) {
+      const said = line.content
+        .flatMap((part) => (isRecord(part) && typeof part.text === 'string' ? [part.text] : []))
+        .join('\n')
+        .trim();
+      if (said) builder.prompt(said, at);
+    }
+    if (line.type === 'gemini') {
+      const reply = text(line.content);
+      if (reply) builder.text(reply, at);
+    }
+  }
+  return builder.turns();
 }

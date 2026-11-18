@@ -82,7 +82,7 @@ npx genaicode run -a gemini --from a1b2c3d4 "Finish the export and run the tests
 agent hears them with your first prompt: its own agent resumes the session, another one gets the
 recap and the transcript file. `/continue <id>` does it inside a chat, and **Continue here** in
 the browser's Sessions view. It works for sessions from the directory genaicode runs in (`-C`) or below it, in the
-stores genaicode can read conversations from (Claude Code and Codex today).
+stores genaicode can read conversations from (Claude Code, Codex, Gemini CLI and Copilot CLI today).
 
 <p align="center">
   <picture>

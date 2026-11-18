@@ -10,7 +10,9 @@ import {
   claudeSessions,
   claudeTranscript,
   codexTranscript,
+  copilotTranscript,
   findSession,
+  geminiTranscript,
   readSession,
   type SessionInfo,
   type SessionSource,
@@ -162,6 +164,35 @@ describe('reading a session', () => {
       ['Again', 'Did it.'],
       ['Make a page', '<main>The page</main>'],
       ['Third', 'Done.'],
+    ]);
+  });
+
+  it('turns Gemini CLI and Copilot CLI sessions into turns', () => {
+    const gemini = geminiTranscript([
+      { sessionId: 'g1', kind: 'main', startTime: '2026-11-01T10:00:00.000Z' },
+      { type: 'user', content: [{ text: 'Rename the flag' }] },
+      { type: 'gemini', content: 'Renamed in three files.', model: 'gemini-3' },
+      { type: 'user', content: [{ text: 'And the docs' }] },
+    ]);
+    expect(gemini.map((turn) => [turn.agent, turn.prompt, turn.result?.text])).toEqual([
+      ['gemini', 'Rename the flag', 'Renamed in three files.'],
+      ['gemini', 'And the docs', undefined],
+    ]);
+    const copilot = copilotTranscript([
+      { type: 'user.message', data: { content: 'Fix the build' } },
+      { type: 'tool.execution_start', data: { toolCallId: 'c1', toolName: 'bash', arguments: { command: 'make' } } },
+      { type: 'assistant.message', agentId: 'sub', data: { content: 'from a subagent' } },
+      { type: 'assistant.message', data: { content: 'Builds now.' } },
+    ]);
+    expect(copilot).toMatchObject([
+      {
+        agent: 'copilot',
+        prompt: 'Fix the build',
+        entries: [
+          { kind: 'tool', id: 'c1', name: 'bash', input: { command: 'make' }, done: true },
+          { kind: 'text', text: 'Builds now.' },
+        ],
+      },
     ]);
   });
 

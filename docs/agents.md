@@ -287,8 +287,8 @@ const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the
-agent's messages, tool calls with their output), as `createAgentSession` keeps them. Claude Code
-and Codex have it today. `session.adopt(turns)` takes them over: they join the transcript, and the
+agent's messages, tool calls with their output), as `createAgentSession` keeps them. Claude Code,
+Codex, Gemini CLI and Copilot CLI have it today (the last two without tool output). `session.adopt(turns)` takes them over: they join the transcript, and the
 next prompt hands them to the current agent like `/agent` does, a recap in the prompt and the
 whole transcript in `.genaicode/handoff/`.
 
