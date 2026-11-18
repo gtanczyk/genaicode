@@ -6,6 +6,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { ago } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import { agentSessionSources, groupSessions, listSessions } from '../agents/sessions/index.js';
 import { serveAcp } from '../acp/server.js';
@@ -337,14 +338,6 @@ function loadBundledUi(): Promise<UiModule> {
 }
 
 const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌' };
-
-/** `5m`, `3h`, `12d`: how long ago, in the largest unit that fits. */
-function ago(ms: number): string {
-  const minutes = Math.max(0, Math.round(ms / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes / 1440)}d`;
-}
 
 async function showSessions(
   cli: CliEnvironment,

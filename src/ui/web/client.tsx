@@ -5,6 +5,7 @@ import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
 import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
 import type { WebCommand } from './server.js';
+import { Sessions } from './sessions.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
 const style = document.createElement('style');
@@ -87,6 +88,8 @@ function App() {
   const { view, connected } = useView();
   useBark(view);
   const [model, setModel] = useState<string>();
+  // The Sessions view takes the chat's place; the chat keeps running behind it.
+  const [showSessions, setShowSessions] = useState(false);
   const session = view?.session;
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
@@ -143,6 +146,16 @@ function App() {
                 {chip.text}
               </span>
             ))}
+            {root.dataset.sessions ? (
+              <button
+                className={`chip${showSessions ? '' : ' off'}`}
+                title="What every agent on this machine has going on, by project"
+                aria-pressed={showSessions}
+                onClick={() => setShowSessions(!showSessions)}
+              >
+                {showSessions ? '← Chat' : 'Sessions'}
+              </button>
+            ) : null}
             <button
               className={`chip${view.autoApprove ? '' : ' off'}`}
               title={
@@ -169,8 +182,10 @@ function App() {
         )}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
+      {showSessions ? <Sessions token={token} /> : null}
       <AgentChat
         state={session}
+        style={showSessions ? { display: 'none' } : undefined}
         header={null}
         autoFocus
         disabled={!connected}

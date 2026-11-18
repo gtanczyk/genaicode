@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { artifactResponse } from '../../agents/artifacts.js';
+import type { SessionListing } from '../../agents/sessions/index.js';
 import type { ChatController } from '../controller.js';
 import { pageHtml } from './page.js';
 
@@ -22,6 +23,11 @@ export interface WebUiOptions {
    * so it can grow once the host server knows its address. Default: none.
    */
   frameAncestors?: () => readonly string[];
+  /**
+   * Lists the sessions the agents keep (`listSessions`), for the page's Sessions view at
+   * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
+   */
+  sessions?: (query: { since?: number }) => Promise<SessionListing>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
@@ -134,7 +140,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
       }
       const ancestors = options.frameAncestors?.() ?? [];
-      return send(res, 200, 'text/html; charset=utf-8', pageHtml(options.title), {
+      return send(res, 200, 'text/html; charset=utf-8', pageHtml({ ...options.title, sessions: !!options.sessions }), {
         'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
       });
     }
@@ -176,6 +182,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         streams.delete(res);
       });
       return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/sessions') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.sessions) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
+      const days = Number(url.searchParams.get('days'));
+      const listing = await options.sessions(
+        Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {},
+      );
+      return send(res, 200, 'application/json', JSON.stringify(listing));
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

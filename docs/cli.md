@@ -47,6 +47,11 @@ npx genaicode ui                   # the same chat in your browser, served on 12
 npx genaicode chat --web           # both: the terminal and the browser on one session
 ```
 
+In the browser, **Sessions** in the header shows what every agent on this machine has going on:
+the same list as `genaicode sessions`, by project, with search over titles, prompts, directories
+and branches, and filters by agent, state and period. A local session gives the command that
+continues it in a terminal; a cloud session links to its page.
+
 The terminal and the browser can show one session. `/web` in the terminal chat opens it in
 the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
