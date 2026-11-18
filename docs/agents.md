@@ -253,6 +253,38 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 - `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
   finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 
+## Sessions across agents
+
+Every agent keeps its conversations somewhere of its own. `listSessions()` reads those stores and
+returns one list, so an app can show what is going on in every project, whichever agent did it:
+
+```ts
+import { groupSessions, listSessions } from 'genaicode/agents';
+
+const { sessions, errors } = await listSessions(undefined, { since: Date.now() - 7 * 86_400_000 });
+for (const project of groupSessions(sessions)) {
+  console.log(project.name, project.agents); // app { claude: 12, codex: 3 }
+  for (const s of project.sessions) console.log(' ', s.agent, s.state, s.title ?? s.lastPrompt, s.id);
+}
+```
+
+A `SessionInfo` has the agent, its session `id` (what `AgentTask.resume` takes), the directory it
+started in, branch, title, first and latest prompt, the end of the latest reply, model, usage or
+cost where the store has them, and a `state`: `active` (written to in the last two minutes),
+`waiting` (the agent had the last word) or `unfinished` (it stops at the user's message or in the
+middle of the agent's work).
+
+| Source             | Reads                                                                   |
+| ------------------ | ----------------------------------------------------------------------- |
+| `claudeSessions()` | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents |
+| `codexSessions()`  | `~/.codex/sessions/**/rollout-*.jsonl` (`CODEX_HOME`)                   |
+
+Reading is read-only and looks at the start and the end of each file, so a store with hundreds of
+long sessions lists quickly. `query` takes `since`, `cwd` and `limit`. A source that cannot be
+read lands in `errors` and the others are still listed. A `SessionSource` is `{ name, where,
+list(query) }`: implement one for another agent or for a vendor's cloud and pass it in the list.
+`genaicode sessions` prints the same from the command line (see [cli.md](./cli.md)).
+
 ## Follow-up turns
 
 `result.sessionId` names the agent's own session. Pass it as `resume` to continue that
