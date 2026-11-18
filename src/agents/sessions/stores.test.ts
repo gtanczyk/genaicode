@@ -269,7 +269,8 @@ describe('agent session stores', () => {
       state: 'waiting',
     });
     expect(sessions[1]).toMatchObject({ id: 'c2', cwd: '/work/other' });
-    expect(sessions[1]!.path).toBeUndefined();
+    // Where its event log would be: reading falls back to the CLI's index when it is missing.
+    expect(sessions[1]!.path).toMatch(/events\.jsonl$/);
   });
 
   it('reads Cursor chats, with the model from the chat database', async () => {

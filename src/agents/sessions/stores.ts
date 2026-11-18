@@ -107,7 +107,50 @@ export function museSessions(options: StoreOptions = {}): SessionSource {
         query,
       );
     },
+    async read(info, readOptions) {
+      if (!info.path) throw new Error(`Muse names no log for session ${info.id}.`);
+      return museTranscript(await transcriptLines(info.path), readOptions);
+    },
   };
+}
+
+/** The turns in the records of a Muse Code `session.jsonl`: the root run's prompts, messages and tool calls. */
+export function museTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('muse', options);
+  // A call is known by two ids; results name either.
+  const calls = new Map<string, string>();
+  for (const line of lines) {
+    const payload = isRecord(line) && isRecord(line.payload) ? line.payload : undefined;
+    const event = payload && isRecord(payload.event) ? payload.event : undefined;
+    if (!payload || !event || payload.kind !== 'run') continue;
+    if (event.kind === 'started' && text(event.prompt)) builder.prompt(text(event.prompt)!);
+    if (event.kind === 'assistant_message_committed' && text(event.text)) builder.text(text(event.text)!);
+    if (event.kind === 'assistant_tool_calls_committed' && Array.isArray(event.tool_calls)) {
+      for (const call of event.tool_calls) {
+        if (!isRecord(call) || typeof call.name !== 'string') continue;
+        const id = text(call.call_id) ?? text(call.id);
+        for (const alias of [text(call.call_id), text(call.id)]) if (alias && id) calls.set(alias, id);
+        builder.tool(id, call.name, jsonOr(call.args));
+      }
+    }
+    if (event.kind === 'tool_result_batch_committed' && Array.isArray(event.results)) {
+      for (const result of event.results) {
+        if (!isRecord(result)) continue;
+        builder.toolResult(calls.get(text(result.tool_call_id) ?? ''), text(result.text));
+      }
+    }
+  }
+  return builder.turns();
+}
+
+/** A JSON string's value, or the value as it is. */
+function jsonOr(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 /** `2026-11-07 17:16:46.484148+00:00` as epoch milliseconds. */
@@ -180,7 +223,43 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
       }
       return select([...byId.values()], query);
     },
+    async read(info, readOptions) {
+      if (!info.path) throw new Error(`Session ${info.id} has no transcript file.`);
+      return antigravityTranscript(await transcriptLines(info.path), readOptions);
+    },
   };
+}
+
+/**
+ * The turns in the steps of an Antigravity `transcript.jsonl`. Tool calls carry no ids there: the
+ * finished steps after a response are its calls' results, in order.
+ */
+export function antigravityTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('antigravity', options);
+  let waiting: string[] = [];
+  let next = 0;
+  for (const line of lines) {
+    if (!isRecord(line)) continue;
+    const at = timeOf(line.created_at);
+    const content = text(line.content);
+    if (line.type === 'USER_INPUT') {
+      waiting = [];
+      if (content) builder.prompt(content, at);
+    } else if (line.type === 'PLANNER_RESPONSE') {
+      waiting = [];
+      if (content) builder.text(content, at);
+      for (const call of Array.isArray(line.tool_calls) ? line.tool_calls : []) {
+        if (!isRecord(call) || typeof call.name !== 'string') continue;
+        const id = `step-${next++}`;
+        waiting.push(id);
+        builder.tool(id, call.name, call.args, at);
+      }
+    } else if (line.type === 'GENERIC' && (line.status === 'DONE' || line.status === 'ERROR')) {
+      const id = waiting.shift();
+      if (id) builder.toolResult(id, content ?? text(line.error), line.status === 'ERROR', at);
+    }
+  }
+  return builder.turns();
 }
 
 /** The flat `key: value` lines of Copilot's `workspace.yaml`. */
@@ -231,13 +310,32 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
       return chosen;
     },
     async read(info, readOptions) {
-      if (!info.path) throw new Error(`Copilot kept no events for session ${info.id}.`);
-      return copilotTranscript(await transcriptLines(info.path), readOptions);
+      // Newer CLIs write no event log: what was said may then be in the CLI's own index.
+      const lines = info.path ? await transcriptLines(info.path).catch(() => null) : null;
+      if (lines) return copilotTranscript(lines, readOptions);
+      // The index of the store the session was listed from: <store>/session-state/<id>/events.jsonl.
+      const dir = info.path
+        ? path.resolve(info.path, '../../..')
+        : (options.dir ?? path.join(homeOf(options.env ?? process.env), '.copilot'));
+      const turns = await queryDatabase(
+        path.join(dir, 'session-store.db'),
+        'SELECT user_message, assistant_response, timestamp FROM turns WHERE session_id = ? ORDER BY turn_index',
+        [info.id],
+      ).catch(() => null);
+      const builder = transcriptBuilder('copilot', readOptions);
+      for (const turn of turns ?? []) {
+        if (!text(turn.user_message)) continue;
+        builder.prompt(text(turn.user_message)!, timeOf(turn.timestamp));
+        if (text(turn.assistant_response)) builder.text(text(turn.assistant_response)!);
+      }
+      const found = builder.turns();
+      if (!found.length) throw new Error(`Copilot keeps no readable conversation for session ${info.id}.`);
+      return found;
     },
   };
 }
 
-/** The turns in the lines of a Copilot CLI `events.jsonl`: what was said, and the names of the tools used. */
+/** The turns in the lines of a Copilot CLI `events.jsonl`. A subagent's traffic is left out. */
 export function copilotTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
   const builder = transcriptBuilder('copilot', options);
   for (const line of lines) {
@@ -250,6 +348,10 @@ export function copilotTranscript(lines: readonly unknown[], options: SessionRea
     if (line.type === 'tool.execution_start' && typeof line.data.toolName === 'string') {
       builder.tool(text(line.data.toolCallId), line.data.toolName, line.data.arguments, at);
     }
+    if (line.type === 'tool.execution_complete') {
+      const result = isRecord(line.data.result) ? text(line.data.result.content) : undefined;
+      builder.toolResult(text(line.data.toolCallId), result, line.data.success === false, at);
+    }
   }
   return builder.turns();
 }
@@ -260,7 +362,6 @@ async function copilotEvents(info: SessionInfo): Promise<void> {
   try {
     stat = await fs.stat(info.path);
   } catch {
-    delete info.path;
     return;
   }
   const { head, tail } = await headAndTail({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size });
@@ -383,7 +484,30 @@ export function vibeSessions(options: StoreOptions = {}): SessionSource {
         query,
       );
     },
+    async read(info, readOptions) {
+      if (!info.path) throw new Error(`Session ${info.id} has no messages file.`);
+      return vibeTranscript(await transcriptLines(info.path), readOptions);
+    },
   };
+}
+
+/** The turns in the lines of a Vibe `messages.jsonl`. Messages Vibe injected itself are not prompts. */
+export function vibeTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
+  const builder = transcriptBuilder('vibe', options);
+  for (const line of lines) {
+    if (!isRecord(line)) continue;
+    const content = text(line.content);
+    if (line.role === 'user' && line.injected !== true && content) builder.prompt(content);
+    if (line.role === 'assistant') {
+      if (content) builder.text(content);
+      for (const call of Array.isArray(line.tool_calls) ? line.tool_calls : []) {
+        if (!isRecord(call) || !isRecord(call.function) || typeof call.function.name !== 'string') continue;
+        builder.tool(text(call.id), call.function.name, jsonOr(call.function.arguments));
+      }
+    }
+    if (line.role === 'tool') builder.toolResult(text(line.tool_call_id), content);
+  }
+  return builder.turns();
 }
 
 /** Gemini CLI: the `session-...jsonl` files in `~/.gemini/tmp/<project>/chats`; `.project_root` beside `chats` names the directory. */

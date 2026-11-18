@@ -60,6 +60,11 @@ export interface SessionSource {
   /** Newest first. Rejects when the store cannot be read at all; a missing store is an empty list. */
   list(query?: SessionQuery): Promise<SessionInfo[]>;
   /**
+   * Sessions whose id is `id` or starts with it, for stores where that is quicker than listing
+   * everything (`findSession()` uses it when present).
+   */
+  find?(id: string, query?: SessionQuery): Promise<SessionInfo[]>;
+  /**
    * What was said in a session this source listed, as turns `AgentSession.adopt()` takes: prompts,
    * the agent's messages and tool calls, oldest first. Only the end of a very long one is read.
    * Absent where the store's conversations cannot be read (yet).
