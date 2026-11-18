@@ -67,7 +67,7 @@ describe('checkSessions', () => {
   });
 
   it('reports conversations that no longer open and a store that cannot be listed', async () => {
-    const sessions = [info('a', { lastPrompt: 'x', cwd: '/w' }), info('b', { lastPrompt: 'y', cwd: '/w' })];
+    const sessions = ['a', 'b', 'c'].map((id) => info(id, { lastPrompt: 'x', cwd: '/w' }));
     const broken = source(sessions, {
       read: async () => {
         throw new Error('bad line');
@@ -98,8 +98,8 @@ describe('checkSessions', () => {
     const checks = await checkSessions([broken, silent, gone, denied, wordy], { env: env(), now: NOW });
     expect(checks[3]!.problems).toEqual(['cannot list: ENOENT']);
     expect(checks[4]!.problems).toEqual(['cannot list: unable to open <path> today']);
-    expect(checks[0]!.problems).toEqual(['none of the 2 newest conversations could be read']);
-    expect(checks[1]!.problems).toEqual(['no agent message in the 2 conversations read']);
+    expect(checks[0]!.problems).toEqual(['none of the 3 newest conversations could be read']);
+    expect(checks[1]!.problems).toEqual(['no agent message in the 3 conversations read']);
     expect(checks[2]!.problems).toEqual(['cannot list: no such table: threads']);
   });
 
@@ -121,7 +121,19 @@ describe('checkSessions', () => {
     const checks = await checkSessions([throwing, empty], { env: env(), now: NOW });
     expect(checks[0]).toMatchObject({ sampled: 2, problems: ['none of the 2 newest conversations could be read'] });
     expect(checks[1]!.problems).toEqual([]);
-    expect(checks[1]!.notes[0]).toContain('empty sessions, or a store that changed');
+    expect(checks[1]!.notes[0]).toContain('or a store that changed');
+    // One prompt nobody answered, or one conversation too long to find its prompt: healthy.
+    const one = [info('a', { lastPrompt: 'x', cwd: '/w' })];
+    const few = await checkSessions(
+      [
+        source(one, { name: 'unanswered', read: async () => [turn([])] }),
+        source(one, { name: 'long', read: async () => [] }),
+      ],
+      { env: env(), now: NOW },
+    );
+    expect(few.map((check) => check.problems)).toEqual([[], []]);
+    expect(few[0]!.notes[0]).toContain('not answered yet');
+    expect(few[1]!.notes[0]).toContain('very long sessions');
   });
 
   it('calls a few sessions without prompts and a list-only store fine', async () => {

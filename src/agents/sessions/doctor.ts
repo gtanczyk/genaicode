@@ -7,6 +7,8 @@ import { readLive } from './live.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Fewer sessions than this say too little about a store to call its format changed. */
 const MIN_FOR_SHARES = 5;
+/** Fewer conversations than this prove nothing by being empty or unanswered. */
+const MIN_READS = 3;
 /** Readers fill in the latest prompt of about this many newest sessions; older ones may lack it. */
 const JUDGED = 200;
 
@@ -133,12 +135,16 @@ export async function checkSessions(
         }
         if (check.sampled && !check.read) {
           const none = `none of the ${check.sampled} newest conversations could be read`;
-          // Sessions with no prompt and nothing in them may just be empty, when nothing failed.
-          if (failed || chosen.some(hasPrompt)) check.problems.push(none);
-          else check.notes.push(`${none}: empty sessions, or a store that changed`);
+          // One or two that give nothing may be empty, or longer than a reader looks back; a
+          // read that failed, or several sessions with a prompt and nothing in them, is a change.
+          if (failed || (check.sampled >= MIN_READS && chosen.some(hasPrompt))) check.problems.push(none);
+          else check.notes.push(`${none}: empty or very long sessions, or a store that changed`);
         } else if (check.read && !check.withReply) {
-          check.problems.push(`no agent message in the ${check.read} conversations read`);
-        } else if (check.read >= 3 && !check.withTools) {
+          const none = `no agent message in the ${check.read} conversations read`;
+          // A prompt nobody answered yet is a healthy session; several of them in a row are not.
+          if (check.read >= MIN_READS) check.problems.push(none);
+          else check.notes.push(`${none}: not answered yet, or a store that changed`);
+        } else if (check.read >= MIN_READS && !check.withTools) {
           check.notes.push(`no tool call in the ${check.read} conversations read`);
         }
       } else {
