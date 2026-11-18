@@ -317,6 +317,19 @@ describe('geminiManaged', () => {
     expect(fake.called('GET', '/interactions/int_0').length).toBe(1);
   });
 
+  it('reads the steps of an interaction that settled before create returned', async () => {
+    const fake = fakeFetch({
+      created: done(),
+      interactions: { int_1: done() },
+      streams: [{ events: turn }],
+    });
+    const run = geminiManaged(base(fake.fetch)).run(task());
+    const events = await drain(run);
+    expect(fake.called('GET', 'stream=true').length).toBe(1);
+    expect(events.some((e) => e.type === 'tool-start')).toBe(true);
+    expect((await run.result).ok).toBe(true);
+  });
+
   it('refuses to resume an interaction that is still running', async () => {
     const fake = fakeFetch({ interactions: { int_1: done('int_1', { status: 'in_progress' }) } });
     const result = await geminiManaged(base(fake.fetch)).run(task({ resume: 'int_1' })).result;

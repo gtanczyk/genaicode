@@ -321,8 +321,11 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
       );
       if (!created?.id) throw new Error(`${name} returned no interaction.`);
       const snapshot = await snapshotOf(created, signal);
-      // Fresh from create: the turn has not been read yet, whatever state the platform reported.
-      return { ...snapshot, state: snapshot.state === 'running' ? 'queued' : snapshot.state };
+      // Fresh from create, even when already settled: the turn's steps are read from its stream,
+      // which ends on its own end state.
+      const fresh: ManagedSnapshot = { ...snapshot, state: 'queued' };
+      for (const key of ['stopReason', 'endedAt', 'error', 'failure'] as const) delete fresh[key];
+      return fresh;
     },
 
     async get(id, signal) {
