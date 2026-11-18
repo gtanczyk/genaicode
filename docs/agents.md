@@ -785,6 +785,46 @@ const run = agent.run({
   filter fails with its reason, and a failed response's error code maps rate limits to `quota`.
 - `files` and `extraArgs` are refused; a model is required (`model` option or `task.model`).
 
+#### Cursor Cloud Agents
+
+`cursorCloud()` runs tasks as [Cursor Cloud Agents](https://cursor.com/docs/cloud-agent/api/endpoints)
+in Cursor's VMs, working on a repository and pushing a branch (or opening a pull request). It
+reads `CURSOR_API_KEY` by default:
+
+```ts
+import { cursorCloud } from 'genaicode/agents';
+
+const agent = cursorCloud({
+  model: 'composer-2', // an id from GET /v1/models; default: the account's default model
+  autoCreatePR: true,
+  // env: { type: 'pool', name: 'sandbox' }, // your own workers instead of Cursor's VMs
+});
+
+const run = agent.run({
+  prompt: 'Add a health check endpoint with a test',
+  cwd: 'https://github.com/acme/api#main', // a repo (#branch or #sha to start from) or a PR URL
+  mcpServers: [{ name: 'docs', url: 'https://example.com/mcp', headers: { Authorization: `Bearer ${token}` } }],
+});
+```
+
+- A session is the agent (`bc-...`), and its `sessionId` stays the same across turns: every turn
+  is a run on it. `task.resume` sends a follow-up run, which keeps the agent's model and
+  repository (a different `model` or repository URL is refused). Usage is the agent's total, and
+  a resumed run reports its own share.
+- The run's events stream live (`text-delta`, messages, tool calls) and the stream resumes from
+  the last event after a drop. Past the stream's retention the final state is read instead.
+- `steer()` reaches the running turn (`delivery: 'steer'`), `abort()` cancels the run. A steer
+  the platform queues as the next follow-up keeps the turn going into the run it starts.
+- On resume, `mcpServers` replaces the agent's servers (an empty list drops them); left out, the
+  agent keeps its current ones.
+- MCP servers go along with their headers. Tools run without approvals (`permissions.approval`
+  is `auto-approve` only), and there is no platform budget: `task.budget` is checked against
+  usage, which is read every `pollIntervalMs` while the stream runs, and a run over it is
+  cancelled.
+- A local `cwd` is ignored (the agent works in its own VM). `effort`, `maxTurns`, `files` and
+  `extraArgs` are refused; a system prompt goes before the task text. `vendor` fields go into
+  the create (or follow-up) request as they are.
+
 ## Writing a driver
 
 ```ts
