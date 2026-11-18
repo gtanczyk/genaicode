@@ -68,6 +68,8 @@ const contract = {
   'v2/ThreadActiveFlag.ts': ['"waitingOnApproval"', '"waitingOnUserInput"'],
   'v2/Turn.ts': ['items', 'startedAt', 'completedAt'],
   'v2/GitInfo.ts': ['branch', 'originUrl'],
+  'v2/FileUpdateChange.ts': ['path', 'diff'],
+  'v2/PatchApplyStatus.ts': ['"failed"'],
   // Times every item carries, ahead of its variants.
   'v2/ThreadItem.ts': ['startedAtMs', 'completedAtMs'],
 };
