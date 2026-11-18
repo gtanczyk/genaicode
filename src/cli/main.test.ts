@@ -344,10 +344,13 @@ describe('genaicode sessions doctor', () => {
     expect(parseCli(['sessions', 'doctor', '-a', 'codex', '--json'])).toEqual({
       kind: 'doctor',
       json: true,
+      api: false,
       agent: 'codex',
     });
     expect(() => parseCli(['sessions', 'doctor', '--limit', '3'])).toThrow(UsageError);
     expect(() => parseCli(['sessions', 'nurse'])).toThrow(UsageError);
+    expect(parseCli(['sessions', 'doctor', '--api'])).toMatchObject({ kind: 'doctor', api: true });
+    expect(() => parseCli(['sessions', '--api'])).toThrow(UsageError);
   });
 
   it('prints counts per store and fails when one looks broken', async () => {
