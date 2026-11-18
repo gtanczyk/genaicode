@@ -21,6 +21,8 @@ interface FakeOptions {
   /** `GET /responses/{id}` by id; a function sees how often it was read. */
   responses?: Record<string, OpenAiResponse | ((reads: number) => OpenAiResponse)>;
   createStatus?: number;
+  /** `GET /containers/{id}` statuses; missing ids are 404. */
+  containers?: Record<string, string>;
 }
 
 function fakeFetch(options: FakeOptions = {}) {
@@ -38,6 +40,12 @@ function fakeFetch(options: FakeOptions = {}) {
           status: options.createStatus,
         });
       return Response.json({ id: 'resp_1', status: 'queued', created_at: 1_763_400_000, ...options.created });
+    }
+    if (method === 'POST' && path === '/containers') return Response.json({ id: 'cntr_new', status: 'running' });
+    if (path.startsWith('/containers/')) {
+      if (method === 'DELETE') return Response.json({ deleted: true });
+      const status = options.containers?.[path.split('/')[2]];
+      return status ? Response.json({ id: path.split('/')[2], status }) : new Response('{}', { status: 404 });
     }
     if (method === 'POST' && path.endsWith('/cancel')) return Response.json({ id: 'resp_1', status: 'cancelled' });
     if (method === 'DELETE') return Response.json({ id: 'resp_1', deleted: true });
@@ -144,12 +152,19 @@ describe('openaiManaged', () => {
     const [create] = fake.called('POST', '/responses');
     expect(create.url).toBe('https://api.openai.com/v1/responses');
     expect(create.headers.authorization).toBe('Bearer sk-test');
+    expect(fake.called('POST', '/containers')[0].body).toEqual({
+      name: 'genaicode session',
+      expires_after: { anchor: 'last_active_at', minutes: 20 },
+    });
     expect(create.body).toEqual({
       model: 'gpt-6.2-astra',
       input: 'Fix the bug',
       background: true,
       store: true,
-      tools: [{ type: 'shell', environment: { type: 'container_auto' } }, { type: 'web_search' }],
+      tools: [
+        { type: 'shell', environment: { type: 'container_reference', container_id: 'cntr_new' } },
+        { type: 'web_search' },
+      ],
       reasoning: { effort: 'high' },
       max_tool_calls: 20,
     });
@@ -185,7 +200,11 @@ describe('openaiManaged', () => {
     expect(fake.called('POST', '/responses')[0].body?.tools).toEqual([
       {
         type: 'shell',
-        environment: { type: 'container_auto', network_policy: { type: 'allowlist', allowed_domains: ['pypi.org'] } },
+        environment: {
+          type: 'container_reference',
+          container_id: 'cntr_new',
+          network_policy: { type: 'allowlist', allowed_domains: ['pypi.org'] },
+        },
       },
       { type: 'web_search' },
       {
@@ -243,6 +262,29 @@ describe('openaiManaged', () => {
     expect(fake.called('GET', '/responses/resp_0').length).toBe(1);
   });
 
+  it("resumes in the container of the resumed response's shell, and refuses one that expired", async () => {
+    const shell = { type: 'shell', environment: { type: 'container_reference', container_id: 'cntr_7' } };
+    const fake = fakeFetch({
+      responses: { resp_1: done('resp_1', { tools: [shell] }), resp_2: done('resp_2') },
+      created: { id: 'resp_2' },
+      containers: { cntr_7: 'running' },
+    });
+    await drain(openaiManaged(base(fake.fetch)).run(task({ resume: 'resp_1' })));
+    expect(fake.called('POST', '/containers')).toEqual([]);
+    expect(fake.called('POST', '/responses')[0].body?.tools).toEqual([
+      { type: 'shell', environment: { type: 'container_reference', container_id: 'cntr_7' } },
+      { type: 'web_search' },
+    ]);
+
+    const expired = fakeFetch({
+      responses: { resp_1: done('resp_1', { tools: [shell] }) },
+      containers: { cntr_7: 'expired' },
+    });
+    const result = await openaiManaged(base(expired.fetch)).run(task({ resume: 'resp_1' })).result;
+    expect(result.error).toMatch(/container 'cntr_7' of response 'resp_1' has expired/);
+    expect(expired.called('POST', '/responses')).toEqual([]);
+  });
+
   it('refuses to resume a response that is still running', async () => {
     const fake = fakeFetch({ responses: { resp_1: done('resp_1', { status: 'in_progress' }) } });
     const result = await openaiManaged(base(fake.fetch)).run(task({ resume: 'resp_1' })).result;
@@ -288,9 +330,12 @@ describe('openaiManaged', () => {
   });
 
   it('classifies an HTTP 429 on create as quota', async () => {
-    const result = await openaiManaged(base(fakeFetch({ createStatus: 429 }).fetch)).run(task()).result;
+    const fake = fakeFetch({ createStatus: 429 });
+    const result = await openaiManaged(base(fake.fetch)).run(task()).result;
     expect(result).toMatchObject({ ok: false, failure: { kind: 'quota' } });
     expect(result.error).toMatch(/HTTP 429: Rate limit reached/);
+    // The container made for it is deleted again.
+    expect(fake.called('DELETE', '/containers/cntr_new').length).toBe(1);
   });
 
   it('cancels the response when the run is aborted', async () => {

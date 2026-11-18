@@ -748,7 +748,7 @@ const run = agent.run({
 
 `openaiManaged()` runs tasks as background responses of the
 [Responses API](https://developers.openai.com/api/docs/guides/background), with OpenAI's hosted
-tools doing the work: by default a hosted shell in an automatic container, and web search. It
+tools doing the work: by default a hosted shell and web search. It
 reads `OPENAI_API_KEY` by default:
 
 ```ts
@@ -775,6 +775,8 @@ const run = agent.run({
 - `task.resume` (the last run's `sessionId`) chains a new response with `previous_response_id`,
   so the next run's `sessionId` is a new id. Usage adds up the whole chain, and a resumed run
   reports its own share.
+- The default shell runs in a container made for the session (or the `cntr_...` workspace), and
+  a resumed run goes on in the same one, files included. It expires `containerMinutes` (default 20) after its last use; resuming after that fails rather than starting from an empty disk.
 - MCP servers run without approvals (`require_approval: 'never'`; `permissions.approval` is
   `auto-approve` only). Their only header can be `Authorization: Bearer`, which the platform takes
   as `authorization`: it drops other headers on tool calls.

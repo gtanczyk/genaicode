@@ -38,6 +38,8 @@ export interface OpenAiResponse {
   completed_at?: number | null;
   previous_response_id?: string | null;
   output?: readonly OpenAiResponseItem[];
+  /** The tools the response was created with. */
+  tools?: readonly Readonly<Record<string, unknown>>[];
   error?: { code?: string; message?: string } | null;
   incomplete_details?: { reason?: string | null } | null;
   usage?: OpenAiUsage | null;
@@ -59,10 +61,12 @@ export interface OpenAiManagedOptions {
   apiKey?: string | (() => string | Promise<string>);
   /** Default `https://api.openai.com/v1`. */
   baseUrl?: string;
-  /** Hosted tools every response gets. Default: a hosted shell in an automatic container, and web search. */
+  /** Hosted tools every response gets. Default: a hosted shell in a container kept for the session, and web search. */
   tools?: readonly Readonly<Record<string, unknown>>[];
   /** Domains the default hosted shell may reach. Default: the platform's own policy. */
   network?: readonly string[];
+  /** Minutes the default shell's container lives after its last use. Default 20; resuming later fails. */
+  containerMinutes?: number;
   /** Delay between polls. Default 3 s. */
   pollIntervalMs?: number;
   /** Default: global `fetch`. */
@@ -160,21 +164,20 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
     };
   };
 
-  const toolsOf = (start: ManagedStart): Record<string, unknown>[] => {
-    const container = /^cntr_/.test(start.workspace ?? '') ? start.workspace : undefined;
+  /** The tools of a response; the default shell runs in `container` (`container_reference`). */
+  const toolsOf = (start: ManagedStart, container: string | undefined): Record<string, unknown>[] => {
     const tools: Record<string, unknown>[] = options.tools
       ? options.tools.map((tool) => ({ ...tool }))
       : [
           {
             type: 'shell',
-            environment: container
-              ? { type: 'container_reference', container_id: container }
-              : {
-                  type: 'container_auto',
-                  ...(options.network
-                    ? { network_policy: { type: 'allowlist', allowed_domains: [...options.network] } }
-                    : {}),
-                },
+            environment: {
+              type: 'container_reference',
+              container_id: container,
+              ...(options.network
+                ? { network_policy: { type: 'allowlist', allowed_domains: [...options.network] } }
+                : {}),
+            },
           },
           { type: 'web_search' },
         ];
@@ -216,29 +219,68 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
       if (start.files?.length) throw new Error(`${name} cannot take start files.`);
       const model = start.model ?? options.model;
       if (!model) throw new Error(`${name} needs a model: options.model or task.model.`);
+      // The default shell keeps its files in one container for the whole session: the one given as
+      // the workspace, else the one the resumed response used, else a new one.
+      let container = /^cntr_/.test(start.workspace ?? '') ? start.workspace : undefined;
+      let made: string | undefined;
       if (start.resume !== undefined) {
         const prior = await retrieve(start.resume, signal);
         if (!prior) throw new Error(`${name}: response '${start.resume}' not found.`);
         if (running(prior.status))
           throw new Error(`${name}: response '${start.resume}' is still running; resume it once it settles.`);
+        if (!options.tools && !container) {
+          container = containerOf(prior);
+          if (container) {
+            const found = await json<{ status?: string }>(
+              'GET',
+              `/containers/${encodeURIComponent(container)}`,
+              undefined,
+              signal,
+            );
+            if (!found || found.status === 'expired')
+              throw new Error(
+                `${name}: container '${container}' of response '${start.resume}' has expired, and its files with it.`,
+              );
+          }
+        }
       }
-      const created = await json<OpenAiResponse>(
-        'POST',
-        '/responses',
-        {
-          model,
-          input: start.prompt,
-          background: true,
-          store: true,
-          tools: toolsOf(start),
-          ...(start.resume !== undefined ? { previous_response_id: start.resume } : {}),
-          ...(start.system ? { instructions: start.system } : {}),
-          ...(start.effort !== undefined ? { reasoning: { effort: start.effort } } : {}),
-          ...(start.maxTurns !== undefined ? { max_tool_calls: start.maxTurns } : {}),
-          ...(start.correlationId ? { metadata: { correlation_id: start.correlationId.slice(0, 512) } } : {}),
-        },
-        signal,
-      );
+      if (!options.tools && !container) {
+        const created = await json<{ id?: string }>(
+          'POST',
+          '/containers',
+          {
+            name: `genaicode ${start.correlationId ?? 'session'}`.slice(0, 64),
+            expires_after: { anchor: 'last_active_at', minutes: options.containerMinutes ?? 20 },
+          },
+          signal,
+        );
+        if (!created?.id) throw new Error(`${name} could not create a container.`);
+        container = made = created.id;
+      }
+      let created: OpenAiResponse | null;
+      try {
+        created = await json<OpenAiResponse>(
+          'POST',
+          '/responses',
+          {
+            model,
+            input: start.prompt,
+            background: true,
+            store: true,
+            tools: toolsOf(start, container),
+            ...(start.resume !== undefined ? { previous_response_id: start.resume } : {}),
+            ...(start.system ? { instructions: start.system } : {}),
+            ...(start.effort !== undefined ? { reasoning: { effort: start.effort } } : {}),
+            ...(start.maxTurns !== undefined ? { max_tool_calls: start.maxTurns } : {}),
+            ...(start.correlationId ? { metadata: { correlation_id: start.correlationId.slice(0, 512) } } : {}),
+          },
+          signal,
+        );
+      } catch (error) {
+        // Nothing started in it: do not leave the new container waiting to expire.
+        if (made) await json('DELETE', `/containers/${encodeURIComponent(made)}`).catch(() => undefined);
+        throw error;
+      }
       if (!created?.id) throw new Error(`${name} returned no response.`);
       const snapshot = await snapshotOf(created, signal);
       // Fresh from create, even when already settled: its items are read through `events`.
@@ -287,6 +329,16 @@ function bearerToken(value: string): string | undefined {
   if (trimmed.slice(0, 7).toLowerCase() !== 'bearer ') return undefined;
   const token = trimmed.slice(7).trim();
   return token || undefined;
+}
+
+/** The container the default shell of a response ran in. */
+function containerOf(response: OpenAiResponse): string | undefined {
+  for (const tool of response.tools ?? []) {
+    const environment = (tool as { type?: string; environment?: { type?: string; container_id?: string } }).environment;
+    if ((tool as { type?: string }).type === 'shell' && environment?.type === 'container_reference')
+      return environment.container_id;
+  }
+  return undefined;
 }
 
 function running(status: string | undefined): boolean {
