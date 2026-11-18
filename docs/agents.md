@@ -71,7 +71,7 @@ In scope:
 Out of scope, and left to application code:
 
 - sandboxing, credentials, and billing, which belong to the agent itself,
-- choosing an agent or model, retries, and verify-and-repair loops,
+- choosing an agent or model (`pack()` leaves that to its lead agent), retries, and verify-and-repair loops,
 - prompts and repository tools. GenAIcode adds no agent loop of its own.
 
 ## Running a task
@@ -208,6 +208,50 @@ to brief it again (app agents do: the briefing plus the conversation so far). `c
 `configure({ fallback })` take agent names. `genaicode run|chat|ui --fallback codex,gemini` and
 `/fallback` in the chat do it from the command line, and `<AgentChat>`, `chat` and `ui` show the
 switch in the transcript.
+
+## Packs: one agent over the others
+
+`pack()` turns the agents on a machine into one `CodingAgent`. The lead takes the prompt and gets
+MCP tools to hand parts of it to the other members, in parallel, and to merge what they did:
+
+```ts
+import { claude, codex, gemini, pack } from 'genaicode/agents';
+
+const agent = pack({ lead: claude(), members: [codex(), gemini(), claude()] });
+const run = agent.run({ prompt: 'Add CSV export, with tests, and have it reviewed', cwd });
+for await (const event of run) {
+  if (event.type === 'subtask-start') console.log(`→ ${event.agent} ${event.id}: ${event.prompt}`);
+}
+```
+
+The lead decides what to delegate and to whom; genaicode adds the tools, not a loop or a router of
+its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server named `pack`:
+
+| Tool       | What it does                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| `agents`   | Members: installed or not, tasks running, the plan limits each reported, its last failure kind  |
+| `delegate` | Starts `prompt` on a member and returns a task id at once                                       |
+| `wait`     | Blocks until tasks end (or `timeoutSeconds`), then reports status, final message, changed files |
+| `steer`    | More input for a running task, where the member has `steer()`                                   |
+| `stop`     | Stops a running task                                                                            |
+| `diff`     | A worktree task's changes as a unified diff                                                     |
+| `merge`    | Applies a finished task's changes to the lead's directory (`threeWay` for conflict markers)     |
+| `discard`  | Drops a finished task's changes                                                                 |
+
+- A delegated task runs in its own git worktree under `.genaicode/worktrees/` (git-ignored): a
+  copy of the files as they are, uncommitted and untracked ones included. Nothing reaches the
+  working directory until the lead merges it, and a merge stages and commits nothing. Files git
+  ignores (`node_modules`, build output) are not in a worktree; `prepareWorktree(dir, repo)` can
+  link or install them. Mode `shared` runs a task in the lead's directory instead, for reviews and
+  for directories that are not git repositories.
+- Events are the lead's, plus `subtask-start`, `subtask` (a delegated task's own event; its `done`
+  ends the task) and `subtask-update` (`merged` or `discarded`). A merge also emits `file-change`.
+- `usage` events and `result.usage` add up the lead and every delegated task, and `task.budget`
+  caps the sum. `maxParallel` (default 4) caps how many tasks run at once.
+- Delegated tasks get the run's `env`, `permissions` and `onApproval`; their request ids are
+  prefixed with the task id and the summary names the agent.
+- `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
+  finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 
 ## Follow-up turns
 
@@ -862,3 +906,4 @@ way the built-in drivers are tested.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
 4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`, `managedAgent`). Done.
 5. A Copilot CLI driver (`copilot`). Done.
+6. `pack()`: a lead agent that delegates to the other installed agents. Done; CLI and chat front ends next.

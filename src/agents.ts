@@ -66,6 +66,10 @@ export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from '
 export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
+export { pack } from './agents/pack.js';
+export type { Pack, PackMember, PackOptions, PackTask, PackTaskStatus } from './agents/pack.js';
+export { startLocalMcpServer } from './agents/mcp-server.js';
+export type { LocalMcpServer, LocalMcpServerOptions } from './agents/mcp-server.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';

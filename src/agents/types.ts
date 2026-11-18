@@ -190,6 +190,12 @@ export type AgentEvent =
   | { type: 'budget-warning'; warning: BudgetWarning }
   /** `withFallback()` moved the task from `from` to `to` after `failure`. */
   | { type: 'failover'; from: string; to: string; failure: AgentFailure }
+  /** `pack()`: the lead handed `prompt` to another agent. `cwd` is where that agent works. */
+  | { type: 'subtask-start'; id: string; agent: string; prompt: string; cwd: string; mode: 'worktree' | 'shared' }
+  /** `pack()`: an event of a delegated task. Its `done` event ends the task. */
+  | { type: 'subtask'; id: string; agent: string; event: AgentEvent }
+  /** `pack()`: a delegated task's changes were merged into the working directory, or dropped. */
+  | { type: 'subtask-update'; id: string; agent: string; state: 'merged' | 'discarded'; paths?: string[] }
   | { type: 'error'; message: string }
   | { type: 'stderr'; text: string }
   | { type: 'raw'; line: string }
