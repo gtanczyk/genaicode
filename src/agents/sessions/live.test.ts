@@ -116,6 +116,21 @@ describe('what a hook says about a session', () => {
     });
   });
 
+  it('keeps a question that the hook of another tool overtook', async () => {
+    const env = home('overtaken');
+    const say = (hook_event_name: string, now: number, more: object = {}) =>
+      recordHook('claude', { session_id: 's-3', hook_event_name, ...more }, { env, now });
+    await say('UserPromptSubmit', 1);
+    // The Read finished after Bash asked, but its hook wrote first.
+    await say('PostToolUse', 5, { tool_name: 'Read', tool_input: { file_path: 'a' } });
+    await say('PermissionRequest', 4, { tool_name: 'Bash', tool_input: { command: 'ls' } });
+    expect((await readLive(env, 10)).get('claude:s-3')).toMatchObject({ state: 'approval', tool: 'Bash', seen: 5 });
+    // Once the turn is over, an old question is not asked any more.
+    await say('Stop', 8);
+    expect(await say('PermissionRequest', 6, { tool_name: 'Bash', tool_input: { command: 'pwd' } })).toBeUndefined();
+    expect((await readLive(env, 10)).get('claude:s-3')!.state).toBe('idle');
+  });
+
   it('takes hooks that run at the same moment one at a time', async () => {
     const env = home('together');
     const say = (hook_event_name: string, now: number) =>

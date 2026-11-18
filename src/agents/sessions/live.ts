@@ -25,6 +25,8 @@ export interface LiveRecord {
   tool?: string;
   /** The questions not answered yet, while `state` is `approval`. */
   asks?: LiveAsk[];
+  /** Tool calls seen finishing in this turn, the latest ones: a question about one of them is over. */
+  done?: Array<LiveAsk & { at: number }>;
 }
 
 /** One "may I use this tool?": the tool's name and a digest of its input, to tell which one was answered. */
@@ -159,6 +161,7 @@ async function readRecord(file: string): Promise<Kept | undefined> {
     if (typeof value.at !== 'number') return undefined;
     if (value.seen !== undefined && typeof value.seen !== 'number') return undefined;
     if (value.asks !== undefined && !Array.isArray(value.asks)) return undefined;
+    if (value.done !== undefined && !Array.isArray(value.done)) return undefined;
     const states: unknown[] = ['working', 'approval', 'idle', 'ended'];
     if (!states.includes(value.state)) return undefined;
     return value as Kept;
@@ -187,7 +190,12 @@ export async function recordHook(
   try {
     const before = await readRecord(file);
     // An event that ran before the latest one seen says nothing new.
-    if (before && Math.max(before.at, before.seen ?? 0) > at) return undefined;
+    // A question is the exception: another tool's hook may get here first, and it still waits.
+    const late = !!before && Math.max(before.at, before.seen ?? 0) > at;
+    const ask = event.reminder ? undefined : event.ask;
+    const over = (before?.done ?? []).some((done) => done.tool === ask?.tool && done.key === ask?.key && done.at >= at);
+    const stillAsked = !!ask?.tool && !over && before?.state !== 'idle' && before?.state !== 'ended';
+    if (late && !stillAsked) return undefined;
     const cwd = event.cwd ?? before?.cwd;
     const known = { agent, id: event.id, ...(cwd ? { cwd } : {}) };
     let record: Kept;
@@ -215,10 +223,17 @@ export async function recordHook(
       // A question that names its tool is the one an earlier reminder was about.
       const named = event.ask?.tool ? asked.filter((ask) => ask.tool !== undefined) : asked;
       const asks = event.reminder && asked.length ? asked : [...named, event.ask ?? {}].slice(-MAX_ASKS);
-      record = { ...known, state: 'approval', at, ...asking(asks) };
+      // Asked before the latest news, it does not move the session back in time.
+      const seen = late ? { at: before!.at, ...(before!.seen !== undefined ? { seen: before!.seen } : {}) } : { at };
+      record = { ...known, state: 'approval', ...seen, ...asking(asks) };
     } else {
       record = { ...known, state: event.state as LiveState, at };
     }
+    if (record.state === 'working' || record.state === 'approval') {
+      const done = [...(before?.done ?? []), ...(event.answered ? [{ ...event.answered, at }] : [])].slice(-MAX_ASKS);
+      if (done.length) record.done = done;
+      else delete record.done;
+    } else delete record.done;
     const temporary = `${file}.${process.pid}.tmp`;
     await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     await fs.rename(temporary, file);
