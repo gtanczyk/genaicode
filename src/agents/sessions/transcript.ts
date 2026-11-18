@@ -28,9 +28,14 @@ export async function zstdFile(file: string): Promise<Buffer | undefined> {
   };
   const decompress = zlib.zstdDecompress;
   if (!decompress) return undefined;
-  const stat = await fs.stat(file);
-  if (stat.size > MAX_COMPRESSED) return undefined;
-  const data = await fs.readFile(file);
+  const handle = await fs.open(file, 'r');
+  let data: Buffer;
+  try {
+    if ((await handle.stat()).size > MAX_COMPRESSED) return undefined;
+    data = await handle.readFile();
+  } finally {
+    await handle.close();
+  }
   return new Promise<Buffer>((resolve, reject) =>
     decompress(data, (error, out) => (error ? reject(error) : resolve(out))),
   );

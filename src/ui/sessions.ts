@@ -54,6 +54,8 @@ export function resumeCommand(session: SessionInfo): string | undefined {
  */
 export function canContinueHere(session: SessionInfo, cwd: string, readable: readonly string[]): boolean {
   if (session.where !== 'local' || !session.cwd || !cwd || !readable.includes(session.source)) return false;
-  const root = cwd.replace(/[\\/]+$/, '');
+  let end = cwd.length;
+  while (end > 1 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
+  const root = cwd.slice(0, end);
   return session.cwd === root || session.cwd.startsWith(`${root}/`) || session.cwd.startsWith(`${root}\\`);
 }
