@@ -195,7 +195,15 @@ export async function recordHook(
     const ask = event.reminder ? undefined : event.ask;
     const over = (before?.done ?? []).some((done) => done.tool === ask?.tool && done.key === ask?.key && done.at >= at);
     const stillAsked = !!ask?.tool && !over && before?.state !== 'idle' && before?.state !== 'ended';
-    if (late && !stillAsked) return undefined;
+    // So is the end of a call that was asked about: its question is over, whenever that is learned.
+    const fin = event.answered;
+    const answers =
+      !!fin?.tool &&
+      before?.state === 'approval' &&
+      (before.asks ?? []).some((asked) => asked.tool === fin.tool && asked.key === fin.key);
+    if (late && !stillAsked && !answers) return undefined;
+    // A late event does not move the session back in time.
+    const when = late ? Math.max(before!.at, before!.seen ?? 0) : at;
     const cwd = event.cwd ?? before?.cwd;
     const known = { agent, id: event.id, ...(cwd ? { cwd } : {}) };
     let record: Kept;
@@ -215,15 +223,14 @@ export async function recordHook(
         record = { ...known, state: 'working', at };
         changed = true;
       } else if (!changed) record = { ...before, seen: at };
-      else if (left.length) record = { ...known, state: 'approval', at: before.at, seen: at, ...asking(left) };
-      else record = { ...known, state: 'working', at };
+      else if (left.length) record = { ...known, state: 'approval', at: before.at, seen: when, ...asking(left) };
+      else record = { ...known, state: 'working', at: when };
     } else if (event.state === 'approval') {
       const asked = before?.state === 'approval' ? (before.asks ?? []) : [];
       // A reminder of a question already known adds none.
       // A question that names its tool is the one an earlier reminder was about.
       const named = event.ask?.tool ? asked.filter((ask) => ask.tool !== undefined) : asked;
       const asks = event.reminder && asked.length ? asked : [...named, event.ask ?? {}].slice(-MAX_ASKS);
-      // Asked before the latest news, it does not move the session back in time.
       const seen = late ? { at: before!.at, ...(before!.seen !== undefined ? { seen: before!.seen } : {}) } : { at };
       record = { ...known, state: 'approval', ...seen, ...asking(asks) };
     } else {
