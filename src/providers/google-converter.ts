@@ -121,14 +121,23 @@ const googleThinkingLevels = {
   high: ThinkingLevel.HIGH,
 } as const;
 
-function defaultDisabledThinkingLevel(model: string | undefined): ThinkingLevel {
-  if (!model) return ThinkingLevel.MINIMAL;
+/**
+ * Whether the model's lowest thinking level is LOW rather than MINIMAL.
+ * Gemini 3+ Pro, Gemini 3.7 and later, and Gemini 4+ reject MINIMAL (INVALID_ARGUMENT).
+ */
+function floorsAtLow(model: string | undefined): boolean {
+  if (!model) return false;
   const normalized = model.toLowerCase();
-  // Gemini 3.7 models and Gemini 3+ Pro models do not support MINIMAL (their floor is LOW).
-  if (/gemini-3\.7/i.test(normalized) || /gemini-3(?:\.[0-9]+)?-pro/i.test(normalized)) {
-    return ThinkingLevel.LOW;
-  }
-  return ThinkingLevel.MINIMAL;
+  if (/gemini-3(?:\.[0-9]+)?-pro/.test(normalized)) return true;
+  const version = /gemini-(\d+)(?:\.(\d+))?/.exec(normalized);
+  if (!version) return false;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+  return major > 3 || (major === 3 && minor >= 7);
+}
+
+function defaultDisabledThinkingLevel(model: string | undefined): ThinkingLevel {
+  return floorsAtLow(model) ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL;
 }
 
 function toGoogleThinkingConfig(
@@ -140,7 +149,7 @@ function toGoogleThinkingConfig(
   if (thinking === false || thinking?.budgetTokens === 0) {
     // Gemini 3 rejects `thinkingBudget: 0` (INVALID_ARGUMENT). `MINIMAL` is the
     // supported "keep it cheap / effectively off" setting for models that support it,
-    // while models like Gemini 3.7 and Gemini 3 Pro floor at `LOW`.
+    // while Gemini 3 Pro, Gemini 3.7+ and Gemini 4 floor at `LOW`.
     return { thinkingLevel: defaultDisabledThinkingLevel(model) };
   }
   if (thinking?.level) {
