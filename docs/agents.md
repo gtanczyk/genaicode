@@ -341,6 +341,24 @@ prompt or directory, or whose conversations no longer open, is a problem; a newe
 not. It prints counts only, never what was said, so the output is safe to paste into an issue.
 From code: `checkSessions(sources, { version })` returns the same as `SessionCheck[]`.
 
+Codex can also be asked instead of read. Its app server (`codex app-server`) lists threads and
+their turns in a documented protocol (`thread/list`, `thread/turns/list`), which holds across
+Codex versions where the files may not:
+
+```bash
+npx genaicode sessions doctor --api                      # compare what was read with what Codex lists
+GENAICODE_CODEX_SESSIONS=app-server npx genaicode sessions   # list and read through Codex itself
+```
+
+```ts
+codexSessions({ via: 'app-server' }); // or 'auto': the app server when `codex` is installed
+```
+
+The files stay the default: reading them changes nothing and starts nothing, while every question
+to the app server starts a Codex process (about half a second) that keeps its own state and logs
+in Codex's home. When the app server cannot be asked, the files are read. `doctor --api` is the
+cheap middle: the files day to day, and Codex's own answer as the reference when you check.
+
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the

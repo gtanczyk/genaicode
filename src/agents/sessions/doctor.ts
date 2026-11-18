@@ -34,6 +34,11 @@ export interface SessionCheck {
   read: number;
   withReply: number;
   withTools: number;
+  /**
+   * What the agent itself lists, where it was asked (`reference: true`): how many sessions, and
+   * how many of them the source's own reading missed.
+   */
+  reference?: { listed: number; missing: number };
   /** Hooks of this agent, where it has them. */
   hooks?: { installed: boolean; reported: number };
   /** What looks broken. Empty when the source is fine. */
@@ -48,6 +53,11 @@ export interface SessionCheckOptions {
   since?: number;
   /** How many conversations to open per source. Default 5. */
   sample?: number;
+  /**
+   * Also ask the agents that can be asked (Codex's app server) and compare. It starts the agent's
+   * own process, which may write to the agent's home. Default false.
+   */
+  reference?: boolean;
   /** The CLI version of a source's agent on this machine, e.g. `cliVersion()` of its command. */
   version?: (source: SessionSource) => Promise<string | undefined>;
   now?: number;
@@ -111,6 +121,20 @@ export async function checkSessions(
         if (source.where === 'local' && dirs * 2 < newest.length) {
           check.problems.push(`only ${dirs} ${of} have a directory`);
         }
+      }
+
+      if (options.reference && source.reference) {
+        const asked = await source.reference(query).catch(() => undefined);
+        if (asked) {
+          const have = new Set(sessions.map((session) => session.id));
+          const missing = asked.filter((session) => !have.has(session.id)).length;
+          check.reference = { listed: asked.length, missing };
+          if (asked.length >= MIN_FOR_SHARES && missing * 10 > asked.length) {
+            check.problems.push(
+              `${source.name} itself lists ${asked.length} sessions; ${missing} of them were not read`,
+            );
+          }
+        } else check.notes.push(`${source.name} could not be asked for its sessions`);
       }
 
       if (source.read) {

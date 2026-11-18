@@ -106,6 +106,10 @@ export {
   withLive,
   checkSessions,
   cliVersion,
+  codexThreads,
+  codexTurns,
+  openCodexServer,
+  readCodexThread,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -125,6 +129,9 @@ export type {
   LiveState,
   SessionCheck,
   SessionCheckOptions,
+  CodexServer,
+  CodexServerOptions,
+  CodexSessionsVia,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';

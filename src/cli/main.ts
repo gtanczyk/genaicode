@@ -132,10 +132,12 @@ Sessions options:
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
 
-  "sessions doctor" (-a, --since, --json) checks each store: how many sessions it lists, how
+  "sessions doctor" (-a, --since, --json, --api) checks each store: how many sessions it lists, how
   many have a prompt and a directory, whether the newest conversations open, and whether the
   agent's CLI is newer than the one the reader was checked with. It prints counts, never what
-  was said, and exits 1 when a store reads differently than expected.
+  was said, and exits 1 when a store reads differently than expected. With --api it also asks
+  the agents that can be asked (Codex's app server) and compares; that starts the agent's own
+  process, which keeps its state and logs in its home.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex); default: both
@@ -502,6 +504,7 @@ async function checkStores(
   const commandOf = (name: string) => paths.find((found) => found.agent.sessions?.name === name && found.path)?.path;
   const checks = await checkSessions(sources, {
     env: cli.env,
+    reference: command.api,
     ...(command.sinceMs !== undefined ? { since: Date.now() - command.sinceMs } : {}),
     ...(cli.signal ? { signal: cli.signal } : {}),
     version: async (source) => {
@@ -530,6 +533,11 @@ async function checkStores(
     if (check.sampled) {
       cli.stdout.write(
         `  read ${check.read} of the ${check.sampled} newest: agent messages in ${check.withReply}, tool calls in ${check.withTools}\n`,
+      );
+    }
+    if (check.reference) {
+      cli.stdout.write(
+        `  ${check.source} itself lists ${check.reference.listed}: ${check.reference.listed - check.reference.missing} of them read here\n`,
       );
     }
     if (check.hooks) {

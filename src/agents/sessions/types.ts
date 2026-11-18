@@ -71,6 +71,12 @@ export interface SessionSource {
    * may keep its sessions differently: `checkSessions()` says whether the source still reads them.
    */
   verified?: string;
+  /**
+   * The same sessions asked of the agent itself, where it can be asked (Codex's app server):
+   * `checkSessions({ reference: true })` compares them with what `list()` reads. Undefined when
+   * the agent is not installed or does not answer.
+   */
+  reference?(query?: SessionQuery): Promise<SessionInfo[] | undefined>;
   /** Newest first. Rejects when the store cannot be read at all; a missing store is an empty list. */
   list(query?: SessionQuery): Promise<SessionInfo[]>;
   /**
