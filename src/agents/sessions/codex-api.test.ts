@@ -185,6 +185,27 @@ describe.skipIf(process.platform === 'win32')('codexSessions over the app server
     const own = codexSessions();
     const [mine] = await own.list({ env: { ...env, GENAICODE_CODEX_SESSIONS: 'app-server' } });
     expect(await own.read!(mine!)).toMatchObject([{ prompt: 'hello' }]);
+    // A long-lived signal keeps no listener of a server that is closed.
+    const controller = new AbortController();
+    const listening = () => {
+      let count = 0;
+      const add = controller.signal.addEventListener.bind(controller.signal);
+      const remove = controller.signal.removeEventListener.bind(controller.signal);
+      controller.signal.addEventListener = ((...args: Parameters<typeof add>) => {
+        count += 1;
+        add(...args);
+      }) as typeof add;
+      controller.signal.removeEventListener = ((...args: Parameters<typeof remove>) => {
+        count -= 1;
+        remove(...args);
+      }) as typeof remove;
+      return () => count;
+    };
+    const attached = listening();
+    for (let at = 0; at < 3; at += 1) {
+      await codexSessions({ via: 'app-server' }).list({ env, signal: controller.signal });
+    }
+    expect(attached()).toBe(0);
     // By default nothing is started: the (empty) files are what there is.
     expect(await codexSessions().list({ env })).toEqual([]);
     expect(await codexSessions().list({ env: { ...env, GENAICODE_CODEX_SESSIONS: 'auto' } })).toHaveLength(1);

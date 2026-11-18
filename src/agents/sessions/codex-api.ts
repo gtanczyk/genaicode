@@ -52,6 +52,7 @@ export async function openCodexServer(options: CodexServerOptions = {}): Promise
     }
   });
   const close = () => {
+    options.signal?.removeEventListener('abort', close);
     lines.close();
     child.kill();
   };
