@@ -1,3 +1,4 @@
+import { museSessions } from '../sessions/stores.js';
 import { liveAgent, uuidv7, type LiveSession } from '../live-agent.js';
 import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
@@ -28,6 +29,7 @@ const TOOL_KINDS = new Set(['commandExecution', 'toolCall', 'mcpToolCall', 'file
  */
 export function museLive(options: MuseLiveOptions = {}): CodingAgent {
   return liveAgent({
+    sessions: museSessions(),
     name: 'muse',
     command: options.command ?? 'muse',
     capabilities: {

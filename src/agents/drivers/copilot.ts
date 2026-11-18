@@ -1,3 +1,4 @@
+import { copilotSessions } from '../sessions/stores.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,6 +40,7 @@ const EDIT_TOOLS = new Set(['edit', 'create', 'str_replace_editor']);
 /** GitHub Copilot CLI in prompt mode (`copilot --prompt=… --output-format json`). */
 export function copilot(options: CopilotAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: copilotSessions(),
     name: 'copilot',
     command: options.command ?? 'copilot',
     capabilities: {

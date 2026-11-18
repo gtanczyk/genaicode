@@ -72,8 +72,14 @@ export { startLocalMcpServer } from './agents/mcp-server.js';
 export type { LocalMcpServer, LocalMcpServerOptions } from './agents/mcp-server.js';
 export {
   agentSessionSources,
+  antigravitySessions,
   claudeSessions,
   codexSessions,
+  copilotSessions,
+  cursorSessions,
+  geminiSessions,
+  museSessions,
+  vibeSessions,
   groupSessions,
   listSessions,
   readClaudeSession,
@@ -88,6 +94,7 @@ export type {
   SessionQuery,
   SessionSource,
   SessionActivity,
+  StoreOptions,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';

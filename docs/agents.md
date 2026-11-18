@@ -274,13 +274,33 @@ cost where the store has them, and a `state`: `active` (written to in the last t
 `waiting` (the agent had the last word) or `unfinished` (it stops at the user's message or in the
 middle of the agent's work).
 
-| Source             | Reads                                                                   |
-| ------------------ | ----------------------------------------------------------------------- |
-| `claudeSessions()` | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents |
-| `codexSessions()`  | `~/.codex/sessions/**/rollout-*.jsonl` (`CODEX_HOME`)                   |
+Every driver says where its sessions are in `agent.sessions`: a `SessionSource`, or `null` when
+it keeps none genaicode reads. `agentSessionSources(agents)` collects them (one per store, so
+`codex()` and `codexLive()` count once):
 
-Reading is read-only and looks at the start and the end of each file, so a store with hundreds of
-long sessions lists quickly. `query` takes `since`, `cwd` and `limit`. A source that cannot be
+```ts
+const { sessions } = await listSessions(agentSessionSources(defaultAgents()), { limit: 50 });
+```
+
+| Driver               | Source                  | Reads                                                                           |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------- |
+| `claude`             | `claudeSessions()`      | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents         |
+| `codex`, `codexLive` | `codexSessions()`       | the thread index `~/.codex/state_<n>.sqlite` (`CODEX_HOME`), else rollout files |
+| `copilot`            | `copilotSessions()`     | `~/.copilot/session-state/<id>/workspace.yaml` and `events.jsonl`               |
+| `cursor`             | `cursorSessions()`      | `~/.cursor/chats/<hash>/<id>/meta.json`, the model from the chat's `store.db`   |
+| `gemini`             | `geminiSessions()`      | `~/.gemini/tmp/<project>/chats/session-*.jsonl`                                 |
+| `antigravity`        | `antigravitySessions()` | `conversation_summaries.db` in `~/.gemini/antigravity` and `antigravity-cli`    |
+| `muse`, `museLive`   | `museSessions()`        | `~/.local/share/muse/session-index.db`                                          |
+| `vibe`               | `vibeSessions()`        | `~/.vibe/logs/session/*/meta.json` (`VIBE_HOME`), with token and cost totals    |
+| `opencode`           | `null`                  | not read yet                                                                    |
+
+What a store does not keep stays undefined: Cursor has no usage, Antigravity and Vibe no model,
+and an index without transcripts (Muse, Antigravity) gives no latest reply. Codex, Muse,
+Antigravity and Cursor keep SQLite files, read with `node:sqlite` (Node 22.5 or newer; on an
+older Node those sources land in `errors`). Subagent sessions and archived threads are left out.
+
+Reading is read-only. Transcripts are read at their start and end only, so a store with hundreds
+of long sessions lists quickly. `query` takes `since`, `cwd` and `limit`. A source that cannot be
 read lands in `errors` and the others are still listed. A `SessionSource` is `{ name, where,
 list(query) }`: implement one for another agent or for a vendor's cloud and pass it in the list.
 `genaicode sessions` prints the same from the command line (see [cli.md](./cli.md)).

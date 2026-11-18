@@ -99,7 +99,7 @@ Usage:
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
 
 Sessions options:
-  -a, --agent <name>      Only this agent's sessions (claude, codex)
+  -a, --agent <name>      Only this agent's sessions
   -C, --cwd <dir>         Only sessions in this directory or below it
       --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
   -n, --limit <n>         At most this many sessions, newest first (default 30)

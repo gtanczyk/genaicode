@@ -6,6 +6,15 @@ export { claudeSessions, readClaudeSession } from './claude.js';
 export type { ClaudeSessionsOptions } from './claude.js';
 export { codexSessions, readCodexSession } from './codex.js';
 export type { CodexSessionsOptions } from './codex.js';
+export {
+  antigravitySessions,
+  copilotSessions,
+  cursorSessions,
+  geminiSessions,
+  museSessions,
+  vibeSessions,
+} from './stores.js';
+export type { StoreOptions } from './stores.js';
 export type { SessionInfo, SessionQuery, SessionSource, SessionActivity } from './types.js';
 
 /**

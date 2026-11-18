@@ -1,3 +1,4 @@
+import { vibeSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import type { PreparedRun } from '../prepare.js';
@@ -26,6 +27,7 @@ const EDIT_KINDS = new Set(['file_edit', 'file_write']);
  */
 export function vibe(options: VibeAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: vibeSessions(),
     name: 'vibe',
     command: options.command ?? 'vibe',
     capabilities: {

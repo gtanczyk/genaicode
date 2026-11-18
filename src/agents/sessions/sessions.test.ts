@@ -170,7 +170,7 @@ describe('genaicode sessions', () => {
     let err = '';
     const code = await runCli({
       argv: ['sessions', ...argv],
-      env: { CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexDir },
+      env: { HOME: join(root, 'home'), CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexDir },
       cwd: root,
       stdout: { write: (text: string) => void (out += text) },
       stderr: { write: (text: string) => void (err += text) },
@@ -196,7 +196,8 @@ describe('genaicode sessions', () => {
       .map((line) => JSON.parse(line) as { agent: string });
     expect(rows.map((row) => row.agent)).toEqual(['codex']);
     expect((await run('-a', 'nobody')).err).toContain('No session store');
-    expect((await run('-a', 'gemini')).err).toContain('No session store');
+    expect((await run('-a', 'opencode')).err).toContain('No session store');
+    expect((await run('-a', 'gemini')).out).toContain('No sessions found.');
     expect((await run('--since', 'soon')).err).toContain('--since expects');
   });
 });

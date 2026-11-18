@@ -1,3 +1,4 @@
+import { antigravitySessions } from '../sessions/stores.js';
 import { readFileSync } from 'node:fs';
 import type { AgentOutcome, AgentOutputParser } from '../cli-agent.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
@@ -26,6 +27,7 @@ const NO_TIMEOUT = 2 ** 31 - 1;
  */
 export function antigravity(options: AntigravityAgentOptions = {}): CodingAgent {
   return liveAgent({
+    sessions: antigravitySessions(),
     name: 'antigravity',
     command: options.command ?? 'agy',
     capabilities: {

@@ -1,3 +1,4 @@
+import { museSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
 import { isObject, stringField } from './json.js';
@@ -13,6 +14,7 @@ export interface MuseAgentOptions {
 /** Muse in exec mode (`muse exec --json`). */
 export function muse(options: MuseAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: museSessions(),
     name: 'muse',
     command: options.command ?? 'muse',
     capabilities: { effort: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], maxTurns: true, mcp: true },

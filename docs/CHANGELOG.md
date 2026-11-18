@@ -11,7 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `pack({ lead, members })` in `genaicode/agents`: one agent over the installed ones. The lead delegates to the others in parallel git worktrees through MCP tools and merges their work; new `subtask-start`, `subtask` and `subtask-update` events (#184)
-- `listSessions()` and `genaicode sessions`: one list of the sessions coding agents keep on this machine (Claude Code and Codex to start with), grouped by project, with state, latest prompt and the id to resume. `SessionSource` is the seam for more agents and for vendor clouds (#PRNUM)
+- `listSessions()` and `genaicode sessions`: one list of the sessions coding agents keep on this machine, grouped by project, with state (active, waiting for you, unfinished), latest prompt and the id to resume. Every driver names its store in `agent.sessions` (Claude Code, Codex, Copilot, Cursor, Gemini CLI, Antigravity, Muse, Vibe; `null` for opencode); `SessionSource` is the seam for vendor clouds (#PRNUM)
 
 ### Fixed
 

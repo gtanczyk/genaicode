@@ -1,3 +1,4 @@
+import { geminiSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
@@ -52,6 +53,7 @@ export function geminiPermissionFlags(permissions: AgentPermissions): Permission
 /** Gemini CLI in headless mode (`gemini --prompt ... --output-format stream-json`). */
 export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: geminiSessions(),
     name: 'gemini',
     command: options.command ?? 'gemini',
     capabilities: {

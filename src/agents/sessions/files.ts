@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
+import type { SessionInfo, SessionQuery } from './types.js';
 
 export interface SessionFile {
   path: string;
@@ -120,3 +122,38 @@ export async function mapLimited<T, R>(
 
 /** Written to this recently: an agent is probably still working in it. */
 export const ACTIVE_MS = 2 * 60_000;
+
+/** Apply a `SessionQuery` to sessions a source read: filter, newest first, cut to `limit`. */
+export function select(sessions: SessionInfo[], query: SessionQuery): SessionInfo[] {
+  const kept = sessions
+    .filter((session) => query.since === undefined || session.updatedAt >= query.since)
+    .filter((session) => query.cwd === undefined || (!!session.cwd && isWithin(session.cwd, query.cwd)))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return query.limit === undefined ? kept : kept.slice(0, query.limit);
+}
+
+/** `state` for a store that only says when a session was last written. */
+export function activeIfRecent(updatedAt: number, now = Date.now()): { state?: 'active' } {
+  return now - updatedAt < ACTIVE_MS ? { state: 'active' } : {};
+}
+
+/** A JSON file's value, or undefined when it is missing or broken. */
+export async function readJson(file: string): Promise<unknown> {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The user's home directory as `env` has it. */
+export function homeOf(env: NodeJS.ProcessEnv): string {
+  return env.HOME ?? env.USERPROFILE ?? homedir();
+}
+
+/** Epoch milliseconds of an ISO date string. */
+export function timeOf(value: unknown): number | undefined {
+  if (typeof value !== 'string') return undefined;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? undefined : at;
+}

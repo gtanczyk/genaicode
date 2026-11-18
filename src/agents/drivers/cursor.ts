@@ -1,3 +1,4 @@
+import { cursorSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
@@ -50,6 +51,7 @@ export function cursorPermissionFlags(permissions: AgentPermissions): Permission
 /** Cursor's agent CLI in print mode (`cursor-agent -p --output-format stream-json`). */
 export function cursor(options: CursorAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: cursorSessions(),
     name: 'cursor',
     command: options.command ?? 'cursor-agent',
     capabilities: {
