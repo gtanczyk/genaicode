@@ -1,6 +1,5 @@
 import path from 'node:path';
-import { claudeSessions } from './claude.js';
-import { codexSessions } from './codex.js';
+import type { CodingAgent } from '../types.js';
 import type { SessionInfo, SessionQuery, SessionSource } from './types.js';
 
 export { claudeSessions, readClaudeSession } from './claude.js';
@@ -9,9 +8,16 @@ export { codexSessions, readCodexSession } from './codex.js';
 export type { CodexSessionsOptions } from './codex.js';
 export type { SessionInfo, SessionQuery, SessionSource, SessionActivity } from './types.js';
 
-/** The session stores genaicode can read on this machine. */
-export function localSessionSources(env: NodeJS.ProcessEnv = process.env): SessionSource[] {
-  return [claudeSessions({ env }), codexSessions({ env })];
+/**
+ * The session sources of `agents`, one per store: `codex()` and `codexLive()` share theirs.
+ * Agents that keep no readable sessions (`sessions: null`) add nothing.
+ */
+export function agentSessionSources(agents: readonly Pick<CodingAgent, 'sessions'>[]): SessionSource[] {
+  const sources = new Map<string, SessionSource>();
+  for (const agent of agents) {
+    if (agent.sessions && !sources.has(agent.sessions.name)) sources.set(agent.sessions.name, agent.sessions);
+  }
+  return [...sources.values()];
 }
 
 export interface SessionListing {
@@ -23,7 +29,7 @@ export interface SessionListing {
 
 /** Sessions from several sources as one list, newest first. A source that fails is reported, not fatal. */
 export async function listSessions(
-  sources: readonly SessionSource[] = localSessionSources(),
+  sources: readonly SessionSource[],
   query: SessionQuery = {},
 ): Promise<SessionListing> {
   const errors: SessionListing['errors'] = [];

@@ -6,7 +6,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
-import { groupSessions, listSessions, localSessionSources, type SessionSource } from '../agents/sessions/index.js';
+import { agentSessionSources, groupSessions, listSessions } from '../agents/sessions/index.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -22,8 +22,6 @@ export interface CliEnvironment {
   readStdin(): Promise<string | undefined>;
   /** Stops a running task (Ctrl-C). */
   signal?: AbortSignal;
-  /** Where `sessions` looks. Defaults to the local stores of the agents genaicode can read. */
-  sessionSources?: readonly SessionSource[];
   /** Agents to offer. Defaults to every headless driver. */
   agents?: readonly CodingAgent[];
   /** Both stdin and stdout are terminals: `genaicode` with no arguments opens the chat. */
@@ -201,7 +199,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
     case 'agents':
       return listAgents(cli, agents, command.json);
     case 'sessions':
-      return showSessions(cli, command);
+      return showSessions(cli, agents, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -346,9 +344,13 @@ function ago(ms: number): string {
   return `${Math.round(minutes / 1440)}d`;
 }
 
-async function showSessions(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'sessions' }>): Promise<number> {
-  const sources = (cli.sessionSources ?? localSessionSources(cli.env)).filter(
-    (source) => command.agent === undefined || source.name === command.agent,
+async function showSessions(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'sessions' }>,
+): Promise<number> {
+  const sources = agentSessionSources(
+    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
   );
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
@@ -357,6 +359,7 @@ async function showSessions(cli: CliEnvironment, command: Extract<CliCommand, { 
   const now = Date.now();
   const { sessions, errors } = await listSessions(sources, {
     limit: command.limit,
+    env: cli.env,
     ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
     ...(command.sinceMs !== undefined ? { since: now - command.sinceMs } : {}),
     ...(cli.signal ? { signal: cli.signal } : {}),

@@ -1,4 +1,5 @@
 import type { TokenUsage } from '../core/types.js';
+import type { SessionSource } from './sessions/types.js';
 
 /**
  * One unit of work handed to a coding agent: a prompt and the directory it may edit.
@@ -279,5 +280,11 @@ export interface CodingAgent {
   /** Executable looked up on PATH (or an absolute path). */
   readonly command: string;
   readonly capabilities: AgentCapabilities;
+  /**
+   * Where the agent keeps its sessions, for `listSessions()`: a source that lists them, or `null`
+   * when it keeps none that can be read. Every genaicode driver says one or the other; absent on a
+   * custom driver means nobody looked.
+   */
+  readonly sessions?: SessionSource | null;
   run(task: AgentTask): AgentRun;
 }

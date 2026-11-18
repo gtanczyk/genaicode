@@ -71,11 +71,11 @@ export type { Pack, PackMember, PackOptions, PackTask, PackTaskStatus } from './
 export { startLocalMcpServer } from './agents/mcp-server.js';
 export type { LocalMcpServer, LocalMcpServerOptions } from './agents/mcp-server.js';
 export {
+  agentSessionSources,
   claudeSessions,
   codexSessions,
   groupSessions,
   listSessions,
-  localSessionSources,
   readClaudeSession,
   readCodexSession,
 } from './agents/sessions/index.js';

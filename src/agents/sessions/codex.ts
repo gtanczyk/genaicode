@@ -118,12 +118,12 @@ export async function readCodexSession(file: SessionFile, now = Date.now()): Pro
 
 /** Sessions the Codex CLI keeps on this machine. */
 export function codexSessions(options: CodexSessionsOptions = {}): SessionSource {
-  const env = options.env ?? process.env;
-  const dir = options.dir ?? env.CODEX_HOME ?? path.join(homedir(), '.codex');
   return {
     name: 'codex',
     where: 'local',
     async list(query = {}) {
+      const env = query.env ?? options.env ?? process.env;
+      const dir = options.dir ?? env.CODEX_HOME ?? path.join(env.HOME ?? homedir(), '.codex');
       const files = (
         await findFiles(path.join(dir, 'sessions'), 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'))
       ).filter((file) => query.since === undefined || file.mtimeMs >= query.since);

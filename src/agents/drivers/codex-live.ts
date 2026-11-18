@@ -1,3 +1,4 @@
+import { codexSessions } from '../sessions/codex.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
@@ -27,6 +28,7 @@ export interface CodexLiveOptions {
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   return liveAgent({
+    sessions: codexSessions(),
     name: 'codex',
     command: options.command ?? 'codex',
     capabilities: {

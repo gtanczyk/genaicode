@@ -14,6 +14,7 @@ import type {
   ApprovalRequest,
   CodingAgent,
 } from './types.js';
+import type { SessionSource } from './sessions/types.js';
 
 /** What a live driver gets for one task. */
 export interface LiveSession {
@@ -59,6 +60,8 @@ export interface LiveAgentDefinition {
   name: string;
   command: string;
   capabilities?: AgentCapabilities;
+  /** Where the agent keeps its sessions (`CodingAgent.sessions`). */
+  sessions?: SessionSource | null;
   /** Arguments that start the agent's JSON-RPC server on stdio. */
   args(task: AgentTask): string[];
   /** Replaces `args` when a task needs setup: extra env, temp files to clean up. */
@@ -77,6 +80,7 @@ export function liveAgent(definition: LiveAgentDefinition): CodingAgent {
     name: definition.name,
     command: definition.command,
     capabilities: { steer: true, ...definition.capabilities },
+    ...(definition.sessions !== undefined ? { sessions: definition.sessions } : {}),
     run: (task) => runLiveAgent(definition, task),
   };
 }

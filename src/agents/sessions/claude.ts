@@ -101,12 +101,12 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
 
 /** Sessions Claude Code keeps on this machine. */
 export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSource {
-  const env = options.env ?? process.env;
-  const dir = options.dir ?? env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude');
   return {
     name: 'claude',
     where: 'local',
     async list(query = {}) {
+      const env = query.env ?? options.env ?? process.env;
+      const dir = options.dir ?? env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), '.claude');
       // projects/<project>/<session>.jsonl; deeper files are subagent transcripts.
       const files = (await findFiles(path.join(dir, 'projects'), 1, (name) => name.endsWith('.jsonl'))).filter(
         (file) => query.since === undefined || file.mtimeMs >= query.since,

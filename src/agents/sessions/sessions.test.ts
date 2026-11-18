@@ -196,6 +196,7 @@ describe('genaicode sessions', () => {
       .map((line) => JSON.parse(line) as { agent: string });
     expect(rows.map((row) => row.agent)).toEqual(['codex']);
     expect((await run('-a', 'nobody')).err).toContain('No session store');
+    expect((await run('-a', 'gemini')).err).toContain('No session store');
     expect((await run('--since', 'soon')).err).toContain('--since expects');
   });
 });

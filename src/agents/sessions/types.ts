@@ -47,6 +47,8 @@ export interface SessionQuery {
   cwd?: string;
   /** At most this many, newest first. */
   limit?: number;
+  /** Environment that says where the stores are (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HOME`). Default `process.env`. */
+  env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
 }
 

@@ -1,3 +1,4 @@
+import { codexSessions } from '../sessions/codex.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import { isHttpServer, type PreparedRun } from '../prepare.js';
@@ -65,6 +66,7 @@ export function codexPermissionFlags(permissions: AgentPermissions): PermissionF
 /** OpenAI Codex CLI in exec mode (`codex exec --json`). */
 export function codex(options: CodexAgentOptions = {}): CodingAgent {
   return cliAgent({
+    sessions: codexSessions(),
     name: 'codex',
     command: options.command ?? 'codex',
     capabilities: {
