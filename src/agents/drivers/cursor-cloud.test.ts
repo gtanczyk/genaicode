@@ -477,7 +477,8 @@ describe('cursorCloud', () => {
       runs: { 'run-1': { status: 'RUNNING', result: undefined } },
       streams: { 'run-1': [{ events: [{ event: 'heartbeat', data: {} }, ...turn().slice(1, 3)], hold }] },
     });
-    const run = cursorCloud(base(fake.fetch)).run(task({ budget: { maxTokens: 10 } }));
+    // Every stream event reads usage, without waiting on the clock.
+    const run = cursorCloud(base(fake.fetch, { pollIntervalMs: 0 })).run(task({ budget: { maxTokens: 10 } }));
     const events = await drain(run);
     const result = await run.result;
     release();
