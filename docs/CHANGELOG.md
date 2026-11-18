@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.34.0 — 2026-11-18
+
 ### Added
 
 - `withFallback()` gains `info()` and `forget()` when its agents have them, and `nano()` gains `info()`: `createPageAgent({ agent: withFallback([...]) })` shows what the agent that runs first takes (image attachments where the model does) and when an agent over its allowance is back, and "New" clears every agent's conversation (#177).
