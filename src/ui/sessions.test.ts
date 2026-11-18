@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import { createChatController } from './controller.js';
-import { ago, filterSessions, resumeCommand } from './sessions.js';
+import { ago, canContinueHere, filterSessions, resumeCommand } from './sessions.js';
 import { pageHtml } from './web/page.js';
 import { startWebUi } from './web/server.js';
 
@@ -39,6 +39,18 @@ describe('the Sessions view', () => {
       `genaicode chat -a claude -C '/work/it'\\''s here' -r x`,
     );
     expect(resumeCommand(session({ where: 'cloud', url: 'https://cursor.com/agents/bc-1' }))).toBeUndefined();
+  });
+
+  it('offers to continue here only readable sessions from the chat directory', () => {
+    const here = (extra: Partial<SessionInfo>, cwd = '/work/app') =>
+      canContinueHere(session({ cwd: '/work/app', ...extra }), cwd, ['claude']);
+    expect(here({})).toBe(true);
+    expect(here({ cwd: '/work/app/packages/web' }, '/work/app/')).toBe(true);
+    expect(here({ cwd: '/work/application' })).toBe(false);
+    expect(here({ cwd: '/work' })).toBe(false);
+    expect(here({ source: 'muse', agent: 'muse' })).toBe(false);
+    expect(here({ where: 'cloud' })).toBe(false);
+    expect(here({ cwd: undefined })).toBe(false);
   });
 
   it('shows ages in the largest unit that fits', () => {

@@ -41,6 +41,11 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   },
   { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
+  {
+    name: '/continue',
+    args: '<session id>',
+    help: 'take over a session of any agent in this directory (ids: genaicode sessions)',
+  },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
   { name: '/stop', help: 'stop the running turn, drop queued prompts, end !commands' },
   { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
@@ -56,6 +61,7 @@ export type SlashCommand =
   /** No `names` and no `off`: show the list. */
   | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
+  | { kind: 'continue'; id?: string }
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
   | { kind: 'auto'; on?: boolean; invalid?: string }
@@ -91,6 +97,9 @@ export function parseSlash(text: string): SlashCommand | undefined {
       if (arg === undefined) return { kind: 'fallback' };
       if (arg === 'off' || arg === 'none') return { kind: 'fallback', off: true };
       return { kind: 'fallback', names: arg.split(/[\s,]+/).filter(Boolean) };
+    case '/continue':
+    case '/from':
+      return { kind: 'continue', id: arg };
     case '/new':
     case '/reset':
       return { kind: 'new' };

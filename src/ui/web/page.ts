@@ -84,6 +84,7 @@ button.chip:hover { border-color: var(--accent); }
 .session-row .mark[data-state='unfinished'] { color: #e8590c; }
 .session-row .agent, .session-row .age { color: var(--muted); white-space: nowrap; }
 .session-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row .act { display: flex; gap: 6px; }
 .session-row .label small { color: var(--faint); margin-left: 8px; }
 .session-row button, .session-row a { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; cursor: pointer; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .session-row button:hover, .session-row a:hover { border-color: var(--accent); color: var(--text); }

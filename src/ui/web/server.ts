@@ -27,10 +27,13 @@ export interface WebUiOptions {
    * Lists the sessions the agents keep (`listSessions`), for the page's Sessions view at
    * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
    */
-  sessions?: (query: { since?: number }) => Promise<SessionListing>;
+  sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
+
+/** `readable`: the sources (`SessionInfo.source`) whose sessions the chat can take over (`continue`). */
+export type WebSessionListing = SessionListing & { readable?: string[] };
 
 export interface WebAsset {
   type: string;
@@ -48,6 +51,8 @@ export type WebCommand =
   | { type: 'submit'; text: string }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  /** Take over the session with this id (`ChatController.continueSession`). */
+  | { type: 'continue'; id: string }
   | { type: 'agent'; name: string }
   | { type: 'model'; model: string };
 
@@ -70,6 +75,10 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const decision = command.decision;
       if (id === undefined || (decision !== 'approve' && decision !== 'deny')) return undefined;
       return { type: 'approve', id, decision };
+    }
+    case 'continue': {
+      const id = text('id', 200);
+      return id ? { type: 'continue', id } : undefined;
     }
     case 'agent': {
       const name = text('name', 100);
@@ -208,7 +217,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         command = undefined;
       }
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
-      const ok = run(controller, command);
+      const ok = await run(controller, command);
       return send(res, 200, 'application/json', JSON.stringify({ ok }));
     }
     send(res, 404, 'text/plain', 'Not found');
@@ -241,7 +250,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
 }
 
-function run(controller: ChatController, command: WebCommand): boolean {
+async function run(controller: ChatController, command: WebCommand): Promise<boolean> {
   switch (command.type) {
     case 'submit':
       if (controller.submit(command.text, 'web') === 'quit') {
@@ -253,6 +262,8 @@ function run(controller: ChatController, command: WebCommand): boolean {
       return true;
     case 'approve':
       return controller.approve(command.id, command.decision);
+    case 'continue':
+      return controller.continueSession(command.id);
     case 'agent':
       return controller.selectAgent(command.name);
     case 'model':

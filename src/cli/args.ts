@@ -23,6 +23,8 @@ export type CliCommand =
       model?: string;
       effort?: string;
       resume?: string;
+      /** `--from <id>`: take over this session of any agent. */
+      from?: string;
       approveAll: boolean;
       port?: number;
       open: boolean;
@@ -71,6 +73,8 @@ export type CliCommand =
       effort?: string;
       maxTurns?: number;
       resume?: string;
+      /** `--from <id>`: take over this session of any agent. */
+      from?: string;
       timeoutMs?: number;
       verify?: string;
       maxRepairs: number;
@@ -132,6 +136,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           model: { type: 'string', short: 'm' },
           effort: { type: 'string' },
           resume: { type: 'string', short: 'r' },
+          from: { type: 'string' },
           yes: { type: 'boolean', short: 'y' },
           port: { type: 'string' },
           mcp: { type: 'string', multiple: true },
@@ -155,6 +160,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       model: values.model,
       effort: values.effort,
       resume: values.resume,
+      ...(values.from ? { from: values.from } : {}),
       approveAll: values.yes === true,
       port,
       open: extra['no-open'] !== true,
@@ -239,6 +245,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           effort: { type: 'string' },
           'max-turns': { type: 'string' },
           resume: { type: 'string', short: 'r' },
+          from: { type: 'string' },
           timeout: { type: 'string' },
           verify: { type: 'string' },
           'max-repairs': { type: 'string' },
@@ -260,6 +267,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       effort: values.effort,
       maxTurns: optionalNumber(values['max-turns'], '--max-turns'),
       resume: values.resume,
+      ...(values.from ? { from: values.from } : {}),
       timeoutMs: timeout === undefined ? undefined : timeout * 1000,
       verify: values.verify,
       maxRepairs: optionalNumber(values['max-repairs'], '--max-repairs') ?? 2,

@@ -517,6 +517,8 @@ describe('web UI server', () => {
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
     expect(parseCommand({ type: 'approve', id: 'a', decision: 'maybe' })).toBeUndefined();
+    expect(parseCommand({ type: 'continue', id: 'abcd1234' })).toEqual({ type: 'continue', id: 'abcd1234' });
+    expect(parseCommand({ type: 'continue', id: '' })).toBeUndefined();
     expect(parseCommand({ type: 'submit', text: 1 })).toBeUndefined();
     expect(parseCommand({ type: 'exec', command: 'rm' })).toBeUndefined();
     expect(parseCommand(null)).toBeUndefined();
