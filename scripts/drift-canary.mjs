@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { claudeSessions, codexSessions, copilotSessions } from '../dist/agents.js';
 
 /** Whether version `a` is later than `b`, number by number. */
@@ -63,14 +63,15 @@ const contract = {
     'name',
     'path',
   ],
-  'v2/ThreadStatus.ts': ['notLoaded', 'idle', 'active', 'activeFlags'],
-  'v2/ThreadActiveFlag.ts': ['waitingOnApproval', 'waitingOnUserInput'],
+  // A quoted name is a value (a status, a flag), the others are fields.
+  'v2/ThreadStatus.ts': ['"notLoaded"', '"idle"', '"active"', 'activeFlags'],
+  'v2/ThreadActiveFlag.ts': ['"waitingOnApproval"', '"waitingOnUserInput"'],
   'v2/Turn.ts': ['items', 'startedAt', 'completedAt'],
   'v2/GitInfo.ts': ['branch', 'originUrl'],
-  'v2/UserInput.ts': ['text'],
   // Times every item carries, ahead of its variants.
   'v2/ThreadItem.ts': ['startedAtMs', 'completedAtMs'],
 };
+// Per union file, the fields read of each `"type": "x"` variant.
 const items = {
   userMessage: ['id', 'content'],
   agentMessage: ['id', 'text'],
@@ -80,6 +81,7 @@ const items = {
   dynamicToolCall: ['id', 'tool', 'arguments', 'contentItems', 'success'],
   webSearch: ['id', 'query'],
 };
+const variants = { 'v2/ThreadItem.ts': items, 'v2/UserInput.ts': { text: ['text'] } };
 const dir = mkdtempSync(join(tmpdir(), 'codex-protocol-'));
 try {
   execFileSync('npx', ['-y', '@openai/codex@latest', 'app-server', 'generate-ts', '--out', dir], { stdio: 'ignore' });
@@ -93,7 +95,8 @@ try {
       return undefined;
     }
   };
-  const has = (text, name) => new RegExp(`(^|[^\\w"])${name}\\??:|"${name}"`).test(text);
+  const has = (text, name) =>
+    name.startsWith('"') ? text.includes(name) : new RegExp(`(^|[^\\w"])${name}\\??:`).test(text);
   for (const [file, names] of Object.entries(contract)) {
     const text = code(file);
     if (text === undefined) problems.push(`codex protocol: ${file} is gone`);
@@ -101,22 +104,28 @@ try {
       for (const name of names.filter((name) => !has(text, name)))
         problems.push(`codex protocol: ${file} has no \`${name}\``);
   }
-  const all = code('v2/ThreadItem.ts') ?? '';
-  const raw = all && readFileSync(join(dir, 'v2/ThreadItem.ts'), 'utf8');
-  for (const [type, names] of Object.entries(items)) {
-    const at = all.indexOf(`"type": "${type}"`);
-    if (at < 0) {
-      problems.push(`codex protocol: ThreadItem has no \`${type}\``);
+  for (const [file, types] of Object.entries(variants)) {
+    const all = code(file);
+    if (all === undefined) {
+      problems.push(`codex protocol: ${file} is gone`);
       continue;
     }
-    const next = all.indexOf('"type": "', at + 1);
-    let variant = all.slice(at, next < 0 ? undefined : next);
-    // A variant may be `{ "type": "x" } & XItem`, its fields in the imported type.
-    const named = /^"type": "\w+" \} & (\w+)/.exec(variant)?.[1];
-    const from = named && new RegExp(`import type \\{ ${named} \\} from "([^"]+)"`).exec(raw)?.[1];
-    if (from) variant += code(join('v2', `${from}.ts`)) ?? '';
-    for (const name of names.filter((name) => !has(variant, name)))
-      problems.push(`codex protocol: ${type} item has no \`${name}\``);
+    const raw = readFileSync(join(dir, file), 'utf8');
+    for (const [type, names] of Object.entries(types)) {
+      const at = all.indexOf(`"type": "${type}"`);
+      if (at < 0) {
+        problems.push(`codex protocol: ${file} has no \`${type}\` variant`);
+        continue;
+      }
+      const next = all.indexOf('"type": "', at + 1);
+      let variant = all.slice(at, next < 0 ? undefined : next);
+      // A variant may be `{ "type": "x" } & XItem`, its fields in the imported type.
+      const named = /^"type": "\w+" \} & (\w+)/.exec(variant)?.[1];
+      const from = named && new RegExp(`import type \\{ ${named} \\} from "([^"]+)"`).exec(raw)?.[1];
+      if (from) variant += code(join(dirname(file), `${from}.ts`)) ?? '';
+      for (const name of names.filter((name) => !has(variant, name)))
+        problems.push(`codex protocol: ${type} in ${file} has no \`${name}\``);
+    }
   }
 } catch (error) {
   problems.push(
