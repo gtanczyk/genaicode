@@ -275,6 +275,16 @@ describe('pack', () => {
     expect(result.error).toContain('token budget (15 of 10)');
   });
 
+  it('counts usage the lead reports only at the end against the budget', async () => {
+    const lead = fake('lead', async () => ({ usage: { inputTokens: 100 }, costUsd: 5 }), { mcp: true });
+    const result = await pack({ lead, members: [] }).run({
+      prompt: 'go',
+      cwd: repo(),
+      budget: { maxTokens: 1, maxCostUsd: 1 },
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', failure: { kind: 'budget' }, costUsd: 5 });
+  });
+
   it('needs a lead that takes MCP servers, and keeps the briefing off resumed turns', async () => {
     const cwd = repo();
     const refused = await pack({ lead: fake('lead', async () => {}), members: [] }).run({ prompt: 'go', cwd }).result;

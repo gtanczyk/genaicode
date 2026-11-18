@@ -617,6 +617,8 @@ export function pack(options: PackOptions): Pack {
           own = done ?? (await run.result);
           if (own.usage) leadUsage = own.usage;
           if (own.costUsd !== undefined) leadCost = own.costUsd;
+          // A lead that reports usage only at the end can still take the pack over its budget.
+          if (own.usage || own.costUsd !== undefined) usageChanged();
         } finally {
           // The lead is gone: nobody is left to wait for, merge or steer what still runs.
           ended.abort();
