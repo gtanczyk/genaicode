@@ -1,0 +1,23 @@
+name: Agent drift canary
+
+# Weekly: do the agents' latest releases still match what genaicode reads of them?
+# Needs no secrets. A failed run means the Codex app-server protocol lost a field genaicode reads.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/drift-canary.mjs
