@@ -116,6 +116,29 @@ describe('session sources', () => {
     expect(session).toMatchObject({ title: 'Release plan', firstPrompt: 'Plan the release' });
   });
 
+  it('names a Claude Code session nobody typed into by what it was sent', async () => {
+    const dir = join(root, 'claude-sent');
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    file(
+      join(dir, 'projects', '-work-app', 'task.jsonl'),
+      lines(user('<scheduled-task name="nightly">\nRun the nightly check\n</scheduled-task>'), done),
+      30,
+    );
+    file(
+      join(dir, 'projects', '-work-app', 'relay.jsonl'),
+      lines(
+        user('<relay from="phone">Ship it</relay>', { isMeta: true }),
+        user('<system-reminder>Be brief</system-reminder>', { isMeta: true }),
+        done,
+        { type: 'last-prompt', lastPrompt: 'And tag the release' },
+      ),
+      40,
+    );
+    const [task, relay] = await claudeSessions({ dir }).list();
+    expect(task).toMatchObject({ firstPrompt: 'Run the nightly check', lastPrompt: 'Run the nightly check' });
+    expect(relay).toMatchObject({ firstPrompt: 'Ship it', lastPrompt: 'And tag the release', state: 'waiting' });
+  });
+
   it('reads Claude Code transcripts', async () => {
     const sessions = await claudeSessions({ dir: claudeDir }).list();
     expect(sessions.map((session) => session.id)).toEqual(['dddd', 'aaaa', 'bbbb']);

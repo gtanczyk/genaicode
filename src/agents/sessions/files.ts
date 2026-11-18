@@ -27,7 +27,7 @@ export async function findFiles(dir: string, depth: number, match: (name: string
         } else if (entry.isFile() && match(entry.name)) {
           try {
             const stat = await fs.stat(full);
-            found.push({ path: full, mtimeMs: stat.mtimeMs, size: stat.size });
+            found.push({ path: full, mtimeMs: Math.round(stat.mtimeMs), size: stat.size });
           } catch {
             // Removed while listing.
           }
@@ -56,14 +56,27 @@ export async function headAndTail(file: SessionFile): Promise<{ head: unknown[];
     const last = Buffer.alloc(CHUNK);
     await handle.read(first, 0, CHUNK, 0);
     await handle.read(last, 0, CHUNK, file.size - CHUNK);
-    // The cut falls inside a line at the end of the head and at the start of the tail.
-    return {
-      head: parseLines(first.toString('utf8').split('\n').slice(0, -1)),
-      tail: parseLines(last.toString('utf8').split('\n').slice(1)),
-    };
+    return cut(first, last);
   } finally {
     await handle.close();
   }
+}
+
+/** The same two ends of a transcript that is already in memory. */
+export function chunksOf(data: Buffer): { head: unknown[]; tail: unknown[] } {
+  if (data.length <= CHUNK * 2) {
+    const all = parseLines(data.toString('utf8').split('\n'));
+    return { head: all, tail: all };
+  }
+  return cut(data.subarray(0, CHUNK), data.subarray(data.length - CHUNK));
+}
+
+// The cut falls inside a line at the end of the head and at the start of the tail.
+function cut(first: Buffer, last: Buffer): { head: unknown[]; tail: unknown[] } {
+  return {
+    head: parseLines(first.toString('utf8').split('\n').slice(0, -1)),
+    tail: parseLines(last.toString('utf8').split('\n').slice(1)),
+  };
 }
 
 function parseLines(lines: string[]): unknown[] {

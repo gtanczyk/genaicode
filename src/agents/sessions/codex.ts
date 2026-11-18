@@ -6,6 +6,7 @@ import {
   activeIfRecent,
   ending,
   findFiles,
+  chunksOf,
   headAndTail,
   homeOf,
   isRecord,
@@ -48,7 +49,10 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
 
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
 export async function readCodexSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
-  const { head, tail } = await headAndTail(file);
+  return fromLines(file, now, await headAndTail(file));
+}
+
+function fromLines(file: SessionFile, now: number, { head, tail }: { head: unknown[]; tail: unknown[] }) {
   const id = ROLLOUT_ID.exec(file.path)?.[1];
   const info: SessionInfo = {
     source: 'codex',
@@ -204,20 +208,45 @@ async function indexedSessions(dir: string): Promise<SessionInfo[] | null> {
   });
 }
 
-/** Add the latest prompt, reply and state from a thread's rollout, when it is still a plain `.jsonl`. */
+/** The lines of a rollout Codex has compressed (`.jsonl.zst`), where this Node can read zstd. */
+async function compressedRollout(file: string): Promise<{ head: unknown[]; tail: unknown[] } | undefined> {
+  // Node 22.15 and later.
+  const zlib = (await import('node:zlib')) as {
+    zstdDecompress?: (data: Buffer, done: (error: Error | null, out: Buffer) => void) => void;
+  };
+  const decompress = zlib.zstdDecompress;
+  if (!decompress) return undefined;
+  const stat = await fs.stat(file);
+  if (stat.size > MAX_COMPRESSED) return undefined;
+  const data = await fs.readFile(file);
+  const text = await new Promise<Buffer>((resolve, reject) =>
+    decompress(data, (error, out) => (error ? reject(error) : resolve(out))),
+  );
+  return chunksOf(text);
+}
+
+const MAX_COMPRESSED = 32 * 1024 * 1024;
+
+/** Add the latest prompt, reply and state from a thread's rollout: a `.jsonl`, or the `.jsonl.zst` Codex made of it. */
 async function fromRollout(info: SessionInfo): Promise<void> {
   if (!info.path) return;
   try {
-    const stat = await fs.stat(info.path);
+    let read: SessionInfo | null;
+    const stat = await fs.stat(info.path).catch(() => undefined);
     // Whether it is active is the index's to say (its own `updatedAt`), not the file's.
-    const read = await readCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
+    if (stat) read = await readCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
+    else {
+      const chunks = await compressedRollout(`${info.path}.zst`);
+      if (!chunks) return;
+      read = fromLines({ path: info.path, mtimeMs: 0, size: 0 }, Infinity, chunks);
+    }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
     if (info.state !== 'active') info.state = read.state;
   } catch {
-    // Compressed (`.jsonl.zst`) or gone: the index row is what there is.
+    // Gone, or compressed where this Node has no zstd: the index row is what there is.
   }
 }
 

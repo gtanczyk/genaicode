@@ -31,12 +31,30 @@ function textOf(content: unknown, type: string): string | undefined {
   return parts.length ? parts.join('\n') : undefined;
 }
 
-/** What the user typed in a transcript line, or undefined for tool results and Claude Code's own notes. */
-function promptOf(line: Record<string, unknown>): string | undefined {
-  if (line.type !== 'user' || line.isMeta === true || line.isSidechain === true || !isRecord(line.message))
-    return undefined;
+// Prompts that reach Claude Code wrapped: a scheduled task, a message relayed from another session, a paste, `!cmd`.
+const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[\s>]/;
+
+/** A wrapped prompt without its tags. */
+function unwrapped(text: string): string | undefined {
+  if (!WRAPPED_PROMPT.test(text)) return undefined;
+  return text.replace(/<[^>]*>/g, ' ').trim() || undefined;
+}
+
+/**
+ * What a transcript line asks of the agent: `typed` by the user, or `wrapped` (a scheduled task or a
+ * relayed message, which is all some sessions have). Tool results and Claude Code's own notes are neither.
+ */
+function promptOf(line: Record<string, unknown>): { typed?: string; wrapped?: string } {
+  if (line.type === 'last-prompt' && typeof line.lastPrompt === 'string') {
+    const text = line.lastPrompt.trim();
+    return NOT_A_PROMPT.test(text) ? { wrapped: unwrapped(text) } : text ? { typed: text } : {};
+  }
+  if (line.type !== 'user' || line.isSidechain === true || !isRecord(line.message)) return {};
   const text = textOf(line.message.content, 'text')?.trim();
-  return text && !NOT_A_PROMPT.test(text) ? text : undefined;
+  if (!text) return {};
+  // Relayed messages are stored as meta lines; the rest of the meta lines are Claude Code's own.
+  if (line.isMeta === true || NOT_A_PROMPT.test(text)) return { wrapped: unwrapped(text) };
+  return { typed: text };
 }
 
 /** A title record sets the session's name; a later one replaces an earlier one. */
@@ -58,6 +76,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     path: file.path,
   };
   let conversed = false;
+  let firstWrapped: string | undefined;
+  let lastWrapped: string | undefined;
   for (const line of head) {
     if (!isRecord(line)) continue;
     if (line.isSidechain === true) return null;
@@ -69,7 +89,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     titleOf(line, info);
     const prompt = promptOf(line);
-    if (prompt && !info.firstPrompt) info.firstPrompt = oneLine(prompt);
+    if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
+    if (prompt.wrapped && line.type === 'user') firstWrapped ??= oneLine(prompt.wrapped);
   }
   let agentLast = false;
   for (const line of tail) {
@@ -81,8 +102,14 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     const prompt = promptOf(line);
-    if (prompt) {
-      info.lastPrompt = oneLine(prompt);
+    if (prompt.wrapped) lastWrapped = oneLine(prompt.wrapped);
+    if (line.type === 'last-prompt') {
+      // Claude Code's own note of the latest prompt; it says nothing about whose turn it is.
+      if (prompt.typed) info.lastPrompt = oneLine(prompt.typed);
+    } else if (prompt.typed) {
+      info.lastPrompt = oneLine(prompt.typed);
+      agentLast = false;
+    } else if (prompt.wrapped) {
       agentLast = false;
     } else if (line.type === 'user' && line.isMeta !== true) {
       // A tool result: the agent was in the middle of its turn.
@@ -99,7 +126,9 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     }
   }
   if (!conversed) return null;
-  info.lastPrompt ??= info.firstPrompt;
+  // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
+  info.firstPrompt ??= firstWrapped;
+  info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
   return info;
 }

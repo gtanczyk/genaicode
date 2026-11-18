@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as zlib from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultAgents } from '../defaults.js';
 import { codexLive } from '../drivers/codex-live.js';
@@ -50,6 +51,8 @@ function database(file: string, schema: string, table: string, records: Record<s
 }
 
 const jsonl = (...values: unknown[]) => values.map((value) => JSON.stringify(value)).join('\n') + '\n';
+// Node 22.15 and later.
+const zstdCompressSync = (zlib as { zstdCompressSync?: (data: string) => Buffer }).zstdCompressSync;
 const T = Date.parse('2026-11-10T12:00:00.000Z');
 
 describe('agent session stores', () => {
@@ -104,7 +107,16 @@ describe('agent session stores', () => {
           source: 'vscode',
           archived: 0,
         },
-        // The rollout was compressed since: the row is still listed.
+        // Codex compressed this rollout; the index still names the `.jsonl`.
+        {
+          id: 'packed',
+          rollout_path: join(home, 'packed.jsonl'),
+          cwd: '/work/app',
+          updated_at_ms: T - 30_000,
+          source: 'cli',
+          archived: 0,
+        },
+        // The rollout is gone: the row is still listed.
         {
           id: 'old',
           rollout_path: join(home, 'gone.jsonl'),
@@ -118,8 +130,20 @@ describe('agent session stores', () => {
       ],
     );
     write(join(home, '.codex', 'state_4.sqlite'), 'not the newest index');
+    writeFileSync(
+      join(home, 'packed.jsonl.zst'),
+      (zstdCompressSync ?? String)(
+        jsonl(
+          { type: 'event_msg', payload: { type: 'user_message', message: 'Packed ask' } },
+          { type: 'event_msg', payload: { type: 'agent_message', message: 'Packed reply.' } },
+          { type: 'event_msg', payload: { type: 'task_complete' } },
+        ),
+      ),
+    );
     const sessions = await codexSessions().list({ env });
-    expect(sessions.map((session) => session.id)).toEqual(['01a1eb92-df5e-7792-87c0-f9f36a33dc4d', 'old']);
+    expect(sessions.map((session) => session.id)).toEqual(['01a1eb92-df5e-7792-87c0-f9f36a33dc4d', 'packed', 'old']);
+    if (zstdCompressSync)
+      expect(sessions[1]).toMatchObject({ lastPrompt: 'Packed ask', lastReply: 'Packed reply.', state: 'waiting' });
     expect(sessions[0]).toMatchObject({
       agent: 'codex',
       cwd: '/work/app',
@@ -134,8 +158,8 @@ describe('agent session stores', () => {
       updatedAt: T,
       state: 'waiting',
     });
-    expect(sessions[1]).toMatchObject({ updatedAt: T - 60_000 });
-    expect(sessions[1]!.state).toBeUndefined();
+    expect(sessions[2]).toMatchObject({ updatedAt: T - 60_000 });
+    expect(sessions[2]!.state).toBeUndefined();
   });
 
   it('reads the Muse session index', async () => {
