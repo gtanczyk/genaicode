@@ -157,6 +157,11 @@ describe('sessions with what the hooks reported', () => {
     expect(
       withLive([session({ updatedAt: 2_000_000 })], live('approval', 1_000_000), 2_000_100)[0]!.waitingFor,
     ).toBeUndefined();
+    // A question still open after a tool beside it finished: that hook confirms it.
+    const open = new Map([
+      ['claude:s-1', { agent: 'claude', id: 's-1', state: 'approval' as const, at: 1_000_000, seen: 1_120_000 }],
+    ]);
+    expect(withLive([session({ updatedAt: 1_121_000 })], open, 1_130_000)[0]!.waitingFor).toBe('approval');
     // Still written to long after the last hook ran: the hooks no longer report it.
     expect(
       withLive([session({ state: 'waiting', updatedAt: 9_000_000 })], live('working', 1_000_000), 9_000_100)[0]!.state,

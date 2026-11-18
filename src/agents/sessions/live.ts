@@ -283,15 +283,16 @@ export function withLive(
   return sessions.map((session) => {
     const record = live.get(`${session.source}:${session.id}`);
     if (!record) return session;
+    // The latest hook of the session, whether or not it changed the state.
+    const seen = Math.max(record.at, record.seen ?? 0);
     if (record.state === 'working') {
-      const seen = Math.max(record.at, record.seen ?? 0);
       // Written to long after the last hook ran: the hooks no longer report this session.
       if (session.updatedAt > seen + UNSEEN_MS) return session;
       if (now - Math.max(seen, session.updatedAt) > WORKING_MS) return session;
       return { ...session, state: 'active', updatedAt: Math.max(session.updatedAt, record.at) };
     }
     // Written to after the agent stopped: something the hooks did not see went on.
-    if (session.updatedAt > record.at + LAG_MS) return session;
+    if (session.updatedAt > seen + LAG_MS) return session;
     return {
       ...session,
       state: 'waiting',
