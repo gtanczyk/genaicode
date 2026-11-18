@@ -418,6 +418,8 @@ describe('geminiManaged', () => {
 
   it('refuses a model override for a saved agent, and effort or turn caps', async () => {
     const provider = geminiManagedProvider(base(fakeFetch().fetch, { agent: 'agents/my-agent' }));
+    expect(provider.capabilities.budget).toEqual([]);
+    expect(geminiManagedProvider(base(fakeFetch().fetch)).capabilities.budget).toEqual(['tokens']);
     await expect(provider.start({ prompt: 'Go', model: 'gemini-4-carbon' })).rejects.toThrow(/fixed model/);
     await expect(provider.start({ prompt: 'Go', effort: 'high' })).rejects.toThrow(/effort/);
     await expect(provider.start({ prompt: 'Go', maxTurns: 3 })).rejects.toThrow(/maxTurns/);

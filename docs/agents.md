@@ -741,7 +741,8 @@ const run = agent.run({
 - `incomplete` (the token cap) fails with `failure.kind: 'budget'`; a failed interaction's error
   code maps `RESOURCE_EXHAUSTED` to `quota`. The agent asks no approvals (`permissions.approval`
   is `auto-approve` only); `effort`, `maxTurns` and `extraArgs` are refused, and so is `model` for
-  a saved agent, whose model is fixed.
+  a saved agent, whose `agent_config` is fixed: its runs have no platform token cap
+  (`capabilities.budget` is empty), so `task.budget` is checked against reported usage only.
 
 ## Writing a driver
 

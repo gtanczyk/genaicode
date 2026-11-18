@@ -253,7 +253,8 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
       mcp: true,
       resume: true,
       files: true,
-      budget: ['tokens'],
+      // A saved agent's agent_config is fixed: no per-interaction cap; `managedAgent()` checks usage itself.
+      budget: builtIn ? ['tokens'] : [],
       // The agent runs its tools without asking.
       permissions: { approval: ['auto-approve'] },
     },
