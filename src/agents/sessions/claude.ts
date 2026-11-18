@@ -40,7 +40,17 @@ const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[
 /** A wrapped prompt without its tags. */
 function unwrapped(text: string): string | undefined {
   if (!WRAPPED_PROMPT.test(text)) return undefined;
-  return text.replace(/<[^>]*>/g, ' ').trim() || undefined;
+  // One pass, not a regular expression: a transcript can hold megabytes of `<`.
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const open = text.indexOf('<', at);
+    const close = open < 0 ? -1 : text.indexOf('>', open);
+    if (close < 0) break;
+    out += `${text.slice(at, open)} `;
+    at = close + 1;
+  }
+  return (out + text.slice(at)).trim() || undefined;
 }
 
 /**
