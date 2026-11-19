@@ -386,7 +386,9 @@ a tool, known once the [hooks](#which-sessions-need-you-hooks) are installed). T
 the local stores. They are off unless you ask for them, because the agent that has them reads what
 your other agents' sessions said, and that text goes to its model like anything else it reads;
 treat what it finds there as content, not as instructions. `sessions mcp -a codex` serves one
-agent's sessions only.
+agent's sessions only. The server also tells the agent when to use the tools (MCP `instructions`,
+`SESSION_TOOLS_INSTRUCTIONS`), so "which sessions are open?" goes to the index and not to the
+agent's own session list; pass `instructions` to `startLocalMcpServer()` for the same in code.
 
 ```ts
 import { agentSessionSources, claude, codex, sessionTools, startLocalMcpServer } from 'genaicode/agents';

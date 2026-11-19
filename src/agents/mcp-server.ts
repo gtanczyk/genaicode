@@ -8,6 +8,8 @@ export interface LocalMcpServerOptions {
   /** MCP server name the agent sees. */
   name: string;
   tools: readonly McpTool[];
+  /** When to use the tools, in a sentence or two: sent with `initialize`, for the agent's model. */
+  instructions?: string;
   /** Largest request body, in bytes. Default 1 MiB. */
   maxBody?: number;
 }
@@ -23,7 +25,7 @@ export interface LocalMcpServer {
  * random bearer token.
  */
 export async function startLocalMcpServer(options: LocalMcpServerOptions): Promise<LocalMcpServer> {
-  const { name, tools } = options;
+  const { name, tools, instructions } = options;
   const expected = Buffer.from(`Bearer ${randomBytes(32).toString('hex')}`);
   const maxBody = options.maxBody ?? 1024 * 1024;
   let port = 0;
@@ -59,7 +61,11 @@ export async function startLocalMcpServer(options: LocalMcpServerOptions): Promi
       } catch {
         return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
       }
-      handleMcpMessage(message, tools, { name: `genaicode-${name}`, version: '1' }).then(
+      handleMcpMessage(message, tools, {
+        name: `genaicode-${name}`,
+        version: '1',
+        ...(instructions ? { instructions } : {}),
+      }).then(
         (answer) => (answer === null ? reply(202) : reply(200, answer)),
         () => reply(500),
       );

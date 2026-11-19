@@ -111,6 +111,7 @@ export {
   openCodexServer,
   readCodexThread,
   serveMcpStdio,
+  SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,
 } from './agents/sessions/index.js';
 export type {

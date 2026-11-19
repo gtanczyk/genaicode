@@ -174,7 +174,10 @@ describe('serveMcpStdio', () => {
       );
     const byId = (id: number | null) => replies.find((reply) => reply.id === id)!;
     expect(replies).toHaveLength(4);
-    expect(byId(1).result).toMatchObject({ serverInfo: { name: 'genaicode-sessions' } });
+    expect(byId(1).result).toMatchObject({
+      serverInfo: { name: 'genaicode-sessions', version: '1' },
+      instructions: expect.stringContaining('before your own session or agent listing'),
+    });
     expect(byId(null).error?.code).toBe(-32700);
     expect(byId(2).result).toMatchObject({
       tools: [{ name: 'sessions_projects' }, { name: 'sessions_list' }, { name: 'sessions_read' }],
