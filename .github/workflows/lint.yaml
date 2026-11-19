@@ -37,13 +37,20 @@ jobs:
             node scripts/release.mjs check
           fi
       - run: npm run check
-      # apt behind `--with-deps` can hang on a runner's mirror: give each try 5 minutes, three tries.
+      # apt behind `--with-deps` can stall on a slow runner mirror. apt itself retries and times out
+      # each download, waits for a lock a killed try left, and each try gets 5 minutes.
       - name: Install Chromium for the browser tests
         timeout-minutes: 16
         run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "20";' 'DPkg::Lock::Timeout "120";' \
+            | sudo tee /etc/apt/apt.conf.d/99genaicode-ci > /dev/null
           for attempt in 1 2 3; do
-            timeout 300 npx playwright install --with-deps chromium && exit 0
+            timeout -k 10 300 npx playwright install --with-deps chromium && exit 0
             echo "Playwright install attempt $attempt failed or hung; retrying."
+            # A timed-out try leaves its apt-get running as root, holding the dpkg lock.
+            sudo pkill -x apt-get || true
+            sleep 5
+            sudo dpkg --configure -a || true
           done
           exit 1
       - run: npm run test:browser
