@@ -24,6 +24,8 @@ import {
   listSessions,
   readSession,
 } from '../agents/sessions/index.js';
+import { serveMcpStdio, sessionTools } from '../agents/sessions/tools.js';
+import { startLocalMcpServer } from '../agents/mcp-server.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin } from '../agents/sessions/files.js';
 import { serveAcp } from '../acp/server.js';
@@ -116,6 +118,7 @@ Usage:
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode sessions doctor            Check that the agents' session stores still read as expected
+  genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
@@ -138,6 +141,11 @@ Sessions options:
   was said, and exits 1 when a store reads differently than expected. With --api it also asks
   the agents that can be asked (Codex's app server) and compares; that starts the agent's own
   process, which keeps its state and logs in its home.
+
+  "sessions mcp" (-a) is an MCP server on stdio with the tools sessions_projects, sessions_list and
+  sessions_read, so any agent can answer what is open and what waits for you across all of them:
+  "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
+  the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex); default: both
@@ -164,6 +172,9 @@ Chat and UI options:
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
+      --sessions          Give the agent the session index as tools (sessions_projects,
+                          sessions_list, sessions_read): ask it what is open or waits for you
+                          in every agent. It reads what those sessions said
       --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
       --max-cost <usd>    Cost budget for the whole session, for agents that report cost
       --fallback <agents> Agents to switch to when the current one runs out (quota, sign-in,
@@ -245,6 +256,8 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return showSessions(cli, agents, command);
     case 'doctor':
       return checkStores(cli, agents, command);
+    case 'sessions-mcp':
+      return serveSessions(cli, agents, command);
     case 'hooks':
       return manageHooks(cli, command);
     case 'run':
@@ -337,17 +350,28 @@ async function runUi(
     cli.stderr.write('genaicode chat needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n');
     return EXIT_USAGE;
   }
-  if (options.mcpServers.length) {
+  // The index covers every agent's store, not only the agents this chat can run.
+  const indexed = agentSessionSources(agents);
+  if (options.mcpServers.length || options.sessions) {
     // Only agents that take MCP servers can use them; offer just those.
     const chosen = agents.find((agent) => agent.name === options.agent);
     if (chosen && !chosen.capabilities.mcp) {
-      cli.stderr.write(`Agent "${chosen.name}" does not support MCP servers in genaicode (--mcp).\n`);
+      const flag = options.mcpServers.length ? '--mcp' : '--sessions';
+      cli.stderr.write(`Agent "${chosen.name}" does not support MCP servers in genaicode (${flag}).\n`);
       return EXIT_USAGE;
     }
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
   const ui = await (cli.loadUi ?? loadBundledUi)();
+  // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
+  const index = options.sessions
+    ? await startLocalMcpServer({
+        name: 'sessions',
+        tools: sessionTools(indexed, { env: cli.env }),
+      })
+    : undefined;
+  const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
   const launch: UiLaunch = {
     agents,
     agent: options.agent,
@@ -367,13 +391,37 @@ async function runUi(
     open: options.open,
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
-    ...(options.mcpServers.length ? { task: { mcpServers: options.mcpServers } } : {}),
+    ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback ? { fallback: options.fallback } : {}),
     ...extra,
   };
-  return options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch);
+  try {
+    return await (options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch));
+  } finally {
+    await index?.close();
+  }
+}
+
+/** `sessions mcp`: the session index as MCP tools on stdio, for an agent's own MCP configuration. */
+async function serveSessions(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'sessions-mcp' }>,
+): Promise<number> {
+  const sources = agentSessionSources(
+    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
+  );
+  if (!sources.length) {
+    cli.stderr.write(`No session store for agent "${command.agent}".\n`);
+    return EXIT_USAGE;
+  }
+  await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
+    input: cli.input ?? process.stdin,
+    output: cli.stdout,
+  });
+  return EXIT_OK;
 }
 
 /** The front ends are bundled into dist/ui by scripts/build-ui.mjs; the path is kept opaque to tsc. */

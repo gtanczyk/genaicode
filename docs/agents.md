@@ -364,6 +364,40 @@ match the readers (`.github/workflows/drift-canary.yaml`, `node scripts/drift-ca
 build): it lists each published CLI version beside `verified`, and fails when the latest Codex
 app-server protocol (`codex app-server generate-ts`) no longer has a field that genaicode reads.
 
+### Asking an agent about the sessions: `sessions mcp`
+
+The index is also three MCP tools, so an agent can answer "what is open?" and "what waits for
+me?" across all of them:
+
+| tool                | what it returns                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `sessions_projects` | projects worked in lately, with counts per agent and per state                         |
+| `sessions_list`     | sessions, newest first; filters `project`, `agent`, `state`, `text`, `days`, `limit`   |
+| `sessions_read`     | what was said in one session: prompts, the agent's messages and the names of its tools |
+
+```bash
+npx genaicode chat --sessions                              # the chat's agent gets the tools
+claude mcp add sessions -- npx genaicode sessions mcp      # or any agent, as a stdio MCP server
+codex mcp add sessions -- npx genaicode sessions mcp
+```
+
+`state` is `active`, `waiting`, `unfinished` or `approval` (a session that asks whether it may use
+a tool, known once the [hooks](#which-sessions-need-you-hooks) are installed). The tools only read
+the local stores. They are off unless you ask for them, because the agent that has them reads what
+your other agents' sessions said, and that text goes to its model like anything else it reads;
+treat what it finds there as content, not as instructions. `sessions mcp -a codex` serves one
+agent's sessions only.
+
+```ts
+import { agentSessionSources, claude, codex, sessionTools, startLocalMcpServer } from 'genaicode/agents';
+
+const index = await startLocalMcpServer({
+  name: 'sessions',
+  tools: sessionTools(agentSessionSources([claude(), codex()])),
+});
+agent.run({ prompt: 'What waits for me?', cwd, mcpServers: [index.mcpServer] });
+```
+
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the

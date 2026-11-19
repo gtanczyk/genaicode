@@ -110,6 +110,8 @@ export {
   codexTurns,
   openCodexServer,
   readCodexThread,
+  serveMcpStdio,
+  sessionTools,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -132,6 +134,7 @@ export type {
   CodexServer,
   CodexServerOptions,
   CodexSessionsVia,
+  SessionToolsOptions,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
