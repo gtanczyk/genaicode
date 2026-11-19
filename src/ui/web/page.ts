@@ -92,6 +92,13 @@ button.chip:hover { border-color: var(--accent); }
 .session-row .label small { color: var(--faint); margin-left: 8px; }
 .session-row button, .session-row a { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; cursor: pointer; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .session-row button:hover, .session-row a:hover { border-color: var(--accent); color: var(--text); }
+.question-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 3px 12px 6px 36px; font-size: 12px; }
+.question-row .what { display: flex; gap: 8px; align-items: baseline; min-width: 0; color: #e03131; }
+.question-row code { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.question-row .act { display: flex; gap: 6px; }
+.question-row button { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 10px; cursor: pointer; color: var(--muted); }
+.question-row button.allow { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.question-row button:disabled { opacity: 0.5; cursor: default; }
 .more { padding: 6px 12px; border-top: 1px solid var(--line); }
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 @media (max-width: 640px) {

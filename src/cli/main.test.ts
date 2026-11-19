@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -463,6 +463,16 @@ describe('genaicode sessions --waiting', () => {
     expect(parseCli(['sessions'])).not.toHaveProperty('waiting');
     expect(() => parseCli(['sessions', 'doctor', '--waiting'])).toThrow(UsageError);
     expect(() => parseCli(['sessions', 'mcp', '--waiting'])).toThrow(UsageError);
+    expect(parseCli(['sessions', 'approve', 'abc'])).toEqual({ kind: 'answer', id: 'abc', behavior: 'allow' });
+    expect(parseCli(['sessions', 'deny', 'abc', '-m', 'no'])).toEqual({
+      kind: 'answer',
+      id: 'abc',
+      behavior: 'deny',
+      message: 'no',
+    });
+    expect(() => parseCli(['sessions', 'approve'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'approve', 'abc', '-m', 'x'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', '-m', 'x'])).toThrow(UsageError);
   });
 
   it('lists what waits for you, approvals first, with the command that continues it', async () => {
@@ -501,8 +511,27 @@ describe('genaicode sessions --waiting', () => {
       const { cli, out } = environment({ argv: ['sessions', ...argv], env: { HOME: home, PATH: '' }, agents: [agent] });
       return { code: await main(cli), out: out() };
     };
+    // A question its hook holds open for an answer from here.
+    const asks = join(home, '.genaicode', 'asks');
+    mkdirSync(asks, { recursive: true });
+    const open = { id: '0123456789ab', agent: 'alpha', session: 'asks', tool: 'Bash', preview: 'npm run deploy' };
+    writeFileSync(join(asks, `${open.id}.json`), JSON.stringify({ ...open, at: now, pid: process.pid }));
     const { code, out } = await run('--waiting');
     expect(code).toBe(EXIT_OK);
+    expect(out).toContain('  ? Bash: npm run deploy\n    genaicode sessions approve 0123456789ab   (or: sessions deny');
+
+    const answer = async (...argv: string[]) => {
+      const { cli, out, err } = environment({ argv: ['sessions', ...argv], env: { HOME: home, PATH: '' } });
+      return { code: await main(cli), out: out(), err: err() };
+    };
+    expect(await answer('deny', open.id, '-m', 'not today')).toMatchObject({ code: EXIT_OK, out: 'Denied.\n' });
+    expect(JSON.parse(readFileSync(join(asks, `${open.id}.answer`), 'utf8'))).toEqual({
+      behavior: 'deny',
+      message: 'not today',
+    });
+    const again = await answer('approve', open.id);
+    expect(again.code).toBe(EXIT_FAILED);
+    expect(again.err).toContain('No open question 0123456789ab');
     expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval:/);
     expect(out.indexOf('asks to use Bash')).toBeLessThan(out.indexOf('Add CSV export'));
     expect(out).toContain('  said: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
@@ -584,6 +613,8 @@ describe('genaicode hooks', () => {
   it('parses the action and refuses what it does not know', () => {
     expect(parseCli(['hooks'])).toEqual({ kind: 'hooks', action: 'status' });
     expect(parseCli(['hooks', 'install', '-a', 'codex'])).toEqual({ kind: 'hooks', action: 'install', agent: 'codex' });
+    expect(parseCli(['hooks', 'install', '--answer'])).toEqual({ kind: 'hooks', action: 'install', answer: true });
+    expect(() => parseCli(['hooks', 'status', '--answer'])).toThrow(UsageError);
     expect(() => parseCli(['hooks', 'explode'])).toThrow(UsageError);
   });
 
@@ -609,6 +640,9 @@ describe('genaicode hooks', () => {
     expect(status.out).toMatch(/codex: not installed/);
     expect(status.out).toContain('0 sessions reported');
 
+    const answering = await run('hooks', 'install', '--answer');
+    expect(answering.out).toContain('also be answered with "genaicode sessions approve|deny"');
+    expect((await run('hooks')).out).toMatch(/claude: installed, answers from here/);
     expect((await run('hooks', 'uninstall', '-a', 'claude')).out).toContain('claude: hook removed');
     expect((await run('hooks', 'install', '-a', 'gemini')).code).toBe(EXIT_USAGE);
     // Asked for by name, Codex gets its hook though its CLI is not on the PATH.

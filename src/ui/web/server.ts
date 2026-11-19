@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
+import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
 import { pageHtml } from './page.js';
 
@@ -28,12 +29,17 @@ export interface WebUiOptions {
    * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
    */
   sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
+  /** Answers a question a session holds open (`asks` of the listing), at POST /api/asks/<id>. */
+  answer?: (id: string, decision: AskDecision) => Promise<boolean>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
 
-/** `readable`: the sources (`SessionInfo.source`) whose sessions the chat can take over (`continue`). */
-export type WebSessionListing = SessionListing & { readable?: string[] };
+/**
+ * `readable`: the sources (`SessionInfo.source`) whose sessions the chat can take over (`continue`).
+ * `asks`: the questions held open for an answer from here.
+ */
+export type WebSessionListing = SessionListing & { readable?: string[]; asks?: PendingAsk[] };
 
 export interface WebAsset {
   type: string;
@@ -202,6 +208,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {},
       );
       return send(res, 200, 'application/json', JSON.stringify(listing));
+    }
+    const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);
+    if (req.method === 'POST' && asked) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.answer) return send(res, 404, 'application/json', '{"error":"no questions here"}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let decision: AskDecision | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { behavior?: unknown; message?: unknown };
+        if (body.behavior === 'allow') decision = { behavior: 'allow' };
+        else if (body.behavior === 'deny') {
+          decision = { behavior: 'deny', ...(typeof body.message === 'string' ? { message: body.message } : {}) };
+        }
+      } catch {
+        decision = undefined;
+      }
+      if (!decision) return send(res, 400, 'application/json', '{"error":"bad answer"}');
+      const ok = await options.answer(asked[1]!, decision);
+      return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

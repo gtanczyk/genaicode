@@ -290,6 +290,15 @@ async function lock(lockDir: string): Promise<() => Promise<void>> {
   return async () => undefined;
 }
 
+/** What the hooks of `agent` last said about session `id`, also that it ended; undefined when nothing. */
+export async function liveRecord(
+  agent: string,
+  id: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<(Omit<LiveRecord, 'state'> & { state: LiveState | 'ended' }) | undefined> {
+  return readRecord(fileOf(liveDir(env), agent, id));
+}
+
 /** Every record kept, by `agent:id`. Records too old to mean anything are removed on the way. */
 export async function readLive(
   env: NodeJS.ProcessEnv = process.env,

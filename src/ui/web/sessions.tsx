@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { groupSessions, waitingSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
+import type { PendingAsk } from '../../agents/sessions/answer.js';
 import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
@@ -11,6 +12,8 @@ const stateTitle = (session: SessionInfo): string =>
   session.waitingFor === 'approval'
     ? `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`
     : (session.state ?? 'state unknown');
+type Listing = SessionListing & { readable?: string[]; asks?: PendingAsk[] };
+
 const RANGES = [
   { days: 2, label: 'Last 2 days' },
   { days: 7, label: 'Last 7 days' },
@@ -33,7 +36,7 @@ export function Sessions({
   onContinue(session: SessionInfo): void;
 }) {
   const [days, setDays] = useState(7);
-  const [listing, setListing] = useState<SessionListing & { readable?: string[] }>();
+  const [listing, setListing] = useState<Listing>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
   const [agent, setAgent] = useState('');
@@ -47,7 +50,7 @@ export function Sessions({
     fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
-        return (await res.json()) as SessionListing & { readable?: string[] };
+        return (await res.json()) as Listing;
       })
       .then(
         (found) => {
@@ -74,6 +77,40 @@ export function Sessions({
   const inbox = state === 'waiting' || state === 'approval';
   const projects = useMemo(() => (inbox ? groupInOrder(shown) : groupSessions(shown)), [shown, inbox]);
   const now = Date.now();
+
+  const [answering, setAnswering] = useState<string>();
+  const [answerFailed, setAnswerFailed] = useState<string>();
+  /** Answer a question a session holds open (`genaicode hooks install --answer`). */
+  const answer = (ask: PendingAsk, behavior: 'allow' | 'deny') => {
+    let message: string | undefined;
+    if (behavior === 'deny') {
+      const why = window.prompt('Deny: tell the agent why (optional)', '');
+      if (why === null) return;
+      message = why.trim() || undefined;
+    }
+    setAnswering(ask.id);
+    fetch(`/api/asks/${ask.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+      body: JSON.stringify({ behavior, ...(message ? { message } : {}) }),
+    })
+      .then((res) =>
+        setAnswerFailed(
+          res.ok
+            ? undefined
+            : res.status === 409
+              ? 'That question was answered already.'
+              : `The server answered ${res.status}.`,
+        ),
+      )
+      .catch((error: unknown) => setAnswerFailed(error instanceof Error ? error.message : String(error)))
+      .finally(() => {
+        setAnswering(undefined);
+        setRound((value) => value + 1);
+      });
+  };
+  const questionsOf = (session: SessionInfo) =>
+    (listing?.asks ?? []).filter((ask) => ask.agent === session.agent && ask.session === session.id);
 
   const copy = (session: SessionInfo) => {
     const command = resumeCommand(session);
@@ -135,6 +172,7 @@ export function Sessions({
         </span>
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
+      {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
       {listing?.errors.map((error) => (
         <div key={error.source} className="errors">
           {error.source}: {error.message}
@@ -154,7 +192,7 @@ export function Sessions({
                   .join(' · ')}
               </span>
             </summary>
-            {rows.map((session) => (
+            {rows.map((session) => [
               <div key={`${session.source}:${session.id}`} className="session-row">
                 <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
                   {MARK[shownState(session)] ?? '·'}
@@ -187,8 +225,24 @@ export function Sessions({
                     </button>
                   ) : null}
                 </span>
-              </div>
-            ))}
+              </div>,
+              ...questionsOf(session).map((ask) => (
+                <div key={`ask:${ask.id}`} className="question-row">
+                  <span className="what" title={ask.preview}>
+                    <b>{ask.tool ?? 'A tool'}</b>
+                    {ask.preview ? <code>{ask.preview}</code> : null}
+                  </span>
+                  <span className="act">
+                    <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
+                      Approve
+                    </button>
+                    <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
+                      Deny
+                    </button>
+                  </span>
+                </div>
+              )),
+            ])}
             {whole ? null : (
               <div className="more">
                 <button onClick={() => setOpen(new Set([...open, project.key]))}>

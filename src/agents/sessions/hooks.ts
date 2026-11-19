@@ -9,6 +9,8 @@ export type HookAgent = (typeof HOOK_AGENTS)[number];
 
 /** Ends every hook command genaicode installs: how its own entries are told from the user's. */
 const MARKER = '--genaicode-live';
+/** Marks the hook that holds a question open for the tower (`--answer`). */
+const ANSWER = '--answer';
 
 /** The events reported, per agent. `SessionEnd` is waited for; the rest run in the background. */
 const EVENTS: Record<HookAgent, readonly string[]> = {
@@ -31,6 +33,11 @@ export interface HooksOptions {
   env?: NodeJS.ProcessEnv;
   /** The command a hook runs, without the agent: default `"<node>" "<this genaicode's cli.js>" hook`. */
   command?: string;
+  /**
+   * Also hold each question open so it can be answered from the tower (`genaicode sessions
+   * approve`, the browser): Claude Code only. Its dialog shows as before; the first answer counts.
+   */
+  answer?: boolean;
 }
 
 export interface HooksStatus {
@@ -43,6 +50,8 @@ export interface HooksStatus {
   installed: boolean;
   /** The installed command, when there is one. */
   command?: string;
+  /** Whether questions can be answered from the tower too (`--answer`). */
+  answer: boolean;
 }
 
 /** The file `agent` reads its user-level hooks from. */
@@ -53,10 +62,15 @@ export function hooksFile(agent: HookAgent, env: NodeJS.ProcessEnv = process.env
     : path.join(env.CODEX_HOME ?? path.join(home, '.codex'), 'hooks.json');
 }
 
-/** The command line of the hook for `agent`. */
-export function hookCommand(agent: HookAgent, command: string): string {
-  return `${command} ${agent} ${MARKER}`;
+/** The command line of the hook for `agent`; `answer`: the one that holds a question open. */
+export function hookCommand(agent: HookAgent, command: string, answer = false): string {
+  return `${command} ${agent}${answer ? ` ${ANSWER}` : ''} ${MARKER}`;
 }
+
+/** The agents whose dialog stays open while a hook holds the question: Codex would wait instead. */
+export const ANSWER_AGENTS: readonly HookAgent[] = ['claude'];
+/** How long Claude Code waits for that hook, seconds; it gives up a minute before. */
+const ANSWER_TIMEOUT = 600;
 
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
@@ -121,24 +135,32 @@ function defaultCommand(): string {
   return `"${process.execPath}" "${script}" hook`;
 }
 
-function found(config: Json): { events: string[]; command?: string } {
+const answering = (handler: unknown): boolean =>
+  ours(handler) && String((handler as Json).command).endsWith(`${ANSWER} ${MARKER}`);
+
+function found(config: Json): { events: string[]; command?: string; answer?: string } {
   const events: string[] = [];
   let command: string | undefined;
+  let answer: string | undefined;
   for (const [event, groups] of Object.entries(isObject(config.hooks) ? config.hooks : {})) {
     for (const group of Array.isArray(groups) ? groups : []) {
-      const handler = isObject(group) && Array.isArray(group.hooks) ? group.hooks.find(ours) : undefined;
-      if (!isObject(handler)) continue;
-      events.push(event);
-      command = handler.command as string;
+      for (const handler of isObject(group) && Array.isArray(group.hooks) ? group.hooks.filter(ours) : []) {
+        if (answering(handler)) {
+          answer = (handler as Json).command as string;
+          continue;
+        }
+        if (!events.includes(event)) events.push(event);
+        command = (handler as Json).command as string;
+      }
     }
   }
-  return { events, ...(command ? { command } : {}) };
+  return { events, ...(command ? { command } : {}), ...(answer ? { answer } : {}) };
 }
 
 /** What is installed for `agent` now. */
 export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}): Promise<HooksStatus> {
   const file = hooksFile(agent, options.env);
-  const { events, command } = found(await readConfig(file));
+  const { events, command, answer } = found(await readConfig(file));
   const wanted = hookCommand(agent, options.command ?? defaultCommand());
   return {
     agent,
@@ -146,6 +168,7 @@ export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}):
     events,
     installed: command === wanted && EVENTS[agent].every((event) => events.includes(event)),
     ...(command ? { command } : {}),
+    answer: answer === hookCommand(agent, options.command ?? defaultCommand(), true),
   };
 }
 
@@ -168,6 +191,15 @@ export async function installHooks(agent: HookAgent, options: HooksOptions = {})
       ...(event === 'SessionEnd' ? {} : { async: true }),
     };
     hooks[event] = [...groups, { hooks: [handler] }];
+  }
+  if (options.answer && ANSWER_AGENTS.includes(agent)) {
+    // Waited for: it holds the question while the agent's dialog shows it too.
+    const handler = {
+      type: 'command',
+      command: hookCommand(agent, options.command ?? defaultCommand(), true),
+      timeout: ANSWER_TIMEOUT,
+    };
+    hooks.PermissionRequest = [...(hooks.PermissionRequest as unknown[]), { hooks: [handler] }];
   }
   await writeConfig(file, { ...config, hooks });
   return hooksStatus(agent, options);

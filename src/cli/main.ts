@@ -26,6 +26,8 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { answerAsk, pendingAsks, type AskDecision, type PendingAsk } from '../agents/sessions/answer.js';
+import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import {
   notifyFile,
@@ -147,6 +149,7 @@ Usage:
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode sessions doctor            Check that the agents' session stores still read as expected
   genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
+  genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
@@ -186,11 +189,17 @@ Sessions options:
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex); default: both
+      --answer            With "install" (Claude Code): questions can also be answered here
 
   "hooks install" adds a hook to the agent's own user settings (~/.claude/settings.json,
   ~/.codex/hooks.json; Codex asks you to trust it under /hooks). The agent then tells genaicode
   when a session works, asks for approval or has finished its turn, so "sessions" and the
   browser's Sessions view show which ones need you. "hooks uninstall" takes it out again.
+
+  "hooks install --answer" also holds each approval question of Claude Code open for up to 9
+  minutes: Claude Code shows its dialog as always, and "sessions --waiting" or the browser's
+  Sessions view can answer it too ("sessions approve <q>", "sessions deny <q> -m <why>").
+  Whichever answer comes first counts.
 
 Notify options:
       --done              With "on": also when a session finishes its turn
@@ -326,6 +335,8 @@ function dispatch(
       return manageHooks(cli, command, updater);
     case 'notify':
       return manageNotify(cli, command);
+    case 'answer':
+      return answerQuestion(cli, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -596,7 +607,13 @@ const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfi
 const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** `sessions --waiting`: one line per session that waits for you, approvals first, with the command that continues it. */
-function showWaiting(cli: CliEnvironment, sessions: readonly SessionInfo[], now: number, sinceMs?: number): number {
+function showWaiting(
+  cli: CliEnvironment,
+  sessions: readonly SessionInfo[],
+  now: number,
+  sinceMs?: number,
+  questions: readonly PendingAsk[] = [],
+): number {
   const period = sinceMs === undefined ? '' : ` in the last ${ago(sinceMs)}`;
   if (!sessions.length) {
     cli.stdout.write(`Nothing waits for you${period}.\n`);
@@ -618,10 +635,34 @@ function showWaiting(cli: CliEnvironment, sessions: readonly SessionInfo[], now:
           ? `said: ${oneLine(session.lastReply, 80)}`
           : 'your turn';
     const resume = resumeCommand(session);
+    // Questions held open for the tower: what the tool would do, and how to answer.
+    const open = questions
+      .filter((ask) => ask.agent === session.agent && ask.session === session.id)
+      .map(
+        (ask) =>
+          `  ? ${ask.tool ?? 'a tool'}${ask.preview ? `: ${oneLine(ask.preview, 100)}` : ''}\n` +
+          `    genaicode sessions approve ${ask.id}   (or: sessions deny ${ask.id} -m <why>)\n`,
+      )
+      .join('');
     cli.stdout.write(
-      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${resume ? `  ${resume}\n` : ''}`,
+      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${open}${resume ? `  ${resume}\n` : ''}`,
     );
   }
+  return EXIT_OK;
+}
+
+async function answerQuestion(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'answer' }>): Promise<number> {
+  const decision: AskDecision =
+    command.behavior === 'allow'
+      ? { behavior: 'allow' }
+      : { behavior: 'deny', ...(command.message !== undefined ? { message: command.message } : {}) };
+  if (!(await answerAsk(command.id, decision, cli.env))) {
+    cli.stderr.write(
+      `No open question ${command.id}: it was answered already or its session moved on. See "genaicode sessions --waiting".\n`,
+    );
+    return EXIT_FAILED;
+  }
+  cli.stdout.write(`${command.behavior === 'allow' ? 'Approved' : 'Denied'}.\n`);
   return EXIT_OK;
 }
 
@@ -682,8 +723,11 @@ async function manageHooks(
           cli.stdout.write(`${agent}: not installed, skipped\n`);
           continue;
         }
-        const status = await installHooks(agent, hookOptions);
+        const answer = command.answer === true && ANSWER_AGENTS.includes(agent);
+        const status = await installHooks(agent, { ...hookOptions, ...(answer ? { answer } : {}) });
         cli.stdout.write(`${agent}: hook added to ${status.file} (${status.events.join(', ')})\n`);
+        if (answer) cli.stdout.write('  Questions can also be answered with "genaicode sessions approve|deny".\n');
+        else if (command.answer) cli.stdout.write(`  --answer: not for ${agent}, its approvals stay in ${agent}.\n`);
         if (agent === 'codex') cli.stdout.write('  Codex runs it once you trust it: open Codex and use /hooks.\n');
       } else if (command.action === 'uninstall') {
         const removed = await uninstallHooks(agent, hookOptions);
@@ -697,7 +741,7 @@ async function manageHooks(
           : status.events.length
             ? 'installed by another genaicode or incomplete: run "genaicode hooks install"'
             : 'not installed';
-        cli.stdout.write(`${agent}: ${state}  ${status.file}\n`);
+        cli.stdout.write(`${agent}: ${state}${status.answer ? ', answers from here' : ''}  ${status.file}\n`);
       }
     } catch (error) {
       failed = true;
@@ -747,7 +791,7 @@ async function showSessions(
     for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
     return EXIT_OK;
   }
-  if (command.waiting) return showWaiting(cli, sessions, now, sinceMs);
+  if (command.waiting) return showWaiting(cli, sessions, now, sinceMs, await pendingAsks(cli.env));
   if (!sessions.length) {
     cli.stdout.write('No sessions found.\n');
     return EXIT_OK;

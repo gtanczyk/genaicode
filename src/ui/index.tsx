@@ -12,7 +12,7 @@ import {
   type WebHandoff,
 } from './controller.js';
 import { ChatApp } from './tui/app.js';
-import { agentSessionSources, listSessions } from '../agents/sessions/index.js';
+import { agentSessionSources, answerAsk, listSessions, pendingAsks } from '../agents/sessions/index.js';
 import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
 
 export { NoAgentError };
@@ -193,8 +193,12 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       sessions: async (query) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
         const listing = await listSessions(sources, { ...query, ...(options.env ? { env: options.env } : {}) });
-        return { ...listing, readable: sources.filter((source) => source.read).map((source) => source.name) };
+        const readable = sources.filter((source) => source.read).map((source) => source.name);
+        // Questions held open by `genaicode hooks install --answer`, to answer from the page.
+        const asks = await pendingAsks(options.env).catch(() => []);
+        return { ...listing, readable, asks };
       },
+      answer: (id, decision) => answerAsk(id, decision, options.env),
     }).catch((error: unknown) => {
       running = undefined;
       throw error;
