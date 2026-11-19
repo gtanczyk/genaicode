@@ -10,6 +10,7 @@ jobs:
   build_and_test:
     # Playwright 1.56 cannot install Chromium deps on ubuntu-latest (26.04) yet.
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       models: read
@@ -36,5 +37,13 @@ jobs:
             node scripts/release.mjs check
           fi
       - run: npm run check
-      - run: npx playwright install --with-deps chromium
+      # apt behind `--with-deps` can hang on a runner's mirror: give each try 5 minutes, three tries.
+      - name: Install Chromium for the browser tests
+        timeout-minutes: 16
+        run: |
+          for attempt in 1 2 3; do
+            timeout 300 npx playwright install --with-deps chromium && exit 0
+            echo "Playwright install attempt $attempt failed or hung; retrying."
+          done
+          exit 1
       - run: npm run test:browser
