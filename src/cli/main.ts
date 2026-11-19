@@ -28,6 +28,7 @@ import { serveMcpStdio, sessionTools } from '../agents/sessions/tools.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin } from '../agents/sessions/files.js';
+import type { SessionSource } from '../agents/sessions/types.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -60,6 +61,7 @@ export interface CliEnvironment {
 /** Options the bundled front ends take (see src/ui/index.tsx). */
 export interface UiLaunch {
   agents: readonly CodingAgent[];
+  sessionSources?: readonly SessionSource[];
   agent?: string;
   cwd: string;
   model?: string;
@@ -350,8 +352,12 @@ async function runUi(
     cli.stderr.write('genaicode chat needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n');
     return EXIT_USAGE;
   }
-  // The index covers every agent's store, not only the agents this chat can run.
+  // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
+  if (options.sessions && options.mcpServers.some((server) => server.name === 'sessions')) {
+    cli.stderr.write('--sessions adds an MCP server named "sessions": give the --mcp one another name.\n');
+    return EXIT_USAGE;
+  }
   if (options.mcpServers.length || options.sessions) {
     // Only agents that take MCP servers can use them; offer just those.
     const chosen = agents.find((agent) => agent.name === options.agent);
@@ -374,6 +380,7 @@ async function runUi(
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
   const launch: UiLaunch = {
     agents,
+    sessionSources: indexed,
     agent: options.agent,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
     model: options.model,
@@ -417,11 +424,16 @@ async function serveSessions(
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
   }
+  // A host that left closes the pipe: that ends the serving, it is not an error to report.
+  const pipe = cli.stdout as Partial<Pick<NodeJS.WritableStream, 'on' | 'off'>>;
+  const gone = () => undefined;
+  pipe.on?.('error', gone);
   await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
     input: cli.input ?? process.stdin,
     output: cli.stdout,
     ...(cli.signal ? { signal: cli.signal } : {}),
   });
+  pipe.off?.('error', gone);
   return EXIT_OK;
 }
 

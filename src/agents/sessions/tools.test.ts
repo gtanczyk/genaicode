@@ -5,6 +5,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { outputText, type McpTool } from '../mcp-tools.js';
 import type { SessionTurn } from '../session.js';
+import { recordHook } from './live.js';
 import { serveMcpStdio, sessionTools } from './tools.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
@@ -118,7 +119,10 @@ describe('sessionTools', () => {
         throw new Error('locked');
       },
     };
-    expect(await call(tools([codex, broken]).sessions_list!)).toContain('(Could not read: muse.)');
+    const list = tools([codex, broken]).sessions_list!;
+    expect(await call(list)).toContain('(Could not read: muse.)');
+    // One agent asked for: the other stores are not opened.
+    expect(await call(list, { agent: 'codex' })).not.toContain('Could not read');
   });
 
   it('sessions_read gives prompts, messages and tool names, not tool output', async () => {
@@ -129,6 +133,20 @@ describe('sessionTools', () => {
     expect(text).not.toContain('secret output');
     await expect(read.call({ id: 'zzzzzzzz' })).rejects.toThrow('No session with id zzzzzzzz.');
     await expect(read.call({})).rejects.toThrow('needs the id');
+  });
+});
+
+describe('sessionTools with hook reports', () => {
+  it('sessions_read shows the state the hooks reported, as sessions_list does', async () => {
+    const home = env();
+    await recordHook(
+      'claude',
+      { session_id: 'aaaaaaaa-1111', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: {} },
+      { env: home, now: NOW - 1000 },
+    );
+    const [, list, read] = sessionTools([claude], { env: home, now: () => NOW });
+    expect(outputText(await list!.call({}))).toContain('aaaaaaaa-1111  approval (Bash)');
+    expect(outputText(await read!.call({ id: 'aaaaaaaa' }))).toContain('aaaaaaaa-1111  approval  /work/api');
   });
 });
 

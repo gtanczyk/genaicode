@@ -191,7 +191,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async (query) => {
-        const sources = agentSessionSources(options.agents);
+        const sources = options.sessionSources ?? agentSessionSources(options.agents);
         const listing = await listSessions(sources, { ...query, ...(options.env ? { env: options.env } : {}) });
         return { ...listing, readable: sources.filter((source) => source.read).map((source) => source.name) };
       },

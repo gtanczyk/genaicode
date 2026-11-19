@@ -180,6 +180,8 @@ describe('parseCli', () => {
     expect(await main(cli)).toBe(EXIT_OK);
     expect(launches[0]!.agents.map((agent) => agent.name)).toEqual(['mcp']);
     expect(launches[0]!.task!.mcpServers).toMatchObject([{ name: 'sessions' }]);
+    // The Sessions view and /continue read every store too.
+    expect(launches[0]!.sessionSources!.map((source) => source.name)).toEqual(['plain', 'mcp']);
     // The agent without MCP cannot be chatted with here, but its sessions are in the index.
     expect(listed).toContain('- plain plain-1');
     expect(listed).toContain('- mcp mcp-1');
@@ -187,6 +189,15 @@ describe('parseCli', () => {
     const refused = environment({ argv: ['ui', '--sessions', '-a', 'plain'], agents, loadUi });
     expect(await main(refused.cli)).toBe(EXIT_USAGE);
     expect(refused.err()).toContain('(--sessions)');
+
+    const twice = environment({
+      argv: ['chat', '--sessions', '--mcp', 'sessions=http://127.0.0.1:1/mcp'],
+      agents,
+      loadUi,
+      interactive: true,
+    });
+    expect(await main(twice.cli)).toBe(EXIT_USAGE);
+    expect(twice.err()).toContain('named "sessions"');
   });
 
   it('treats a missing or "-" prompt as stdin', () => {
