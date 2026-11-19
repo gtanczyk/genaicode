@@ -1,4 +1,4 @@
-import type { SessionInfo } from '../agents/sessions/index.js';
+import { groupSessions, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
 
 /** What the Sessions view narrows the list by. */
 export interface SessionFilter {
@@ -33,6 +33,16 @@ export function filterSessions(sessions: readonly SessionInfo[], filter: Session
       .toLowerCase();
     return words.every((word) => hay.includes(word));
   });
+}
+
+/**
+ * Projects in the order of their first session in `sessions`, not by their newest activity: for
+ * a list already in the order to show (what waits for you, approvals first).
+ */
+export function groupInOrder(sessions: readonly SessionInfo[]): SessionProject[] {
+  const at = new Map(sessions.map((session, index) => [session, index]));
+  const first = (project: SessionProject) => Math.min(...project.sessions.map((session) => at.get(session)!));
+  return groupSessions(sessions).sort((a, b) => first(a) - first(b));
 }
 
 /** `5m`, `3h`, `12d`: how long ago, in the largest unit that fits. */

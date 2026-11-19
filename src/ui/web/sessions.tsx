@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { groupSessions, waitingSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
-import { ago, canContinueHere, filterSessions, resumeCommand } from '../sessions.js';
+import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 
@@ -70,7 +70,9 @@ export function Sessions({
     // What waits for you: the sessions that ask for approval come first.
     return state === 'waiting' || state === 'approval' ? waitingSessions(found) : found;
   }, [all, text, agent, state]);
-  const projects = useMemo(() => groupSessions(shown), [shown]);
+  // What waits for you keeps its order across projects: the one with an approval first.
+  const inbox = state === 'waiting' || state === 'approval';
+  const projects = useMemo(() => (inbox ? groupInOrder(shown) : groupSessions(shown)), [shown, inbox]);
   const now = Date.now();
 
   const copy = (session: SessionInfo) => {
