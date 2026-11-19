@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- What waits for you, across agents: `genaicode sessions --waiting` (`-w`) lists only the sessions whose next move is yours, approvals first, each with what it asks or said and the command that continues it (last 7 days unless `--since`); the browser's Sessions view gets a "N wait for you" button with the same order; `waitingSessions()` in `genaicode/agents` (#PRNUM)
+
 ### Fixed
 
 - `chat --sessions` and `sessions mcp`: the session index now tells the agent when to use it (MCP `instructions`), so a question like "which sessions are open?" goes to `sessions_list` for every agent instead of the agent's own session listing; `startLocalMcpServer({ instructions })` does the same for your tools (#204)

@@ -28,6 +28,8 @@ export type CliCommand =
       /** `--since 7d`: only sessions active in this many milliseconds. */
       sinceMs?: number;
       limit: number;
+      /** `--waiting`: only the sessions whose next move is yours, approvals first. */
+      waiting?: true;
     }
   /** `sessions doctor`: whether the session stores still read as expected. */
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
@@ -168,6 +170,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           cwd: { type: 'string', short: 'C' },
           since: { type: 'string' },
           limit: { type: 'string', short: 'n' },
+          waiting: { type: 'boolean', short: 'w' },
         },
       }),
     );
@@ -175,13 +178,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
     if (positionals[0] === 'mcp') {
       const extra =
         values.cloud || values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
-      if (positionals.length > 1 || extra || values.json || values.api) {
+      if (positionals.length > 1 || extra || values.json || values.api || values.waiting) {
         throw new UsageError('Usage: genaicode sessions mcp [-a <agent>]');
       }
       return { kind: 'sessions-mcp', ...(values.agent !== undefined ? { agent: values.agent } : {}) };
     }
     if (positionals.length) {
-      const extra = values.cloud || values.cwd !== undefined || values.limit !== undefined;
+      const extra = values.cloud || values.cwd !== undefined || values.limit !== undefined || values.waiting;
       if (positionals.length > 1 || positionals[0] !== 'doctor' || extra) {
         throw new UsageError(
           'Usage: genaicode sessions [doctor|mcp] [options]. "doctor" takes -a, --since and --json.',
@@ -204,6 +207,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ...(values.cwd !== undefined ? { cwd: values.cwd } : {}),
       ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
       limit: limit ?? 30,
+      ...(values.waiting === true ? { waiting: true } : {}),
     };
   }
 

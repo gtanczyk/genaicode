@@ -6,7 +6,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
-import { ago } from '../ui/sessions.js';
+import { ago, resumeCommand } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import {
   agentSessionSources,
@@ -14,6 +14,7 @@ import {
   cliVersion,
   findSession,
   groupSessions,
+  waitingSessions,
   HOOK_AGENTS,
   hooksFile,
   hooksStatus,
@@ -27,8 +28,8 @@ import {
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
-import { isWithin } from '../agents/sessions/files.js';
-import type { SessionSource } from '../agents/sessions/types.js';
+import { isWithin, oneLine } from '../agents/sessions/files.js';
+import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
 import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
@@ -150,6 +151,8 @@ Update options (for the command scripts/install.sh installs; npx and npm -g upda
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
       --cloud             Also Cursor Cloud Agents (needs CURSOR_API_KEY)
+  -w, --waiting           Only sessions waiting for you (approvals first), each with the
+                          command that continues it; the last 7 days unless --since says
   -C, --cwd <dir>         Only sessions in this directory or below it
       --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
   -n, --limit <n>         At most this many sessions, newest first (default 30)
@@ -570,6 +573,37 @@ function loadBundledUi(): Promise<UiModule> {
 }
 
 const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
+const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** `sessions --waiting`: one line per session that waits for you, approvals first, with the command that continues it. */
+function showWaiting(cli: CliEnvironment, sessions: readonly SessionInfo[], now: number, sinceMs?: number): number {
+  const period = sinceMs === undefined ? '' : ` in the last ${ago(sinceMs)}`;
+  if (!sessions.length) {
+    cli.stdout.write(`Nothing waits for you${period}.\n`);
+    return EXIT_OK;
+  }
+  const asks = sessions.filter((session) => session.waitingFor === 'approval').length;
+  cli.stdout.write(
+    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}:\n`,
+  );
+  for (const session of sessions) {
+    const place = session.cwd ?? session.repository ?? '';
+    const project = place.split(/[\\/]/).filter(Boolean).pop() ?? place;
+    const label = session.title ?? session.lastPrompt ?? session.firstPrompt ?? '(no prompt)';
+    const text = label.length > 60 ? `${label.slice(0, 59)}…` : label;
+    const what =
+      session.waitingFor === 'approval'
+        ? `asks to use ${session.waitingTool ?? 'a tool'}`
+        : session.lastReply
+          ? `said: ${oneLine(session.lastReply, 80)}`
+          : 'your turn';
+    const resume = resumeCommand(session);
+    cli.stdout.write(
+      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${resume ? `  ${resume}\n` : ''}`,
+    );
+  }
+  return EXIT_OK;
+}
 
 async function manageHooks(
   cli: CliEnvironment,
@@ -649,18 +683,23 @@ async function showSessions(
     return EXIT_USAGE;
   }
   const now = Date.now();
-  const { sessions, errors } = await listSessions(sources, {
-    limit: command.limit,
+  // What waits is picked from everything listed, so the limit comes after; a week back by default.
+  const sinceMs = command.sinceMs ?? (command.waiting ? WAITING_SINCE_MS : undefined);
+  const listing = await listSessions(sources, {
+    ...(command.waiting ? {} : { limit: command.limit }),
     env: cli.env,
     ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
-    ...(command.sinceMs !== undefined ? { since: now - command.sinceMs } : {}),
+    ...(sinceMs !== undefined ? { since: now - sinceMs } : {}),
     ...(cli.signal ? { signal: cli.signal } : {}),
   });
+  const { errors } = listing;
+  const sessions = command.waiting ? waitingSessions(listing.sessions).slice(0, command.limit) : listing.sessions;
   for (const error of errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
   if (command.json) {
     for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
     return EXIT_OK;
   }
+  if (command.waiting) return showWaiting(cli, sessions, now, sinceMs);
   if (!sessions.length) {
     cli.stdout.write('No sessions found.\n');
     return EXIT_OK;

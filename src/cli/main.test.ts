@@ -457,6 +457,63 @@ describe('genaicode sessions doctor', () => {
   });
 });
 
+describe('genaicode sessions --waiting', () => {
+  it('parses, and belongs to the listing only', () => {
+    expect(parseCli(['sessions', '-w', '-n', '5'])).toMatchObject({ kind: 'sessions', waiting: true, limit: 5 });
+    expect(parseCli(['sessions'])).not.toHaveProperty('waiting');
+    expect(() => parseCli(['sessions', 'doctor', '--waiting'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'mcp', '--waiting'])).toThrow(UsageError);
+  });
+
+  it('lists what waits for you, approvals first, with the command that continues it', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-waiting-'));
+    dirs.push(home);
+    const now = Date.now();
+    const listed = [
+      { id: 'busy', state: 'active' as const, updatedAt: now - 1000, title: 'Working on it' },
+      {
+        id: 'reply',
+        state: 'waiting' as const,
+        updatedAt: now - 10 * 60 * 1000,
+        title: 'Add CSV export',
+        lastReply: 'Done.\nPush it?',
+      },
+      {
+        id: 'asks',
+        state: 'waiting' as const,
+        waitingFor: 'approval' as const,
+        waitingTool: 'Bash',
+        updatedAt: now - 60 * 60 * 1000,
+        lastPrompt: 'deploy',
+      },
+      { id: 'stale', state: 'waiting' as const, updatedAt: now - 30 * 24 * 60 * 60 * 1000, title: 'Old' },
+    ].map((one) => ({ source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app', ...one }));
+    const agent = {
+      ...fakeAgent('alpha', []),
+      sessions: {
+        name: 'alpha',
+        where: 'local' as const,
+        list: async (query?: { since?: number }) =>
+          listed.filter((one) => query?.since === undefined || one.updatedAt >= query.since),
+      },
+    };
+    const run = async (...argv: string[]) => {
+      const { cli, out } = environment({ argv: ['sessions', ...argv], env: { HOME: home, PATH: '' }, agents: [agent] });
+      return { code: await main(cli), out: out() };
+    };
+    const { code, out } = await run('--waiting');
+    expect(code).toBe(EXIT_OK);
+    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval:/);
+    expect(out.indexOf('asks to use Bash')).toBeLessThan(out.indexOf('Add CSV export'));
+    expect(out).toContain('  said: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
+    expect(out).not.toContain('Working on it');
+    expect(out).not.toContain('Old');
+    expect((await run('-w', '--since', '60d')).out).toContain('Old');
+    expect((await run('-w', '-n', '1')).out).toMatch(/^1 session waits for you/);
+    expect((await run('-w', '--since', '1m')).out).toBe('Nothing waits for you in the last 1m.\n');
+  });
+});
+
 describe('genaicode sessions mcp', () => {
   it('parses, and refuses the options of the listing', () => {
     expect(parseCli(['sessions', 'mcp'])).toEqual({ kind: 'sessions-mcp' });

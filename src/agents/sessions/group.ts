@@ -22,6 +22,17 @@ export interface SessionProject {
   agents: Record<string, number>;
 }
 
+/**
+ * The sessions whose next move is the user's (`state: 'waiting'`): those that ask for approval
+ * first, then the others, newest first in each.
+ */
+export function waitingSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
+  const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : 1);
+  return sessions
+    .filter((session) => session.state === 'waiting')
+    .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);
+}
+
 /** Group sessions by where they work, newest project first. */
 export function groupSessions(sessions: readonly SessionInfo[]): SessionProject[] {
   const projects = new Map<string, SessionProject>();

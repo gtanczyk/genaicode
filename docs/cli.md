@@ -63,6 +63,7 @@ npx genaicode sessions                       # what every agent has going on, by
 npx genaicode sessions --since 7d -C ../api  # last week, one project
 npx genaicode sessions -a codex --json       # one JSON object per session
 npx genaicode sessions --cloud               # also Cursor Cloud Agents (CURSOR_API_KEY)
+npx genaicode sessions --waiting             # only what waits for you, approvals first
 ```
 
 It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot, Cursor, Gemini

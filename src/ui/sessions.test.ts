@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionInfo } from '../agents/sessions/index.js';
+import { waitingSessions, type SessionInfo } from '../agents/sessions/index.js';
 import { createChatController } from './controller.js';
 import { ago, canContinueHere, filterSessions, resumeCommand } from './sessions.js';
 import { pageHtml } from './web/page.js';
@@ -31,6 +31,16 @@ describe('the Sessions view', () => {
     expect(ids(filterSessions(sessions, { state: 'unfinished' }))).toEqual(['s3']);
     expect(ids(filterSessions(sessions, { text: 'export', state: 'active' }))).toEqual(['s2']);
     expect(ids(filterSessions(sessions, { text: 'nothing' }))).toEqual([]);
+  });
+
+  it('puts what waits for you first: approvals, then the newest', () => {
+    const found = waitingSessions([
+      session({ id: 'old', state: 'waiting', updatedAt: 1 }),
+      session({ id: 'busy', state: 'active', updatedAt: 9 }),
+      session({ id: 'asks', state: 'waiting', waitingFor: 'approval', updatedAt: 2 }),
+      session({ id: 'new', state: 'waiting', waitingFor: 'reply', updatedAt: 5 }),
+    ]);
+    expect(ids(found)).toEqual(['asks', 'new', 'old']);
   });
 
   it('gives the command that continues a local session', () => {
