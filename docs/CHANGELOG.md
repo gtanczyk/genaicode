@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.35.0 — 2026-11-18
+
 ### Added
 
 - Codex sessions can be asked of Codex itself: `codexSessions({ via: 'app-server' | 'auto' })` or `GENAICODE_CODEX_SESSIONS=app-server` lists and reads through `codex app-server` (`thread/list`, `thread/turns/list`), falling back to the files; `genaicode sessions doctor --api` compares what the files gave with what Codex lists. `openCodexServer()`, `codexThreads()`, `readCodexThread()` exported. The files stay the default. (#194)
