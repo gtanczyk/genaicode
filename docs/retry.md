@@ -22,11 +22,11 @@ await withRetry(() => ai('summarize this').text(), {
 
 `classifyError` returns `{ class, retryable, reason, status?, code?, cause }`:
 
-| Class       | Typical causes                         | Retry? |
-| ----------- | -------------------------------------- | ------ |
-| `transient` | 429, 5xx, timeouts, connection resets  | yes    |
-| `permanent` | 4xx (except above), auth, abort        | no     |
-| `unknown`   | Unrecognized shapes                    | no*    |
+| Class       | Typical causes                        | Retry? |
+| ----------- | ------------------------------------- | ------ |
+| `transient` | 429, 5xx, timeouts, connection resets | yes    |
+| `permanent` | 4xx (except above), auth, abort       | no     |
+| `unknown`   | Unrecognized shapes                   | no\*   |
 
 \*Treat unknown as non-retryable by default; override with `shouldRetry` when you
 know more about your gateway.
@@ -35,7 +35,7 @@ know more about your gateway.
 
 Safe to retry without extra coordination:
 
-- Pure generation (`text`, `json`, `toolCalls` that only *propose* tool calls)
+- Pure generation (`text`, `json`, `toolCalls` that only _propose_ tool calls)
 - Read-only prompts against immutable inputs
 
 Not safe to retry blindly:
