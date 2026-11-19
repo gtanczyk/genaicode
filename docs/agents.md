@@ -359,6 +359,11 @@ to the app server starts a Codex process (about half a second) that keeps its ow
 in Codex's home. When the app server cannot be asked, the files are read. `doctor --api` is the
 cheap middle: the files day to day, and Codex's own answer as the reference when you check.
 
+The repository also checks every Monday, with no keys, whether the agents' latest releases still
+match the readers (`.github/workflows/drift-canary.yaml`, `node scripts/drift-canary.mjs` after a
+build): it lists each published CLI version beside `verified`, and fails when the latest Codex
+app-server protocol (`codex app-server generate-ts`) no longer has a field that genaicode reads.
+
 ### Continuing a session in another agent
 
 Sources whose conversations can be read have `read(session)`: the turns of a session (prompts, the
