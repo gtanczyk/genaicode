@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { LiveRecord } from './live.js';
+import type { LiveAsk, LiveRecord } from './live.js';
 import { liveDir } from './live.js';
 
 /** What `genaicode notify` tells you about, as kept in `~/.genaicode/notify.json`. */
@@ -52,15 +52,22 @@ export function noticeFor(
 ): Notice | undefined {
   const project = after.cwd ? path.basename(after.cwd) || after.cwd : 'a session';
   if (after.state === 'approval' && settings.approval) {
-    const known = before?.state === 'approval' ? (before.asks?.length ?? 1) : 0;
+    const known = new Set(before?.state === 'approval' ? (before.asks ?? [{}]).map(askId) : []);
     // A reminder of a question already known, or one more hook about it, is no news.
-    if ((after.asks?.length ?? 1) <= known) return undefined;
-    return { title: `${after.agent} asks for approval`, body: `${project}: ${after.tool ?? 'a tool'}` };
+    const fresh = (after.asks ?? [{}]).filter((ask) => !known.has(askId(ask)));
+    if (!fresh.length) return undefined;
+    const tool = [...fresh].reverse().find((ask) => ask.tool)?.tool;
+    return { title: `${after.agent} asks for approval`, body: `${project}: ${tool ?? 'a tool'}` };
   }
   if (after.state === 'idle' && settings.done && (before?.state === 'working' || before?.state === 'approval')) {
     return { title: `${after.agent} finished its turn`, body: `${project}: your move` };
   }
   return undefined;
+}
+
+/** A question's identity: the tool and what it was asked to do. */
+function askId(ask: LiveAsk): string {
+  return JSON.stringify([ask.tool ?? null, ask.key ?? null]);
 }
 
 export interface SendOptions {

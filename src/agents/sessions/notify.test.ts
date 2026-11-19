@@ -36,7 +36,16 @@ describe('notifications', () => {
     expect(noticeFor(record({}), asks, on)).toEqual({ title: 'claude asks for approval', body: 'api: Bash' });
     expect(noticeFor(asks, asks, on)).toBeUndefined();
     const two = record({ state: 'approval', tool: 'Bash', asks: [{ tool: 'Bash' }, { tool: 'Edit' }] });
-    expect(noticeFor(asks, two, on)).toBeDefined();
+    expect(noticeFor(asks, two, on)).toEqual({ title: 'claude asks for approval', body: 'api: Edit' });
+    const again = record({
+      state: 'approval',
+      tool: 'Bash',
+      asks: [
+        { tool: 'Bash', key: 'a' },
+        { tool: 'Bash', key: 'a' },
+      ],
+    });
+    expect(noticeFor(asks, again, on)).toBeUndefined();
     expect(noticeFor(record({}), asks, { approval: false, done: false })).toBeUndefined();
   });
 
@@ -77,7 +86,10 @@ describe('notifications', () => {
     await writeNotify({ approval: true, done: false }, env);
     await hook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } });
     await hook(ask);
+    await hook(ask);
     await hook({ hook_event_name: 'Notification', notification_type: 'permission_prompt' });
     expect(sent).toEqual([{ title: 'claude asks for approval', body: 'api: Bash' }]);
+    await hook({ hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { file_path: 'a.ts' } });
+    expect(sent[1]).toEqual({ title: 'claude asks for approval', body: 'api: Edit' });
   });
 });
