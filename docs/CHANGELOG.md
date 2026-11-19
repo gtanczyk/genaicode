@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- `chat --sessions` and `sessions mcp`: the session index now tells the agent when to use it (MCP `instructions`), so a question like "which sessions are open?" goes to `sessions_list` for every agent instead of the agent's own session listing; `startLocalMcpServer({ instructions })` does the same for your tools (#PRNUM)
+- `chat --sessions` and `sessions mcp`: the session index now tells the agent when to use it (MCP `instructions`), so a question like "which sessions are open?" goes to `sessions_list` for every agent instead of the agent's own session listing; `startLocalMcpServer({ instructions })` does the same for your tools (#204)
 
 ## 2.36.0 — 2026-11-19
 
