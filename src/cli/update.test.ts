@@ -206,14 +206,18 @@ describe('updateInstall', () => {
     const { home, deps } = installed();
     writePackage(join(home, 'versions', '2.30.0'), '2.30.0');
     writePackage(join(home, 'versions', '2.31.0'), '2.31.0');
+    const dead = spawnSync(process.execPath, ['-e', '']).pid!;
+    mkdirSync(join(home, 'versions', `.staging-install-${process.pid}`));
+    mkdirSync(join(home, 'versions', `.staging-install-${dead}`));
     mkdirSync(join(home, 'running'));
     writeFileSync(join(home, 'running', String(process.pid)), '2.30.0');
-    const dead = spawnSync(process.execPath, ['-e', '']).pid!;
     writeFileSync(join(home, 'running', String(dead)), '2.31.0');
     await updateInstall(findInstall(deps.packageRoot)!, deps);
     expect(existsSync(join(home, 'versions', '2.30.0'))).toBe(true);
     expect(existsSync(join(home, 'versions', '2.31.0'))).toBe(false);
     expect(existsSync(join(home, 'running', String(dead)))).toBe(false);
+    expect(existsSync(join(home, 'versions', `.staging-install-${process.pid}`))).toBe(true);
+    expect(existsSync(join(home, 'versions', `.staging-install-${dead}`))).toBe(false);
   });
 
   it('records the version a process runs', () => {

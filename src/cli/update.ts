@@ -398,7 +398,9 @@ function prune(versions: string, keep: readonly string[]): void {
   for (const entry of readdirSync(versions)) {
     if (inUse.has(entry)) continue;
     if (!/^\d+\.\d+\.\d+/.test(entry) && !entry.startsWith('.staging-')) continue;
-    if (entry.startsWith('.staging-') && entry.endsWith(`-${process.pid}`)) continue;
+    // A staging dir ends with its owner's pid (installer or updater); leave live ones alone.
+    const owner = /^\.staging-.*-(\d+)$/.exec(entry)?.[1];
+    if (owner && isAlive(Number(owner))) continue;
     rmSync(join(versions, entry), { recursive: true, force: true });
   }
 }
