@@ -196,5 +196,11 @@ describe('serveMcpStdio', () => {
     controller.abort();
     await served;
     expect(JSON.parse(written)).toMatchObject({ id: 1 });
+    // Stopped before it started: nothing is served.
+    await serveMcpStdio([], {
+      input: new PassThrough(),
+      output: { write: () => undefined },
+      signal: controller.signal,
+    });
   });
 });

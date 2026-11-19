@@ -167,6 +167,7 @@ export async function serveMcpStdio(
     signal?: AbortSignal;
   },
 ): Promise<void> {
+  if (streams.signal?.aborted) return;
   const lines = createInterface({ input: streams.input, crlfDelay: Infinity });
   const pending = new Set<Promise<void>>();
   const stopped = () => streams.signal?.aborted === true;
@@ -179,7 +180,6 @@ export async function serveMcpStdio(
     }
   };
   const stop = () => lines.close();
-  if (streams.signal?.aborted) stop();
   streams.signal?.addEventListener('abort', stop, { once: true });
   for await (const line of lines) {
     if (!line.trim()) continue;
