@@ -139,7 +139,10 @@ export function stableCliPath(packageRoot: string): string {
 /** -1, 0 or 1. Pre-release suffixes sort before the release. */
 export function compareVersions(a: string, b: string): number {
   const parse = (v: string) => {
-    const [core, pre] = v.replace(/^v/, '').split('-', 2);
+    const plain = v.replace(/^v/, '').split('+')[0];
+    const dash = plain.indexOf('-');
+    const core = dash < 0 ? plain : plain.slice(0, dash);
+    const pre = dash < 0 ? undefined : plain.slice(dash + 1);
     return { parts: core.split('.').map((n) => Number.parseInt(n, 10) || 0), pre };
   };
   const x = parse(a);
@@ -151,7 +154,30 @@ export function compareVersions(a: string, b: string): number {
   if (x.pre === y.pre) return 0;
   if (x.pre === undefined) return 1;
   if (y.pre === undefined) return -1;
-  return x.pre < y.pre ? -1 : 1;
+  return comparePrerelease(x.pre, y.pre);
+}
+
+/** Semver precedence: dot-separated, numeric ids numerically and below alphanumeric ones. */
+function comparePrerelease(a: string, b: string): number {
+  const xs = a.split('.');
+  const ys = b.split('.');
+  for (let i = 0; i < Math.max(xs.length, ys.length); i++) {
+    const x = xs[i];
+    const y = ys[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xn = /^\d+$/.test(x);
+    const yn = /^\d+$/.test(y);
+    if (xn && yn) {
+      const d = Number(x) - Number(y);
+      if (d) return Math.sign(d);
+    } else if (xn !== yn) {
+      return xn ? -1 : 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
 }
 
 /** The changelog sections after `from` up to and including `to`, newest first. */
@@ -407,13 +433,21 @@ function prune(versions: string, keep: readonly string[]): void {
 
 function lock(home: string, now: number): (() => void) | undefined {
   const path = join(home, 'update.lock');
-  try {
+  const take = () => {
     mkdirSync(path);
+    writeFileSync(join(path, 'pid'), String(process.pid));
+  };
+  try {
+    take();
   } catch {
     try {
-      if (now - statSync(path).mtimeMs < STALE_LOCK_MS) return undefined;
+      // A lock is stale only when its owner is gone; a slow npm install keeps it as long as it runs.
+      const owner = Number(readText(join(path, 'pid')));
+      const stale =
+        Number.isInteger(owner) && owner > 0 ? !isAlive(owner) : now - statSync(path).mtimeMs >= STALE_LOCK_MS;
+      if (!stale) return undefined;
       rmSync(path, { recursive: true, force: true });
-      mkdirSync(path);
+      take();
     } catch {
       return undefined;
     }

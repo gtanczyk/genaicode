@@ -99,6 +99,10 @@ describe('compareVersions', () => {
     expect(compareVersions('2.9.0', '2.9.0')).toBe(0);
     expect(compareVersions('2.9.0-rc.1', '2.9.0')).toBe(-1);
     expect(compareVersions('v3.0.0', '2.99.0')).toBe(1);
+    expect(compareVersions('2.36.0-rc.10', '2.36.0-rc.9')).toBe(1);
+    expect(compareVersions('2.36.0-rc.1', '2.36.0-rc')).toBe(1);
+    expect(compareVersions('2.36.0-1', '2.36.0-alpha')).toBe(-1);
+    expect(compareVersions('2.36.0-rc.1', '2.36.0-rc.1')).toBe(0);
   });
 });
 
@@ -250,10 +254,20 @@ describe('updateInstall', () => {
     expect(lines).toEqual([]);
   });
 
-  it('steps aside while another update holds the lock', async () => {
+  it('steps aside while a live process holds the lock, however long', async () => {
     const { home, deps } = installed();
     mkdirSync(join(home, 'update.lock'));
+    writeFileSync(join(home, 'update.lock', 'pid'), String(process.pid));
+    deps.now = () => Date.now() + 60 * 60 * 1000;
     expect(await updateInstall(findInstall(deps.packageRoot)!, deps)).toEqual({ kind: 'busy' });
+  });
+
+  it('takes over a lock whose owner is gone', async () => {
+    const { home, deps } = installed();
+    mkdirSync(join(home, 'update.lock'));
+    writeFileSync(join(home, 'update.lock', 'pid'), String(spawnSync(process.execPath, ['-e', '']).pid));
+    expect(await updateInstall(findInstall(deps.packageRoot)!, deps)).toMatchObject({ kind: 'updated' });
+    expect(existsSync(join(home, 'update.lock'))).toBe(false);
   });
 });
 
