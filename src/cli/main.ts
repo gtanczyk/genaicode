@@ -27,6 +27,14 @@ import {
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
+import {
+  notifyFile,
+  readNotify,
+  sendNotice,
+  writeNotify,
+  type Notice,
+  type NotifySettings,
+} from '../agents/sessions/notify.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -70,6 +78,8 @@ export interface CliEnvironment {
   loadUi?(): Promise<UiModule>;
   /** What `update` and the daily check use. Defaults to the npm registry and this package. */
   updater?: Partial<UpdateDeps>;
+  /** Shows a desktop notification (`notify test`). Default: `sendNotice()`. */
+  notify?(notice: Notice): boolean;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
   runCheck?(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult>;
 }
@@ -138,6 +148,7 @@ Usage:
   genaicode sessions doctor            Check that the agents' session stores still read as expected
   genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
+  genaicode notify [on|off|test]      Desktop notification when a session asks for approval
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
@@ -180,6 +191,13 @@ Hooks options:
   ~/.codex/hooks.json; Codex asks you to trust it under /hooks). The agent then tells genaicode
   when a session works, asks for approval or has finished its turn, so "sessions" and the
   browser's Sessions view show which ones need you. "hooks uninstall" takes it out again.
+
+Notify options:
+      --done              With "on": also when a session finishes its turn
+
+  "notify on" has the hooks show a desktop notification (macOS Notification Center, notify-send
+  on Linux) when a session asks for approval: the agent, the project's directory name and the
+  tool, nothing of what was said. It needs "genaicode hooks install". "notify test" shows one now.
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
@@ -306,6 +324,8 @@ function dispatch(
       return serveSessions(cli, agents, command);
     case 'hooks':
       return manageHooks(cli, command, updater);
+    case 'notify':
+      return manageNotify(cli, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -601,6 +621,34 @@ function showWaiting(cli: CliEnvironment, sessions: readonly SessionInfo[], now:
     cli.stdout.write(
       `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${resume ? `  ${resume}\n` : ''}`,
     );
+  }
+  return EXIT_OK;
+}
+
+async function manageNotify(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'notify' }>): Promise<number> {
+  const describe = (settings: NotifySettings) =>
+    settings.approval ? `on: when a session asks for approval${settings.done ? ' or finishes its turn' : ''}` : 'off';
+  if (command.action === 'test') {
+    const shown = (cli.notify ?? sendNotice)({ title: 'genaicode', body: 'Notifications work.' });
+    if (!shown) {
+      cli.stderr.write(`No desktop notifications on ${process.platform} yet (macOS and Linux only).\n`);
+      return EXIT_FAILED;
+    }
+    cli.stdout.write('Sent a test notification.\n');
+    return EXIT_OK;
+  }
+  if (command.action !== 'status') {
+    await writeNotify({ approval: command.action === 'on', done: command.action === 'on' && command.done }, cli.env);
+  }
+  const settings = await readNotify(cli.env);
+  cli.stdout.write(`Notifications ${describe(settings)}  ${notifyFile(cli.env)}\n`);
+  if (settings.approval) {
+    const statuses = await Promise.all(
+      HOOK_AGENTS.map((agent) => hooksStatus(agent, { env: cli.env }).catch(() => undefined)),
+    );
+    if (!statuses.some((status) => status?.events.length)) {
+      cli.stdout.write('No agent reports to genaicode yet: run "genaicode hooks install" for the notifications.\n');
+    }
   }
   return EXIT_OK;
 }

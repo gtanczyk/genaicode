@@ -36,6 +36,8 @@ export type CliCommand =
   /** `sessions mcp`: the session index as an MCP server on stdio. */
   | { kind: 'sessions-mcp'; agent?: string }
   | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
+  /** `notify`: desktop notifications when a session asks for approval (`--done`: or finishes a turn). */
+  | { kind: 'notify'; action: 'status' | 'on' | 'off' | 'test'; done: boolean }
   | {
       kind: 'chat' | 'ui';
       agent?: string;
@@ -209,6 +211,18 @@ export function parseCli(argv: readonly string[]): CliCommand {
       limit: limit ?? 30,
       ...(values.waiting === true ? { waiting: true } : {}),
     };
+  }
+
+  if (command === 'notify') {
+    const { values, positionals } = parse(() =>
+      parseArgs({ args: rest, strict: true, allowPositionals: true, options: { done: { type: 'boolean' } } }),
+    );
+    const action = positionals[0] ?? 'status';
+    const known = ['status', 'on', 'off', 'test'];
+    if (positionals.length > 1 || !known.includes(action) || (values.done && action !== 'on')) {
+      throw new UsageError('Usage: genaicode notify [status|on [--done]|off|test]');
+    }
+    return { kind: 'notify', action: action as 'status' | 'on' | 'off' | 'test', done: values.done === true };
   }
 
   if (command === 'hooks') {

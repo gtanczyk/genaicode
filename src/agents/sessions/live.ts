@@ -180,7 +180,12 @@ async function readRecord(file: string): Promise<Kept | undefined> {
 export async function recordHook(
   agent: string,
   input: unknown,
-  options: { env?: NodeJS.ProcessEnv; now?: number } = {},
+  options: {
+    env?: NodeJS.ProcessEnv;
+    now?: number;
+    /** Told what the record was and what it is now, once it is written (`genaicode notify`). */
+    onRecord?(before: LiveRecord | undefined, after: LiveRecord): void;
+  } = {},
 ): Promise<LiveRecord | undefined> {
   const event = liveEvent(input);
   if (!event) return undefined;
@@ -246,6 +251,9 @@ export async function recordHook(
     const temporary = `${file}.${process.pid}.tmp`;
     await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     await fs.rename(temporary, file);
+    if (record.state !== 'ended') {
+      options.onRecord?.(before && before.state !== 'ended' ? (before as LiveRecord) : undefined, record as LiveRecord);
+    }
     return changed && record.state !== 'ended' ? (record as LiveRecord) : undefined;
   } finally {
     await release();

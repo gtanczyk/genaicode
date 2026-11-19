@@ -550,6 +550,36 @@ describe('genaicode sessions mcp', () => {
   });
 });
 
+describe('genaicode notify', () => {
+  it('parses its actions', () => {
+    expect(parseCli(['notify'])).toEqual({ kind: 'notify', action: 'status', done: false });
+    expect(parseCli(['notify', 'on', '--done'])).toEqual({ kind: 'notify', action: 'on', done: true });
+    expect(() => parseCli(['notify', 'off', '--done'])).toThrow(UsageError);
+    expect(() => parseCli(['notify', 'loud'])).toThrow(UsageError);
+  });
+
+  it('turns notifications on and off, says when the hooks are missing, and sends a test', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-notify-'));
+    dirs.push(home);
+    const sent: string[] = [];
+    const run = async (...argv: string[]) => {
+      const { cli, out } = environment({
+        argv: ['notify', ...argv],
+        env: { HOME: home, PATH: '' },
+        notify: (notice) => (sent.push(notice.body), true),
+      });
+      return { code: await main(cli), out: out() };
+    };
+    expect((await run()).out).toContain('Notifications off');
+    const on = await run('on', '--done');
+    expect(on.out).toContain('Notifications on: when a session asks for approval or finishes its turn');
+    expect(on.out).toContain('run "genaicode hooks install"');
+    expect((await run('off')).out).toContain('Notifications off');
+    expect(await run('test')).toMatchObject({ code: EXIT_OK, out: 'Sent a test notification.\n' });
+    expect(sent).toEqual(['Notifications work.']);
+  });
+});
+
 describe('genaicode hooks', () => {
   it('parses the action and refuses what it does not know', () => {
     expect(parseCli(['hooks'])).toEqual({ kind: 'hooks', action: 'status' });
