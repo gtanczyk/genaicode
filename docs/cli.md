@@ -1,6 +1,39 @@
-# Command line: run, chat, ui, embed, acp
+# Command line: install, run, chat, ui, embed, acp
 
 [← README](../README.md)
+
+## Install the command
+
+`npx genaicode` works without installing anything. To type just `genaicode`, and have it
+update itself, run the installer (macOS and Linux, Node.js 20+ with npm):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh
+```
+
+It is a short shell script ([scripts/install.sh](../scripts/install.sh), read it first) that
+`npm install`s the published package without lifecycle scripts into
+`~/.genaicode/versions/<version>`, points `~/.genaicode/current` at it and writes a
+`~/.local/bin/genaicode` shim. Nothing needs sudo. If `~/.local/bin` is not on your `PATH`,
+it prints the line to add to your shell profile. `GENAICODE_VERSION`, `GENAICODE_HOME` and
+`GENAICODE_BIN_DIR` change the version, the install directory and the bin directory.
+
+```bash
+genaicode update            # install the latest version now and print what changed
+genaicode update --check    # only say whether a newer version is out
+genaicode update --version 2.35.1
+genaicode update --auto off # stop the daily check (--auto on brings it back)
+```
+
+Once a day, a `genaicode` start looks for a new version in the npm registry, in a background
+process, so the command never waits on the network. A new version installs beside the
+running one and `current` switches over in one step, so running sessions are not disturbed
+and the next start uses it; that start prints one line with the old and new versions and
+the release notes link. The previous version and any still running are kept; older ones are removed.
+`GENAICODE_NO_AUTO_UPDATE=1` (and `CI`) skip the check for one run. Windows, `npx`, a global
+`npm install -g genaicode` and a project dependency update through npm as usual.
+
+To uninstall, remove `~/.genaicode` and `~/.local/bin/genaicode`.
 
 ## From the command line
 

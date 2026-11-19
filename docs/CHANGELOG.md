@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- An installer for the `genaicode` command (`curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh`) that keeps itself up to date: once a day a background check installs a new version beside the running one; `genaicode update [--check] [--version <v>] [--auto on|off]` updates by hand and prints the release notes (#202)
 - Ask an agent what is open across all of them: `genaicode chat --sessions` (and `ui --sessions`) gives the chat's agent the session index as MCP tools (`sessions_projects`, `sessions_list`, `sessions_read`), and `genaicode sessions mcp` serves them to any agent on stdio. In code: `sessionTools()` and `serveMcpStdio()` in `genaicode/agents` (#201)
 
 ## 2.35.1 — 2026-11-19

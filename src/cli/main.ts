@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { withFallback } from '../agents/failover.js';
@@ -33,6 +33,19 @@ import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
 import { createRenderer, describeResult, type Output } from './render.js';
+import {
+  autoUpdate,
+  backgroundUpdate,
+  defaultUpdateDeps,
+  findInstall,
+  INSTALL_SCRIPT_URL,
+  registerRun,
+  selfInstall,
+  setAutoUpdate,
+  stableCliPath,
+  updateInstall,
+  type UpdateDeps,
+} from './update.js';
 
 export interface CliEnvironment {
   argv: readonly string[];
@@ -54,6 +67,8 @@ export interface CliEnvironment {
   tty?: { stdin: NodeJS.ReadStream; stdout: NodeJS.WriteStream };
   /** Loads the bundled chat and web front ends. Defaults to `dist/ui/index.js`. */
   loadUi?(): Promise<UiModule>;
+  /** What `update` and the daily check use. Defaults to the npm registry and this package. */
+  updater?: Partial<UpdateDeps>;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
   runCheck?(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult>;
 }
@@ -125,6 +140,12 @@ Usage:
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
+  genaicode update [options]           Update the installed genaicode command
+
+Update options (for the command scripts/install.sh installs; npx and npm -g update through npm):
+      --check             Only say whether a newer version is out
+      --version <v>       Install this version instead of the latest
+      --auto on|off       Check daily and update in the background (default: on)
 
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
@@ -245,6 +266,26 @@ export async function main(cli: CliEnvironment): Promise<number> {
   if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
     command = { kind: 'chat', approveAll: false, open: false, web: false, mcpServers: [] };
   }
+
+  const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
+  const quick = ['help', 'version', 'update', 'self-install'].includes(command.kind);
+  // Machine-readable output and protocol servers get no banner and start no updater.
+  const machine = command.kind === 'acp' || command.kind === 'sessions-mcp' || ('json' in command && command.json);
+  if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
+  const unregister = quick ? () => {} : registerRun(updater.packageRoot);
+  try {
+    return await dispatch(cli, command, agents, updater);
+  } finally {
+    unregister();
+  }
+}
+
+function dispatch(
+  cli: CliEnvironment,
+  command: CliCommand,
+  agents: readonly CodingAgent[],
+  updater: UpdateDeps,
+): Promise<number> | number {
   switch (command.kind) {
     case 'help':
       cli.stdout.write(helpText);
@@ -261,7 +302,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
     case 'sessions-mcp':
       return serveSessions(cli, agents, command);
     case 'hooks':
-      return manageHooks(cli, command);
+      return manageHooks(cli, command, updater);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -271,6 +312,90 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return runEmbed(cli, agents, command);
     case 'acp':
       return runAcp(cli, agents, command);
+    case 'update':
+      return runUpdate(cli, updater, command);
+    case 'self-install':
+      return runSelfInstall(cli, updater, command);
+  }
+}
+
+async function runUpdate(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'update' }>,
+): Promise<number> {
+  if (options.background) {
+    await backgroundUpdate(deps);
+    return EXIT_OK;
+  }
+  const install = findInstall(deps.packageRoot);
+  if (!install) {
+    cli.stderr.write(
+      `This genaicode runs from ${deps.packageRoot}, not from the installed command.\n` +
+        'Update it with npm ("npm install -g genaicode@latest", or bump it in your project), ' +
+        `or install the command, which updates itself:\n  curl -fsSL ${INSTALL_SCRIPT_URL} | sh\n`,
+    );
+    return EXIT_FAILED;
+  }
+  if (options.auto !== undefined) {
+    setAutoUpdate(install, options.auto);
+    cli.stdout.write(`Automatic updates ${options.auto ? 'on' : 'off'}.\n`);
+    return EXIT_OK;
+  }
+  try {
+    const outcome = await updateInstall(install, deps, { tag: options.version, check: options.check });
+    switch (outcome.kind) {
+      case 'current':
+        cli.stdout.write(`genaicode ${outcome.version} is up to date.\n`);
+        return EXIT_OK;
+      case 'available':
+        cli.stdout.write(`genaicode ${outcome.to} is out (installed: ${outcome.from}). Run "genaicode update".\n`);
+        return EXIT_OK;
+      case 'busy':
+        cli.stderr.write('Another genaicode update is running; try again in a minute.\n');
+        return EXIT_FAILED;
+      case 'updated':
+        cli.stdout.write(`Updated genaicode ${outcome.from} → ${outcome.to}.\n`);
+        if (outcome.notes) {
+          const lines = outcome.notes.split('\n');
+          const shown = lines.length > 40 ? [...lines.slice(0, 40), '...'] : lines;
+          cli.stdout.write(`\n${shown.join('\n')}\n`);
+          if (lines.length > 40) {
+            cli.stdout.write('All changes: https://github.com/gtanczyk/genaicode/blob/master/docs/CHANGELOG.md\n');
+          }
+        }
+        return EXIT_OK;
+    }
+  } catch (error) {
+    cli.stderr.write(`Update failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
+  }
+}
+
+function runSelfInstall(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'self-install' }>,
+): number {
+  try {
+    const result = selfInstall({
+      packageRoot: deps.packageRoot,
+      binDir: options.binDir,
+      force: options.force,
+      env: cli.env,
+    });
+    cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
+    if (!result.onPath) {
+      const dir = dirname(result.shim);
+      cli.stdout.write(
+        `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
+          `  export PATH="${dir}:$PATH"\n`,
+      );
+    }
+    return EXIT_OK;
+  } catch (error) {
+    cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
   }
 }
 
@@ -445,12 +570,22 @@ function loadBundledUi(): Promise<UiModule> {
 
 const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 
-async function manageHooks(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'hooks' }>): Promise<number> {
+async function manageHooks(
+  cli: CliEnvironment,
+  command: Extract<CliCommand, { kind: 'hooks' }>,
+  updater: UpdateDeps,
+): Promise<number> {
   const known: readonly string[] = HOOK_AGENTS;
   if (command.agent !== undefined && !known.includes(command.agent)) {
     cli.stderr.write(`No hooks for agent "${command.agent}". Agents with hooks: ${known.join(', ')}.\n`);
     return EXIT_USAGE;
   }
+  // The installed command's hooks run `current`, which survives updates; otherwise this package.
+  const install = findInstall(updater.packageRoot);
+  const hookOptions = {
+    env: cli.env,
+    ...(install ? { command: `"${process.execPath}" "${stableCliPath(updater.packageRoot)}" hook` } : {}),
+  };
   const chosen = HOOK_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
   const installedHere = new Map(
     detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
@@ -464,16 +599,16 @@ async function manageHooks(cli: CliEnvironment, command: Extract<CliCommand, { k
           cli.stdout.write(`${agent}: not installed, skipped\n`);
           continue;
         }
-        const status = await installHooks(agent, { env: cli.env });
+        const status = await installHooks(agent, hookOptions);
         cli.stdout.write(`${agent}: hook added to ${status.file} (${status.events.join(', ')})\n`);
         if (agent === 'codex') cli.stdout.write('  Codex runs it once you trust it: open Codex and use /hooks.\n');
       } else if (command.action === 'uninstall') {
-        const removed = await uninstallHooks(agent, { env: cli.env });
+        const removed = await uninstallHooks(agent, hookOptions);
         cli.stdout.write(
           `${agent}: ${removed ? `hook removed from ${hooksFile(agent, cli.env)}` : 'no hook installed'}\n`,
         );
       } else {
-        const status = await hooksStatus(agent, { env: cli.env });
+        const status = await hooksStatus(agent, hookOptions);
         const state = status.installed
           ? 'installed'
           : status.events.length
