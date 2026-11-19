@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.35.1 — 2026-11-19
+
 ### Fixed
 
 - Copilot CLI sessions that were opened and left with nothing said (no event log, unknown to the CLI's index) are no longer listed, so `sessions doctor` no longer reports Copilot's store as broken because of them; the Cursor reader is stamped as checked with Cursor agent 2026.10.22 (#199)
