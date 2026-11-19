@@ -35,6 +35,8 @@ export const PACKAGE_NAME = 'genaicode';
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** A lock older than this was left by an updater that died. */
 const STALE_LOCK_MS = 10 * 60 * 1000;
+/** A plain semver, safe as a directory name. */
+const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SHIM_MARKER = '# genaicode shim (scripts/install.sh)';
 
 export interface Install {
@@ -119,7 +121,7 @@ export function readState(home: string): UpdateState {
   return readJson<UpdateState>(join(home, 'update.json')) ?? {};
 }
 
-function writeState(home: string, state: UpdateState): void {
+export function writeState(home: string, state: UpdateState): void {
   writeJson(join(home, 'update.json'), state);
 }
 
@@ -195,9 +197,14 @@ export function selfInstall(options: {
   const cli = join(home, 'current', 'node_modules', PACKAGE_NAME, 'dist', 'cli.js');
   // Write beside it and rename over: an existing symlink is replaced, not followed.
   const next = `${shim}.${process.pid}.tmp`;
-  writeFileSync(next, `#!/bin/sh\n${SHIM_MARKER}\nexec node ${shellQuote(cli)} "$@"\n`);
-  chmodSync(next, 0o755);
-  renameSync(next, shim);
+  try {
+    writeFileSync(next, `#!/bin/sh\n${SHIM_MARKER}\nexec node ${shellQuote(cli)} "$@"\n`);
+    chmodSync(next, 0o755);
+    renameSync(next, shim);
+  } catch (error) {
+    rmSync(next, { force: true });
+    throw error;
+  }
   const onPath = (options.env.PATH ?? '').split(delimiter).some((entry) => entry && resolve(entry) === binDir);
   return { home, version: readVersion(root), shim, onPath };
 }
@@ -212,14 +219,17 @@ export type UpdateOutcome =
 export async function updateInstall(
   install: Install,
   deps: UpdateDeps,
-  options: { tag?: string; check?: boolean } = {},
+  options: { tag?: string; check?: boolean; background?: boolean } = {},
 ): Promise<UpdateOutcome> {
   const target = await deps.resolveVersion(options.tag ?? 'latest');
+  if (!VERSION.test(target)) throw new Error(`"${target}" is not a version`);
   const from = currentVersion(install);
   const state = readState(install.home);
-  if (options.check || target === from) {
+  // `latest` never moves a pre-release or a newer pin back; an explicit --version may.
+  const current = options.tag === undefined ? compareVersions(target, from) <= 0 : target === from;
+  if (options.check || current) {
     writeState(install.home, { ...state, checkedAt: deps.now(), error: undefined });
-    return target === from ? { kind: 'current', version: from } : { kind: 'available', from, to: target };
+    return current ? { kind: 'current', version: from } : { kind: 'available', from, to: target };
   }
   const unlock = lock(install.home, deps.now());
   if (!unlock) return { kind: 'busy' };
@@ -243,7 +253,8 @@ export async function updateInstall(
     prune(versions, [target, from, install.version]);
     writeState(install.home, {
       checkedAt: deps.now(),
-      updated: { from, to: target, at: deps.now() },
+      // A start reports a background update once; a manual one was reported just now.
+      updated: { from, to: target, at: deps.now(), ...(options.background ? {} : { shown: true }) },
     });
     const changelog = readText(join(dir, 'node_modules', PACKAGE_NAME, 'docs', 'CHANGELOG.md'));
     return { kind: 'updated', from, to: target, notes: changelog ? releaseNotes(changelog, from, target) : '' };
@@ -285,16 +296,17 @@ export function autoUpdate(deps: UpdateDeps, notice: (line: string) => void): vo
  * Records that this process runs its version (`<home>/running/<pid>`), so an update started
  * elsewhere does not remove files a long chat still loads on demand. Dead entries go at pruning.
  */
-export function registerRun(packageRoot: string): void {
+export function registerRun(packageRoot: string): () => void {
   const install = findInstall(packageRoot);
-  if (!install) return;
+  if (!install) return () => {};
+  const file = join(install.home, 'running', String(process.pid));
   try {
-    const dir = join(install.home, 'running');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, String(process.pid)), install.version);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, install.version);
   } catch {
     // Without the record the version may be pruned early; the command still runs.
   }
+  return () => rmSync(file, { force: true });
 }
 
 /** Versions that live processes run; removes the records of processes that are gone. */
@@ -330,7 +342,7 @@ function isAlive(pid: number): boolean {
 }
 
 export function autoUpdateEnabled(install: Install, env: NodeJS.ProcessEnv): boolean {
-  if (env.GENAICODE_NO_AUTO_UPDATE || env.CI) return false;
+  if (truthy(env.GENAICODE_NO_AUTO_UPDATE) || truthy(env.CI)) return false;
   return readConfig(install.home).autoUpdate !== false;
 }
 
@@ -343,7 +355,7 @@ export async function backgroundUpdate(deps: UpdateDeps): Promise<void> {
   const install = findInstall(deps.packageRoot);
   if (!install) return;
   try {
-    await updateInstall(install, deps);
+    await updateInstall(install, deps, { background: true });
   } catch (error) {
     writeState(install.home, {
       ...readState(install.home),
@@ -408,7 +420,9 @@ function lock(home: string, now: number): (() => void) | undefined {
 }
 
 async function registryVersion(tag: string, env: NodeJS.ProcessEnv): Promise<string> {
-  if (/^\d+\.\d+\.\d+/.test(tag)) return tag.replace(/^v/, '');
+  const pinned = tag.replace(/^v(?=\d)/, '');
+  if (VERSION.test(pinned)) return pinned;
+  if (!/^[A-Za-z][\w.-]*$/.test(tag)) throw new Error(`"${tag}" is neither a version nor a dist-tag`);
   const registry = (env.npm_config_registry || env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org').replace(
     /\/+$/,
     '',
@@ -419,7 +433,7 @@ async function registryVersion(tag: string, env: NodeJS.ProcessEnv): Promise<str
   });
   if (!response.ok) throw new Error(`${registry} answered ${response.status} for ${PACKAGE_NAME}@${tag}`);
   const { version } = (await response.json()) as { version?: string };
-  if (!version) throw new Error(`${registry} has no ${PACKAGE_NAME}@${tag}`);
+  if (!version || !VERSION.test(version)) throw new Error(`${registry} has no ${PACKAGE_NAME}@${tag}`);
   return version;
 }
 
@@ -450,6 +464,11 @@ function npmInstall(prefix: string, spec: string, env: NodeJS.ProcessEnv): Promi
       code === 0 ? done() : fail(new Error(`npm install ${spec} failed (${code}): ${stderr.trim()}`)),
     );
   });
+}
+
+/** Set and not "0", "false" or "no". */
+function truthy(value: string | undefined): boolean {
+  return value !== undefined && value !== '' && !/^(0|false|no|off)$/i.test(value);
 }
 
 function shellQuote(value: string): string {

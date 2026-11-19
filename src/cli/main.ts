@@ -249,16 +249,30 @@ export async function main(cli: CliEnvironment): Promise<number> {
     return EXIT_USAGE;
   }
 
-  const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
-  if (command.kind !== 'update' && command.kind !== 'self-install') registerRun(updater.packageRoot);
-  if (command.kind !== 'update' && command.kind !== 'self-install' && command.kind !== 'acp') {
-    autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
-  }
-
   const agents = cli.agents ?? defaultAgents();
   if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
     command = { kind: 'chat', approveAll: false, open: false, web: false, mcpServers: [] };
   }
+
+  const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
+  const quick = ['help', 'version', 'update', 'self-install'].includes(command.kind);
+  // Machine-readable output and protocol servers get no banner and start no updater.
+  const machine = command.kind === 'acp' || ('json' in command && command.json);
+  if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
+  const unregister = quick ? () => {} : registerRun(updater.packageRoot);
+  try {
+    return await dispatch(cli, command, agents, updater);
+  } finally {
+    unregister();
+  }
+}
+
+function dispatch(
+  cli: CliEnvironment,
+  command: CliCommand,
+  agents: readonly CodingAgent[],
+  updater: UpdateDeps,
+): Promise<number> | number {
   switch (command.kind) {
     case 'help':
       cli.stdout.write(helpText);
@@ -327,7 +341,14 @@ async function runUpdate(
         return EXIT_FAILED;
       case 'updated':
         cli.stdout.write(`Updated genaicode ${outcome.from} → ${outcome.to}.\n`);
-        if (outcome.notes) cli.stdout.write(`\n${outcome.notes}\n`);
+        if (outcome.notes) {
+          const lines = outcome.notes.split('\n');
+          const shown = lines.length > 40 ? [...lines.slice(0, 40), '...'] : lines;
+          cli.stdout.write(`\n${shown.join('\n')}\n`);
+          if (lines.length > 40) {
+            cli.stdout.write('All changes: https://github.com/gtanczyk/genaicode/blob/master/docs/CHANGELOG.md\n');
+          }
+        }
         return EXIT_OK;
     }
   } catch (error) {

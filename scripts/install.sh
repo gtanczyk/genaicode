@@ -31,7 +31,9 @@ major=$(node -p "process.versions.node.split('.')[0]")
 
 mkdir -p "$HOME_DIR/versions"
 staging="$HOME_DIR/versions/.staging-install-$$"
-trap 'rm -rf "$staging"' EXIT INT TERM
+trap 'rm -rf "$staging"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 rm -rf "$staging"
 mkdir -p "$staging"
 
@@ -41,14 +43,22 @@ npm install --prefix "$staging" --omit=dev --ignore-scripts --no-audit --no-fund
 
 pkg="$staging/node_modules/genaicode"
 [ -f "$pkg/dist/cli.js" ] || fail "npm did not install genaicode"
-installed=$(node -p "require(process.argv[1]).version" "$pkg/package.json")
+installed=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).version" "$pkg/package.json")
 
 target="$HOME_DIR/versions/$installed"
-rm -rf "$target"
-mv "$staging" "$target"
+if [ -f "$target/node_modules/genaicode/dist/cli.js" ]; then
+  # Already there, maybe in use by a running session: keep it, drop the fresh copy.
+  echo "genaicode $installed is already installed; relinking it"
+else
+  rm -rf "$target"
+  mv "$staging" "$target"
+fi
 
 force=""
-[ -n "${GENAICODE_FORCE:-}" ] && force="--force"
+case "${GENAICODE_FORCE:-}" in
+  "" | 0 | false | no) ;;
+  *) force="--force" ;;
+esac
 # shellcheck disable=SC2086
 node "$target/node_modules/genaicode/dist/cli.js" self-install --bin-dir "$BIN_DIR" $force
 

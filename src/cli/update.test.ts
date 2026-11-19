@@ -22,6 +22,7 @@ import {
   findInstall,
   readState,
   registerRun,
+  writeState,
   releaseNotes,
   selfInstall,
   stableCliPath,
@@ -217,8 +218,32 @@ describe('updateInstall', () => {
 
   it('records the version a process runs', () => {
     const { home, root } = installed();
-    registerRun(root);
+    const unregister = registerRun(root);
     expect(readFileSync(join(home, 'running', String(process.pid)), 'utf8')).toBe('2.35.0');
+    unregister();
+    expect(existsSync(join(home, 'running', String(process.pid)))).toBe(false);
+  });
+
+  it('does not move a newer version back to latest unless asked', async () => {
+    const { deps, npm } = installed('2.37.0-rc.1');
+    const install = findInstall(deps.packageRoot)!;
+    expect(await updateInstall(install, deps)).toEqual({ kind: 'current', version: '2.37.0-rc.1' });
+    expect(await updateInstall(install, deps, { tag: '2.36.0' })).toMatchObject({ kind: 'updated', to: '2.36.0' });
+    expect(npm).toEqual(['genaicode@2.36.0']);
+  });
+
+  it('refuses a target that is not a version', async () => {
+    const { deps } = installed();
+    deps.resolveVersion = async () => '1.0.0/../../x';
+    await expect(updateInstall(findInstall(deps.packageRoot)!, deps)).rejects.toThrow(/not a version/);
+  });
+
+  it('does not repeat a manual update at the next start', async () => {
+    const { deps } = installed();
+    await updateInstall(findInstall(deps.packageRoot)!, deps);
+    const lines: string[] = [];
+    autoUpdate(deps, (line) => lines.push(line));
+    expect(lines).toEqual([]);
   });
 
   it('steps aside while another update holds the lock', async () => {
@@ -247,6 +272,10 @@ describe('autoUpdate', () => {
     deps.now = () => Date.now() + 2 * CHECK_INTERVAL_MS;
     autoUpdate({ ...deps, env: { GENAICODE_NO_AUTO_UPDATE: '1' } }, () => {});
     autoUpdate({ ...deps, env: { CI: 'true' } }, () => {});
+    autoUpdate({ ...deps, env: { CI: 'false', GENAICODE_NO_AUTO_UPDATE: '0' } }, () => {});
+    expect(spawned).toHaveLength(1);
+    spawned.length = 0;
+    writeState(home, {});
     writeFileSync(join(home, 'install.json'), JSON.stringify({ autoUpdate: false }));
     autoUpdate(deps, () => {});
     autoUpdate({ ...deps, packageRoot: process.cwd() }, () => {});
@@ -255,7 +284,7 @@ describe('autoUpdate', () => {
 
   it('reports a background update once', async () => {
     const { deps } = installed();
-    await updateInstall(findInstall(deps.packageRoot)!, deps);
+    await updateInstall(findInstall(deps.packageRoot)!, deps, { background: true });
     const lines: string[] = [];
     autoUpdate(deps, (line) => lines.push(line));
     autoUpdate(deps, (line) => lines.push(line));
@@ -295,6 +324,18 @@ describe('genaicode update', () => {
     expect((await run(['update', '--auto', 'off'], deps)).stdout).toBe('Automatic updates off.\n');
     expect(JSON.parse(readFileSync(join(home, 'install.json'), 'utf8')).autoUpdate).toBe(false);
     expect((await run(['update', '--auto', 'maybe'], deps)).code).toBe(2);
+  });
+
+  it('checks for updates on commands, not on --json, --version or help', async () => {
+    const { deps, spawned, home } = installed();
+    deps.now = () => Date.now() + 2 * CHECK_INTERVAL_MS;
+    await run(['agents', '--json'], deps);
+    await run(['--version'], deps);
+    await run(['help'], deps);
+    expect(spawned).toEqual([]);
+    await run(['agents'], deps);
+    expect(spawned).toHaveLength(1);
+    expect(existsSync(join(home, 'running', String(process.pid)))).toBe(false);
   });
 
   it('points npx and npm installs at npm and the installer', async () => {

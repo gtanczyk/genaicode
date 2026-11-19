@@ -5,10 +5,10 @@ separate packages to shrink the default install.
 
 ## Current shape
 
-| Package surface       | Role                                 |
-| --------------------- | ------------------------------------ |
-| `genaicode`           | Core client, IR, plugins, middleware |
-| `genaicode/providers` | Adapters + public converters         |
+| Package surface        | Role                                      |
+| ---------------------- | ----------------------------------------- |
+| `genaicode`            | Core client, IR, plugins, middleware      |
+| `genaicode/providers`  | Adapters + public converters              |
 
 Hard dependencies today (approximate installed sizes in this repo's lockfile):
 
