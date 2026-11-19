@@ -146,6 +146,7 @@ describe('parseCli', () => {
     expect(parseCli(['ui'])).not.toHaveProperty('sessions');
     const launches: UiLaunch[] = [];
     let listed: string | undefined;
+    let told: string | undefined;
     const loadUi = async () => ({
       runChat: async () => 0,
       runWeb: async (launch: UiLaunch) => {
@@ -156,6 +157,12 @@ describe('parseCli', () => {
           headers: { ...server.headers, 'content-type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_list' } }),
         });
+        const hello = await fetch(server.url, {
+          method: 'POST',
+          headers: { ...server.headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'initialize', params: {} }),
+        });
+        told = ((await hello.json()) as { result: { instructions?: string } }).result.instructions;
         listed = ((await response.json()) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text;
         return 0;
       },
@@ -183,6 +190,8 @@ describe('parseCli', () => {
     // The Sessions view and /continue read every store too.
     expect(launches[0]!.sessionSources!.map((source) => source.name)).toEqual(['plain', 'mcp']);
     // The agent without MCP cannot be chatted with here, but its sessions are in the index.
+    // The agent is told to ask the index, not its own session listing.
+    expect(told).toContain('sessions_list');
     expect(listed).toContain('- plain plain-1');
     expect(listed).toContain('- mcp mcp-1');
 

@@ -24,7 +24,7 @@ import {
   listSessions,
   readSession,
 } from '../agents/sessions/index.js';
-import { serveMcpStdio, sessionTools } from '../agents/sessions/tools.js';
+import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin } from '../agents/sessions/files.js';
@@ -500,6 +500,7 @@ async function runUi(
     ? await startLocalMcpServer({
         name: 'sessions',
         tools: sessionTools(indexed, { env: cli.env }),
+        instructions: SESSION_TOOLS_INSTRUCTIONS,
       })
     : undefined;
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];

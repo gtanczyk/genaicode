@@ -30,17 +30,20 @@ const DEFAULT_PROTOCOL = '2025-06-18';
 export async function handleMcpMessage(
   message: unknown,
   tools: readonly McpTool[],
-  serverInfo: { name: string; version: string },
+  serverInfo: { name: string; version: string; instructions?: string },
 ): Promise<object | null> {
   if (!isRequest(message)) return rpcError(null, -32600, 'invalid request');
   const { id, method, params } = message;
+  const { instructions, ...info } = serverInfo;
   if (id === undefined) return null;
   switch (method) {
     case 'initialize':
       return result(id, {
         protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : DEFAULT_PROTOCOL,
         capabilities: { tools: { listChanged: false } },
-        serverInfo,
+        serverInfo: info,
+        // When to reach for these tools: agents put it in front of their model.
+        ...(instructions ? { instructions } : {}),
       });
     case 'ping':
       return result(id, {});

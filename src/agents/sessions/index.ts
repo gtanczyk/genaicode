@@ -33,7 +33,7 @@ export { HOOK_AGENTS, hookCommand, hooksFile, hooksStatus, installHooks, uninsta
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
-export { serveMcpStdio, sessionTools } from './tools.js';
+export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
 export type { SessionToolsOptions } from './tools.js';
 export type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource, SessionActivity } from './types.js';
 
