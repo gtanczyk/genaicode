@@ -36,6 +36,7 @@ import {
   defaultUpdateDeps,
   findInstall,
   INSTALL_SCRIPT_URL,
+  registerRun,
   selfInstall,
   setAutoUpdate,
   stableCliPath,
@@ -249,6 +250,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
+  if (command.kind !== 'update' && command.kind !== 'self-install') registerRun(updater.packageRoot);
   if (command.kind !== 'update' && command.kind !== 'self-install' && command.kind !== 'acp') {
     autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
   }

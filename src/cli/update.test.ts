@@ -10,6 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,6 +21,7 @@ import {
   compareVersions,
   findInstall,
   readState,
+  registerRun,
   releaseNotes,
   selfInstall,
   stableCliPath,
@@ -197,6 +199,26 @@ describe('updateInstall', () => {
     await updateInstall(findInstall(deps.packageRoot)!, deps);
     expect(existsSync(join(home, 'versions', '2.30.0'))).toBe(false);
     expect(existsSync(join(home, 'versions', '2.35.0'))).toBe(true);
+  });
+
+  it('keeps versions that live processes still run', async () => {
+    const { home, deps } = installed();
+    writePackage(join(home, 'versions', '2.30.0'), '2.30.0');
+    writePackage(join(home, 'versions', '2.31.0'), '2.31.0');
+    mkdirSync(join(home, 'running'));
+    writeFileSync(join(home, 'running', String(process.pid)), '2.30.0');
+    const dead = spawnSync(process.execPath, ['-e', '']).pid!;
+    writeFileSync(join(home, 'running', String(dead)), '2.31.0');
+    await updateInstall(findInstall(deps.packageRoot)!, deps);
+    expect(existsSync(join(home, 'versions', '2.30.0'))).toBe(true);
+    expect(existsSync(join(home, 'versions', '2.31.0'))).toBe(false);
+    expect(existsSync(join(home, 'running', String(dead)))).toBe(false);
+  });
+
+  it('records the version a process runs', () => {
+    const { home, root } = installed();
+    registerRun(root);
+    expect(readFileSync(join(home, 'running', String(process.pid)), 'utf8')).toBe('2.35.0');
   });
 
   it('steps aside while another update holds the lock', async () => {

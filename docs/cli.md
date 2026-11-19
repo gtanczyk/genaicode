@@ -29,7 +29,7 @@ Once a day, a `genaicode` start looks for a new version in the npm registry, in 
 process, so the command never waits on the network. A new version installs beside the
 running one and `current` switches over in one step, so running sessions are not disturbed
 and the next start uses it; that start prints one line with the old and new versions and
-the release notes link. The previous version is kept; older ones are removed.
+the release notes link. The previous version and any still running are kept; older ones are removed.
 `GENAICODE_NO_AUTO_UPDATE=1` (and `CI`) skip the check for one run. Windows, `npx`, a global
 `npm install -g genaicode` and a project dependency update through npm as usual.
 

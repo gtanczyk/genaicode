@@ -281,6 +281,54 @@ export function autoUpdate(deps: UpdateDeps, notice: (line: string) => void): vo
   }
 }
 
+/**
+ * Records that this process runs its version (`<home>/running/<pid>`), so an update started
+ * elsewhere does not remove files a long chat still loads on demand. Dead entries go at pruning.
+ */
+export function registerRun(packageRoot: string): void {
+  const install = findInstall(packageRoot);
+  if (!install) return;
+  try {
+    const dir = join(install.home, 'running');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, String(process.pid)), install.version);
+  } catch {
+    // Without the record the version may be pruned early; the command still runs.
+  }
+}
+
+/** Versions that live processes run; removes the records of processes that are gone. */
+function runningVersions(home: string): string[] {
+  const dir = join(home, 'running');
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const versions: string[] = [];
+  for (const entry of entries) {
+    const pid = Number(entry);
+    const file = join(dir, entry);
+    if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
+      const version = readText(file)?.trim();
+      if (version) versions.push(version);
+    } else {
+      rmSync(file, { force: true });
+    }
+  }
+  return versions;
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 export function autoUpdateEnabled(install: Install, env: NodeJS.ProcessEnv): boolean {
   if (env.GENAICODE_NO_AUTO_UPDATE || env.CI) return false;
   return readConfig(install.home).autoUpdate !== false;
@@ -334,8 +382,9 @@ function pointCurrent(home: string, version: string): void {
 
 /** Removes versions other than `keep` (and any staging left by a crashed update). */
 function prune(versions: string, keep: readonly string[]): void {
+  const inUse = new Set([...keep, ...runningVersions(dirname(versions))]);
   for (const entry of readdirSync(versions)) {
-    if (keep.includes(entry)) continue;
+    if (inUse.has(entry)) continue;
     if (!/^\d+\.\d+\.\d+/.test(entry) && !entry.startsWith('.staging-')) continue;
     if (entry.startsWith('.staging-') && entry.endsWith(`-${process.pid}`)) continue;
     rmSync(join(versions, entry), { recursive: true, force: true });
