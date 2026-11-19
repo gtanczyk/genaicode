@@ -38,6 +38,7 @@ import {
   INSTALL_SCRIPT_URL,
   selfInstall,
   setAutoUpdate,
+  stableCliPath,
   updateInstall,
   type UpdateDeps,
 } from './update.js';
@@ -270,7 +271,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
     case 'doctor':
       return checkStores(cli, agents, command);
     case 'hooks':
-      return manageHooks(cli, command);
+      return manageHooks(cli, command, updater);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -485,12 +486,22 @@ function loadBundledUi(): Promise<UiModule> {
 
 const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 
-async function manageHooks(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'hooks' }>): Promise<number> {
+async function manageHooks(
+  cli: CliEnvironment,
+  command: Extract<CliCommand, { kind: 'hooks' }>,
+  updater: UpdateDeps,
+): Promise<number> {
   const known: readonly string[] = HOOK_AGENTS;
   if (command.agent !== undefined && !known.includes(command.agent)) {
     cli.stderr.write(`No hooks for agent "${command.agent}". Agents with hooks: ${known.join(', ')}.\n`);
     return EXIT_USAGE;
   }
+  // The installed command's hooks run `current`, which survives updates; otherwise this package.
+  const install = findInstall(updater.packageRoot);
+  const hookOptions = {
+    env: cli.env,
+    ...(install ? { command: `"${process.execPath}" "${stableCliPath(updater.packageRoot)}" hook` } : {}),
+  };
   const chosen = HOOK_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
   const installedHere = new Map(
     detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
@@ -504,16 +515,16 @@ async function manageHooks(cli: CliEnvironment, command: Extract<CliCommand, { k
           cli.stdout.write(`${agent}: not installed, skipped\n`);
           continue;
         }
-        const status = await installHooks(agent, { env: cli.env });
+        const status = await installHooks(agent, hookOptions);
         cli.stdout.write(`${agent}: hook added to ${status.file} (${status.events.join(', ')})\n`);
         if (agent === 'codex') cli.stdout.write('  Codex runs it once you trust it: open Codex and use /hooks.\n');
       } else if (command.action === 'uninstall') {
-        const removed = await uninstallHooks(agent, { env: cli.env });
+        const removed = await uninstallHooks(agent, hookOptions);
         cli.stdout.write(
           `${agent}: ${removed ? `hook removed from ${hooksFile(agent, cli.env)}` : 'no hook installed'}\n`,
         );
       } else {
-        const status = await hooksStatus(agent, { env: cli.env });
+        const status = await hooksStatus(agent, hookOptions);
         const state = status.installed
           ? 'installed'
           : status.events.length

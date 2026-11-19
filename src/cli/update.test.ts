@@ -1,11 +1,13 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,6 +22,7 @@ import {
   readState,
   releaseNotes,
   selfInstall,
+  stableCliPath,
   updateInstall,
   type UpdateDeps,
 } from './update.js';
@@ -125,6 +128,23 @@ describe('selfInstall', () => {
     expect(() => selfInstall({ packageRoot: root, binDir, env: { HOME: base } })).toThrow(/not the genaicode shim/);
     selfInstall({ packageRoot: root, binDir, env: { HOME: base }, force: true });
     expect(readFileSync(join(binDir, 'genaicode'), 'utf8')).toContain('genaicode shim');
+  });
+
+  it('replaces a symlinked genaicode instead of writing through it', () => {
+    const { root, binDir, base } = installed();
+    const target = join(base, 'npm-cli.js');
+    writeFileSync(target, 'original');
+    rmSync(join(binDir, 'genaicode'));
+    symlinkSync(target, join(binDir, 'genaicode'));
+    selfInstall({ packageRoot: root, binDir, env: { HOME: base }, force: true });
+    expect(readFileSync(target, 'utf8')).toBe('original');
+    expect(lstatSync(join(binDir, 'genaicode')).isSymbolicLink()).toBe(false);
+  });
+
+  it('gives hooks a cli.js path under current', () => {
+    const { root, home } = installed();
+    expect(stableCliPath(root)).toBe(join(home, 'current', 'node_modules', 'genaicode', 'dist', 'cli.js'));
+    expect(stableCliPath('/repo')).toBe(join('/repo', 'dist', 'cli.js'));
   });
 
   it('refuses outside an install layout', () => {

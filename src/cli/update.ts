@@ -123,6 +123,17 @@ function writeState(home: string, state: UpdateState): void {
   writeJson(join(home, 'update.json'), state);
 }
 
+/**
+ * The `cli.js` path that outlives updates: under `current`, for the installed command, so hooks
+ * written into agents' settings keep working after older versions are removed.
+ */
+export function stableCliPath(packageRoot: string): string {
+  const install = findInstall(packageRoot);
+  return install
+    ? join(install.home, 'current', 'node_modules', PACKAGE_NAME, 'dist', 'cli.js')
+    : join(packageRoot, 'dist', 'cli.js');
+}
+
 /** -1, 0 or 1. Pre-release suffixes sort before the release. */
 export function compareVersions(a: string, b: string): number {
   const parse = (v: string) => {
@@ -182,8 +193,11 @@ export function selfInstall(options: {
   writeState(home, { checkedAt: Date.now() });
   mkdirSync(binDir, { recursive: true });
   const cli = join(home, 'current', 'node_modules', PACKAGE_NAME, 'dist', 'cli.js');
-  writeFileSync(shim, `#!/bin/sh\n${SHIM_MARKER}\nexec node ${shellQuote(cli)} "$@"\n`);
-  chmodSync(shim, 0o755);
+  // Write beside it and rename over: an existing symlink is replaced, not followed.
+  const next = `${shim}.${process.pid}.tmp`;
+  writeFileSync(next, `#!/bin/sh\n${SHIM_MARKER}\nexec node ${shellQuote(cli)} "$@"\n`);
+  chmodSync(next, 0o755);
+  renameSync(next, shim);
   const onPath = (options.env.PATH ?? '').split(delimiter).some((entry) => entry && resolve(entry) === binDir);
   return { home, version: readVersion(root), shim, onPath };
 }
