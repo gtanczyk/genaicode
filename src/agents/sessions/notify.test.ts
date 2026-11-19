@@ -47,6 +47,10 @@ describe('notifications', () => {
     });
     expect(noticeFor(asks, again, on)).toBeUndefined();
     expect(noticeFor(record({}), asks, { approval: false, done: false })).toBeUndefined();
+    // A reminder first, then the request that names its tool: one question.
+    const reminder = record({ state: 'approval', asks: [{}] });
+    expect(noticeFor(record({}), reminder, on)).toEqual({ title: 'claude asks for approval', body: 'api: a tool' });
+    expect(noticeFor(reminder, asks, on)).toBeUndefined();
   });
 
   it('tells of a turn that ended only when asked to', () => {

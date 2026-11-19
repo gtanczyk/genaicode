@@ -52,9 +52,14 @@ export function noticeFor(
 ): Notice | undefined {
   const project = after.cwd ? path.basename(after.cwd) || after.cwd : 'a session';
   if (after.state === 'approval' && settings.approval) {
-    const known = new Set(before?.state === 'approval' ? (before.asks ?? [{}]).map(askId) : []);
+    const asked = before?.state === 'approval' ? (before.asks ?? [{}]) : [];
+    const known = new Set(asked.map(askId));
     // A reminder of a question already known, or one more hook about it, is no news.
     const fresh = (after.asks ?? [{}]).filter((ask) => !known.has(askId(ask)));
+    // Nor is the request that names the tool of a question a reminder told of already: it takes its place.
+    const unnamed = (asks: readonly LiveAsk[]) => asks.filter((ask) => ask.tool === undefined).length;
+    const replaced = Math.max(0, unnamed(asked) - unnamed(after.asks ?? [{}]));
+    fresh.splice(0, Math.min(replaced, fresh.length));
     if (!fresh.length) return undefined;
     const tool = [...fresh].reverse().find((ask) => ask.tool)?.tool;
     return { title: `${after.agent} asks for approval`, body: `${project}: ${tool ?? 'a tool'}` };
