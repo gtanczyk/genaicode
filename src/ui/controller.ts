@@ -4,6 +4,7 @@ import type { ArtifactStore } from '../agents/artifacts.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
 import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
 import { isWithin } from '../agents/sessions/files.js';
+import type { SessionSource } from '../agents/sessions/types.js';
 import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
@@ -48,6 +49,11 @@ export type ChatSource = 'terminal' | 'web';
 
 export interface ChatOptions {
   agents: readonly CodingAgent[];
+  /**
+   * The stores the Sessions view, `/continue` and `--from` read. Default: those of `agents`. Give
+   * more when `agents` is narrowed (to the ones that take MCP servers, say).
+   */
+  sessionSources?: readonly SessionSource[];
   /** Agent to start with. Default: the first installed one. */
   agent?: string;
   cwd: string;
@@ -302,7 +308,7 @@ export function createChatController(options: ChatOptions): ChatController {
   };
 
   const continueSession = async (id: string): Promise<boolean> => {
-    const sources = agentSessionSources(options.agents);
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
     try {
       const found = await findSession(sources, id, { env });
       if (!found) {

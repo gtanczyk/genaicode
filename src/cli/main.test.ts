@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
@@ -138,6 +139,65 @@ describe('parseCli', () => {
     const refused = environment({ argv: [...argv, '-a', 'plain'], agents: [plain, mcp], loadUi });
     expect(await main(refused.cli)).toBe(EXIT_USAGE);
     expect(refused.err()).toContain('does not support MCP servers');
+  });
+
+  it('gives chat --sessions the session index of every agent as an MCP server', async () => {
+    expect(parseCli(['chat', '--sessions'])).toMatchObject({ sessions: true });
+    expect(parseCli(['ui'])).not.toHaveProperty('sessions');
+    const launches: UiLaunch[] = [];
+    let listed: string | undefined;
+    const loadUi = async () => ({
+      runChat: async () => 0,
+      runWeb: async (launch: UiLaunch) => {
+        launches.push(launch);
+        const server = launch.task!.mcpServers![0] as { url: string; headers: Record<string, string> };
+        const response = await fetch(server.url, {
+          method: 'POST',
+          headers: { ...server.headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_list' } }),
+        });
+        listed = ((await response.json()) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text;
+        return 0;
+      },
+    });
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-index-'));
+    dirs.push(home);
+    const stub = (name: string, mcp: boolean): CodingAgent => ({
+      name,
+      command: name,
+      capabilities: { mcp },
+      sessions: {
+        name,
+        where: 'local',
+        list: async () => [{ source: name, agent: name, id: `${name}-1`, where: 'local', updatedAt: Date.now() }],
+      },
+      run: () => {
+        throw new Error('not run');
+      },
+    });
+    const agents = [stub('plain', false), stub('mcp', true)];
+    const { cli } = environment({ argv: ['ui', '--sessions'], env: { HOME: home, PATH: '' }, agents, loadUi });
+    expect(await main(cli)).toBe(EXIT_OK);
+    expect(launches[0]!.agents.map((agent) => agent.name)).toEqual(['mcp']);
+    expect(launches[0]!.task!.mcpServers).toMatchObject([{ name: 'sessions' }]);
+    // The Sessions view and /continue read every store too.
+    expect(launches[0]!.sessionSources!.map((source) => source.name)).toEqual(['plain', 'mcp']);
+    // The agent without MCP cannot be chatted with here, but its sessions are in the index.
+    expect(listed).toContain('- plain plain-1');
+    expect(listed).toContain('- mcp mcp-1');
+
+    const refused = environment({ argv: ['ui', '--sessions', '-a', 'plain'], agents, loadUi });
+    expect(await main(refused.cli)).toBe(EXIT_USAGE);
+    expect(refused.err()).toContain('(--sessions)');
+
+    const twice = environment({
+      argv: ['chat', '--sessions', '--mcp', 'sessions=http://127.0.0.1:1/mcp'],
+      agents,
+      loadUi,
+      interactive: true,
+    });
+    expect(await main(twice.cli)).toBe(EXIT_USAGE);
+    expect(twice.err()).toContain('named "sessions"');
   });
 
   it('treats a missing or "-" prompt as stdin', () => {
@@ -385,6 +445,42 @@ describe('genaicode sessions doctor', () => {
     const broken = await run();
     expect(broken.code).toBe(EXIT_FAILED);
     expect(broken.out).toContain('! only 0 of the 6 newest sessions have a prompt or a title');
+  });
+});
+
+describe('genaicode sessions mcp', () => {
+  it('parses, and refuses the options of the listing', () => {
+    expect(parseCli(['sessions', 'mcp'])).toEqual({ kind: 'sessions-mcp' });
+    expect(parseCli(['sessions', 'mcp', '-a', 'codex'])).toEqual({ kind: 'sessions-mcp', agent: 'codex' });
+    expect(() => parseCli(['sessions', 'mcp', '--json'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'mcp', '--since', '7d'])).toThrow(UsageError);
+  });
+
+  it('serves the tools on stdio until the input ends', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-index-'));
+    dirs.push(home);
+    const agent = {
+      ...fakeAgent('alpha', []),
+      sessions: {
+        name: 'alpha',
+        where: 'local' as const,
+        list: async () => [
+          { source: 'alpha', agent: 'alpha', id: 's1', where: 'local' as const, updatedAt: Date.now(), cwd: '/work' },
+        ],
+      },
+    };
+    const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_projects' } };
+    const { cli, out } = environment({
+      argv: ['sessions', 'mcp'],
+      env: { HOME: home, PATH: '' },
+      agents: [agent],
+      input: Readable.from([`${JSON.stringify(call)}\n`]),
+    });
+    expect(await main(cli)).toBe(EXIT_OK);
+    expect(JSON.parse(out()).result.content[0].text).toContain('work  /work');
+
+    const none = environment({ argv: ['sessions', 'mcp', '-a', 'nobody'], agents: [agent] });
+    expect(await main(none.cli)).toBe(EXIT_USAGE);
   });
 });
 

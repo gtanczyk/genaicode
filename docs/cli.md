@@ -78,6 +78,12 @@ continues it (see [sessions](agents.md#sessions-across-agents)).
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).
 
+`npx genaicode chat --sessions` gives the chat's agent that index as tools, so you can ask it what
+is open or what waits for you in every agent; `npx genaicode sessions mcp` serves the same tools
+to any agent as a stdio MCP server (see
+[sessions mcp](agents.md#asking-an-agent-about-the-sessions-sessions-mcp)). The agent that has
+them reads what the other sessions said.
+
 ## Chat with an agent: terminal and browser
 
 ```bash

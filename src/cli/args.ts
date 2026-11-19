@@ -31,6 +31,8 @@ export type CliCommand =
     }
   /** `sessions doctor`: whether the session stores still read as expected. */
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
+  /** `sessions mcp`: the session index as an MCP server on stdio. */
+  | { kind: 'sessions-mcp'; agent?: string }
   | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
       kind: 'chat' | 'ui';
@@ -52,6 +54,8 @@ export type CliCommand =
       mcpServers: McpServer[];
       /** `--no-artifacts`. */
       artifacts?: false;
+      /** `--sessions`: give the agent the session index (`sessions_list`, `sessions_read`...). */
+      sessions?: true;
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
       budget?: AgentBudget;
       /** `--fallback a,b`: agents a turn moves to when the current one is out. */
@@ -168,10 +172,20 @@ export function parseCli(argv: readonly string[]): CliCommand {
       }),
     );
     const limit = optionalNumber(values.limit, '--limit');
+    if (positionals[0] === 'mcp') {
+      const extra =
+        values.cloud || values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
+      if (positionals.length > 1 || extra || values.json || values.api) {
+        throw new UsageError('Usage: genaicode sessions mcp [-a <agent>]');
+      }
+      return { kind: 'sessions-mcp', ...(values.agent !== undefined ? { agent: values.agent } : {}) };
+    }
     if (positionals.length) {
       const extra = values.cloud || values.cwd !== undefined || values.limit !== undefined;
       if (positionals.length > 1 || positionals[0] !== 'doctor' || extra) {
-        throw new UsageError('Usage: genaicode sessions [doctor] [options]. "doctor" takes -a, --since and --json.');
+        throw new UsageError(
+          'Usage: genaicode sessions [doctor|mcp] [options]. "doctor" takes -a, --since and --json.',
+        );
       }
       return {
         kind: 'doctor',
@@ -228,6 +242,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           'max-cost': { type: 'string' },
           fallback: { type: 'string', multiple: true },
           'no-artifacts': { type: 'boolean' },
+          sessions: { type: 'boolean' },
           ...(command === 'ui'
             ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
             : { web: { type: 'boolean' as const } }),
@@ -252,6 +267,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
+      ...(values.sessions === true ? { sessions: true } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
     };
