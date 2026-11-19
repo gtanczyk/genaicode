@@ -163,4 +163,20 @@ describe('serveMcpStdio', () => {
     });
     expect(JSON.stringify(byId(3).result)).toContain('bbbbbbbb-2222  approval (Bash)');
   });
+
+  it('stops when its signal aborts, though the input stays open', async () => {
+    const controller = new AbortController();
+    const input = new PassThrough();
+    let written = '';
+    const served = serveMcpStdio(sessionTools([codex], { env: env(), now: () => NOW }), {
+      input,
+      output: { write: (text: string) => (written += text) },
+      signal: controller.signal,
+    });
+    input.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    await served;
+    expect(JSON.parse(written)).toMatchObject({ id: 1 });
+  });
 });

@@ -420,6 +420,7 @@ async function serveSessions(
   await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
     input: cli.input ?? process.stdin,
     output: cli.stdout,
+    ...(cli.signal ? { signal: cli.signal } : {}),
   });
   return EXIT_OK;
 }

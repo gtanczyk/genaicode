@@ -154,10 +154,19 @@ export function sessionTools(sources: readonly SessionSource[], options: Session
  */
 export async function serveMcpStdio(
   tools: readonly McpTool[],
-  streams: { input: NodeJS.ReadableStream; output: { write(text: string): unknown }; name?: string },
+  streams: {
+    input: NodeJS.ReadableStream;
+    output: { write(text: string): unknown };
+    name?: string;
+    /** Stops serving, as the end of the input does. */
+    signal?: AbortSignal;
+  },
 ): Promise<void> {
   const lines = createInterface({ input: streams.input, crlfDelay: Infinity });
   const pending = new Set<Promise<void>>();
+  const stop = () => lines.close();
+  if (streams.signal?.aborted) stop();
+  streams.signal?.addEventListener('abort', stop, { once: true });
   for await (const line of lines) {
     if (!line.trim()) continue;
     let message: unknown;
@@ -178,6 +187,7 @@ export async function serveMcpStdio(
       .finally(() => pending.delete(answer));
     pending.add(answer);
   }
+  streams.signal?.removeEventListener('abort', stop);
   await Promise.all(pending);
 }
 
