@@ -286,14 +286,36 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? path.join(homeOf(env), '.copilot');
       const files = await findFiles(path.join(dir, 'session-state'), 1, (name) => name === 'workspace.yaml');
+      // Sessions the CLI's index knows (it kept conversations there before it stopped writing event logs).
+      let indexed: Promise<Set<string>> | undefined;
+      const ids = (sql: string) =>
+        queryDatabase(path.join(dir, 'session-store.db'), sql).then(
+          (found) => (found ?? []).map((row) => String(row.id)),
+          () => [],
+        );
+      const inIndex = async (id: string) =>
+        (
+          await (indexed ??= Promise.all([
+            ids('SELECT id FROM sessions'),
+            ids('SELECT DISTINCT session_id AS id FROM turns'),
+          ]).then((lists) => new Set(lists.flat())))
+        ).has(id);
       const found = await mapLimited(files, 16, async (file): Promise<SessionInfo | null> => {
         const meta = flatYaml(await fs.readFile(file.path, 'utf8').catch(() => ''));
         const folder = path.dirname(file.path);
+        const id = meta.id || path.basename(folder);
+        // A workspace with no event log that the index does not know either was opened and left
+        // with nothing said (IDEs and ACP clients leave many): nothing to list or continue.
+        const logged = await fs.stat(path.join(folder, 'events.jsonl')).then(
+          () => true,
+          () => false,
+        );
+        if (!logged && !(await inIndex(id))) return null;
         const updatedAt = timeOf(meta.updated_at) ?? file.mtimeMs;
         return session({
           source: 'copilot',
           agent: 'copilot',
-          id: meta.id || path.basename(folder),
+          id,
           where: 'local',
           cwd: meta.cwd || undefined,
           repository: meta.repository || undefined,
@@ -400,6 +422,7 @@ export function cursorSessions(options: StoreOptions = {}): SessionSource {
   return {
     name: 'cursor',
     where: 'local',
+    verified: '2026.10.22',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
       const dir = options.dir ?? path.join(homeOf(env), '.cursor');
