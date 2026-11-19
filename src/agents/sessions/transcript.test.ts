@@ -310,9 +310,11 @@ describe('reading a session', () => {
       ['Fix the build', 'Builds now.'],
       ['Then the docs', 'Documented.'],
     ]);
-    await expect(source.read!(listed.find((session) => session.id === 'cp-2')!)).rejects.toThrow(
-      /keeps no readable conversation/,
-    );
+    // cp-2 kept nothing anywhere: it is not listed, and reading it by id finds nothing either.
+    expect(listed.map((session) => session.id)).toEqual(['cp-1']);
+    await expect(
+      source.read!({ ...first, id: 'cp-2', path: join(dir, 'session-state', 'cp-2', 'events.jsonl') }),
+    ).rejects.toThrow(/keeps no readable conversation/);
   });
 
   it('finds a session by the start of its id and reads it through its source', async () => {

@@ -255,7 +255,19 @@ describe('agent session stores', () => {
       ),
     );
     write(join(state, 'c2', 'workspace.yaml'), 'id: c2\ncwd: /work/other\nupdated_at: 2026-11-09T12:00:00.000Z\n');
+    // Opened and left with nothing said: no event log, unknown to the index.
+    write(join(state, 'c3', 'workspace.yaml'), 'id: c3\ncwd: /work/empty\nupdated_at: 2026-11-10T13:00:00.000Z\n');
+    write(join(state, 'c3', 'checkpoints', 'index.md'), '# Checkpoints\n');
+    mkdirSync(join(home, '.copilot'), { recursive: true });
+    const sqliteModule = 'node:sqlite';
+    const { DatabaseSync } = (await import(sqliteModule)) as {
+      DatabaseSync: new (file: string) => { exec(sql: string): void; close(): void };
+    };
+    const db = new DatabaseSync(join(home, '.copilot', 'session-store.db'));
+    db.exec("CREATE TABLE sessions (id TEXT); INSERT INTO sessions VALUES ('c2');");
+    db.close();
     const sessions = await copilotSessions().list({ env });
+    expect(sessions.map((entry) => entry.id)).toEqual(['c1', 'c2']);
     expect(sessions[0]).toMatchObject({
       id: 'c1',
       cwd: '/work/app',
