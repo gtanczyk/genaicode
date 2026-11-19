@@ -33,7 +33,9 @@ npx genaicode sessions --cloud               # also Cursor Cloud Agents (CURSOR_
 ```
 
 It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot, Cursor, Gemini
-CLI, Antigravity, Muse and Vibe) and changes nothing.
+CLI, Antigravity, Muse and Vibe) and changes nothing. SQLite-backed stores (Codex, Muse,
+Antigravity, Cursor's model lookup and Copilot's `session-store.db` fallback) need Node 22.5 or
+newer (`node:sqlite`); the other stores work on Node 20+.
 `●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
 half way. After `npx genaicode hooks install`, Claude Code and Codex report what their sessions
 do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`

@@ -385,26 +385,28 @@ if (found) {
 `adopt(turns, { sessionId })` is for the agent's own session: the next prompt resumes it, and the
 turns are there to show. Only the end of a very long transcript is read (the last 8 MB, 100 turns).
 
-| Driver               | Source                  | Reads                                                                           |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| `claude`             | `claudeSessions()`      | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents         |
-| `codex`, `codexLive` | `codexSessions()`       | the thread index `~/.codex/state_<n>.sqlite` (`CODEX_HOME`), else rollout files |
-| `copilot`            | `copilotSessions()`     | `~/.copilot/session-state/<id>/workspace.yaml` and `events.jsonl`               |
-| `cursor`             | `cursorSessions()`      | `~/.cursor/chats/<hash>/<id>/meta.json`, the model from the chat's `store.db`   |
-| `gemini`             | `geminiSessions()`      | `~/.gemini/tmp/<project>/chats/session-*.jsonl`                                 |
-| `antigravity`        | `antigravitySessions()` | `conversation_summaries.db` in `~/.gemini/antigravity` and `antigravity-cli`    |
-| `muse`, `museLive`   | `museSessions()`        | `~/.local/share/muse/session-index.db`                                          |
-| `vibe`               | `vibeSessions()`        | `~/.vibe/logs/session/*/meta.json` (`VIBE_HOME`), with token and cost totals    |
-| `opencode`           | `null`                  | not read yet                                                                    |
-| `anthropicManaged`   | cloud                   | `GET /v1/sessions` of the driver's agent: title, status, model, usage, cost     |
-| `cursorCloud`        | cloud                   | `GET /v1/agents`: the account's agents that are not archived, with their links  |
-| `geminiManaged`      | `null`                  | the Interactions API lists nothing                                              |
-| `openaiManaged`      | `null`                  | the Responses API lists nothing                                                 |
+| Driver               | Source                  | Reads                                                                                  |
+| -------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `claude`             | `claudeSessions()`      | `~/.claude/projects/*/*.jsonl` (`CLAUDE_CONFIG_DIR`), without subagents                |
+| `codex`, `codexLive` | `codexSessions()`       | the thread index `~/.codex/state_<n>.sqlite` (`CODEX_HOME`), else rollout files        |
+| `copilot`            | `copilotSessions()`     | `~/.copilot/session-state/<id>/workspace.yaml`, `events.jsonl` (or `session-store.db`) |
+| `cursor`             | `cursorSessions()`      | `~/.cursor/chats/<hash>/<id>/meta.json`, the model from the chat's `store.db`          |
+| `gemini`             | `geminiSessions()`      | `~/.gemini/tmp/<project>/chats/session-*.jsonl`                                        |
+| `antigravity`        | `antigravitySessions()` | `conversation_summaries.db` in `~/.gemini/antigravity` and `antigravity-cli`           |
+| `muse`, `museLive`   | `museSessions()`        | `~/.local/share/muse/session-index.db`                                                 |
+| `vibe`               | `vibeSessions()`        | `~/.vibe/logs/session/*/meta.json` (`VIBE_HOME`), with token and cost totals           |
+| `opencode`           | `null`                  | not read yet                                                                           |
+| `anthropicManaged`   | cloud                   | `GET /v1/sessions` of the driver's agent: title, status, model, usage, cost            |
+| `cursorCloud`        | cloud                   | `GET /v1/agents`: the account's agents that are not archived, with their links         |
+| `geminiManaged`      | `null`                  | the Interactions API lists nothing                                                     |
+| `openaiManaged`      | `null`                  | the Responses API lists nothing                                                        |
 
 What a store does not keep stays undefined: Cursor has no usage, Antigravity and Vibe no model,
-and an index without transcripts (Muse, Antigravity) gives no latest reply. Codex, Muse,
-Antigravity and Cursor keep SQLite files, read with `node:sqlite` (Node 22.5 or newer; on an
-older Node those sources land in `errors`). Subagent sessions and archived threads are left out.
+and stores listed from an index without opening transcripts (Muse, Antigravity) give no latest
+reply. Codex, Muse, Antigravity, Cursor and Copilot's `session-store.db` fallback read SQLite
+files with `node:sqlite` (Node 22.5 or newer; on an older Node Codex, Muse and Antigravity land
+in `errors`, Cursor skips the model and Copilot needs `events.jsonl`). Subagent sessions and
+archived threads are left out.
 
 A hosted driver lists what its platform lists, with `where: 'cloud'` and, where there is one, a
 `url` to open the session: pass `anthropicManaged(...)` or `cursorCloud()` to
