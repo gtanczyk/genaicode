@@ -309,6 +309,12 @@ session has `waitingFor`: `'approval'` (with `waitingTool`, such as `Bash`) or `
 them. A record the session's file has since moved past is ignored, so sessions driven without
 the hook fall back to the stores. `{ live: false }` in the query leaves the reports out.
 
+`genaicode sessions --waiting` (`-w`) is the inbox: only the sessions whose next move is yours,
+those asking for approval first, each with the tool it asks for or the end of what it said, and
+the command that continues it. It looks a week back unless `--since` says otherwise. The
+browser's Sessions view has the same as a "N wait for you" button; in code,
+`waitingSessions(sessions)` picks and orders them.
+
 In code: `installHooks('claude')`, `hooksStatus()`, `uninstallHooks()`, and `recordHook(agent,
 input)` with `readLive()` and `withLive(sessions, records)` to do the same for an agent of your
 own whose hooks give the same JSON (`session_id`, `hook_event_name`, `cwd`).

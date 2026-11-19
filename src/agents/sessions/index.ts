@@ -4,7 +4,7 @@ import type { SessionTurn } from '../session.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
 import { readLive, withLive, type LiveRecord } from './live.js';
 
-export { groupSessions } from './group.js';
+export { groupSessions, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
 
 export { claudeSessions, claudeTranscript, readClaudeSession } from './claude.js';

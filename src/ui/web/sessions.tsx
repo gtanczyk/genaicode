@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { groupSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
-import { ago, canContinueHere, filterSessions, resumeCommand } from '../sessions.js';
+import { groupSessions, waitingSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
+import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 
@@ -64,8 +64,15 @@ export function Sessions({
 
   const all = listing?.sessions ?? [];
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
-  const shown = useMemo(() => filterSessions(all, { text, agent, state }), [all, text, agent, state]);
-  const projects = useMemo(() => groupSessions(shown), [shown]);
+  const waiting = useMemo(() => waitingSessions(all), [all]);
+  const shown = useMemo(() => {
+    const found = filterSessions(all, { text, agent, state });
+    // What waits for you: the sessions that ask for approval come first.
+    return state === 'waiting' || state === 'approval' ? waitingSessions(found) : found;
+  }, [all, text, agent, state]);
+  // What waits for you keeps its order across projects: the one with an approval first.
+  const inbox = state === 'waiting' || state === 'approval';
+  const projects = useMemo(() => (inbox ? groupInOrder(shown) : groupSessions(shown)), [shown, inbox]);
   const now = Date.now();
 
   const copy = (session: SessionInfo) => {
@@ -107,6 +114,19 @@ export function Sessions({
             </option>
           ))}
         </select>
+        {waiting.length ? (
+          <button
+            className={`chip waits${state === 'waiting' ? ' on' : ''}`}
+            title="Sessions whose next move is yours, approvals first"
+            aria-pressed={state === 'waiting'}
+            onClick={() => setState(state === 'waiting' ? '' : 'waiting')}
+          >
+            {waiting.length} wait{waiting.length === 1 ? 's' : ''} for you
+            {waiting[0]?.waitingFor === 'approval'
+              ? ` · ${waiting.filter((session) => session.waitingFor === 'approval').length} ◆`
+              : ''}
+          </button>
+        ) : null}
         <button className="chip" onClick={() => setRound(round + 1)}>
           Refresh
         </button>

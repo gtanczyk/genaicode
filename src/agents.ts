@@ -81,6 +81,7 @@ export {
   museSessions,
   vibeSessions,
   groupSessions,
+  waitingSessions,
   listSessions,
   readClaudeSession,
   readCodexSession,
