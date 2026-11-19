@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { withFallback } from '../agents/failover.js';
@@ -30,6 +30,17 @@ import { serveAcp } from '../acp/server.js';
 import { parseCli, UsageError, type CliCommand } from './args.js';
 import { embedPrompt, embedRequest, readEmbedInstructions } from './embed.js';
 import { createRenderer, describeResult, type Output } from './render.js';
+import {
+  autoUpdate,
+  backgroundUpdate,
+  defaultUpdateDeps,
+  findInstall,
+  INSTALL_SCRIPT_URL,
+  selfInstall,
+  setAutoUpdate,
+  updateInstall,
+  type UpdateDeps,
+} from './update.js';
 
 export interface CliEnvironment {
   argv: readonly string[];
@@ -51,6 +62,8 @@ export interface CliEnvironment {
   tty?: { stdin: NodeJS.ReadStream; stdout: NodeJS.WriteStream };
   /** Loads the bundled chat and web front ends. Defaults to `dist/ui/index.js`. */
   loadUi?(): Promise<UiModule>;
+  /** What `update` and the daily check use. Defaults to the npm registry and this package. */
+  updater?: Partial<UpdateDeps>;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
   runCheck?(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult>;
 }
@@ -120,6 +133,12 @@ Usage:
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
+  genaicode update [options]           Update the installed genaicode command
+
+Update options (for the command scripts/install.sh installs; npx and npm -g update through npm):
+      --check             Only say whether a newer version is out
+      --version <v>       Install this version instead of the latest
+      --auto on|off       Check daily and update in the background (default: on)
 
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
@@ -228,6 +247,11 @@ export async function main(cli: CliEnvironment): Promise<number> {
     return EXIT_USAGE;
   }
 
+  const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
+  if (command.kind !== 'update' && command.kind !== 'self-install' && command.kind !== 'acp') {
+    autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
+  }
+
   const agents = cli.agents ?? defaultAgents();
   if (command.kind === 'help' && cli.argv.length === 0 && cli.interactive) {
     command = { kind: 'chat', approveAll: false, open: false, web: false, mcpServers: [] };
@@ -256,6 +280,83 @@ export async function main(cli: CliEnvironment): Promise<number> {
       return runEmbed(cli, agents, command);
     case 'acp':
       return runAcp(cli, agents, command);
+    case 'update':
+      return runUpdate(cli, updater, command);
+    case 'self-install':
+      return runSelfInstall(cli, updater, command);
+  }
+}
+
+async function runUpdate(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'update' }>,
+): Promise<number> {
+  if (options.background) {
+    await backgroundUpdate(deps);
+    return EXIT_OK;
+  }
+  const install = findInstall(deps.packageRoot);
+  if (!install) {
+    cli.stderr.write(
+      `This genaicode runs from ${deps.packageRoot}, not from the installed command.\n` +
+        'Update it with npm ("npm install -g genaicode@latest", or bump it in your project), ' +
+        `or install the command, which updates itself:\n  curl -fsSL ${INSTALL_SCRIPT_URL} | sh\n`,
+    );
+    return EXIT_FAILED;
+  }
+  if (options.auto !== undefined) {
+    setAutoUpdate(install, options.auto);
+    cli.stdout.write(`Automatic updates ${options.auto ? 'on' : 'off'}.\n`);
+    return EXIT_OK;
+  }
+  try {
+    const outcome = await updateInstall(install, deps, { tag: options.version, check: options.check });
+    switch (outcome.kind) {
+      case 'current':
+        cli.stdout.write(`genaicode ${outcome.version} is up to date.\n`);
+        return EXIT_OK;
+      case 'available':
+        cli.stdout.write(`genaicode ${outcome.to} is out (installed: ${outcome.from}). Run "genaicode update".\n`);
+        return EXIT_OK;
+      case 'busy':
+        cli.stderr.write('Another genaicode update is running; try again in a minute.\n');
+        return EXIT_FAILED;
+      case 'updated':
+        cli.stdout.write(`Updated genaicode ${outcome.from} → ${outcome.to}.\n`);
+        if (outcome.notes) cli.stdout.write(`\n${outcome.notes}\n`);
+        return EXIT_OK;
+    }
+  } catch (error) {
+    cli.stderr.write(`Update failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
+  }
+}
+
+function runSelfInstall(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'self-install' }>,
+): number {
+  try {
+    const result = selfInstall({
+      packageRoot: deps.packageRoot,
+      binDir: options.binDir,
+      force: options.force,
+      env: cli.env,
+    });
+    cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
+    if (!result.onPath) {
+      const dir = dirname(result.shim);
+      cli.stdout.write(
+        `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
+          `  export PATH="${dir}:$PATH"\n`,
+      );
+    }
+    return EXIT_OK;
+  } catch (error) {
+    cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
   }
 }
 

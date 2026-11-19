@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- An installer for the `genaicode` command (`curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh`) that keeps itself up to date: once a day a background check installs a new version beside the running one; `genaicode update [--check] [--version <v>] [--auto on|off]` updates by hand and prints the release notes (#PR)
+
 ## 2.35.1 — 2026-11-19
 
 ### Fixed

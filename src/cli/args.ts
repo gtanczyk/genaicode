@@ -4,6 +4,19 @@ import type { AgentBudget, McpServer } from '../agents/types.js';
 export type CliCommand =
   | { kind: 'help' }
   | { kind: 'version' }
+  | {
+      kind: 'update';
+      /** `--check`: only say whether a newer version exists. */
+      check: boolean;
+      /** `--version <v>`: install this one instead of the latest. */
+      version?: string;
+      /** `--auto on|off`. */
+      auto?: boolean;
+      /** Run by the command itself when a day has passed since the last check. */
+      background: boolean;
+    }
+  /** Run once by scripts/install.sh from the freshly installed version. */
+  | { kind: 'self-install'; binDir?: string; force: boolean }
   | { kind: 'agents'; json: boolean }
   | {
       kind: 'sessions';
@@ -95,6 +108,42 @@ export function parseCli(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv;
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') return { kind: 'help' };
   if (command === '--version' || command === '-v') return { kind: 'version' };
+
+  if (command === 'update') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: {
+          check: { type: 'boolean' },
+          version: { type: 'string' },
+          auto: { type: 'string' },
+          background: { type: 'boolean' },
+        },
+      }),
+    );
+    if (values.auto !== undefined && values.auto !== 'on' && values.auto !== 'off') {
+      throw new UsageError('--auto takes "on" or "off".');
+    }
+    return {
+      kind: 'update',
+      check: values.check === true,
+      version: values.version,
+      auto: values.auto === undefined ? undefined : values.auto === 'on',
+      background: values.background === true,
+    };
+  }
+
+  if (command === 'self-install') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: { 'bin-dir': { type: 'string' }, force: { type: 'boolean' } },
+      }),
+    );
+    return { kind: 'self-install', binDir: values['bin-dir'], force: values.force === true };
+  }
 
   if (command === 'agents') {
     const { values } = parse(() => parseArgs({ args: rest, options: { json: { type: 'boolean' } }, strict: true }));
