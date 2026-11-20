@@ -97,6 +97,7 @@ export function PackInspector({
     if (key.upArrow || key.downArrow) {
       const at = tasks.findIndex((row) => row.turn.id === turn.id && row.task.id === task.id);
       const next = tasks[(at + (key.upArrow ? -1 : 1) + tasks.length) % tasks.length];
+      setOutput('');
       select({ turnId: next.turn.id, id: next.task.id });
     } else if (act && input === 'i' && running && task.canSteer) {
       setDraft('');

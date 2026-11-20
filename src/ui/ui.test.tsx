@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import type { PackTask } from '../agents/pack.js';
 import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
@@ -486,28 +486,26 @@ describe('terminal UI', () => {
     };
     const chat = createChatController({ agents: [agent], cwd: '/w', env });
     const app = render(<ChatApp controller={chat} cwd="/w" version="test" />);
-    const press = async (key: string) => {
+    const frame = (text: string) => vi.waitFor(() => expect(app.lastFrame()).toContain(text));
+    const press = async (key: string, text: string) => {
       app.stdin.write(key);
-      await tick();
+      await frame(text);
     };
     try {
-      await tick();
+      await frame('Ask the agent');
       chat.submit('write');
       await chat.session.idle();
-      await tick();
-      await press('\t');
-      await press('\x1b[B');
-      await press('d');
-      expect(app.lastFrame()).toContain('+test change');
-      await press('\x1b');
-      await press('x');
-      expect(app.lastFrame()).toContain('Discard this worktree');
+      await frame('Tab for pack tasks');
+      await press('\t', 't1 · worker · Ready to merge');
+      await press('\x1b[B', 't2 · worker · Ready to merge');
+      await press('d', '+test change');
+      await press('\x1b', 'd diff · m merge locally');
+      await press('x', 'Discard this worktree');
       expect(actions).toEqual(['t2 diff']);
-      await press('x');
+      await press('x', 't2 · worker · Discarded');
       expect(actions).toEqual(['t2 diff', 't2 discard']);
       expect(chat.get().session.turns[0].pack?.tasks.map((item) => item.state)).toEqual(['unmerged', 'discarded']);
-      await press('\t');
-      expect(app.lastFrame()).toContain('Ask the agent');
+      await press('\t', 'Ask the agent');
     } finally {
       app.unmount();
       chat.close();

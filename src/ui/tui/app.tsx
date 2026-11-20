@@ -258,14 +258,7 @@ export function ChatApp({
           <NoticeView key={notice.id} notice={notice} />
         ))}
         {currentTask ? (
-          <PackInspector
-            key={`${currentTask.turn.id}/${currentTask.task.id}`}
-            current={currentTask}
-            tasks={tasks}
-            controller={controller}
-            select={selectTask}
-            rows={rows}
-          />
+          <PackInspector current={currentTask} tasks={tasks} controller={controller} select={selectTask} rows={rows} />
         ) : null}
         {!currentTask && approval ? (
           <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
