@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.37.1 — 2026-11-20
+
 ### Fixed
 
 - Control tower fixes from a run on macOS: `--help` after any command shows the help; `hooks uninstall` removes a hooks file (and Copilot's hooks folder) left with nothing but genaicode's; `hooks install -a <agent>` says when that agent's CLI is not found; sessions with a zero time (Antigravity) no longer show as thousands of days old; `sessions --waiting --json` carries the open questions (`asks`); `hooks status` counts open and ended sessions apart (#211)
