@@ -46,6 +46,8 @@ export interface SessionInfo {
   waitingFor?: 'approval' | 'reply';
   /** The tool it asks to use, while `waitingFor` is `approval`. */
   waitingTool?: string;
+  /** Short read-only previews of shell commands currently asking for approval. */
+  waitingCommands?: Array<{ tool: string; command: string }>;
   model?: string;
   usage?: TokenUsage;
   costUsd?: number;

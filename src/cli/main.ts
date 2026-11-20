@@ -676,6 +676,7 @@ function showWaiting(
           ? `said: ${oneLine(session.lastReply, 80)}`
           : 'your turn';
     const resume = resumeCommand(session);
+    const commands = (session.waitingCommands ?? []).map(({ tool, command }) => `  ? ${tool}: ${command}\n`).join('');
     // Questions held open for the tower: what the tool would do, and how to answer.
     const open = asksForSession(questions, session)
       .map(
@@ -685,7 +686,7 @@ function showWaiting(
       )
       .join('');
     cli.stdout.write(
-      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${open}${resume ? `  ${resume}\n` : ''}`,
+      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
     );
   }
   return EXIT_OK;

@@ -284,7 +284,7 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
     verified: '1.0.88',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
-      const dir = options.dir ?? path.join(homeOf(env), '.copilot');
+      const dir = options.dir ?? env.COPILOT_HOME ?? path.join(homeOf(env), '.copilot');
       const files = await findFiles(path.join(dir, 'session-state'), 1, (name) => name === 'workspace.yaml');
       // Sessions the CLI's index knows (it kept conversations there before it stopped writing event logs).
       let indexed: Promise<Set<string>> | undefined;
@@ -339,9 +339,10 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
       const lines = info.path ? await transcriptLines(info.path).catch(() => null) : null;
       if (lines) return copilotTranscript(lines, readOptions);
       // The index of the store the session was listed from: <store>/session-state/<id>/events.jsonl.
+      const env = options.env ?? process.env;
       const dir = info.path
         ? path.resolve(info.path, '../../..')
-        : (options.dir ?? path.join(homeOf(options.env ?? process.env), '.copilot'));
+        : (options.dir ?? env.COPILOT_HOME ?? path.join(homeOf(env), '.copilot'));
       const turns = await queryDatabase(
         path.join(dir, 'session-store.db'),
         'SELECT user_message, assistant_response, timestamp FROM turns WHERE session_id = ? ORDER BY turn_index',
@@ -544,7 +545,7 @@ export function geminiSessions(options: StoreOptions = {}): SessionSource {
     where: 'local',
     async list(query = {}) {
       const env = query.env ?? options.env ?? process.env;
-      const dir = options.dir ?? path.join(homeOf(env), '.gemini');
+      const dir = options.dir ?? path.join(env.GEMINI_CLI_HOME ?? homeOf(env), '.gemini');
       const files = (
         await findFiles(path.join(dir, 'tmp'), 2, (name) => name.startsWith('session-') && name.endsWith('.jsonl'))
       ).filter((file) => path.basename(path.dirname(file.path)) === 'chats');

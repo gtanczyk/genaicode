@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -100,6 +101,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function oneLine(text: string, max = 200): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/** Keep previews on one terminal-safe line, including the ellipsis in the limit. */
+export function previewText(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  const controls = /[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g;
+  const line = stripVTControlCharacters(value).replace(/\s+/g, ' ').replace(controls, '').trim();
+  if (line.length <= 200) return line;
+  return `${line.slice(0, 199).replace(/[\ud800-\udbff]$/, '')}…`;
 }
 
 /** The last `max` characters of `text`, as one line. */

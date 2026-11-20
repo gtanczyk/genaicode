@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { shellCommand } from './hook-input.js';
 import type { SessionInfo } from './types.js';
 
 /**
@@ -35,6 +36,8 @@ export interface LiveRecord {
 export interface LiveAsk {
   tool?: string;
   key?: string;
+  /** Matches a preview in the native journal when the approval has other shell arguments. */
+  commandKey?: string;
 }
 
 /** A record older than this says nothing any more. */
@@ -76,7 +79,7 @@ const ASKING = new Set(['permission_prompt', 'elicitation_dialog', 'elicitation_
  * What a hook's input (the JSON object Claude Code and Codex give a command hook on stdin) says
  * about its session. Undefined for an event that changes nothing.
  */
-export function liveEvent(input: unknown): LiveEvent | undefined {
+export function liveEvent(input: unknown, agent?: string): LiveEvent | undefined {
   if (typeof input !== 'object' || input === null) return undefined;
   const event = input as Record<string, unknown>;
   const id = text(event.session_id);
@@ -91,8 +94,14 @@ export function liveEvent(input: unknown): LiveEvent | undefined {
       return event.source === 'compact' ? undefined : { ...base, state: 'idle' };
     case 'UserPromptSubmit':
       return { ...base, state: 'working' };
-    case 'PermissionRequest':
+    case 'PermissionRequest': {
+      const command = agent && shellCommand(agent, tool, event.tool_input);
+      if (command) {
+        const key = inputKey({ command });
+        if (key !== ask.key) ask.commandKey = key;
+      }
       return { ...base, state: 'approval', ask };
+    }
     case 'Notification': {
       const type = text(event.notification_type);
       if (type === 'idle_prompt') return { ...base, state: 'idle' };
@@ -128,7 +137,7 @@ export interface LiveEvent {
 }
 
 /** A digest of a tool's input: enough to tell two calls apart, nothing of what they hold. */
-function inputKey(input: unknown): string {
+export function inputKey(input: unknown): string {
   let value = input;
   if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
     // Codex adds a reason for the approval that the finished call does not carry.
@@ -187,7 +196,7 @@ export async function recordHook(
     onRecord?(before: LiveRecord | undefined, after: LiveRecord): void;
   } = {},
 ): Promise<LiveRecord | undefined> {
-  const event = liveEvent(input);
+  const event = liveEvent(input, agent);
   if (!event) return undefined;
   const dir = liveDir(options.env);
   const file = fileOf(dir, agent, event.id);
@@ -201,7 +210,8 @@ export async function recordHook(
     // A question is the exception: another tool's hook may get here first, and it still waits.
     const late = !!before && Math.max(before.at, before.seen ?? 0) > at;
     const ask = event.reminder ? undefined : event.ask;
-    const over = (before?.done ?? []).some((done) => done.tool === ask?.tool && done.key === ask?.key && done.at >= at);
+    const over =
+      !!ask && (before?.done ?? []).some((done) => done.at >= at && done.tool === ask.tool && done.key === ask.key);
     const thisTurn = at >= (before?.turn ?? 0);
     const stillAsked = !!ask?.tool && !over && thisTurn && before?.state !== 'idle' && before?.state !== 'ended';
     // So is the end of a call in this turn: its question is over, asked already or learned of later.
