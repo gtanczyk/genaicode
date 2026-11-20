@@ -129,7 +129,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') return { kind: 'help' };
   if (command === '--version' || command === '-v') return { kind: 'version' };
   // `genaicode sessions --help`: the help, which covers every command.
-  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' };
+  const options = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
+  if (options.includes('--help') || options.includes('-h')) return { kind: 'help' };
 
   if (command === 'update') {
     const { values } = parse(() =>

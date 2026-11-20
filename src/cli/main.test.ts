@@ -97,6 +97,8 @@ describe('parseCli', () => {
     // `--help` after any command: the help.
     expect(parseCli(['sessions', '--help'])).toEqual({ kind: 'help' });
     expect(parseCli(['hooks', 'install', '-h'])).toEqual({ kind: 'help' });
+    // After `--` it is the prompt's.
+    expect(parseCli(['run', '--', 'explain', '-h'])).toMatchObject({ kind: 'run', prompt: 'explain -h' });
   });
 
   it('parses chat --web and its port, and keeps --web off ui', () => {
