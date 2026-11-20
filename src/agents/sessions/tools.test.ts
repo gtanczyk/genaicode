@@ -1,15 +1,17 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { outputText, type McpTool } from '../mcp-tools.js';
 import type { SessionTurn } from '../session.js';
-import { recordHook } from './live.js';
+import { asksDir } from './answer.js';
+import { archiveSessions } from './archive.js';
+import { liveRecord, recordHook } from './live.js';
 import { serveMcpStdio, sessionTools } from './tools.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
-const NOW = Date.UTC(2026, 10, 19, 12);
+const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;
 
 const dirs: string[] = [];
@@ -75,8 +77,8 @@ const codex = source('codex', [
   session('codex', 'dddddddd-4444', { cwd: '/work/api', firstPrompt: 'migrate the schema', state: 'unfinished' }),
 ]);
 
-function tools(sources: SessionSource[] = [claude, codex]): Record<string, McpTool> {
-  return Object.fromEntries(sessionTools(sources, { env: env(), now: () => NOW }).map((tool) => [tool.name, tool]));
+function tools(sources: SessionSource[] = [claude, codex], home = env()): Record<string, McpTool> {
+  return Object.fromEntries(sessionTools(sources, { env: home, now: () => NOW }).map((tool) => [tool.name, tool]));
 }
 
 async function call(tool: McpTool, args: Record<string, unknown> = {}): Promise<string> {
@@ -119,10 +121,11 @@ describe('sessionTools', () => {
         throw new Error('locked');
       },
     };
-    const list = tools([codex, broken]).sessions_list!;
-    expect(await call(list)).toContain('(Could not read: muse.)');
+    const { sessions_list: list, sessions_waiting: waiting } = tools([codex, broken]);
+    expect(await call(list!)).toContain('(Could not read: muse.)');
+    expect(await call(waiting!)).toBe('Nothing waits for you in the last 7 days.\n(Could not read: muse.)');
     // One agent asked for: the other stores are not opened.
-    expect(await call(list, { agent: 'codex' })).not.toContain('Could not read');
+    expect(await call(list!, { agent: 'codex' })).not.toContain('Could not read');
   });
 
   it('sessions_read gives prompts, messages and tool names, not tool output', async () => {
@@ -137,6 +140,58 @@ describe('sessionTools', () => {
 });
 
 describe('sessionTools with hook reports', () => {
+  it('lists approvals before replies across projects, applying filters and limits to the waiting sessions', async () => {
+    const home = env();
+    const archived = session('codex', 'archived', { state: 'waiting' });
+    const reply = session('codex', 'codex-reply', { cwd: '/work/docs', state: 'waiting', lastReply: 'Which example?' });
+    const recent = source('codex', [
+      archived,
+      reply,
+      session('codex', 'busy', { state: 'active' }),
+      session('codex', 'unfinished', { state: 'unfinished' }),
+      session('codex', 'old-reply', { state: 'waiting', updatedAt: NOW - 8 * 24 * HOUR }),
+    ]);
+    await archiveSessions([archived], true, { env: home, now: NOW });
+    const index = tools([claude, recent], home);
+    const waiting = index.sessions_waiting!;
+    const result = await call(waiting);
+    expect(result.match(/^- \S+ (\S+)/gm)).toEqual([
+      '- claude bbbbbbbb-2222',
+      '- claude aaaaaaaa-1111',
+      '- codex codex-reply',
+    ]);
+    expect(result).toContain('/work/docs');
+    expect(result).toContain('Which example?');
+    expect(await call(waiting, { limit: 1 })).toContain('(1 of 3):\n- claude bbbbbbbb-2222  approval (Bash)');
+    expect(await call(waiting, { days: 9, agent: 'Codex' })).toContain('old-reply');
+    expect(await call(waiting, { project: 'DOCS' })).toMatch(/\(1 of 1\):\n- codex codex-reply/);
+    expect(await call(index.sessions_list!, { agent: 'codex' })).toContain('archived  waiting [archived]');
+    expect(await call(index.sessions_read!, { id: archived.id })).toContain('archived  waiting [archived]');
+  });
+
+  it('shows open questions for the matching session and leaves stale hook and question files alone', async () => {
+    const home = env();
+    const hook = { session_id: 'aaaaaaaa-1111', hook_event_name: 'PermissionRequest', tool_name: 'Bash' };
+    await recordHook('claude', hook, { env: home, now: NOW });
+    await recordHook('claude', { ...hook, session_id: 'expired' }, { env: home, now: NOW - 30 * 24 * HOUR });
+    const dir = asksDir(home);
+    mkdirSync(dir, { recursive: true });
+    const question = { agent: 'claude', session: hook.session_id, tool: 'Bash', at: NOW, pid: process.pid };
+    const questions = [
+      { ...question, id: '000000000001', preview: 'npm test' },
+      { ...question, id: '000000000002', preview: 'private to another agent', agent: 'codex' },
+      { ...question, id: '000000000003', preview: 'private to another session', session: 'different' },
+      { ...question, id: '000000000004', preview: 'expired question', pid: 2147483647 },
+    ];
+    for (const ask of questions) writeFileSync(join(dir, `${ask.id}.json`), JSON.stringify(ask));
+    const result = await call(tools([claude], home).sessions_waiting!, { project: 'api' });
+    expect(result).toContain('aaaaaaaa-1111  approval (Bash)');
+    expect(result).toContain('open question 000000000001: Bash: npm test');
+    expect(result).not.toMatch(/private to another|expired question/);
+    expect(existsSync(join(dir, '000000000004.json'))).toBe(true);
+    expect(await liveRecord('claude', 'expired', home)).toBeDefined();
+  });
+
   it('sessions_read shows the state the hooks reported, as sessions_list does', async () => {
     const home = env();
     await recordHook(
@@ -163,7 +218,7 @@ describe('serveMcpStdio', () => {
     input.write('not json\n\n');
     input.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })}\n`);
     input.end(
-      `${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'sessions_list', arguments: { state: 'approval' } } })}\n`,
+      `${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'sessions_waiting' } })}\n`,
     );
     await served;
     const replies = written
@@ -180,7 +235,12 @@ describe('serveMcpStdio', () => {
     });
     expect(byId(null).error?.code).toBe(-32700);
     expect(byId(2).result).toMatchObject({
-      tools: [{ name: 'sessions_projects' }, { name: 'sessions_list' }, { name: 'sessions_read' }],
+      tools: [
+        { name: 'sessions_projects' },
+        { name: 'sessions_list' },
+        { name: 'sessions_read' },
+        { name: 'sessions_waiting', _meta: { 'anthropic/alwaysLoad': true } },
+      ],
     });
     expect(JSON.stringify(byId(3).result)).toContain('bbbbbbbb-2222  approval (Bash)');
   });

@@ -6,6 +6,8 @@ export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** Client-specific MCP metadata advertised by `tools/list`. */
+  _meta?: Readonly<Record<string, unknown>>;
   call(args: Record<string, unknown>): Promise<ToolOutput>;
 }
 
@@ -49,7 +51,12 @@ export async function handleMcpMessage(
       return result(id, {});
     case 'tools/list':
       return result(id, {
-        tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        tools: tools.map(({ name, description, inputSchema, _meta }) => ({
+          name,
+          description,
+          inputSchema,
+          ...(_meta ? { _meta } : {}),
+        })),
       });
     case 'tools/call': {
       const tool = tools.find((candidate) => candidate.name === params?.name);

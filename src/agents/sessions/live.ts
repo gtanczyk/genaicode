@@ -300,16 +300,21 @@ export async function liveRecord(
 }
 
 /** The current hook state of one session, using the same freshness rules as a listing. */
-export async function sessionWithLive(session: SessionInfo, env?: NodeJS.ProcessEnv): Promise<SessionInfo> {
+export async function sessionWithLive(
+  session: SessionInfo,
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): Promise<SessionInfo> {
   const record = await liveRecord(session.source, session.id, env);
-  if (!record || record.state === 'ended' || Date.now() - record.at > KEEP_MS) return session;
-  return applyLive(session, { ...record, state: record.state }, Date.now());
+  if (!record || record.state === 'ended' || now - record.at > KEEP_MS) return session;
+  return applyLive(session, { ...record, state: record.state }, now);
 }
 
-/** Every record kept, by `agent:id`. Records too old to mean anything are removed on the way. */
+/** Current records by `agent:id`. Expired records are removed unless `readOnly` is set. */
 export async function readLive(
   env: NodeJS.ProcessEnv = process.env,
   now = Date.now(),
+  { readOnly = false }: { readOnly?: boolean } = {},
 ): Promise<Map<string, LiveRecord>> {
   const dir = liveDir(env);
   const records = new Map<string, LiveRecord>();
@@ -327,8 +332,9 @@ export async function readLive(
         const record = await readRecord(file);
         if (!record) return;
         const keep = record.state === 'ended' ? ENDED_MS : KEEP_MS;
-        if (now - record.at > keep) await fs.rm(file, { force: true }).catch(() => undefined);
-        else if (record.state !== 'ended') records.set(`${record.agent}:${record.id}`, record as LiveRecord);
+        if (now - record.at > keep) {
+          if (!readOnly) await fs.rm(file, { force: true }).catch(() => undefined);
+        } else if (record.state !== 'ended') records.set(`${record.agent}:${record.id}`, record as LiveRecord);
       }),
   );
   return records;

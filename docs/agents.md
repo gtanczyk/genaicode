@@ -460,20 +460,27 @@ app-server protocol (`codex app-server generate-ts`) no longer has a field that 
 
 ### Asking an agent about the sessions: `sessions mcp`
 
-The index is also three MCP tools, so an agent can answer "what is open?" and "what waits for
-me?" across all of them:
+The session index provides four read-only MCP tools. In `genaicode chat --sessions`, ask
+"Which sessions need my attention?" to see which project needs a decision or a reply.
 
-| tool                | what it returns                                                                        |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `sessions_projects` | projects worked in lately, with counts per agent and per state                         |
-| `sessions_list`     | sessions, newest first; filters `project`, `agent`, `state`, `text`, `days`, `limit`   |
-| `sessions_read`     | what was said in one session: prompts, the agent's messages and the names of its tools |
+| tool                | what it returns                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `sessions_projects` | projects worked in lately, with counts per agent and per state                                |
+| `sessions_list`     | sessions, newest first; filters `project`, `agent`, `state`, `text`, `days`, `limit`          |
+| `sessions_waiting`  | approvals and replies with open questions, filtered by `project`, `agent`, `days` and `limit` |
+| `sessions_read`     | what was said in one session: prompts, the agent's messages and the names of its tools        |
 
 ```bash
 npx genaicode chat --sessions                              # the chat's agent gets the tools
 claude mcp add sessions -- npx genaicode sessions mcp      # or any agent, as a stdio MCP server
 codex mcp add sessions -- npx genaicode sessions mcp
 ```
+
+`sessions_waiting` uses the same order as `genaicode sessions --waiting`. It shows approvals
+first, then sessions awaiting a reply, newest first within each group. It looks back seven days
+and shows up to 30 sessions by default. For questions held open by `hooks install --answer`,
+the agent can read the question ID, tool name and preview. Archived sessions stay out of this
+view and appear with `[archived]` in `sessions_list` and `sessions_read`.
 
 `state` is `active`, `waiting`, `unfinished` or `approval` (a session that asks whether it may use
 a tool, known once the [hooks](#which-sessions-need-you-hooks) are installed). The tools only read

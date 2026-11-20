@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { liveDir, liveEvent, liveRecord, type LiveAsk } from './live.js';
+import type { SessionInfo } from './types.js';
 
 /**
  * A question an agent's hook holds open (`genaicode hooks install --answer`): the agent asks
@@ -82,8 +83,11 @@ function parseAsk(value: unknown): PendingAsk | undefined {
   };
 }
 
-/** The questions waiting for an answer, oldest first. Ones whose hook is gone are removed. */
-export async function pendingAsks(env: NodeJS.ProcessEnv = process.env): Promise<PendingAsk[]> {
+/** The questions waiting for an answer, oldest first. A read-only listing leaves expired files on disk. */
+export async function pendingAsks(
+  env: NodeJS.ProcessEnv = process.env,
+  { readOnly = false }: { readOnly?: boolean } = {},
+): Promise<PendingAsk[]> {
   const dir = asksDir(env);
   let names: string[];
   try {
@@ -102,7 +106,7 @@ export async function pendingAsks(env: NodeJS.ProcessEnv = process.env): Promise
           .catch(() => undefined);
         if (ask && alive(ask.pid)) return ask;
         // Killed before it could clean up: the agent took the answer itself.
-        if (ask)
+        if (ask && !readOnly)
           await Promise.all(
             [file, answerFile(dir, ask.id), takenFile(dir, ask.id)].map((gone) => fs.rm(gone, { force: true })),
           );
@@ -110,15 +114,22 @@ export async function pendingAsks(env: NodeJS.ProcessEnv = process.env): Promise
       }),
   );
   // Taken answers nobody came back for: the one who answered gave up looking.
-  await Promise.all(
-    names
-      .filter((name) => name.endsWith('.taken') && ID.test(name.slice(0, -'.taken'.length)))
-      .map(async (name) => {
-        const stat = await fs.stat(path.join(dir, name)).catch(() => undefined);
-        if (stat && Date.now() - stat.mtimeMs > 10 * HANDOFF_MS) await fs.rm(path.join(dir, name), { force: true });
-      }),
-  );
+  if (!readOnly) {
+    await Promise.all(
+      names
+        .filter((name) => name.endsWith('.taken') && ID.test(name.slice(0, -'.taken'.length)))
+        .map(async (name) => {
+          const stat = await fs.stat(path.join(dir, name)).catch(() => undefined);
+          if (stat && Date.now() - stat.mtimeMs > 10 * HANDOFF_MS) await fs.rm(path.join(dir, name), { force: true });
+        }),
+    );
+  }
   return asks.filter((ask): ask is PendingAsk => !!ask).sort((a, b) => a.at - b.at);
+}
+
+/** Only this local agent's hook can hold a question for the session. */
+export function asksForSession(asks: readonly PendingAsk[], session: SessionInfo): PendingAsk[] {
+  return asks.filter((ask) => session.where === 'local' && ask.agent === session.agent && ask.session === session.id);
 }
 
 const answerFile = (dir: string, id: string) => path.join(dir, `${id}.answer`);

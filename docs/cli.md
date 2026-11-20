@@ -111,11 +111,11 @@ them); the agents' files stay as they are (see
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).
 
-`npx genaicode chat --sessions` gives the chat's agent that index as tools, so you can ask it what
-is open or what waits for you in every agent; `npx genaicode sessions mcp` serves the same tools
-to any agent as a stdio MCP server (see
-[sessions mcp](agents.md#asking-an-agent-about-the-sessions-sessions-mcp)). The agent that has
-them reads what the other sessions said.
+In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
+`sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including
+the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
+the same read-only tools over stdio. The agent can read what the other sessions said and what
+their open questions ask. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
 ## Chat with an agent: terminal and browser
 

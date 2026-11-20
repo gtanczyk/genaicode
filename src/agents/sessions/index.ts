@@ -92,7 +92,7 @@ export async function listSessions(
     ),
   );
   // What the agents' own hooks reported goes over what their files suggest.
-  const live = query.live === false ? undefined : await readLive(query.env).catch(() => undefined);
+  const live = query.live === false ? undefined : await readLive(query.env, undefined, query).catch(() => undefined);
   let found = lists.flat();
   if (live?.size) {
     if (query.limit !== undefined || query.since !== undefined) {
