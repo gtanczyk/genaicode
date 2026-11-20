@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.37.0 — 2026-11-20
+
 ### Added
 
 - What waits for you, across agents: `genaicode sessions --waiting` (`-w`) lists only the sessions whose next move is yours, approvals first, each with what it asks or said and the command that continues it (last 7 days unless `--since`); the browser's Sessions view gets a "N wait for you" button with the same order; `waitingSessions()` in `genaicode/agents` (#206)
