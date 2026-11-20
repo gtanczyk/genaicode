@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Ask “Which sessions need my attention?” in `genaicode chat --sessions`. The new `sessions_waiting` MCP tool lists pending approvals and replies across projects, including open questions (#215)
+
 ## 2.38.0 — 2026-11-20
 
 ### Added

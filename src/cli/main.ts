@@ -29,7 +29,13 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
-import { answerAsk, pendingAsks, type AskDecision, type PendingAsk } from '../agents/sessions/answer.js';
+import {
+  answerAsk,
+  asksForSession,
+  pendingAsks,
+  type AskDecision,
+  type PendingAsk,
+} from '../agents/sessions/answer.js';
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
 import { archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
@@ -200,8 +206,8 @@ Sessions options:
   the agents that can be asked (Codex's app server) and compares; that starts the agent's own
   process, which keeps its state and logs in its home.
 
-  "sessions mcp" (-a) is an MCP server on stdio with the tools sessions_projects, sessions_list and
-  sessions_read, so any agent can answer what is open and what waits for you across all of them:
+  "sessions mcp" (-a) serves sessions_projects, sessions_list, sessions_read and sessions_waiting
+  on stdio. Any agent can use them to find open sessions and see which ones need your attention:
   "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
   the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
 
@@ -244,9 +250,8 @@ Chat and UI options:
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
-      --sessions          Give the agent the session index as tools (sessions_projects,
-                          sessions_list, sessions_read): ask it what is open or waits for you
-                          in every agent. It reads what those sessions said
+      --sessions          Give the agent read access to the session index. Ask what needs your
+                          attention across agents with sessions_waiting
       --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
       --max-cost <usd>    Cost budget for the whole session, for agents that report cost
       --fallback <agents> Agents to switch to when the current one runs out (quota, sign-in,
@@ -661,8 +666,7 @@ function showWaiting(
           : 'your turn';
     const resume = resumeCommand(session);
     // Questions held open for the tower: what the tool would do, and how to answer.
-    const open = questions
-      .filter((ask) => ask.agent === session.agent && ask.session === session.id)
+    const open = asksForSession(questions, session)
       .map(
         (ask) =>
           `  ? ${ask.tool ?? 'a tool'}${ask.preview ? `: ${oneLine(ask.preview, 100)}` : ''}\n` +
@@ -832,9 +836,12 @@ async function showSessions(
   if (command.json) {
     for (const session of sessions) {
       // `--waiting`: with the questions it holds open for the tower (`hooks install --answer`).
-      const asks = questions
-        .filter((ask) => ask.agent === session.agent && ask.session === session.id)
-        .map(({ id, tool, preview, at }) => ({ id, ...(tool ? { tool } : {}), ...(preview ? { preview } : {}), at }));
+      const asks = asksForSession(questions, session).map(({ id, tool, preview, at }) => ({
+        id,
+        ...(tool ? { tool } : {}),
+        ...(preview ? { preview } : {}),
+        at,
+      }));
       cli.stdout.write(`${JSON.stringify(asks.length ? { ...session, asks } : session)}\n`);
     }
     return EXIT_OK;

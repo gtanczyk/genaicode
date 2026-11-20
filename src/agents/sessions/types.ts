@@ -68,6 +68,8 @@ export interface SessionQuery {
   env?: NodeJS.ProcessEnv;
   /** `false`: leave out what the agents' hooks reported (`listSessions()` adds it by default). */
   live?: boolean;
+  /** Leave expired hook reports on disk when listing, as the read-only session tools do. */
+  readOnly?: boolean;
   signal?: AbortSignal;
 }
 

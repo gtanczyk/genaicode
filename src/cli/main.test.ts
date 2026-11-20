@@ -203,7 +203,7 @@ describe('parseCli', () => {
         const response = await fetch(server.url, {
           method: 'POST',
           headers: { ...server.headers, 'content-type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_list' } }),
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_waiting' } }),
         });
         const hello = await fetch(server.url, {
           method: 'POST',
@@ -224,7 +224,9 @@ describe('parseCli', () => {
       sessions: {
         name,
         where: 'local',
-        list: async () => [{ source: name, agent: name, id: `${name}-1`, where: 'local', updatedAt: Date.now() }],
+        list: async () => [
+          { source: name, agent: name, id: `${name}-1`, where: 'local', state: 'waiting', updatedAt: Date.now() },
+        ],
       },
       run: () => {
         throw new Error('not run');
@@ -239,7 +241,7 @@ describe('parseCli', () => {
     expect(launches[0]!.sessionSources!.map((source) => source.name)).toEqual(['plain', 'mcp']);
     // The agent without MCP cannot be chatted with here, but its sessions are in the index.
     // The agent is told to ask the index, not its own session listing.
-    expect(told).toContain('sessions_list');
+    expect(told).toContain('use sessions_waiting first');
     expect(listed).toContain('- plain plain-1');
     expect(listed).toContain('- mcp mcp-1');
 
