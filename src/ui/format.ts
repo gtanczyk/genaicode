@@ -41,6 +41,8 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   },
   { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
+  { name: '/waiting', args: '[project]', help: 'refresh the waiting queue (tower or --sessions)' },
+  { name: '/read', args: '<session id>', help: 'preview recent turns locally (tower or --sessions)' },
   {
     name: '/continue',
     args: '<session id>',
@@ -62,6 +64,8 @@ export type SlashCommand =
   | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
   | { kind: 'continue'; id?: string }
+  | { kind: 'waiting'; project?: string }
+  | { kind: 'read'; id?: string }
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
   | { kind: 'auto'; on?: boolean; invalid?: string }
@@ -100,6 +104,10 @@ export function parseSlash(text: string): SlashCommand | undefined {
     case '/continue':
     case '/from':
       return { kind: 'continue', id: arg };
+    case '/waiting':
+      return { kind: 'waiting', project: arg };
+    case '/read':
+      return { kind: 'read', id: arg };
     case '/new':
     case '/reset':
       return { kind: 'new' };

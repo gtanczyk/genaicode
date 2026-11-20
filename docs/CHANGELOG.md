@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `genaicode tower` opens an indexed chat with waiting sessions across projects. Use `/waiting [project]` to refresh the queue and `/read <id>` to preview a conversation locally (#217)
+
 ## 2.39.0 — 2026-11-20
 
 ### Added

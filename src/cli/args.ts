@@ -53,7 +53,7 @@ export type CliCommand =
   /** `notify`: desktop notifications when a session asks for approval (`--done`: or finishes a turn). */
   | { kind: 'notify'; action: 'status' | 'on' | 'off' | 'test'; done: boolean }
   | {
-      kind: 'chat' | 'ui';
+      kind: 'chat' | 'ui' | 'tower';
       agent?: string;
       cwd?: string;
       model?: string;
@@ -353,7 +353,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
     };
   }
 
-  if (command === 'chat' || command === 'ui') {
+  if (command === 'chat' || command === 'ui' || command === 'tower') {
     const { values } = parse(() =>
       parseArgs({
         args: rest,
@@ -397,7 +397,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
-      ...(values.sessions === true ? { sessions: true } : {}),
+      ...(command === 'tower' || values.sessions === true ? { sessions: true } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
     };

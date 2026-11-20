@@ -148,6 +148,42 @@ describe('parseCli', () => {
     expect(parseCli(['chat', '--web', '--port', '4000'])).toMatchObject({ kind: 'chat', web: true, port: 4000 });
     expect(parseCli(['ui', '--no-open'])).toMatchObject({ kind: 'ui', web: false, open: false });
     expect(() => parseCli(['ui', '--web'])).toThrow(UsageError);
+    expect(parseCli(['tower', '--web', '-a', 'codex', '--port', '4000'])).toMatchObject({
+      kind: 'tower',
+      sessions: true,
+      web: true,
+      agent: 'codex',
+      port: 4000,
+    });
+    expect(() => parseCli(['tower', '--exit-with-stdin'])).toThrow(UsageError);
+  });
+
+  it('opens the tower in the terminal with the same local and MCP index, leaving ordinary chats opt-in', async () => {
+    const launches: UiLaunch[] = [];
+    const loadUi = async () => ({
+      runChat: async (launch: UiLaunch) => {
+        launches.push(launch);
+        return 0;
+      },
+      runWeb: async () => {
+        throw new Error('expected the terminal');
+      },
+    });
+    const agent = { ...fakeAgent('alpha', []), capabilities: { mcp: true } };
+    const options = { interactive: true, agents: [agent], loadUi };
+    for (const argv of [['tower'], ['chat', '--sessions'], ['chat']]) {
+      expect(await main(environment({ ...options, argv }).cli)).toBe(EXIT_OK);
+    }
+    const [tower, indexed, plain] = launches;
+    expect(tower!.waitingOnStart).toBe(true);
+    expect(tower!.task?.mcpServers).toMatchObject([{ name: 'sessions' }]);
+    expect(tower!.sessionTools?.map((tool) => tool.name)).toContain('sessions_waiting');
+    expect(indexed!.sessionTools?.map((tool) => tool.name)).toContain('sessions_read');
+    expect(indexed!.waitingOnStart).toBeUndefined();
+    expect(plain!.sessionTools).toBeUndefined();
+    const batch = environment({ ...options, interactive: false, argv: ['tower'] });
+    expect(await main(batch.cli)).toBe(EXIT_USAGE);
+    expect(batch.err()).toContain('tower needs a terminal');
   });
 
   it('parses --mcp name=url for chat and ui', () => {

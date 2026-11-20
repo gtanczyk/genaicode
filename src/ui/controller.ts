@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
+import { outputText, type McpTool } from '../agents/mcp-tools.js';
 import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
 import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
 import { isWithin } from '../agents/sessions/files.js';
@@ -54,6 +56,10 @@ export interface ChatOptions {
    * more when `agents` is narrowed (to the ones that take MCP servers, say).
    */
   sessionSources?: readonly SessionSource[];
+  /** Tools explicitly enabled by `--sessions` or `tower`, also used for local previews. */
+  sessionTools?: readonly McpTool[];
+  /** Show the first five waiting sessions as soon as the tower opens. */
+  waitingOnStart?: boolean;
   /** Agent to start with. Default: the first installed one. */
   agent?: string;
   cwd: string;
@@ -156,6 +162,7 @@ export function createChatController(options: ChatOptions): ChatController {
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
   let notices: Notice[] = [];
+  let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
   let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove, shells: 0 };
@@ -172,6 +179,7 @@ export function createChatController(options: ChatOptions): ChatController {
   };
   const unsubscribe = session.subscribe(publish);
   const notice = (text: string, tone: Notice['tone'] = 'info') => {
+    if (closed) return;
     notices = [...notices, { id: nextNotice++, afterTurn: session.get().turns.length, text, tone }].slice(-200);
     publish();
   };
@@ -346,6 +354,27 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
 
+  const showIndex = async (
+    name: 'sessions_waiting' | 'sessions_read',
+    args: Record<string, unknown>,
+    heading: string,
+  ) => {
+    const tool = options.sessionTools?.find((candidate) => candidate.name === name);
+    if (!tool) {
+      notice('Open genaicode tower or start the chat with --sessions to inspect other sessions.', 'error');
+      return;
+    }
+    try {
+      const result = await tool.call(args);
+      notice(plainSessionText(`${heading}\n${outputText(result)}`));
+    } catch (error) {
+      notice(plainSessionText(`${heading}\n${errorText(error)}`), 'error');
+    }
+  };
+  if (options.waitingOnStart) {
+    void showIndex('sessions_waiting', { limit: 5 }, 'Use /waiting [project] to refresh or /read <id> to preview.');
+  }
+
   const web = (command: { off: boolean; invalid?: string }, source: ChatSource) => {
     if (command.invalid !== undefined) {
       notice(`Use /web or /web off (not "${command.invalid}").`, 'error');
@@ -450,6 +479,17 @@ export function createChatController(options: ChatOptions): ChatController {
           if (command.id) void continueSession(command.id);
           else notice('Use /continue <session id>. `genaicode sessions` lists them.', 'error');
           return 'ok';
+        case 'waiting':
+          void showIndex(
+            'sessions_waiting',
+            { project: command.project },
+            command.project ? `/waiting ${command.project}` : '/waiting',
+          );
+          return 'ok';
+        case 'read':
+          if (command.id) void showIndex('sessions_read', { id: command.id, turns: 3 }, `/read ${command.id}`);
+          else notice('Use /read <session id>. /waiting shows the IDs.', 'error');
+          return 'ok';
         case 'new':
           session.reset();
           notice('Next prompt starts a new agent session.');
@@ -498,12 +538,20 @@ export function createChatController(options: ChatOptions): ChatController {
     },
     artifacts: options.artifactChannel?.store,
     close() {
+      closed = true;
       stopShells();
       unsubscribe();
       listeners.clear();
       session.close();
     },
   };
+}
+
+/** Stored transcripts may contain terminal controls. Keep only display text, tabs and newlines. */
+function plainSessionText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  const controls = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+  return stripVTControlCharacters(text).replace(/\r\n/g, '\n').replace(controls, '');
 }
 
 const SHELL_LINES = 40;

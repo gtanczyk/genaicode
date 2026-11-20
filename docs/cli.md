@@ -117,6 +117,21 @@ the project, open approval questions and the latest reply. `npx genaicode sessio
 the same read-only tools over stdio. The agent can read what the other sessions said and what
 their open questions ask. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
+### Open the session tower
+
+Run `npx genaicode tower` to open a terminal chat with up to five sessions waiting for you.
+Approvals come first. Each entry includes the project and the session ID. Use `-a <agent>` to
+choose an installed agent with MCP support, or `--web` to open the same chat in a browser.
+
+| In the chat       | What it does                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `/waiting`        | Refresh the waiting queue across projects, showing up to 30 sessions from the last seven days.      |
+| `/waiting harbor` | Show waiting sessions whose project directory or repository contains `harbor`.                      |
+| `/read <id>`      | Preview up to three recent turns in place. A unique prefix of at least eight characters also works. |
+
+These commands also work in `chat --sessions` and `ui --sessions`. Their results appear locally
+in the chat. To ask the agent for a summary, type your own question with the session ID.
+
 ## Chat with an agent: terminal and browser
 
 ```bash

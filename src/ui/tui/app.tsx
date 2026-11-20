@@ -74,7 +74,10 @@ export function ChatApp({
   const rows = stdout.rows || 24;
 
   useEffect(() => {
-    let seen = controller.get().session;
+    // The tower's initial read can finish between rendering and subscribing.
+    const current = controller.get();
+    setView(current);
+    let seen = current.session;
     return controller.subscribe((next) => {
       // The terminal's bark: ring the bell when an approval waits or a turn finishes.
       if (next.bark && needsAttention(seen, next.session)) stdout.write('\x07');
