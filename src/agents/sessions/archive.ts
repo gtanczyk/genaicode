@@ -1,6 +1,7 @@
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { liveDir } from './live.js';
+import { liveDir, type LiveRecord } from './live.js';
 import type { SessionInfo } from './types.js';
 
 export { STALE_MS, staleSessions } from './group.js';
@@ -37,16 +38,30 @@ export async function readArchive(env: NodeJS.ProcessEnv = process.env): Promise
   }
 }
 
-/** Whether `session` is archived: archived, and nothing happened in it since. */
-export function isArchived(session: SessionInfo, archive: ReadonlyMap<string, number>): boolean {
+/**
+ * Whether `session` is archived: archived, and nothing happened in it since, in its store or in
+ * what its hooks reported (`live`), even a report that changed nothing shown.
+ */
+export function isArchived(
+  session: SessionInfo,
+  archive: ReadonlyMap<string, number>,
+  live?: ReadonlyMap<string, LiveRecord>,
+): boolean {
   const at = archive.get(archiveKey(session));
-  return at !== undefined && session.updatedAt <= at;
+  if (at === undefined) return false;
+  const record = live?.get(archiveKey(session));
+  const latest = Math.max(session.updatedAt, record?.at ?? 0, record?.seen ?? 0);
+  return latest <= at;
 }
 
 /** `sessions` with `archived: true` on those put away. */
-export function withArchive(sessions: readonly SessionInfo[], archive: ReadonlyMap<string, number>): SessionInfo[] {
+export function withArchive(
+  sessions: readonly SessionInfo[],
+  archive: ReadonlyMap<string, number>,
+  live?: ReadonlyMap<string, LiveRecord>,
+): SessionInfo[] {
   if (!archive.size) return [...sessions];
-  return sessions.map((session) => (isArchived(session, archive) ? { ...session, archived: true } : session));
+  return sessions.map((session) => (isArchived(session, archive, live) ? { ...session, archived: true } : session));
 }
 
 /**
@@ -72,7 +87,8 @@ export async function archiveSessions(
   for (const [key, at] of archive) if (now - at > FORGET_MS) archive.delete(key);
   const file = archiveFile(env);
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const temporary = `${file}.${process.pid}.tmp`;
+  // Its own temporary file, so writes at the same moment do not trip over each other.
+  const temporary = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   await fs.writeFile(temporary, `${JSON.stringify(Object.fromEntries(archive))}\n`, { mode: 0o600 });
   await fs.rename(temporary, file);
   return changed;

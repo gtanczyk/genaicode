@@ -48,11 +48,19 @@ describe('archiving sessions', () => {
     // Something happened in it after: back among the others.
     expect(isArchived(session({ id: 'a', updatedAt: NOW + 1 }), archive)).toBe(false);
     expect(isArchived(session({ id: 'b' }), archive)).toBe(false);
+    // A hook's report after it counts too, even one that left the shown time as it was.
+    const live = new Map([
+      ['claude:a', { agent: 'claude', id: 'a', state: 'approval' as const, at: NOW - 5, seen: NOW + 1 }],
+    ]);
+    expect(isArchived(session({ id: 'a', updatedAt: NOW - 1 }), archive, live)).toBe(false);
     expect(await archiveSessions([{ source: 'codex', id: 'a' }], false, { env, now: NOW })).toBe(1);
     expect([...(await readArchive(env)).keys()]).toEqual(['claude:a']);
     // Long untouched entries are forgotten on the next write.
     await archiveSessions([{ source: 'claude', id: 'z' }], true, { env, now: NOW + 365 * 24 * 3600_000 });
     expect([...(await readArchive(env)).keys()]).toEqual(['claude:z']);
+    // Writes at the same moment each land whole.
+    await Promise.all(['p', 'q', 'r'].map((id) => archiveSessions([{ source: 'claude', id }], true, { env })));
+    expect((await readArchive(env)).size).toBeGreaterThan(0);
   });
 
   it('picks the sessions left for days, never one at work or in the cloud', () => {

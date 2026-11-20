@@ -103,7 +103,7 @@ export async function listSessions(
   }
   // Sessions put away (`genaicode sessions archive`) say so.
   const archive = await readArchive(query.env);
-  const sessions = withArchive(found, archive).sort((a, b) => b.updatedAt - a.updatedAt);
+  const sessions = withArchive(found, archive, live).sort((a, b) => b.updatedAt - a.updatedAt);
   return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
 }
 
