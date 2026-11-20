@@ -78,6 +78,11 @@ continues it (see [sessions](agents.md#sessions-across-agents)).
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
+With `hooks install --answer`, Claude Code's approval questions can also be answered from here:
+`sessions --waiting` lists them, `sessions approve <q>` / `sessions deny <q> -m <why>` answer, and
+the browser's Sessions view has Approve and Deny (see
+[answering](agents.md#answering-from-the-tower-hooks-install---answer)).
+
 `npx genaicode sessions doctor` checks that those stores still read as expected after an agent
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).

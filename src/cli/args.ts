@@ -35,7 +35,15 @@ export type CliCommand =
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
   /** `sessions mcp`: the session index as an MCP server on stdio. */
   | { kind: 'sessions-mcp'; agent?: string }
-  | { kind: 'hooks'; action: 'status' | 'install' | 'uninstall'; agent?: string }
+  | {
+      kind: 'hooks';
+      action: 'status' | 'install' | 'uninstall';
+      agent?: string;
+      /** `install --answer`: questions can also be answered from the tower. */
+      answer?: true;
+    }
+  /** `sessions approve|deny <id>`: answer a question a session holds open. */
+  | { kind: 'answer'; id: string; behavior: 'allow' | 'deny'; message?: string }
   /** `notify`: desktop notifications when a session asks for approval (`--done`: or finishes a turn). */
   | { kind: 'notify'; action: 'status' | 'on' | 'off' | 'test'; done: boolean }
   | {
@@ -173,10 +181,33 @@ export function parseCli(argv: readonly string[]): CliCommand {
           since: { type: 'string' },
           limit: { type: 'string', short: 'n' },
           waiting: { type: 'boolean', short: 'w' },
+          message: { type: 'string', short: 'm' },
         },
       }),
     );
     const limit = optionalNumber(values.limit, '--limit');
+    if (positionals[0] === 'approve' || positionals[0] === 'deny') {
+      const deny = positionals[0] === 'deny';
+      const extra =
+        values.cloud ||
+        values.cwd !== undefined ||
+        values.limit !== undefined ||
+        values.since !== undefined ||
+        values.agent !== undefined ||
+        values.json ||
+        values.api ||
+        values.waiting;
+      if (positionals.length !== 2 || extra || (!deny && values.message !== undefined)) {
+        throw new UsageError('Usage: genaicode sessions approve <question> | sessions deny <question> [-m <why>]');
+      }
+      return {
+        kind: 'answer',
+        id: positionals[1]!,
+        behavior: deny ? 'deny' : 'allow',
+        ...(values.message !== undefined ? { message: values.message } : {}),
+      };
+    }
+    if (values.message !== undefined) throw new UsageError('-m belongs to "genaicode sessions deny".');
     if (positionals[0] === 'mcp') {
       const extra =
         values.cloud || values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
@@ -231,14 +262,20 @@ export function parseCli(argv: readonly string[]): CliCommand {
         args: rest,
         strict: true,
         allowPositionals: true,
-        options: { agent: { type: 'string', short: 'a' } },
+        options: { agent: { type: 'string', short: 'a' }, answer: { type: 'boolean' } },
       }),
     );
     const action = positionals[0] ?? 'status';
-    if (positionals.length > 1 || (action !== 'status' && action !== 'install' && action !== 'uninstall')) {
-      throw new UsageError('Usage: genaicode hooks [status|install|uninstall] [-a <agent>]');
+    const known = action === 'status' || action === 'install' || action === 'uninstall';
+    if (positionals.length > 1 || !known || (values.answer && action !== 'install')) {
+      throw new UsageError('Usage: genaicode hooks [status|install [--answer]|uninstall] [-a <agent>]');
     }
-    return { kind: 'hooks', action, ...(values.agent !== undefined ? { agent: values.agent } : {}) };
+    return {
+      kind: 'hooks',
+      action,
+      ...(values.agent !== undefined ? { agent: values.agent } : {}),
+      ...(values.answer === true ? { answer: true } : {}),
+    };
   }
 
   if (command === 'chat' || command === 'ui') {

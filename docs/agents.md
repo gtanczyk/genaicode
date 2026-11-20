@@ -339,6 +339,28 @@ however many hooks remind of it. The setting is kept in `~/.genaicode/notify.jso
 `noticeFor(before, after, settings)` decides, `sendNotice(notice)` shows it, and `recordHook()`
 takes `onRecord(before, after)` to do the same for an agent of your own.
 
+### Answering from the tower: `hooks install --answer`
+
+```bash
+npx genaicode hooks install --answer           # Claude Code: questions can be answered from here too
+npx genaicode sessions --waiting               # each question with what the tool would do
+npx genaicode sessions approve 3f9a0c1d2e4b
+npx genaicode sessions deny 3f9a0c1d2e4b -m "use the staging database"
+```
+
+With `--answer`, Claude Code's `PermissionRequest` gets one more hook, one Claude Code waits
+for: it holds the question open for up to 9 minutes in `~/.genaicode/asks/` (readable by you only)
+with the tool and a line of what it would do (the command, the file, the address). Claude Code
+shows its own dialog meanwhile, as always; whichever answer comes first counts. Answered in
+Claude Code, the hook sees the tool run (or Claude Code ends it) and lets go; nothing answered,
+it lets go after 9 minutes and the dialog stays. The browser's Sessions view shows the same
+questions under their session with Approve and Deny. A denial tells the agent why, if you say.
+
+Codex is left out: it shows its prompt only after the hook is done, so a hook that waits would
+hold it back. No MCP tool answers questions: an agent cannot approve another agent's tool. In
+code: `pendingAsks()`, `answerAsk(id, { behavior: 'allow' })`, and `waitForAnswer(agent, input)`
+for a hook of your own.
+
 ### When an agent changes its store: `sessions doctor`
 
 No agent promises how it keeps its sessions, so an update of its CLI can change the store, and a
