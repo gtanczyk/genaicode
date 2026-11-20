@@ -68,7 +68,9 @@ export function hookInput(agent: string, input: unknown, event?: string): unknow
   const roots = Array.isArray(input.workspace_roots) ? input.workspace_roots : [];
   const cwd = text(input.cwd) ?? text(roots[0]);
   const tool = text(input.tool_name) ?? text(input.toolName);
-  const toolInput = 'tool_input' in input ? input.tool_input : args(input.toolArgs);
+  // Copilot's `permissionRequest` names it `toolInput`, its tool hooks `toolArgs`.
+  const toolInput =
+    'tool_input' in input ? input.tool_input : 'toolInput' in input ? args(input.toolInput) : args(input.toolArgs);
   const base = {
     ...(id ? { session_id: id } : {}),
     ...(cwd ? { cwd } : {}),

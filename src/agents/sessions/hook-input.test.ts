@@ -100,7 +100,8 @@ describe("other agents' hooks", () => {
     const env = home();
     const base = { sessionId: 'p1', timestamp: 1, cwd: '/work/api' };
     await hook(env, 'copilot', base, 'userPromptSubmitted');
-    await hook(env, 'copilot', { ...base, toolName: 'bash', toolArgs: '{"command":"ls"}' }, 'permissionRequest');
+    // The question carries `toolInput`, the finished call `toolArgs` as JSON text: the same call.
+    await hook(env, 'copilot', { ...base, toolName: 'bash', toolInput: { command: 'ls' } }, 'permissionRequest');
     expect((await readLive(env)).get('copilot:p1')).toMatchObject({ state: 'approval', tool: 'bash' });
     await hook(env, 'copilot', { ...base, toolName: 'bash', toolArgs: '{"command":"ls"}' }, 'postToolUse');
     expect((await readLive(env)).get('copilot:p1')).toMatchObject({ state: 'working' });
