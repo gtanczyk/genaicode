@@ -287,21 +287,28 @@ const { sessions } = await listSessions(agentSessionSources(agents), { limit: 50
 ### Which sessions need you: hooks
 
 The stores say what was written, not what the agent is doing right now: a session that asks
-"may I run this command?" looks the same as one that is thinking. Claude Code and Codex can say
-it themselves through their hooks:
+"may I run this command?" looks the same as one that is thinking. Claude Code, Codex, Gemini
+CLI, GitHub Copilot CLI and Cursor's CLI can say it themselves through their hooks:
 
 ```bash
-npx genaicode hooks install        # for the agents installed here; -a claude or -a codex for one
+npx genaicode hooks install        # for the agents installed here; -a claude (codex, gemini...) for one
 npx genaicode hooks                # what is installed
 npx genaicode hooks uninstall
 ```
 
 `install` adds one command hook to the agent's own user settings (`~/.claude/settings.json`,
-`~/.codex/hooks.json`), beside whatever is declared there; Codex runs it once you trust it under
-`/hooks`. The hook runs `genaicode hook <agent>` in the background when a session starts, takes a
+`~/.codex/hooks.json`, `~/.gemini/settings.json`, `~/.cursor/hooks.json`; for Copilot a file of
+its own, `~/.copilot/hooks/genaicode.json`), beside whatever is declared there; Codex runs it
+once you trust it under `/hooks`, Copilot from its next start. The hook runs `genaicode hook <agent>` in the background when a session starts, takes a
 prompt, asks for approval, gets its answer, finishes a turn and ends. It keeps one small file
 per session in `~/.genaicode/live` with the state, the time, the directory and the name of the
 tool asked for: nothing of what was said, and nothing leaves the machine.
+
+What each agent tells differs. Claude Code, Codex and Copilot tell when a session asks for
+approval and which tool; Gemini CLI tells that it asks, not for which tool; Cursor's hooks tell
+of no question at all, so a Cursor session shows as working or waiting for your reply, never as
+asking. Gemini and Cursor wait for their hooks (genaicode's takes a few milliseconds), and Gemini
+shows that a hook runs unless `hooksConfig.notifications` is off.
 
 `listSessions()` puts that over what the stores suggest: `state` is exact, and a `waiting`
 session has `waitingFor`: `'approval'` (with `waitingTool`, such as `Bash`) or `'reply'`.
@@ -317,7 +324,8 @@ browser's Sessions view has the same as a "N wait for you" button; in code,
 
 In code: `installHooks('claude')`, `hooksStatus()`, `uninstallHooks()`, and `recordHook(agent,
 input)` with `readLive()` and `withLive(sessions, records)` to do the same for an agent of your
-own whose hooks give the same JSON (`session_id`, `hook_event_name`, `cwd`).
+own whose hooks give the same JSON (`session_id`, `hook_event_name`, `cwd`); `hookInput(agent,
+input)` puts Gemini's, Copilot's and Cursor's in those words.
 
 The command in the settings is the `genaicode` that installed it (`node` and the path of its
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a

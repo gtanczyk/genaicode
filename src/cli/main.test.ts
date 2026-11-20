@@ -644,7 +644,7 @@ describe('genaicode hooks', () => {
     expect(answering.out).toContain('also be answered with "genaicode sessions approve|deny"');
     expect((await run('hooks')).out).toMatch(/claude: installed, answers from here/);
     expect((await run('hooks', 'uninstall', '-a', 'claude')).out).toContain('claude: hook removed');
-    expect((await run('hooks', 'install', '-a', 'gemini')).code).toBe(EXIT_USAGE);
+    expect((await run('hooks', 'install', '-a', 'muse')).code).toBe(EXIT_USAGE);
     // Asked for by name, Codex gets its hook though its CLI is not on the PATH.
     expect((await run('hooks', 'install', '-a', 'codex')).out).toContain('trust it');
   });

@@ -103,6 +103,7 @@ export {
   liveDir,
   liveEvent,
   liveRecord,
+  hookInput,
   readLive,
   answerAsk,
   askPreview,

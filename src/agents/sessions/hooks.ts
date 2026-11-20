@@ -2,9 +2,10 @@ import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AGENT_EVENTS } from './hook-input.js';
 
 /** The agents whose hooks can report what a session is doing. */
-export const HOOK_AGENTS = ['claude', 'codex'] as const;
+export const HOOK_AGENTS = ['claude', 'codex', 'gemini', 'copilot', 'cursor'] as const;
 export type HookAgent = (typeof HOOK_AGENTS)[number];
 
 /** Ends every hook command genaicode installs: how its own entries are told from the user's. */
@@ -12,7 +13,10 @@ const MARKER = '--genaicode-live';
 /** Marks the hook that holds a question open for the tower (`--answer`). */
 const ANSWER = '--answer';
 
-/** The events reported, per agent. `SessionEnd` is waited for; the rest run in the background. */
+/**
+ * The events reported, per agent, in the agent's own words. Claude Code and Codex wait for
+ * `SessionEnd` and run the rest in the background; the others run hooks as they come.
+ */
 const EVENTS: Record<HookAgent, readonly string[]> = {
   claude: [
     'SessionStart',
@@ -27,6 +31,7 @@ const EVENTS: Record<HookAgent, readonly string[]> = {
     'SessionEnd',
   ],
   codex: ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'],
+  ...AGENT_EVENTS,
 };
 
 export interface HooksOptions {
@@ -54,18 +59,40 @@ export interface HooksStatus {
   answer: boolean;
 }
 
-/** The file `agent` reads its user-level hooks from. */
+/**
+ * The file `agent` reads its user-level hooks from. Copilot reads every file in
+ * `~/.copilot/hooks`, so genaicode's are in one of their own.
+ */
 export function hooksFile(agent: HookAgent, env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME ?? env.USERPROFILE ?? homedir();
-  return agent === 'claude'
-    ? path.join(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude'), 'settings.json')
-    : path.join(env.CODEX_HOME ?? path.join(home, '.codex'), 'hooks.json');
+  switch (agent) {
+    case 'claude':
+      return path.join(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude'), 'settings.json');
+    case 'codex':
+      return path.join(env.CODEX_HOME ?? path.join(home, '.codex'), 'hooks.json');
+    case 'gemini':
+      return path.join(env.GEMINI_CLI_HOME ?? home, '.gemini', 'settings.json');
+    case 'copilot':
+      return path.join(env.COPILOT_HOME ?? path.join(home, '.copilot'), 'hooks', 'genaicode.json');
+    case 'cursor':
+      return path.join(home, '.cursor', 'hooks.json');
+  }
 }
 
-/** The command line of the hook for `agent`; `answer`: the one that holds a question open. */
-export function hookCommand(agent: HookAgent, command: string, answer = false): string {
-  return `${command} ${agent}${answer ? ` ${ANSWER}` : ''} ${MARKER}`;
+/**
+ * The command line of the hook for `agent`; `answer`: the one that holds a question open;
+ * `event`: for Copilot, whose hooks are not told which event they run for.
+ */
+export function hookCommand(agent: HookAgent, command: string, answer = false, event?: string): string {
+  return `${command} ${agent}${event ? ` ${event}` : ''}${answer ? ` ${ANSWER}` : ''} ${MARKER}`;
 }
+
+/** The hook's command for `event` of `agent`. */
+const commandFor = (agent: HookAgent, command: string, event: string) =>
+  hookCommand(agent, command, false, agent === 'copilot' ? event : undefined);
+
+/** Copilot and Cursor list handlers under each event; the others list groups of them (`{ hooks: [...] }`). */
+const FLAT: readonly HookAgent[] = ['copilot', 'cursor'];
 
 /** The agents whose dialog stays open while a hook holds the question: Codex would wait instead. */
 export const ANSWER_AGENTS: readonly HookAgent[] = ['claude'];
@@ -75,8 +102,16 @@ const ANSWER_TIMEOUT = 600;
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-const ours = (handler: unknown): boolean =>
-  isObject(handler) && typeof handler.command === 'string' && handler.command.endsWith(MARKER);
+/** A handler's command line: Copilot's is under `bash` (and `powershell`). */
+const commandOf = (handler: unknown): string | undefined =>
+  !isObject(handler)
+    ? undefined
+    : typeof handler.command === 'string'
+      ? handler.command
+      : typeof handler.bash === 'string'
+        ? handler.bash
+        : undefined;
+const ours = (handler: unknown): boolean => commandOf(handler)?.endsWith(MARKER) === true;
 
 async function readConfig(file: string): Promise<Json> {
   let source: string;
@@ -118,6 +153,7 @@ function without(config: Json): Json {
       continue;
     }
     const kept = groups.flatMap((group: unknown) => {
+      if (ours(group)) return [];
       if (!isObject(group) || !Array.isArray(group.hooks) || !group.hooks.some(ours)) return [group];
       const handlers = group.hooks.filter((handler) => !ours(handler));
       return handlers.length ? [{ ...group, hooks: handlers }] : [];
@@ -129,46 +165,50 @@ function without(config: Json): Json {
   return Object.keys(hooks).length ? { ...rest, hooks } : rest;
 }
 
+/** The handlers declared for one event: in groups, or listed as they are (Copilot, Cursor). */
+function handlersOf(groups: unknown): unknown[] {
+  return (Array.isArray(groups) ? groups : []).flatMap((group: unknown) =>
+    isObject(group) && Array.isArray(group.hooks) ? (group.hooks as unknown[]) : [group],
+  );
+}
+
 /** This package's own `cli.js`, whoever calls: the CLI or an app that imports `installHooks`. */
 function defaultCommand(): string {
   const script = fileURLToPath(new URL('../../cli.js', import.meta.url));
   return `"${process.execPath}" "${script}" hook`;
 }
 
-const answering = (handler: unknown): boolean =>
-  ours(handler) && String((handler as Json).command).endsWith(`${ANSWER} ${MARKER}`);
-
-function found(config: Json): { events: string[]; command?: string; answer?: string } {
+function found(config: Json): { events: string[]; commands: Map<string, string>; answer?: string } {
   const events: string[] = [];
-  let command: string | undefined;
+  const commands = new Map<string, string>();
   let answer: string | undefined;
   for (const [event, groups] of Object.entries(isObject(config.hooks) ? config.hooks : {})) {
-    for (const group of Array.isArray(groups) ? groups : []) {
-      for (const handler of isObject(group) && Array.isArray(group.hooks) ? group.hooks.filter(ours) : []) {
-        if (answering(handler)) {
-          answer = (handler as Json).command as string;
-          continue;
-        }
-        if (!events.includes(event)) events.push(event);
-        command = (handler as Json).command as string;
+    for (const handler of handlersOf(groups).filter(ours)) {
+      const command = commandOf(handler)!;
+      if (command.endsWith(`${ANSWER} ${MARKER}`)) {
+        answer = command;
+        continue;
       }
+      if (!events.includes(event)) events.push(event);
+      commands.set(event, command);
     }
   }
-  return { events, ...(command ? { command } : {}), ...(answer ? { answer } : {}) };
+  return { events, commands, ...(answer ? { answer } : {}) };
 }
 
 /** What is installed for `agent` now. */
 export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}): Promise<HooksStatus> {
   const file = hooksFile(agent, options.env);
-  const { events, command, answer } = found(await readConfig(file));
-  const wanted = hookCommand(agent, options.command ?? defaultCommand());
+  const { events, commands, answer } = found(await readConfig(file));
+  const base = options.command ?? defaultCommand();
+  const command = [...commands.values()].pop();
   return {
     agent,
     file,
     events,
-    installed: command === wanted && EVENTS[agent].every((event) => events.includes(event)),
+    installed: EVENTS[agent].every((event) => commands.get(event) === commandFor(agent, base, event)),
     ...(command ? { command } : {}),
-    answer: answer === hookCommand(agent, options.command ?? defaultCommand(), true),
+    answer: answer === hookCommand(agent, base, true),
   };
 }
 
@@ -179,18 +219,12 @@ export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}):
 export async function installHooks(agent: HookAgent, options: HooksOptions = {}): Promise<HooksStatus> {
   const file = hooksFile(agent, options.env);
   const config = without(await readConfig(file));
-  const command = hookCommand(agent, options.command ?? defaultCommand());
+  const base = options.command ?? defaultCommand();
   const hooks: Json = isObject(config.hooks) ? { ...config.hooks } : {};
   for (const event of EVENTS[agent]) {
     const groups = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
-    // Codex gives an `Interrupt` hook three seconds at most.
-    const handler = {
-      type: 'command',
-      command,
-      timeout: event === 'Interrupt' ? 3 : 10,
-      ...(event === 'SessionEnd' ? {} : { async: true }),
-    };
-    hooks[event] = [...groups, { hooks: [handler] }];
+    const handler = handlerFor(agent, commandFor(agent, base, event), event);
+    hooks[event] = [...groups, FLAT.includes(agent) ? handler : { hooks: [handler] }];
   }
   if (options.answer && ANSWER_AGENTS.includes(agent)) {
     // Waited for: it holds the question while the agent's dialog shows it too.
@@ -201,15 +235,42 @@ export async function installHooks(agent: HookAgent, options: HooksOptions = {})
     };
     hooks.PermissionRequest = [...(hooks.PermissionRequest as unknown[]), { hooks: [handler] }];
   }
-  await writeConfig(file, { ...config, hooks });
+  // Copilot and Cursor want to know which version of the file's format they read.
+  await writeConfig(file, { ...(FLAT.includes(agent) ? { version: 1 } : {}), ...config, hooks });
   return hooksStatus(agent, options);
+}
+
+/** One handler, in the agent's own format. */
+function handlerFor(agent: HookAgent, command: string, event: string): Json {
+  switch (agent) {
+    case 'claude':
+    case 'codex':
+      // Codex gives an `Interrupt` hook three seconds at most.
+      return {
+        type: 'command',
+        command,
+        timeout: event === 'Interrupt' ? 3 : 10,
+        ...(event === 'SessionEnd' ? {} : { async: true }),
+      };
+    case 'gemini':
+      // Milliseconds; the name is how `/hooks` lists it.
+      return { type: 'command', name: 'genaicode', command, timeout: 10_000 };
+    case 'copilot':
+      return { type: 'command', bash: command, powershell: `& ${command}`, timeoutSec: 10 };
+    case 'cursor':
+      return { command, timeout: 10 };
+  }
 }
 
 /** Take genaicode's hook out of the hooks of `agent`. Resolves to whether there was one. */
 export async function uninstallHooks(agent: HookAgent, options: HooksOptions = {}): Promise<boolean> {
   const file = hooksFile(agent, options.env);
   const config = await readConfig(file);
-  if (!found(config).events.length) return false;
-  await writeConfig(file, without(config));
+  const { events, answer } = found(config);
+  if (!events.length && !answer) return false;
+  const left = without(config);
+  // A file only genaicode's hooks were in goes with them (Copilot's).
+  if (agent === 'copilot' && Object.keys(left).every((key) => key === 'version')) await fs.rm(file, { force: true });
+  else await writeConfig(file, left);
   return true;
 }

@@ -19,7 +19,11 @@ if (argv[0] === 'hook') {
     process.exitCode = await runAnswerHook(argv[1], await readStdin(), process.env, process.stdout, {
       signal: controller.signal,
     });
-  } else process.exitCode = await runHook(argv[1], await readStdin(), process.env, process.stdout);
+  } else {
+    // `hook copilot postToolUse`: an agent whose hook input does not name its event.
+    const event = argv[2] && !argv[2].startsWith('--') ? argv[2] : undefined;
+    process.exitCode = await runHook(argv[1], await readStdin(), process.env, process.stdout, undefined, event);
+  }
 } else {
   const { main } = await import('./cli/main.js');
   const controller = new AbortController();
