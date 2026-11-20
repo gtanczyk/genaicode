@@ -46,6 +46,8 @@ export interface SessionInfo {
   path?: string;
   /** Where to open it in a browser (cloud). */
   url?: string;
+  /** Put away with `genaicode sessions archive` and nothing happened in it since. */
+  archived?: true;
 }
 
 export interface SessionQuery {

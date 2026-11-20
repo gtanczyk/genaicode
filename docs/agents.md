@@ -369,6 +369,24 @@ hold it back. No MCP tool answers questions: an agent cannot approve another age
 code: `pendingAsks()`, `answerAsk(id, { behavior: 'allow' })`, and `waitForAnswer(agent, input)`
 for a hook of your own.
 
+### Putting sessions away: `sessions archive`
+
+```bash
+npx genaicode sessions archive --stale            # every one waiting or left half way for 2 days or more
+npx genaicode sessions archive --stale --older 5d -a codex
+npx genaicode sessions archive 9f6a3318           # these ones
+npx genaicode sessions unarchive 9f6a3318
+npx genaicode sessions --archived                 # list them too
+```
+
+Archiving hides a session from `sessions`, `--waiting` and the browser's Sessions view (which has
+Archive and Unarchive on each row, "Archive N stale", and an Archived filter). The agents' own
+files are not touched: genaicode notes the session and when in `~/.genaicode/archived.json`, and a
+session with any news after that (a prompt, a hook's report) is back by itself. A session an agent
+works in, or one in the cloud, is never stale. In code: `listSessions()` marks archived sessions
+`archived: true` and `waitingSessions()` leaves them out; `archiveSessions(sessions, archived)`,
+`staleSessions(sessions, olderThanMs)` and `readArchive()`.
+
 ### When an agent changes its store: `sessions doctor`
 
 No agent promises how it keeps its sessions, so an update of its CLI can change the store, and a

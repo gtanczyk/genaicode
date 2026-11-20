@@ -24,12 +24,12 @@ export interface SessionProject {
 
 /**
  * The sessions whose next move is the user's (`state: 'waiting'`): those that ask for approval
- * first, then the others, newest first in each.
+ * first, then the others, newest first in each. Archived ones are left out.
  */
 export function waitingSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
   const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : 1);
   return sessions
-    .filter((session) => session.state === 'waiting')
+    .filter((session) => session.state === 'waiting' && !session.archived)
     .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);
 }
 
@@ -59,4 +59,25 @@ function lastSegment(place: string): string {
     .split(/[\\/]/)
     .filter(Boolean);
   return parts[parts.length - 1] ?? '';
+}
+
+/** A session waiting or left half way this long is stale (`sessions archive --stale`): two days. */
+export const STALE_MS = 2 * 24 * 3600_000;
+
+/**
+ * The sessions nobody came back to: waiting for you or left half way, nothing for `olderThanMs`
+ * (default two days), and not archived already. Never one an agent works in.
+ */
+export function staleSessions(
+  sessions: readonly SessionInfo[],
+  olderThanMs = STALE_MS,
+  now = Date.now(),
+): SessionInfo[] {
+  return sessions.filter(
+    (session) =>
+      !session.archived &&
+      session.where === 'local' &&
+      (session.state === 'waiting' || session.state === 'unfinished') &&
+      now - session.updatedAt >= olderThanMs,
+  );
 }

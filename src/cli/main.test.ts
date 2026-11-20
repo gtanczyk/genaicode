@@ -543,6 +543,76 @@ describe('genaicode sessions --waiting', () => {
   });
 });
 
+describe('genaicode sessions archive', () => {
+  it('parses, and keeps --stale and ids apart', () => {
+    expect(parseCli(['sessions', 'archive', 'a', 'b'])).toEqual({
+      kind: 'archive',
+      ids: ['a', 'b'],
+      archived: true,
+      stale: false,
+    });
+    expect(parseCli(['sessions', 'archive', '--stale', '--older', '5d', '-a', 'codex'])).toEqual({
+      kind: 'archive',
+      ids: [],
+      archived: true,
+      stale: true,
+      olderMs: 5 * 24 * 3600_000,
+      agent: 'codex',
+    });
+    expect(parseCli(['sessions', 'unarchive', 'a'])).toMatchObject({ kind: 'archive', archived: false });
+    expect(parseCli(['sessions', '--archived'])).toMatchObject({ kind: 'sessions', archived: true });
+    expect(() => parseCli(['sessions', 'archive'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'archive', 'a', '--stale'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'archive', 'a', '--older', '2d'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'unarchive', '--stale'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', '--stale'])).toThrow(UsageError);
+  });
+
+  it('puts away what was left for days, hides it, and brings it back', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-archive-'));
+    dirs.push(home);
+    const now = Date.now();
+    const day = 24 * 3600_000;
+    const listed = [
+      { id: 'fresh-one', state: 'waiting' as const, updatedAt: now - 1000, title: 'Fresh' },
+      { id: 'busy-one', state: 'active' as const, updatedAt: now - 3 * day, title: 'Busy' },
+      { id: 'left-one', state: 'unfinished' as const, updatedAt: now - 3 * day, title: 'Left half way' },
+      { id: 'idle-one', state: 'waiting' as const, updatedAt: now - 4 * day, title: 'Never answered' },
+    ].map((one) => ({ source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app', ...one }));
+    const agent = {
+      ...fakeAgent('alpha', []),
+      sessions: { name: 'alpha', where: 'local' as const, list: async () => listed },
+    };
+    const run = async (...argv: string[]) => {
+      const { cli, out, err } = environment({
+        argv: ['sessions', ...argv],
+        env: { HOME: home, PATH: '' },
+        agents: [agent],
+      });
+      return { code: await main(cli), out: out(), err: err() };
+    };
+    expect((await run()).out).toContain('genaicode sessions archive --stale');
+    const archived = await run('archive', '--stale');
+    expect(archived.code).toBe(EXIT_OK);
+    expect(archived.out).toMatch(/^Archived 2 sessions left for 2d or more:/);
+    expect(archived.out).toContain('Never answered');
+    expect(archived.out).not.toContain('Busy');
+    const list = await run();
+    expect(list.out).toContain('Fresh');
+    expect(list.out).not.toContain('Left half way');
+    expect(list.out).toContain('2 archived not shown: --archived shows them.');
+    expect((await run('--archived')).out).toMatch(/archived\s+Left half way/);
+    expect((await run('archive', '--stale')).out).toBe('No session left for 2d or more.\n');
+    expect((await run('unarchive', 'idle-one')).out).toBe('Brought back 1 session.\n');
+    expect((await run()).out).toContain('Never answered');
+    expect((await run('archive', 'fresh-one')).out).toBe('Archived 1 session.\n');
+    expect((await run('-w')).out).not.toContain('Fresh');
+    const missing = await run('archive', 'nope');
+    expect(missing.code).toBe(EXIT_FAILED);
+    expect(missing.err).toContain('No session "nope"');
+  });
+});
+
 describe('genaicode sessions mcp', () => {
   it('parses, and refuses the options of the listing', () => {
     expect(parseCli(['sessions', 'mcp'])).toEqual({ kind: 'sessions-mcp' });
