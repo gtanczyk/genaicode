@@ -1,4 +1,5 @@
 import { waitForAnswer, type WaitOptions } from '../agents/sessions/answer.js';
+import { hookInput, hookOutput } from '../agents/sessions/hook-input.js';
 import { recordHook } from '../agents/sessions/live.js';
 import { noticeFor, readNotify, sendNotice, type Notice } from '../agents/sessions/notify.js';
 
@@ -12,9 +13,15 @@ export async function runHook(
   env: NodeJS.ProcessEnv,
   stdout: { write(text: string): unknown },
   send: (notice: Notice) => unknown = (notice) => sendNotice(notice),
+  /** The event the hook was installed for, for an agent whose input does not name it (Copilot). */
+  name?: string,
 ): Promise<number> {
+  let own = name;
   try {
-    const event: unknown = JSON.parse(input ?? '');
+    const raw: unknown = JSON.parse(input ?? '');
+    const named = (raw as { hook_event_name?: unknown } | null)?.hook_event_name;
+    own ??= typeof named === 'string' ? named : undefined;
+    const event = agent ? hookInput(agent, raw, own) : raw;
     if (agent) {
       // `genaicode notify on`: a question asked, or a turn over, shows on the desktop.
       const settings = await readNotify(env);
@@ -26,12 +33,13 @@ export async function runHook(
       });
       if (notice) send(notice);
     }
-    // A `Stop` hook answers in JSON; an empty object decides nothing.
-    const name = (event as { hook_event_name?: unknown } | null)?.hook_event_name;
-    if (name === 'Stop') stdout.write('{}\n');
   } catch {
     // A hook that fails would show an error in the agent for nothing the user can act on.
   }
+  // Some hooks answer in JSON (Claude Code's `Stop`, every one of Cursor's and Gemini's): this one
+  // decides nothing, and is printed even when the report failed.
+  const output = hookOutput(agent ?? '', own);
+  if (output) stdout.write(output);
   return 0;
 }
 

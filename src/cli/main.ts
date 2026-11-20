@@ -188,11 +188,12 @@ Sessions options:
   the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
 
 Hooks options:
-  -a, --agent <name>      Only this agent (claude, codex); default: both
+  -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
       --answer            With "install" (Claude Code): questions can also be answered here
 
   "hooks install" adds a hook to the agent's own user settings (~/.claude/settings.json,
-  ~/.codex/hooks.json; Codex asks you to trust it under /hooks). The agent then tells genaicode
+  ~/.codex/hooks.json, ~/.gemini/settings.json, ~/.cursor/hooks.json,
+  ~/.copilot/hooks/genaicode.json; Codex asks you to trust it under /hooks). The agent then tells genaicode
   when a session works, asks for approval or has finished its turn, so "sessions" and the
   browser's Sessions view show which ones need you. "hooks uninstall" takes it out again.
 
