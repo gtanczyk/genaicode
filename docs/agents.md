@@ -323,6 +323,22 @@ The command in the settings is the `genaicode` that installed it (`node` and the
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
 global install), and run `hooks install` again after moving it.
 
+### Being told: `notify`
+
+```bash
+npx genaicode notify on          # a desktop notification when a session asks for approval
+npx genaicode notify on --done   # ...and when a session finishes its turn
+npx genaicode notify test        # show one now
+npx genaicode notify off
+```
+
+The hooks above do it, so `hooks install` comes first. The notification names the agent, the
+project's directory and the tool asked for, nothing of what was said: Notification Center on macOS
+(`osascript`), the desktop's notifications on Linux (`notify-send`). A question is told once,
+however many hooks remind of it. The setting is kept in `~/.genaicode/notify.json`. In code:
+`noticeFor(before, after, settings)` decides, `sendNotice(notice)` shows it, and `recordHook()`
+takes `onRecord(before, after)` to do the same for an agent of your own.
+
 ### When an agent changes its store: `sessions doctor`
 
 No agent promises how it keeps its sessions, so an update of its CLI can change the store, and a

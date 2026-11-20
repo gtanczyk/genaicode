@@ -28,6 +28,8 @@ export {
 } from './stores.js';
 export type { StoreOptions } from './stores.js';
 export { liveDir, liveEvent, readLive, recordHook, withLive } from './live.js';
+export { noticeFor, notifyFile, readNotify, sendNotice, writeNotify } from './notify.js';
+export type { Notice, NotifySettings, SendOptions } from './notify.js';
 export type { LiveRecord, LiveState } from './live.js';
 export { HOOK_AGENTS, hookCommand, hooksFile, hooksStatus, installHooks, uninstallHooks } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';

@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - What waits for you, across agents: `genaicode sessions --waiting` (`-w`) lists only the sessions whose next move is yours, approvals first, each with what it asks or said and the command that continues it (last 7 days unless `--since`); the browser's Sessions view gets a "N wait for you" button with the same order; `waitingSessions()` in `genaicode/agents` (#206)
+- `genaicode notify on`: with the hooks installed, a desktop notification (macOS Notification Center, `notify-send` on Linux) when a session of Claude Code or Codex asks for approval, once per question; `--done` also when a session finishes its turn; `notify test`, `notify off`. It names the agent, the project and the tool only. In code: `noticeFor()`, `sendNotice()`, `readNotify()`/`writeNotify()` and `recordHook({ onRecord })` (#207)
 
 ### Fixed
 
