@@ -1,4 +1,6 @@
 export { cliAgent } from './agents/cli-agent.js';
+export { sendSession } from './agents/sessions/send.js';
+export type { SessionSendOptions } from './agents/sessions/send.js';
 export type { AgentOutcome, AgentOutputParser, CliAgentDefinition } from './agents/cli-agent.js';
 export { detectAgents, findExecutable } from './agents/discovery.js';
 export type { AgentAvailability } from './agents/discovery.js';

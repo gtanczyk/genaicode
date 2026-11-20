@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
 import type { CodingAgent } from '../agents/types.js';
+import { detectAgents } from '../agents/discovery.js';
+import { sendSession } from '../agents/sessions/send.js';
 import type { EmbeddedWeb as PublicEmbeddedWeb, EmbeddedWebBundleOptions } from '../ui.js';
 import {
   createChatController,
@@ -32,6 +34,7 @@ export { NoAgentError };
  */
 export interface UiRunOptions extends ChatOptions {
   agents: readonly CodingAgent[];
+  sessionAgents?: readonly CodingAgent[];
   version: string;
   stdout: NodeJS.WriteStream;
   stderr: NodeJS.WritableStream;
@@ -187,6 +190,12 @@ async function runTerminal(controller: ChatController, options: UiRunOptions) {
  */
 function webLink(options: WebRunOptions, controller: () => ChatController): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
+  const agents = options.sessionAgents ?? options.agents;
+  const senders = detectAgents(agents, options.env).flatMap(({ agent, path }) =>
+    path && agent.capabilities.resume && agent.sessions?.where === 'local'
+      ? [{ agent: agent.name, source: agent.sessions.name, sandboxes: agent.capabilities.permissions?.sandbox ?? [] }]
+      : [],
+  );
   const start = () =>
     (running ??= startWebUi({
       controller: controller(),
@@ -202,8 +211,15 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);
-        return { ...listing, readable, asks };
+        return { ...listing, readable, asks, senders };
       },
+      sendPrompt: (source, id, prompt, sandbox, signal) =>
+        sendSession(agents, id, prompt, {
+          source,
+          env: options.env,
+          signal,
+          permissions: sandbox ? { sandbox } : undefined,
+        }),
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
     }).catch((error: unknown) => {

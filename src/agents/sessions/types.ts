@@ -37,6 +37,8 @@ export interface SessionInfo {
    */
   heardAt?: number;
   state?: SessionActivity;
+  /** The agent explicitly reports a running turn, which may be paused for input or approval. */
+  turnInProgress?: true;
   /**
    * What a `waiting` session waits for, where the agent's hooks report it (`genaicode hooks
    * install`): `approval` when it asked whether it may use a tool, `reply` when its turn is over.

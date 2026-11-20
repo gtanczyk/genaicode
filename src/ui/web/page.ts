@@ -99,11 +99,20 @@ button.chip:hover { border-color: var(--accent); }
 .question-row button { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 10px; cursor: pointer; color: var(--muted); }
 .question-row button.allow { color: var(--bg); background: var(--accent); border-color: var(--accent); }
 .question-row button:disabled { opacity: 0.5; cursor: default; }
+.session-reply { display: grid; gap: 6px; padding: 4px 12px 10px 36px; font-size: 13px; }
+.session-reply textarea { width: 100%; min-height: 3em; resize: vertical; box-sizing: border-box; }
+.session-reply > div { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.session-reply label { margin-right: auto; color: var(--muted); }
+.session-reply :is(textarea, select, button) { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 6px; padding: 4px 8px; }
+.session-reply button[type=submit] { color: var(--bg); background: var(--accent); }
+.session-reply button:disabled { opacity: .55; }
+.session-receipt { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; padding: 8px 12px; font-size: 13px; }
+.session-receipt p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto; margin: 4px 0; }
 .more { padding: 6px 12px; border-top: 1px solid var(--line); }
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 @media (max-width: 640px) {
   .session-row { grid-template-columns: 16px 70px 34px 1fr; }
-  .session-row .act { display: none; }
+  .session-row .act { grid-column: 2 / -1; flex-wrap: wrap; }
   header.bar { padding: 8px 16px; gap: 8px; }
   .cwd { display: none; }
   .field input { width: 120px; }

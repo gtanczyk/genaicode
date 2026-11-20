@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { isSandboxPolicy } from '../../agents/permissions.js';
+import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
@@ -29,6 +31,14 @@ export interface WebUiOptions {
    * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
    */
   sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
+  /** Run a turn in the named local session. Enabled only in the standalone tower. */
+  sendPrompt?: (
+    source: string,
+    id: string,
+    prompt: string,
+    sandbox: SandboxPolicy | undefined,
+    signal: AbortSignal,
+  ) => Promise<AgentResult>;
   /** Answers a question a session holds open (`asks` of the listing), at POST /api/asks/<id>. */
   answer?: (id: string, decision: AskDecision) => Promise<boolean>;
   /** Archives sessions (`archived` false: brings them back), at POST /api/archive. */
@@ -41,7 +51,11 @@ export interface WebUiOptions {
  * `readable`: the sources (`SessionInfo.source`) whose sessions the chat can take over (`continue`).
  * `asks`: the questions held open for an answer from here.
  */
-export type WebSessionListing = SessionListing & { readable?: string[]; asks?: PendingAsk[] };
+export type WebSessionListing = SessionListing & {
+  readable?: string[];
+  asks?: PendingAsk[];
+  senders?: Array<{ agent: string; source: string; sandboxes: readonly SandboxPolicy[] }>;
+};
 
 export interface WebAsset {
   type: string;
@@ -107,6 +121,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
+  const lifetime = new AbortController();
   let port = 0;
 
   const allowedHost = (header: string | undefined) => {
@@ -211,6 +226,49 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       );
       return send(res, 200, 'application/json', JSON.stringify(listing));
     }
+    const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
+    if (req.method === 'POST' && target) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.sendPrompt) return send(res, 404, 'application/json', '{"error":"no session sender here"}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let source: string, id: string, prompt: string, sandbox: SandboxPolicy | undefined;
+      try {
+        source = decodeURIComponent(target[1]!);
+        id = decodeURIComponent(target[2]!);
+        const body = JSON.parse(await readBody(req));
+        if (
+          typeof body?.prompt !== 'string' ||
+          !body.prompt.trim() ||
+          body.prompt.length > 32_000 ||
+          (body.sandbox !== undefined && !isSandboxPolicy(body.sandbox))
+        )
+          throw new Error();
+        prompt = body.prompt;
+        sandbox = body.sandbox;
+      } catch {
+        return send(res, 400, 'application/json', '{"error":"invalid session prompt or sandbox"}');
+      }
+      try {
+        const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal);
+        return send(
+          res,
+          result.ok ? 200 : 422,
+          'application/json',
+          JSON.stringify({ ok: result.ok, text: result.text, error: result.error }),
+        );
+      } catch (error) {
+        return send(
+          res,
+          409,
+          'application/json',
+          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+        );
+      }
+    }
     const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);
     if (req.method === 'POST' && asked) {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
@@ -303,6 +361,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     url: `http://${shown}:${port}/?token=${token}`,
     close: () =>
       new Promise((resolve) => {
+        lifetime.abort();
         unsubscribe();
         if (pending) clearTimeout(pending);
         for (const stream of streams) stream.end();

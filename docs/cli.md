@@ -75,6 +75,25 @@ half way. After `npx genaicode hooks install`, Claude Code, Codex, Gemini, Copil
 do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
 continues it (see [sessions](agents.md#sessions-across-agents)).
 
+To send one message from another directory, use the id from the listing. A unique prefix of at least eight characters also works.
+
+```bash
+genaicode sessions send a1b2c3d4 "Which test still fails?"
+genaicode sessions send a1b2c3d4 --sandbox read-only "Explain the failure"
+genaicode sessions send a1b2c3d4 --detach "Run the regression tests"
+```
+
+The original agent resumes the conversation in its own project. Replies stream to stdout.
+You can pipe the prompt on stdin or use `-a <agent>` to search one agent's store.
+`--detach` returns the background process ID once the agent acknowledges the turn. Its reply
+stays in the native conversation. The driver uses its default permissions unless you select
+`--sandbox read-only|workspace-write|unrestricted`. Each driver accepts its supported modes.
+
+In the browser, choose **Sessions → Reply**, enter the message and choose **Send**. The reply appears
+in the Sessions view. Both entry points require a local session that is waiting for a reply or
+stopped mid-turn, with a driver that supports resuming. A running turn or pending tool approval
+must finish first. The check uses the latest store and hook information available when you send.
+
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 

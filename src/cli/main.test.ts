@@ -101,6 +101,49 @@ describe('parseCli', () => {
     expect(parseCli(['run', '--', 'explain', '-h'])).toMatchObject({ kind: 'run', prompt: 'explain -h' });
   });
 
+  it('streams sessions send using the original agent and directory, including a prompt from stdin', async () => {
+    const dir = pathWith('owner-cli');
+    const agent = {
+      ...fakeAgent('owner', [{ events: [{ type: 'message', text: 'Done.' }], result: completed }]),
+      capabilities: { resume: true, permissions: { sandbox: ['read-only'] as const } },
+      sessions: {
+        name: 'owner',
+        where: 'local' as const,
+        list: async () => [
+          {
+            source: 'owner',
+            agent: 'owner',
+            where: 'local' as const,
+            id: 'abcdefgh-1',
+            cwd: dir,
+            state: 'waiting' as const,
+            updatedAt: 1,
+          },
+        ],
+      },
+    };
+    const { cli, out } = environment({
+      argv: ['sessions', 'send', 'abcdefgh', '--sandbox', 'read-only'],
+      agents: [agent],
+      env: { GENAICODE_HOME: dir },
+      readStdin: async () => 'Go\non.',
+    });
+    expect(await main(cli)).toBe(EXIT_OK);
+    expect(agent.tasks[0]).toMatchObject({
+      cwd: dir,
+      resume: 'abcdefgh-1',
+      prompt: 'Go\non.',
+      permissions: { sandbox: 'read-only' },
+    });
+    expect(out()).toBe('Done.\n');
+    expect(() => parseCli(['sessions', 'send', 'id', '--sandbox', 'other'])).toThrow(UsageError);
+    expect(parseCli(['sessions', 'send', '--detach', '--', 'id', '-h'])).toMatchObject({
+      kind: 'send',
+      detach: true,
+      prompt: '-h',
+    });
+  });
+
   it('parses chat --web and its port, and keeps --web off ui', () => {
     expect(parseCli(['chat', '--web', '--port', '4000'])).toMatchObject({ kind: 'chat', web: true, port: 4000 });
     expect(parseCli(['ui', '--no-open'])).toMatchObject({ kind: 'ui', web: false, open: false });
