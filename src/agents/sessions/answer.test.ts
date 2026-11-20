@@ -140,6 +140,21 @@ describe('answering questions from the tower', () => {
     expect(await waiting).toEqual({ behavior: 'allow' });
   });
 
+  it('tells an answer the hook took from one given as the hook let go', async () => {
+    const env = home();
+    const dir = asksDir(env);
+    mkdirSync(dir, { recursive: true });
+    const id = '0123456789ab';
+    const file = join(dir, `${id}.json`);
+    writeFileSync(file, JSON.stringify({ id, agent: 'claude', session: 's', at: 1, pid: process.pid }));
+    // Nobody takes it, and the question goes: the answer reached no one.
+    const answering = answerAsk(id, { behavior: 'allow' }, env);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    rmSync(file);
+    expect(await answering).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
   it('drops a question whose hook was killed', async () => {
     const env = home();
     const dir = asksDir(env);

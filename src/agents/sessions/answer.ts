@@ -102,14 +102,30 @@ export async function pendingAsks(env: NodeJS.ProcessEnv = process.env): Promise
           .catch(() => undefined);
         if (ask && alive(ask.pid)) return ask;
         // Killed before it could clean up: the agent took the answer itself.
-        if (ask) await Promise.all([fs.rm(file, { force: true }), fs.rm(answerFile(dir, ask.id), { force: true })]);
+        if (ask)
+          await Promise.all(
+            [file, answerFile(dir, ask.id), takenFile(dir, ask.id)].map((gone) => fs.rm(gone, { force: true })),
+          );
         return undefined;
+      }),
+  );
+  // Taken answers nobody came back for: the one who answered gave up looking.
+  await Promise.all(
+    names
+      .filter((name) => name.endsWith('.taken') && ID.test(name.slice(0, -'.taken'.length)))
+      .map(async (name) => {
+        const stat = await fs.stat(path.join(dir, name)).catch(() => undefined);
+        if (stat && Date.now() - stat.mtimeMs > 10 * HANDOFF_MS) await fs.rm(path.join(dir, name), { force: true });
       }),
   );
   return asks.filter((ask): ask is PendingAsk => !!ask).sort((a, b) => a.at - b.at);
 }
 
 const answerFile = (dir: string, id: string) => path.join(dir, `${id}.answer`);
+/** An answer the hook took: `answerAsk` sees it there, and removes it. */
+const takenFile = (dir: string, id: string) => path.join(dir, `${id}.taken`);
+/** How long `answerAsk` waits to see its answer taken. */
+const HANDOFF_MS = 3000;
 
 /**
  * Answer an open question. Resolves to false when there is no such question (any more): it was
@@ -141,18 +157,30 @@ export async function answerAsk(
   } finally {
     await fs.rm(temporary, { force: true });
   }
-  // The hook let go meanwhile (answered, or gave up): nobody reads this answer.
-  const file = path.join(dir, `${id}.json`);
-  if (
-    !(await fs.stat(file).then(
+  // The hook takes an answer by linking it aside: wait to see it taken, or the question gone without it.
+  const exists = (file: string) =>
+    fs.stat(file).then(
       () => true,
       () => false,
-    ))
-  ) {
-    await fs.rm(answerFile(dir, id), { force: true });
-    return false;
+    );
+  const deadline = Date.now() + HANDOFF_MS;
+  for (;;) {
+    if (await exists(takenFile(dir, id))) {
+      await fs.rm(takenFile(dir, id), { force: true });
+      return true;
+    }
+    const open = await exists(path.join(dir, `${id}.json`));
+    // Taken just before the hook let go of the question: looked at again.
+    if (!open && (await exists(takenFile(dir, id)))) continue;
+    if (!open) {
+      // The hook let go before it read this answer: nobody will.
+      await fs.rm(answerFile(dir, id), { force: true });
+      return false;
+    }
+    // Still open but not taken yet: a hook that is slow to look will find it.
+    if (Date.now() >= deadline) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  return true;
 }
 
 export interface WaitOptions {
@@ -210,8 +238,16 @@ export async function waitForAnswer(
         .readFile(answerFile(dir, id), 'utf8')
         .then((source) => JSON.parse(source) as AskDecision)
         .catch(() => undefined);
-      if (answer?.behavior === 'allow') return { behavior: 'allow' };
-      if (answer?.behavior === 'deny') return answer.message ? answer : { behavior: 'deny' };
+      if (answer?.behavior === 'allow' || answer?.behavior === 'deny') {
+        // Taken: the one who answered sees it linked in, and the answer stays to turn others away.
+        // Gone meanwhile: not ours to act on.
+        const taken = await fs.link(answerFile(dir, id), takenFile(dir, id)).then(
+          () => true,
+          () => false,
+        );
+        if (taken)
+          return answer.behavior === 'allow' ? { behavior: 'allow' } : answer.message ? answer : { behavior: 'deny' };
+      }
       // What the agent's other hooks report: the question answered in its own dialog, a new turn.
       const record = await liveRecord(agent, event.id, env);
       if (record) {
