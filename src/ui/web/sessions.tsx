@@ -29,6 +29,9 @@ const RANGES = [
 /** Rows a project shows before "Show all". */
 const FOLD = 5;
 
+/** How many sessions one archive request carries: the server takes up to 1000. */
+const ARCHIVE_BATCH = 500;
+
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
   token,
@@ -78,12 +81,21 @@ export function Sessions({
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
   const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
-    fetch('/api/archive', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
-      body: JSON.stringify({ sessions: sessions.map(({ source, id }) => ({ source, id })), archived }),
-    })
-      .then((res) => setArchiveFailed(res.ok ? undefined : `The server answered ${res.status}.`))
+    const keys = sessions.map(({ source, id }) => ({ source, id }));
+    // In batches the server takes, one after another.
+    const send = async () => {
+      for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
+        const res = await fetch('/api/archive', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+          body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
+        });
+        if (!res.ok) return `The server answered ${res.status}.`;
+      }
+      return undefined;
+    };
+    send()
+      .then(setArchiveFailed)
       .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
       .finally(() => setRound((value) => value + 1));
   };
