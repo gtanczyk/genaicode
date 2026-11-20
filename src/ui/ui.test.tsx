@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
+import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
@@ -79,6 +80,8 @@ describe('format helpers', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
     expect(parseSlash('/agent codex --fresh')).toEqual({ kind: 'agent', name: 'codex', fresh: true });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
+    expect(parseSlash('/waiting Harbor Docs')).toEqual({ kind: 'waiting', project: 'Harbor Docs' });
+    expect(parseSlash('/read 01234567')).toEqual({ kind: 'read', id: '01234567' });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
@@ -138,6 +141,80 @@ describe('format helpers', () => {
 });
 
 describe('chat controller', () => {
+  it('opens a short queue, refreshes it by project and previews a foreign session without an agent turn', async () => {
+    const agent = echoAgent();
+    const indexEnv = { ...env, GENAICODE_HOME: join(bin, 'tower-state') };
+    const sessions: SessionInfo[] = Array.from({ length: 6 }, (_, i) => ({
+      source: 'other',
+      agent: 'other',
+      where: 'local',
+      id: `session${i}-part`,
+      state: 'waiting',
+      cwd: i === 5 ? '/projects/Harbor Docs' : '/projects/orchid',
+      updatedAt: Date.now() - i * 60_000,
+      ...(i === 5 ? { waitingFor: 'approval', waitingTool: 'Bash' } : {}),
+    }));
+    const source: SessionSource = {
+      name: 'other',
+      where: 'local',
+      list: async () => sessions,
+      read: async (_session, options) => {
+        expect(options?.maxTurns).toBe(3);
+        return [
+          {
+            id: 1,
+            agent: 'other',
+            prompt: 'Prepare the export.',
+            startedAt: 0,
+            entries: [{ kind: 'text', text: '\x1b[31mCSV or JSON?\x1b[0m\x07', streaming: false }],
+          },
+        ];
+      },
+    };
+    const chat = createChatController({
+      agents: [agent],
+      cwd: '/unrelated',
+      env: indexEnv,
+      waitingOnStart: true,
+      sessionTools: sessionTools([source], { env: indexEnv }),
+    });
+    const last = () => chat.get().notices.at(-1)?.text;
+    await expect.poll(last).toContain('(5 of 6)');
+    expect(last()).toContain('session5-part  approval (Bash)');
+    expect(last()).not.toContain('session4-part');
+    chat.submit('/waiting');
+    await expect.poll(last).toContain('(6 of 6)');
+    sessions[5].state = 'active';
+    chat.submit('/waiting Harbor Docs', 'web');
+    await expect.poll(last).toContain('/waiting Harbor Docs\nNothing waits for you');
+    chat.submit('/read session5', 'web');
+    await expect.poll(last).toContain('Prepare the export.');
+    expect(last()).toContain('CSV or JSON?');
+    expect(last()).not.toContain('\x1b');
+    expect(last()).not.toContain('\x07');
+    chat.submit('/read missing-id');
+    await expect.poll(last).toContain('No session with id missing-id.');
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+    expect(chat.get().session.turns).toEqual([]);
+    expect(agent.tasks).toEqual([]);
+    chat.submit('My own question');
+    await chat.session.idle();
+    expect(agent.tasks.map((task) => task.prompt)).toEqual(['My own question']);
+    expect(agent.tasks[0].resume).toBeUndefined();
+    chat.close();
+  });
+
+  it('keeps the cross-project index off in a chat without explicit session access', () => {
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: '/w', env, sessionSources: [] });
+    chat.submit('/waiting', 'web');
+    chat.submit('/read session0', 'web');
+    expect(chat.get().notices).toHaveLength(2);
+    expect(chat.get().notices.every(({ tone, text }) => tone === 'error' && text.includes('--sessions'))).toBe(true);
+    expect(agent.tasks).toEqual([]);
+    chat.close();
+  });
+
   it('picks the first installed agent and resumes its session on the next prompt', async () => {
     const missing = echoAgent('missing', 'not-installed');
     const echo = echoAgent();

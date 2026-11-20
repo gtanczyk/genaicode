@@ -39,6 +39,7 @@ import {
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
 import { archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
+import type { McpTool } from '../agents/mcp-tools.js';
 import {
   notifyFile,
   readNotify,
@@ -102,6 +103,8 @@ export interface UiLaunch {
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
   sessionSources?: readonly SessionSource[];
+  sessionTools?: readonly McpTool[];
+  waitingOnStart?: boolean;
   agent?: string;
   cwd: string;
   model?: string;
@@ -156,6 +159,7 @@ export const helpText = `genaicode: run the coding-agent CLIs installed on this 
 Usage:
   genaicode                            Chat with an agent in this terminal (same as "chat")
   genaicode chat [options]             Chat with an agent in this terminal
+  genaicode tower [chat options]       Open the waiting queue and chat about sessions across projects
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
@@ -210,6 +214,7 @@ Sessions options:
   on stdio. Any agent can use them to find open sessions and see which ones need your attention:
   "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
   the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
+  In that chat, /waiting [project] refreshes the queue and /read <id> previews a conversation.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
@@ -369,6 +374,7 @@ function dispatch(
       return runTask(cli, agents, command);
     case 'chat':
     case 'ui':
+    case 'tower':
       return runUi(cli, agents, command);
     case 'embed':
       return runEmbed(cli, agents, command);
@@ -531,12 +537,14 @@ async function runEmbed(
 async function runUi(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
-  options: Extract<CliCommand, { kind: 'chat' | 'ui' }>,
+  options: Extract<CliCommand, { kind: 'chat' | 'ui' | 'tower' }>,
   extra: Pick<UiLaunch, 'firstPrompt' | 'transformPrompt'> = {},
 ): Promise<number> {
   const tty = cli.tty ?? { stdin: process.stdin, stdout: process.stdout };
-  if (options.kind === 'chat' && !(cli.interactive ?? (tty.stdin.isTTY && tty.stdout.isTTY))) {
-    cli.stderr.write('genaicode chat needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n');
+  if (options.kind !== 'ui' && !(cli.interactive ?? (tty.stdin.isTTY && tty.stdout.isTTY))) {
+    cli.stderr.write(
+      `genaicode ${options.kind} needs a terminal. Use "genaicode run" for scripts, or "genaicode ui".\n`,
+    );
     return EXIT_USAGE;
   }
   // Sessions are read from every agent's store, not only from the agents this chat can run.
@@ -559,10 +567,11 @@ async function runUi(
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
   const ui = await (cli.loadUi ?? loadBundledUi)();
   // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
-  const index = options.sessions
+  const tools = options.sessions ? sessionTools(indexed, { env: cli.env }) : undefined;
+  const index = tools
     ? await startLocalMcpServer({
         name: 'sessions',
-        tools: sessionTools(indexed, { env: cli.env }),
+        tools,
         instructions: SESSION_TOOLS_INSTRUCTIONS,
       })
     : undefined;
@@ -571,6 +580,8 @@ async function runUi(
     agents,
     sessionAgents,
     sessionSources: indexed,
+    ...(tools ? { sessionTools: tools } : {}),
+    ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     agent: options.agent,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
     model: options.model,
@@ -595,7 +606,7 @@ async function runUi(
     ...extra,
   };
   try {
-    return await (options.kind === 'chat' ? ui.runChat(launch) : ui.runWeb(launch));
+    return await (options.kind === 'ui' ? ui.runWeb(launch) : ui.runChat(launch));
   } finally {
     await index?.close();
   }

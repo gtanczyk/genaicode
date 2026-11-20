@@ -482,6 +482,10 @@ and shows up to 30 sessions by default. For questions held open by `hooks instal
 the agent can read the question ID, tool name and preview. Archived sessions stay out of this
 view and appear with `[archived]` in `sessions_list` and `sessions_read`.
 
+The [session tower](cli.md#open-the-session-tower) opens an indexed chat with a local preview
+of the queue. Its `/waiting [project]` and `/read <id>` commands call the same read-only
+operations and display the results to the user. A regular chat message starts an agent turn.
+
 `state` is `active`, `waiting`, `unfinished` or `approval` (a session that asks whether it may use
 a tool, known once the [hooks](#which-sessions-need-you-hooks) are installed). The tools only read
 the local stores. They are off unless you ask for them, because the agent that has them reads what
