@@ -125,16 +125,21 @@ export async function answerAsk(
   const ask = (await pendingAsks(env)).find((pending) => pending.id === id);
   if (!ask) return false;
   const message = decision.behavior === 'deny' ? decision.message?.trim().slice(0, 500) : undefined;
-  // Only the first answer counts: the file is made once.
+  // Only the first answer counts, and it shows whole: written aside, then linked in, which fails
+  // when an answer is there already.
+  const temporary = path.join(dir, `${id}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`);
+  await fs.writeFile(
+    temporary,
+    `${JSON.stringify({ behavior: decision.behavior, ...(message ? { message } : {}) })}\n`,
+    { mode: 0o600 },
+  );
   try {
-    await fs.writeFile(
-      answerFile(dir, id),
-      `${JSON.stringify({ behavior: decision.behavior, ...(message ? { message } : {}) })}\n`,
-      { mode: 0o600, flag: 'wx' },
-    );
+    await fs.link(temporary, answerFile(dir, id));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
     throw error;
+  } finally {
+    await fs.rm(temporary, { force: true });
   }
   return true;
 }
@@ -189,10 +194,11 @@ export async function waitForAnswer(
   let asked = false;
   try {
     while (!options.signal?.aborted && now() - at < timeoutMs) {
-      const answer = await fs.readFile(answerFile(dir, id), 'utf8').then(
-        (source) => JSON.parse(source) as AskDecision,
-        () => undefined,
-      );
+      // An answer that does not read whole yet is looked at again.
+      const answer = await fs
+        .readFile(answerFile(dir, id), 'utf8')
+        .then((source) => JSON.parse(source) as AskDecision)
+        .catch(() => undefined);
       if (answer?.behavior === 'allow') return { behavior: 'allow' };
       if (answer?.behavior === 'deny') return answer.message ? answer : { behavior: 'deny' };
       // What the agent's other hooks report: the question answered in its own dialog, a new turn.

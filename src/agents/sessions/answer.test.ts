@@ -128,6 +128,18 @@ describe('answering questions from the tower', () => {
     expect(out).toEqual([]);
   });
 
+  it('waits out an answer that does not read whole yet', async () => {
+    const env = home();
+    const waiting = waitForAnswer('claude', ask, { env, pollMs: 5 });
+    const open = await opened(env);
+    const file = join(asksDir(env), `${open.id}.answer`);
+    writeFileSync(file, '{"behav');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(existsSync(join(asksDir(env), `${open.id}.json`))).toBe(true);
+    writeFileSync(file, '{"behavior":"allow"}');
+    expect(await waiting).toEqual({ behavior: 'allow' });
+  });
+
   it('drops a question whose hook was killed', async () => {
     const env = home();
     const dir = asksDir(env);
