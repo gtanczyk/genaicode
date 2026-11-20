@@ -141,6 +141,17 @@ export async function answerAsk(
   } finally {
     await fs.rm(temporary, { force: true });
   }
+  // The hook let go meanwhile (answered, or gave up): nobody reads this answer.
+  const file = path.join(dir, `${id}.json`);
+  if (
+    !(await fs.stat(file).then(
+      () => true,
+      () => false,
+    ))
+  ) {
+    await fs.rm(answerFile(dir, id), { force: true });
+    return false;
+  }
   return true;
 }
 
@@ -216,6 +227,8 @@ export async function waitForAnswer(
     }
     return undefined;
   } finally {
-    await Promise.all([fs.rm(file, { force: true }), fs.rm(answerFile(dir, id), { force: true })]);
+    // The question goes first, so an answer given after it finds nobody to take it.
+    await fs.rm(file, { force: true });
+    await fs.rm(answerFile(dir, id), { force: true });
   }
 }
