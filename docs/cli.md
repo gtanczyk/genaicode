@@ -97,6 +97,12 @@ must finish first. The check uses the latest store and hook information availabl
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
+With Copilot or Gemini hooks installed, `sessions --waiting`, the tower's `/waiting` command
+and the browser's Sessions view show up to 200 characters of a shell command awaiting approval.
+Refresh the queue to see which commands still need a decision. Answer in the agent that asked.
+Copilot reports a decision immediately. Gemini CLI may show the last request until the tool
+finishes. Desktop notifications show the project and tool name.
+
 With `hooks install --answer`, Claude Code's approval questions can also be answered from here:
 `sessions --waiting` lists them, `sessions approve <q>` / `sessions deny <q> -m <why>` answer, and
 the browser's Sessions view has Approve and Deny (see

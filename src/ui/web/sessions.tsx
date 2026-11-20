@@ -313,6 +313,14 @@ export function Sessions({
                     }}
                   />
                 ) : null,
+                ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
+                  <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
+                    <span className="what">
+                      <b>{tool}</b>
+                      <code>{command}</code>
+                    </span>
+                  </div>
+                )),
                 ...questionsOf(session).map((ask) => (
                   <div key={`ask:${ask.id}`} className="question-row">
                     <span className="what" title={ask.preview}>

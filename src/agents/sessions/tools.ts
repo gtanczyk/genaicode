@@ -185,11 +185,12 @@ export function sessionTools(sources: readonly SessionSource[], options: Session
         const shown = waiting.slice(0, positive(args.limit, 30, 100));
         const questions = await pendingAsks(options.env, { readOnly: true });
         const lines = shown.map((session) => {
+          const commands = (session.waitingCommands ?? []).map(({ tool, command }) => `    ? ${tool}: ${command}`);
           const open = asksForSession(questions, session).map(
             (ask) =>
               `    open question ${ask.id}: ${ask.tool ?? 'a tool'}${ask.preview ? `: ${oneLine(ask.preview)}` : ''}`,
           );
-          return [sessionLine(session, now()), ...open].join('\n');
+          return [sessionLine(session, now()), ...commands, ...open].join('\n');
         });
         return `Waiting for you in the last ${days} days (${shown.length} of ${waiting.length}):\n${lines.join('\n')}${unread(errors)}`;
       },

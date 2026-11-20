@@ -4,6 +4,8 @@ import type { SessionTurn } from '../session.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
 import { readLive, withLive, type LiveRecord } from './live.js';
 import { readArchive, withArchive } from './archive.js';
+import { withCommandPreviews } from './approval-previews.js';
+import { mapLimited } from './files.js';
 
 export { groupSessions, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -104,7 +106,13 @@ export async function listSessions(
   // Sessions put away (`genaicode sessions archive`) say so.
   const archive = await readArchive(query.env);
   const sessions = withArchive(found, archive).sort((a, b) => b.updatedAt - a.updatedAt);
-  return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
+  const shown = query.limit === undefined ? sessions : sessions.slice(0, query.limit);
+  return {
+    sessions: live?.size
+      ? await mapLimited(shown, 8, (entry) => withCommandPreviews(entry, live.get(`${entry.source}:${entry.id}`)))
+      : shown,
+    errors,
+  };
 }
 
 /**

@@ -9,6 +9,19 @@ const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value ? value : undefined);
 
+/** The native tools for which an approval identifies a shell command. */
+export function isShellTool(agent: string, tool: unknown): boolean {
+  return agent === 'copilot'
+    ? tool === 'bash' || tool === 'powershell'
+    : agent === 'gemini' && tool === 'run_shell_command';
+}
+
+export function shellCommand(agent: string, tool: unknown, input: unknown): string | undefined {
+  return isShellTool(agent, tool) && isObject(input) && typeof input.command === 'string' && input.command.trim()
+    ? input.command
+    : undefined;
+}
+
 /** Event names, per agent, as Claude Code calls them. Events not named here change nothing. */
 const EVENT_NAMES: Record<string, Record<string, string>> = {
   gemini: {
@@ -76,9 +89,18 @@ export function hookInput(agent: string, input: unknown, event?: string): unknow
     ...(cwd ? { cwd } : {}),
     ...(tool ? { tool_name: tool, tool_input: toolInput } : {}),
   };
-  // Gemini tells of a question only in a notification, which names no tool the way its other hooks do.
+  // A Gemini shell confirmation carries its command in details. Other notifications can be generic.
   if (agent === 'gemini' && own === 'Notification') {
     if (input.notification_type !== 'ToolPermission') return undefined;
+    const details = input.details;
+    if (isObject(details) && details.type === 'exec' && typeof details.command === 'string' && details.command.trim()) {
+      return {
+        ...base,
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'run_shell_command',
+        tool_input: { command: details.command },
+      };
+    }
     return {
       session_id: id,
       ...(cwd ? { cwd } : {}),

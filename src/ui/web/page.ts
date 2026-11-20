@@ -95,6 +95,7 @@ button.chip:hover { border-color: var(--accent); }
 .question-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 3px 12px 6px 36px; font-size: 12px; }
 .question-row .what { display: flex; gap: 8px; align-items: baseline; min-width: 0; color: #e03131; }
 .question-row code { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-preview code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .question-row .act { display: flex; gap: 6px; }
 .question-row button { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 10px; cursor: pointer; color: var(--muted); }
 .question-row button.allow { color: var(--bg); background: var(--accent); border-color: var(--accent); }

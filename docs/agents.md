@@ -304,10 +304,9 @@ prompt, asks for approval, gets its answer, finishes a turn and ends. It keeps o
 per session in `~/.genaicode/live` with the state, the time, the directory and the name of the
 tool asked for: nothing of what was said, and nothing leaves the machine.
 
-What each agent tells differs. Claude Code, Codex and Copilot tell when a session asks for
-approval and which tool; Gemini CLI tells that it asks, not for which tool; Cursor's hooks tell
-of no question at all, so a Cursor session shows as working or waiting for your reply, never as
-asking. Gemini and Cursor wait for their hooks (genaicode's takes a few milliseconds), and Gemini
+Claude Code, Codex and Copilot identify the tool in an approval request. Gemini CLI identifies
+shell commands in its permission notifications and can also send a generic request for attention.
+Cursor reports working sessions and finished turns. Gemini and Cursor wait for their hooks, and Gemini
 shows that a hook runs unless `hooksConfig.notifications` is off.
 
 `listSessions()` puts that over what the stores suggest: `state` is exact, and a `waiting`
@@ -321,6 +320,15 @@ those asking for approval first, each with the tool it asks for or the end of wh
 the command that continues it. It looks a week back unless `--since` says otherwise. The
 browser's Sessions view has the same as a "N wait for you" button; in code,
 `waitingSessions(sessions)` picks and orders them.
+
+For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
+200 characters of each matching command. Genaicode keeps a digest in its private hook record
+and reads the text on demand from the agent's own local session journal. A session with a
+missing journal or incomplete permission details still reports the approval. The CLI, the
+browser and the opt-in `sessions_waiting` MCP tool show the preview. Desktop alerts contain
+only the agent, project and tool name. The user answers these requests in the native agent.
+Copilot records the decision as soon as it is made. Gemini CLI 0.70 reports the result when
+the tool finishes, so a refresh can still show its last request while the command runs.
 
 In code: `installHooks('claude')`, `hooksStatus()`, `uninstallHooks()`, and `recordHook(agent,
 input)` with `readLive()` and `withLive(sessions, records)` to do the same for an agent of your

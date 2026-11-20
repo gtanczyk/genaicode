@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { liveDir, liveEvent, liveRecord, type LiveAsk } from './live.js';
 import type { SessionInfo } from './types.js';
+import { previewText } from './files.js';
 
 /**
  * A question an agent's hook holds open (`genaicode hooks install --answer`): the agent asks
@@ -33,7 +34,6 @@ export function asksDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 const ID = /^[a-f0-9]{12}$/;
-const PREVIEW_MAX = 200;
 
 /** A line or two of what a tool's input would do; nothing when it names nothing plain. */
 export function askPreview(input: unknown): string | undefined {
@@ -42,8 +42,7 @@ export function askPreview(input: unknown): string | undefined {
   for (const name of ['command', 'file_path', 'path', 'url', 'pattern', 'query', 'prompt']) {
     const value = fields[name];
     if (typeof value === 'string' && value.trim()) {
-      const plain = value.replace(/\s+/g, ' ').trim();
-      return plain.length > PREVIEW_MAX ? `${plain.slice(0, PREVIEW_MAX - 1)}…` : plain;
+      return previewText(value) || undefined;
     }
   }
   return undefined;

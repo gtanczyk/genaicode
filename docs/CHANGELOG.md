@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode tower` opens an indexed chat with waiting sessions across projects. Use `/waiting [project]` to refresh the queue and `/read <id>` to preview a conversation locally (#217)
+- The waiting queue and browser Sessions view show up to 200 characters of a shell command awaiting approval in GitHub Copilot CLI or Gemini CLI (#219)
 
 ## 2.39.0 — 2026-11-20
 
