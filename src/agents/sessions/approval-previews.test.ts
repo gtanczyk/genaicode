@@ -47,7 +47,13 @@ describe('pending shell commands', () => {
     const { env, hook } = fixture('copilot');
     const first = { command: 'pwd', directory: '/orchard/a' };
     const second = { command: 'pwd', directory: '/orchard/b' };
-    for (const toolInput of [first, second]) await hook('permissionRequest', { toolName: 'bash', toolInput });
+    await hook('permissionRequest', { toolName: 'bash', toolInput: first });
+    await hook('postToolUse', { toolName: 'bash', toolArgs: { command: 'pwd' } });
+    expect(await liveRecord('copilot', 'test', env)).toMatchObject({
+      state: 'approval',
+      asks: [{ key: inputKey(first) }],
+    });
+    await hook('permissionRequest', { toolName: 'bash', toolInput: second });
     await hook('postToolUse', { toolName: 'bash', toolArgs: { command: 'pwd' } });
     expect((await liveRecord('copilot', 'test', env))?.asks).toHaveLength(2);
     await hook('postToolUse', { toolName: 'bash', toolArgs: second });
@@ -65,8 +71,8 @@ describe('pending shell commands', () => {
     });
     const events = [requested('1', first), requested('2', second), requested('3', first.replace('first', 'unrelated'))];
     journal(events);
-    for (const command of [first, second])
-      await hook('permissionRequest', { toolName: 'bash', toolInput: { command } });
+    await hook('permissionRequest', { toolName: 'bash', toolInput: { command: first, directory: '/orchard' } });
+    await hook('permissionRequest', { toolName: 'bash', toolInput: { command: second } });
     const expected = [
       { tool: 'bash', command: first.slice(0, 199) + '…' },
       { tool: 'bash', command: second },
@@ -78,12 +84,12 @@ describe('pending shell commands', () => {
     const path = join(liveDir(env), record!);
     expect(readFileSync(path, 'utf8')).not.toContain('printf');
     if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
-    journal([
-      ...events,
-      { type: 'permission.completed', data: { requestId: '1', result: { kind: 'denied-interactively-by-user' } } },
-    ]);
+    const decided = (requestId: string) => ({ type: 'permission.completed', data: { requestId } });
+    journal([...events, decided('1')]);
     expect(await waiting()).toEqual([expected[1]]);
     await hook('postToolUse', { toolName: 'bash', toolArgs: { command: second, timeout: 30 } });
+    expect(await waiting()).toEqual([expected[1]]);
+    journal([...events, decided('1'), decided('2')]);
     expect(await waiting()).toBeUndefined();
   });
 
@@ -106,12 +112,10 @@ describe('pending shell commands', () => {
     expect(await waiting()).toEqual([{ tool: 'run_shell_command', command: 'printf hello' }]);
     expect(JSON.stringify(notices)).not.toContain('printf');
     expect(readFileSync(join(liveDir(env), readdirSync(liveDir(env))[0]!), 'utf8')).not.toContain('printf');
+    await hook('AfterTool', { tool_name: 'run_shell_command', tool_input: { command, dir_path: '/orchard' } });
+    expect(await waiting()).toEqual([{ tool: 'run_shell_command', command: 'printf hello' }]);
     journal([calls('scheduled'), calls('success')]);
     expect(await waiting()).toBeUndefined();
-    journal([calls('scheduled')]);
-    await hook('AfterTool', { tool_name: 'run_shell_command', tool_input: { command, dir_path: '/orchard' } });
-    expect(await waiting()).toBeUndefined();
-    await notify({ type: 'exec', command });
     rmSync(file);
     expect(await waiting()).toBeUndefined();
   });

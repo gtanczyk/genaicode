@@ -36,7 +36,7 @@ export interface LiveRecord {
 export interface LiveAsk {
   tool?: string;
   key?: string;
-  /** A separate digest when the hook supplies shell arguments besides the command. */
+  /** Matches a preview in the native journal when the approval has other shell arguments. */
   commandKey?: string;
 }
 
@@ -88,19 +88,20 @@ export function liveEvent(input: unknown, agent?: string): LiveEvent | undefined
   const base = { id, ...(cwd ? { cwd } : {}) };
   const tool = text(event.tool_name);
   const ask: LiveAsk = { ...(tool ? { tool } : {}), ...(tool ? { key: inputKey(event.tool_input) } : {}) };
-  const command = agent && shellCommand(agent, tool, event.tool_input);
-  if (command) {
-    const key = inputKey({ command });
-    if (key !== ask.key) ask.commandKey = key;
-  }
   switch (event.hook_event_name) {
     case 'SessionStart':
       // After a compaction the agent goes on working.
       return event.source === 'compact' ? undefined : { ...base, state: 'idle' };
     case 'UserPromptSubmit':
       return { ...base, state: 'working' };
-    case 'PermissionRequest':
+    case 'PermissionRequest': {
+      const command = agent && shellCommand(agent, tool, event.tool_input);
+      if (command) {
+        const key = inputKey({ command });
+        if (key !== ask.key) ask.commandKey = key;
+      }
       return { ...base, state: 'approval', ask };
+    }
     case 'Notification': {
       const type = text(event.notification_type);
       if (type === 'idle_prompt') return { ...base, state: 'idle' };
@@ -157,19 +158,8 @@ export function inputKey(input: unknown): string {
  */
 function answer(asks: readonly LiveAsk[], done: LiveAsk, exact = false): LiveAsk[] {
   let at = asks.findIndex((ask) => ask.tool === done.tool && ask.key === done.key);
-  if (at < 0) {
-    // One hook may carry only the command. Preserve distinct calls if that leaves a choice.
-    const matching = asks.filter((ask) => sameShellCommand(ask, done));
-    if (matching.length === 1) at = asks.indexOf(matching[0]!);
-  }
   if (at < 0 && !exact) at = asks.findIndex((ask) => ask.tool === undefined);
   return at < 0 ? [...asks] : [...asks.slice(0, at), ...asks.slice(at + 1)];
-}
-
-function sameShellCommand(a: LiveAsk, b: LiveAsk): boolean {
-  return (
-    a.tool === b.tool && ((!!a.commandKey && a.commandKey === b.key) || (!!b.commandKey && b.commandKey === a.key))
-  );
 }
 
 /** A record as kept: also `ended`, which only says from when on earlier hooks no longer count. */
@@ -221,10 +211,7 @@ export async function recordHook(
     const late = !!before && Math.max(before.at, before.seen ?? 0) > at;
     const ask = event.reminder ? undefined : event.ask;
     const over =
-      !!ask &&
-      (before?.done ?? []).some(
-        (done) => done.at >= at && ((done.tool === ask.tool && done.key === ask.key) || sameShellCommand(ask, done)),
-      );
+      !!ask && (before?.done ?? []).some((done) => done.at >= at && done.tool === ask.tool && done.key === ask.key);
     const thisTurn = at >= (before?.turn ?? 0);
     const stillAsked = !!ask?.tool && !over && thisTurn && before?.state !== 'idle' && before?.state !== 'ended';
     // So is the end of a call in this turn: its question is over, asked already or learned of later.
