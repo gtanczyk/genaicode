@@ -83,6 +83,11 @@ With `hooks install --answer`, Claude Code's approval questions can also be answ
 the browser's Sessions view has Approve and Deny (see
 [answering](agents.md#answering-from-the-tower-hooks-install---answer)).
 
+`npx genaicode sessions archive --stale` puts away every session left waiting or half way for 2
+days or more (`sessions archive <id>` for one, `unarchive` to bring it back, `--archived` to list
+them); the agents' files stay as they are (see
+[archive](agents.md#putting-sessions-away-sessions-archive)).
+
 `npx genaicode sessions doctor` checks that those stores still read as expected after an agent
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { groupSessions, waitingSessions, type SessionInfo, type SessionListing } from '../../agents/sessions/group.js';
+import {
+  groupSessions,
+  staleSessions,
+  waitingSessions,
+  type SessionInfo,
+  type SessionListing,
+} from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
 
@@ -22,6 +28,9 @@ const RANGES = [
 ];
 /** Rows a project shows before "Show all". */
 const FOLD = 5;
+
+/** How many sessions one archive request carries: the server takes up to 1000. */
+const ARCHIVE_BATCH = 500;
 
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
@@ -68,6 +77,28 @@ export function Sessions({
   const all = listing?.sessions ?? [];
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
   const waiting = useMemo(() => waitingSessions(all), [all]);
+  const stale = useMemo(() => staleSessions(all), [all]);
+  const [archiveFailed, setArchiveFailed] = useState<string>();
+  /** Put sessions away (`genaicode sessions archive`), or bring them back. */
+  const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
+    const keys = sessions.map(({ source, id }) => ({ source, id }));
+    // In batches the server takes, one after another.
+    const send = async () => {
+      for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
+        const res = await fetch('/api/archive', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+          body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
+        });
+        if (!res.ok) return `The server answered ${res.status}.`;
+      }
+      return undefined;
+    };
+    send()
+      .then(setArchiveFailed)
+      .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
+      .finally(() => setRound((value) => value + 1));
+  };
   const shown = useMemo(() => {
     const found = filterSessions(all, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
@@ -143,6 +174,7 @@ export function Sessions({
           <option value="approval">◆ Asks for approval</option>
           <option value="waiting">○ Waiting for you</option>
           <option value="unfinished">◌ Unfinished</option>
+          <option value="archived">Archived</option>
         </select>
         <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
           {RANGES.map((range) => (
@@ -164,6 +196,15 @@ export function Sessions({
               : ''}
           </button>
         ) : null}
+        {stale.length && state !== 'archived' ? (
+          <button
+            className="chip"
+            title="Put away every session waiting for you or left half way for 2 days or more. Their files stay; any news brings one back."
+            onClick={() => archive(stale, true)}
+          >
+            Archive {stale.length} stale
+          </button>
+        ) : null}
         <button className="chip" onClick={() => setRound(round + 1)}>
           Refresh
         </button>
@@ -173,6 +214,7 @@ export function Sessions({
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
       {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
+      {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
       {listing?.errors.map((error) => (
         <div key={error.source} className="errors">
           {error.source}: {error.message}
@@ -207,6 +249,18 @@ export function Sessions({
                   {session.branch ? <small>{session.branch}</small> : null}
                 </span>
                 <span className="act">
+                  {session.where === 'local' && session.state !== 'active' ? (
+                    <button
+                      title={
+                        session.archived
+                          ? 'Show it among the sessions again'
+                          : 'Hide it from the sessions; any news in it brings it back'
+                      }
+                      onClick={() => archive([session], !session.archived)}
+                    >
+                      {session.archived ? 'Unarchive' : 'Archive'}
+                    </button>
+                  ) : null}
                   {canContinueHere(session, cwd, listing?.readable ?? []) ? (
                     <button
                       title="Bring this conversation into the chat: the agent chosen there continues it"

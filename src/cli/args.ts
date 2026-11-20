@@ -30,7 +30,11 @@ export type CliCommand =
       limit: number;
       /** `--waiting`: only the sessions whose next move is yours, approvals first. */
       waiting?: true;
+      /** `--archived`: the archived sessions too (`sessions archive`). */
+      archived?: true;
     }
+  /** `sessions archive|unarchive`: put sessions away, or bring them back; `stale`: all those left for `olderMs`. */
+  | { kind: 'archive'; ids: string[]; archived: boolean; stale: boolean; olderMs?: number; agent?: string }
   /** `sessions doctor`: whether the session stores still read as expected. */
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
   /** `sessions mcp`: the session index as an MCP server on stdio. */
@@ -182,6 +186,9 @@ export function parseCli(argv: readonly string[]): CliCommand {
           limit: { type: 'string', short: 'n' },
           waiting: { type: 'boolean', short: 'w' },
           message: { type: 'string', short: 'm' },
+          archived: { type: 'boolean' },
+          stale: { type: 'boolean' },
+          older: { type: 'string' },
         },
       }),
     );
@@ -196,7 +203,10 @@ export function parseCli(argv: readonly string[]): CliCommand {
         values.agent !== undefined ||
         values.json ||
         values.api ||
-        values.waiting;
+        values.waiting ||
+        values.archived ||
+        values.stale ||
+        values.older !== undefined;
       if (positionals.length !== 2 || extra || (!deny && values.message !== undefined)) {
         throw new UsageError('Usage: genaicode sessions approve <question> | sessions deny <question> [-m <why>]');
       }
@@ -208,16 +218,47 @@ export function parseCli(argv: readonly string[]): CliCommand {
       };
     }
     if (values.message !== undefined) throw new UsageError('-m belongs to "genaicode sessions deny".');
+    if (positionals[0] === 'archive' || positionals[0] === 'unarchive') {
+      const archived = positionals[0] === 'archive';
+      const ids = positionals.slice(1);
+      const extra =
+        values.cloud ||
+        values.cwd !== undefined ||
+        values.limit !== undefined ||
+        values.since !== undefined ||
+        values.json ||
+        values.api ||
+        values.waiting ||
+        values.archived;
+      const stale = values.stale === true;
+      if (extra || (!archived && (stale || values.older !== undefined)) || (stale ? ids.length > 0 : !ids.length)) {
+        throw new UsageError(
+          'Usage: genaicode sessions archive <id...> | sessions archive --stale [--older 2d] [-a <agent>] | sessions unarchive <id...>',
+        );
+      }
+      if (values.older !== undefined && !stale) throw new UsageError('--older goes with "sessions archive --stale".');
+      return {
+        kind: 'archive',
+        ids,
+        archived,
+        stale,
+        ...(values.older !== undefined ? { olderMs: durationOf(values.older) } : {}),
+        ...(values.agent !== undefined ? { agent: values.agent } : {}),
+      };
+    }
+    if (values.stale || values.older !== undefined)
+      throw new UsageError('--stale and --older go with "sessions archive".');
     if (positionals[0] === 'mcp') {
       const extra =
         values.cloud || values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
-      if (positionals.length > 1 || extra || values.json || values.api || values.waiting) {
+      if (positionals.length > 1 || extra || values.json || values.api || values.waiting || values.archived) {
         throw new UsageError('Usage: genaicode sessions mcp [-a <agent>]');
       }
       return { kind: 'sessions-mcp', ...(values.agent !== undefined ? { agent: values.agent } : {}) };
     }
     if (positionals.length) {
-      const extra = values.cloud || values.cwd !== undefined || values.limit !== undefined || values.waiting;
+      const extra =
+        values.cloud || values.cwd !== undefined || values.limit !== undefined || values.waiting || values.archived;
       if (positionals.length > 1 || positionals[0] !== 'doctor' || extra) {
         throw new UsageError(
           'Usage: genaicode sessions [doctor|mcp] [options]. "doctor" takes -a, --since and --json.',
@@ -241,6 +282,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ...(values.since !== undefined ? { sinceMs: durationOf(values.since) } : {}),
       limit: limit ?? 30,
       ...(values.waiting === true ? { waiting: true } : {}),
+      ...(values.archived === true ? { archived: true } : {}),
     };
   }
 

@@ -31,6 +31,8 @@ export interface WebUiOptions {
   sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
   /** Answers a question a session holds open (`asks` of the listing), at POST /api/asks/<id>. */
   answer?: (id: string, decision: AskDecision) => Promise<boolean>;
+  /** Archives sessions (`archived` false: brings them back), at POST /api/archive. */
+  archive?: (sessions: Array<{ source: string; id: string }>, archived: boolean) => Promise<number>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
@@ -231,6 +233,38 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!decision) return send(res, 400, 'application/json', '{"error":"bad answer"}');
       const ok = await options.answer(asked[1]!, decision);
       return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/archive') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.archive) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let request: { sessions: Array<{ source: string; id: string }>; archived: boolean } | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { sessions?: unknown; archived?: unknown };
+        const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+        const valid = sessions.every(
+          (one: unknown) =>
+            typeof one === 'object' &&
+            one !== null &&
+            typeof (one as { source?: unknown }).source === 'string' &&
+            typeof (one as { id?: unknown }).id === 'string',
+        );
+        if (valid && sessions.length && sessions.length <= 1000 && typeof body.archived === 'boolean') {
+          request = {
+            sessions: (sessions as Array<{ source: string; id: string }>).map(({ source, id }) => ({ source, id })),
+            archived: body.archived,
+          };
+        }
+      } catch {
+        request = undefined;
+      }
+      if (!request) return send(res, 400, 'application/json', '{"error":"bad request"}');
+      const changed = await options.archive(request.sessions, request.archived);
+      return send(res, 200, 'application/json', JSON.stringify({ changed }));
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

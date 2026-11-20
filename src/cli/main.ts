@@ -28,6 +28,7 @@ import {
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { answerAsk, pendingAsks, type AskDecision, type PendingAsk } from '../agents/sessions/answer.js';
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
+import { archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import {
   notifyFile,
@@ -150,6 +151,7 @@ Usage:
   genaicode sessions doctor            Check that the agents' session stores still read as expected
   genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
+  genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
@@ -171,9 +173,15 @@ Sessions options:
       --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
   -n, --limit <n>         At most this many sessions, newest first (default 30)
       --json              One JSON object per session
+      --archived          Also the sessions put away with "sessions archive"
 
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
+
+  "sessions archive <id...>" hides sessions you will not come back to; "sessions archive --stale"
+  (--older 5d, -a) does it for every one waiting for you or left half way for 2 days or more.
+  The agents' own files stay as they are, and a session with any news comes back by itself;
+  "sessions unarchive <id...>" brings one back. Kept in ~/.genaicode/archived.json.
 
   "sessions doctor" (-a, --since, --json, --api) checks each store: how many sessions it lists, how
   many have a prompt and a directory, whether the newest conversations open, and whether the
@@ -338,6 +346,8 @@ function dispatch(
       return manageNotify(cli, command);
     case 'answer':
       return answerQuestion(cli, command);
+    case 'archive':
+      return archiveCommand(cli, agents, command);
     case 'run':
       return runTask(cli, agents, command);
     case 'chat':
@@ -778,23 +788,29 @@ async function showSessions(
   const now = Date.now();
   // What waits is picked from everything listed, so the limit comes after; a week back by default.
   const sinceMs = command.sinceMs ?? (command.waiting ? WAITING_SINCE_MS : undefined);
+  // Archived sessions may take places in the listing: as many more are read, and left out after.
+  const extra = command.archived || command.waiting ? 0 : (await readArchive(cli.env)).size;
   const listing = await listSessions(sources, {
-    ...(command.waiting ? {} : { limit: command.limit }),
+    ...(command.waiting ? {} : { limit: command.limit + extra }),
     env: cli.env,
     ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
     ...(sinceMs !== undefined ? { since: now - sinceMs } : {}),
     ...(cli.signal ? { signal: cli.signal } : {}),
   });
   const { errors } = listing;
-  const sessions = command.waiting ? waitingSessions(listing.sessions).slice(0, command.limit) : listing.sessions;
+  // Archived sessions stay out unless asked for.
+  const listed = command.archived ? listing.sessions : listing.sessions.filter((session) => !session.archived);
+  const hidden = listing.sessions.length - listed.length;
+  const sessions = (command.waiting ? waitingSessions(listed) : listed).slice(0, command.limit);
   for (const error of errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
   if (command.json) {
     for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
     return EXIT_OK;
   }
   if (command.waiting) return showWaiting(cli, sessions, now, sinceMs, await pendingAsks(cli.env));
+  const archivedNote = hidden ? `${hidden} archived not shown: --archived shows them.\n` : '';
   if (!sessions.length) {
-    cli.stdout.write('No sessions found.\n');
+    cli.stdout.write(`No sessions found.\n${archivedNote}`);
     return EXIT_OK;
   }
   for (const project of groupSessions(sessions)) {
@@ -806,13 +822,81 @@ async function showSessions(
       const label = session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)';
       const text = label.length > 70 ? `${label.slice(0, 69)}…` : label;
       // A session that asks for approval stands out from one that just finished its turn.
-      const state = session.waitingFor === 'approval' ? 'approval' : (session.state ?? '');
+      const state = session.archived
+        ? 'archived'
+        : session.waitingFor === 'approval'
+          ? 'approval'
+          : (session.state ?? '');
       cli.stdout.write(
         `  ${STATE_MARK[state] ?? ' '} ${session.agent.padEnd(7)} ${ago(now - session.updatedAt).padStart(4)}  ${state.padEnd(10)}  ${text}  ${session.id}\n`,
       );
     }
   }
   cli.stdout.write('\n● active  ◆ asks for approval  ○ waiting for you  ◌ unfinished\n');
+  if (archivedNote) cli.stdout.write(archivedNote);
+  else if (staleSessions(sessions, STALE_MS, now).length) {
+    cli.stdout.write('Put away the ones left for days with "genaicode sessions archive --stale".\n');
+  }
+  return EXIT_OK;
+}
+
+/** `sessions archive|unarchive`: put sessions away in genaicode, or bring them back. Their stores stay as they are. */
+async function archiveCommand(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'archive' }>,
+): Promise<number> {
+  const sources = agentSessionSources(
+    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
+  );
+  if (!sources.length) {
+    cli.stderr.write(`No session store for agent "${command.agent}".\n`);
+    return EXIT_USAGE;
+  }
+  const now = Date.now();
+  const query = { env: cli.env, ...(cli.signal ? { signal: cli.signal } : {}) };
+  if (command.stale) {
+    const olderMs = command.olderMs ?? STALE_MS;
+    const listing = await listSessions(sources, query);
+    for (const error of listing.errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
+    const stale = staleSessions(listing.sessions, olderMs, now);
+    if (!stale.length) {
+      cli.stdout.write(`No session left for ${ago(olderMs)} or more.\n`);
+      return EXIT_OK;
+    }
+    await archiveSessions(stale, true, { env: cli.env, now });
+    cli.stdout.write(
+      `Archived ${stale.length} session${stale.length === 1 ? '' : 's'} left for ${ago(olderMs)} or more:\n`,
+    );
+    for (const session of stale) {
+      const label = session.title ?? session.lastPrompt ?? session.firstPrompt ?? '(no prompt)';
+      const place = session.cwd ?? '';
+      const project = place.split(/[\\/]/).filter(Boolean).pop() ?? place;
+      cli.stdout.write(
+        `  ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago  ${oneLine(label, 60)}  ${session.id}\n`,
+      );
+    }
+    cli.stdout.write('Bring one back with "genaicode sessions unarchive <id>"; any news in it brings it back too.\n');
+    return EXIT_OK;
+  }
+  const found: SessionInfo[] = [];
+  for (const id of command.ids) {
+    let match: SessionInfo | undefined;
+    try {
+      match = (await findSession(sources, id, query))?.session;
+    } catch (error) {
+      cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      return EXIT_USAGE;
+    }
+    if (!match) {
+      cli.stderr.write(`No session "${id}". Ids are at the end of each line of "genaicode sessions".\n`);
+      return EXIT_FAILED;
+    }
+    found.push(match);
+  }
+  const changed = await archiveSessions(found, command.archived, { env: cli.env, now });
+  const verb = command.archived ? 'Archived' : 'Brought back';
+  cli.stdout.write(`${verb} ${changed} session${changed === 1 ? '' : 's'}.\n`);
   return EXIT_OK;
 }
 

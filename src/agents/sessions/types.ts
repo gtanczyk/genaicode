@@ -31,6 +31,11 @@ export interface SessionInfo {
   startedAt?: number;
   /** Last activity, epoch milliseconds. */
   updatedAt: number;
+  /**
+   * The latest report of the session's hooks, epoch milliseconds, when later than `updatedAt`: one
+   * that changed nothing shown (another tool finishing while a question waits) still counts as news.
+   */
+  heardAt?: number;
   state?: SessionActivity;
   /**
    * What a `waiting` session waits for, where the agent's hooks report it (`genaicode hooks
@@ -46,6 +51,8 @@ export interface SessionInfo {
   path?: string;
   /** Where to open it in a browser (cloud). */
   url?: string;
+  /** Put away with `genaicode sessions archive` and nothing happened in it since. */
+  archived?: true;
 }
 
 export interface SessionQuery {

@@ -5,7 +5,10 @@ export interface SessionFilter {
   /** Words that must all appear in the title, prompts, directory, branch, agent or id. */
   text?: string;
   agent?: string;
-  /** A `SessionActivity`, `approval` for sessions that ask to use a tool, or `open` for those that wait for the user. */
+  /**
+   * A `SessionActivity`, `approval` for sessions that ask to use a tool, `open` for those that wait
+   * for the user, `archived` for those put away. Archived sessions show only under `archived`.
+   */
   state?: string;
 }
 
@@ -13,7 +16,10 @@ export function filterSessions(sessions: readonly SessionInfo[], filter: Session
   const words = (filter.text ?? '').toLowerCase().split(/\s+/).filter(Boolean);
   return sessions.filter((session) => {
     if (filter.agent && session.agent !== filter.agent) return false;
-    if (filter.state === 'approval') {
+    if ((filter.state === 'archived') !== !!session.archived) return false;
+    if (filter.state === 'archived') {
+      // Every archived one, whatever its state.
+    } else if (filter.state === 'approval') {
       if (session.waitingFor !== 'approval') return false;
     } else if (filter.state === 'open' ? session.state === 'waiting' : filter.state && session.state !== filter.state)
       return false;

@@ -3,6 +3,7 @@ import type { SessionListing } from './group.js';
 import type { SessionTurn } from '../session.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
 import { readLive, withLive, type LiveRecord } from './live.js';
+import { readArchive, withArchive } from './archive.js';
 
 export { groupSessions, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -29,6 +30,17 @@ export {
 export type { StoreOptions } from './stores.js';
 export { liveDir, liveEvent, liveRecord, readLive, recordHook, withLive } from './live.js';
 export { hookInput } from './hook-input.js';
+export {
+  archiveFile,
+  archiveKey,
+  archiveSessions,
+  isArchived,
+  readArchive,
+  STALE_MS,
+  staleSessions,
+  withArchive,
+} from './archive.js';
+export type { SessionArchive } from './archive.js';
 export { answerAsk, askPreview, asksDir, pendingAsks, waitForAnswer } from './answer.js';
 export type { AskDecision, PendingAsk, WaitOptions } from './answer.js';
 export { noticeFor, notifyFile, readNotify, sendNotice, writeNotify } from './notify.js';
@@ -89,7 +101,9 @@ export async function listSessions(
     // A session counts from its latest news, which may be a hook's.
     found = withLive(found, live).filter((session) => query.since === undefined || session.updatedAt >= query.since);
   }
-  const sessions = found.sort((a, b) => b.updatedAt - a.updatedAt);
+  // Sessions put away (`genaicode sessions archive`) say so.
+  const archive = await readArchive(query.env);
+  const sessions = withArchive(found, archive).sort((a, b) => b.updatedAt - a.updatedAt);
   return { sessions: query.limit === undefined ? sessions : sessions.slice(0, query.limit), errors };
 }
 

@@ -12,7 +12,13 @@ import {
   type WebHandoff,
 } from './controller.js';
 import { ChatApp } from './tui/app.js';
-import { agentSessionSources, answerAsk, listSessions, pendingAsks } from '../agents/sessions/index.js';
+import {
+  agentSessionSources,
+  answerAsk,
+  archiveSessions,
+  listSessions,
+  pendingAsks,
+} from '../agents/sessions/index.js';
 import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
 
 export { NoAgentError };
@@ -199,6 +205,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         return { ...listing, readable, asks };
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
+      archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
     }).catch((error: unknown) => {
       running = undefined;
       throw error;
