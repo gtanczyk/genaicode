@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { liveDir, type LiveRecord } from './live.js';
+import { liveDir } from './live.js';
 import type { SessionInfo } from './types.js';
 
 export { STALE_MS, staleSessions } from './group.js';
@@ -38,30 +38,16 @@ export async function readArchive(env: NodeJS.ProcessEnv = process.env): Promise
   }
 }
 
-/**
- * Whether `session` is archived: archived, and nothing happened in it since, in its store or in
- * what its hooks reported (`live`), even a report that changed nothing shown.
- */
-export function isArchived(
-  session: SessionInfo,
-  archive: ReadonlyMap<string, number>,
-  live?: ReadonlyMap<string, LiveRecord>,
-): boolean {
+/** Whether `session` is archived: archived, and nothing happened in it since, its hooks' reports included. */
+export function isArchived(session: SessionInfo, archive: ReadonlyMap<string, number>): boolean {
   const at = archive.get(archiveKey(session));
-  if (at === undefined) return false;
-  const record = live?.get(archiveKey(session));
-  const latest = Math.max(session.updatedAt, record?.at ?? 0, record?.seen ?? 0);
-  return latest <= at;
+  return at !== undefined && Math.max(session.updatedAt, session.heardAt ?? 0) <= at;
 }
 
 /** `sessions` with `archived: true` on those put away. */
-export function withArchive(
-  sessions: readonly SessionInfo[],
-  archive: ReadonlyMap<string, number>,
-  live?: ReadonlyMap<string, LiveRecord>,
-): SessionInfo[] {
+export function withArchive(sessions: readonly SessionInfo[], archive: ReadonlyMap<string, number>): SessionInfo[] {
   if (!archive.size) return [...sessions];
-  return sessions.map((session) => (isArchived(session, archive, live) ? { ...session, archived: true } : session));
+  return sessions.map((session) => (isArchived(session, archive) ? { ...session, archived: true } : session));
 }
 
 /**

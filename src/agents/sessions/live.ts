@@ -327,6 +327,9 @@ export async function readLive(
   return records;
 }
 
+/** `heardAt` when the hooks' latest report is later than the session's shown time. */
+const heard = (updatedAt: number, seen: number) => (seen > updatedAt ? { heardAt: seen } : {});
+
 /**
  * `sessions` with what the agents' hooks reported put over what the files suggest: `state`, and
  * `waitingFor` (`approval` with the tool asked for, or `reply`). A record the session's file has
@@ -347,14 +350,17 @@ export function withLive(
       // Written to long after the last hook ran: the hooks no longer report this session.
       if (session.updatedAt > seen + UNSEEN_MS) return session;
       if (now - Math.max(seen, session.updatedAt) > WORKING_MS) return session;
-      return { ...session, state: 'active', updatedAt: Math.max(session.updatedAt, record.at) };
+      const updatedAt = Math.max(session.updatedAt, record.at);
+      return { ...session, state: 'active', updatedAt, ...heard(updatedAt, seen) };
     }
     // Written to after the agent stopped: something the hooks did not see went on.
     if (session.updatedAt > seen + LAG_MS) return session;
+    const updatedAt = Math.max(session.updatedAt, record.at);
     return {
       ...session,
       state: 'waiting',
-      updatedAt: Math.max(session.updatedAt, record.at),
+      updatedAt,
+      ...heard(updatedAt, seen),
       waitingFor: record.state === 'approval' ? 'approval' : 'reply',
       ...(record.state === 'approval' && record.tool ? { waitingTool: record.tool } : {}),
     };

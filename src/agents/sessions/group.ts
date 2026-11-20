@@ -78,6 +78,6 @@ export function staleSessions(
       !session.archived &&
       session.where === 'local' &&
       (session.state === 'waiting' || session.state === 'unfinished') &&
-      now - session.updatedAt >= olderThanMs,
+      now - Math.max(session.updatedAt, session.heardAt ?? 0) >= olderThanMs,
   );
 }

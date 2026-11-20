@@ -6,6 +6,7 @@ import { filterSessions } from '../../ui/sessions.js';
 import { archiveFile, archiveSessions, isArchived, readArchive, STALE_MS, staleSessions } from './archive.js';
 import { waitingSessions } from './group.js';
 import { listSessions } from './index.js';
+import { withLive } from './live.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-archive-'));
@@ -52,7 +53,11 @@ describe('archiving sessions', () => {
     const live = new Map([
       ['claude:a', { agent: 'claude', id: 'a', state: 'approval' as const, at: NOW - 5, seen: NOW + 1 }],
     ]);
-    expect(isArchived(session({ id: 'a', updatedAt: NOW - 1 }), archive, live)).toBe(false);
+    const [heard] = withLive([session({ id: 'a', updatedAt: NOW - 1 })], live, NOW);
+    expect(heard).toMatchObject({ updatedAt: NOW - 1, heardAt: NOW + 1 });
+    expect(isArchived(heard, archive)).toBe(false);
+    // Nor is it stale.
+    expect(staleSessions([heard], 10, NOW + 1)).toEqual([]);
     expect(await archiveSessions([{ source: 'codex', id: 'a' }], false, { env, now: NOW })).toBe(1);
     expect([...(await readArchive(env)).keys()]).toEqual(['claude:a']);
     // Long untouched entries are forgotten on the next write.
