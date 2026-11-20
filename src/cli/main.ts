@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
@@ -729,10 +730,13 @@ async function manageHooks(
   for (const agent of chosen) {
     try {
       if (command.action === 'install') {
-        // Asked for by name, an agent gets its hooks even when its CLI is not found.
-        if (command.agent === undefined && !installedHere.get(agent)) {
-          cli.stdout.write(`${agent}: not installed, skipped\n`);
-          continue;
+        // Asked for by name, an agent gets its hooks even when its CLI is not found: said so.
+        if (!installedHere.get(agent)) {
+          if (command.agent === undefined) {
+            cli.stdout.write(`${agent}: not installed, skipped\n`);
+            continue;
+          }
+          cli.stdout.write(`${agent}: its CLI is not found here; the hooks run once it is installed.\n`);
         }
         const answer = command.answer === true && ANSWER_AGENTS.includes(agent);
         const status = await installHooks(agent, { ...hookOptions, ...(answer ? { answer } : {}) });
@@ -761,7 +765,15 @@ async function manageHooks(
   }
   if (command.action === 'status') {
     const live = await readLive(cli.env);
-    cli.stdout.write(`${live.size} session${live.size === 1 ? '' : 's'} reported in ${liveDir(cli.env)}\n`);
+    // Ended ones are kept a while too, but are not open.
+    const all = await fs
+      .readdir(liveDir(cli.env))
+      .then((names) => names.filter((name) => name.endsWith('.json')).length)
+      .catch(() => 0);
+    const ended = Math.max(0, all - live.size);
+    cli.stdout.write(
+      `${live.size} open session${live.size === 1 ? '' : 's'}${ended ? ` (and ${ended} ended)` : ''} reported in ${liveDir(cli.env)}\n`,
+    );
   }
   return failed ? EXIT_FAILED : EXIT_OK;
 }
@@ -803,11 +815,18 @@ async function showSessions(
   const hidden = listing.sessions.length - listed.length;
   const sessions = (command.waiting ? waitingSessions(listed) : listed).slice(0, command.limit);
   for (const error of errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
+  const questions = command.waiting ? await pendingAsks(cli.env) : [];
   if (command.json) {
-    for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
+    for (const session of sessions) {
+      // `--waiting`: with the questions it holds open for the tower (`hooks install --answer`).
+      const asks = questions
+        .filter((ask) => ask.agent === session.agent && ask.session === session.id)
+        .map(({ id, tool, preview, at }) => ({ id, ...(tool ? { tool } : {}), ...(preview ? { preview } : {}), at }));
+      cli.stdout.write(`${JSON.stringify(asks.length ? { ...session, asks } : session)}\n`);
+    }
     return EXIT_OK;
   }
-  if (command.waiting) return showWaiting(cli, sessions, now, sinceMs, await pendingAsks(cli.env));
+  if (command.waiting) return showWaiting(cli, sessions, now, sinceMs, questions);
   const archivedNote = hidden ? `${hidden} archived not shown: --archived shows them.\n` : '';
   if (!sessions.length) {
     cli.stdout.write(`No sessions found.\n${archivedNote}`);

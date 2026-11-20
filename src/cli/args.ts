@@ -128,6 +128,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv;
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') return { kind: 'help' };
   if (command === '--version' || command === '-v') return { kind: 'version' };
+  // `genaicode sessions --help`: the help, which covers every command.
+  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' };
 
   if (command === 'update') {
     const { values } = parse(() =>
