@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode sessions send <id> "<prompt>"` and **Reply** in the browser's Sessions view resume a waiting local conversation in its original agent and directory. The CLI streams the reply or runs in the background with `--detach`.
+- `genaicode sessions send <id> "<prompt>"` and **Reply** in the browser's Sessions view resume a waiting local conversation in its original agent and directory. The CLI streams the reply or runs in the background with `--detach` (#213)
 
 ## 2.37.1 — 2026-11-20
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { waitingSessions, type SessionInfo } from '../agents/sessions/index.js';
+import { SessionSendError } from '../agents/sessions/send.js';
 import { createChatController } from './controller.js';
 import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from './sessions.js';
 import { pageHtml } from './web/page.js';
@@ -86,7 +87,10 @@ describe('the Sessions view', () => {
       token: 'token',
       async sendPrompt(source, id, prompt, sandbox) {
         calls.push([source, id, prompt, sandbox]);
-        if (id === 'busy') throw new Error('Session is busy.');
+        if (id === 'busy') throw new SessionSendError('busy', 'private diagnostic');
+        if (id === 'unexpected') throw new Error('private diagnostic');
+        if (id === 'failed')
+          return { ok: false, status: 'failed', exitCode: 1, signal: null, error: 'private diagnostic' };
         return { ok: true, status: 'completed', exitCode: 0, signal: null, text: 'Done.' };
       },
     });
@@ -107,7 +111,17 @@ describe('the Sessions view', () => {
         text: 'Done.',
       });
       expect(calls).toEqual([['echo', 'a b', 'go', 'read-only']]);
-      expect((await post('busy', { prompt: 'go' })).status).toBe(409);
+      const busy = await post('busy', { prompt: 'go' });
+      expect(busy.status).toBe(409);
+      expect(await busy.json()).toEqual({ error: 'A prompt is already running in this session.' });
+      for (const [id, status] of [
+        ['unexpected', 500],
+        ['failed', 422],
+      ] as const) {
+        const response = await post(id, { prompt: 'go' });
+        expect(response.status).toBe(status);
+        expect(await response.text()).not.toContain('private diagnostic');
+      }
     } finally {
       await ui.close();
       controller.close();

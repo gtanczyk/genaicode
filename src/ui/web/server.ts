@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
+import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
@@ -254,19 +255,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       try {
         const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal);
-        return send(
-          res,
-          result.ok ? 200 : 422,
-          'application/json',
-          JSON.stringify({ ok: result.ok, text: result.text, error: result.error }),
-        );
+        if (!result.ok) return send(res, 422, 'application/json', '{"error":"The agent could not finish this turn."}');
+        return send(res, 200, 'application/json', JSON.stringify({ ok: true, text: result.text }));
       } catch (error) {
-        return send(
-          res,
-          409,
-          'application/json',
-          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-        );
+        if (error instanceof SessionSendError)
+          return send(
+            res,
+            error.reason === 'missing' ? 404 : 409,
+            'application/json',
+            JSON.stringify({ error: error.publicMessage }),
+          );
+        return send(res, 500, 'application/json', '{"error":"Could not send the session prompt."}');
       }
     }
     const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);

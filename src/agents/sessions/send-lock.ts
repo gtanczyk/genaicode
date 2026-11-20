@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { liveDir } from './live.js';
 
 /** Publish a nonempty directory atomically. A second tower cannot claim it until the turn ends. */
-export function claimSession(source: string, id: string, env?: NodeJS.ProcessEnv): () => void {
+export function claimSession(source: string, id: string, env?: NodeJS.ProcessEnv): (() => void) | undefined {
   const root = join(dirname(liveDir(env)), 'sending');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const key = createHash('sha256')
@@ -34,12 +34,11 @@ export function claimSession(source: string, id: string, env?: NodeJS.ProcessEnv
       }
       if (previous) {
         const pid = Number(previous.split('-')[0]);
-        if (!Number.isSafeInteger(pid) || pid <= 0 || alive(pid))
-          throw new Error('A prompt is already running in this session.');
+        if (!Number.isSafeInteger(pid) || pid <= 0 || alive(pid)) return undefined;
         rmSync(join(lock, previous), { force: true });
       }
       removeEmpty(lock);
-      if (!claim()) throw new Error('A prompt is already running in this session.');
+      if (!claim()) return undefined;
     }
   } finally {
     rmSync(staging, { recursive: true, force: true });
