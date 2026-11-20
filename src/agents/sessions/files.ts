@@ -168,5 +168,6 @@ export function homeOf(env: NodeJS.ProcessEnv): string {
 export function timeOf(value: unknown): number | undefined {
   if (typeof value !== 'string') return undefined;
   const at = Date.parse(value);
-  return Number.isNaN(at) ? undefined : at;
+  // A zero time (Go's 0001-01-01, the epoch) says no time was kept.
+  return Number.isNaN(at) || at <= 0 ? undefined : at;
 }

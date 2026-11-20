@@ -262,3 +262,12 @@ describe('genaicode sessions', () => {
     expect(projects.map((project) => project.name).sort()).toEqual(['app', 'cursorCloud']);
   });
 });
+
+describe('times', () => {
+  it('reads a zero time as no time', async () => {
+    const { timeOf } = await import('./files.js');
+    expect(timeOf('0001-01-01T00:00:00Z')).toBeUndefined();
+    expect(timeOf('1970-01-01T00:00:00Z')).toBeUndefined();
+    expect(timeOf('2026-11-20T00:00:00Z')).toBe(Date.parse('2026-11-20T00:00:00Z'));
+  });
+});

@@ -160,6 +160,8 @@ describe("other agents' hooks", () => {
     expect((await hooksStatus('copilot', { env, command: '"/other" hook' })).installed).toBe(false);
     expect(await uninstallHooks('copilot', { env })).toBe(true);
     expect(existsSync(copilot.file)).toBe(false);
+    // Its folder too, made for it.
+    expect(existsSync(join(env.HOME, '.copilot', 'hooks'))).toBe(false);
 
     // Cursor: handlers listed as they are, beside the user's.
     const cursorFile = hooksFile('cursor', env);
@@ -179,5 +181,10 @@ describe("other agents' hooks", () => {
       version: 1,
       hooks: { stop: [{ command: './hooks/beep.sh' }] },
     });
+    // Only genaicode's in it: no `{"version":1}` left behind.
+    writeFileSync(cursorFile, '{}');
+    await installHooks('cursor', { env, command });
+    await uninstallHooks('cursor', { env });
+    expect(existsSync(cursorFile)).toBe(false);
   });
 });

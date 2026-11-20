@@ -1,4 +1,13 @@
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -336,7 +345,8 @@ describe('installing the hook', () => {
       'SessionEnd',
     ]);
     expect(await uninstallHooks('codex', { env })).toBe(true);
-    expect(JSON.parse(readFileSync(status.file, 'utf8'))).toEqual({});
+    // Nothing else in it: the file goes.
+    expect(existsSync(status.file)).toBe(false);
 
     writeFileSync(status.file, '{ broken');
     await expect(installHooks('codex', { env, command })).rejects.toThrow(/not valid JSON/);

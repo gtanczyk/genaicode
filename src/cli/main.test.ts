@@ -94,6 +94,11 @@ describe('parseCli', () => {
 
   it('parses --resume', () => {
     expect(parseCli(['run', '-r', 'abc', 'go on'])).toMatchObject({ resume: 'abc', prompt: 'go on' });
+    // `--help` after any command: the help.
+    expect(parseCli(['sessions', '--help'])).toEqual({ kind: 'help' });
+    expect(parseCli(['hooks', 'install', '-h'])).toEqual({ kind: 'help' });
+    // After `--` it is the prompt's.
+    expect(parseCli(['run', '--', 'explain', '-h'])).toMatchObject({ kind: 'run', prompt: 'explain -h' });
   });
 
   it('parses chat --web and its port, and keeps --web off ui', () => {
@@ -708,7 +713,7 @@ describe('genaicode hooks', () => {
     const status = await run('hooks');
     expect(status.out).toMatch(/claude: installed/);
     expect(status.out).toMatch(/codex: not installed/);
-    expect(status.out).toContain('0 sessions reported');
+    expect(status.out).toContain('0 open sessions reported');
 
     const answering = await run('hooks', 'install', '--answer');
     expect(answering.out).toContain('also be answered with "genaicode sessions approve|deny"');

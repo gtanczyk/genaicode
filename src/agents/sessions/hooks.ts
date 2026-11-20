@@ -269,8 +269,10 @@ export async function uninstallHooks(agent: HookAgent, options: HooksOptions = {
   const { events, answer } = found(config);
   if (!events.length && !answer) return false;
   const left = without(config);
-  // A file only genaicode's hooks were in goes with them (Copilot's).
-  if (agent === 'copilot' && Object.keys(left).every((key) => key === 'version')) await fs.rm(file, { force: true });
-  else await writeConfig(file, left);
+  // A file only genaicode's hooks were in goes with them, and so does Copilot's folder for them.
+  if (Object.keys(left).every((key) => key === 'version')) {
+    await fs.rm(file, { force: true });
+    if (agent === 'copilot') await fs.rmdir(path.dirname(file)).catch(() => undefined);
+  } else await writeConfig(file, left);
   return true;
 }
