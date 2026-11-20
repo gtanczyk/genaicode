@@ -73,6 +73,34 @@ function pathWith(command: string): string {
 }
 
 describe('parseCli', () => {
+  it('opens the requested pack in either chat and keeps the original session sources', async () => {
+    const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
+    const worker = fakeAgent('worker', []);
+    const agents = [lead, worker];
+    const inspect = async (launch: UiLaunch) => {
+      expect(launch.agent).toBe('pack');
+      expect(launch.agents[0]).toMatchObject({ name: 'pack', command: lead.command });
+      expect(launch.sessionAgents).toBe(agents);
+      return 0;
+    };
+    const loadUi = async () => ({ runChat: inspect, runWeb: inspect });
+    for (const kind of ['chat', 'ui']) {
+      const argv = [kind, '--pack', 'lead:worker,worker', '--max-parallel', '2'];
+      expect(parseCli(argv)).toMatchObject({ pack: { lead: 'lead', members: ['worker'], maxParallel: 2 } });
+      expect(await main(environment({ argv, agents, interactive: true, loadUi }).cli)).toBe(EXIT_OK);
+    }
+    for (const args of [
+      ['--pack', 'a:'],
+      ['--pack', 'a:b:extra'],
+      ['--pack', 'a:b', '-a', 'c'],
+      ['--max-parallel', '2'],
+      ['--pack', 'a:b', '--max-parallel', '0'],
+    ])
+      expect(() => parseCli(['ui', ...args])).toThrow(UsageError);
+    for (const spec of ['lead:unknown', 'worker:lead']) {
+      expect(await main(environment({ argv: ['ui', '--pack', spec], agents, loadUi }).cli)).toBe(EXIT_USAGE);
+    }
+  });
   it('parses run options', () => {
     expect(
       parseCli(['run', '-a', 'codex', '--timeout', '90', '--max-turns', '5', '--verify', 'npm test', 'fix', 'it']),

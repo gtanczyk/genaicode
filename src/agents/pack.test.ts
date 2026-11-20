@@ -2,9 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
+import { createArtifactStore } from './artifacts.js';
 import { pack } from './pack.js';
+import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-pack-test-'));
@@ -348,5 +350,122 @@ describe('pack', () => {
     const lead = fake('lead', async (task) => void (prompt = task.prompt), { mcp: true });
     await pack({ lead, members: [] }).run({ prompt: 'again', cwd, resume: 's1' }).result;
     expect(prompt).toBe('again');
+  });
+});
+
+describe('pack chat turns', () => {
+  it('steers and stops only the selected worker and drains the others on chat close', async () => {
+    const messages: string[] = [];
+    const base = fake(
+      'worker',
+      (_task, _emit, signal) => new Promise((resolve) => signal.addEventListener('abort', () => resolve())),
+    );
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run(task) {
+        return {
+          ...base.run(task),
+          steer: async (text) => {
+            messages.push(`${task.prompt} ${text}`);
+          },
+        };
+      },
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        for (const prompt of ['one', 'two']) await tool(task, 'delegate', { agent: 'worker', prompt, mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(session.get().turns[0].pack?.tasks).toHaveLength(2));
+      await session.actOnPackTask!(1, 't2', { type: 'steer', text: 'check empty input' });
+      expect(messages).toEqual(['two check empty input']);
+      await session.actOnPackTask!(1, 't1', { type: 'stop' });
+      expect(session.get().turns[0].pack?.tasks.map((item) => item.status)).toEqual(['aborted', 'running']);
+    } finally {
+      session.close();
+      await session.idle();
+    }
+    expect(session.get().turns[0].pack?.tasks[1].status).toBe('aborted');
+  });
+  it('routes concurrent approvals and keeps worktree actions on the owning turn after it ends', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task, emit, signal) => {
+      // Workers do not inherit the lead's trusted artifact server, even if a tool has its name.
+      const request = {
+        id: 'same',
+        kind: 'other' as const,
+        summary: task.prompt,
+        detail: { tool_name: 'mcp__artifacts__publish_artifact' },
+      };
+      emit({ type: 'approval-request', request });
+      const decision = await task.onApproval!(request, signal);
+      emit({ type: 'approval-resolved', id: request.id, decision });
+      if (decision === 'approve') writeFileSync(join(task.cwd, task.prompt), 'edited\n');
+      return { text: decision };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (task.prompt.endsWith('next')) {
+          await tool(task, 'discard', { id: 't2' });
+          return;
+        }
+        for (const prompt of ['first.txt', 'second.txt']) await tool(task, 'delegate', { agent: 'worker', prompt });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker], maxParallel: 2 });
+    const session = createAgentSession({
+      agent: team,
+      cwd,
+      artifacts: {
+        store: createArtifactStore({ cwd }),
+        mcpServer: { name: 'artifacts', url: 'http://127.0.0.1:1' },
+      },
+    });
+    try {
+      session.send('first');
+      await vi.waitFor(() => expect(session.get().approvals).toHaveLength(2));
+      const { approvals, turns } = session.get();
+      expect(approvals.map((request) => request.id).sort()).toEqual(['t1:same', 't2:same']);
+      expect(turns[0].pack).toMatchObject({ lead: 'lead', maxParallel: 2, tasks: [{ id: 't1' }, { id: 't2' }] });
+      expect(session.approve('t2:same', 'deny')).toBe(true);
+      expect(session.approve('t1:same', 'approve')).toBe(true);
+      await session.idle();
+      const first = session.get().turns[0];
+      expect(first.entries.filter((entry) => entry.kind === 'approval')).toMatchObject([
+        { request: { subtaskId: 't1' }, decision: 'approve' },
+        { request: { subtaskId: 't2' }, decision: 'deny' },
+      ]);
+      expect(first.pack?.tasks[0]).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['A\tfirst.txt'] });
+      expect(existsSync(join(cwd, 'first.txt'))).toBe(false);
+      session.send('next');
+      await session.idle();
+      expect(session.get().turns[0].pack?.tasks[1].state).toBe('discarded');
+      await expect(session.actOnPackTask!(2, 't1', { type: 'merge' })).rejects.toThrow('No pack task');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain('+edited');
+      // A competing discard cannot drop the worktree from under the merge.
+      const race = await Promise.allSettled([
+        session.actOnPackTask!(1, 't1', { type: 'merge' }),
+        session.actOnPackTask!(1, 't1', { type: 'discard' }),
+      ]);
+      expect(race.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+      expect(session.get().turns[0].pack?.tasks[0].state).toBe('merged');
+      expect(readFileSync(join(cwd, 'first.txt'), 'utf8')).toBe('edited\n');
+      session.adopt([first]);
+      expect(session.get().turns.at(-1)?.pack?.interactive).toBe(false);
+      await expect(session.actOnPackTask!(3, 't1', { type: 'discard' })).rejects.toThrow('No pack task');
+    } finally {
+      session.close();
+      await team.close();
+    }
   });
 });

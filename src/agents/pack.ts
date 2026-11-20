@@ -13,6 +13,7 @@ import type {
   AgentResult,
   AgentRun,
   AgentTask,
+  ApprovalRequest,
   BudgetWarning,
   CodingAgent,
   RateLimit,
@@ -60,6 +61,8 @@ export interface PackTask {
   prompt: string;
   mode: 'worktree' | 'shared';
   status: PackTaskStatus;
+  /** This running task accepts steering input. */
+  canSteer?: boolean;
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
   /** The agent's final message, or the last thing it did while running. */
@@ -77,6 +80,26 @@ export interface Pack extends CodingAgent {
   tasks(): PackTask[];
   /** Stop running tasks and remove the worktrees still on disk (unmerged changes are lost). */
   close(): Promise<void>;
+}
+
+export type PackAction = { type: 'steer'; text: string } | { type: 'stop' | 'diff' | 'merge' | 'discard' };
+
+/** The same operations as the lead's tools, scoped to the tasks delegated in one run. */
+export interface PackControls {
+  readonly lead: string;
+  readonly maxParallel: number;
+  task(id: string): PackTask | undefined;
+  act(id: string, action: PackAction): Promise<string>;
+}
+
+/** Events and the approval callback use the same identity in the chat's shared queue. */
+export function packApproval(id: string, agent: string, request: ApprovalRequest): ApprovalRequest {
+  return {
+    ...request,
+    id: `${id}:${request.id}`,
+    subtaskId: id,
+    summary: `[${agent} ${id}] ${request.summary ?? request.kind}`,
+  };
 }
 
 interface Sub {
@@ -180,8 +203,13 @@ export function pack(options: PackOptions): Pack {
   const subs = new Map<string, Sub>();
   const limits = new Map<string, Map<string, RateLimit>>();
   const lastFailure = new Map<string, AgentFailure>();
-  // One merge at a time: each patch applies to what the one before left.
-  let merging: Promise<unknown> = Promise.resolve();
+  // Lead and chat share one queue: a discard cannot remove a worktree while a patch is being read or applied.
+  let worktreeQueue: Promise<unknown> = Promise.resolve();
+  const withWorktree = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = worktreeQueue.then(operation);
+    worktreeQueue = next.catch(() => {});
+    return next;
+  };
   let nextId = 1;
   // Delegations still setting up their worktree: they hold a `maxParallel` slot already.
   let starting = 0;
@@ -212,6 +240,7 @@ export function pack(options: PackOptions): Pack {
     prompt: sub.prompt,
     mode: sub.mode,
     status: sub.status,
+    ...(sub.run?.steer ? { canSteer: true } : {}),
     cwd: sub.cwd,
     ...(sub.result?.text !== undefined
       ? { text: clip(sub.result.text) }
@@ -240,10 +269,12 @@ export function pack(options: PackOptions): Pack {
       const all = [...subs.values()];
       for (const sub of all) sub.run?.abort();
       await Promise.all(all.map((sub) => sub.ended));
-      for (const sub of all) {
-        if (sub.dir && sub.state === 'unmerged') sub.state = 'discarded';
-        await drop(sub);
-      }
+      await withWorktree(async () => {
+        for (const sub of all) {
+          if (sub.dir && sub.state === 'unmerged') sub.state = 'discarded';
+          await drop(sub);
+        }
+      });
     },
     run(task) {
       const events = new EventQueue<AgentEvent>(approximateSize);
@@ -381,15 +412,7 @@ export function pack(options: PackOptions): Pack {
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
           ...(onApproval
             ? {
-                onApproval: (request, signal) =>
-                  onApproval(
-                    {
-                      ...request,
-                      id: `${id}:${request.id}`,
-                      summary: `[${agent.name} ${id}] ${request.summary ?? request.kind}`,
-                    },
-                    signal,
-                  ),
+                onApproval: (request, signal) => onApproval(packApproval(id, agent.name, request), signal),
               }
             : {}),
         });
@@ -399,7 +422,7 @@ export function pack(options: PackOptions): Pack {
           let result: AgentResult;
           try {
             for await (const event of run) {
-              sub.last = activity(event) ?? sub.last;
+              sub.last = event.type === 'approval-resolved' ? undefined : (activity(event) ?? sub.last);
               if (event.type === 'rate-limit') noteLimit(agent.name, event.limit);
               if (event.type === 'usage') {
                 sub.usage = event.usage;
@@ -461,9 +484,8 @@ export function pack(options: PackOptions): Pack {
         return JSON.stringify(chosen.map(report), null, 1);
       };
 
-      const merge = (args: Record<string, unknown>): Promise<string> => {
-        const sub = find(args.id);
-        const next = merging.then(async () => {
+      const merge = (sub: Sub, threeWay = false): Promise<string> => {
+        return withWorktree(async () => {
           if (sub.status === 'running') throw new Error(`${sub.id} is still running. Wait for it first.`);
           if (sub.mode !== 'worktree')
             throw new Error(`${sub.id} ran in the shared directory: there is nothing to merge.`);
@@ -472,7 +494,7 @@ export function pack(options: PackOptions): Pack {
           const patch = await worktreeDiff(sub.dir, sub.start);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
           if (patch.trim()) {
-            const applied = await applyPatch(sub.repo, patch, args.threeWay === true);
+            const applied = await applyPatch(sub.repo, patch, threeWay);
             if (!applied.ok) {
               if (!applied.conflicts)
                 throw new Error(
@@ -500,9 +522,40 @@ export function pack(options: PackOptions): Pack {
             });
           return paths.length ? `Merged ${sub.id}:\n${(sub.changes ?? []).join('\n')}` : `${sub.id} changed nothing.`;
         });
-        merging = next.catch(() => {});
-        return next;
       };
+
+      const steer = async (sub: Sub, text: unknown) => {
+        if (sub.status !== 'running' || !sub.run) throw new Error(`${sub.id} is not running.`);
+        if (!sub.run.steer)
+          throw new Error(`${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`);
+        if (typeof text !== 'string' || !text.trim()) throw new Error('`text` is required.');
+        await sub.run.steer(text);
+        return `Sent to ${sub.id}.`;
+      };
+
+      const stop = async (sub: Sub) => {
+        if (sub.status !== 'running') return `${sub.id} already ended (${sub.status}).`;
+        sub.run?.abort();
+        await sub.ended;
+        return `Stopped ${sub.id}.`;
+      };
+
+      const diff = (sub: Sub) =>
+        withWorktree(async () => {
+          if (!sub.dir || !sub.start) throw new Error(`${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
+          return clip(await worktreeDiff(sub.dir, sub.start), MAX_DIFF) || 'No changes.';
+        });
+
+      const discard = (sub: Sub) =>
+        withWorktree(async () => {
+          if (sub.status === 'running') throw new Error(`${sub.id} is still running. Stop it first.`);
+          if (sub.state !== 'unmerged')
+            throw new Error(`${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`);
+          sub.state = 'discarded';
+          await drop(sub);
+          events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
+          return `Discarded ${sub.id}.`;
+        });
 
       const tools: McpTool[] = [
         {
@@ -558,37 +611,19 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, text: { type: 'string' } },
             required: ['id', 'text'],
           },
-          call: async (args) => {
-            const sub = find(args.id);
-            if (sub.status !== 'running' || !sub.run) throw new Error(`${sub.id} is not running.`);
-            if (!sub.run.steer)
-              throw new Error(`${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`);
-            if (typeof args.text !== 'string' || !args.text.trim()) throw new Error('`text` is required.');
-            await sub.run.steer(args.text);
-            return `Sent to ${sub.id}.`;
-          },
+          call: (args) => steer(find(args.id), args.text),
         },
         {
           name: 'stop',
           description: 'Stop a running task. What it changed so far stays in its worktree.',
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: async (args) => {
-            const sub = find(args.id);
-            if (sub.status !== 'running') return `${sub.id} already ended (${sub.status}).`;
-            sub.run?.abort();
-            await sub.ended;
-            return `Stopped ${sub.id}.`;
-          },
+          call: (args) => stop(find(args.id)),
         },
         {
           name: 'diff',
           description: 'The changes a worktree task made, as a unified diff.',
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: async (args) => {
-            const sub = find(args.id);
-            if (!sub.dir || !sub.start) throw new Error(`${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
-            return clip(await worktreeDiff(sub.dir, sub.start), MAX_DIFF) || 'No changes.';
-          },
+          call: (args) => diff(find(args.id)),
         },
         {
           name: 'merge',
@@ -599,22 +634,13 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, threeWay: { type: 'boolean' } },
             required: ['id'],
           },
-          call: merge,
+          call: (args) => merge(find(args.id), args.threeWay === true),
         },
         {
           name: 'discard',
           description: "Drop a finished worktree task's changes and remove its worktree.",
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: async (args) => {
-            const sub = find(args.id);
-            if (sub.status === 'running') throw new Error(`${sub.id} is still running. Stop it first.`);
-            if (sub.state !== 'unmerged')
-              throw new Error(`${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`);
-            sub.state = 'discarded';
-            await drop(sub);
-            events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
-            return `Discarded ${sub.id}.`;
-          },
+          call: (args) => discard(find(args.id)),
         },
       ];
 
@@ -689,6 +715,30 @@ export function pack(options: PackOptions): Pack {
         });
       return {
         result: settled,
+        pack: {
+          lead: lead.name,
+          maxParallel,
+          task(id) {
+            const sub = subs.get(id);
+            return sub && mine.has(sub) ? report(sub) : undefined;
+          },
+          async act(id, action) {
+            const sub = find(id);
+            if (!mine.has(sub)) throw new Error(`Task ${id} belongs to another turn.`);
+            switch (action.type) {
+              case 'steer':
+                return steer(sub, action.text);
+              case 'stop':
+                return stop(sub);
+              case 'diff':
+                return diff(sub);
+              case 'merge':
+                return merge(sub);
+              case 'discard':
+                return discard(sub);
+            }
+          },
+        },
         abort() {
           stopped = true;
           stopAll();

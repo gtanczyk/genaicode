@@ -253,6 +253,12 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 - `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
   finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 
+In a live chat, `turn.pack.tasks` holds the delegated work under its original turn.
+`session.actOnPackTask?.(turn.id, id, { type: 'diff' })` returns the unified patch.
+The same method accepts `merge`, `discard`, `stop` and `{ type: 'steer', text }`.
+Each run also exposes these controls as `run.pack`. A chat can still review and merge
+finished tasks after a later turn starts. Adopted transcripts are read-only.
+
 ## Sessions across agents
 
 Every agent keeps its conversations somewhere of its own. `listSessions()` reads those stores and
@@ -1221,4 +1227,4 @@ way the built-in drivers are tested.
 3. MCP server injection per driver, an env scrub helper, and an opt-in verify/repair helper. Done.
 4. More CLIs (gemini, cursor, opencode) and a hosted coding-agent seam (`hostedAgent`, `managedAgent`). Done.
 5. A Copilot CLI driver (`copilot`). Done.
-6. `pack()`: a lead agent that delegates to the other installed agents. Done; CLI and chat front ends next.
+6. `pack()`: a lead agent delegates to installed agents. The terminal and browser chat expose it with `--pack`.

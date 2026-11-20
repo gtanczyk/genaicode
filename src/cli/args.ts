@@ -55,6 +55,7 @@ export type CliCommand =
   | {
       kind: 'chat' | 'ui' | 'tower';
       agent?: string;
+      pack?: { lead: string; members: string[]; maxParallel?: number };
       cwd?: string;
       model?: string;
       effort?: string;
@@ -360,6 +361,9 @@ export function parseCli(argv: readonly string[]): CliCommand {
         strict: true,
         options: {
           agent: { type: 'string', short: 'a' },
+          ...(command === 'tower'
+            ? {}
+            : { pack: { type: 'string' as const }, 'max-parallel': { type: 'string' as const } }),
           cwd: { type: 'string', short: 'C' },
           model: { type: 'string', short: 'm' },
           effort: { type: 'string' },
@@ -380,10 +384,23 @@ export function parseCli(argv: readonly string[]): CliCommand {
       }),
     );
     const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean };
+    const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
+    let pack: Extract<CliCommand, { kind: 'chat' | 'ui' | 'tower' }>['pack'];
+    if (typeof values.pack === 'string') {
+      const [lead, list, ...extraParts] = values.pack.split(':');
+      const members = list?.split(',').map((name) => name.trim());
+      if (!lead.trim() || !members?.length || members.some((name) => !name) || extraParts.length)
+        throw new UsageError('--pack expects lead:member[,member], for example claude:codex,gemini.');
+      if (values.agent !== undefined && values.agent !== lead.trim())
+        throw new UsageError('--pack already chooses the lead agent. Use the same name with --agent or omit it.');
+      if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
+      pack = { lead: lead.trim(), members: [...new Set(members)], maxParallel };
+    } else if (maxParallel !== undefined) throw new UsageError('--max-parallel requires --pack.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
       kind: command,
+      ...(pack ? { pack } : {}),
       agent: values.agent,
       cwd: values.cwd,
       model: values.model,

@@ -2,6 +2,27 @@
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { AgentBudget, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
+import type { PackTask } from '../agents/pack.js';
+
+export function packTaskStatus(task: PackTask, waiting: boolean): string {
+  if (waiting) return 'Needs approval';
+  if (task.state === 'merged') return 'Merged locally';
+  if (task.state === 'discarded') return 'Discarded';
+  if (task.status === 'completed' && task.state === 'unmerged') return 'Ready to merge';
+  return { running: 'Running', completed: 'Completed', aborted: 'Stopped', failed: 'Failed', timeout: 'Timed out' }[
+    task.status
+  ];
+}
+
+export function packMetrics(turn: SessionTurn): string {
+  const pack = turn.pack!;
+  const running = pack.tasks.filter((task) => task.status === 'running').length;
+  const limits = limitChips({ budget: pack.budget, usage: turn.usage ?? {}, costUsd: turn.costUsd });
+  const usage = limits.length
+    ? limits.map((chip) => chip.text).join(' · ')
+    : formatUsage(turn.usage ?? {}, turn.costUsd);
+  return [`${running}/${pack.maxParallel} slots`, usage].filter(Boolean).join(' · ');
+}
 
 const INPUT_KEYS = ['command', 'cmd', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url', 'description'];
 

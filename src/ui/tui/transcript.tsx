@@ -3,6 +3,9 @@ import type { SessionEntry, SessionTurn } from '../../agents/session.js';
 import { describeFailover } from '../../agents/failover.js';
 import { outputTail, relativePath, toolLabel, toolSummary, turnFooter } from '../format.js';
 import type { Notice } from '../controller.js';
+import { plainSessionText } from '../controller.js';
+import { packMetrics, packTaskStatus } from '../../react/format.js';
+import type { ApprovalRequest } from '../../agents/types.js';
 
 /** Inline `code` and **bold**, the two marks agents use most in terminal answers. */
 export function RichLine({ text }: { text: string }) {
@@ -189,6 +192,8 @@ export function TurnView({
   maxRows,
   width = 80,
   cwd,
+  approvals = [],
+  selectedTask,
 }: {
   turn: SessionTurn;
   live?: boolean;
@@ -197,6 +202,8 @@ export function TurnView({
   maxRows?: number;
   width?: number;
   cwd?: string;
+  approvals?: ApprovalRequest[];
+  selectedTask?: string;
 }) {
   let entries = turn.entries;
   if (maxRows !== undefined) {
@@ -231,6 +238,30 @@ export function TurnView({
           </Box>
         ))}
       </Box>
+      {turn.pack ? (
+        <Box flexDirection="column" paddingLeft={2} marginTop={1}>
+          <Text bold>
+            Pack tasks{' '}
+            <Text color="gray">
+              {turn.pack.lead} leads · {packMetrics(turn)}
+            </Text>
+          </Text>
+          {turn.pack.tasks.map((task) => {
+            const waiting = approvals.some((request) => request.subtaskId === task.id);
+            return (
+              <Text key={task.id} wrap="truncate-end">
+                <Text color={waiting ? 'yellow' : 'cyan'}>
+                  {selectedTask === task.id ? '›' : '·'} {task.id} {task.agent}
+                </Text>
+                {' · '}
+                {packTaskStatus(task, waiting)}
+                {' · '}
+                {plainSessionText(task.prompt).split('\n')[0]}
+              </Text>
+            );
+          })}
+        </Box>
+      ) : null}
       {turn.result ? (
         <Box paddingLeft={2} marginTop={1}>
           <Text color={failed ? 'red' : 'gray'}>

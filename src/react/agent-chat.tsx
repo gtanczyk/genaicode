@@ -26,6 +26,7 @@ import {
   turnFooter,
 } from './format.js';
 import { Markdown } from './markdown.js';
+import { PackTasks, type PackActionHandler } from './pack-tasks.js';
 
 /** A line from the host itself (not the agent), shown between turns. */
 export interface ChatNotice {
@@ -63,6 +64,8 @@ export interface AgentChatProps {
    * show as waiting, with no buttons.
    */
   onApprove?(id: string, decision: ApprovalDecision): void;
+  /** Control a delegated task in its owning turn. Without this, pack tasks are read-only. */
+  onPackAction?: PackActionHandler;
   /**
    * How a prompt bubble shows the text that was sent, e.g. to hide a context prefix the host
    * added. Return null to hide the bubble. `turn` is undefined for queued prompts and for
@@ -195,8 +198,9 @@ export function AgentChat(props: AgentChatProps) {
         turn={turn}
         now={now}
         cwd={state.cwd}
-        pending={state.approvals}
+        pending={turn.result ? [] : state.approvals}
         onApprove={props.onApprove}
+        onPackAction={props.disabled ? undefined : props.onPackAction}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
@@ -406,6 +410,7 @@ function Turn({
   cwd,
   pending,
   onApprove,
+  onPackAction,
   prompt,
   toolName,
   artifactUrl,
@@ -421,18 +426,24 @@ function Turn({
   cwd: string;
   pending: SessionState['approvals'];
   onApprove?: AgentChatProps['onApprove'];
+  onPackAction?: PackActionHandler;
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
   fold: boolean;
 }) {
   const running = !turn.result;
+  const speaker = turn.pack?.lead ?? turn.agent;
   const bad = turn.result && !turn.result.ok;
   const shown = prompt ? prompt(turn.prompt, turn) : turn.prompt;
   const entry = (item: SessionEntry, i: number) => (
     <Entry
       key={i}
       entry={item}
-      agent={turn.agent}
+      agent={
+        item.kind === 'approval' && turn.pack
+          ? (turn.pack.tasks.find((task) => task.id === item.request.subtaskId)?.agent ?? turn.pack.lead)
+          : (turn.pack?.lead ?? turn.agent)
+      }
       cwd={cwd}
       pending={pending}
       onApprove={onApprove}
@@ -443,35 +454,54 @@ function Turn({
       submitArtifact={submitArtifact}
     />
   );
+  const transcript =
+    turn.pack && pending.length
+      ? {
+          ...turn,
+          entries: turn.entries.filter(
+            (item) =>
+              item.kind !== 'approval' || item.decision || !pending.some((request) => request.id === item.request.id),
+          ),
+        }
+      : turn;
   return (
     <section className="gc-turn">
       {shown === null || shown === undefined || shown === false || (shown === '' && turn.attachments?.length) ? null : (
         <div className="gc-prompt">{shown}</div>
       )}
       <TurnAttachments items={turn.attachments} />
-      {turn.entries.length ? (
+      {transcript.entries.length ? (
         <div className="gc-agent-row">
-          <div className="gc-avatar" title={turn.agent} aria-hidden="true">
-            {turn.agent.slice(0, 2)}
+          <div className="gc-avatar" title={speaker} aria-hidden="true">
+            {speaker.slice(0, 2)}
           </div>
           <div className="gc-steps">
             {fold ? (
-              <Folded turn={turn} pending={pending} toolName={toolName} entry={entry} />
+              <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} />
             ) : (
-              turn.entries.map(entry)
+              transcript.entries.map(entry)
             )}
           </div>
         </div>
       ) : null}
+      {turn.pack ? (
+        <PackTasks
+          turn={turn}
+          cwd={cwd}
+          pending={pending}
+          act={onPackAction}
+          approval={(request) => entry({ kind: 'approval', request }, 0)}
+        />
+      ) : null}
       {running ? (
         <div className="gc-working">
-          <span className="gc-spin" /> {turn.agent} is working
+          <span className="gc-spin" /> {speaker} is working
           {/* The ticking time stays out of the transcript's live region. */}
           <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
-          {turnFooter(turn, now)} · {turn.agent}
+          {turnFooter(turn, now)} · {speaker}
         </div>
       )}
     </section>
