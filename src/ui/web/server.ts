@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
+import type { PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
@@ -74,6 +75,7 @@ export type WebCommand =
   | { type: 'submit'; text: string }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   /** Take over the session with this id (`ChatController.continueSession`). */
   | { type: 'continue'; id: string }
   | { type: 'agent'; name: string }
@@ -93,6 +95,25 @@ export function parseCommand(value: unknown): WebCommand | undefined {
     }
     case 'stop':
       return { type: 'stop' };
+    case 'pack-task': {
+      const { turnId, action } = command;
+      const id = text('id', 200);
+      if (
+        !id ||
+        typeof turnId !== 'number' ||
+        !Number.isSafeInteger(turnId) ||
+        turnId < 1 ||
+        !action ||
+        typeof action !== 'object'
+      )
+        return undefined;
+      const { type, text: input } = action as Record<string, unknown>;
+      if (type === 'steer' && typeof input === 'string' && input.trim() && input.length <= 32_000)
+        return { type: 'pack-task', turnId, id, action: { type, text: input } };
+      if (type === 'stop' || type === 'diff' || type === 'merge' || type === 'discard')
+        return { type: 'pack-task', turnId, id, action: { type } };
+      return undefined;
+    }
     case 'approve': {
       const id = text('id', 200);
       const decision = command.decision;
@@ -337,6 +358,20 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         command = undefined;
       }
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+      if (command.type === 'pack-task') {
+        try {
+          if (!controller.session.actOnPackTask) throw new Error('Pack controls are unavailable.');
+          const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
+          return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
+        } catch (error) {
+          return send(
+            res,
+            409,
+            'application/json',
+            JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+          );
+        }
+      }
       const ok = await run(controller, command);
       return send(res, 200, 'application/json', JSON.stringify({ ok }));
     }
@@ -371,7 +406,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
 }
 
-async function run(controller: ChatController, command: WebCommand): Promise<boolean> {
+async function run(controller: ChatController, command: Exclude<WebCommand, { type: 'pack-task' }>): Promise<boolean> {
   switch (command.type) {
     case 'submit':
       if (controller.submit(command.text, 'web') === 'quit') {

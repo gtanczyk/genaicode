@@ -14,13 +14,17 @@ document.head.append(style);
 
 const token = new URLSearchParams(location.search).get('token') ?? '';
 
-async function command(body: WebCommand): Promise<boolean> {
+async function postCommand(body: WebCommand) {
   const res = await fetch('/api/command', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
     body: JSON.stringify(body),
   });
-  return res.ok && ((await res.json()) as { ok: boolean }).ok;
+  return (await res.json()) as { ok?: boolean; text?: string; error?: string };
+}
+
+async function command(body: WebCommand): Promise<boolean> {
+  return (await postCommand(body)).ok === true;
 }
 
 function useView(): { view?: ChatView; connected: boolean } {
@@ -205,6 +209,11 @@ function App() {
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+        onPackAction={async (turnId, id, action) => {
+          const reply = await postCommand({ type: 'pack-task', turnId, id, action });
+          if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
+          return reply.text ?? '';
+        }}
         hint={
           <>
             <span>Enter to send · Shift+Enter for a new line · Esc stops</span>

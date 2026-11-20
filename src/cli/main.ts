@@ -7,6 +7,9 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { pack } from '../agents/pack.js';
+import { codexLive } from '../agents/drivers/codex-live.js';
+import { museLive } from '../agents/drivers/muse-live.js';
 import { sendSession } from '../agents/sessions/send.js';
 import { detachSend } from './detach-send.js';
 import { ago, resumeCommand } from '../ui/sessions.js';
@@ -240,6 +243,8 @@ Notify options:
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
+      --pack <lead:list>  Start a pack, e.g. claude:codex,gemini. Follow its tasks in the chat
+      --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
       --effort <level>    Reasoning effort, in the agent's own vocabulary
@@ -550,13 +555,35 @@ async function runUi(
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
   const sessionAgents = agents;
+  let initial = options.agent;
+  if (options.pack) {
+    const spec = options.pack;
+    if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
+    if (options.mcpServers.some((server) => server.name === 'pack')) {
+      cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
+      return EXIT_USAGE;
+    }
+    const member = (name: string) => {
+      if (!cli.agents && name === 'codex') return codexLive();
+      if (!cli.agents && name === 'muse') return museLive();
+      return sessionAgents.find((agent) => agent.name === name)!;
+    };
+    const lead = member(spec.lead);
+    if (!lead.capabilities.mcp) {
+      cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
+      return EXIT_USAGE;
+    }
+    const team = pack({ lead, members: spec.members.map(member), maxParallel: spec.maxParallel });
+    agents = [team, ...agents];
+    initial = team.name;
+  }
   if (options.sessions && options.mcpServers.some((server) => server.name === 'sessions')) {
     cli.stderr.write('--sessions adds an MCP server named "sessions": give the --mcp one another name.\n');
     return EXIT_USAGE;
   }
   if (options.mcpServers.length || options.sessions) {
     // Only agents that take MCP servers can use them; offer just those.
-    const chosen = agents.find((agent) => agent.name === options.agent);
+    const chosen = agents.find((agent) => agent.name === initial);
     if (chosen && !chosen.capabilities.mcp) {
       const flag = options.mcpServers.length ? '--mcp' : '--sessions';
       cli.stderr.write(`Agent "${chosen.name}" does not support MCP servers in genaicode (${flag}).\n`);
@@ -582,7 +609,7 @@ async function runUi(
     sessionSources: indexed,
     ...(tools ? { sessionTools: tools } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
-    agent: options.agent,
+    agent: initial,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
     model: options.model,
     effort: options.effort,
@@ -1193,12 +1220,11 @@ function knownAgents(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
   names: readonly string[] | undefined,
+  flag = '--fallback',
 ): boolean {
   const unknown = names?.find((name) => !agents.some((agent) => agent.name === name));
   if (unknown === undefined) return true;
-  cli.stderr.write(
-    `Unknown agent "${unknown}" in --fallback. Known agents: ${agents.map((a) => a.name).join(', ')}.\n`,
-  );
+  cli.stderr.write(`Unknown agent "${unknown}" in ${flag}. Known agents: ${agents.map((a) => a.name).join(', ')}.\n`);
   return false;
 }
 

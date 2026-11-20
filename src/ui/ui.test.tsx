@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
+import type { PackTask } from '../agents/pack.js';
 import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
@@ -448,6 +449,70 @@ describe('chat controller', () => {
 });
 
 describe('terminal UI', () => {
+  it('selects a finished worker, reads its diff and confirms a discard on that task only', async () => {
+    const tasks: PackTask[] = ['t1', 't2'].map((id) => ({
+      id,
+      prompt: `Write ${id}`,
+      agent: 'worker',
+      mode: 'worktree',
+      cwd: '/w',
+      status: 'completed',
+      state: 'unmerged',
+    }));
+    const actions: string[] = [];
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      run() {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        return {
+          result: Promise.resolve(result),
+          abort() {},
+          pack: {
+            lead: 'lead',
+            maxParallel: 2,
+            task: (id) => tasks.find((item) => item.id === id),
+            async act(id, action) {
+              actions.push(`${id} ${action.type}`);
+              if (action.type === 'discard') tasks.find((item) => item.id === id)!.state = 'discarded';
+              return action.type === 'diff' ? '+test change' : 'Discarded';
+            },
+          },
+          async *[Symbol.asyncIterator]() {
+            for (const task of tasks) yield { type: 'subtask-start' as const, ...task };
+            yield { type: 'done' as const, result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [agent], cwd: '/w', env });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="test" />);
+    const press = async (key: string) => {
+      app.stdin.write(key);
+      await tick();
+    };
+    try {
+      await tick();
+      chat.submit('write');
+      await chat.session.idle();
+      await tick();
+      await press('\t');
+      await press('\x1b[B');
+      await press('d');
+      expect(app.lastFrame()).toContain('+test change');
+      await press('\x1b');
+      await press('x');
+      expect(app.lastFrame()).toContain('Discard this worktree');
+      expect(actions).toEqual(['t2 diff']);
+      await press('x');
+      expect(actions).toEqual(['t2 diff', 't2 discard']);
+      expect(chat.get().session.turns[0].pack?.tasks.map((item) => item.state)).toEqual(['unmerged', 'discarded']);
+      await press('\t');
+      expect(app.lastFrame()).toContain('Ask the agent');
+    } finally {
+      app.unmount();
+      chat.close();
+    }
+  });
   it('renders the transcript, the input and the status line, and sends on Enter', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: '/w', env });
@@ -591,6 +656,14 @@ describe('terminal UI', () => {
 });
 
 describe('web UI server', () => {
+  it('accepts only typed pack actions with a task and an owning turn', () => {
+    const base = { type: 'pack-task', turnId: 1, id: 't1' };
+    for (const action of [{ type: 'steer', text: 'check empty input' }, { type: 'diff' }])
+      expect(parseCommand({ ...base, action })).toEqual({ ...base, action });
+    for (const action of [{ type: 'delegate' }, { type: 'steer', text: '  ' }, 'merge'])
+      expect(parseCommand({ ...base, action })).toBeUndefined();
+    expect(parseCommand({ ...base, turnId: 0, action: { type: 'discard' } })).toBeUndefined();
+  });
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
     expect(parseCommand({ type: 'approve', id: 'a', decision: 'maybe' })).toBeUndefined();

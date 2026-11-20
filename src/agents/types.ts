@@ -1,4 +1,5 @@
 import type { TokenUsage } from '../core/types.js';
+import type { PackControls } from './pack.js';
 import type { SessionSource } from './sessions/types.js';
 
 /**
@@ -153,6 +154,8 @@ export interface Artifact {
 
 export interface ApprovalRequest {
   id: string;
+  /** The delegated task that asked, when the request comes through a pack. */
+  subtaskId?: string;
   /** `command`: run a shell command; `file-change`: apply edits; `other`: anything else. */
   kind: 'command' | 'file-change' | 'other';
   /** Human-readable summary (the command, the paths, or the vendor's reason). */
@@ -266,6 +269,8 @@ export interface AgentCapabilities {
  */
 export interface AgentRun extends AsyncIterable<AgentEvent> {
   readonly result: Promise<AgentResult>;
+  /** Inspect and act on this run's delegated tasks, including their worktrees after it ends. */
+  readonly pack?: PackControls;
   /** Stop the agent. `result` settles with status `aborted`. */
   abort(): void;
   /**

@@ -548,7 +548,7 @@ export function createChatController(options: ChatOptions): ChatController {
 }
 
 /** Stored transcripts may contain terminal controls. Keep only display text, tabs and newlines. */
-function plainSessionText(text: string): string {
+export function plainSessionText(text: string): string {
   // eslint-disable-next-line no-control-regex
   const controls = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
   return stripVTControlCharacters(text).replace(/\r\n/g, '\n').replace(controls, '');

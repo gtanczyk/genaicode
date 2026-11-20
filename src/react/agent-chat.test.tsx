@@ -102,6 +102,60 @@ const click = (el: Element) => act(() => (el as HTMLElement).click());
 const button = (label: string) => $$('button').find((el) => el.textContent === label);
 
 describe('AgentChat', () => {
+  it('puts pack approvals in one queue and scopes diff and discard to the selected worker', async () => {
+    const state = fixture();
+    const turn = state.turns[1];
+    const request = { ...state.approvals[0], id: 't1:a', subtaskId: 't1' };
+    state.approvals = [request];
+    turn.entries = [{ kind: 'approval', request }];
+    turn.pack = {
+      lead: 'claude',
+      maxParallel: 4,
+      interactive: true,
+      tasks: [
+        {
+          id: 't1',
+          agent: 'codex',
+          cwd: '/work/a',
+          prompt: 'Write CSV',
+          mode: 'worktree',
+          status: 'running',
+          canSteer: true,
+          state: 'unmerged',
+        },
+        {
+          id: 't2',
+          agent: 'gemini',
+          cwd: '/work/b',
+          prompt: 'Write docs',
+          mode: 'worktree',
+          status: 'completed',
+          state: 'unmerged',
+        },
+      ],
+    };
+    const onPackAction = vi.fn(async () => '+added');
+    const onApprove = vi.fn();
+    render({ state, onApprove, onPackAction });
+    expect($$('.gc-approval:not(.gc-done)')).toHaveLength(1);
+    click(button('Approvals · 1')!);
+    click(button('Approve')!);
+    expect(onApprove).toHaveBeenCalledWith('t1:a', 'approve');
+    click($$('.gc-pack-list button')[1]);
+    await act(async () => {
+      button('Show diff')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect($('.gc-pack-diff').textContent).toBe('+added');
+    expect(onPackAction).toHaveBeenCalledWith(turn.id, 't2', { type: 'diff' });
+    click(button('Discard')!);
+    click(button('Cancel')!);
+    expect(onPackAction).toHaveBeenCalledTimes(1);
+    click(button('Discard')!);
+    await act(async () => {
+      (button('Confirm discard') as HTMLElement).click();
+    });
+    expect(onPackAction).toHaveBeenCalledWith(turn.id, 't2', { type: 'discard' });
+  });
   it('renders a session: turns, tools, edits, markdown, errors, queue, busy state', () => {
     render();
     expect(text('.gc-prompt')).toEqual(['CONTEXT: x\n\nOperator: fix the build', 'CONTEXT: x\n\nOperator: clean up']);

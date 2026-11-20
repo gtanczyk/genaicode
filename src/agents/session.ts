@@ -1,5 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
+import { packApproval, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { addUsage, tokenCount } from './runtime.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
@@ -66,6 +67,8 @@ export interface SessionTurn {
   costUsd?: number;
   /** Earlier turns this turn's agent was told about after `setAgent()`. */
   handoff?: { turns: number; agents: string[]; file?: string };
+  /** Work delegated during this turn, in delegation order. */
+  pack?: { lead: string; maxParallel: number; budget?: AgentBudget; tasks: PackTask[]; interactive: boolean };
 }
 
 export interface SessionState {
@@ -178,6 +181,8 @@ export interface AgentSession {
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
   approve(id: string, decision: ApprovalDecision): boolean;
+  /** Operate on a delegated task in its original turn. A diff is returned only to the caller. */
+  actOnPackTask?(turnId: number, id: string, action: PackAction): Promise<string>;
   /**
    * Switch agents. The next turn resumes the agent's own earlier session when it had one, and
    * hands over the turns it missed (see `AgentSessionOptions.handoff`). `{ handoff: false }`
@@ -237,6 +242,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let steeredBefore: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
+  const packRuns = new Map<number, { agent: CodingAgent; controls: PackControls }>();
   const idleWaiters: Array<() => void> = [];
   let run: AgentRun | undefined;
   let controller: AbortController | undefined;
@@ -289,6 +295,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     set({ turns: state.turns.map((turn) => (turn.id === id ? change(turn) : turn)) });
   };
 
+  const keepTurns = (turns: SessionTurn[]) => {
+    const kept = turns.slice(-maxTurns);
+    for (const id of packRuns.keys()) if (!kept.some((turn) => turn.id === id)) packRuns.delete(id);
+    return kept;
+  };
+
+  const syncPackTask = (turnId: number, id: string) => {
+    const task = packRuns.get(turnId)?.controls.task(id);
+    if (!task) return;
+    updateTurn(turnId, (turn) => {
+      if (!turn.pack) return turn;
+      const tasks = turn.pack.tasks.slice();
+      const index = tasks.findIndex((known) => known.id === id);
+      if (index < 0) tasks.push(task);
+      else tasks[index] = task;
+      return { ...turn, pack: { ...turn.pack, tasks } };
+    });
+  };
+
   const addEntry = (id: number, entry: SessionEntry) =>
     updateTurn(id, (turn) => ({ ...turn, entries: [...closeStreaming(turn.entries), entry] }));
 
@@ -297,6 +322,32 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   const onEvent = (turnId: number, event: AgentEvent, own: () => boolean) => {
     switch (event.type) {
+      case 'subtask-start':
+        syncPackTask(turnId, event.id);
+        return;
+      case 'subtask': {
+        const child = event.event;
+        if (child.type === 'approval-request') addApproval(turnId, packApproval(event.id, event.agent, child.request));
+        if (child.type === 'approval-resolved') onEvent(turnId, { ...child, id: `${event.id}:${child.id}` }, own);
+        if (
+          ['message', 'tool-start', 'file-change', 'error', 'approval-request', 'approval-resolved', 'done'].includes(
+            child.type,
+          )
+        )
+          syncPackTask(turnId, event.id);
+        return;
+      }
+      case 'subtask-update': {
+        // A later turn of this pack can merge a task delegated in an earlier one.
+        const origin = packRuns.get(turnId);
+        for (const [id, run] of packRuns) {
+          if (run.agent === origin?.agent && run.controls.task(event.id)) {
+            syncPackTask(id, event.id);
+            break;
+          }
+        }
+        return;
+      }
       case 'session':
         if (!forgetAfterTurn && own()) set({ sessionId: event.sessionId });
         return;
@@ -407,7 +458,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     addApproval(turnId, request);
     if (signal?.aborted) return Promise.resolve('deny');
     // Publishing changes nothing on disk, and the store has its own checks: no question for it.
-    if (isPublishRequest(request, options.artifacts?.mcpServer)) return Promise.resolve('approve');
+    if (!request.subtaskId && isPublishRequest(request, options.artifacts?.mcpServer))
+      return Promise.resolve('approve');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
     return new Promise((resolve) => {
@@ -561,7 +613,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     controller = turnController;
     set({
       status: 'running',
-      turns: [...state.turns, turn].slice(-maxTurns),
+      turns: keepTurns([...state.turns, turn]),
       canSteer: false,
     });
     let current: AgentRun;
@@ -582,6 +634,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         signal: turnController.signal,
         onApproval: (request, signal) => onApproval(turnId, request, signal),
       });
+      if (current.pack) {
+        const { lead, maxParallel } = current.pack;
+        packRuns.set(turnId, { agent: turnAgent, controls: current.pack });
+        updateTurn(turnId, (started) => ({
+          ...started,
+          pack: { lead, maxParallel, budget, tasks: [], interactive: true },
+        }));
+      }
     } catch (error) {
       // A throwing transformPrompt (or driver) fails this turn; the queue goes on as usual.
       current = failedRun(error instanceof Error ? error.message : String(error));
@@ -724,6 +784,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       resolve(decision);
       return true;
     },
+    async actOnPackTask(turnId, id, action) {
+      const controls = packRuns.get(turnId)?.controls;
+      if (closed || !controls?.task(id)) throw new Error(`No pack task ${id} in turn ${turnId}.`);
+      try {
+        return await controls.act(id, action);
+      } finally {
+        syncPackTask(turnId, id);
+      }
+    },
     setAgent(next, switchOptions) {
       const carry = handoffOn && switchOptions?.handoff !== false;
       if (next === agent) {
@@ -765,6 +834,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const adopted = turns.map((turn) => {
         // A handoff of its own belongs to the session it came from.
         const copy: SessionTurn = { ...turn, id: nextTurnId++ };
+        if (copy.pack) copy.pack = { ...copy.pack, interactive: false };
         delete copy.handoff;
         return copy;
       });
@@ -777,7 +847,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
       }
-      set({ turns: [...state.turns, ...adopted].slice(-maxTurns), ...(own ? { sessionId: own } : {}) });
+      set({ turns: keepTurns([...state.turns, ...adopted]), ...(own ? { sessionId: own } : {}) });
       return true;
     },
     idle() {
@@ -790,6 +860,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.notes?.length) set({ notes: [] });
       this.stop();
       listeners.clear();
+      // Workers can still emit their final status as the stopped run drains.
+      if (packRuns.size) void this.idle().then(() => packRuns.clear());
     },
   };
 }

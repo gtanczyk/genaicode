@@ -4,6 +4,7 @@ import type { SessionTurn } from '../../agents/session.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
 import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
+import { PackInspector, type TaskSelection } from './pack-inspector.js';
 
 type StaticItem =
   | { key: string; kind: 'header' }
@@ -16,7 +17,14 @@ const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', 
 export function splitTranscript(view: ChatView): { done: StaticItem[]; live: SessionTurn[]; pending: Notice[] } {
   const { turns } = view.session;
   let finished = 0;
-  while (finished < turns.length && turns[finished].result) finished += 1;
+  while (finished < turns.length && turns[finished].result) {
+    // Older turns scroll away. Tab can still inspect their current task state without
+    // redrawing the entire history each time the active worker takes a step.
+    const pack = turns[finished].pack;
+    if (finished === turns.length - 1 && pack?.interactive && pack.tasks.some((task) => task.state === 'unmerged'))
+      break;
+    finished += 1;
+  }
   const done: StaticItem[] = [{ key: 'header', kind: 'header' }];
   const notices = [...view.notices];
   for (let k = 0; k <= finished; k += 1) {
@@ -67,6 +75,7 @@ export function ChatApp({
   const shellMode = draftRef.current.shell;
   const [now, setNow] = useState(Date.now());
   const [armedExit, setArmedExit] = useState(false);
+  const [selection, selectTask] = useState<TaskSelection>();
   const history = useRef<string[]>([]);
   const historyIndex = useRef(0);
   const stash = useRef('');
@@ -114,9 +123,19 @@ export function ChatApp({
   }, [draft]);
 
   const approval = view.session.approvals[0];
+  const tasks = view.session.turns.flatMap((turn) => (turn.pack?.tasks ?? []).map((task) => ({ turn, task })));
+  const currentTask =
+    selection && tasks.find(({ turn, task }) => turn.id === selection.turnId && task.id === selection.id);
 
   useInput((input, key) => {
     const { text: draft, cursor, shell } = draftRef.current;
+    if (currentTask) return;
+    if (key.tab && !draft && !shell && tasks.length) {
+      const recent = tasks.filter(({ turn }) => turn.id === tasks.at(-1)!.turn.id);
+      const chosen = recent.find(({ task }) => approval?.subtaskId === task.id) ?? recent[0];
+      selectTask({ turnId: chosen.turn.id, id: chosen.task.id });
+      return;
+    }
     if (key.ctrl && input === 'c') {
       if (draft || shell) return edit('', 0, false);
       if (armedExit) return quit();
@@ -191,7 +210,7 @@ export function ChatApp({
   });
 
   const { done, live, pending } = splitTranscript(view);
-  const current = live[0];
+  const current = live.find((turn) => !turn.result);
   const viewport = draftViewport(draft, cursor, width - 6);
   const spinner = SPINNER[Math.floor(now / 120) % SPINNER.length];
   const queued = view.session.queued;
@@ -223,16 +242,37 @@ export function ChatApp({
       </Static>
       <Box flexDirection="column" width={width}>
         {live.map((turn) => (
-          <TurnView key={turn.id} turn={turn} live now={now} width={width} maxRows={Math.max(4, rows - 12)} cwd={cwd} />
+          <TurnView
+            key={turn.id}
+            turn={turn}
+            live={!turn.result}
+            now={now}
+            width={width}
+            maxRows={Math.max(3, rows - 12 - (turn.pack?.tasks.length ?? 0))}
+            cwd={cwd}
+            selectedTask={selection?.turnId === turn.id ? selection.id : undefined}
+            approvals={turn.result ? [] : view.session.approvals}
+          />
         ))}
         {pending.map((notice) => (
           <NoticeView key={notice.id} notice={notice} />
         ))}
-        {approval ? (
+        {currentTask ? (
+          <PackInspector
+            key={`${currentTask.turn.id}/${currentTask.task.id}`}
+            current={currentTask}
+            tasks={tasks}
+            controller={controller}
+            select={selectTask}
+            rows={rows}
+          />
+        ) : null}
+        {!currentTask && approval ? (
           <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
             <Text>
               <Text color="yellow" bold>
-                {view.session.agent} asks:{' '}
+                {approval.subtaskId ? `Task ${approval.subtaskId}` : (current?.pack?.lead ?? view.session.agent)} asks
+                {current?.pack ? ` (${view.session.approvals.length} pending)` : ''}:{' '}
               </Text>
               {approval.kind === 'command'
                 ? 'run a command'
@@ -261,7 +301,7 @@ export function ChatApp({
           <Text>
             <Text color="cyan">{spinner} </Text>
             <Text>
-              {view.session.agent} is working {formatDuration(now - current.startedAt)}
+              {current.pack?.lead ?? view.session.agent} is working {formatDuration(now - current.startedAt)}
             </Text>
             <Text color="gray">
               {' '}
@@ -275,29 +315,31 @@ export function ChatApp({
             {'  '}⏸ {prompt}
           </Text>
         ))}
-        <Box borderStyle="round" borderColor={shellMode ? 'magenta' : running ? 'gray' : 'cyan'} paddingX={1}>
-          <Text color={shellMode ? 'magenta' : 'cyan'} bold>
-            {shellMode ? '!' : '›'}{' '}
-          </Text>
-          {draft ? (
-            <Text>
-              {viewport.before}
-              <Text inverse>{viewport.at}</Text>
-              {viewport.after}
+        {!currentTask && (
+          <Box borderStyle="round" borderColor={shellMode ? 'magenta' : running ? 'gray' : 'cyan'} paddingX={1}>
+            <Text color={shellMode ? 'magenta' : 'cyan'} bold>
+              {shellMode ? '!' : '›'}{' '}
             </Text>
-          ) : (
-            <Text color="gray">
-              <Text inverse> </Text>
-              {shellMode
-                ? `Run a shell command in ${cwd}…`
-                : running
-                  ? view.session.canSteer
-                    ? 'Add to the running task…'
-                    : 'Queue the next prompt…'
-                  : 'Ask the agent to change something…'}
-            </Text>
-          )}
-        </Box>
+            {draft ? (
+              <Text>
+                {viewport.before}
+                <Text inverse>{viewport.at}</Text>
+                {viewport.after}
+              </Text>
+            ) : (
+              <Text color="gray">
+                <Text inverse> </Text>
+                {shellMode
+                  ? `Run a shell command in ${cwd}…`
+                  : running
+                    ? view.session.canSteer
+                      ? 'Add to the running task…'
+                      : 'Queue the next prompt…'
+                    : 'Ask the agent to change something…'}
+              </Text>
+            )}
+          </Box>
+        )}
         {suggestions.length ? (
           <Box flexDirection="column" paddingLeft={2}>
             {suggestions.map((command) => (
@@ -323,6 +365,7 @@ export function ChatApp({
                     </Text>
                   ))}
               {armedExit ? ' · press ctrl+c again to exit' : ''}
+              {tasks.length && !currentTask ? ' · Tab for pack tasks' : ''}
             </Text>
           </Box>
         )}

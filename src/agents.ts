@@ -69,7 +69,15 @@ export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
 export { pack } from './agents/pack.js';
-export type { Pack, PackMember, PackOptions, PackTask, PackTaskStatus } from './agents/pack.js';
+export type {
+  Pack,
+  PackAction,
+  PackControls,
+  PackMember,
+  PackOptions,
+  PackTask,
+  PackTaskStatus,
+} from './agents/pack.js';
 export { startLocalMcpServer } from './agents/mcp-server.js';
 export type { LocalMcpServer, LocalMcpServerOptions } from './agents/mcp-server.js';
 export {
