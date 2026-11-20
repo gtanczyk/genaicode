@@ -115,6 +115,7 @@ function sessionOf(thread: unknown, now: number): SessionInfo | undefined {
     ...(typeof thread.createdAt === 'number' ? { startedAt: thread.createdAt * 1000 } : {}),
     ...(text(thread.model) ? { model: text(thread.model)! } : {}),
     ...(text(thread.path) ? { path: text(thread.path)! } : {}),
+    ...(status.type === 'active' ? { turnInProgress: true as const } : {}),
     ...state,
   };
 }

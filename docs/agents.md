@@ -331,6 +331,30 @@ The command in the settings is the `genaicode` that installed it (`node` and the
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
 global install), and run `hooks install` again after moving it.
 
+### Sending a turn to a session
+
+`sendSession()` accepts a user's message for the local session's own driver. It checks the
+session state again at send time, resolves the original working directory and passes the full
+native session id to `AgentTask.resume`. Use `onEvent` for streaming or await the final result.
+
+```ts
+import { claude, codex, sendSession } from 'genaicode/agents';
+
+const result = await sendSession([claude(), codex()], id, message, {
+  permissions: { sandbox: 'read-only' },
+  onEvent(event) {
+    if (event.type === 'text-delta') process.stdout.write(event.text);
+  },
+});
+```
+
+Pass `{ source }` with a full id from a listing to target that exact session. CLI callers can
+also supply a unique id prefix. A busy session, pending approval, missing directory, unknown
+state or unsupported driver prevents the run from starting. When hooks are absent, the store's
+activity estimate applies. A claim under `~/.genaicode/sending` keeps concurrent tower sends
+to the same session apart, including sends from separate processes. Native clients report their
+own activity separately. The session MCP tools remain read-only.
+
 ### Being told: `notify`
 
 ```bash

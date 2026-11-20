@@ -166,7 +166,7 @@ async function stateDatabase(dir: string): Promise<string | undefined> {
 }
 
 /** Threads from Codex's own index, or null when this Codex keeps none (older versions). */
-async function indexedSessions(dir: string): Promise<SessionInfo[] | null> {
+async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] | null> {
   const file = await stateDatabase(dir);
   if (!file) return null;
   const wanted = [
@@ -190,7 +190,13 @@ async function indexedSessions(dir: string): Promise<SessionInfo[] | null> {
   const columns = await tableColumns(file, 'threads');
   if (!columns?.has('id')) return null;
   const present = wanted.filter((column) => columns.has(column));
-  const found = (await queryDatabase(file, `SELECT ${present.join(', ')} FROM threads`)) ?? [];
+  const sql = `SELECT ${present.join(', ')} FROM threads`;
+  const found =
+    (await queryDatabase(
+      file,
+      prefix ? sql + ' WHERE substr(id, 1, length(?)) = ?' : sql,
+      prefix ? [prefix, prefix] : [],
+    )) ?? [];
   return found.flatMap((row): SessionInfo[] => {
     const id = text(row.id);
     const seconds = number(row.updated_at) ?? number(row.created_at);
@@ -359,9 +365,15 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
   };
   // Where each session listed through the app server came from, so reading it asks the same one.
   const listedIn = new Map<string, NodeJS.ProcessEnv>();
-  const listed = async (query: SessionQuery, always = false) => {
+  const listed = async (query: SessionQuery, always = false, prefix = '') => {
     const env = envOf(query);
-    const threads = await ask(env, query.signal, (server) => codexThreads(server, query), always);
+    const found = await ask(
+      env,
+      query.signal,
+      (server) => codexThreads(server, prefix ? { ...query, limit: undefined } : query),
+      always,
+    );
+    const threads = prefix ? found?.filter((thread) => thread.id.startsWith(prefix)).slice(0, query.limit) : found;
     if (threads?.length) {
       for (const thread of threads) listedIn.set(thread.id, env);
       // Kept small: the latest listings are the ones read from.
@@ -370,39 +382,42 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
     }
     return threads;
   };
+  const list = async (query: SessionQuery = {}, prefix = '') => {
+    const env = envOf(query);
+    const dir = dirOf(env);
+    // An app server that lists nothing may just not know this home: the files say.
+    const threads = await listed(query, false, prefix);
+    if (threads?.length) return threads;
+    const indexed = await indexedSessions(dir, prefix);
+    if (indexed) {
+      // Resolve an old thread's state from its own rollout even outside the newest 200.
+      const chosen = select(indexed, query);
+      await mapLimited(chosen.slice(0, 200), 8, fromRollout);
+      return chosen;
+    }
+    const files = (
+      await findFiles(path.join(dir, 'sessions'), 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'))
+    ).filter((file) => query.since === undefined || file.mtimeMs >= query.since);
+    const sessions: SessionInfo[] = [];
+    const wanted = query.limit ?? Infinity;
+    for (let at = 0; at < files.length && sessions.length < wanted; at += 32) {
+      query.signal?.throwIfAborted();
+      const batch = await mapLimited(files.slice(at, at + 32), 8, (file) => readCodexSession(file).catch(() => null));
+      for (const session of batch) {
+        if (!session || !session.id.startsWith(prefix)) continue;
+        if (query.cwd !== undefined && !(session.cwd && isWithin(session.cwd, query.cwd))) continue;
+        sessions.push(session);
+      }
+    }
+    return sessions.slice(0, query.limit);
+  };
   return {
     name: 'codex',
     where: 'local',
     verified: '0.170',
     reference: (query = {}) => listed(query, true),
-    async list(query = {}) {
-      const env = envOf(query);
-      const dir = dirOf(env);
-      // An app server that lists nothing may just not know this home: the files say.
-      const threads = await listed(query);
-      if (threads?.length) return threads;
-      const indexed = await indexedSessions(dir);
-      if (indexed) {
-        const chosen = select(indexed, query);
-        await mapLimited(chosen.slice(0, 200), 8, fromRollout);
-        return chosen;
-      }
-      const files = (
-        await findFiles(path.join(dir, 'sessions'), 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'))
-      ).filter((file) => query.since === undefined || file.mtimeMs >= query.since);
-      const sessions: SessionInfo[] = [];
-      const wanted = query.limit ?? Infinity;
-      for (let at = 0; at < files.length && sessions.length < wanted; at += 32) {
-        query.signal?.throwIfAborted();
-        const batch = await mapLimited(files.slice(at, at + 32), 8, (file) => readCodexSession(file).catch(() => null));
-        for (const session of batch) {
-          if (!session) continue;
-          if (query.cwd !== undefined && !(session.cwd && isWithin(session.cwd, query.cwd))) continue;
-          sessions.push(session);
-        }
-      }
-      return sessions.slice(0, query.limit);
-    },
+    list,
+    find: (id, query) => list(query, id),
     async read(session, readOptions) {
       const env = listedIn.get(session.id) ?? envOf();
       const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));

@@ -60,6 +60,25 @@ const zstdCompressSync = (zlib as { zstdCompressSync?: (data: string) => Buffer 
 const T = Date.parse('2026-11-10T12:00:00.000Z');
 
 describe('agent session stores', () => {
+  it('resolves an old Codex thread by id before reading rollout activity', async () => {
+    const dir = join(home, 'many-threads');
+    const id = 'older-thread';
+    const rollout = write(
+      join(dir, 'old.jsonl'),
+      jsonl(
+        { type: 'session_meta', payload: { id, cwd: '/work/app' } },
+        { type: 'event_msg', payload: { type: 'user_message', message: 'Check' } },
+        { type: 'event_msg', payload: { type: 'agent_message', message: 'Done' } },
+      ),
+    );
+    database(join(dir, 'state_1.sqlite'), 'CREATE TABLE threads (id TEXT, updated_at_ms, rollout_path)', 'threads', [
+      ...Array.from({ length: 201 }, (_, i) => ({ id: 'new-' + i, updated_at_ms: T + i + 1 })),
+      { id, updated_at_ms: T, rollout_path: rollout },
+    ]);
+    const source = codexSessions({ dir });
+    expect(await source.find!('older-thr')).toMatchObject([{ id, state: 'waiting' }]);
+  });
+
   it('reads the Codex thread index, without subagents and archived threads', async () => {
     const rollout = write(
       join(

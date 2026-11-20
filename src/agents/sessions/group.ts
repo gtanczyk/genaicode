@@ -10,6 +10,17 @@ export interface SessionListing {
   errors: Array<{ source: string; message: string }>;
 }
 
+/** A local conversation ready for a new turn in its own directory. */
+export function acceptsSessionPrompt(session: SessionInfo): boolean {
+  return (
+    session.where === 'local' &&
+    !!session.cwd &&
+    !session.turnInProgress &&
+    (session.state === 'waiting' || session.state === 'unfinished') &&
+    session.waitingFor !== 'approval'
+  );
+}
+
 /** A project: the sessions of every agent that share a directory (or a repository, in the cloud). */
 export interface SessionProject {
   /** The directory or repository. `''` for sessions that name neither. */

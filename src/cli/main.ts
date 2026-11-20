@@ -7,6 +7,8 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
+import { sendSession } from '../agents/sessions/send.js';
+import { detachSend } from './detach-send.js';
 import { ago, resumeCommand } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import {
@@ -91,6 +93,8 @@ export interface CliEnvironment {
 /** Options the bundled front ends take (see src/ui/index.tsx). */
 export interface UiLaunch {
   agents: readonly CodingAgent[];
+  /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
+  sessionAgents?: readonly CodingAgent[];
   sessionSources?: readonly SessionSource[];
   agent?: string;
   cwd: string;
@@ -149,6 +153,7 @@ Usage:
   genaicode ui [options]               Chat with an agent in the browser (local server)
   genaicode agents [--json]            List supported agents and whether each is installed
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
+  genaicode sessions send <id> <text>  Send a prompt to a waiting local session in its own agent
   genaicode sessions doctor            Check that the agents' session stores still read as expected
   genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
@@ -178,6 +183,10 @@ Sessions options:
 
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
+
+  "sessions send <id> <prompt>" streams the reply. It also reads the prompt from stdin.
+  --detach returns when the agent starts; -a chooses the agent's store. --sandbox takes
+  read-only, workspace-write or unrestricted. Without it the driver uses its own defaults.
 
   "sessions archive <id...>" hides sessions you will not come back to; "sessions archive --stale"
   (--older 5d, -a) does it for every one waiting for you or left half way for 2 days or more.
@@ -337,6 +346,8 @@ function dispatch(
       return listAgents(cli, agents, command.json);
     case 'sessions':
       return showSessions(cli, agents, command);
+    case 'send':
+      return sendPrompt(cli, agents, command);
     case 'doctor':
       return checkStores(cli, agents, command);
     case 'sessions-mcp':
@@ -525,6 +536,7 @@ async function runUi(
   }
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
+  const sessionAgents = agents;
   if (options.sessions && options.mcpServers.some((server) => server.name === 'sessions')) {
     cli.stderr.write('--sessions adds an MCP server named "sessions": give the --mcp one another name.\n');
     return EXIT_USAGE;
@@ -552,6 +564,7 @@ async function runUi(
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
   const launch: UiLaunch = {
     agents,
+    sessionAgents,
     sessionSources: indexed,
     agent: options.agent,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
@@ -1029,6 +1042,45 @@ async function handoffFrom(
     // An unwritable directory still gets the recap.
   }
   return handoffPreamble(turns, file);
+}
+
+async function sendPrompt(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'send' }>,
+): Promise<number> {
+  const prompt = command.prompt ?? (await cli.readStdin());
+  if (!prompt?.trim()) {
+    cli.stderr.write('Pass a prompt as arguments or on stdin.\n');
+    return EXIT_USAGE;
+  }
+  const { id, agent, sandbox } = command;
+  const owners = agent === undefined ? agents : agents.filter((candidate) => candidate.name === agent);
+  if (!owners.length) {
+    cli.stderr.write(`No session driver for "${agent}".\n`);
+    return EXIT_USAGE;
+  }
+  try {
+    if (command.detach) {
+      const pid = await detachSend({ id, prompt, agent, sandbox }, cli.env, cli.signal);
+      cli.stdout.write(`Session ${id} started in the background (PID ${pid}).\n`);
+      return EXIT_OK;
+    }
+    const render = createRenderer(cli.stdout, cli.stderr);
+    const result = await sendSession(owners, id, prompt, {
+      env: cli.env,
+      signal: cli.signal,
+      permissions: sandbox ? { sandbox } : undefined,
+      onEvent(event, session) {
+        render(event);
+        if (event.type === 'done') cli.stderr.write(`${describeResult(session.agent, event.result)}\n`);
+      },
+    });
+    return exitCode(result);
+  } catch (error) {
+    cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return cli.signal?.aborted ? EXIT_ABORTED : EXIT_FAILED;
+  }
 }
 
 async function runTask(

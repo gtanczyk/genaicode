@@ -61,6 +61,7 @@ describe('sessions asked of the Codex app server', () => {
     expect(sessions[0]).toMatchObject({
       source: 'codex',
       title: 'Named',
+      turnInProgress: true,
       firstPrompt: 'prompt of a',
       cwd: '/work/app',
       branch: 'main',

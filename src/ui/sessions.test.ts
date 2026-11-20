@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { waitingSessions, type SessionInfo } from '../agents/sessions/index.js';
+import { SessionSendError } from '../agents/sessions/send.js';
 import { createChatController } from './controller.js';
 import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from './sessions.js';
 import { pageHtml } from './web/page.js';
@@ -73,6 +74,58 @@ describe('the Sessions view', () => {
 
   it('shows ages in the largest unit that fits', () => {
     expect([ago(0), ago(59 * 60_000), ago(3 * 3_600_000), ago(12 * 86_400_000)]).toEqual(['0m', '59m', '3h', '12d']);
+  });
+
+  it('accepts a session reply only with the token and a valid JSON prompt for the named source and id', async () => {
+    const agent = { name: 'echo', command: process.execPath, capabilities: {}, run: () => undefined as never };
+    const calls: unknown[][] = [];
+    const controller = createChatController({ agents: [agent], cwd: '/w', env: {} });
+    const ui = await startWebUi({
+      controller,
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 'token',
+      async sendPrompt(source, id, prompt, sandbox) {
+        calls.push([source, id, prompt, sandbox]);
+        if (id === 'busy') throw new SessionSendError('busy', 'private diagnostic');
+        if (id === 'unexpected') throw new Error('private diagnostic');
+        if (id === 'failed')
+          return { ok: false, status: 'failed', exitCode: 1, signal: null, error: 'private diagnostic' };
+        return { ok: true, status: 'completed', exitCode: 0, signal: null, text: 'Done.' };
+      },
+    });
+    const post = (id: string, body: unknown, token = 'token', type = 'application/json') =>
+      fetch(new URL('/api/sessions/echo/' + id + '/send', ui.url), {
+        method: 'POST',
+        headers: { 'content-type': type, 'x-genaicode-token': token },
+        body: JSON.stringify(body),
+      });
+    try {
+      expect((await post('id', { prompt: 'go' }, '')).status).toBe(403);
+      expect((await post('id', { prompt: 'go' }, 'token', 'text/plain')).status).toBe(415);
+      expect((await post('id', { prompt: ' ' })).status).toBe(400);
+      expect((await post('id', { prompt: 'go', sandbox: 'unknown' })).status).toBe(400);
+      expect(calls).toEqual([]);
+      expect(await (await post('a%20b', { prompt: 'go', sandbox: 'read-only', cwd: '/different' })).json()).toEqual({
+        ok: true,
+        text: 'Done.',
+      });
+      expect(calls).toEqual([['echo', 'a b', 'go', 'read-only']]);
+      const busy = await post('busy', { prompt: 'go' });
+      expect(busy.status).toBe(409);
+      expect(await busy.json()).toEqual({ error: 'A prompt is already running in this session.' });
+      for (const [id, status] of [
+        ['unexpected', 500],
+        ['failed', 422],
+      ] as const) {
+        const response = await post(id, { prompt: 'go' });
+        expect(response.status).toBe(status);
+        expect(await response.text()).not.toContain('private diagnostic');
+      }
+    } finally {
+      await ui.close();
+      controller.close();
+    }
   });
 
   it('is served only with the token, and only where the server lists sessions', async () => {

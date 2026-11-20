@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  acceptsSessionPrompt,
   groupSessions,
   staleSessions,
   waitingSessions,
   type SessionInfo,
-  type SessionListing,
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
+import type { WebSessionListing } from './server.js';
+import { SessionReply } from './session-reply.js';
 import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
@@ -18,7 +20,6 @@ const stateTitle = (session: SessionInfo): string =>
   session.waitingFor === 'approval'
     ? `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`
     : (session.state ?? 'state unknown');
-type Listing = SessionListing & { readable?: string[]; asks?: PendingAsk[] };
 
 const RANGES = [
   { days: 2, label: 'Last 2 days' },
@@ -45,7 +46,9 @@ export function Sessions({
   onContinue(session: SessionInfo): void;
 }) {
   const [days, setDays] = useState(7);
-  const [listing, setListing] = useState<Listing>();
+  const [listing, setListing] = useState<WebSessionListing>();
+  const [replyTo, setReplyTo] = useState<SessionInfo>();
+  const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
   const [agent, setAgent] = useState('');
@@ -59,7 +62,7 @@ export function Sessions({
     fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
-        return (await res.json()) as Listing;
+        return (await res.json()) as WebSessionListing;
       })
       .then(
         (found) => {
@@ -213,6 +216,14 @@ export function Sessions({
         </span>
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
+      {receipt ? (
+        <div className="session-receipt" role="status">
+          <b>
+            {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
+          </b>
+          <p>{receipt.text || 'Turn completed.'}</p>
+        </div>
+      ) : null}
       {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
       {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
       {listing?.errors.map((error) => (
@@ -234,69 +245,92 @@ export function Sessions({
                   .join(' · ')}
               </span>
             </summary>
-            {rows.map((session) => [
-              <div key={`${session.source}:${session.id}`} className="session-row">
-                <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
-                  {MARK[shownState(session)] ?? '·'}
-                </span>
-                <span className="agent">{session.agent}</span>
-                <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
-                  {ago(now - session.updatedAt)}
-                </span>
-                <span className="label" title={session.lastPrompt ?? session.title}>
-                  {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
-                  {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
-                  {session.branch ? <small>{session.branch}</small> : null}
-                </span>
-                <span className="act">
-                  {session.where === 'local' && session.state !== 'active' ? (
-                    <button
-                      title={
-                        session.archived
-                          ? 'Show it among the sessions again'
-                          : 'Hide it from the sessions; any news in it brings it back'
-                      }
-                      onClick={() => archive([session], !session.archived)}
-                    >
-                      {session.archived ? 'Unarchive' : 'Archive'}
-                    </button>
-                  ) : null}
-                  {canContinueHere(session, cwd, listing?.readable ?? []) ? (
-                    <button
-                      title="Bring this conversation into the chat: the agent chosen there continues it"
-                      onClick={() => onContinue(session)}
-                    >
-                      Continue here
-                    </button>
-                  ) : null}
-                  {session.url ? (
-                    <a href={session.url} target="_blank" rel="noreferrer">
-                      Open
-                    </a>
-                  ) : resumeCommand(session) ? (
-                    <button title={resumeCommand(session)} onClick={() => copy(session)}>
-                      {copied === session.id ? 'Copied' : 'Copy resume command'}
-                    </button>
-                  ) : null}
-                </span>
-              </div>,
-              ...questionsOf(session).map((ask) => (
-                <div key={`ask:${ask.id}`} className="question-row">
-                  <span className="what" title={ask.preview}>
-                    <b>{ask.tool ?? 'A tool'}</b>
-                    {ask.preview ? <code>{ask.preview}</code> : null}
+            {rows.map((session) => {
+              const sender =
+                acceptsSessionPrompt(session) &&
+                listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
+              const replying = replyTo?.source === session.source && replyTo.id === session.id;
+              return [
+                <div key={`${session.source}:${session.id}`} className="session-row">
+                  <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
+                    {MARK[shownState(session)] ?? '·'}
+                  </span>
+                  <span className="agent">{session.agent}</span>
+                  <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
+                    {ago(now - session.updatedAt)}
+                  </span>
+                  <span className="label" title={session.lastPrompt ?? session.title}>
+                    {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
+                    {session.branch ? <small>{session.branch}</small> : null}
                   </span>
                   <span className="act">
-                    <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
-                      Approve
-                    </button>
-                    <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
-                      Deny
-                    </button>
+                    {sender && !replying ? <button onClick={() => setReplyTo(session)}>Reply</button> : null}
+                    {session.where === 'local' && session.state !== 'active' ? (
+                      <button
+                        title={
+                          session.archived
+                            ? 'Show it among the sessions again'
+                            : 'Hide it from the sessions; any news in it brings it back'
+                        }
+                        onClick={() => archive([session], !session.archived)}
+                      >
+                        {session.archived ? 'Unarchive' : 'Archive'}
+                      </button>
+                    ) : null}
+                    {canContinueHere(session, cwd, listing?.readable ?? []) ? (
+                      <button
+                        title="Bring this conversation into the chat: the agent chosen there continues it"
+                        onClick={() => onContinue(session)}
+                      >
+                        Continue here
+                      </button>
+                    ) : null}
+                    {session.url ? (
+                      <a href={session.url} target="_blank" rel="noreferrer">
+                        Open
+                      </a>
+                    ) : resumeCommand(session) ? (
+                      <button title={resumeCommand(session)} onClick={() => copy(session)}>
+                        {copied === session.id ? 'Copied' : 'Copy resume command'}
+                      </button>
+                    ) : null}
                   </span>
-                </div>
-              )),
-            ])}
+                </div>,
+                replying && sender ? (
+                  <SessionReply
+                    key={`reply:${session.source}:${session.id}`}
+                    session={session}
+                    token={token}
+                    sandboxes={sender.sandboxes}
+                    onClose={() => setReplyTo(undefined)}
+                    onSent={(text) => {
+                      setReceipt({ session, text });
+                      setReplyTo((current) =>
+                        current?.source === session.source && current.id === session.id ? undefined : current,
+                      );
+                      setRound((value) => value + 1);
+                    }}
+                  />
+                ) : null,
+                ...questionsOf(session).map((ask) => (
+                  <div key={`ask:${ask.id}`} className="question-row">
+                    <span className="what" title={ask.preview}>
+                      <b>{ask.tool ?? 'A tool'}</b>
+                      {ask.preview ? <code>{ask.preview}</code> : null}
+                    </span>
+                    <span className="act">
+                      <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
+                        Approve
+                      </button>
+                      <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
+                        Deny
+                      </button>
+                    </span>
+                  </div>
+                )),
+              ];
+            })}
             {whole ? null : (
               <div className="more">
                 <button onClick={() => setOpen(new Set([...open, project.key]))}>

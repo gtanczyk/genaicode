@@ -9,6 +9,10 @@ export const YOLO: Readonly<Required<AgentPermissions>> = Object.freeze({
 const APPROVALS: readonly ApprovalPolicy[] = ['ask', 'auto-approve', 'deny'];
 const SANDBOXES: readonly SandboxPolicy[] = ['workspace-write', 'read-only', 'unrestricted'];
 
+export function isSandboxPolicy(value: unknown): value is SandboxPolicy {
+  return SANDBOXES.some((sandbox) => sandbox === value);
+}
+
 /** `task.permissions` as an object: `'yolo'` expanded, nothing set for an omitted value. */
 export function resolvePermissions(permissions: AgentTask['permissions']): AgentPermissions {
   if (permissions === undefined) return {};

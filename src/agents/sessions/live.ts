@@ -299,6 +299,13 @@ export async function liveRecord(
   return readRecord(fileOf(liveDir(env), agent, id));
 }
 
+/** The current hook state of one session, using the same freshness rules as a listing. */
+export async function sessionWithLive(session: SessionInfo, env?: NodeJS.ProcessEnv): Promise<SessionInfo> {
+  const record = await liveRecord(session.source, session.id, env);
+  if (!record || record.state === 'ended' || Date.now() - record.at > KEEP_MS) return session;
+  return applyLive(session, { ...record, state: record.state }, Date.now());
+}
+
 /** Every record kept, by `agent:id`. Records too old to mean anything are removed on the way. */
 export async function readLive(
   env: NodeJS.ProcessEnv = process.env,
@@ -343,26 +350,29 @@ export function withLive(
   if (!live.size) return [...sessions];
   return sessions.map((session) => {
     const record = live.get(`${session.source}:${session.id}`);
-    if (!record) return session;
-    // The latest hook of the session, whether or not it changed the state.
-    const seen = Math.max(record.at, record.seen ?? 0);
-    if (record.state === 'working') {
-      // Written to long after the last hook ran: the hooks no longer report this session.
-      if (session.updatedAt > seen + UNSEEN_MS) return session;
-      if (now - Math.max(seen, session.updatedAt) > WORKING_MS) return session;
-      const updatedAt = Math.max(session.updatedAt, record.at);
-      return { ...session, state: 'active', updatedAt, ...heard(updatedAt, seen) };
-    }
-    // Written to after the agent stopped: something the hooks did not see went on.
-    if (session.updatedAt > seen + LAG_MS) return session;
-    const updatedAt = Math.max(session.updatedAt, record.at);
-    return {
-      ...session,
-      state: 'waiting',
-      updatedAt,
-      ...heard(updatedAt, seen),
-      waitingFor: record.state === 'approval' ? 'approval' : 'reply',
-      ...(record.state === 'approval' && record.tool ? { waitingTool: record.tool } : {}),
-    };
+    return record ? applyLive(session, record, now) : session;
   });
+}
+
+function applyLive(session: SessionInfo, record: LiveRecord, now: number): SessionInfo {
+  // The latest hook of the session, whether or not it changed the state.
+  const seen = Math.max(record.at, record.seen ?? 0);
+  if (record.state === 'working') {
+    // Written to long after the last hook ran: the hooks no longer report this session.
+    if (session.updatedAt > seen + UNSEEN_MS) return session;
+    if (now - Math.max(seen, session.updatedAt) > WORKING_MS) return session;
+    const updatedAt = Math.max(session.updatedAt, record.at);
+    return { ...session, state: 'active', updatedAt, ...heard(updatedAt, seen) };
+  }
+  // Written to after the agent stopped: something the hooks did not see went on.
+  if (session.updatedAt > seen + LAG_MS) return session;
+  const updatedAt = Math.max(session.updatedAt, record.at);
+  return {
+    ...session,
+    state: 'waiting',
+    updatedAt,
+    ...heard(updatedAt, seen),
+    waitingFor: record.state === 'approval' ? 'approval' : 'reply',
+    ...(record.state === 'approval' && record.tool ? { waitingTool: record.tool } : {}),
+  };
 }

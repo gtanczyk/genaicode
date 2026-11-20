@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
-import type { AgentBudget, McpServer } from '../agents/types.js';
+import { isSandboxPolicy } from '../agents/permissions.js';
+import type { AgentBudget, McpServer, SandboxPolicy } from '../agents/types.js';
 
 export type CliCommand =
   | { kind: 'help' }
@@ -18,6 +19,7 @@ export type CliCommand =
   /** Run once by scripts/install.sh from the freshly installed version. */
   | { kind: 'self-install'; binDir?: string; force: boolean }
   | { kind: 'agents'; json: boolean }
+  | { kind: 'send'; id: string; prompt?: string; agent?: string; sandbox?: SandboxPolicy; detach: boolean }
   | {
       kind: 'sessions';
       json: boolean;
@@ -171,6 +173,34 @@ export function parseCli(argv: readonly string[]): CliCommand {
   if (command === 'agents') {
     const { values } = parse(() => parseArgs({ args: rest, options: { json: { type: 'boolean' } }, strict: true }));
     return { kind: 'agents', json: values.json === true };
+  }
+
+  if (command === 'sessions' && rest[0] === 'send') {
+    const { values, positionals } = parse(() =>
+      parseArgs({
+        args: rest.slice(1),
+        strict: true,
+        allowPositionals: true,
+        options: {
+          agent: { type: 'string', short: 'a' },
+          sandbox: { type: 'string' },
+          detach: { type: 'boolean' },
+        },
+      }),
+    );
+    const [id, ...words] = positionals;
+    if (!id?.trim()) throw new UsageError('Usage: genaicode sessions send <id> "<prompt>" [--detach]');
+    const sandbox = values.sandbox;
+    if (sandbox !== undefined && !isSandboxPolicy(sandbox))
+      throw new UsageError('--sandbox takes read-only, workspace-write or unrestricted.');
+    return {
+      kind: 'send',
+      id,
+      prompt: words.length ? words.join(' ') : undefined,
+      agent: values.agent,
+      sandbox,
+      detach: values.detach === true,
+    };
   }
 
   if (command === 'sessions') {
