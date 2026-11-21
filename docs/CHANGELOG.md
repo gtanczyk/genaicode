@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.47.0 — 2026-11-21
+
 ### Added
 
 - `ui --sessions` (the desktop app) opens an empty chat on your topics: those that wait for you, those agents work on now, and each agent's plan limits; a topic opens its sessions (#254)
