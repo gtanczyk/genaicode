@@ -34,7 +34,7 @@ describe('toolDiff', () => {
     expect(shown(sql)).toEqual([' @@ -1 +1 @@', '--- old comment', '+++ plus']);
     expect(toolDiff(sql)).toMatchObject({ added: 1, removed: 1 });
     const huge = 'x\n'.repeat(200_000);
-    expect(toolDiff({ path: 'large.txt', content: huge })?.added).toBe(200_001);
+    expect(toolDiff({ path: 'large.txt', content: huge })?.added).toBe(200_000);
     expect(toolDiff({ old_string: huge, new_string: `y\n${huge}` })?.added).toBe(1);
   });
 
@@ -89,6 +89,14 @@ describe('toolDiff', () => {
       ' l2',
       ' ⋯',
     ]);
+  });
+
+  it('counts no line for the newline that ends a text', () => {
+    expect(toolDiff({ path: 'a.txt', content: 'one\n' })).toMatchObject({ added: 1, removed: 0 });
+    expect(toolDiff({ path: 'a.txt', content: '' })).toBeUndefined();
+    expect(toolDiff({ old_string: 'one\n', new_string: '' })).toMatchObject({ added: 0, removed: 1 });
+    expect(toolDiff({ old_string: 'one\n', new_string: 'one\ntwo\n' })).toMatchObject({ added: 1, removed: 0 });
+    expect(toolDiff('@@ -1 +1 @@\n-a\n+b\n')?.lines).toHaveLength(3);
   });
 
   it('cuts a long change and says how much is left out', () => {

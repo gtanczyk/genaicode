@@ -97,7 +97,7 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
     let inHunk = false;
     // Lines a counted hunk (`@@ -1,3 +1,4 @@`) still holds: after them the next file's header can come.
     let left: { old: number; new: number } | undefined;
-    for (const line of value.split('\n')) {
+    for (const line of textLines(value)) {
       if (/^\*\*\* (Begin|End) Patch/.test(line)) continue;
       if (line.startsWith('diff --git')) {
         inHunk = false;
@@ -146,7 +146,7 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
     } else if (patched !== undefined && patch(patched)) {
       // A patch in the agent's own format.
     } else if (content !== undefined && pick(record, ['file_path', 'filePath', 'path']) !== undefined) {
-      for (const line of content.split('\n')) lines.push({ sign: '+', text: line });
+      for (const line of textLines(content)) lines.push({ sign: '+', text: line });
     }
   } else return undefined;
   if (!lines.length) return undefined;
@@ -158,6 +158,14 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
   };
 }
 
+/** The lines of `text`: none for no text, and the newline that ends the last one starts no other. */
+function textLines(text: string): string[] {
+  if (text === '') return [];
+  const lines = text.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
 const DIFF_CONTEXT = 3;
 
 /**
@@ -165,9 +173,8 @@ const DIFF_CONTEXT = 3;
  * ends around it, so a small change in a long text is what shows.
  */
 function changedLines(before: string, after: string): DiffLine[] {
-  // No text is no lines, not one empty line.
-  const from = before === '' ? [] : before.split('\n');
-  const to = after === '' ? [] : after.split('\n');
+  const from = textLines(before);
+  const to = textLines(after);
   let head = 0;
   while (head < from.length && head < to.length && from[head] === to[head]) head += 1;
   let tail = 0;
