@@ -15,6 +15,7 @@ import {
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
+import { FilePanel } from './file-view.js';
 import { Home } from './home.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
@@ -157,6 +158,7 @@ interface PageConfig {
   cwd: string;
   sessions: boolean;
   uploads?: boolean;
+  files?: boolean;
 }
 
 function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
@@ -299,6 +301,8 @@ function App() {
   const control = (text: string) => void command({ type: 'submit', text });
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
+  // The file open beside the chat, by the path the agent named.
+  const [openFile, setOpenFile] = useState<string>();
   const submit = (text: string, files?: File[]): Promise<boolean> => {
     // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
     const own = parseSlash(text);
@@ -467,6 +471,7 @@ function App() {
         completions={SLASH_COMMANDS}
         composerExtras={controls}
         attachments={config?.uploads ? ATTACH : undefined}
+        onOpenFile={config?.files ? setOpenFile : undefined}
         renderPrompt={promptBubble}
         renderFooter={() =>
           unsent ? (
@@ -525,6 +530,7 @@ function App() {
           )
         }
       />
+      {openFile ? <FilePanel path={openFile} token={token} onClose={() => setOpenFile(undefined)} /> : null}
     </>
   );
 }

@@ -56,6 +56,16 @@ export function toolArgument(input: unknown, cwd?: string): string {
   return cwd ? text.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : text;
 }
 
+/** The file a tool call reads or changes, as its input names it; undefined when it names none. */
+export function toolPath(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
+  const record = input as Record<string, unknown>;
+  // A command or a search can carry a `path` too: that one is where it runs, not a file to show.
+  if (['command', 'cmd', 'pattern', 'query'].some((key) => key in record)) return undefined;
+  const path = ['file_path', 'filePath', 'path'].map((key) => record[key]).find((field) => typeof field === 'string');
+  return typeof path === 'string' && path.trim() ? path : undefined;
+}
+
 /** One line of a change an agent made: added, removed, or left as it was. */
 export interface DiffLine {
   sign: '+' | '-' | ' ';

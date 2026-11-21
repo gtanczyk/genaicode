@@ -14,6 +14,7 @@ import type { TowerDecision } from '../../agents/sessions/tower.js';
 import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
+import type { ProjectFiles } from '../files.js';
 
 export interface WebUiOptions {
   controller: ChatController;
@@ -64,6 +65,11 @@ export interface WebUiOptions {
    * with their ids names their paths to the agent. Without it the page takes text only.
    */
   uploads?: Uploads;
+  /**
+   * Reads project files (`createProjectFiles`) for GET /api/file?path=, so a path in the chat opens
+   * as text in the page. Without it paths stay plain.
+   */
+  files?: ProjectFiles;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
@@ -357,6 +363,18 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 500, 'application/json', '{"error":"not kept"}');
       }
     }
+    if (req.method === 'GET' && url.pathname === '/api/file') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      const found = options.files.read(url.searchParams.get('path') ?? '');
+      if (typeof found === 'string') {
+        const status = found === 'outside' ? 403 : found === 'binary' ? 415 : 404;
+        return send(res, status, 'application/json', JSON.stringify({ error: found }));
+      }
+      return send(res, 200, 'application/json', JSON.stringify(found), { 'cache-control': 'no-store' });
+    }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];
       const candidate =
@@ -371,7 +389,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
       res.write(
-        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions, uploads: !!options.uploads })}\n\n`,
+        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions, uploads: !!options.uploads, files: !!options.files })}\n\n`,
       );
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);

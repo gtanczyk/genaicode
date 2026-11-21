@@ -41,6 +41,7 @@ export {
   toolLabel,
   toolArgument,
   toolDiff,
+  toolPath,
   toolSummary,
   turnFooter,
 } from './react/format.js';

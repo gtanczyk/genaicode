@@ -487,6 +487,26 @@
   padding: 2px 8px;
   border-radius: 6px;
 }
+/* A path the host can open. */
+.gc-open-file {
+  font: 0.92em var(--_mono);
+  background: var(--_accent-soft);
+  color: var(--_text);
+  border: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.gc-open-file:hover,
+.gc-open-file:focus-visible {
+  text-decoration: underline;
+}
+.gc-tool > .gc-open-file {
+  margin: 6px 0 0;
+  font-size: 0.85em;
+}
 
 /* Approvals, errors, notices */
 .gc-approval {

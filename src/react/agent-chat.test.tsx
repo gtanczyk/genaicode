@@ -339,6 +339,32 @@ describe('AgentChat', () => {
     expect(steps[1].querySelector('pre')?.textContent).toBe('a.ts');
   });
 
+  it('makes the paths of edited and read files buttons when the host can open them', () => {
+    const onOpenFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [
+            { kind: 'tool', name: 'Read', input: { file_path: '/w/a.ts' }, output: 'x', done: true },
+            { kind: 'tool', name: 'Grep', input: { pattern: 'x', path: '/w' }, output: 'x', done: true },
+            { kind: 'files', paths: ['/w/b.ts'] },
+          ],
+        },
+      ],
+    });
+    render({ state });
+    expect(document.querySelector('.gc-open-file')).toBeNull();
+    render({ state, onOpenFile });
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.gc-open-file'));
+    expect(buttons.map((button) => button.textContent)).toEqual(['Open /w/a.ts', '/w/b.ts']);
+    act(() => buttons[1].click());
+    expect(onOpenFile).toHaveBeenCalledWith('/w/b.ts');
+  });
+
   it('puts the host controls in the composer, under the text', () => {
     render({ state: fixture({ status: 'idle', queued: [] }), composerExtras: <select aria-label="Agent" /> });
     const box = $('.gc-box');

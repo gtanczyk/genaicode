@@ -87,6 +87,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                                 |
 | `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
 | `composerExtras`                                                               | host controls inside the composer, under the text and before Send (agent, model, mode)                                      |
+| `onOpenFile`                                                                   | makes file paths in the transcript (edited files, the file a tool step read) buttons; the host shows the file               |
 | `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input                                                                          |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                             |
 
