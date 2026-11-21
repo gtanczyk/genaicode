@@ -29,11 +29,30 @@ const UNREPORTED = [
   ),
 ];
 const OFFER = new RegExp(
-  String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}[^.?!]*[.!]?$`,
+  String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}`,
   'iu',
 );
 /** What may follow the last word: quotes, brackets, emphasis, an emoji. */
-const TRAILING = /[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]+$/u;
+const TRAILING_CHAR = /^[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]$/u;
+
+/** Strip `TRAILING_CHAR`s from the end in linear time without backtracking on `+$`. */
+function stripTrailing(input: string): string {
+  let end = input.length;
+  while (end > 0) {
+    const prev = input.charCodeAt(end - 1);
+    const start =
+      prev >= 0xdc00 &&
+      prev <= 0xdfff &&
+      end >= 2 &&
+      input.charCodeAt(end - 2) >= 0xd800 &&
+      input.charCodeAt(end - 2) <= 0xdbff
+        ? end - 2
+        : end - 1;
+    if (!TRAILING_CHAR.test(input.slice(start, end))) break;
+    end = start;
+  }
+  return end === input.length ? input : input.slice(0, end);
+}
 
 /**
  * What the end of an agent's message asks of the user, by its shape alone: it says it could not
@@ -43,11 +62,14 @@ const TRAILING = /[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]+$/u;
 export function replyEnding(lastReply: string | undefined): ReplyEnding | undefined {
   if (!lastReply) return undefined;
   if (UNREPORTED.some((pattern) => pattern.test(lastReply))) return 'unreported';
-  const text = lastReply.replace(TRAILING, '');
+  const text = stripTrailing(lastReply);
   if (text.endsWith('?')) return 'question';
   // A code block closes the message: something to run.
-  if (/```\s*$/.test(lastReply) && /```(ba|z|fi)?sh\b|```shell\b|```console\b/.test(lastReply)) return 'command';
-  const last = text.split(/(?<=[.?!])\s+/).pop() ?? text;
+  if (lastReply.trimEnd().endsWith('```') && /```(ba|z|fi)?sh\b|```shell\b|```console\b/.test(lastReply)) {
+    return 'command';
+  }
+  const body = text.endsWith('.') || text.endsWith('!') ? text.slice(0, -1) : text;
+  const last = body.slice(Math.max(body.lastIndexOf('.'), body.lastIndexOf('?'), body.lastIndexOf('!')) + 1);
   if (OFFER.test(last)) return 'offer';
   return undefined;
 }
