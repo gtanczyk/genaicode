@@ -397,6 +397,10 @@ only the agent, project and tool name. The user answers these requests in the na
 Copilot records the decision as soon as it is made. Gemini CLI 0.70 reports the result when
 the tool finishes, so a refresh can still show its last request while the command runs.
 
+The hook is declared with the Node that installed it. When that Node goes (a version manager
+removed it), the hook fails without a word; `genaicode hooks status` says `broken` then (`missing`
+in `hooksStatus()`), and `genaicode hooks install` writes it again.
+
 In code: `installHooks('claude')`, `hooksStatus()`, `uninstallHooks()`, and `recordHook(agent,
 input)` with `readLive()` and `withLive(sessions, records)` to do the same for an agent of your
 own whose hooks give the same JSON (`session_id`, `hook_event_name`, `cwd`); `hookInput(agent,

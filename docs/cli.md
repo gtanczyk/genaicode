@@ -124,8 +124,9 @@ the browser's Sessions view has Approve and Deny (see
 
 A program that shows what waits (a menu bar, a status line) can keep one process open instead of
 asking again and again: `npx genaicode sessions --waiting --json --watch` prints one line
-`{"sessions":[...]}` at once and another whenever the waiting sessions or their open questions
-change. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
+`{"sessions":[...]}` at once and another whenever they or their open questions change. The
+watch lists only the sessions that ask now: an approval, or a last message that asked something
+in the last three days, not every session whose turn ended. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
 It looks every 3 seconds: a question or anything else a hook reports shows at once, a session
 that only finished its turn within 15 seconds. Once limits are known, the line also carries them
 as `"limits":[...]`. Once there are [topics](#your-work-as-topics-topics), each session carries the name

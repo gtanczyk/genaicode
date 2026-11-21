@@ -16,7 +16,7 @@ changes it), reads the environment of your login shell (so the agent CLIs and th
 `node cli.js ui --sessions --no-open --exit-with-stdin --cwd <folder>` and shows the address that prints. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
 page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
 
-It also keeps an icon in the menu bar with the sessions of every agent that wait for you, read from
+It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
 how many. A session opens its project in the window; a question an agent holds open for an answer
 from outside (`genaicode hooks install --answer`) has **Approve** and **Deny**, which run

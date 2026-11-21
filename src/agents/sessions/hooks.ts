@@ -55,6 +55,11 @@ export interface HooksStatus {
   installed: boolean;
   /** The installed command, when there is one. */
   command?: string;
+  /**
+   * The program the installed command starts with when it is no longer there, such as the Node of
+   * a version manager that was since removed. The hook then fails without a word: install again.
+   */
+  missing?: string;
   /** Whether questions can be answered from the tower too (`--answer`). */
   answer: boolean;
   /**
@@ -183,6 +188,16 @@ function defaultCommand(): string {
   return `"${process.execPath}" "${script}" hook`;
 }
 
+/** The program `command` starts with (Node), when it is no longer there. */
+async function missingPath(command: string): Promise<string | undefined> {
+  const program = /^"([^"]+)"/.exec(command)?.[1];
+  if (!program || !path.isAbsolute(program)) return undefined;
+  return fs.access(program).then(
+    () => undefined,
+    () => program,
+  );
+}
+
 function found(config: Json): { events: string[]; commands: Map<string, string>; answer?: string } {
   const events: string[] = [];
   const commands = new Map<string, string>();
@@ -221,12 +236,14 @@ export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}):
   const { events, commands, answer } = found(config);
   const base = options.command ?? defaultCommand();
   const command = [...commands.values()].pop();
+  const missing = command ? await missingPath(command) : undefined;
   return {
     agent,
     file,
     events,
     installed: EVENTS[agent].every((event) => commands.get(event) === commandFor(agent, base, event)),
     ...(command ? { command } : {}),
+    ...(missing ? { missing } : {}),
     answer: answer === hookCommand(agent, base, true),
     ...(agent === 'claude' ? { statusLine: statusLineOf(config) } : {}),
   };

@@ -19,6 +19,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- `sessions --waiting --json --watch` (the desktop app's menu bar) lists only the sessions that ask now, not every session whose turn ended; `hooks status` says `broken` when the Node its hook was installed with is gone (#252)
 - `genaicode hooks install` gives Codex's `SessionEnd` hook the three seconds Codex allows, so Codex no longer warns about it in every session (#251)
 - `genaicode topics` lists topics without their directories, and with names up to 48 characters (#248)
 - Threads the Codex desktop app's server ran for another program, and Muse Code's probes and test-provider sessions, count as automated (#248)
