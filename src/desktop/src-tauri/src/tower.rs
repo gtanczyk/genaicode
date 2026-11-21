@@ -26,7 +26,20 @@ pub struct Waiting {
     pub waiting_tool: Option<String>,
     /// What the end of its last message asks: `question`, `command`, `offer`, `unreported`.
     pub ending: Option<String>,
+    /// The name of the topic it belongs to (`genaicode topics`), when it has one.
+    pub topic: Option<String>,
     pub asks: Vec<Ask>,
+}
+
+/// A topic of the watched sessions: a piece of work, whichever agents and directories it is in.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Topic {
+    pub id: String,
+    pub name: String,
+    pub sessions: usize,
+    pub asking: usize,
+    pub active: usize,
 }
 
 /// How much of one window of an agent's plan is used, as genaicode last saw it.
@@ -45,6 +58,8 @@ pub struct Snapshot {
     pub sessions: Vec<Waiting>,
     #[serde(default)]
     pub limits: Vec<Limit>,
+    #[serde(default)]
+    pub topics: Vec<Topic>,
 }
 
 /// One line of the watch: `{"sessions":[...],"limits":[...]}`. Anything else is not a snapshot.
@@ -74,6 +89,31 @@ pub fn quota(limits: &[Limit]) -> Vec<String> {
         .into_iter()
         .map(|(agent, windows)| format!("{agent}: {}", windows.join(" · ")))
         .collect()
+}
+
+/// More topics at work than this are counted, not named.
+const MOST_WORKING: usize = 6;
+
+/// The topics an agent works on now, one line each: `▶ Pack mode · 2 working`.
+pub fn working(topics: &[Topic]) -> Vec<String> {
+    let at_work: Vec<&Topic> = topics.iter().filter(|topic| topic.active > 0).collect();
+    let mut lines: Vec<String> = at_work
+        .iter()
+        .take(MOST_WORKING)
+        .map(|topic| {
+            one_line(
+                &format!("▶ {} · {} working", topic.name, topic.active),
+                LABEL,
+            )
+        })
+        .collect();
+    if at_work.len() > MOST_WORKING {
+        lines.push(format!(
+            "…and {} more at work",
+            at_work.len() - MOST_WORKING
+        ));
+    }
+    lines
 }
 
 /// A line of the menu. `session` is the index in the snapshot the menu was built from.
@@ -129,7 +169,11 @@ fn last_words(text: &str, most: usize) -> String {
     cut
 }
 
+/// What a session's line opens with: its topic, or else the directory it works in.
 fn project(session: &Waiting) -> &str {
+    if let Some(topic) = session.topic.as_deref().filter(|name| !name.is_empty()) {
+        return topic;
+    }
     session
         .cwd
         .as_deref()
@@ -312,6 +356,31 @@ mod tests {
         assert!(label.ends_with("Mam wysłać to jako preview?"));
         assert!(label.chars().count() <= LABEL);
         assert_eq!(last_words("… Done.  Push it?", 40), "Done. Push it?");
+    }
+
+    #[test]
+    fn names_a_session_by_its_topic_and_lists_the_topics_at_work() {
+        let line = r#"{"sessions":[{"id":"a","agent":"claude","cwd":"/work/src","topic":"Trenchline Command","waitingFor":"approval","waitingTool":"Bash"}],"topics":[{"id":"t2","name":"Trenchline Command","sessions":4,"asking":1,"active":0},{"id":"t5","name":"Pack mode","sessions":9,"asking":0,"active":2}]}"#;
+        let snapshot = parse_snapshot(line).expect("a snapshot");
+        assert_eq!(
+            entries(&snapshot.sessions)[0],
+            Entry::Session {
+                session: 0,
+                label: "Trenchline Command · claude asks to use Bash".into()
+            }
+        );
+        assert_eq!(working(&snapshot.topics), vec!["▶ Pack mode · 2 working"]);
+        let many: Vec<Topic> = (0..8)
+            .map(|index| Topic {
+                name: format!("Topic {index}"),
+                active: 1,
+                ..Default::default()
+            })
+            .collect();
+        let lines = working(&many);
+        assert_eq!(lines.len(), MOST_WORKING + 1);
+        assert_eq!(lines[MOST_WORKING], "…and 2 more at work");
+        assert!(working(&[]).is_empty());
     }
 
     #[test]

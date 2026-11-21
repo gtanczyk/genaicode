@@ -1049,6 +1049,32 @@ describe('genaicode sessions --waiting', () => {
     input.end();
     expect(await done).toBe(EXIT_OK);
 
+    // With topics kept, a line names each session's topic and counts the topics.
+    mkdirSync(join(home, '.genaicode'), { recursive: true });
+    writeFileSync(
+      join(home, '.genaicode', 'topics.json'),
+      JSON.stringify({ topics: [{ id: 't1', name: 'Pack mode' }], sessions: { 'alpha:one': 't1' } }),
+    );
+    const third = new PassThrough();
+    const sorted = environment({
+      argv: ['sessions', '--waiting', '--json', '--watch', '--exit-with-stdin'],
+      env: { HOME: home, PATH: '' },
+      agents: [agent],
+    });
+    const topical = main({ ...sorted.cli, input: third, watchEveryMs: 5 });
+    await vi.waitFor(() => expect(sorted.out()).toContain('\n'));
+    third.end();
+    expect(await topical).toBe(EXIT_OK);
+    const line = JSON.parse(sorted.out().split('\n')[0]!) as {
+      sessions: { id: string; topic?: string }[];
+      topics: object[];
+    };
+    expect(line.sessions.map(({ id, topic }) => [id, topic]).sort()).toEqual([
+      ['one', 'Pack mode'],
+      ['two', undefined],
+    ]);
+    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 0, active: 0 }]);
+
     // Ctrl-C ends it too, and lets go of a stdin that is still open.
     const open = new PassThrough();
     const stop = new AbortController();

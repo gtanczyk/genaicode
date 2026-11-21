@@ -44,7 +44,7 @@ import {
   type PendingAsk,
 } from '../agents/sessions/answer.js';
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
-import { archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
+import { archiveKey, archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
 import type { McpTool } from '../agents/mcp-tools.js';
 import {
@@ -1306,6 +1306,41 @@ async function hookMark(env: NodeJS.ProcessEnv, questions: readonly PendingAsk[]
   return [...questions.map((ask) => ask.id).sort(), '', ...times].join('\n');
 }
 
+/** A topic as a watch reports it: what the desktop app's menu shows of it. */
+interface WatchedTopic {
+  id: string;
+  name: string;
+  /** Sessions of it in the listing. */
+  sessions: number;
+  asking: number;
+  active: number;
+}
+
+/** At most this many topics go into a line of the watch: those that ask first, then the latest. */
+const WATCHED_TOPICS = 12;
+
+/** The topics of what a look listed, and the name of each session's topic by session key. */
+function watchedTopics(
+  listed: readonly SessionInfo[],
+  store: TopicStore,
+): { topics: WatchedTopic[]; topicOf: Map<string, string> } {
+  const topicOf = new Map<string, string>();
+  if (!store.topics.length) return { topics: [], topicOf };
+  const { topics } = summarizeTopics(listed, store);
+  for (const topic of topics) for (const session of topic.sessions) topicOf.set(archiveKey(session), topic.name);
+  return {
+    // No times: a line is printed when it changes, and work going on would change it at every look.
+    topics: topics.slice(0, WATCHED_TOPICS).map(({ id, name, sessions, asking, active }) => ({
+      id,
+      name,
+      sessions: sessions.length,
+      asking,
+      active,
+    })),
+    topicOf,
+  };
+}
+
 /**
  * `sessions --waiting --json --watch`: one line `{"sessions":[...]}` now, and again whenever what
  * waits changes. For a program that shows it (the desktop app's menu bar): it reads lines instead
@@ -1322,6 +1357,8 @@ async function watchWaiting(
     sessions: readonly SessionInfo[];
     questions: readonly PendingAsk[];
     errors: readonly { source: string; message: string }[];
+    /** Everything the look listed, waiting or not: what the topics are counted from. */
+    listed: readonly SessionInfo[];
   }>,
   withAsks: (session: SessionInfo, questions: readonly PendingAsk[]) => object,
 ): Promise<number> {
@@ -1335,6 +1372,8 @@ async function watchWaiting(
   let said = '';
   let sessions: readonly SessionInfo[] = [];
   let limits: readonly KnownLimit[] = [];
+  let topics: WatchedTopic[] = [];
+  let topicOf = new Map<string, string>();
   let mark: string | undefined;
   let since = 0;
   try {
@@ -1349,6 +1388,8 @@ async function watchWaiting(
         ({ sessions, questions } = full);
         limits = await knownLimits(cli.env);
         if (stop.signal.aborted) break;
+        ({ topics, topicOf } = watchedTopics(full.listed, await readTopics(cli.env)));
+        if (stop.signal.aborted) break;
         // The mark from before the read: what a hook wrote meanwhile brings the next look.
         mark = now;
         since = 0;
@@ -1358,8 +1399,12 @@ async function watchWaiting(
         said = trouble;
       }
       const line = JSON.stringify({
-        sessions: sessions.map((session) => withAsks(session, questions)),
+        sessions: sessions.map((session) => {
+          const topic = topicOf.get(archiveKey(session));
+          return topic ? { ...withAsks(session, questions), topic } : withAsks(session, questions);
+        }),
         ...(limits.length ? { limits } : {}),
+        ...(topics.length ? { topics } : {}),
       });
       if (line !== last) cli.stdout.write(`${line}\n`);
       last = line;
@@ -1419,7 +1464,14 @@ async function showSessions(
     const listed = command.archived ? listing.sessions : listing.sessions.filter((session) => !session.archived);
     const sessions = (command.waiting ? waitingSessions(listed) : listed).slice(0, command.limit);
     const questions = command.waiting ? await pendingAsks(cli.env) : [];
-    return { now, sessions, questions, errors: listing.errors, hidden: listing.sessions.length - listed.length };
+    return {
+      now,
+      sessions,
+      questions,
+      errors: listing.errors,
+      hidden: listing.sessions.length - listed.length,
+      listed,
+    };
   };
   // `--waiting`: with the questions a session holds open for the tower (`hooks install --answer`).
   const withAsks = (session: SessionInfo, questions: readonly PendingAsk[]) => {

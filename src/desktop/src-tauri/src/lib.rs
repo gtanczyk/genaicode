@@ -320,6 +320,7 @@ fn tower_menu(
     app: &AppHandle,
     sessions: &[tower::Waiting],
     limits: &[tower::Limit],
+    topics: &[tower::Topic],
 ) -> tauri::Result<Menu<Wry>> {
     let none = None::<&str>;
     let menu = Menu::new(app)?;
@@ -365,6 +366,14 @@ fn tower_menu(
             }
         }
     }
+    // Then the topics agents work on now: nothing to do there, but good to know before starting more.
+    let working = tower::working(topics);
+    if !working.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+    for line in &working {
+        menu.append(&MenuItem::new(app, line, false, none)?)?;
+    }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, SHOW, "Show genaicode", true, none)?)?;
     menu.append(&MenuItem::with_id(
@@ -388,7 +397,7 @@ fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
         let Some(tray) = handle.tray_by_id(TRAY) else {
             return;
         };
-        if let Ok(menu) = tower_menu(&handle, &shell.waiting, &snapshot.limits) {
+        if let Ok(menu) = tower_menu(&handle, &shell.waiting, &snapshot.limits, &snapshot.topics) {
             let _ = tray.set_menu(Some(menu));
         }
         let count = tower::count(&shell.waiting);
@@ -585,7 +594,7 @@ pub fn run() {
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
             let mut tray = TrayIconBuilder::with_id(TRAY)
                 .tooltip("genaicode")
-                .menu(&tower_menu(handle, &[], &[])?)
+                .menu(&tower_menu(handle, &[], &[], &[])?)
                 .show_menu_on_left_click(true);
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());

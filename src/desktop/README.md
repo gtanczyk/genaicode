@@ -21,7 +21,9 @@ It also keeps an icon in the menu bar with the sessions of every agent that wait
 how many. A session opens its project in the window; a question an agent holds open for an answer
 from outside (`genaicode hooks install --answer`) has **Approve** and **Deny**, which run
 `sessions approve|deny <question>`. Above them the menu shows how much of each agent's plan is used
-(`claude: 5h 62% · 7d 41%`), from the `limits` of the same watch. On macOS closing the window hides it and the app stays in the
+(`claude: 5h 62% · 7d 41%`), from the `limits` of the same watch. Once `genaicode topics refresh`
+has sorted your sessions, a waiting session is named by its topic instead of its directory, and
+below them the menu lists the topics agents work on now (`▶ Pack mode · 2 working`). On macOS closing the window hides it and the app stays in the
 menu bar; **Quit** ends it. What the menu shows is decided in `src-tauri/src/tower.rs`.
 
 ## Build it
