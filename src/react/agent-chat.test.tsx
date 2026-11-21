@@ -293,11 +293,17 @@ describe('AgentChat', () => {
     expect($<HTMLTextAreaElement>('textarea').value).toBe('');
     await act(async () => {});
     expect($<HTMLTextAreaElement>('textarea').value).toBe('keep me');
+    // A message started meanwhile is not mixed with the one that failed.
+    onSend.mockReturnValueOnce(Promise.resolve(false));
+    key({ key: 'Enter' });
+    type('newer');
+    await act(async () => {});
+    expect($<HTMLTextAreaElement>('textarea').value).toBe('newer');
     // One that left stays gone.
     onSend.mockReturnValueOnce(Promise.resolve(true));
     key({ key: 'Enter' });
     await act(async () => {});
-    expect(onSend).toHaveBeenCalledTimes(2);
+    expect(onSend).toHaveBeenCalledTimes(3);
     expect($<HTMLTextAreaElement>('textarea').value).toBe('');
   });
 

@@ -58,7 +58,7 @@ export interface AgentChatProps {
    * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
    * files go with it: `files` is there when `attachments` is on and the user attached some.
    * A promise that resolves to false says the message was not sent: the composer takes the
-   * text and the files back for another try.
+   * text and the files back for another try, unless the user started another message meanwhile.
    */
   onSend(text: string, files?: File[]): void | Promise<boolean | void>;
   /**
@@ -178,6 +178,9 @@ export function AgentChat(props: AgentChatProps) {
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);
   const sendable = (!!draft.trim() || attached.files.length > 0) && !props.disabled && !attached.recording;
+  // What is in the composer now, for an answer that comes later.
+  const composing = useRef({ draft, files: attached.files });
+  composing.current = { draft, files: attached.files };
   const send = () => {
     if (!sendable) return;
     follow();
@@ -190,8 +193,9 @@ export function AgentChat(props: AgentChatProps) {
     if (outcome instanceof Promise) {
       void outcome.then(
         (ok) => {
-          if (ok !== false) return;
-          setDraft((current) => current || sent.draft);
+          // A message started meanwhile is left alone: the two are never mixed.
+          if (ok !== false || composing.current.draft || composing.current.files.length) return;
+          setDraft(sent.draft);
           if (sent.files.length) attached.add(sent.files);
         },
         () => undefined,
