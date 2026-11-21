@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- `replyEnding()` strips trailing punctuation/emoji and inspects the closing clause in linear time, eliminating polynomial regex backtracking on long whitespace runs (#245)
+
 ## 2.45.0 — 2026-11-21
 
 ### Added
