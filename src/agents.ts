@@ -143,6 +143,7 @@ export {
   SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,
   findTopic,
+  inRunDirectory,
   isAsking,
   isTopicsRun,
   projectTopics,

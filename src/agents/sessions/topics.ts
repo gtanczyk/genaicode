@@ -118,7 +118,7 @@ export function projectTopics(
   for (const { project } of sessions) if (project?.name && !names.has(project.id)) names.set(project.id, project.name);
   let placed = 0;
   for (const session of sessions) {
-    if (!session.project || next.sessions[archiveKey(session)] !== undefined) continue;
+    if (!session.project || next.sessions[archiveKey(session)] !== undefined || inRunDirectory(session.cwd)) continue;
     const { id } = session.project;
     const name = names.get(id);
     const topic =
@@ -132,9 +132,26 @@ export function projectTopics(
   return { store: next, placed };
 }
 
-/** The sessions no topic has yet, as listed. */
+/**
+ * Whether work in `cwd` is a run rather than a piece of somebody's work: a pack member's worktree
+ * (`.genaicode/worktrees`), or a temporary directory, where tests and one-off runs happen. Such
+ * sessions are listed as ever, but belong to no topic.
+ */
+export function inRunDirectory(cwd: string | undefined): boolean {
+  if (!cwd) return false;
+  const place = cwd.replace(/\\/g, '/');
+  return (
+    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
+    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
+    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
+  );
+}
+
+/** The sessions no topic has yet, as listed; those that ran in a run's directory need none. */
 export function unsortedSessions(sessions: readonly SessionInfo[], store: TopicStore): SessionInfo[] {
-  return sessions.filter((session) => store.sessions[archiveKey(session)] === undefined);
+  return sessions.filter(
+    (session) => store.sessions[archiveKey(session)] === undefined && !inRunDirectory(session.cwd),
+  );
 }
 
 const flat = (text: string, most: number): string => {
@@ -353,6 +370,7 @@ export function summarizeTopics(
   const places = new Map<string, Map<string, number>>();
   const unsorted: SessionInfo[] = [];
   for (const session of sessions) {
+    if (inRunDirectory(session.cwd)) continue;
     const topic = store.topics.find((one) => one.id === store.sessions[archiveKey(session)]);
     if (!topic) {
       unsorted.push(session);

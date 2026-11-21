@@ -14,7 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Fewer machine-made sessions in listings and topics: Claude Code's `turnOrigin` is read, single-prompt headless runs and whatever ran in a pack worktree or a temporary directory count as automated; a topic asks for you only for approvals and for 3 days after a message asked something (#244)
+- Fewer machine-made sessions in listings and topics: Claude Code's `turnOrigin` is read, and single-prompt headless runs count as automated; what ran in a pack worktree or a temporary directory takes no topic; a topic asks for you only for approvals and for 3 days after a message asked something (#244)
 - `genaicode topics refresh` says how many runs it takes and how far it is after each one, and gives sessions that say the very same thing (the hundredth run of one prompt) a single line, so there are fewer runs (#242)
 
 ## 2.44.0 — 2026-11-21

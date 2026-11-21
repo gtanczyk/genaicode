@@ -2,10 +2,11 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { inRunDirectory, listSessions } from './index.js';
+import { listSessions } from './index.js';
 import {
   ASKING_MS,
   findTopic,
+  inRunDirectory,
   isAsking,
   mergeTopics,
   moveSessions,
@@ -261,7 +262,7 @@ describe('topics', () => {
     expect((await listSessions([source], { env, automated: true })).sessions[0]).toMatchObject({ automated: true });
   });
 
-  it('counts what ran in a pack worktree or a temporary directory as a run', async () => {
+  it('counts what ran in a pack worktree or a temporary directory as a run', () => {
     for (const cwd of [
       '/tmp/tower-test',
       '/private/tmp/x',
@@ -274,13 +275,10 @@ describe('topics', () => {
     for (const cwd of ['/Users/me/src/app', '/Users/me/tmp/notes', '/work/.claude/worktrees/a', undefined]) {
       expect(inRunDirectory(cwd), String(cwd)).toBe(false);
     }
-    const source = {
-      name: 'codex',
-      where: 'local' as const,
-      list: async () => [session('worker', { cwd: '/w/app/.genaicode/worktrees/t1' }), session('mine')],
-    };
-    const env = { HOME: mkdtempSync(join(tmpdir(), 'genaicode-topics-')) };
-    dirs.push(env.HOME);
-    expect((await listSessions([source], { env })).sessions.map((one) => one.id)).toEqual(['mine']);
+    // Such sessions take no topic and are not waiting to be sorted.
+    const listed = [session('worker', { cwd: '/w/app/.genaicode/worktrees/t1' }), session('mine')];
+    const store: TopicStore = { topics: [{ id: 't1', name: 'One' }], sessions: { 'claude:worker': 't1' } };
+    expect(unsortedSessions(listed, store).map((one) => one.id)).toEqual(['mine']);
+    expect(summarizeTopics(listed, store)).toMatchObject({ topics: [], unsorted: [{ id: 'mine' }] });
   });
 });
