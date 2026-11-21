@@ -75,6 +75,16 @@ button.chip:hover { border-color: var(--accent); }
 .sessions .tools select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .sessions .count { color: var(--muted); font-size: 13px; }
 .sessions .errors { color: var(--err); font-size: 13px; margin-bottom: 8px; }
+.tower-inbox { width: 100%; max-width: 880px; margin: 0 auto; }
+.tower-inbox h1 { font-size: 24px; }
+.tower-inbox h2 { margin: 0 0 5px; font-size: 16px; }
+.tower-inbox article { padding: 14px 16px; overflow-wrap: anywhere; }
+.tower-inbox .recipient { color: var(--muted); font: 13px/1.5 var(--mono); }
+.tower-inbox pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32vh; overflow: auto; background: var(--bg); padding: 8px 12px; border-radius: 6px; }
+.tower-inbox .act { display: flex; gap: 8px; }
+.tower-inbox button { padding: 4px 12px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.tower-inbox button:first-child { background: var(--accent); color: var(--bg); }
+.tower-inbox [role=status]:empty { display: none; }
 .project { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; box-shadow: var(--shadow); }
 .project > summary { cursor: pointer; padding: 8px 12px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
 .project > summary::-webkit-details-marker { display: none; }

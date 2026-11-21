@@ -9,6 +9,7 @@ import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
+import type { TowerDecision } from '../../agents/sessions/tower.js';
 import { pageHtml } from './page.js';
 
 export interface WebUiOptions {
@@ -75,6 +76,7 @@ export type WebCommand =
   | { type: 'submit'; text: string }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  | { type: 'tower'; id: string; decision: TowerDecision }
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   /** Take over the session with this id (`ChatController.continueSession`). */
   | { type: 'continue'; id: string }
@@ -113,6 +115,13 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       if (type === 'stop' || type === 'diff' || type === 'merge' || type === 'discard')
         return { type: 'pack-task', turnId, id, action: { type } };
       return undefined;
+    }
+    case 'tower': {
+      const id = text('id', 1024);
+      const decision = command.decision;
+      if (!id || (decision !== 'send' && decision !== 'dismiss' && decision !== 'approve' && decision !== 'deny'))
+        return undefined;
+      return { type: 'tower', id, decision };
     }
     case 'approve': {
       const id = text('id', 200);
@@ -418,6 +427,8 @@ async function run(controller: ChatController, command: Exclude<WebCommand, { ty
       return true;
     case 'approve':
       return controller.approve(command.id, command.decision);
+    case 'tower':
+      return controller.decideTower(command.id, command.decision);
     case 'continue':
       return controller.continueSession(command.id);
     case 'agent':

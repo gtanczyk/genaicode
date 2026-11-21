@@ -138,6 +138,17 @@ choose an installed agent with MCP support, or `--web` to open the same chat in 
 These commands also work in `chat --sessions` and `ui --sessions`. Their results appear locally
 in the chat. To ask the agent for a summary, type your own question with the session ID.
 
+Run `npx genaicode tower --pack claude:codex --web` to work with a pack and other local sessions
+in one place. Open **Tower inbox** in the browser or press Ctrl+G in the terminal. The inbox
+shows each permission request with its agent, project and action. Select a row and press Enter
+in the terminal to review it. Questions marked **Answer in** use the agent's own dialog.
+
+The lead can propose a message to a waiting session in another project. Review the full session
+ID, directory and message, then choose **Send to session** or **Dismiss** (terminal: `s` or `d`).
+Each message needs its own confirmation, including with `--yes` or `/auto on`. The two views
+share decisions. Closing the tower drops unsent drafts. `ui --sessions --pack` and
+`chat --sessions --pack` open the same inbox.
+
 ## Chat with an agent: terminal and browser
 
 ```bash

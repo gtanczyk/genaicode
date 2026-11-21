@@ -361,9 +361,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
         strict: true,
         options: {
           agent: { type: 'string', short: 'a' },
-          ...(command === 'tower'
-            ? {}
-            : { pack: { type: 'string' as const }, 'max-parallel': { type: 'string' as const } }),
+          pack: { type: 'string' },
+          'max-parallel': { type: 'string' },
           cwd: { type: 'string', short: 'C' },
           model: { type: 'string', short: 'm' },
           effort: { type: 'string' },

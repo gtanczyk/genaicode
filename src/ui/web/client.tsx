@@ -6,6 +6,7 @@ import type { ChatView } from '../controller.js';
 import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
 import type { WebCommand } from './server.js';
 import { Sessions } from './sessions.js';
+import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
 const style = document.createElement('style');
@@ -93,7 +94,8 @@ function App() {
   useBark(view);
   const [model, setModel] = useState<string>();
   // The Sessions view takes the chat's place; the chat keeps running behind it.
-  const [showSessions, setShowSessions] = useState(false);
+  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
+  const showSessions = panel === 'sessions';
   const session = view?.session;
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
@@ -155,11 +157,20 @@ function App() {
                 className={`chip${showSessions ? '' : ' off'}`}
                 title="What every agent on this machine has going on, by project"
                 aria-pressed={showSessions}
-                onClick={() => setShowSessions(!showSessions)}
+                onClick={() => setPanel(showSessions ? 'chat' : 'sessions')}
               >
                 {showSessions ? '← Chat' : 'Sessions'}
               </button>
             ) : null}
+            {view.tower && (
+              <button
+                className={`chip${view.tower.items.length ? ' waits' : ''}`}
+                aria-pressed={panel === 'inbox'}
+                onClick={() => setPanel(panel === 'inbox' ? 'chat' : 'inbox')}
+              >
+                {panel === 'inbox' ? '← Chat' : `Tower inbox · ${view.tower.items.length}`}
+              </button>
+            )}
             <button
               className={`chip${view.autoApprove ? '' : ' off'}`}
               title={
@@ -193,13 +204,20 @@ function App() {
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             void command({ type: 'continue', id: found.id });
-            setShowSessions(false);
+            setPanel('chat');
           }}
         />
       ) : null}
+      {panel === 'inbox' && view?.tower && (
+        <TowerInboxPanel
+          view={view.tower}
+          connected={connected}
+          decide={(id, decision) => command({ type: 'tower', id, decision })}
+        />
+      )}
       <AgentChat
         state={session}
-        style={showSessions ? { display: 'none' } : undefined}
+        style={panel !== 'chat' ? { display: 'none' } : undefined}
         header={null}
         autoFocus
         disabled={!connected}

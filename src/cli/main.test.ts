@@ -81,10 +81,14 @@ describe('parseCli', () => {
       expect(launch.agent).toBe('pack');
       expect(launch.agents[0]).toMatchObject({ name: 'pack', command: lead.command });
       expect(launch.sessionAgents).toBe(agents);
+      if (launch.sessionTools) {
+        expect(launch.towerInbox?.proposalTool.name).toBe('propose_session_message');
+        expect(launch.sessionTools.map((t) => t.name)).not.toContain('propose_session_message');
+      } else expect(launch.towerInbox).toBeUndefined();
       return 0;
     };
     const loadUi = async () => ({ runChat: inspect, runWeb: inspect });
-    for (const kind of ['chat', 'ui']) {
+    for (const kind of ['chat', 'ui', 'tower']) {
       const argv = [kind, '--pack', 'lead:worker,worker', '--max-parallel', '2'];
       expect(parseCli(argv)).toMatchObject({ pack: { lead: 'lead', members: ['worker'], maxParallel: 2 } });
       expect(await main(environment({ argv, agents, interactive: true, loadUi }).cli)).toBe(EXIT_OK);

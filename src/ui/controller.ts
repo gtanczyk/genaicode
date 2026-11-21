@@ -7,6 +7,7 @@ import { createAgentSession, type AgentSession, type SessionState } from '../age
 import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
 import { isWithin } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
+import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
@@ -34,6 +35,7 @@ export interface ChatView {
   bark: boolean;
   /** Every permission request is approved without asking (`--yes`, `/auto`). */
   autoApprove: boolean;
+  tower?: TowerView;
   /** `!commands` still running; stop() ends them. */
   shells: number;
 }
@@ -58,6 +60,8 @@ export interface ChatOptions {
   sessionSources?: readonly SessionSource[];
   /** Tools explicitly enabled by `--sessions` or `tower`, also used for local previews. */
   sessionTools?: readonly McpTool[];
+  /** Operator inbox shared with the pack's proposal tool in this tower. */
+  towerInbox?: TowerInbox;
   /** Show the first five waiting sessions as soon as the tower opens. */
   waitingOnStart?: boolean;
   /** Agent to start with. Default: the first installed one. */
@@ -96,6 +100,7 @@ export interface ChatController {
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
   approve(id: string, decision: ApprovalDecision): boolean;
+  decideTower(id: string, decision: TowerDecision): Promise<boolean>;
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
   setModel(model: string | undefined): void;
@@ -165,10 +170,24 @@ export function createChatController(options: ChatOptions): ChatController {
   let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
-  let view: ChatView = { session: session.get(), notices, agents, bark, autoApprove, shells: 0 };
+  const inbox = options.towerInbox;
+  const shells = new Set<ChildProcess>();
+  const snapshot = (): ChatView => {
+    const state = session.get();
+    return {
+      session: state,
+      notices,
+      agents,
+      bark,
+      autoApprove,
+      shells: shells.size,
+      ...(inbox ? { tower: inbox.view(state) } : {}),
+    };
+  };
+  let view = snapshot();
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
-    view = { session: session.get(), notices, agents, bark, autoApprove, shells: shells.size };
+    view = snapshot();
     for (const listener of [...listeners]) {
       try {
         listener(view);
@@ -184,8 +203,13 @@ export function createChatController(options: ChatOptions): ChatController {
     publish();
   };
 
-  // `!command`: the user's own shell commands, e.g. the dev server the agent just set up.
-  const shells = new Set<ChildProcess>();
+  const offInbox = inbox?.subscribe(publish);
+  const refreshInbox = () => {
+    void inbox?.refresh().catch(() => notice('Could not refresh the tower inbox.', 'error'));
+  };
+  const inboxTimer = inbox ? setInterval(refreshInbox, 15_000).unref() : undefined;
+  if (inbox) refreshInbox();
+  // Shell commands started by the operator, e.g. a dev server in this project.
   // Process groups to end on /stop and exit, while anything in them runs: a shell can exit
   // before what it started (`server &`, or on SIGTERM), so a group outlives its shell here
   // until it is empty, or until its SIGKILL once stopped.
@@ -531,6 +555,7 @@ export function createChatController(options: ChatOptions): ChatController {
     stop: stopAll,
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
+    decideTower: (id, decision) => inbox?.decide(session, id, decision) ?? Promise.resolve(false),
     selectAgent,
     continueSession,
     setModel(model) {
@@ -539,6 +564,9 @@ export function createChatController(options: ChatOptions): ChatController {
     artifacts: options.artifactChannel?.store,
     close() {
       closed = true;
+      clearInterval(inboxTimer);
+      offInbox?.();
+      inbox?.close();
       stopShells();
       unsubscribe();
       listeners.clear();

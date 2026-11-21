@@ -28,6 +28,8 @@ export interface PackOptions {
   name?: string;
   /** Most delegated tasks running at once. Default 4. */
   maxParallel?: number;
+  /** Let the lead draft a message for the tower operator to review. */
+  sessionProposalTool?: McpTool;
   /** Replaces the briefing put in front of the lead's first prompt. */
   brief?(members: readonly PackMember[]): string;
   /** Where worktrees go, relative to the repository root. Default `.genaicode/worktrees`. */
@@ -558,6 +560,7 @@ export function pack(options: PackOptions): Pack {
         });
 
       const tools: McpTool[] = [
+        ...(options.sessionProposalTool ? [options.sessionProposalTool] : []),
         {
           name: 'agents',
           description:

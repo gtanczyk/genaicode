@@ -2,6 +2,8 @@ import { isAbsolute } from 'node:path';
 import { unsupportedTask } from '../prepare.js';
 import { invalidCwd } from '../runtime.js';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../types.js';
+import { asksForSession, pendingAsks } from './answer.js';
+import { isArchived, readArchive } from './archive.js';
 import { acceptsSessionPrompt } from './group.js';
 import { agentSessionSources, findSession } from './index.js';
 import { sessionWithLive } from './live.js';
@@ -15,7 +17,9 @@ const refusals = {
   directory: 'The original working directory is unavailable.',
   approval: 'The session is waiting for an approval.',
   state: 'Only waiting or unfinished sessions can receive a prompt.',
+  waiting: 'Only an open session waiting for a reply can receive a proposed message.',
   driver: 'The original agent cannot resume this session.',
+  changed: 'The agent or project for this session has changed since the message was proposed.',
   permissions: 'The original agent cannot use the selected permissions.',
 };
 
@@ -33,10 +37,37 @@ export class SessionSendError extends Error {
   }
 }
 
-export interface SessionSendOptions extends Pick<AgentTask, 'env' | 'permissions' | 'signal'> {
+export interface SessionSendOptions extends Pick<AgentTask, 'env' | 'permissions' | 'signal' | 'onApproval'> {
   /** Target an exact (source, id) pair. Without a source, a unique id prefix is enough. */
   source?: string;
+  /** A proposed message must still target the reviewed agent and project and be waiting for a reply. */
+  expectedTarget?: Pick<SessionInfo, 'agent' | 'cwd'>;
   onEvent?(event: AgentEvent, session: SessionInfo): void;
+}
+
+/** Resolve a local recipient for preview or dispatch. Dispatch repeats this inside the per-session lock. */
+export async function sessionRecipient(
+  agents: readonly CodingAgent[],
+  fresh: SessionInfo,
+  env?: NodeJS.ProcessEnv,
+  waitingOnly = false,
+) {
+  const [session, asks, archive] = await Promise.all([
+    sessionWithLive(fresh, env),
+    pendingAsks(env, { readOnly: true }),
+    waitingOnly ? readArchive(env) : undefined,
+  ]);
+  if (!session.cwd || !isAbsolute(session.cwd)) throw new SessionSendError('directory');
+  if (fresh.waitingFor === 'approval' || session.waitingFor === 'approval' || asksForSession(asks, session).length)
+    throw new SessionSendError('approval');
+  if (waitingOnly && (session.state !== 'waiting' || session.archived || (archive && isArchived(session, archive))))
+    throw new SessionSendError('waiting');
+  if (!acceptsSessionPrompt(session)) throw new SessionSendError('state');
+  const agent = agents.find(
+    (a) => a.name === session.agent && a.sessions?.name === session.source && a.capabilities.resume,
+  );
+  if (!agent) throw new SessionSendError('driver', `No driver can resume this ${session.agent} session.`);
+  return { session, cwd: session.cwd, agent };
 }
 
 /** Send one human-requested turn to a local session through its own resumable driver. */
@@ -63,16 +94,19 @@ export async function sendSession(
     const fresh = (await findSession([store], target.id, query))?.session;
     if (!fresh || fresh.id !== target.id || fresh.where !== 'local')
       throw new SessionSendError('missing', `No local session "${id}" found.`);
-    const session = await sessionWithLive(fresh, env);
-    if (!session.cwd || !isAbsolute(session.cwd))
-      throw new SessionSendError('directory', 'This session has no absolute working directory.');
-    if (fresh.waitingFor === 'approval' || session.waitingFor === 'approval') throw new SessionSendError('approval');
-    if (!acceptsSessionPrompt(session)) throw new SessionSendError('state');
-    const agent = local.find(
-      (a) => a.name === session.agent && a.sessions?.name === store.name && a.capabilities.resume,
-    );
-    if (!agent) throw new SessionSendError('driver', `No driver can resume this ${session.agent} session.`);
-    const task: AgentTask = { cwd: session.cwd, resume: session.id, prompt, env, signal, permissions };
+    const expected = options.expectedTarget;
+    if (expected && (fresh.cwd !== expected.cwd || fresh.agent !== expected.agent))
+      throw new SessionSendError('changed');
+    const { session, cwd, agent } = await sessionRecipient(local, fresh, env, !!expected);
+    const task: AgentTask = {
+      cwd,
+      resume: session.id,
+      prompt,
+      env,
+      signal,
+      permissions,
+      onApproval: options.onApproval,
+    };
     const refused = unsupportedTask(agent.name, agent.capabilities, task);
     if (refused) throw new SessionSendError('permissions', refused);
     const cwdError = invalidCwd(task.cwd);
