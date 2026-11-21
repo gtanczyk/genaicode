@@ -751,9 +751,9 @@ describe('genaicode sessions --waiting', () => {
     const again = await answer('approve', open.id);
     expect(again.code).toBe(EXIT_FAILED);
     expect(again.err).toContain('No open question 0123456789ab');
-    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval:/);
+    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval, 1 asks you something:/);
     expect(out.indexOf('asks to use Bash')).toBeLessThan(out.indexOf('Add CSV export'));
-    expect(out).toContain('  said: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
+    expect(out).toContain('  asks: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
     expect(out).not.toContain('Working on it');
     expect(out).not.toContain('Old');
     expect((await run('-w', '--since', '60d')).out).toContain('Old');

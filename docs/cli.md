@@ -101,6 +101,12 @@ must finish first. The check uses the latest store and hook information availabl
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
+`sessions --waiting` puts the sessions whose last message asks you something right after the
+approvals (`●`: a question, a command to run, an offer to go on, or a report that could not be
+sent back), before the ones that just ended. Scheduled tasks and headless runs nobody typed into
+are left out of `sessions`; `--automated` lists them too (see
+[agents](agents.md#which-sessions-need-you-hooks)).
+
 With Copilot or Gemini hooks installed, `sessions --waiting`, the tower's `/waiting` command
 and the browser's Sessions view show up to 200 characters of a shell command awaiting approval.
 Refresh the queue to see which commands still need a decision. Answer in the agent that asked.

@@ -37,6 +37,10 @@ function textOf(content: unknown, type: string): string | undefined {
 // Prompts that reach Claude Code wrapped: a scheduled task, a message relayed from another session, a paste, `!cmd`.
 const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[\s>]/;
 
+const SCHEDULED = /^\s*<scheduled-task[\s>]/;
+const messageOf = (line: Record<string, unknown>): unknown =>
+  isRecord(line.message) ? line.message.content : undefined;
+
 /** A wrapped prompt without its tags. */
 function unwrapped(text: string): string | undefined {
   if (!WRAPPED_PROMPT.test(text)) return undefined;
@@ -91,6 +95,15 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   let conversed = false;
   let firstWrapped: string | undefined;
   let lastWrapped: string | undefined;
+  // Who sent the prompts, where Claude Code notes it (`origin.kind`): a person, or a task.
+  let sent = false;
+  let human = false;
+  let scheduled = false;
+  const sender = (line: Record<string, unknown>, asked: boolean) => {
+    if (!asked || line.type !== 'user' || !isRecord(line.origin)) return;
+    sent = true;
+    if (line.origin.kind === 'human') human = true;
+  };
   for (const line of head) {
     if (!isRecord(line)) continue;
     if (line.isSidechain === true) return null;
@@ -103,9 +116,15 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     titleOf(line, info);
     const prompt = promptOf(line);
     if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
-    if (prompt.wrapped && line.type === 'user') firstWrapped ??= oneLine(prompt.wrapped);
+    if (prompt.wrapped && line.type === 'user') {
+      if (firstWrapped === undefined && !info.firstPrompt)
+        scheduled = SCHEDULED.test(textOf(messageOf(line), 'text') ?? '');
+      firstWrapped ??= oneLine(prompt.wrapped);
+    }
+    sender(line, !!(prompt.typed ?? prompt.wrapped));
   }
   let agentLast = false;
+  let typedLater = false;
   for (const line of tail) {
     if (!isRecord(line)) continue;
     // The directory it started in names the project; later lines follow the agent's `cd`.
@@ -115,11 +134,13 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     const prompt = promptOf(line);
+    sender(line, !!(prompt.typed ?? prompt.wrapped));
     if (prompt.wrapped) lastWrapped = oneLine(prompt.wrapped);
     if (line.type === 'last-prompt') {
       // Claude Code's own note of the latest prompt; it says nothing about whose turn it is.
       if (prompt.typed) info.lastPrompt = oneLine(prompt.typed);
     } else if (prompt.typed) {
+      typedLater = true;
       info.lastPrompt = oneLine(prompt.typed);
       agentLast = false;
     } else if (prompt.wrapped) {
@@ -142,6 +163,9 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
   info.firstPrompt ??= firstWrapped;
   info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
+  // Nobody typed into it: every prompt Claude Code noted a sender for came from a task, or, where it
+  // notes none, the session opens with a scheduled task and no typed prompt follows.
+  if (sent ? !human : scheduled && !typedLater) info.automated = true;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
   return info;
 }

@@ -216,6 +216,7 @@ Sessions options:
       --watch             With --waiting --json: stay open and print {"sessions":[...]} as one
                           line whenever what waits changes (--exit-with-stdin: until stdin closes)
       --archived          Also the sessions put away with "sessions archive"
+      --automated         Also the sessions nobody typed into (scheduled tasks, headless runs)
 
   Each line ends with the session id: continue it with
   "genaicode chat -a <agent> -C <dir> -r <id>".
@@ -787,6 +788,15 @@ function loadBundledUi(): Promise<UiModule> {
 const STATE_MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** How a waiting session's last words are introduced, by what they ask (`SessionInfo.ending`). */
+const ENDING_SAYS = {
+  question: 'asks',
+  command: 'wants you to run',
+  offer: 'offers',
+  unreported: 'could not report back',
+  none: 'said',
+} as const;
+
 /** `sessions --waiting`: one line per session that waits for you, approvals first, with the command that continues it. */
 function showWaiting(
   cli: CliEnvironment,
@@ -801,8 +811,9 @@ function showWaiting(
     return EXIT_OK;
   }
   const asks = sessions.filter((session) => session.waitingFor === 'approval').length;
+  const wants = sessions.filter((session) => session.waitingFor !== 'approval' && session.ending).length;
   cli.stdout.write(
-    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}:\n`,
+    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}${wants ? `, ${wants} ask${wants === 1 ? 's' : ''} you something` : ''}:\n`,
   );
   for (const session of sessions) {
     const place = session.cwd ?? session.repository ?? '';
@@ -813,7 +824,7 @@ function showWaiting(
       session.waitingFor === 'approval'
         ? `asks to use ${session.waitingTool ?? 'a tool'}`
         : session.lastReply
-          ? `said: ${oneLine(session.lastReply, 80)}`
+          ? `${ENDING_SAYS[session.ending ?? 'none']}: ${oneLine(session.lastReply, 80)}`
           : 'your turn';
     const resume = resumeCommand(session);
     const commands = (session.waitingCommands ?? []).map(({ tool, command }) => `  ? ${tool}: ${command}\n`).join('');
@@ -826,7 +837,7 @@ function showWaiting(
       )
       .join('');
     cli.stdout.write(
-      `\n${session.waitingFor === 'approval' ? '◆' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
+      `\n${session.waitingFor === 'approval' ? '◆' : session.ending ? '●' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
     );
   }
   return EXIT_OK;
@@ -1116,6 +1127,7 @@ async function showSessions(
     const listing = await listSessions(sources, {
       ...(command.waiting ? {} : { limit: command.limit + extra }),
       env: cli.env,
+      ...(command.automated ? { automated: true } : {}),
       ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
       ...(sinceMs !== undefined ? { since: now - sinceMs } : {}),
       ...(cli.signal ? { signal: cli.signal } : {}),

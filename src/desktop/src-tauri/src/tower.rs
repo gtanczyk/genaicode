@@ -24,6 +24,8 @@ pub struct Waiting {
     pub last_reply: Option<String>,
     pub waiting_for: Option<String>,
     pub waiting_tool: Option<String>,
+    /// What the end of its last message asks: `question`, `command`, `offer`, `unreported`.
+    pub ending: Option<String>,
     pub asks: Vec<Ask>,
 }
 
@@ -103,6 +105,30 @@ fn one_line(text: &str, most: usize) -> String {
     cut
 }
 
+/// How a session's last words are introduced, by what they ask.
+fn ending_says(ending: &str) -> Option<&'static str> {
+    match ending {
+        "question" => Some("asks"),
+        "command" => Some("wants you to run"),
+        "offer" => Some("offers"),
+        "unreported" => Some("could not report back"),
+        _ => None,
+    }
+}
+
+/// The end of `text` on one line, at most `most` characters.
+fn last_words(text: &str, most: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let flat = flat.trim_start_matches('…').trim_start();
+    let count = flat.chars().count();
+    if count <= most {
+        return flat.to_string();
+    }
+    let mut cut = String::from("…");
+    cut.extend(flat.chars().skip(count - (most - 1)));
+    cut
+}
+
 fn project(session: &Waiting) -> &str {
     session
         .cwd
@@ -123,6 +149,18 @@ pub fn entries(sessions: &[Waiting]) -> Vec<Entry> {
                     Some(tool) => format!("{} asks to use {tool}", session.agent),
                     None => format!("{} asks for approval", session.agent),
                 }
+            } else if let (Some(says), Some(reply)) = (
+                session.ending.as_deref().and_then(ending_says),
+                &session.last_reply,
+            ) {
+                // What it asks stands at the end of the message, so the end is what shows.
+                let room = LABEL
+                    .saturating_sub(name.chars().count() + session.agent.len() + says.len() + 6);
+                format!(
+                    "{} {says}: {}",
+                    session.agent,
+                    last_words(reply, room.max(12))
+                )
             } else {
                 let text = [&session.title, &session.last_prompt, &session.last_reply]
                     .into_iter()
@@ -254,6 +292,26 @@ mod tests {
             ]
         );
         assert!(quota(&[]).is_empty());
+    }
+
+    #[test]
+    fn shows_what_a_session_asks_from_the_end_of_its_message() {
+        let sessions = vec![Waiting {
+            id: "q".into(),
+            agent: "claude".into(),
+            cwd: Some("/work/app".into()),
+            title: Some("CSV export".into()),
+            last_reply: Some(format!("…{} Mam wysłać to jako preview?", "x".repeat(150))),
+            ending: Some("question".into()),
+            ..Default::default()
+        }];
+        let Entry::Session { label, .. } = &entries(&sessions)[0] else {
+            panic!("a session")
+        };
+        assert!(label.starts_with("app · claude asks: …"));
+        assert!(label.ends_with("Mam wysłać to jako preview?"));
+        assert!(label.chars().count() <= LABEL);
+        assert_eq!(last_words("… Done.  Push it?", 40), "Done. Push it?");
     }
 
     #[test]

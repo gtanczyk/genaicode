@@ -1,4 +1,4 @@
-import type { SessionInfo } from './types.js';
+import type { ReplyEnding, SessionInfo } from './types.js';
 
 // No Node imports here: the browser's Sessions view groups with this too.
 export type { SessionInfo };
@@ -8,6 +8,48 @@ export interface SessionListing {
   sessions: SessionInfo[];
   /** Sources that could not be read; the others are still listed. */
   errors: Array<{ source: string; message: string }>;
+}
+
+// Word edges that hold for Polish letters too: `\b` does not see `ę` or `ć` as part of a word.
+const B = String.raw`(?<![\p{L}\p{N}_])`;
+const E = String.raw`(?![\p{L}\p{N}_])`;
+const UNREPORTED = [
+  new RegExp(String.raw`send_message\W{0,3}\s+(zniknęło|zostało usunięte|is gone|was removed|is no longer)`, 'iu'),
+  new RegExp(
+    String.raw`${B}(tool|narzędzie)${E}[^.?!]{0,80}${B}(no longer available|was removed|is gone|zniknęło|zostało usunięte)`,
+    'iu',
+  ),
+  new RegExp(
+    String.raw`${B}(can't|cannot|couldn't|could not|unable to)\s+(send|post|report|deliver)${E}[^.?!]{0,80}${B}(thread|project|coordinator|conversation)${E}`,
+    'iu',
+  ),
+  new RegExp(
+    String.raw`${B}nie (mogę|mogłem|mogłam|udało się)\s+(wysłać|przekazać|odesłać|zaraportować)${E}[^.?!]{0,80}${B}(wątk|projekt|koordynator)`,
+    'iu',
+  ),
+];
+const OFFER = new RegExp(
+  String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}[^.?!]*[.!]?$`,
+  'iu',
+);
+/** What may follow the last word: quotes, brackets, emphasis, an emoji. */
+const TRAILING = /[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]+$/u;
+
+/**
+ * What the end of an agent's message asks of the user, by its shape alone: it says it could not
+ * report back, it ends with a question, with a command in a code block, or with an offer to go on.
+ * A guess from the last 200 characters: a request put as a statement is not seen.
+ */
+export function replyEnding(lastReply: string | undefined): ReplyEnding | undefined {
+  if (!lastReply) return undefined;
+  if (UNREPORTED.some((pattern) => pattern.test(lastReply))) return 'unreported';
+  const text = lastReply.replace(TRAILING, '');
+  if (text.endsWith('?')) return 'question';
+  // A code block closes the message: something to run.
+  if (/```\s*$/.test(lastReply) && /```(ba|z|fi)?sh\b|```shell\b|```console\b/.test(lastReply)) return 'command';
+  const last = text.split(/(?<=[.?!])\s+/).pop() ?? text;
+  if (OFFER.test(last)) return 'offer';
+  return undefined;
 }
 
 /** A local conversation ready for a new turn in its own directory. */
@@ -35,10 +77,12 @@ export interface SessionProject {
 
 /**
  * The sessions whose next move is the user's (`state: 'waiting'`): those that ask for approval
- * first, then the others, newest first in each. Archived ones are left out.
+ * first, then those whose last message asks something (`ending`), then the others, newest first
+ * in each. Archived ones are left out.
  */
 export function waitingSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
-  const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : 1);
+  // Approvals, then what ends on a question or a request, then what just ended.
+  const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : session.ending ? 1 : 2);
   return sessions
     .filter((session) => session.state === 'waiting' && !session.archived)
     .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);

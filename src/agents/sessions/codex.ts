@@ -92,6 +92,8 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       if (line.type === 'session_meta' || line.type === undefined) {
         // A helper thread another session started, as the thread index marks them.
         if (JSON.stringify(payload.source ?? '').includes('subagent')) subagent = true;
+        // `codex exec`: a headless run nobody typed into.
+        if (payload.source === 'exec' || payload.originator === 'codex_exec') info.automated = true;
         if (typeof payload.id === 'string') info.id = payload.id;
         if (typeof payload.cwd === 'string') info.cwd = payload.cwd;
         if (typeof payload.timestamp === 'string') {

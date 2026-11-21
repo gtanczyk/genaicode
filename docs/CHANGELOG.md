@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode sessions` leaves out the sessions nobody typed into (Claude Code's scheduled tasks and notifications, `codex exec` runs; `--automated` or `{ automated: true }` lists them, and they carry `automated: true`), and says what a waiting session's last message asks of you: `SessionInfo.ending` (`question`, `command`, `offer`, `unreported`) from `replyEnding()`. `sessions --waiting`, the session tools and the desktop menu show those right after the approvals
 - `genaicode limits`: how much of each agent's plan is used (share of each window, when it resets), as last seen and without asking any agent. Runs through genaicode keep what the agents report, Codex's limits are read from its sessions, and `genaicode hooks install` makes `genaicode limits record` Claude Code's status line (unless you have your own), which keeps Claude's. `sessions --waiting --json --watch` carries them as `limits`, and the desktop app's menu shows them (#235)
 - `claude()` inherits `permissions.defaultMode` from Claude Code user settings (`~/.claude/settings.json` / `$CLAUDE_CONFIG_DIR`) or `options.settings` instead of overriding it with `--permission-mode acceptEdits`, keeping `acceptEdits` as the fallback when no default mode is configured (#238)
 

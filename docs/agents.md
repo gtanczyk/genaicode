@@ -327,6 +327,19 @@ the command that continues it. It looks a week back unless `--since` says otherw
 browser's Sessions view has the same as a "N wait for you" button; in code,
 `waitingSessions(sessions)` picks and orders them.
 
+Not every waiting session asks for something: most just ended. `SessionInfo.ending` says what the
+end of the agent's last message asks, read from its shape by `replyEnding(lastReply)`: `question`
+(it ends on a question), `command` (it ends on a shell code block for you to run), `offer` ("I can
+also...", "let me know") or `unreported` (it says it could not report back to the thread that sent
+it). Those come right after the approvals in `--waiting`, marked `●`, and `sessions_list` says
+`[ends with: question]`. It is a guess from the last 200 characters: a request put as a plain
+statement is not seen.
+
+Sessions nobody typed into are left out of every listing: scheduled tasks and notifications in
+Claude Code (every prompt has `origin.kind` other than `human`, or the session opens with a
+scheduled task nobody answered) and `codex exec` runs. They carry `automated: true`;
+`sessions --automated`, or `{ automated: true }` in the query, lists them too.
+
 For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
 200 characters of each matching command. Genaicode keeps a digest in its private hook record
 and reads the text on demand from the agent's own local session journal. A session with a
