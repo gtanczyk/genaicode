@@ -24,6 +24,7 @@ import {
   listSessions,
   pendingAsks,
 } from '../agents/sessions/index.js';
+import { createUploads } from './uploads.js';
 import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
 
 export { NoAgentError };
@@ -204,6 +205,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       controller: controller(),
       clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
       title: { version: options.version, cwd: options.cwd },
+      uploads: createUploads(options.cwd),
       host: options.host,
       port: options.port,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),

@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode ui`: the agent, the model, the approval mode and the plan's limits sit in the prompt box instead of the top bar, and files can be attached, pasted or dropped on the chat (kept in `.genaicode/uploads/`, their paths go to the agent). `<AgentChat>` takes `composerExtras` for host controls in the composer (#260)
 - `<AgentChat completions>` offers the host's commands while the user types one (arrows, Tab or Enter to complete, Escape to close), and `genaicode ui` lists its `/` commands that way (#259)
 - The start screen of `ui --sessions` (the desktop app) says, under each agent's plan limits, which topics that agent's work of the last 7 days went to, in percent; `topicShares()` in `genaicode/agents` computes it (#258)
 

@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
-import { formatUsage, limitChips, needsAttention, shortId, SLASH_COMMANDS } from '../format.js';
+import {
+  formatUsage,
+  limitChips,
+  needsAttention,
+  parseSlash,
+  shortId,
+  SLASH_COMMANDS,
+  splitAttached,
+} from '../format.js';
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
@@ -39,6 +47,76 @@ async function postCommand(body: WebCommand) {
 
 async function command(body: WebCommand): Promise<boolean> {
   return (await postCommand(body)).ok === true;
+}
+
+/**
+ * Sends `text`, first keeping `files` with the server so the agent can read them from the project.
+ * Resolves to what went wrong when nothing was sent: a prompt never goes without one of its files.
+ */
+async function sendPrompt(text: string, files: File[], dropped: AbortSignal): Promise<string | undefined> {
+  const ids: string[] = [];
+  for (const file of files) {
+    if (dropped.aborted) return STOPPED;
+    const name = file.name || 'file';
+    const res = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'x-genaicode-token': token, 'content-type': 'application/octet-stream' },
+      body: file,
+      signal: dropped,
+    }).catch(() => undefined);
+    if (dropped.aborted) return STOPPED;
+    const kept = res?.ok ? ((await res.json().catch(() => undefined)) as { id?: string } | undefined) : undefined;
+    if (!kept?.id) {
+      const why = !res ? 'genaicode did not answer' : res.status === 413 ? 'it is over 20 MB' : 'it could not be kept';
+      return `Not sent: ${name} could not be attached (${why}).`;
+    }
+    ids.push(kept.id);
+  }
+  // Stop drops what waits, as it does the prompts queued with the agent.
+  if (dropped.aborted) return STOPPED;
+  const sent = await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text }).catch(
+    () => false,
+  );
+  return sent ? undefined : 'Not sent: genaicode did not take the message.';
+}
+
+const STOPPED = 'Not sent: stopped, or the conversation changed, before it left.';
+
+/**
+ * Aborted when the user stops the agent or moves to another agent or conversation: a prompt still
+ * waiting here does not leave, its upload ends, and the next prompt does not wait behind it.
+ */
+let waiting = new AbortController();
+
+function dropWaiting() {
+  waiting.abort();
+  waiting = new AbortController();
+  sending = Promise.resolve();
+}
+
+/** Prompts leave in the order they were sent, also while the files of an earlier one upload. */
+let sending: Promise<unknown> = Promise.resolve();
+
+/** A prompt as its bubble shows it: the files sent with it as thumbnails and names, not as paths. */
+function promptBubble(text: string) {
+  const { text: said, files } = splitAttached(text);
+  if (!files.length) return text;
+  return (
+    <>
+      {said}
+      <span className="sent-files">
+        {files.map((file) =>
+          file.id && /\.(png|jpe?g|gif|webp)$/i.test(file.name) ? (
+            <img key={file.path} src={`/uploads/${file.id}`} alt={file.name} title={file.name} />
+          ) : (
+            <span key={file.path} className="chip" title={file.path}>
+              {file.name}
+            </span>
+          ),
+        )}
+      </span>
+    </>
+  );
 }
 
 /** How often the limits last seen are asked for again. */
@@ -78,6 +156,7 @@ function usePlanLimits(agent: string | undefined, running: boolean): RateLimit[]
 interface PageConfig {
   cwd: string;
   sessions: boolean;
+  uploads?: boolean;
 }
 
 function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
@@ -189,6 +268,9 @@ function useBark(view: ChatView | undefined) {
   }, [view]);
 }
 
+/** As many files as the server takes with one prompt. */
+const ATTACH = { max: 8 };
+
 const IDEAS = ['Explain how this project is organized', 'Find and fix a failing test', 'Add a --verbose flag'];
 
 function App() {
@@ -213,7 +295,100 @@ function App() {
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   const limits = session ? limitChips({ ...session, rateLimits }) : [];
-  const submit = (text: string) => void command({ type: 'submit', text });
+  // A setting takes effect now: it does not wait behind a prompt whose files still upload.
+  const control = (text: string) => void command({ type: 'submit', text });
+  // Why the last message did not leave, shown under the transcript until the next one does.
+  const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
+  const submit = (text: string, files?: File[]): Promise<boolean> => {
+    // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
+    const own = parseSlash(text);
+    if (own) {
+      if (files?.length) {
+        setUnsent({ problem: 'Not sent: files go with a prompt, not with a command.', text: text.trim() });
+        return Promise.resolve(false);
+      }
+      // Stopping or leaving the conversation drops what still waits here, as the buttons do.
+      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
+      return command({ type: 'submit', text }).then(
+        () => true,
+        () => true,
+      );
+    }
+    const dropped = waiting.signal;
+    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped));
+    sending = mine;
+    return mine.then((problem) => {
+      // With its words: the composer takes them back only while it is empty.
+      setUnsent(problem ? { problem, text: text.trim() } : undefined);
+      return !problem;
+    });
+  };
+
+  // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
+  const controls =
+    view && session ? (
+      <div className="run-with">
+        {limits.map((chip) => (
+          <span key={chip.key} className="chip" data-level={chip.level} title={chip.title}>
+            {chip.text}
+          </span>
+        ))}
+        <select
+          aria-label="Agent"
+          title="The agent the next prompt goes to"
+          value={session.agent}
+          disabled={running}
+          onChange={(event) => {
+            // What still waits here was meant for the other agent.
+            dropWaiting();
+            void command({ type: 'agent', name: event.target.value });
+          }}
+        >
+          {view.agents.map((agent) => (
+            <option key={agent.name} value={agent.name}>
+              {agent.name}
+              {agent.installed ? '' : ' (not installed)'}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label="Model"
+          title="The model id, or empty for the agent's default"
+          placeholder="default model"
+          size={Math.max(12, (model ?? session.model ?? '').length)}
+          value={model ?? session.model ?? ''}
+          onChange={(event) => setModel(event.target.value)}
+          onBlur={() => {
+            if (model !== undefined) void command({ type: 'model', model });
+            setModel(undefined);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+          }}
+        />
+        <button
+          type="button"
+          title={
+            view.autoApprove
+              ? 'Every permission request is approved without asking'
+              : 'The agent asks before commands and edits it needs permission for'
+          }
+          aria-pressed={view.autoApprove}
+          onClick={() => control(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
+        >
+          {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
+        </button>
+        <button
+          type="button"
+          aria-label={view.bark ? 'Bark on' : 'Bark off'}
+          title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
+          aria-pressed={view.bark}
+          onClick={() => control(`/bark ${view.bark ? 'off' : 'on'}`)}
+        >
+          {view.bark ? '🔊' : '🔇'}
+        </button>
+      </div>
+    ) : null;
 
   return (
     <>
@@ -221,49 +396,16 @@ function App() {
         <div className="brand">
           <img src="/assets/wolf-64.png" alt="" /> genaicode <small>{root.dataset.version}</small>
         </div>
+        {cwd ? (
+          <span className="cwd" title={cwd}>
+            {cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd}
+          </span>
+        ) : null}
+        <span className="spacer" />
         {view && session ? (
           <>
-            <label className="field">
-              Agent
-              <select
-                value={session.agent}
-                disabled={running}
-                onChange={(event) => void command({ type: 'agent', name: event.target.value })}
-              >
-                {view.agents.map((agent) => (
-                  <option key={agent.name} value={agent.name}>
-                    {agent.name}
-                    {agent.installed ? '' : ' (not installed)'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Model
-              <input
-                placeholder="agent default"
-                value={model ?? session.model ?? ''}
-                onChange={(event) => setModel(event.target.value)}
-                onBlur={() => {
-                  if (model !== undefined) void command({ type: 'model', model });
-                  setModel(undefined);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-                }}
-              />
-            </label>
-            <span className="cwd" title={cwd}>
-              {cwd.length > 36 ? `…${cwd.slice(-35)}` : cwd}
-            </span>
-            <span className="spacer" />
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
-            {limits.map((chip) => (
-              <span key={chip.key} className="chip" data-level={chip.level} title={chip.title}>
-                {chip.text}
-              </span>
-            ))}
             {hasSessions ? (
               <button
                 className={`chip${showSessions ? '' : ' off'}`}
@@ -286,30 +428,8 @@ function App() {
                 {panel === 'inbox' ? '← Chat' : `Tower inbox · ${view.tower.items.length}`}
               </button>
             )}
-            <button
-              className={`chip${view.autoApprove ? '' : ' off'}`}
-              title={
-                view.autoApprove
-                  ? 'Every permission request is approved without asking'
-                  : 'The agent asks before commands and edits it needs permission for'
-              }
-              aria-pressed={view.autoApprove}
-              onClick={() => submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
-            >
-              {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
-            </button>
-            <button
-              className={`chip${view.bark ? '' : ' off'}`}
-              title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
-              aria-pressed={view.bark}
-              onClick={() => submit(`/bark ${view.bark ? 'off' : 'on'}`)}
-            >
-              {view.bark ? '🔊 Bark' : '🔇 Quiet'}
-            </button>
           </>
-        ) : (
-          <span className="spacer" />
-        )}
+        ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
       {showSessions ? (
@@ -320,6 +440,8 @@ function App() {
           onAllTopics={() => setTopic(undefined)}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
+            // What still waits here was meant for the conversation that is left.
+            dropWaiting();
             void command({ type: 'continue', id: found.id });
             setPanel('chat');
           }}
@@ -343,11 +465,25 @@ function App() {
         notices={view?.notices}
         artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
         completions={SLASH_COMMANDS}
+        composerExtras={controls}
+        attachments={config?.uploads ? ATTACH : undefined}
+        renderPrompt={promptBubble}
+        renderFooter={() =>
+          unsent ? (
+            <div className="gc-notice gc-err">
+              {unsent.problem}
+              {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
+            </div>
+          ) : null
+        }
         onSend={submit}
-        onStop={() => void command({ type: 'stop' })}
+        onStop={() => {
+          dropWaiting();
+          void command({ type: 'stop' });
+        }}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-        onAutoApprove={view?.autoApprove ? undefined : () => submit('/auto on')}
+        onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
         onPackAction={async (turnId, id, action) => {
           const reply = await postCommand({ type: 'pack-task', turnId, id, action });
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
@@ -356,7 +492,7 @@ function App() {
         hint={
           <>
             <span>Enter to send · Shift+Enter for a new line · Esc stops</span>
-            <span>/help for commands</span>
+            <span>/ for commands{config?.uploads ? ' · paste or drop files' : ''}</span>
           </>
         }
         emptyState={
@@ -376,7 +512,7 @@ function App() {
               ) : null}
               <div className="ideas">
                 {IDEAS.map((idea) => (
-                  <button key={idea} onClick={() => submit(idea)}>
+                  <button key={idea} onClick={() => void submit(idea)}>
                     {idea}
                   </button>
                 ))}

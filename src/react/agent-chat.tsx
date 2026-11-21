@@ -57,8 +57,10 @@ export interface AgentChatProps {
   /**
    * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
    * files go with it: `files` is there when `attachments` is on and the user attached some.
+   * A promise that resolves to false says the message was not sent: the composer takes the
+   * text and the files back for another try, unless the user started another message meanwhile.
    */
-  onSend(text: string, files?: File[]): void;
+  onSend(text: string, files?: File[]): void | Promise<boolean | void>;
   /**
    * Let the user send files with a prompt: an attach button, paste and drop, and with `voice` a
    * microphone that records a voice message. Without it the composer takes text only. The host
@@ -128,6 +130,11 @@ export interface AgentChatProps {
    * through `onSend`.
    */
   completions?: readonly ChatCompletion[];
+  /**
+   * Host controls inside the composer, in the row under the text, before Send: what the next
+   * prompt runs with (agent, model, mode). With them the text takes a row of its own.
+   */
+  composerExtras?: ReactNode;
   /** Line under the composer. Default: the keys. Pass null for none. */
   hint?: ReactNode;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
@@ -171,14 +178,29 @@ export function AgentChat(props: AgentChatProps) {
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);
   const sendable = (!!draft.trim() || attached.files.length > 0) && !props.disabled && !attached.recording;
+  // What is in the composer now, for an answer that comes later.
+  const composing = useRef({ draft, files: attached.files });
+  composing.current = { draft, files: attached.files };
   const send = () => {
     if (!sendable) return;
     follow();
-    if (attached.files.length) props.onSend(draft, attached.files);
-    else props.onSend(draft);
+    const sent = { draft, files: attached.files };
+    const outcome = sent.files.length ? props.onSend(draft, sent.files) : props.onSend(draft);
     setDraft('');
     setClosedAt(undefined);
     attached.clear();
+    // A host that could not send gives the message back, unless another was started meanwhile.
+    if (outcome instanceof Promise) {
+      void outcome.then(
+        (ok) => {
+          // A message started meanwhile is left alone: the two are never mixed.
+          if (ok !== false || composing.current.draft || composing.current.files.length) return;
+          setDraft(sent.draft);
+          if (sent.files.length) attached.add(sent.files);
+        },
+        () => undefined,
+      );
+    }
   };
   const onPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
     if (!attached.enabled || !event.clipboardData.files.length) return;
@@ -186,11 +208,18 @@ export function AgentChat(props: AgentChatProps) {
     event.preventDefault();
     attached.add(event.clipboardData.files);
   };
+  // Anywhere on the chat: a file dropped beside the box would otherwise replace the page.
   const onDrop = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!attached.enabled || !event.dataTransfer.files.length) return;
     event.preventDefault();
     attached.add(event.dataTransfer.files);
   };
+  const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (attached.enabled && event.dataTransfer.types.includes('Files')) event.preventDefault();
+  };
+  const extras = props.composerExtras;
+  const hasExtras = extras !== undefined && extras !== null && extras !== false;
+  const stacked = attached.enabled || hasExtras;
   // Commands whose name the message starts, while it is one word and not yet one of them.
   const [picked, setPicked] = useState(0);
   const [closedAt, setClosedAt] = useState<string>();
@@ -301,7 +330,14 @@ export function AgentChat(props: AgentChatProps) {
   const footer = props.renderFooter?.();
 
   return (
-    <div className={rootClass} data-theme={theme} data-status={state.status} style={props.style}>
+    <div
+      className={rootClass}
+      data-theme={theme}
+      data-status={state.status}
+      style={props.style}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+    >
       {props.header !== undefined ? (
         props.header
       ) : (
@@ -364,9 +400,11 @@ export function AgentChat(props: AgentChatProps) {
                   complete(one);
                 }}
               >
-                <b>{one.name}</b>
-                {one.args ? <code>{one.args}</code> : null}
-                {one.help ? <span>{one.help}</span> : null}
+                <span className="gc-completion-name">
+                  <b>{one.name}</b>
+                  {one.args ? <code>{one.args}</code> : null}
+                </span>
+                {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
               </li>
             ))}
           </ul>
@@ -377,13 +415,7 @@ export function AgentChat(props: AgentChatProps) {
             {attached.problem}
           </div>
         ) : null}
-        <div
-          className={attached.enabled ? 'gc-box gc-stacked' : 'gc-box'}
-          onDrop={onDrop}
-          onDragOver={(event) => {
-            if (attached.enabled) event.preventDefault();
-          }}
-        >
+        <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
           <textarea
             ref={input}
             rows={1}
@@ -458,9 +490,10 @@ export function AgentChat(props: AgentChatProps) {
                   </svg>
                 </button>
               ) : null}
-              <span className="gc-grow" />
             </>
           ) : null}
+          {stacked ? <span className="gc-grow" /> : null}
+          {hasExtras ? extras : null}
           {(running || props.canStop) && props.onStop ? (
             <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
               Stop

@@ -74,6 +74,35 @@ export type SlashCommand =
   | { kind: 'quit' }
   | { kind: 'unknown'; name: string };
 
+/** `text` as the agent gets it when the files at `paths` were sent with it: they are named at its end. */
+export function withAttached(text: string, paths: readonly string[]): string {
+  if (!paths.length) return text;
+  const said = text.trim();
+  return `${said ? `${said}\n\n` : ''}${ATTACHED_MARK}\n${paths.map((path) => `- ${path}`).join('\n')}`;
+}
+
+/** The reverse of `withAttached`: what the user typed, and the files that went with it. */
+export function splitAttached(text: string): {
+  text: string;
+  files: Array<{ path: string; name: string; id?: string }>;
+} {
+  const at = text.startsWith(`${ATTACHED_MARK}\n`) ? 0 : text.lastIndexOf(`\n\n${ATTACHED_MARK}\n`);
+  if (at === -1) return { text, files: [] };
+  const lines = text.slice(at).trim().split('\n').slice(1);
+  if (!lines.length || !lines.every((line) => line.startsWith('- ') && line.length > 2)) return { text, files: [] };
+  return {
+    text: text.slice(0, at),
+    files: lines.map((line) => {
+      const path = line.slice(2);
+      const file = path.split(/[\\/]/).pop() ?? path;
+      const kept = /^([0-9a-f]{16})-(.+)$/.exec(file);
+      return kept ? { path, name: kept[2]!, id: kept[1]! } : { path, name: file };
+    }),
+  };
+}
+
+const ATTACHED_MARK = 'Attached files (read them from disk):';
+
 /** The command of a `!npm test` line, '' for a bare `!`; undefined otherwise (`!!` sends a `!`). */
 export function parseShell(text: string): string | undefined {
   const trimmed = text.trim();
