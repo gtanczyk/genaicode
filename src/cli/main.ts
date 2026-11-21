@@ -990,7 +990,8 @@ async function watchWaiting(
         const full = await look();
         if (stop.signal.aborted) break;
         ({ sessions, questions } = full);
-        mark = await hookMark(cli.env, questions);
+        // The mark from before the read: what a hook wrote meanwhile brings the next look.
+        mark = now;
         since = 0;
         // A store that cannot be read is said once, not on every look.
         const trouble = full.errors.map((error) => `${error.source}: ${error.message}\n`).join('');
