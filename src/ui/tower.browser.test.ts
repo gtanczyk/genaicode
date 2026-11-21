@@ -194,3 +194,65 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it('turns on auto-approve from a permission prompt and approves pending and follow-up requests', async () => {
+  const browser = await chromium.launch();
+  const root = mkdtempSync(join(tmpdir(), 'genaicode-auto-approve-'));
+  const stop = new AbortController();
+  const decisions: string[] = [];
+  const asker = driver('asker', async (task) => {
+    decisions.push(
+      `first ${await task.onApproval!({ id: 'ap-1', kind: 'command', summary: 'Bash: ls | awk ...' }, stop.signal)}`,
+    );
+    decisions.push(
+      `second ${await task.onApproval!({ id: 'ap-2', kind: 'command', summary: 'Bash: git status' }, stop.signal)}`,
+    );
+  });
+  let running: Promise<number> | undefined;
+  try {
+    const bundle = await build({
+      entryPoints: ['src/ui/web/client.tsx'],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      jsx: 'automatic',
+      loader: { '.css': 'text' },
+      define: { 'process.env.NODE_ENV': '"production"' },
+    });
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript: bundle.outputFiles[0].text,
+        firstPrompt: 'Inspect the project.',
+      });
+    running = main({
+      argv: ['ui', '--no-artifacts'],
+      cwd: root,
+      env: { GENAICODE_HOME: root, HOME: root },
+      agents: [asker],
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy());
+    const page = await browser.newPage();
+    await page.goto(opened!);
+    await page.getByRole('button', { name: 'Ask first' }).waitFor();
+    await page.getByRole('button', { name: 'Auto-approve all' }).click();
+    await page.getByRole('button', { name: '✓ Auto-approve' }).waitFor();
+    await vi.waitFor(() => expect(decisions).toEqual(['first approve', 'second approve']));
+    expect(await page.getByRole('button', { name: 'Auto-approve all' }).count()).toBe(0);
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);

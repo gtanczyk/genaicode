@@ -198,8 +198,8 @@ when you exit. The task controls belong to the chat process that started them.
 Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`
-denies and `a` approves everything from then on (`/auto`, or the Auto-approve chip in the
-browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
+denies and `a` approves everything from then on (`/auto`, **Auto-approve all** on the request, or the
+Auto-approve chip in the browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
 model and session; `/fallback codex,gemini` picks the agents to switch to when the current one
