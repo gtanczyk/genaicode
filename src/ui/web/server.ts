@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
-import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
+import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
 import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
@@ -42,6 +42,11 @@ export interface WebUiOptions {
     sandbox: SandboxPolicy | undefined,
     signal: AbortSignal,
   ) => Promise<AgentResult>;
+  /**
+   * How much of each agent's plan is used, as last seen (`knownLimits`), at GET /api/limits: the
+   * page shows the chosen agent's when its session reported none yet.
+   */
+  limits?: () => Promise<Array<RateLimit & { agent: string }>>;
   /** Answers a question a session holds open (`asks` of the listing), at POST /api/asks/<id>. */
   answer?: (id: string, decision: AskDecision) => Promise<boolean>;
   /** Archives sessions (`archived` false: brings them back), at POST /api/archive. */
@@ -52,12 +57,15 @@ export interface WebUiOptions {
 
 /**
  * `readable`: the sources (`SessionInfo.source`) whose sessions the chat can take over (`continue`).
- * `asks`: the questions held open for an answer from here.
+ * `asks`: the questions held open for an answer from here. `topics`: what the view groups by.
  */
 export type WebSessionListing = SessionListing & {
   readable?: string[];
   asks?: PendingAsk[];
   senders?: Array<{ agent: string; source: string; sandboxes: readonly SandboxPolicy[] }>;
+  /** The topics kept by `genaicode topics`, and the topic id of each listed session by `source:id`. */
+  topics?: Array<{ id: string; name: string }>;
+  topicOf?: Record<string, string>;
 };
 
 export interface WebAsset {
@@ -313,6 +321,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         streams.delete(res);
       });
       return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/limits') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      const limits = options.limits ? await options.limits().catch(() => []) : [];
+      return send(res, 200, 'application/json', JSON.stringify({ limits }));
     }
     if (req.method === 'GET' && url.pathname === '/api/sessions') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { waitingSessions, type SessionInfo } from '../agents/sessions/index.js';
 import { SessionSendError } from '../agents/sessions/send.js';
 import { createChatController } from './controller.js';
-import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from './sessions.js';
+import { ago, canContinueHere, filterSessions, groupByTopic, groupInOrder, resumeCommand } from './sessions.js';
 import { pageHtml } from './web/page.js';
 import { startWebUi } from './web/server.js';
 
@@ -50,6 +50,34 @@ describe('the Sessions view', () => {
       session({ id: 'asks', cwd: '/work/old', state: 'waiting', waitingFor: 'approval', updatedAt: 1 }),
     ]);
     expect(groupInOrder(found).map((project) => project.key)).toEqual(['/work/old', '/work/new']);
+  });
+
+  it('groups by topic: those that ask first, then the latest, what no topic has last', () => {
+    const now = 10 * 86_400_000;
+    const listed = [
+      session({ id: 'a', agent: 'codex', source: 'codex', state: 'active', updatedAt: now - 1000 }),
+      session({ id: 'b', state: 'waiting', ending: 'question', updatedAt: now - 3_600_000 }),
+      session({ id: 'c', state: 'waiting', ending: 'question', updatedAt: now - 5 * 86_400_000 }),
+      session({ id: 'd', updatedAt: now - 500 }),
+      session({ id: 'e', updatedAt: now - 9000 }),
+    ];
+    const groups = groupByTopic(
+      listed,
+      [
+        { id: 't1', name: 'Knights' },
+        { id: 't2', name: 'Pack mode' },
+      ],
+      { 'codex:a': 't1', 'claude:b': 't2', 'claude:c': 't1', 'claude:e': 'gone' },
+      now,
+    );
+    expect(groups.map(({ key, name, asking, active }) => [key, name, asking, active])).toEqual([
+      ['topic:t2', 'Pack mode', 1, 0],
+      // Its question is older than a question waits for.
+      ['topic:t1', 'Knights', 0, 1],
+      ['topic:', 'Not sorted yet', 0, 0],
+    ]);
+    expect(groups[1]!.agents).toEqual({ codex: 1, claude: 1 });
+    expect(groups[2]!.sessions.map((one) => one.id)).toEqual(['d', 'e']);
   });
 
   it('gives the command that continues a local session', () => {
@@ -177,6 +205,10 @@ describe('the Sessions view', () => {
       const listing = (await res.json()) as { sessions: SessionInfo[]; errors: unknown[] };
       expect(ids(listing.sessions)).toEqual(['s1', 's2', 's3', 's4']);
       expect(listing.errors).toEqual([{ source: 'muse', message: 'no sqlite' }]);
+      // No limits kept here, and none without the token.
+      expect((await fetch(`${base}/api/limits`)).status).toBe(403);
+      const limits = await fetch(`${base}/api/limits`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(await limits.json()).toEqual({ limits: [] });
       expect(queries[0]!.since).toBeGreaterThanOrEqual(before - 7 * 86_400_000);
       expect(queries[0]!.since).toBeLessThanOrEqual(Date.now() - 7 * 86_400_000);
       // No period, or a wrong one: everything.

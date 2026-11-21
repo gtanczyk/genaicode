@@ -85,6 +85,15 @@ export function acceptsSessionPrompt(session: SessionInfo): boolean {
   );
 }
 
+/** A question at the end of a message still waits for this long; after, the thread was left. */
+export const ASKING_MS = 3 * 24 * 3600_000;
+
+/** Whether a session asks for you now: for approval, or with a message that asked something not long ago. */
+export function isAsking(session: SessionInfo, now = Date.now()): boolean {
+  if (session.archived || session.state !== 'waiting') return false;
+  return session.waitingFor === 'approval' || (!!session.ending && now - session.updatedAt < ASKING_MS);
+}
+
 /** A project: the sessions of every agent that share a directory (or a repository, in the cloud). */
 export interface SessionProject {
   /** The directory or repository. `''` for sessions that name neither. */

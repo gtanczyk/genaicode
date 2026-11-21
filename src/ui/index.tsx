@@ -5,6 +5,8 @@ import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
 import { sendSession } from '../agents/sessions/send.js';
+import { knownLimits } from '../agents/sessions/limits.js';
+import { readTopics } from '../agents/sessions/topics.js';
 import type { EmbeddedWeb as PublicEmbeddedWeb, EmbeddedWebBundleOptions } from '../ui.js';
 import {
   createChatController,
@@ -211,7 +213,15 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);
-        return { ...listing, readable, asks, senders };
+        // The topics the sessions were sorted into, for the view to group by.
+        const store = await readTopics(options.env).catch(() => undefined);
+        const topicOf: Record<string, string> = {};
+        for (const session of listing.sessions) {
+          const topic = store?.sessions[`${session.source}:${session.id}`];
+          if (topic) topicOf[`${session.source}:${session.id}`] = topic;
+        }
+        const sorted = store?.topics.length ? { topics: store.topics, topicOf } : {};
+        return { ...listing, readable, asks, senders, ...sorted };
       },
       sendPrompt: (source, id, prompt, sandbox, signal) =>
         sendSession(agents, id, prompt, {
@@ -220,6 +230,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
           signal,
           permissions: sandbox ? { sandbox } : undefined,
         }),
+      limits: () => knownLimits(options.env),
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
     }).catch((error: unknown) => {
