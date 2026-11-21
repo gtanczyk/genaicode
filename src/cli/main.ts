@@ -1031,17 +1031,14 @@ async function manageTopics(
           cli.stderr.write(`${describeResult(agent.name, result)}\n`);
           return result.status === 'aborted' ? EXIT_ABORTED : EXIT_FAILED;
         }
-        const sorted = sortedTopics(result.text ?? said, batch, current);
+        // The answer is read against what is kept now: topics may have been corrected meanwhile, and
+        // a new topic gets an id that is free there.
+        const sorted = sortedTopics(result.text ?? said, batch, await readTopics(cli.env));
         if (!sorted.placed) {
           cli.stderr.write(`${agent.name} gave no topics that could be read. Nothing more was sorted.\n`);
           return EXIT_FAILED;
         }
-        // Topics may have been corrected meanwhile: what is kept now goes first.
-        const kept = await readTopics(cli.env);
-        current = {
-          topics: [...kept.topics, ...sorted.store.topics.filter((one) => !kept.topics.some((k) => k.id === one.id))],
-          sessions: { ...sorted.store.sessions, ...kept.sessions },
-        };
+        current = sorted.store;
         await writeTopics(current, cli.env);
         placed += sorted.placed;
       }

@@ -882,6 +882,35 @@ describe('genaicode sessions --waiting', () => {
     expect(failed.code).toBe(EXIT_FAILED);
     expect(failed.err).toContain('gave no topics that could be read');
 
+    // A topic made while the agent was sorting keeps its id; the agent's new one gets another.
+    const slow = {
+      ...agent,
+      run(): AgentRun {
+        const result = (async () => {
+          await run('move', 'two', '--to', 'Made meanwhile');
+          return { ...completed, text: '{"topics":[{"name":"Archive","sessions":[1]}]}' };
+        })();
+        return { result, abort() {}, async *[Symbol.asyncIterator]() {} };
+      },
+    };
+    const late = environment({
+      argv: ['topics', 'refresh', '-a', 'alpha', '--since', '26w'],
+      env: { HOME: home, PATH: '' },
+      agents: [slow],
+    });
+    expect(await main(late.cli)).toBe(EXIT_OK);
+    const kept = JSON.parse(readFileSync(join(home, '.genaicode', 'topics.json'), 'utf8')) as {
+      topics: Array<{ id: string; name: string }>;
+      sessions: Record<string, string>;
+    };
+    expect(kept.topics.slice(2)).toEqual([
+      { id: 't3', name: 'Made meanwhile' },
+      { id: 't4', name: 'Archive' },
+    ]);
+    expect(kept.sessions).toMatchObject({ 'alpha:two': 't3', 'alpha:old': 't4' });
+    await run('move', 'two', '--to', 't2');
+    await run('move', 'old', '--out');
+
     expect((await run('rename', 't2', 'Mac', 'app')).out).toBe('t2 is now "Mac app".\n');
     expect((await run('move', 'three', '--to', 'Worktrees')).out).toBe('1 session now in "Worktrees".\n');
     expect((await run('merge', 'worktrees', 'mac')).out).toBe('"Worktrees" is now part of "Mac app".\n');
