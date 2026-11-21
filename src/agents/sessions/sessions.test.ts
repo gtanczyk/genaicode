@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { EXIT_OK, main as runCli } from '../../cli/main.js';
-import { claudeSessions, codexSessions, groupSessions, listSessions, type SessionSource } from './index.js';
+import {
+  claudeSessions,
+  codexSessions,
+  groupSessions,
+  listSessions,
+  replyEnding,
+  type SessionSource,
+} from './index.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-sessions-test-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -137,6 +144,87 @@ describe('session sources', () => {
     const [task, relay] = await claudeSessions({ dir }).list();
     expect(task).toMatchObject({ firstPrompt: 'Run the nightly check', lastPrompt: 'Run the nightly check' });
     expect(relay).toMatchObject({ firstPrompt: 'Ship it', lastPrompt: 'And tag the release', state: 'waiting' });
+    // The scheduled one is nobody's conversation; the relayed one is somebody's.
+    expect(task!.automated).toBe(true);
+    expect(relay!.automated).toBeUndefined();
+  });
+
+  it('tells the sessions nobody typed into, and leaves them out of a listing unless asked', async () => {
+    const dir = join(root, 'claude-automated');
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    const task = { origin: { kind: 'task-notification' }, promptSource: 'system' };
+    const human = { origin: { kind: 'human' } };
+    const write = (name: string, minutesAgo: number, ...content: unknown[]) =>
+      file(join(dir, 'projects', '-work-app', `${name}.jsonl`), lines(...content), minutesAgo);
+    // Every prompt came from a task, whatever its text looks like.
+    write('notified', 10, user('Pin the link under the new video', task), done);
+    // A scheduled task somebody answered later is a conversation.
+    write(
+      'answered',
+      20,
+      user('<scheduled-task name="n">Check</scheduled-task>', task),
+      done,
+      user('And?', human),
+      done,
+    );
+    // A remote-control turn is a person's, though it arrives wrapped.
+    write('remote', 30, user('<wake reason="mention">Fix it</wake>', human), done);
+    // `! git status` has no sender noted: not enough to call it automated.
+    write('shell', 40, user('<bash-input>git status</bash-input>'), done);
+    write('typed', 50, user('Ship it', human), assistant([{ type: 'text', text: 'Shipped. Should I tag it?' }]));
+    // No sender noted, a scheduled opening, and a typed follow-up far from the end: a conversation.
+    write(
+      'long',
+      60,
+      user('<scheduled-task name="n">Check</scheduled-task>'),
+      done,
+      user('Why did it fail?'),
+      ...Array.from({ length: 40 }, () => assistant([{ type: 'text', text: 'x'.repeat(20_000) }])),
+    );
+    write('unanswered', 70, user('<scheduled-task name="n">Check</scheduled-task>'), done);
+    const source = claudeSessions({ dir });
+    const all = await source.list();
+    expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual(['notified', 'unanswered']);
+    const shown = await listSessions([source], { limit: 4, live: false, env: { HOME: join(root, 'nobody') } });
+    expect(shown.sessions.map((entry) => entry.id)).toEqual(['answered', 'remote', 'shell', 'typed']);
+    expect(shown.sessions.map((entry) => entry.ending)).toEqual([undefined, undefined, undefined, 'question']);
+    const asked = await listSessions([source], {
+      limit: 1,
+      automated: true,
+      live: false,
+      env: { HOME: join(root, 'nobody') },
+    });
+    expect(asked.sessions.map((entry) => entry.id)).toEqual(['notified']);
+    // The automated one took the only place: more are read, so the listing is still full.
+    const one = await listSessions([source], { limit: 1, live: false, env: { HOME: join(root, 'nobody') } });
+    expect(one.sessions.map((entry) => entry.id)).toEqual(['answered']);
+  });
+
+  it('reads what the end of a message asks of the user', () => {
+    const endings = (...texts: string[]) => texts.map((text) => replyEnding(text));
+    expect(
+      endings('…Mam wysłać to jako preview?', 'Should I delete the frames once you watched it? 🙂', 'Push it?**'),
+    ).toEqual(['question', 'question', 'question']);
+    expect(endings('…then run: ```bash git merge origin/master ```', 'Wynik: ```json {"ok":true} ```')).toEqual([
+      'command',
+      undefined,
+    ]);
+    expect(
+      endings(
+        '…Rośnie o 2 GB dziennie. Mogę sprawdzić, co tak szybko rośnie.',
+        'It is on the branch. If you want me to build this, tell me in the thread.',
+      ),
+    ).toEqual(['offer', 'offer']);
+    expect(
+      endings(
+        'Gotowe, ale `send_message` zniknęło z tej sesji, więc raport zostaje tutaj.',
+        'Done. The tool I report back with is no longer available in this session.',
+        'Nie mogę wysłać tego podsumowania do wątku projektu.',
+        "I couldn't send this report back to the project thread. Should I retry?",
+      ),
+    ).toEqual(['unreported', 'unreported', 'unreported', 'unreported']);
+    expect(endings('Wszystkie zadania zakończone, raport dotarł do koordynatora.', '')).toEqual([undefined, undefined]);
+    expect(replyEnding(undefined)).toBeUndefined();
   });
 
   it('reads Claude Code transcripts', async () => {

@@ -116,6 +116,8 @@ function sessionOf(thread: unknown, now: number): SessionInfo | undefined {
     ...(text(thread.model) ? { model: text(thread.model)! } : {}),
     ...(text(thread.path) ? { path: text(thread.path)! } : {}),
     ...(status.type === 'active' ? { turnInProgress: true as const } : {}),
+    // `codex exec`: a headless run nobody typed into.
+    ...(thread.source === 'exec' ? { automated: true as const } : {}),
     ...state,
   };
 }
