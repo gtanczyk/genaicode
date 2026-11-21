@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -50,6 +51,11 @@ describe('project files shown in the page', () => {
     writeFileSync(join(cwd, 'long'), 'x'.repeat(MAX_FILE_VIEW_BYTES + 5));
     const files = createProjectFiles(cwd);
     expect(files.read('dir')).toBe('missing');
+    if (process.platform !== 'win32') {
+      // A pipe nobody writes to: reading it must not wait.
+      execFileSync('mkfifo', [join(cwd, 'pipe')]);
+      expect(files.read('pipe')).toBe('missing');
+    }
     expect(files.read('bin')).toBe('binary');
     const long = files.read('long');
     expect(long).toMatchObject({ size: MAX_FILE_VIEW_BYTES + 5, truncated: true });

@@ -1,4 +1,4 @@
-import { closeSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /** A project file as the page shows it. */
@@ -44,12 +44,15 @@ export function createProjectFiles(cwd: string): ProjectFiles {
       if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return 'outside';
       let descriptor: number;
       try {
-        descriptor = openSync(real, 'r');
+        // A pipe would hold the open (and the whole server) until someone writes to it.
+        if (!statSync(real).isFile()) return 'missing';
+        descriptor = openSync(real, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
       } catch {
         return 'missing';
       }
       try {
-        const stat = statSync(real);
+        // Asked of what was opened: the path can be something else by now.
+        const stat = fstatSync(descriptor);
         if (!stat.isFile()) return 'missing';
         const body = Buffer.alloc(Math.min(stat.size, MAX_FILE_VIEW_BYTES));
         const read = readSync(descriptor, body, 0, body.length, 0);
