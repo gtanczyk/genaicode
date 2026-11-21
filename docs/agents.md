@@ -235,6 +235,7 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 | `steer`    | More input for a running task, where the member has `steer()`                                   |
 | `stop`     | Stops a running task                                                                            |
 | `diff`     | A worktree task's changes as a unified diff                                                     |
+| `review`   | A read-only second opinion on the full patch, attached to the worker's task                     |
 | `merge`    | Applies a finished task's changes to the lead's directory (`threeWay` for conflict markers)     |
 | `discard`  | Drops a finished task's changes                                                                 |
 
@@ -258,6 +259,20 @@ In a live chat, `turn.pack.tasks` holds the delegated work under its original tu
 The same method accepts `merge`, `discard`, `stop` and `{ type: 'steer', text }`.
 Each run also exposes these controls as `run.pack`. A chat can still review and merge
 finished tasks after a later turn starts. Adopted transcripts are read-only.
+
+Use `{ type: 'review' }` to get a fresh review from the first eligible installed agent,
+starting with the lead and excluding the worker. The pack passes the complete patch as text
+to `CodingAgent.runText`. Claude Code implements this with tools, MCP, hooks and project
+context disabled. A custom driver can supply the same capability. Other drivers remain
+eligible to do the work. `{ type: 'verify' }` runs the pack's configured
+`verification: { label, run(cwd, signal, snapshotRoot) }` in a private checkout of the
+recorded Git tree. The pack removes the checkout after the callback finishes. An
+embedding application supplies the isolation for its own verifier. The callback returns
+`{ ok, detail }`. Both results appear in `task.checks`. Each result records its
+Git tree in `revision`. Compare it with `checks.revision` to spot an outdated result.
+Pass the revision displayed to the operator in `{ type: 'merge', revision }` so a
+concurrent edit leaves the worktree open for inspection. Set `operatorMerge: true` to
+have the lead leave completed changes for the operator by default.
 
 ## Sessions across agents
 

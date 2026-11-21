@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 interface GitResult {
   code: number;
-  stdout: string;
+  stdout: Buffer;
   stderr: string;
 }
 
@@ -14,7 +14,7 @@ const MAX_OUTPUT = 64 * 1024 * 1024;
 function git(
   cwd: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv; input?: string } = {},
+  options: { env?: NodeJS.ProcessEnv; input?: Buffer } = {},
 ): Promise<GitResult> {
   return new Promise((resolve) => {
     const child = spawn('git', args, { cwd, env: options.env ?? process.env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -27,11 +27,11 @@ function git(
       else out.push(chunk);
     });
     child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
-    child.once('error', (error) => resolve({ code: 1, stdout: '', stderr: error.message }));
+    child.once('error', (error) => resolve({ code: 1, stdout: Buffer.alloc(0), stderr: error.message }));
     child.once('close', (code) =>
       resolve({
         code: size > MAX_OUTPUT ? 1 : (code ?? 1),
-        stdout: Buffer.concat(out).toString('utf8'),
+        stdout: Buffer.concat(out),
         stderr: size > MAX_OUTPUT ? 'git output too large' : Buffer.concat(err).toString('utf8'),
       }),
     );
@@ -40,31 +40,69 @@ function git(
   });
 }
 
-async function must(
-  cwd: string,
-  args: string[],
-  options?: { env?: NodeJS.ProcessEnv; input?: string },
-): Promise<string> {
+async function mustBytes(cwd: string, args: string[], options?: { env?: NodeJS.ProcessEnv }): Promise<Buffer> {
   const result = await git(cwd, args, options);
   if (result.code !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
   return result.stdout;
 }
 
+async function must(cwd: string, args: string[], options?: { env?: NodeJS.ProcessEnv }): Promise<string> {
+  return (await mustBytes(cwd, args, options)).toString('utf8');
+}
+
 /** The top of the git worktree `cwd` is in, or null outside a repository. */
 export async function repoRoot(cwd: string): Promise<string | null> {
   const result = await git(cwd, ['rev-parse', '--show-toplevel']);
-  return result.code === 0 ? result.stdout.trim() : null;
+  return result.code === 0 ? result.stdout.toString('utf8').trim() : null;
 }
 
 /** Everything in `dir` (tracked, changed and untracked, minus ignored) as a git tree. Stages nothing. */
-async function snapshotTree(dir: string): Promise<string> {
+export async function snapshotTree(dir: string): Promise<string> {
   const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, 'index') };
   try {
     const head = await git(dir, ['rev-parse', '--verify', '-q', 'HEAD']);
-    if (head.code === 0) await must(dir, ['read-tree', head.stdout.trim()], { env });
+    if (head.code === 0) await must(dir, ['read-tree', head.stdout.toString().trim()], { env });
     await must(dir, ['add', '-A'], { env });
     return (await must(dir, ['write-tree'], { env })).trim();
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** Check out the recorded objects into an empty directory, without the worker's ignored files, Git config or hooks. */
+export async function withSnapshot<T>(repo: string, tree: string, inspect: (dir: string) => Promise<T>): Promise<T> {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-checkout-'));
+  const directory = path.join(scratch, 'project');
+  const metadata = path.join(scratch, 'git');
+  try {
+    mkdirSync(directory);
+    const objects = (await must(repo, ['rev-parse', '--path-format=absolute', '--git-path', 'objects'])).trim();
+    const env = {
+      PATH: process.env.PATH,
+      SystemRoot: process.env.SystemRoot,
+      HOME: scratch,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: path.join(scratch, 'empty.config'),
+      GIT_ATTR_NOSYSTEM: '1',
+      GIT_NO_REPLACE_OBJECTS: '1',
+    };
+    await must(
+      scratch,
+      [
+        'init',
+        '--quiet',
+        '--bare',
+        '--template=',
+        '--object-format=' + (tree.length === 64 ? 'sha256' : 'sha1'),
+        metadata,
+      ],
+      { env },
+    );
+    await must(scratch, ['--git-dir', metadata, '--work-tree', directory, 'read-tree', '--reset', '-u', tree], {
+      env: { ...env, GIT_OBJECT_DIRECTORY: objects },
+    });
+    return await inspect(realpathSync(directory));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -84,7 +122,7 @@ const IDENTITY = {
 export async function addWorktree(repo: string, dir: string): Promise<string> {
   const tree = await snapshotTree(repo);
   const head = await git(repo, ['rev-parse', '--verify', '-q', 'HEAD']);
-  const parent = head.code === 0 ? ['-p', head.stdout.trim()] : [];
+  const parent = head.code === 0 ? ['-p', head.stdout.toString().trim()] : [];
   const commit = (
     await must(repo, ['commit-tree', tree, ...parent, '-m', 'genaicode pack: start of a delegated task'], {
       env: { ...process.env, ...IDENTITY },
@@ -106,15 +144,23 @@ export async function removeWorktree(repo: string, dir: string): Promise<void> {
 }
 
 /** Files the worktree changed since `start`, as `git diff --name-status` lines. */
-export async function worktreeChanges(dir: string, start: string): Promise<string[]> {
-  const tree = await snapshotTree(dir);
+export async function worktreeChanges(dir: string, start: string, tree?: string): Promise<string[]> {
+  tree ??= await snapshotTree(dir);
   return (await must(dir, ['diff', '--name-status', '--no-renames', start, tree])).split('\n').filter(Boolean);
 }
 
 /** The worktree's changes since `start` as a patch `git apply` takes. */
-export async function worktreeDiff(dir: string, start: string): Promise<string> {
-  const tree = await snapshotTree(dir);
-  return must(dir, ['diff', '--binary', '--no-renames', start, tree]);
+export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
+  return mustBytes(dir, [
+    'diff',
+    '--binary',
+    '--no-renames',
+    '--no-textconv',
+    '--no-ext-diff',
+    '--no-color',
+    start,
+    tree,
+  ]);
 }
 
 /**
@@ -123,7 +169,7 @@ export async function worktreeDiff(dir: string, start: string): Promise<string> 
  */
 export async function applyPatch(
   repo: string,
-  patch: string,
+  patch: Buffer,
   threeWay = false,
 ): Promise<{ ok: true } | { ok: false; error: string; conflicts: boolean }> {
   const base = ['apply', '--whitespace=nowarn'];

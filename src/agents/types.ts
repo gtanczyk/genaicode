@@ -292,4 +292,9 @@ export interface CodingAgent {
    */
   readonly sessions?: SessionSource | null;
   run(task: AgentTask): AgentRun;
+  /**
+   * Answer using only the supplied text. Drivers offering this mode disable all agent tools,
+   * MCP servers, hooks and automatic project context. Pack reviews require this entry point.
+   */
+  runText?(task: Pick<AgentTask, 'prompt' | 'cwd' | 'budget' | 'signal' | 'env'>): AgentRun;
 }

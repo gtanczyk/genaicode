@@ -136,7 +136,16 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const { type, text: input } = action as Record<string, unknown>;
       if (type === 'steer' && typeof input === 'string' && input.trim() && input.length <= 32_000)
         return { type: 'pack-task', turnId, id, action: { type, text: input } };
-      if (type === 'stop' || type === 'diff' || type === 'merge' || type === 'discard')
+      if (type === 'merge' || type === 'diff') {
+        const { revision } = action as Record<string, unknown>;
+        if (
+          revision !== undefined &&
+          (typeof revision !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(revision))
+        )
+          return undefined;
+        return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) } };
+      }
+      if (type === 'stop' || type === 'discard' || type === 'review' || type === 'verify')
         return { type: 'pack-task', turnId, id, action: { type } };
       return undefined;
     }

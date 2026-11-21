@@ -33,6 +33,12 @@ async function run() {
     }
   };
   take();
+  if (process.argv.includes('--tools')) {
+    const result = JSON.stringify({ args: process.argv.slice(2), heard, user: process.env.USER, ambient: process.env.GENAICODE_TEST_HOST_MARKER });
+    out({ type: 'result', subtype: 'success', is_error: false, result });
+    busy = false;
+    return;
+  }
   out({ type: 'assistant', session_id: 's-1', message: { content: [{ type: 'tool_use', id: 't' + turn, name: 'Bash', input: {} }] } });
   await new Promise((resolve) => setTimeout(resolve, Number(process.env.FAKE_TOOL_MS ?? 200)));
   out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't' + turn, content: 'ok' }] } });
@@ -65,6 +71,37 @@ async function runWith(env: Record<string, string>, onToolStart: (run: AgentRun)
 }
 
 describe('claude() steering', () => {
+  it('sends a text-only review on stdin without tools, hooks, MCP, inherited settings or ambient variables', async () => {
+    const agent = claude({ command: bin, steer: false, allowedTools: ['Read'], settings: { disableAllHooks: false } });
+    const prompt = 'Review this entire change.\n' + 'x'.repeat(140_000);
+    const run = agent.runText!({
+      cwd: dir,
+      prompt,
+      budget: { maxCostUsd: 0.25 },
+      env: { ...process.env, USER: 'reviewer-fixture', GENAICODE_TEST_HOST_MARKER: 'fixture' },
+    });
+    const result = await run.result;
+    expect(result.ok).toBe(true);
+    const { args, heard, user, ambient } = JSON.parse(result.text!);
+    expect(heard).toEqual([prompt]);
+    expect(user).toBe('reviewer-fixture');
+    expect(ambient).toBeUndefined();
+    expect(args).not.toContain(prompt);
+    expect(args).not.toContain('--allowedTools');
+    expect(args.slice(args.indexOf('--tools'), args.indexOf('--tools') + 2)).toEqual(['--tools', '']);
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--strict-mcp-config',
+        '--safe-mode',
+        '--restricted',
+        '--disable-slash-commands',
+        '--no-session-persistence',
+      ]),
+    );
+    expect(JSON.parse(args[args.indexOf('--settings') + 1])).toEqual({ disableAllHooks: true });
+    expect(args[args.indexOf('--max-budget-usd') + 1]).toBe('0.25');
+  });
+
   it('writes the prompt as stream-json and declares steering', () => {
     expect(claude().capabilities.steer).toBe(true);
     expect(claude({ steer: false }).capabilities.steer).toBeUndefined();

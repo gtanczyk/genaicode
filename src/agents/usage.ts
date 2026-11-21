@@ -1,4 +1,5 @@
 // No Node imports: the browser bundle (genaicode/react) reaches this through failover.ts.
+import type { AgentBudget } from './types.js';
 import type { TokenUsage } from '../core/types.js';
 
 /** Tokens a usage report counts: `totalTokens`, else input + output. */
@@ -23,4 +24,26 @@ export function addUsage(total: TokenUsage, usage: TokenUsage): TokenUsage {
   if (cachedInputTokens !== undefined) next.cachedInputTokens = cachedInputTokens;
   if (totalTokens !== undefined) next.totalTokens = totalTokens;
   return next;
+}
+
+/** What a session budget leaves for the next turn, or why nothing is left. */
+export function remainingBudget(
+  budget: AgentBudget | undefined,
+  usage: TokenUsage,
+  costUsd: number | undefined,
+): { budget?: AgentBudget; spent?: string } | undefined {
+  if (!budget || (budget.maxTokens === undefined && budget.maxCostUsd === undefined)) return undefined;
+  const tokens = tokenCount(usage);
+  if (budget.maxTokens !== undefined && tokens >= budget.maxTokens)
+    return { spent: `The session used its token budget (${tokens} of ${budget.maxTokens}).` };
+  if (budget.maxCostUsd !== undefined && (costUsd ?? 0) >= budget.maxCostUsd)
+    return { spent: `The session used its cost budget ($${(costUsd ?? 0).toFixed(4)} of $${budget.maxCostUsd}).` };
+  return {
+    budget: {
+      ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens - tokens } : {}),
+      ...(budget.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd - (costUsd ?? 0) } : {}),
+      // Warnings belong to the whole session (`budgetStatus`), not to what one turn has left.
+      warnAt: Infinity,
+    },
+  };
 }

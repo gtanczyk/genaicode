@@ -69,6 +69,7 @@ export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
 export { pack, PackActionError } from './agents/pack.js';
+export type { PackCheckContext, PackCheckResult, PackTaskChecks, PackVerification } from './agents/pack-checks.js';
 export type {
   Pack,
   PackAction,

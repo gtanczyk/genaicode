@@ -53,5 +53,9 @@ await build({
 // genaicode/react ships its stylesheet next to the compiled component.
 cpSync('src/react/agent-chat.css', 'dist/react/agent-chat.css');
 
+// The CLI starts this executable with the sandbox arguments as individual values.
+cpSync('src/cli/limit-test.sh', 'dist/cli/limit-test.sh');
+cpSync('src/cli/mac-fork.cjs', 'dist/cli/mac-fork.cjs');
+
 // The wolf mascot and its bark, from genaicode 1.0's UI.
 cpSync('src/ui/web/assets', 'dist/ui/assets', { recursive: true });

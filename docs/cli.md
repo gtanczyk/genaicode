@@ -264,6 +264,39 @@ worktree's diff, merge the changes into the lead's directory, or discard the wor
 Merging leaves the files available for review and commit. Unmerged worktrees stay on disk
 when you exit. The task controls belong to the chat process that started them.
 
+Chat packs leave completed changes on the task card by default. Choose **Request review**
+to send the full diff to another agent with its tools disabled. The lead reviews when eligible.
+Claude Code supports this mode. For example, Claude can review a Codex worker in `--pack claude:codex`.
+**Run tests** runs the displayed command in a private copy of the worker's directory. A project with an npm
+test script gets a test button automatically. Choose a different check at startup, for
+example `genaicode ui --pack --verify "python -m pytest"`. Tests run when you request them.
+
+The CLI checks out the recorded Git tree, excluding the worker's ignored files. It runs
+tests under Seatbelt on macOS or `/usr/bin/bwrap` (bubblewrap) on Linux, with a temporary
+home and writable space for test output and bundler caches. Installed dependencies are read-only,
+and npm workspace links point to the checked-out packages. Network access is disabled. A missing or disabled
+sandbox reports a failed check. The built-in test runner is unavailable on Windows.
+
+Each pack runs one test command at a time under an unprivileged account, for up to five
+minutes and 180 CPU seconds per process. On Linux, a systemd user manager (254 or newer)
+and cgroup v2 enforce 2 GiB of memory across the whole check, zero swap and 64 tasks,
+including threads. The runner checks the kernel's limits before executing the command.
+On macOS, it monitors total resident memory and process count, stopping the group above
+2 GiB or 64 processes. macOS also applies a system memory limit of 1.5 GiB per process.
+
+Each check has a disposable 1 GiB filesystem for the workspace and temporary files. Linux
+mounts the installed dependencies read-only and allows another 16 MiB of shared memory.
+On macOS, the workspace and its copied dependencies share a private sparse disk image. Each
+newly written file is limited to 128 MiB.
+
+On macOS, test helpers stay in one process group and exit with the command. Node's child
+process APIs use `fork` and `exec`. Native tools that require Darwin's `posix_spawn` system
+call receive a permission error. Linux runs the command in its own PID namespace.
+
+Read **Review notes** and **Test output** beside **Merge locally**. A further edit marks
+earlier results **Outdated**. Run the checks again, or inspect the changed diff and decide
+whether to merge it. In the terminal use `r` for review, `v` for tests and `c` to read the results.
+
 Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`

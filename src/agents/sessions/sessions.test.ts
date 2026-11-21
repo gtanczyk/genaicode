@@ -292,6 +292,17 @@ describe('session sources', () => {
     ).toEqual(['unreported', 'unreported', 'unreported', 'unreported']);
     expect(endings('Wszystkie zadania zakończone, raport dotarł do koordynatora.', '')).toEqual([undefined, undefined]);
     expect(replyEnding(undefined)).toBeUndefined();
+    expect(endings('Should I proceed? \u26A0\uFE0F', '   \t  🙂  ', 'Let me know. Done.', 'Let me know!')).toEqual([
+      'question',
+      undefined,
+      undefined,
+      'offer',
+    ]);
+    // Linear time on pathological inputs that would backtrack on `+$` / `[^.?!]*$` regexes.
+    const started = performance.now();
+    expect(replyEnding(`${'\t'.repeat(100_000)}x`)).toBeUndefined();
+    expect(replyEnding(`${'mogę '.repeat(50_000)}a?b`)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it('reads Claude Code transcripts', async () => {

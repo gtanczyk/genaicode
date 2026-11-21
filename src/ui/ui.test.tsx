@@ -509,6 +509,7 @@ describe('terminal UI', () => {
       cwd: '/w',
       status: 'completed',
       state: 'unmerged',
+      checks: { reviewer: 'lead', command: 'npm test' },
     }));
     const actions: string[] = [];
     const agent: CodingAgent = {
@@ -524,6 +525,15 @@ describe('terminal UI', () => {
             task: (id) => tasks.find((item) => item.id === id),
             async act(id, action) {
               actions.push(`${id} ${action.type}`);
+              if (action.type === 'review' || action.type === 'verify') {
+                const checks = tasks.find((item) => item.id === id)!.checks!;
+                checks.revision = 'abc';
+                checks[action.type] = {
+                  revision: 'abc',
+                  status: 'completed',
+                  detail: action.type === 'review' ? 'No findings.' : '2 tests passed',
+                };
+              }
               if (action.type === 'discard') tasks.find((item) => item.id === id)!.state = 'discarded';
               return action.type === 'diff' ? '+test change' : 'Discarded';
             },
@@ -551,10 +561,15 @@ describe('terminal UI', () => {
       await press('\x1b[B', 't2 · worker · Ready to merge');
       await press('d', '+test change');
       await press('\x1b', 'd diff · m merge locally');
+      await press('r', 'Reviewed');
+      await press('v', 'Passed');
+      await press('c', '2 tests passed');
+      expect(app.lastFrame()).toContain('No findings.');
+      await press('\x1b', 'd diff · m merge locally');
       await press('x', 'Discard this worktree');
-      expect(actions).toEqual(['t2 diff']);
+      expect(actions).toEqual(['t2 diff', 't2 review', 't2 verify']);
       await press('x', 't2 · worker · Discarded');
-      expect(actions).toEqual(['t2 diff', 't2 discard']);
+      expect(actions).toEqual(['t2 diff', 't2 review', 't2 verify', 't2 discard']);
       expect(chat.get().session.turns[0].pack?.tasks.map((item) => item.state)).toEqual(['unmerged', 'discarded']);
       await press('\t', 'Ask the agent');
     } finally {
@@ -707,9 +722,15 @@ describe('terminal UI', () => {
 describe('web UI server', () => {
   it('accepts only typed pack actions with a task and an owning turn', () => {
     const base = { type: 'pack-task', turnId: 1, id: 't1' };
-    for (const action of [{ type: 'steer', text: 'check empty input' }, { type: 'diff' }])
+    for (const action of [
+      { type: 'steer', text: 'check empty input' },
+      { type: 'diff' },
+      { type: 'review' },
+      { type: 'verify' },
+      { type: 'merge', revision: 'e'.repeat(40) },
+    ])
       expect(parseCommand({ ...base, action })).toEqual({ ...base, action });
-    for (const action of [{ type: 'delegate' }, { type: 'steer', text: '  ' }, 'merge'])
+    for (const action of [{ type: 'delegate' }, { type: 'steer', text: '  ' }, { type: 'merge', revision: 2 }, 'merge'])
       expect(parseCommand({ ...base, action })).toBeUndefined();
     expect(parseCommand({ ...base, turnId: 0, action: { type: 'discard' } })).toBeUndefined();
   });
