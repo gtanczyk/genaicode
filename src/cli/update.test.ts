@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { main, type CliEnvironment } from './main.js';
 import {
@@ -22,6 +22,7 @@ import {
   compareVersions,
   findInstall,
   installCommand,
+  shadowingCommand,
   readState,
   registerRun,
   writeState,
@@ -421,5 +422,19 @@ describe('genaicode install', () => {
     };
     await expect(installCommand(deps, {})).rejects.toThrow('E404');
     expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual([]);
+  });
+
+  it("finds a genaicode that comes before the shim on PATH, but not npx's own", () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const global = join(base, 'global', 'bin');
+    const npx = join(base, '.npm', '_npx', 'abc', 'node_modules', '.bin');
+    const bin = join(base, '.local', 'bin');
+    for (const dir of [global, npx, bin]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'genaicode'), '');
+    }
+    expect(shadowingCommand({ PATH: [npx, global, bin].join(delimiter) }, bin)).toBe(join(global, 'genaicode'));
+    expect(shadowingCommand({ PATH: [npx, bin, global].join(delimiter) }, bin)).toBeUndefined();
   });
 });

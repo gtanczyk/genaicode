@@ -275,6 +275,26 @@ export async function installCommand(
   });
 }
 
+/**
+ * The `genaicode` that runs instead of the shim: the first one on PATH before `binDir`.
+ * npx's own `.bin` directories are skipped, since they only exist while npx runs.
+ */
+export function shadowingCommand(env: NodeJS.ProcessEnv, binDir: string): string | undefined {
+  for (const entry of (env.PATH ?? '').split(delimiter)) {
+    if (!entry) continue;
+    const dir = resolve(entry);
+    if (dir === resolve(binDir)) return undefined;
+    if (/[\\/](_npx|node_modules[\\/]\.bin)([\\/]|$)/.test(dir)) continue;
+    const candidate = join(dir, 'genaicode');
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // not here
+    }
+  }
+  return undefined;
+}
+
 export type UpdateOutcome =
   | { kind: 'current'; version: string }
   | { kind: 'available'; from: string; to: string }

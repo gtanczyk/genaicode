@@ -65,6 +65,7 @@ import {
   defaultUpdateDeps,
   findInstall,
   installCommand,
+  shadowingCommand,
   registerRun,
   selfInstall,
   setAutoUpdate,
@@ -480,7 +481,15 @@ async function runInstall(
 ): Promise<number> {
   try {
     cli.stderr.write('Installing genaicode with npm (no install scripts)...\n');
-    reportInstall(cli, await installCommand(deps, options));
+    const result = await installCommand(deps, options);
+    reportInstall(cli, result);
+    const shadow = shadowingCommand(cli.env, dirname(result.shim));
+    if (shadow) {
+      cli.stdout.write(
+        `Note: "genaicode" on your PATH is ${shadow}, which comes before ${dirname(result.shim)}.\n` +
+          'Remove it ("npm uninstall -g genaicode") or put that directory first on PATH.\n',
+      );
+    }
     cli.stdout.write(
       'Run "genaicode" to start. It checks for updates once a day; "genaicode update --auto off" turns that off.\n',
     );
