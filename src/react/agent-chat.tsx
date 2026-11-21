@@ -128,6 +128,11 @@ export interface AgentChatProps {
    * through `onSend`.
    */
   completions?: readonly ChatCompletion[];
+  /**
+   * Host controls inside the composer, in the row under the text, before Send: what the next
+   * prompt runs with (agent, model, mode). With them the text takes a row of its own.
+   */
+  composerExtras?: ReactNode;
   /** Line under the composer. Default: the keys. Pass null for none. */
   hint?: ReactNode;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
@@ -186,11 +191,18 @@ export function AgentChat(props: AgentChatProps) {
     event.preventDefault();
     attached.add(event.clipboardData.files);
   };
+  // Anywhere on the chat: a file dropped beside the box would otherwise replace the page.
   const onDrop = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!attached.enabled || !event.dataTransfer.files.length) return;
     event.preventDefault();
     attached.add(event.dataTransfer.files);
   };
+  const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (attached.enabled && event.dataTransfer.types.includes('Files')) event.preventDefault();
+  };
+  const extras = props.composerExtras;
+  const hasExtras = extras !== undefined && extras !== null && extras !== false;
+  const stacked = attached.enabled || hasExtras;
   // Commands whose name the message starts, while it is one word and not yet one of them.
   const [picked, setPicked] = useState(0);
   const [closedAt, setClosedAt] = useState<string>();
@@ -301,7 +313,14 @@ export function AgentChat(props: AgentChatProps) {
   const footer = props.renderFooter?.();
 
   return (
-    <div className={rootClass} data-theme={theme} data-status={state.status} style={props.style}>
+    <div
+      className={rootClass}
+      data-theme={theme}
+      data-status={state.status}
+      style={props.style}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+    >
       {props.header !== undefined ? (
         props.header
       ) : (
@@ -364,9 +383,11 @@ export function AgentChat(props: AgentChatProps) {
                   complete(one);
                 }}
               >
-                <b>{one.name}</b>
-                {one.args ? <code>{one.args}</code> : null}
-                {one.help ? <span>{one.help}</span> : null}
+                <span className="gc-completion-name">
+                  <b>{one.name}</b>
+                  {one.args ? <code>{one.args}</code> : null}
+                </span>
+                {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
               </li>
             ))}
           </ul>
@@ -377,13 +398,7 @@ export function AgentChat(props: AgentChatProps) {
             {attached.problem}
           </div>
         ) : null}
-        <div
-          className={attached.enabled ? 'gc-box gc-stacked' : 'gc-box'}
-          onDrop={onDrop}
-          onDragOver={(event) => {
-            if (attached.enabled) event.preventDefault();
-          }}
-        >
+        <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
           <textarea
             ref={input}
             rows={1}
@@ -458,9 +473,10 @@ export function AgentChat(props: AgentChatProps) {
                   </svg>
                 </button>
               ) : null}
-              <span className="gc-grow" />
             </>
           ) : null}
+          {stacked ? <span className="gc-grow" /> : null}
+          {hasExtras ? extras : null}
           {(running || props.canStop) && props.onStop ? (
             <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
               Stop

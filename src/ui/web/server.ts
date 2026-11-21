@@ -12,6 +12,8 @@ import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import { pageHtml } from './page.js';
+import { parseShell, parseSlash, withAttached } from '../format.js';
+import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 
 export interface WebUiOptions {
   controller: ChatController;
@@ -57,6 +59,11 @@ export interface WebUiOptions {
   answer?: (id: string, decision: AskDecision) => Promise<boolean>;
   /** Archives sessions (`archived` false: brings them back), at POST /api/archive. */
   archive?: (sessions: Array<{ source: string; id: string }>, archived: boolean) => Promise<number>;
+  /**
+   * Where files the user attaches are kept (`createUploads`), at POST /api/upload: a prompt sent
+   * with their ids names their paths to the agent. Without it the page takes text only.
+   */
+  uploads?: Uploads;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
 }
@@ -87,7 +94,8 @@ export interface WebUi {
 
 /** What the browser can ask for. Anything else is rejected with 400. */
 export type WebCommand =
-  | { type: 'submit'; text: string }
+  /** `files`: ids of uploads (POST /api/upload) that go with the prompt. */
+  | { type: 'submit'; text: string; files?: string[] }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
   | { type: 'tower'; id: string; decision: TowerDecision }
@@ -98,6 +106,8 @@ export type WebCommand =
   | { type: 'model'; model: string };
 
 const MAX_BODY = 64 * 1024;
+/** Most files on one prompt. */
+export const MAX_FILES = 8;
 /** Cap on port-scoped cookies left on the host so repeated random-port runs do not bloat Cookie headers. */
 const MAX_PORT_COOKIES = 8;
 
@@ -131,7 +141,13 @@ export function parseCommand(value: unknown): WebCommand | undefined {
   switch (command.type) {
     case 'submit': {
       const body = text('text', 32_000);
-      return body === undefined ? undefined : { type: 'submit', text: body };
+      if (body === undefined) return undefined;
+      const { files } = command;
+      if (files === undefined) return { type: 'submit', text: body };
+      if (!Array.isArray(files) || files.length > MAX_FILES || !files.every((id) => typeof id === 'string')) {
+        return undefined;
+      }
+      return { type: 'submit', text: body, files: files as string[] };
     }
     case 'stop':
       return { type: 'stop' };
@@ -306,6 +322,37 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       res.writeHead(response.status, response.headers);
       return res.end(response.body);
     }
+    if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
+      // No token, as for artifacts: the id is unguessable and shows that one image only.
+      const found = options.uploads?.image(url.pathname.slice('/uploads/'.length));
+      if (!found) return send(res, 404, 'text/plain', 'Not found');
+      res.writeHead(200, {
+        'content-type': found.type,
+        'content-length': found.body.length,
+        'cache-control': 'private, max-age=86400',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "sandbox; default-src 'none'",
+      });
+      return res.end(found.body);
+    }
+    if (req.method === 'POST' && url.pathname === '/api/upload') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.uploads) return send(res, 404, 'application/json', '{"error":"no uploads"}');
+      const name = (url.searchParams.get('name') ?? '').slice(0, 200) || 'file';
+      let body: Buffer;
+      try {
+        body = await readBytes(req, MAX_UPLOAD_BYTES);
+      } catch {
+        controller.note(`Not attached: ${name} is over ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`, 'error');
+        // The rest of the body is not read.
+        res.setHeader('connection', 'close');
+        return send(res, 413, 'application/json', '{"error":"too large"}');
+      }
+      const kept = options.uploads.save(name, body);
+      return send(res, 200, 'application/json', JSON.stringify({ id: kept.id, name: kept.name, size: kept.size }));
+    }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];
       const candidate =
@@ -319,7 +366,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         connection: 'keep-alive',
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
-      res.write(`event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions })}\n\n`);
+      res.write(
+        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions, uploads: !!options.uploads })}\n\n`,
+      );
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
@@ -483,7 +532,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }
       }
-      const ok = await run(controller, command);
+      let files: Upload[] = [];
+      if (command.type === 'submit' && command.files?.length) {
+        const found = command.files.map((id) => options.uploads?.find(id));
+        if (found.some((one) => !one)) return send(res, 400, 'application/json', '{"error":"unknown file"}');
+        files = found as Upload[];
+      }
+      const ok = await run(controller, command, files);
       return send(res, 200, 'application/json', JSON.stringify({ ok }));
     }
     send(res, 404, 'text/plain', 'Not found');
@@ -517,13 +572,27 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
 }
 
-async function run(controller: ChatController, command: Exclude<WebCommand, { type: 'pack-task' }>): Promise<boolean> {
+async function run(
+  controller: ChatController,
+  command: Exclude<WebCommand, { type: 'pack-task' }>,
+  files: readonly Upload[] = [],
+): Promise<boolean> {
   switch (command.type) {
-    case 'submit':
-      if (controller.submit(command.text, 'web') === 'quit') {
+    case 'submit': {
+      // A command is the host's, not the agent's: nothing there would read the files.
+      const own = parseShell(command.text) !== undefined || parseSlash(command.text) !== undefined;
+      if (own && files.length) controller.note('Files go with a prompt, not with a command: they were not sent.');
+      const text = own
+        ? command.text
+        : withAttached(
+            command.text,
+            files.map((file) => file.path),
+          );
+      if (controller.submit(text, 'web') === 'quit') {
         controller.note('The browser UI keeps running until you stop genaicode in the terminal (Ctrl-C).');
       }
       return true;
+    }
     case 'stop':
       controller.stop();
       return true;
@@ -542,12 +611,17 @@ async function run(controller: ChatController, command: Exclude<WebCommand, { ty
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
+  return (await readBytes(req, MAX_BODY)).toString('utf8');
+}
+
+async function readBytes(req: IncomingMessage, max: number): Promise<Buffer> {
+  if (Number(req.headers['content-length'] ?? 0) > max) throw new Error('Request too large');
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new Error('Request too large');
+    if (size > max) throw new Error('Request too large');
     chunks.push(chunk as Buffer);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
 }

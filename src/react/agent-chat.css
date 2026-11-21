@@ -638,7 +638,9 @@ img.gc-artifact-view {
   list-style: none;
   margin: 0 auto 8px;
   padding: 4px;
-  max-height: 220px;
+  /* Whole rows: seven of them, then it scrolls. */
+  max-height: calc(7 * 2.2em + 10px);
+  box-sizing: border-box;
   overflow: auto;
   background: var(--_bg);
   border: 1px solid var(--_border);
@@ -646,27 +648,45 @@ img.gc-artifact-view {
   font-size: 0.9em;
 }
 .gc-completions li {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 4px 8px;
+  display: grid;
+  grid-template-columns: 15em 1fr;
+  gap: 12px;
+  align-items: center;
+  height: 2.2em;
+  box-sizing: border-box;
+  padding: 0 10px;
   border-radius: 6px;
   cursor: pointer;
 }
 .gc-completions li[aria-selected='true'] {
   background: color-mix(in srgb, var(--_accent) 18%, transparent);
 }
-.gc-completions code {
+.gc-completion-name {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+}
+.gc-completion-name code {
   color: var(--_muted);
   font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.gc-completions span {
+.gc-completion-help {
   color: var(--_muted);
-  margin-left: auto;
-  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .gc-completions li {
+    grid-template-columns: 1fr;
+  }
+  .gc-completion-help {
+    display: none;
+  }
 }
 .gc-queued {
   display: flex;

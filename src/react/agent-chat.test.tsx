@@ -285,6 +285,15 @@ describe('AgentChat', () => {
     expect(props.onSend).toHaveBeenLastCalledWith('again');
   });
 
+  it('puts the host controls in the composer, under the text', () => {
+    render({ state: fixture({ status: 'idle', queued: [] }), composerExtras: <select aria-label="Agent" /> });
+    const box = $('.gc-box');
+    expect(box.classList.contains('gc-stacked')).toBe(true);
+    const order = Array.from(box.children).map((child) => child.tagName);
+    expect(order.indexOf('TEXTAREA')).toBeLessThan(order.indexOf('SELECT'));
+    expect(order.indexOf('SELECT')).toBeLessThan(order.lastIndexOf('BUTTON'));
+  });
+
   it('offers the host commands while the message starts one, and completes the chosen one', () => {
     const completions = [
       { name: '/model', args: '[id]', help: 'set the model' },

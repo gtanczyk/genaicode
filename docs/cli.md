@@ -323,11 +323,11 @@ Each prompt after the first continues the agent's own session (`AgentTask.resume
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`
 denies and `a` approves everything from then on (`/auto`, **Auto-approve all** on the request, or the
-Auto-approve chip in the browser; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
+the mode button in the browser's prompt box; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
 model and session; `/fallback codex,gemini` picks the agents to switch to when the current one
-runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. `/agent codex` hands the
+runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. In the browser the agent, the model, the approval mode and the plan's limits sit in the prompt box, and files can be attached, pasted (a copied screenshot) or dropped on the chat: they are kept in `.genaicode/uploads/` in the project (git-ignored, 20 MB each, 8 per prompt) and the agent gets their paths. `/agent codex` hands the
 conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
 switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
 context).

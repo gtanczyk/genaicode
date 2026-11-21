@@ -57,10 +57,19 @@ header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; 
 button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
-.field { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-.field select, .field input { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 13px; }
-.field input { width: 240px; }
-.cwd { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+.run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.run-with .chip { margin-right: 6px; }
+.gc-box .run-with :is(select, input, button) { background: transparent; border: 0; border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 32px; }
+.run-with select, .run-with button { cursor: pointer; }
+.gc-box .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
+.run-with input { max-width: 22em; text-overflow: ellipsis; }
+.run-with input::placeholder { color: var(--faint); }
+.run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
+.run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sent-files:first-child { margin-top: 0; }
+.sent-files img { max-width: 160px; max-height: 120px; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .spacer { flex: 1; }
 .chip { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .chip[data-level='warning'] { color: #e8590c; border-color: currentColor; }
@@ -147,6 +156,5 @@ button.chip:hover { border-color: var(--accent); }
   .session-row .act { grid-column: 2 / -1; flex-wrap: wrap; }
   header.bar { padding: 8px 16px; gap: 8px; }
   .cwd { display: none; }
-  .field input { width: 120px; }
 }
 `;
