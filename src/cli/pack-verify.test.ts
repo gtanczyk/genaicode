@@ -73,6 +73,11 @@ it('checks a private workspace using the worker’s linked packages and read-onl
       "const assert = require('node:assert/strict');",
       "const { execFileSync } = require('node:child_process');",
       "assert.ok(Number(execFileSync('/bin/bash', ['-c', 'ulimit -t'])) <= 180);",
+      "if (process.platform === 'darwin') {",
+      // A plain child without the Node compatibility preload must see the kernel's spawn restriction.
+      `  const probe = "const r = require('node:child_process').spawnSync('/usr/bin/true'); console.log(r.error?.code);";`,
+      "  assert.equal(execFileSync(process.execPath, ['-e', probe], { env: {}, encoding: 'utf8' }).trim(), 'EPERM');",
+      '}',
       'assert.equal(process.env.GENAICODE_TEST_HOST_MARKER, undefined);',
       "assert.equal(require('@fixture/a'), 'worker');",
       "assert.equal(require('external'), 'worker');",

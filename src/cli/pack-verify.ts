@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { access, lstat, mkdtemp, open, readdir, readlink, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { repoRoot } from '../agents/pack-git.js';
 import { runPackCheck, type CheckResult } from './check-process.js';
 
@@ -13,6 +14,8 @@ const macProfile = [
   '(deny default)',
   '(import "dyld-support.sb")',
   '(allow syscall* mach-bootstrap)',
+  // Keep every descendant in the check's OS process group. Darwin's spawn API can also set a new group.
+  '(deny syscall-unix (syscall-number SYS_setsid SYS_setpgid SYS_posix_spawn) (with errno EPERM))',
   '(allow process-fork process-exec)',
   '(allow signal (target same-sandbox))',
   '(allow sysctl-read (sysctl-name-prefix "hw.") (sysctl-name "kern.hostname" "kern.osrelease" "kern.ostype" "kern.osrevision" "kern.osversion" "kern.osproductversion" "kern.version" "kern.argmax" "kern.usrstack64"))',
@@ -20,6 +23,7 @@ const macProfile = [
   '(allow file-map-executable (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (literal (param "NODE")) (subpath (param "WORK")) (subpath (param "SCRATCH")))',
   '(allow file-read* (subpath "/System/Library") (subpath "/bin") (subpath "/sbin") (subpath "/usr/bin") (subpath "/usr/lib") (subpath "/usr/libexec") (subpath "/usr/share") (subpath "/Library/Developer/CommandLineTools") (subpath "/private/var/db/dyld") (literal "/dev/urandom") (literal "/dev/random"))',
   '(allow file-read* (literal (param "NODE")) (subpath (param "NPM")))',
+  '(allow file-read* (literal (param "NODE_FORK")))',
   '(allow file-read* (literal "/private/etc/hosts"))',
   '(allow file-read* file-write* (subpath (param "WORK")) (subpath (param "SCRATCH")) (literal "/dev/null"))',
 ].join('\n');
@@ -83,7 +87,14 @@ export async function worktreeCheck(
     const dependencies = await dependencyDirectories(project, nested, root);
     const env = { PATH: [dirname(node), '/usr/bin', '/bin'].join(':'), HOME: scratch, TMPDIR: scratch, LANG: 'C' };
     if (platform === 'darwin') {
-      const params: Record<string, string> = { SCRATCH: scratch, NODE: node, NPM: npmRoot ?? scratch, WORK: root };
+      const nodeFork = await realpath(fileURLToPath(new URL('./mac-fork.cjs', import.meta.url)));
+      const params: Record<string, string> = {
+        SCRATCH: scratch,
+        NODE: node,
+        NODE_FORK: nodeFork,
+        NPM: npmRoot ?? scratch,
+        WORK: root,
+      };
       let prepareProfile = macProfile;
       let testProfile = macProfile;
       const copies: string[] = [];
@@ -118,7 +129,13 @@ export async function worktreeCheck(
         );
         if (prepared.exitCode !== 0) return prepared;
       }
-      return await runPackCheck(runner, [...args, '-p', testProfile, '/bin/sh', '-c', command], work, env, signal);
+      return await runPackCheck(
+        runner,
+        [...args, '-p', testProfile, '/bin/sh', '-c', command],
+        work,
+        { ...env, NODE_OPTIONS: '--require ' + JSON.stringify(nodeFork) },
+        signal,
+      );
     }
     // Bind only the disposable checkout and mount dependencies read-only inside it.
     const directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);

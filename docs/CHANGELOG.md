@@ -8,12 +8,15 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
+
 ## 2.45.0 — 2026-11-21
 
 ### Added
 
 - `genaicode topics refresh` puts the sessions Claude Code ran for a claude.ai project (`SessionInfo.project`, read from the session) in a topic named as that project, without asking an agent (`projectTopics()`); `--again` sorts everything anew (#244)
-- Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
 
 ### Fixed
 

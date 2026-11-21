@@ -61,12 +61,14 @@ export function runCheckProcess(
     };
     child.stdout!.on('data', collect);
     child.stderr!.on('data', collect);
+    // Reap the group even if a helper still holds the command's output pipe open.
+    if (limits) child.once('exit', () => stop('SIGKILL'));
     child.on('error', (error) => done({ exitCode: null, output: `${output}\n${error.message}`.trim() }));
     child.on('close', async (code) => {
       signal?.removeEventListener('abort', abort);
       clearTimeout(escalation);
       // A runner may ignore SIGTERM and close its output before its shell exits.
-      if (signal?.aborted || limits) stop('SIGKILL');
+      if (signal?.aborted && !limits) stop('SIGKILL');
       await finish();
       done({
         exitCode: signal?.aborted || limitReason ? null : code,

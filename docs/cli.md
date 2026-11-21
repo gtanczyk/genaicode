@@ -279,6 +279,10 @@ Each pack runs one test command at a time under an unprivileged account. The com
 five minutes, 180 CPU seconds per process, up to 64 processes and 2 GiB of total resident
 memory. A resource limit ends the check and its output appears on the task card.
 
+On macOS, test helpers stay in one process group and exit with the command. Node's child
+process APIs use `fork` and `exec`. Native tools that require Darwin's `posix_spawn` system
+call receive a permission error. Linux runs the command in its own PID namespace.
+
 Read **Review notes** and **Test output** beside **Merge locally**. A further edit marks
 earlier results **Outdated**. Run the checks again, or inspect the changed diff and decide
 whether to merge it. In the terminal use `r` for review, `v` for tests and `c` to read the results.
