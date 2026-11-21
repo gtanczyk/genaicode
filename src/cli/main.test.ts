@@ -796,6 +796,137 @@ describe('genaicode sessions --waiting', () => {
     ]);
   });
 
+  it('topics has an agent sort the unsorted sessions, keeps the answer, and lets you correct it', async () => {
+    expect(parseCli(['topics'])).toEqual({ kind: 'topics', action: 'show', json: false });
+    expect(parseCli(['topics', 'show', 'pack', '--since', '7d'])).toMatchObject({
+      topic: 'pack',
+      sinceMs: 7 * 86_400_000,
+    });
+    expect(parseCli(['topics', 'rename', 't1', 'Pack', 'mode'])).toMatchObject({ topic: 't1', name: 'Pack mode' });
+    expect(parseCli(['topics', 'move', 'a', 'b', '--out'])).toEqual({
+      kind: 'topics',
+      action: 'move',
+      ids: ['a', 'b'],
+    });
+    for (const bad of [
+      ['topics', 'show'],
+      ['topics', 'refresh', '--json'],
+      ['topics', 'rename', 't1'],
+      ['topics', 'merge', 't1'],
+      ['topics', 'move', 'a'],
+      ['topics', 'move', 'a', '--to', 't1', '--out'],
+      ['topics', 'drop', 't1'],
+    ]) {
+      expect(() => parseCli(bad)).toThrow(UsageError);
+    }
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-topics-'));
+    dirs.push(home);
+    const now = Date.now();
+    const listed = [
+      {
+        id: 'one',
+        updatedAt: now - 60_000,
+        title: 'Pack mode: split work',
+        state: 'waiting' as const,
+        lastReply: 'Push it?',
+      },
+      { id: 'two', updatedAt: now - 3_600_000, firstPrompt: 'tray icon for the mac app' },
+      { id: 'three', updatedAt: now - 7_200_000, title: 'Pack worktrees' },
+      { id: 'old', updatedAt: now - 90 * 86_400_000, title: 'Long ago' },
+    ].map((one) => ({ source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app', ...one }));
+    const reply = (text: string) => ({ events: [], result: { ...completed, text, sessionId: 'sorting' } });
+    const agent = {
+      ...fakeAgent('alpha', [
+        reply('{"topics":[{"name":"Pack mode","sessions":[1,3]},{"name":"Desktop app","sessions":[2]}]}'),
+        reply('nothing useful'),
+      ]),
+      sessions: {
+        name: 'alpha',
+        where: 'local' as const,
+        list: async (query?: { since?: number }) =>
+          listed.filter((one) => query?.since === undefined || one.updatedAt >= query.since),
+      },
+    };
+    const run = async (...argv: string[]) => {
+      const { cli, out, err } = environment({
+        argv: ['topics', ...argv],
+        env: { HOME: home, PATH: '' },
+        agents: [agent],
+      });
+      return { code: await main(cli), out: out(), err: err() };
+    };
+    expect((await run()).out).toBe(
+      'No topics yet. "genaicode topics refresh" has an agent sort the 3 sessions of the last 30d.\n',
+    );
+    const first = await run('refresh', '-a', 'alpha', '-m', 'small');
+    expect(first).toMatchObject({
+      code: EXIT_OK,
+      out: 'Sorted 3 sessions into 2 topics. See them with "genaicode topics".\n',
+    });
+    expect(agent.tasks[0]).toMatchObject({ model: 'small' });
+    expect(agent.tasks[0]!.cwd).not.toBe('/work');
+    expect(JSON.parse(readFileSync(join(home, '.genaicode', 'topics.json'), 'utf8'))).toMatchObject({
+      runs: ['alpha:sorting'],
+    });
+    expect(agent.tasks[0]!.prompt).toContain('1  alpha  work/app  Pack mode: split work');
+    expect(agent.tasks[0]!.prompt).not.toContain('Long ago');
+    expect((await run('refresh', '-a', 'alpha')).out).toBe('Every session of the last 30d has a topic.\n');
+    expect(agent.tasks).toHaveLength(1);
+
+    const shown = (await run()).out.split('\n');
+    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 ask you\s+work\/app$/);
+    expect(shown[1]).toMatch(/^ {2}Desktop app\s+t2\s+alpha 1\s+1h ago\s+work\/app$/);
+    expect((await run('show', 'pack')).out).toMatch(
+      /^Pack mode \(t1\): 2 sessions in the last 30d\n● alpha .* one\n {2}alpha .* three\n$/,
+    );
+
+    // A session of before joins on a wider look; an answer that cannot be read keeps nothing.
+    const failed = await run('refresh', '-a', 'alpha', '--since', '26w');
+    expect(failed.code).toBe(EXIT_FAILED);
+    expect(failed.err).toContain('gave no topics that could be read');
+
+    // A topic made while the agent was sorting keeps its id; the agent's new one gets another.
+    const slow = {
+      ...agent,
+      run(): AgentRun {
+        const result = (async () => {
+          await run('move', 'two', '--to', 'Made meanwhile');
+          return { ...completed, text: '{"topics":[{"name":"Archive","sessions":[1]}]}' };
+        })();
+        return { result, abort() {}, async *[Symbol.asyncIterator]() {} };
+      },
+    };
+    const late = environment({
+      argv: ['topics', 'refresh', '-a', 'alpha', '--since', '26w'],
+      env: { HOME: home, PATH: '' },
+      agents: [slow],
+    });
+    expect(await main(late.cli)).toBe(EXIT_OK);
+    const kept = JSON.parse(readFileSync(join(home, '.genaicode', 'topics.json'), 'utf8')) as {
+      topics: Array<{ id: string; name: string }>;
+      sessions: Record<string, string>;
+    };
+    expect(kept.topics.slice(2)).toEqual([
+      { id: 't3', name: 'Made meanwhile' },
+      { id: 't4', name: 'Archive' },
+    ]);
+    expect(kept.sessions).toMatchObject({ 'alpha:two': 't3', 'alpha:old': 't4' });
+    await run('move', 'two', '--to', 't2');
+    await run('move', 'old', '--out');
+
+    expect((await run('rename', 't2', 'Mac', 'app')).out).toBe('t2 is now "Mac app".\n');
+    expect((await run('move', 'three', '--to', 'Worktrees')).out).toBe('1 session now in "Worktrees".\n');
+    expect((await run('merge', 'worktrees', 'mac')).out).toBe('"Worktrees" is now part of "Mac app".\n');
+    expect((await run('move', 'two', '--out')).out).toBe('1 session out of any topic.\n');
+    expect((await run('merge', 'nope', 't1')).code).toBe(EXIT_FAILED);
+    const json = JSON.parse((await run('--json')).out) as { topics: Array<Record<string, unknown>>; unsorted: number };
+    expect(json.unsorted).toBe(1);
+    expect(json.topics).toMatchObject([
+      { id: 't1', name: 'Pack mode', asking: 1, sessions: [{ source: 'alpha', id: 'one' }] },
+      { id: 't2', name: 'Mac app', asking: 0, sessions: [{ id: 'three' }] },
+    ]);
+  });
+
   it('--watch prints the waiting sessions again when they change, until its stdin closes', async () => {
     expect(parseCli(['sessions', '-w', '--json', '--watch', '--exit-with-stdin'])).toMatchObject({
       kind: 'sessions',

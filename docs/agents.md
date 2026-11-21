@@ -340,6 +340,34 @@ Claude Code (every prompt has `origin.kind` other than `human`, or the session o
 scheduled task nobody answered) and `codex exec` runs. They carry `automated: true`;
 `sessions --automated`, or `{ automated: true }` in the query, lists them too.
 
+**Topics.** Sessions can be kept as pieces of work that cross agents and directories
+([`genaicode topics`](cli.md#your-work-as-topics-topics)). An agent of your choice does the
+sorting; genaicode writes the prompt, reads the answer and keeps the result:
+
+```ts
+import {
+  listSessions,
+  readTopics,
+  sortedTopics,
+  summarizeTopics,
+  topicsPrompt,
+  unsortedSessions,
+  writeTopics,
+} from 'genaicode/agents';
+
+const { sessions } = await listSessions(sources, { since: Date.now() - 30 * 86_400_000 });
+const store = await readTopics();
+const todo = unsortedSessions(sessions, store).slice(0, 120);
+const { text } = await agent.run({ prompt: topicsPrompt(todo, store), cwd: emptyDir }).result;
+const sorted = sortedTopics(text ?? '', todo, store); // { store, placed }
+await writeTopics(sorted.store);
+const { topics, unsorted } = summarizeTopics(sessions, sorted.store); // asking first, then the latest
+```
+
+The prompt holds one line per session (agent, last two directory names, title or first and last
+prompt), quoted as data. `renameTopic()`, `mergeTopics()` and `moveSessions()` correct a store; a
+session that has a topic is never moved by a later answer.
+
 For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
 200 characters of each matching command. Genaicode keeps a digest in its private hook record
 and reads the text on demand from the agent's own local session journal. A session with a

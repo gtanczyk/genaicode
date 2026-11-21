@@ -150,6 +150,34 @@ No agent is asked for it, so looking costs nothing. The readings come from three
 A window that has reset since it was read is left out: what is used of it now is not known until
 the agent says so again. `--json` prints `{"limits":[{"agent","window","status","usedPercent","resetsAt","at"}]}`.
 
+### Your work as topics: `topics`
+
+A project directory is not a piece of work: one holds many, and one piece of work is often done
+with several agents and from several directories. `npx genaicode topics` shows the sessions of all
+agents as topics, what asks for you first:
+
+```
+● Pack mode       t1    claude 9, codex 3  12m ago  1 ask you  src/genaicode
+▶ Desktop app     t2    claude 6           1h ago   1 working  src/genaicode, src/site
+  YouTube pins    t3    codex 2            2d ago   src/site
+14 sessions not sorted yet: "genaicode topics refresh" sorts them.
+```
+
+What belongs together is a matter of what was said, so an agent decides it, and only when you ask:
+`npx genaicode topics refresh` gives an agent one line per session no topic has yet (agent,
+directory, title or first and last prompt; nothing else of the conversation) and keeps its answer
+in `~/.genaicode/topics.json`. The next refresh sorts only the new sessions into the topics there
+are. `-a` picks the agent and `-m` the model (Claude Code sorts with `haiku` unless told
+otherwise); `--since` looks further back than the 30 days it and `topics` cover by default.
+
+The result is yours to correct, and corrections stay: `topics rename <topic> <name>`,
+`topics merge <topic> <into>`, `topics move <session id...> --to <topic or new name>` (`--out`
+takes sessions out, to be sorted again). A topic is named by its id, its name, or a part of the
+name only one has. `topics show <topic>` lists its sessions with their ids, and `--json` prints
+`{"topics":[{"id","name","agents","projects","updatedAt","asking","active","sessions":[...]}],"unsorted":n}`.
+A sorting run's own session is left out of every listing, like other
+[sessions nobody typed into](agents.md#sessions-across-agents).
+
 `npx genaicode sessions archive --stale` puts away every session left waiting or half way for 2
 days or more (`sessions archive <id>` for one, `unarchive` to bring it back, `--archived` to list
 them); the agents' files stay as they are (see
