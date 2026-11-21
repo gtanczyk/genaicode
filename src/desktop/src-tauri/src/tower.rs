@@ -27,16 +27,51 @@ pub struct Waiting {
     pub asks: Vec<Ask>,
 }
 
-#[derive(Deserialize)]
-struct Snapshot {
-    sessions: Vec<Waiting>,
+/// How much of one window of an agent's plan is used, as genaicode last saw it.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Limit {
+    pub agent: String,
+    pub window: String,
+    pub status: String,
+    pub used_percent: Option<f64>,
+    pub name: Option<String>,
 }
 
-/// One line of the watch: `{"sessions":[...]}`. Anything else is not a snapshot.
-pub fn parse_snapshot(line: &str) -> Option<Vec<Waiting>> {
-    serde_json::from_str::<Snapshot>(line)
-        .ok()
-        .map(|snapshot| snapshot.sessions)
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct Snapshot {
+    pub sessions: Vec<Waiting>,
+    #[serde(default)]
+    pub limits: Vec<Limit>,
+}
+
+/// One line of the watch: `{"sessions":[...],"limits":[...]}`. Anything else is not a snapshot.
+pub fn parse_snapshot(line: &str) -> Option<Snapshot> {
+    serde_json::from_str::<Snapshot>(line).ok()
+}
+
+/// One line per agent, in the plan's own measure: `claude: 5h 62% · 7d 41%`.
+pub fn quota(limits: &[Limit]) -> Vec<String> {
+    let mut lines: Vec<(&str, Vec<String>)> = Vec::new();
+    for limit in limits {
+        let window = match &limit.name {
+            Some(name) => format!("{name} {}", limit.window),
+            None => limit.window.clone(),
+        };
+        let used = match limit.used_percent {
+            Some(percent) => format!("{window} {}%", percent.round()),
+            None if limit.status == "exceeded" => format!("{window} used up"),
+            None => format!("{window} {}", limit.status),
+        };
+        match lines.last_mut() {
+            Some((agent, windows)) if *agent == limit.agent => windows.push(used),
+            _ => lines.push((&limit.agent, vec![used])),
+        }
+    }
+    lines
+        .into_iter()
+        .map(|(agent, windows)| format!("{agent}: {}", windows.join(" · ")))
+        .collect()
 }
 
 /// A line of the menu. `session` is the index in the snapshot the menu was built from.
@@ -143,7 +178,9 @@ mod tests {
     #[test]
     fn reads_a_snapshot_and_ignores_other_lines() {
         let line = r#"{"sessions":[{"id":"a","agent":"claude","cwd":"/work/app","lastReply":"Done.\nPush it?","state":"waiting","updatedAt":1},{"id":"b","agent":"claude","cwd":"/work/api/","waitingFor":"approval","waitingTool":"Bash","asks":[{"id":"0123","tool":"Bash","preview":"npm run deploy","at":2}]}]}"#;
-        let sessions = parse_snapshot(line).expect("a snapshot");
+        let snapshot = parse_snapshot(line).expect("a snapshot");
+        assert!(snapshot.limits.is_empty());
+        let sessions = snapshot.sessions;
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].last_reply.as_deref(), Some("Done.\nPush it?"));
         assert_eq!(sessions[1].asks[0].id, "0123");
@@ -203,6 +240,20 @@ mod tests {
         assert_eq!(label.chars().count(), LABEL);
         assert!(label.ends_with('…'));
         assert_eq!(count(&sessions).as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn shows_the_quota_of_each_agent_on_one_line() {
+        let line = r#"{"sessions":[],"limits":[{"agent":"claude","window":"5h","status":"ok","usedPercent":61.6,"resetsAt":9,"at":1},{"agent":"claude","window":"7d","status":"warning","usedPercent":85,"at":1},{"agent":"codex","window":"5h","status":"exceeded","at":1},{"agent":"codex","window":"7d","status":"ok","name":"spark","usedPercent":3,"at":1}]}"#;
+        let snapshot = parse_snapshot(line).expect("a snapshot");
+        assert_eq!(
+            quota(&snapshot.limits),
+            vec![
+                "claude: 5h 62% · 7d 85%".to_string(),
+                "codex: 5h used up · spark 7d 3%".to_string()
+            ]
+        );
+        assert!(quota(&[]).is_empty());
     }
 
     #[test]

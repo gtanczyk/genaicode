@@ -316,9 +316,21 @@ fn show(app: &AppHandle) {
 }
 
 /// The menu bar's menu: what waits, then the app's own items.
-fn tower_menu(app: &AppHandle, sessions: &[tower::Waiting]) -> tauri::Result<Menu<Wry>> {
+fn tower_menu(
+    app: &AppHandle,
+    sessions: &[tower::Waiting],
+    limits: &[tower::Limit],
+) -> tauri::Result<Menu<Wry>> {
     let none = None::<&str>;
     let menu = Menu::new(app)?;
+    // The quota comes first: it decides which agent gets the next task.
+    let quota = tower::quota(limits);
+    for line in &quota {
+        menu.append(&MenuItem::new(app, line, false, none)?)?;
+    }
+    if !quota.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
     for entry in tower::entries(sessions) {
         match entry {
             tower::Entry::Note(text) => menu.append(&MenuItem::new(app, text, false, none)?)?,
@@ -367,16 +379,16 @@ fn tower_menu(app: &AppHandle, sessions: &[tower::Waiting]) -> tauri::Result<Men
 }
 
 /// A new snapshot from the watch: remember it and show it in the menu bar.
-fn show_waiting(app: &AppHandle, sessions: Vec<tower::Waiting>) {
+fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let state = handle.state::<ShellState>();
         let Ok(mut shell) = state.lock() else { return };
-        shell.waiting = sessions;
+        shell.waiting = snapshot.sessions;
         let Some(tray) = handle.tray_by_id(TRAY) else {
             return;
         };
-        if let Ok(menu) = tower_menu(&handle, &shell.waiting) {
+        if let Ok(menu) = tower_menu(&handle, &shell.waiting, &snapshot.limits) {
             let _ = tray.set_menu(Some(menu));
         }
         let count = tower::count(&shell.waiting);
@@ -429,8 +441,8 @@ fn watch(app: &AppHandle) {
         };
         if let Some(stdout) = stdout {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(sessions) = tower::parse_snapshot(&line) {
-                    show_waiting(&app, sessions);
+                if let Some(snapshot) = tower::parse_snapshot(&line) {
+                    show_waiting(&app, snapshot);
                 }
             }
         }
@@ -573,7 +585,7 @@ pub fn run() {
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
             let mut tray = TrayIconBuilder::with_id(TRAY)
                 .tooltip("genaicode")
-                .menu(&tower_menu(handle, &[])?)
+                .menu(&tower_menu(handle, &[], &[])?)
                 .show_menu_on_left_click(true);
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());

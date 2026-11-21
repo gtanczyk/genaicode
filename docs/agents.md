@@ -356,6 +356,11 @@ The command in the settings is the `genaicode` that installed it (`node` and the
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
 global install), and run `hooks install` again after moving it.
 
+For Claude Code, `hooks install` also sets `statusLine` in the same settings to `genaicode limits
+record`, which keeps the plan limits Claude Code reports for [`genaicode limits`](cli.md#how-much-of-your-plans-is-used-limits)
+and prints them as the line. A status line you set yourself is never replaced; `hooksStatus()`
+says which it is (`statusLine: 'genaicode' | 'other' | 'none'`).
+
 ### Sending a turn to a session
 
 `sendSession()` accepts a user's message for the local session's own driver. It checks the
@@ -714,19 +719,19 @@ Artifacts are agent-written content, so they are handled as untrusted:
 
 ## Drivers
 
-| Driver                | Command        | Mode                                     | Notes                                                                                     |
-| --------------------- | -------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `claude(options?)`    | `claude`       | `-p --output-format stream-json`         | `permissionMode` defaults to `acceptEdits`; `allowedTools` / `disallowedTools`; approvals |
-| `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`              |
-| `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                    |
-| `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)     |
-| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`, approvals. See [Live sessions](#live-sessions-steering-and-approvals)          |
-| `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`     |
-| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`        |
-| `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto`    |
-| `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns         |
-| `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`            |
-| `antigravity(opts?)`  | `agy`          | `acp` (JSON-RPC)                         | `steer()`, approvals, MCP, resume; `mode` defaults to `accept-edits`; `--sandbox`         |
+| Driver                | Command        | Mode                                     | Notes                                                                                                           |
+| --------------------- | -------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `claude(options?)`    | `claude`       | `-p --output-format stream-json`         | inherits user `permissions.defaultMode` (fallback `acceptEdits`); `allowedTools` / `disallowedTools`; approvals |
+| `codex(options?)`     | `codex`        | `exec --json`                            | `sandbox` defaults to `workspace-write`; effort via `model_reasoning_effort`                                    |
+| `muse(options?)`      | `muse`         | `exec --json --trust-workspace`          | `maxTurns` maps to `--max-model-steps`                                                                          |
+| `codexLive(options?)` | `codex`        | `app-server` (JSON-RPC)                  | `steer()`, approvals, MCP. See [Live sessions](#live-sessions-steering-and-approvals)                           |
+| `museLive(options?)`  | `muse`         | `serve` (JSON-RPC)                       | `steer()`, approvals. See [Live sessions](#live-sessions-steering-and-approvals)                                |
+| `gemini(options?)`    | `gemini`       | `--output-format stream-json --prompt=…` | `approvalMode` defaults to `auto_edit`; `--skip-trust` unless `trustWorkspace: false`                           |
+| `cursor(options?)`    | `cursor-agent` | `-p --output-format stream-json`         | `--force --approve-mcps` by default (`--trust` if `force: false`); `partialOutput`                              |
+| `opencode(options?)`  | `opencode`     | `run --format json`                      | `model` is `provider/model`; `effort` maps to `--variant`; `autoApprove` adds `--auto`                          |
+| `copilot(options?)`   | `copilot`      | `--output-format json --prompt=…`        | `--allow-all-tools --no-ask-user` by default; `allowTools` / `denyTools` patterns                               |
+| `vibe(options?)`      | `vibe`         | `--output streaming --prompt=…`          | `agent` defaults to `accept-edits`; `--trust`; `model` via `VIBE_ACTIVE_MODEL`                                  |
+| `antigravity(opts?)`  | `agy`          | `acp` (JSON-RPC)                         | `steer()`, approvals, MCP, resume; `mode` defaults to `accept-edits`; `--sandbox`                               |
 
 Every driver accepts `command` to point at a specific executable. `task.extraArgs` is
 inserted before the prompt for flags that have no portable field.
@@ -795,8 +800,8 @@ Per agent:
 - `claude()`: with `onApproval`, the driver serves Claude Code's `--permission-prompt-tool`
   from a private MCP endpoint on 127.0.0.1 (random port, random bearer token), next to the
   task's own `mcpServers`, and raises `MCP_TOOL_TIMEOUT` to a day unless `env` sets it. The
-  permission mode still applies first (`acceptEdits` by default): only what it does not allow
-  is asked. Approving allows exactly the input Claude asked about (`updatedInput` unchanged).
+  permission mode still applies first (the user's `permissions.defaultMode` when set, else
+  `acceptEdits`): only what it does not allow is asked. Approving allows exactly the input Claude asked about (`updatedInput` unchanged).
 - `codexLive()`: runs with approval policy `on-request` when `onApproval` is set (`never`
   otherwise). Commands and file changes are answered `accept` / `decline`. A permission
   profile request (`item/permissions/requestApproval`) is asked with `scope: 'turn'`; approving

@@ -795,6 +795,41 @@ describe('genaicode sessions --waiting', () => {
     expect((await run('-w', '--since', '1m')).out).toBe('Nothing waits for you in the last 1m.\n');
   });
 
+  it('limits shows what the agents last said of their plans, and keeps a status line input', async () => {
+    expect(parseCli(['limits'])).toEqual({ kind: 'limits', action: 'show', json: false });
+    expect(() => parseCli(['limits', 'record', '--json'])).toThrow(UsageError);
+    expect(() => parseCli(['limits', 'reset'])).toThrow(UsageError);
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-limits-'));
+    dirs.push(home);
+    const env = { HOME: home, PATH: '' };
+    const run = async (argv: string[], stdin?: string) => {
+      const { cli, out } = environment({ argv, env });
+      expect(await main({ ...cli, readStdin: async () => stdin })).toBe(0);
+      return out();
+    };
+    expect(await run(['limits'])).toContain('No limits known yet');
+    expect(await run(['limits', 'record'], 'not json')).toBe('');
+    const resets = Math.round(Date.now() / 1000) + 2 * 3600;
+    const line = await run(
+      ['limits', 'record'],
+      JSON.stringify({
+        rate_limits: {
+          five_hour: { used_percentage: 61.6, resets_at: resets },
+          seven_day: { used_percentage: 85, resets_at: resets + 86_400 },
+        },
+      }),
+    );
+    expect(line).toBe('5h 62% · 7d 85%\n');
+    const shown = await run(['limits']);
+    expect(shown).toMatch(/^claude\s+5h\s+62% used\s+resets in 2 h\s+\(read just now\)$/m);
+    expect(shown).toMatch(/^\s+7d\s+85% used\s+resets in 26 h\s/m);
+    const { limits } = JSON.parse(await run(['limits', '--json'])) as { limits: Record<string, unknown>[] };
+    expect(limits).toMatchObject([
+      { agent: 'claude', window: '5h', status: 'ok', usedPercent: 61.6, resetsAt: resets * 1000 },
+      { agent: 'claude', window: '7d', status: 'warning', usedPercent: 85 },
+    ]);
+  });
+
   it('--watch prints the waiting sessions again when they change, until its stdin closes', async () => {
     expect(parseCli(['sessions', '-w', '--json', '--watch', '--exit-with-stdin'])).toMatchObject({
       kind: 'sessions',
