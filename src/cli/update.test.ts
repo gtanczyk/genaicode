@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -74,7 +75,7 @@ const CHANGELOG = `# Changelog
 
 /** An install as scripts/install.sh leaves it, running `version`. */
 function installed(version = '2.35.0') {
-  const base = mkdtempSync(join(tmpdir(), 'genaicode-update-'));
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-update-')));
   dirs.push(base);
   const home = join(base, '.genaicode');
   const root = writePackage(join(home, 'versions', version), version);
@@ -390,7 +391,7 @@ describe('genaicode install', () => {
     dirs.push(base);
     const { deps, npm } = npxDeps(base);
     const result = await installCommand(deps, {});
-    const home = join(base, '.genaicode');
+    const home = realpathSync(join(base, '.genaicode'));
     expect(npm).toEqual(['genaicode@2.36.0']);
     expect(result).toMatchObject({ home, version: '2.36.0', shim: join(base, '.local', 'bin', 'genaicode') });
     expect(readlinkSync(join(home, 'current'))).toBe(join('versions', '2.36.0'));

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
-import { PackActionError, type PackAction } from '../../agents/pack.js';
+import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
@@ -374,12 +374,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
         } catch (error) {
-          if (error instanceof PackActionError)
+          const refusal = publicPackRefusal(error);
+          if (refusal)
             return send(
               res,
-              error.reason === 'missing' ? 404 : 409,
+              refusal.reason === 'missing' ? 404 : 409,
               'application/json',
-              JSON.stringify({ ok: false, error: error.publicMessage }),
+              JSON.stringify({ ok: false, error: refusal.message }),
             );
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }

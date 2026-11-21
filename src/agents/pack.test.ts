@@ -1,5 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -167,6 +176,41 @@ describe('pack', () => {
     expect(events).toContainEqual({ type: 'file-change', paths: ['b.txt'] });
     expect(events.at(-1)).toMatchObject({ type: 'done' });
     expect(team.tasks().map((task) => task.state)).toEqual(['merged', 'discarded']);
+  });
+
+  it('delegates from a linked subdirectory and reports merged files relative to the lead', async () => {
+    const project = repo();
+    const nested = join(project, 'nested');
+    mkdirSync(nested);
+    writeFileSync(join(nested, 'fixture.txt'), 'original');
+    const link = join(root, 'linked-subdirectory');
+    symlinkSync(nested, link, 'junction');
+    const member = fake('b', async (task) => {
+      expect(readFileSync(join(task.cwd, 'fixture.txt'), 'utf8')).toBe('original');
+      writeFileSync(join(task.cwd, 'fixture.txt'), 'changed');
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'b', prompt: 'edit the fixture' });
+        await tool(task, 'wait');
+        expect(readFileSync(join(link, 'fixture.txt'), 'utf8')).toBe('original');
+        await tool(task, 'merge', { id: 't1' });
+      },
+      { mcp: true },
+    );
+
+    const team = pack({ lead, members: [member] });
+    try {
+      const run = team.run({ prompt: 'go', cwd: link });
+      const events = await collect(run);
+      expect(await run.result).toMatchObject({ ok: true });
+      expect(team.tasks()[0]).toMatchObject({ status: 'completed', state: 'merged' });
+      expect(events).toContainEqual({ type: 'file-change', paths: ['fixture.txt'] });
+      expect(readFileSync(join(nested, 'fixture.txt'), 'utf8')).toBe('changed');
+    } finally {
+      await team.close();
+    }
   });
 
   it('refuses a merge that does not apply, and merges three-way on request', async () => {

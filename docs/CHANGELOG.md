@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - `npx genaicode install`: installs the `genaicode` command that updates itself, the same as the shell installer, with `--version`, `--bin-dir` and `--force` (#225)
 
+### Fixed
+
+- Pack tasks work in projects opened through a symlink, and the browser explains merge conflicts when running the installed CLI (#228)
+
 ## 2.41.1 — 2026-11-21
 
 ### Fixed
