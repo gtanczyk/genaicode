@@ -73,6 +73,11 @@ it('checks a private workspace using the worker’s linked packages and read-onl
       "const assert = require('node:assert/strict');",
       "const { execFileSync } = require('node:child_process');",
       "assert.ok(Number(execFileSync('/bin/bash', ['-c', 'ulimit -t'])) <= 180);",
+      "const fileLimit = Number(execFileSync('/bin/bash', ['-c', 'ulimit -H -f']));",
+      'assert.ok(fileLimit > 0 && fileLimit <= 131072);',
+      'for (const dir of [process.cwd(), process.env.TMPDIR]) {',
+      '  const volume = fs.statfsSync(dir); assert.ok(volume.blocks > 0 && volume.blocks * volume.bsize <= 1024 ** 3);',
+      '}',
       "if (process.platform === 'darwin') {",
       // A plain child without the Node compatibility preload must see the kernel's spawn restriction.
       `  const probe = "const r = require('node:child_process').spawnSync('/usr/bin/true'); console.log(r.error?.code);";`,
@@ -109,9 +114,10 @@ it('checks a private workspace using the worker’s linked packages and read-onl
       ),
     );
     if (
-      process.getuid?.() !== 0 &&
-      (process.platform === 'darwin' ||
-        (process.platform === 'linux' && existsSync('/usr/bin/bwrap') && !result.output.startsWith('bwrap:')))
+      process.env.GENAICODE_TEST_REQUIRE_BWRAP === '1' ||
+      (process.getuid?.() !== 0 &&
+        (process.platform === 'darwin' ||
+          (process.platform === 'linux' && existsSync('/usr/bin/bwrap') && !result.output.startsWith('bwrap:'))))
     ) {
       expect(result, result.output).toMatchObject({ exitCode: 0 });
       expect(result.output).toContain('isolated fixture passed');
@@ -127,4 +133,4 @@ it('checks a private workspace using the worker’s linked packages and read-onl
     vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
   }
-});
+}, 45_000);

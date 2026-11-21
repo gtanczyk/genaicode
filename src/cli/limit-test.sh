@@ -13,6 +13,7 @@ cap() {
 }
 
 cap -t 180
+cap -f 131072
 cap -u "$1"
 if [[ "$2" != 0 ]]; then
   cap -d "$2"

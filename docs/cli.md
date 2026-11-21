@@ -279,6 +279,11 @@ Each pack runs one test command at a time under an unprivileged account. The com
 five minutes, 180 CPU seconds per process, up to 64 processes and 2 GiB of total resident
 memory. A resource limit ends the check and its output appears on the task card.
 
+Each check has a disposable 1 GiB filesystem for the workspace and temporary files. Linux
+mounts the installed dependencies read-only and allows another 16 MiB of shared memory.
+On macOS, the workspace and its copied dependencies share a private sparse disk image. Each
+newly written file is limited to 128 MiB.
+
 On macOS, test helpers stay in one process group and exit with the command. Node's child
 process APIs use `fork` and `exec`. Native tools that require Darwin's `posix_spawn` system
 call receive a permission error. Linux runs the command in its own PID namespace.
