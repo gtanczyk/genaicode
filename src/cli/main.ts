@@ -262,8 +262,8 @@ Limits:
   each window (5h, 7d...) and when it resets, with the age of the reading. Nothing is asked of
   the agents for it: genaicode keeps what they report when they run through it, reads what Codex
   notes in its own sessions, and what Claude Code gives its status line. For that last one, set
-  "statusLine": {"type": "command", "command": "genaicode limits record"} in
-  ~/.claude/settings.json; it prints the limits as the line.
+  "genaicode hooks install" makes "genaicode limits record" Claude Code's status line, unless you
+  have one of your own: then have yours pass its input on to that command.
 
 Notify options:
       --done              With "on": also when a session finishes its turn
@@ -948,6 +948,13 @@ async function manageHooks(
         if (answer) cli.stdout.write('  Questions can also be answered with "genaicode sessions approve|deny".\n');
         else if (command.answer) cli.stdout.write(`  --answer: not for ${agent}, its approvals stay in ${agent}.\n`);
         if (agent === 'codex') cli.stdout.write('  Codex runs it once you trust it: open Codex and use /hooks.\n');
+        if (status.statusLine === 'genaicode')
+          cli.stdout.write('  Its status line keeps your plan limits for "genaicode limits".\n');
+        if (status.statusLine === 'other')
+          cli.stdout.write(
+            '  Your own status line stays. For "genaicode limits" to know Claude Code\'s plan limits, have it\n' +
+              '  pass its input on to "genaicode limits record".\n',
+          );
       } else if (command.action === 'uninstall') {
         const removed = await uninstallHooks(agent, hookOptions);
         cli.stdout.write(
@@ -960,7 +967,8 @@ async function manageHooks(
           : status.events.length
             ? 'installed by another genaicode or incomplete: run "genaicode hooks install"'
             : 'not installed';
-        cli.stdout.write(`${agent}: ${state}${status.answer ? ', answers from here' : ''}  ${status.file}\n`);
+        const line = status.statusLine === 'genaicode' ? ', status line keeps limits' : '';
+        cli.stdout.write(`${agent}: ${state}${status.answer ? ', answers from here' : ''}${line}  ${status.file}\n`);
       }
     } catch (error) {
       failed = true;

@@ -136,13 +136,9 @@ No agent is asked for it, so looking costs nothing. The readings come from three
 - every run through genaicode (`run`, `chat`, `ui`, the library) keeps what the agent reports in
   `~/.genaicode/limits` (`GENAICODE_LIMITS=off` keeps nothing);
 - Codex notes its limits in its own session files, and the newest ones are read;
-- Claude Code gives them to its status line. To keep those too, set in `~/.claude/settings.json`:
-
-  ```json
-  { "statusLine": { "type": "command", "command": "npx genaicode limits record" } }
-  ```
-
-  It prints `5h 62% · 7d 41%` as the line. With a status line of your own, pipe its input to
+- Claude Code gives them to its status line only. `npx genaicode hooks install` makes
+  `genaicode limits record` that status line (it prints `5h 62% · 7d 41%`), and `hooks uninstall`
+  takes it out again. A status line of your own is left as it is: have it pass its input on to
   `genaicode limits record` as well.
 
 A window that has reset since it was read is left out: what is used of it now is not known until

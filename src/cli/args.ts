@@ -351,7 +351,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
 
   if (command === 'limits') {
     const { values, positionals } = parse(() =>
-      parseArgs({ args: rest, strict: true, allowPositionals: true, options: { json: { type: 'boolean' } } }),
+      parseArgs({
+        args: rest,
+        strict: true,
+        allowPositionals: true,
+        // `--genaicode-live` marks the status line `hooks install` sets, so it can be found again.
+        options: { json: { type: 'boolean' }, 'genaicode-live': { type: 'boolean' } },
+      }),
     );
     const action = positionals[0] ?? 'show';
     if (positionals.length > 1 || (action !== 'show' && action !== 'record') || (values.json && action === 'record')) {

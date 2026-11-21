@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode limits`: how much of each agent's plan is used (share of each window, when it resets), as last seen and without asking any agent. Runs through genaicode keep what the agents report, Codex's limits are read from its sessions, and `genaicode limits record` as Claude Code's status line keeps Claude's. `sessions --waiting --json --watch` carries them as `limits`, and the desktop app's menu shows them (#235)
+- `genaicode limits`: how much of each agent's plan is used (share of each window, when it resets), as last seen and without asking any agent. Runs through genaicode keep what the agents report, Codex's limits are read from its sessions, and `genaicode hooks install` makes `genaicode limits record` Claude Code's status line (unless you have your own), which keeps Claude's. `sessions --waiting --json --watch` carries them as `limits`, and the desktop app's menu shows them (#235)
 
 ## 2.43.0 — 2026-11-21
 

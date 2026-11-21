@@ -345,6 +345,11 @@ The command in the settings is the `genaicode` that installed it (`node` and the
 `cli.js`): install it from a `genaicode` that stays where it is (a project's dependency or a
 global install), and run `hooks install` again after moving it.
 
+For Claude Code, `hooks install` also sets `statusLine` in the same settings to `genaicode limits
+record`, which keeps the plan limits Claude Code reports for [`genaicode limits`](cli.md#how-much-of-your-plans-is-used-limits)
+and prints them as the line. A status line you set yourself is never replaced; `hooksStatus()`
+says which it is (`statusLine: 'genaicode' | 'other' | 'none'`).
+
 ### Sending a turn to a session
 
 `sendSession()` accepts a user's message for the local session's own driver. It checks the
