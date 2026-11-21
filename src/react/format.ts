@@ -56,6 +56,150 @@ export function toolArgument(input: unknown, cwd?: string): string {
   return cwd ? text.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : text;
 }
 
+/** One line of a change an agent made: added, removed, or left as it was. */
+export interface DiffLine {
+  sign: '+' | '-' | ' ';
+  text: string;
+}
+
+/** What an edit changed, as lines to show. `more` counts the lines left out of a long one. */
+export interface ToolDiff {
+  lines: DiffLine[];
+  added: number;
+  removed: number;
+  more: number;
+}
+
+const DIFF_SHOWN = 400;
+
+/**
+ * The change a tool call makes to a file, read from its input: an edit (`old_string` and
+ * `new_string`, alone or in `edits`), a written file (`content`), or a patch (`patch`, or input that
+ * is one). Undefined for a call that changes no file, or whose input says nothing of how.
+ */
+export function toolDiff(input: unknown): ToolDiff | undefined {
+  const lines: DiffLine[] = [];
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  const pick = (record: Record<string, unknown>, keys: string[]) =>
+    keys.map((key) => text(record[key])).find((v) => v !== undefined);
+  const edit = (record: Record<string, unknown>): boolean => {
+    const before = pick(record, ['old_string', 'oldString', 'old_str', 'oldText']);
+    const after = pick(record, ['new_string', 'newString', 'new_str', 'newText']);
+    if (before === undefined || after === undefined) return false;
+    if (lines.length) lines.push({ sign: ' ', text: '⋯' });
+    // Not spread into push: a change can be longer than a call takes arguments.
+    for (const line of changedLines(before, after)) lines.push(line);
+    return true;
+  };
+  const patch = (value: string): boolean => {
+    if (!/^(\*\*\* Begin Patch|@@|diff --git|--- )/m.test(value)) return false;
+    // A `--- ` line names a file before a hunk starts, and is a removed `-- ` line inside one.
+    let inHunk = false;
+    // Lines a counted hunk (`@@ -1,3 +1,4 @@`) still holds: after them the next file's header can come.
+    let left: { old: number; new: number } | undefined;
+    for (const line of textLines(value)) {
+      if (/^\*\*\* (Begin|End) Patch/.test(line)) continue;
+      if (line.startsWith('diff --git')) {
+        inHunk = false;
+        continue;
+      }
+      if (left && left.old <= 0 && left.new <= 0) {
+        inHunk = false;
+        left = undefined;
+      }
+      if (!inHunk && /^(index |\+\+\+ |--- )/.test(line)) continue;
+      // A patch in an agent's own format has no file header lines of that kind.
+      if (line.startsWith('@@') || line.startsWith('*** ')) {
+        inHunk = true;
+        const counted = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+        left = counted ? { old: Number(counted[1] ?? 1), new: Number(counted[2] ?? 1) } : undefined;
+        lines.push({ sign: ' ', text: line });
+        continue;
+      }
+      if (line.startsWith('+')) {
+        lines.push({ sign: '+', text: line.slice(1) });
+        if (left) left.new -= 1;
+      } else if (line.startsWith('-')) {
+        lines.push({ sign: '-', text: line.slice(1) });
+        if (left) left.old -= 1;
+      } else if (!line.startsWith('\\')) {
+        lines.push({ sign: ' ', text: line.startsWith(' ') ? line.slice(1) : line });
+        if (left) {
+          left.old -= 1;
+          left.new -= 1;
+        }
+      }
+    }
+    return true;
+  };
+  if (typeof input === 'string') {
+    if (!patch(input)) return undefined;
+  } else if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const record = input as Record<string, unknown>;
+    const edits = Array.isArray(record.edits) ? record.edits : undefined;
+    const patched = pick(record, ['patch', 'diff', 'input']);
+    const content = pick(record, ['content', 'contents', 'file_text']);
+    if (edits) {
+      for (const one of edits) if (one && typeof one === 'object') edit(one as Record<string, unknown>);
+    } else if (edit(record)) {
+      // One replacement.
+    } else if (patched !== undefined && patch(patched)) {
+      // A patch in the agent's own format.
+    } else if (content !== undefined && pick(record, ['file_path', 'filePath', 'path']) !== undefined) {
+      for (const line of textLines(content)) lines.push({ sign: '+', text: line });
+    }
+  } else return undefined;
+  if (!lines.length) return undefined;
+  return {
+    lines: lines.slice(0, DIFF_SHOWN),
+    added: lines.filter((line) => line.sign === '+').length,
+    removed: lines.filter((line) => line.sign === '-').length,
+    more: Math.max(0, lines.length - DIFF_SHOWN),
+  };
+}
+
+/** The lines of `text`: none for no text, and the newline that ends the last one starts no other. */
+function textLines(text: string): string[] {
+  if (text === '') return [];
+  const lines = text.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
+const DIFF_CONTEXT = 3;
+
+/**
+ * `before` turned into `after`: the middle is replaced, with a few of the lines they share at both
+ * ends around it, so a small change in a long text is what shows.
+ */
+function changedLines(before: string, after: string): DiffLine[] {
+  const from = textLines(before);
+  const to = textLines(after);
+  // Only one of them ends its last line: that is a change too, so that line says it.
+  if (from.length && to.length && before.endsWith('\n') !== after.endsWith('\n')) {
+    const open = before.endsWith('\n') ? to : from;
+    open[open.length - 1] += ' (no newline at end)';
+  }
+  let head = 0;
+  while (head < from.length && head < to.length && from[head] === to[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < from.length - head &&
+    tail < to.length - head &&
+    from[from.length - 1 - tail] === to[to.length - 1 - tail]
+  )
+    tail += 1;
+  const out: DiffLine[] = [];
+  if (head > DIFF_CONTEXT) out.push({ sign: ' ', text: '⋯' });
+  for (let i = Math.max(0, head - DIFF_CONTEXT); i < head; i += 1) out.push({ sign: ' ', text: from[i]! });
+  for (let i = head; i < from.length - tail; i += 1) out.push({ sign: '-', text: from[i]! });
+  for (let i = head; i < to.length - tail; i += 1) out.push({ sign: '+', text: to[i]! });
+  const end = Math.min(from.length, from.length - tail + DIFF_CONTEXT);
+  for (let i = from.length - tail; i < end; i += 1) out.push({ sign: ' ', text: from[i]! });
+  if (tail > DIFF_CONTEXT) out.push({ sign: ' ', text: '⋯' });
+  return out;
+}
+
 /** {@link toolArgument} on one line, cut to `width`. */
 export function toolSummary(input: unknown, width = 80, cwd?: string): string {
   const shown = toolArgument(input, cwd).replace(/\s+/g, ' ');

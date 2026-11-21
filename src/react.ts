@@ -40,6 +40,7 @@ export {
   shortId,
   toolLabel,
   toolArgument,
+  toolDiff,
   toolSummary,
   turnFooter,
 } from './react/format.js';

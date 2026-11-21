@@ -307,6 +307,38 @@ describe('AgentChat', () => {
     expect($<HTMLTextAreaElement>('textarea').value).toBe('');
   });
 
+  it('shows what an edit changed, line by line', () => {
+    const tool = (input: unknown, output?: string) =>
+      ({ kind: 'tool', name: 'Edit', input, output, done: true }) as const;
+    render({
+      state: fixture({
+        turns: [
+          {
+            id: 1,
+            agent: 'claude',
+            prompt: 'p',
+            startedAt: 1,
+            entries: [
+              tool({ file_path: '/w/a.ts', old_string: 'a\nb\nc', new_string: 'a\nB\nB2\nc' }),
+              tool({ command: 'ls' }, 'a.ts'),
+            ],
+          },
+        ],
+      }),
+    });
+    const steps = document.querySelectorAll('.gc-tool');
+    expect(steps[0].querySelector('.gc-diff-stat')?.textContent).toBe('+2−1');
+    expect(
+      Array.from(steps[0].querySelectorAll('.gc-diff > div')).map(
+        (line) => `${line.getAttribute('data-sign')}${line.textContent}`,
+      ),
+    ).toEqual([' a', '-b', '+B', '+B2', ' c']);
+    // Nothing to say after an edit that went through; a command keeps its output.
+    expect(steps[0].querySelector('pre')).toBeNull();
+    expect(steps[1].querySelector('.gc-diff')).toBeNull();
+    expect(steps[1].querySelector('pre')?.textContent).toBe('a.ts');
+  });
+
   it('puts the host controls in the composer, under the text', () => {
     render({ state: fixture({ status: 'idle', queued: [] }), composerExtras: <select aria-label="Agent" /> });
     const box = $('.gc-box');

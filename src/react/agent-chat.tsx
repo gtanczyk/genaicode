@@ -23,6 +23,7 @@ import {
   relativePath,
   shortId,
   toolArgument,
+  toolDiff,
   toolLabel,
   turnFooter,
 } from './format.js';
@@ -720,6 +721,8 @@ function Entry({
       return <Markdown text={entry.text} streaming={entry.streaming} />;
     case 'tool': {
       const argument = toolArgument(entry.input, cwd);
+      const diff = toolDiff(entry.input);
+      const output = entry.output?.trim();
       return (
         <details className="gc-tool">
           <summary title={argument || undefined}>
@@ -728,8 +731,27 @@ function Entry({
             </span>
             <span className="gc-tool-name">{toolName(entry.name)}</span>
             <span className="gc-tool-arg">{argument}</span>
+            {diff ? (
+              <span className="gc-diff-stat" aria-label={`${diff.added} lines added, ${diff.removed} removed`}>
+                {diff.added ? <ins>+{diff.added}</ins> : null}
+                {diff.removed ? <del>−{diff.removed}</del> : null}
+              </span>
+            ) : null}
           </summary>
-          <pre>{entry.output?.trim() || (entry.done ? 'No output.' : 'Running…')}</pre>
+          {diff ? (
+            <div className="gc-diff">
+              {diff.lines.map((line, index) => (
+                <div key={index} data-sign={line.sign}>
+                  {line.text || ' '}
+                </div>
+              ))}
+              {diff.more ? <div className="gc-diff-more">… {diff.more} more lines</div> : null}
+            </div>
+          ) : null}
+          {/* An edit that went through says nothing worth a box of its own. */}
+          {diff && entry.done && !entry.isError && !output ? null : (
+            <pre>{output || (entry.done ? 'No output.' : 'Running…')}</pre>
+          )}
         </details>
       );
     }
