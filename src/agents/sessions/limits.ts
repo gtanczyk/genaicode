@@ -151,10 +151,14 @@ export function rolloutLimits(limits: unknown, at: number): RateLimit[] {
   return found;
 }
 
-/** The last limits Codex wrote into its newest sessions: it notes them with every token count. */
+/**
+ * The last limits Codex wrote into each of its newest sessions: it notes them with every token
+ * count. The session written to last need not hold the newest reading, so each one's is given.
+ */
 async function codexLimits(env: NodeJS.ProcessEnv): Promise<KnownLimit[]> {
   const dir = path.join(env.CODEX_HOME ?? path.join(homeOf(env), '.codex'), 'sessions');
   const rollouts = await findFiles(dir, 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'));
+  const found: KnownLimit[] = [];
   for (const rollout of rollouts.slice(0, ROLLOUTS)) {
     let text: string;
     try {
@@ -184,10 +188,12 @@ async function codexLimits(env: NodeJS.ProcessEnv): Promise<KnownLimit[]> {
       const stamp = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
       const at = Number.isNaN(stamp) ? rollout.mtimeMs : stamp;
       const limits = rolloutLimits(line.payload.rate_limits, at);
-      if (limits.length) return limits.map((limit) => ({ ...limit, agent: 'codex', at }));
+      if (!limits.length) continue;
+      found.push(...limits.map((limit) => ({ ...limit, agent: 'codex', at })));
+      break;
     }
   }
-  return [];
+  return found;
 }
 
 /**

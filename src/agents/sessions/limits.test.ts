@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -94,6 +94,26 @@ describe('known limits', () => {
     recordLimits('codex', [{ window: '5h', status: 'ok', usedPercent: 30, resetsAt: now + 600_000 }], env, now);
     expect((await knownLimits(env, now)).map((limit) => limit.usedPercent)).toEqual([30, 90]);
     expect(rolloutLimits({ primary: { window_minutes: 300 } }, now)).toEqual([]);
+    // A session written to later, whose last reading is older, does not hide the newer one.
+    const env2 = home();
+    const dir2 = join(env2.HOME!, '.codex', 'sessions', '2027', '01', '15');
+    mkdirSync(dir2, { recursive: true });
+    const reading = (minutesAgo: number, used: number) =>
+      `${JSON.stringify({
+        timestamp: new Date(now - minutesAgo * 60_000).toISOString(),
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          rate_limits: { primary: { used_percent: used, window_minutes: 300, resets_at: now / 1000 + 600 } },
+        },
+      })}\n`;
+    const older = join(dir2, 'rollout-2027-01-15T08-00-00-11111111-89ab-cdef-0123-456789abcdef.jsonl');
+    const newer = join(dir2, 'rollout-2027-01-15T09-00-00-22222222-89ab-cdef-0123-456789abcdef.jsonl');
+    writeFileSync(newer, reading(1, 90));
+    writeFileSync(older, reading(30, 10));
+    utimesSync(newer, new Date(now - 60_000), new Date(now - 60_000));
+    utimesSync(older, new Date(now), new Date(now));
+    expect((await knownLimits(env2, now)).map((limit) => limit.usedPercent)).toEqual([90]);
   });
 
   it("reads the limits in Claude Code's status line input", () => {
