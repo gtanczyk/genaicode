@@ -413,6 +413,21 @@ describe('genaicode install', () => {
     expect(existsSync(join(base, 'bin', 'genaicode'))).toBe(true);
   });
 
+  it('keeps a version another installer finished while npm ran', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps } = npxDeps(base);
+    const theirs = join(base, '.genaicode', 'versions', '2.36.0');
+    deps.npmInstall = async (prefix, spec) => {
+      writePackage(theirs, '2.36.0');
+      writeFileSync(join(theirs, 'marker'), 'theirs');
+      writePackage(prefix, spec.split('@')[1]);
+    };
+    await installCommand(deps, {});
+    expect(readFileSync(join(theirs, 'marker'), 'utf8')).toBe('theirs');
+    expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual(['2.36.0']);
+  });
+
   it('reports a failed npm install and leaves nothing behind', async () => {
     const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
     dirs.push(base);

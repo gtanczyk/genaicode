@@ -261,8 +261,11 @@ export async function installCommand(
     try {
       await deps.npmInstall(staging, `${PACKAGE_NAME}@${version}`);
       if (!isComplete(staging, version)) throw new Error(`npm did not install ${PACKAGE_NAME}@${version}`);
-      rmSync(dir, { recursive: true, force: true });
-      renameSync(staging, dir);
+      // Another installer may have finished this version meanwhile: keep it, drop the copy.
+      if (!isComplete(dir, version)) {
+        rmSync(dir, { recursive: true, force: true });
+        renameSync(staging, dir);
+      }
     } finally {
       rmSync(staging, { recursive: true, force: true });
     }
@@ -329,8 +332,11 @@ export async function updateInstall(
       try {
         await deps.npmInstall(staging, `${PACKAGE_NAME}@${target}`);
         if (!isComplete(staging, target)) throw new Error(`npm did not install ${PACKAGE_NAME}@${target}`);
-        rmSync(dir, { recursive: true, force: true });
-        renameSync(staging, dir);
+        // Another installer may have finished this version meanwhile: keep it, drop the copy.
+        if (!isComplete(dir, target)) {
+          rmSync(dir, { recursive: true, force: true });
+          renameSync(staging, dir);
+        }
       } finally {
         rmSync(staging, { recursive: true, force: true });
       }
