@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode sessions send` refuses in a shell that a coding agent runs, so prompts to other sessions come from a person; `--force` sends anyway (#247)
+- The desktop app starts its chat with the session tools (`ui --sessions`), so the agent answers what goes on in a project from the session index (#251)
 - `genaicode ui` and the desktop app fold a turn's tool calls into one "N steps" line that opens on click; the answer, errors and open approvals stay in view (#251)
 - The browser's Sessions view groups sessions by topic once `genaicode topics refresh` has sorted them (those that ask for you first; **By directory** brings projects back), and the header shows the chosen agent's plan limits as `genaicode limits` last saw them, without a price when a plan limit is known (#251)
 - `genaicode sessions --waiting --json --watch` carries the topics: each session the name of its `topic`, and the line `topics` (name, sessions, asking, active). The desktop app's menu names a waiting session by its topic and lists the topics agents work on now (#250)

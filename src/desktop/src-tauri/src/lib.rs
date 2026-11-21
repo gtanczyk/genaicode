@@ -208,7 +208,13 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
     shell.generation += 1;
     let generation = shell.generation;
     command
-        .args(["ui", "--no-open", "--exit-with-stdin", "--cwd"])
+        .args([
+            "ui",
+            "--sessions",
+            "--no-open",
+            "--exit-with-stdin",
+            "--cwd",
+        ])
         .arg(folder)
         .current_dir(folder)
         .stdin(Stdio::piped())
