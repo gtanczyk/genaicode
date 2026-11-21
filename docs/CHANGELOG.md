@@ -8,6 +8,15 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `genaicode topics refresh` puts the sessions that worked in a directory of a Codex desktop app project in a topic named as that project, whichever agent they were in (`codexProjects()`, `folderTopics()`), after the claude.ai projects and before any agent is asked; the agent is told to keep topics few and broad (#248)
+
+### Fixed
+
+- `genaicode topics` lists topics without their directories, and with names up to 48 characters (#248)
+- Threads the Codex desktop app's server ran for another program, and Muse Code's probes and test-provider sessions, count as automated (#248)
+
 ## 2.46.0 — 2026-11-21
 
 ### Added
@@ -24,12 +33,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - `genaicode topics refresh` puts the sessions Claude Code ran for a claude.ai project (`SessionInfo.project`, read from the session) in a topic named as that project, without asking an agent (`projectTopics()`); `--again` sorts everything anew (#244)
 
-- `genaicode topics refresh` puts the sessions that worked in a directory of a Codex desktop app project in a topic named as that project, whichever agent they were in (`codexProjects()`, `folderTopics()`), after the claude.ai projects and before any agent is asked; the agent is told to keep topics few and broad (#248)
-
 ### Fixed
 
-- `genaicode topics` lists topics without their directories, and with names up to 48 characters (#248)
-- Threads the Codex desktop app's server ran for another program, and Muse Code's probes and test-provider sessions, count as automated (#248)
 - Fewer machine-made sessions in listings and topics: Claude Code's `turnOrigin` is read, and single-prompt headless runs count as automated; what ran in a pack worktree or a temporary directory takes no topic; a topic asks for you only for approvals and for 3 days after a message asked something (#244)
 - `genaicode topics refresh` says how many runs it takes and how far it is after each one, and gives sessions that say the very same thing (the hundredth run of one prompt) a single line, so there are fewer runs (#242)
 
