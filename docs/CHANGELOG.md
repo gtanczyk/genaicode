@@ -11,11 +11,15 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode sessions send` refuses in a shell that a coding agent runs, so prompts to other sessions come from a person; `--force` sends anyway (#247)
+- The desktop app starts its chat with the session tools (`ui --sessions`), so the agent answers what goes on in a project from the session index (#251)
+- `genaicode ui` and the desktop app fold a turn's tool calls into one "N steps" line that opens on click; the answer, errors and open approvals stay in view (#251)
+- The browser's Sessions view groups sessions by topic once `genaicode topics refresh` has sorted them (those that ask for you first; **By directory** brings projects back), and the header shows the chosen agent's plan limits as `genaicode limits` last saw them, without a price when a plan limit is known (#251)
 - `genaicode sessions --waiting --json --watch` carries the topics: each session the name of its `topic`, and the line `topics` (name, sessions, asking, active). The desktop app's menu names a waiting session by its topic and lists the topics agents work on now (#250)
 - `genaicode topics refresh` puts the sessions that worked in a directory of a Codex desktop app project in a topic named as that project, whichever agent they were in (`codexProjects()`, `folderTopics()`), after the claude.ai projects and before any agent is asked; the agent is told to keep topics few and broad (#248)
 
 ### Fixed
 
+- `genaicode hooks install` gives Codex's `SessionEnd` hook the three seconds Codex allows, so Codex no longer warns about it in every session (#251)
 - `genaicode topics` lists topics without their directories, and with names up to 48 characters (#248)
 - Threads the Codex desktop app's server ran for another program, and Muse Code's probes and test-provider sessions, count as automated (#248)
 

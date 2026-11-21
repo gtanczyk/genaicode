@@ -9,7 +9,15 @@ import {
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
 import { SessionReply } from './session-reply.js';
-import { ago, canContinueHere, filterSessions, groupInOrder, resumeCommand } from '../sessions.js';
+import {
+  ago,
+  canContinueHere,
+  filterSessions,
+  groupByTopic,
+  groupInOrder,
+  resumeCommand,
+  type SessionTopic,
+} from '../sessions.js';
 
 const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
 
@@ -32,6 +40,12 @@ const FOLD = 5;
 
 /** How many sessions one archive request carries: the server takes up to 1000. */
 const ARCHIVE_BATCH = 500;
+
+/** What a topic asks of the user and what goes on in it, for its heading. */
+const asksOf = (group: Partial<SessionTopic>): string =>
+  [group.asking ? `${group.asking} ask you` : '', group.active ? `${group.active} working` : '']
+    .filter(Boolean)
+    .join(' · ');
 
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
@@ -56,6 +70,8 @@ export function Sessions({
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [copied, setCopied] = useState<string>();
   const [round, setRound] = useState(0);
+  // By topic once there are topics, unless the user chose otherwise.
+  const [chosen, setChosen] = useState<'topic' | 'project'>();
 
   useEffect(() => {
     let current = true;
@@ -109,8 +125,18 @@ export function Sessions({
   }, [all, text, agent, state]);
   // What waits for you keeps its order across projects: the one with an approval first.
   const inbox = state === 'waiting' || state === 'approval';
-  const projects = useMemo(() => (inbox ? groupInOrder(shown) : groupSessions(shown)), [shown, inbox]);
   const now = Date.now();
+  const sorted = !!listing?.topics?.length;
+  const by = sorted ? (chosen ?? 'topic') : 'project';
+  const projects = useMemo(
+    () =>
+      by === 'topic'
+        ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
+        : inbox
+          ? groupInOrder(shown)
+          : groupSessions(shown),
+    [shown, inbox, by, listing],
+  );
 
   const [answering, setAnswering] = useState<string>();
   const [answerFailed, setAnswerFailed] = useState<string>();
@@ -179,6 +205,16 @@ export function Sessions({
           <option value="unfinished">◌ Unfinished</option>
           <option value="archived">Archived</option>
         </select>
+        {sorted ? (
+          <select
+            aria-label="Group by"
+            value={by}
+            onChange={(event) => setChosen(event.target.value === 'project' ? 'project' : 'topic')}
+          >
+            <option value="topic">By topic</option>
+            <option value="project">By directory</option>
+          </select>
+        ) : null}
         <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
           {RANGES.map((range) => (
             <option key={range.days} value={range.days}>
@@ -212,7 +248,9 @@ export function Sessions({
           Refresh
         </button>
         <span className="count">
-          {listing ? `${shown.length} of ${all.length} sessions · ${projects.length} projects` : 'Reading…'}
+          {listing
+            ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
+            : 'Reading…'}
         </span>
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
@@ -238,7 +276,9 @@ export function Sessions({
           <details key={project.key} className="project" open>
             <summary>
               <b>{project.name}</b>
-              <span className="path">{project.key.startsWith('cloud:') ? 'cloud' : project.key}</span>
+              <span className="path">
+                {by === 'topic' ? asksOf(project) : project.key.startsWith('cloud:') ? 'cloud' : project.key}
+              </span>
               <span className="counts">
                 {Object.entries(project.agents)
                   .map(([name, count]) => `${name} ${count}`)

@@ -270,11 +270,11 @@ function handlerFor(agent: HookAgent, command: string, event: string): Json {
   switch (agent) {
     case 'claude':
     case 'codex':
-      // Codex gives an `Interrupt` hook three seconds at most.
+      // Codex gives an `Interrupt` or `SessionEnd` hook three seconds at most, and says so when asked for more.
       return {
         type: 'command',
         command,
-        timeout: event === 'Interrupt' ? 3 : 10,
+        timeout: event === 'Interrupt' || (agent === 'codex' && event === 'SessionEnd') ? 3 : 10,
         ...(event === 'SessionEnd' ? {} : { async: true }),
       };
     case 'gemini':

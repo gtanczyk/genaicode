@@ -250,7 +250,13 @@ In the browser, **Sessions** in the header shows what every agent on this machin
 the same list as `genaicode sessions`, by project, with search over titles, prompts, directories
 and branches, and filters by agent, state and period. A local session gives the command that
 continues it in a terminal, and **Continue here** when it is from this directory; a cloud session
-links to its page.
+links to its page. Once [`genaicode topics refresh`](#your-work-as-topics-topics) has sorted
+your sessions, the view groups them by topic instead (those that ask for you first), and
+**By directory** brings the projects back.
+
+The header shows how much of the chosen agent's plan is used (`7d 19%`): what the session's runs
+report, and before that what `genaicode limits` last saw. With a plan limit known, the price of
+the session's tokens is left out: on a plan it would be an estimate nobody pays.
 
 The terminal and the browser can show one session. `/web` in the terminal chat opens it in
 the browser (`/web off` stops the server), and Enter in the terminal that runs

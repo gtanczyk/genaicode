@@ -1,4 +1,4 @@
-import { groupSessions, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
+import { groupSessions, isAsking, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
 
 /** What the Sessions view narrows the list by. */
 export interface SessionFilter {
@@ -49,6 +49,50 @@ export function groupInOrder(sessions: readonly SessionInfo[]): SessionProject[]
   const at = new Map(sessions.map((session, index) => [session, index]));
   const first = (project: SessionProject) => Math.min(...project.sessions.map((session) => at.get(session)!));
   return groupSessions(sessions).sort((a, b) => first(a) - first(b));
+}
+
+/** A topic's sessions as the Sessions view shows them: a group like a project, with what it asks. */
+export interface SessionTopic extends SessionProject {
+  /** Sessions that ask for approval, or whose last message asked something not long ago. */
+  asking: number;
+  /** Sessions an agent works in now. */
+  active: number;
+}
+
+/** The key of the group for sessions no topic has. */
+export const UNSORTED_TOPIC = 'topic:';
+
+/**
+ * Sessions by the topic they were sorted into (`genaicode topics`): the topics that ask for you
+ * first, then the latest, and what no topic has last. `topicOf` maps `source:id` to a topic id.
+ */
+export function groupByTopic(
+  sessions: readonly SessionInfo[],
+  topics: ReadonlyArray<{ id: string; name: string }>,
+  topicOf: Readonly<Record<string, string>>,
+  now = Date.now(),
+): SessionTopic[] {
+  const names = new Map(topics.map((topic) => [topic.id, topic.name]));
+  const groups = new Map<string, SessionTopic>();
+  for (const session of sessions) {
+    const id = topicOf[`${session.source}:${session.id}`];
+    const name = id === undefined ? undefined : names.get(id);
+    const key = name === undefined ? UNSORTED_TOPIC : `topic:${id}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, name: name ?? 'Not sorted yet', sessions: [], updatedAt: 0, agents: {}, asking: 0, active: 0 };
+      groups.set(key, group);
+    }
+    group.sessions.push(session);
+    group.updatedAt = Math.max(group.updatedAt, session.updatedAt);
+    group.agents[session.agent] = (group.agents[session.agent] ?? 0) + 1;
+    if (session.state === 'active') group.active += 1;
+    if (isAsking(session, now)) group.asking += 1;
+  }
+  const last = (group: SessionTopic) => (group.key === UNSORTED_TOPIC ? 1 : 0);
+  return [...groups.values()].sort(
+    (a, b) => last(a) - last(b) || Math.sign(b.asking) - Math.sign(a.asking) || b.updatedAt - a.updatedAt,
+  );
 }
 
 /** `5m`, `3h`, `12d`: how long ago, in the largest unit that fits. */

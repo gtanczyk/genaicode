@@ -5,6 +5,7 @@ import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
 import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
 import type { WebCommand } from './server.js';
+import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
@@ -37,6 +38,40 @@ async function postCommand(body: WebCommand) {
 
 async function command(body: WebCommand): Promise<boolean> {
   return (await postCommand(body)).ok === true;
+}
+
+/** How often the limits last seen are asked for again. */
+const LIMITS_EVERY_MS = 60_000;
+
+/**
+ * The limits last seen of `agent`'s plan (`/api/limits`): asked when the agent changes, when a turn
+ * ends, and every minute. `codexLive` and `codex` draw on one account.
+ */
+function usePlanLimits(agent: string | undefined, running: boolean): RateLimit[] {
+  const [limits, setLimits] = useState<RateLimit[]>([]);
+  useEffect(() => {
+    if (!agent || !token) return;
+    let current = true;
+    const account = agent.replace(/Live$/, '');
+    const ask = () =>
+      fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
+        .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
+        .then(
+          (found: { limits?: Array<RateLimit & { agent: string }> }) => {
+            if (!current) return;
+            setLimits((found.limits ?? []).filter((limit) => limit.agent === account));
+          },
+          () => undefined,
+        );
+    setLimits([]);
+    void ask();
+    const timer = window.setInterval(ask, LIMITS_EVERY_MS);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [agent, running]);
+  return limits;
 }
 
 interface PageConfig {
@@ -168,8 +203,13 @@ function App() {
   const session = view?.session;
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
-  const usage = session ? formatUsage(session.usage, session.costUsd) : '';
-  const limits = session ? limitChips(session) : [];
+  const plan = usePlanLimits(session?.agent, running);
+  // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
+  const rateLimits = session?.rateLimits?.length ? session.rateLimits : plan;
+  // On a plan the measure is the plan's own: a price there would be an estimate nobody pays.
+  const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
+  const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
+  const limits = session ? limitChips({ ...session, rateLimits }) : [];
   const submit = (text: string) => void command({ type: 'submit', text });
 
   return (
@@ -288,6 +328,8 @@ function App() {
         state={session}
         style={panel !== 'chat' ? { display: 'none' } : undefined}
         header={null}
+        // The work in one line that opens on click: a long run of tool calls buries the answer.
+        foldSteps
         autoFocus
         disabled={!connected}
         notices={view?.notices}

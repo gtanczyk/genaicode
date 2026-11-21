@@ -348,6 +348,19 @@ describe('installing the hook', () => {
       'Interrupt',
       'SessionEnd',
     ]);
+    // Codex allows these two three seconds, and warns in every session when asked for more.
+    const written = JSON.parse(readFileSync(status.file, 'utf8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ timeout: number }> }>>;
+    };
+    expect(Object.entries(written.hooks).map(([event, [group]]) => [event, group!.hooks[0]!.timeout])).toEqual([
+      ['SessionStart', 10],
+      ['UserPromptSubmit', 10],
+      ['PermissionRequest', 10],
+      ['PostToolUse', 10],
+      ['Stop', 10],
+      ['Interrupt', 3],
+      ['SessionEnd', 3],
+    ]);
     expect(await uninstallHooks('codex', { env })).toBe(true);
     // Nothing else in it: the file goes.
     expect(existsSync(status.file)).toBe(false);

@@ -2,7 +2,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { archiveKey } from './archive.js';
 import { liveDir } from './live.js';
+import { isAsking } from './group.js';
 import type { SessionInfo } from './types.js';
+
+export { ASKING_MS, isAsking } from './group.js';
 
 /**
  * A topic: one piece of work, whichever agents and directories its sessions were in. A project
@@ -397,12 +400,6 @@ export function moveSessions(
   return { ...store, sessions: next };
 }
 
-/** Whether a session asks for you now: for approval, or with a message that asked something not long ago. */
-export function isAsking(session: SessionInfo, now = Date.now()): boolean {
-  if (session.archived || session.state !== 'waiting') return false;
-  return session.waitingFor === 'approval' || (!!session.ending && now - session.updatedAt < ASKING_MS);
-}
-
 /** A topic with its sessions as listed now. */
 export interface TopicSummary extends Topic {
   sessions: SessionInfo[];
@@ -416,9 +413,6 @@ export interface TopicSummary extends Topic {
   /** Sessions an agent works in now. */
   active: number;
 }
-
-/** A question at the end of a message still waits for this long; after, the thread was left. */
-export const ASKING_MS = 3 * 24 * 3600_000;
 
 /**
  * The topics with the sessions of a listing: what asks for you first, then the latest. Topics none
