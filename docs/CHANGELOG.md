@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode sessions send` refuses in a shell that a coding agent runs, so prompts to other sessions come from a person; `--force` sends anyway (#247)
 - `genaicode topics refresh` puts the sessions that worked in a directory of a Codex desktop app project in a topic named as that project, whichever agent they were in (`codexProjects()`, `folderTopics()`), after the claude.ai projects and before any agent is asked; the agent is told to keep topics few and broad (#248)
 
 ### Fixed
