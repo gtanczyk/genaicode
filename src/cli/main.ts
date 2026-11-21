@@ -964,21 +964,21 @@ async function watchWaiting(
       const line = JSON.stringify({ sessions: sessions.map((session) => withAsks(session, questions)) });
       if (line !== last) cli.stdout.write(`${line}\n`);
       last = line;
+      // Its own abort listener goes with the timer, so a watch left open for days keeps none.
       await new Promise<void>((done) => {
-        const timer = setTimeout(done, cli.watchEveryMs ?? WATCH_EVERY_MS);
-        stop.signal.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(timer);
-            done();
-          },
-          { once: true },
-        );
+        const wake = () => {
+          clearTimeout(timer);
+          stop.signal.removeEventListener('abort', wake);
+          done();
+        };
+        const timer = setTimeout(wake, cli.watchEveryMs ?? WATCH_EVERY_MS);
+        stop.signal.addEventListener('abort', wake);
       });
     }
   } finally {
     cli.signal?.removeEventListener('abort', end);
-    input?.off('end', end).off('close', end).off('error', end);
+    // Paused again, or a stdin still open would keep the process alive after Ctrl-C.
+    input?.off('end', end).off('close', end).off('error', end).pause();
   }
   return EXIT_OK;
 }

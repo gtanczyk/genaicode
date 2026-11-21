@@ -813,6 +813,17 @@ describe('genaicode sessions --waiting', () => {
     ).toEqual(['one', 'two']);
     input.end();
     expect(await done).toBe(EXIT_OK);
+
+    // Ctrl-C ends it too, and lets go of a stdin that is still open.
+    const open = new PassThrough();
+    const stop = new AbortController();
+    const second = main({ ...cli, input: open, signal: stop.signal, watchEveryMs: 5 });
+    const before = looks;
+    await vi.waitFor(() => expect(looks).toBeGreaterThan(before + 2));
+    stop.abort();
+    expect(await second).toBe(EXIT_OK);
+    expect(open.isPaused()).toBe(true);
+    expect(open.listenerCount('end') + open.listenerCount('close')).toBe(0);
   });
 });
 
