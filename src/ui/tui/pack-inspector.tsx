@@ -33,6 +33,7 @@ export function PackInspector({
   const [output, setOutput] = useState('');
   const [offset, setOffset] = useState(0);
   const busy = useRef(false);
+  const inspected = useRef<{ turnId: number; id: string; revision?: string }>(undefined);
   const pending = controller.get().session.approvals;
   const request =
     mode === 'queue' ? pending[0] : !turn.result && pending.find((request) => request.subtaskId === task.id);
@@ -49,6 +50,8 @@ export function PackInspector({
     setOutput('Working…');
     try {
       const reply = await act(turn.id, task.id, action);
+      if (action.type === 'diff') inspected.current = { turnId: turn.id, id: task.id, revision: action.revision };
+      if (action.type === 'review' || action.type === 'verify') inspected.current = undefined;
       setOutput(action.type === 'review' || action.type === 'verify' ? '' : plainSessionText(reply));
       setOffset(0);
       setMode(action.type === 'diff' ? 'diff' : 'task');
@@ -122,9 +125,13 @@ export function PackInspector({
       setMode('diff');
     } else if (act && input === 'x' && !checking && (running || review)) {
       setMode(running ? 'stop' : 'discard');
-    } else if (act && review && input === 'd') void perform({ type: 'diff' });
+    } else if (act && review && input === 'd') void perform({ type: 'diff', revision: checks?.revision });
     else if (act && review && !checking) {
-      if (input === 'm') void perform({ type: 'merge', revision: checks?.revision });
+      if (input === 'm') {
+        const seen = inspected.current;
+        const revision = seen?.turnId === turn.id && seen.id === task.id ? seen.revision : checks?.revision;
+        void perform({ type: 'merge', revision });
+      }
       if (input === 'r' && checks?.reviewer) void perform({ type: 'review' });
       if (input === 'v' && checks?.command) void perform({ type: 'verify' });
     }

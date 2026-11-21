@@ -112,9 +112,11 @@ describe('pack', () => {
   it('reviews the complete patch and tests the worker directory before accepting a new revision', async () => {
     const cwd = repo();
     const correct = 'module.exports = (n) => n ?? 1;\n';
+    const latin1 = Buffer.from('caf\u00e9\n', 'latin1');
     writeFileSync(join(cwd, 'seats.cjs'), correct);
     const worker = fake('worker', async (task) => {
       writeFileSync(join(task.cwd, 'seats.cjs'), 'module.exports = (n) => n || 1;\n');
+      writeFileSync(join(task.cwd, 'menu.txt'), latin1);
       writeFileSync(join(task.cwd, 'extra.txt'), 'a'.repeat(70_000) + ' end of new file\n');
     });
     let reviewDir = '';
@@ -126,6 +128,7 @@ describe('pack', () => {
           expect(task.mcpServers).toBeUndefined();
           reviewDir = task.cwd;
           const patch = readFileSync(join(task.cwd, 'changes.patch'), 'utf8');
+          expect(readFileSync(join(task.cwd, 'changes.patch')).includes(latin1)).toBe(true);
           expect(patch).toContain(' end of new file');
           expect(patch).toContain('+module.exports');
           return { text: 'Check how zero seats are handled.', usage: { totalTokens: 8 } };
@@ -182,6 +185,7 @@ describe('pack', () => {
       await vi.waitFor(() => expect(task().checks!.revision).not.toBe(last), { timeout: 5000 });
       await session.actOnPackTask!(1, 't1', { type: 'merge', revision: task().checks!.revision });
       expect(readFileSync(join(cwd, 'extra.txt'), 'utf8')).toBe('correction\n');
+      expect(readFileSync(join(cwd, 'menu.txt'))).toEqual(latin1);
     } finally {
       session.close();
       await team.close();
@@ -221,6 +225,40 @@ describe('pack', () => {
       await team.close();
       await verify;
       expect(controls.task('t1')?.checks?.verify).toMatchObject({ status: 'failed' });
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('keeps an edit made after the operator opens the diff out of a merge without checks', async () => {
+    const cwd = repo();
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Write a greeting.' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [writer('worker', 'new.txt', 'first\n')] });
+    try {
+      const run = team.run({ cwd, prompt: 'Leave the greeting for the operator.' });
+      await run.result;
+      const controls = run.pack!;
+      const worker = controls.task('t1')!;
+      const revision = worker.checks!.revision;
+      expect(revision).toMatch(/^[0-9a-f]+$/);
+      expect(await controls.act('t1', { type: 'diff', revision })).toContain('+first');
+      writeFileSync(join(worker.cwd, 'new.txt'), 'second\n');
+      await expect(controls.act('t1', { type: 'merge' })).rejects.toMatchObject({ reason: 'stale' });
+      const latest = controls.task('t1')!.checks!.revision;
+      expect(latest).not.toBe(revision);
+      expect(await controls.act('t1', { type: 'diff', revision: latest })).toContain('+second');
+      // Another client viewed the correction, but the first client's click still carries the old tree.
+      await expect(controls.act('t1', { type: 'merge', revision })).rejects.toMatchObject({ reason: 'stale' });
+      expect(existsSync(join(cwd, 'new.txt'))).toBe(false);
+      await controls.act('t1', { type: 'merge', revision: latest });
+      expect(readFileSync(join(cwd, 'new.txt'), 'utf8')).toBe('second\n');
     } finally {
       await team.close();
     }

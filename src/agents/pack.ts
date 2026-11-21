@@ -106,8 +106,8 @@ export interface Pack extends CodingAgent {
 
 export type PackAction =
   | { type: 'steer'; text: string }
-  | { type: 'merge'; revision?: string }
-  | { type: 'stop' | 'diff' | 'discard' | 'review' | 'verify' };
+  | { type: 'merge' | 'diff'; revision?: string }
+  | { type: 'stop' | 'discard' | 'review' | 'verify' };
 
 const packActionRefusals = {
   missing: 'This pack task could not be found.',
@@ -123,7 +123,7 @@ const packActionRefusals = {
   checking: 'A check is running. Wait for its result.',
   reviewer: 'This pack has no other installed agent with a read-only mode.',
   verification: 'No test command is configured for this pack.',
-  stale: 'The changes have been updated. Inspect the current results before merging.',
+  stale: 'The worktree changed. Open the updated diff before merging.',
   budget: 'The session has used its review budget.',
   capacity: 'All pack worker slots are in use. Try the review when a slot is free.',
 };
@@ -198,6 +198,7 @@ interface Sub {
   costUsd?: number;
   changes?: string[];
   reviewer?: CodingAgent;
+  inspected?: string;
   checks?: PackTaskChecks;
   checking?: { abort: AbortController; done: Promise<string> };
   unwatch?: () => void;
@@ -590,7 +591,9 @@ export function pack(options: PackOptions): Pack {
           else if (result.ok) lastFailure.delete(agent.name);
           if (sub.dir && sub.start) {
             try {
-              sub.changes = await worktreeChanges(sub.dir, sub.start);
+              const revision = await snapshotTree(sub.dir);
+              sub.changes = await worktreeChanges(sub.dir, sub.start, revision);
+              if (sub.checks) sub.checks.revision = revision;
             } catch {
               sub.changes = undefined;
             }
@@ -650,6 +653,13 @@ export function pack(options: PackOptions): Pack {
           updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
         });
 
+      const observe = (sub: Sub) => {
+        if (observers && sub.dir && !sub.unwatch && (sub.checks?.review || sub.checks?.verify)) {
+          sub.unwatch = watchCheckedTree(sub.dir, () => refresh(sub));
+          void refresh(sub);
+        }
+      };
+
       const check = async (sub: Sub, kind: 'review' | 'verify', context: PackCheckContext = {}) => {
         const { done } = await withWorktree(async () => {
           if (sub.status === 'running') throw new PackActionError('running');
@@ -661,7 +671,7 @@ export function pack(options: PackOptions): Pack {
           if (kind === 'review' && !reviewer) throw new PackActionError('reviewer');
           if (kind === 'verify' && !verification) throw new PackActionError('verification');
           const revision = await snapshotTree(sub.dir);
-          const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : '';
+          const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
           if (kind === 'review' && occupied() >= maxParallel) throw new PackActionError('capacity');
           const checks = sub.checks;
           const abort = new AbortController();
@@ -698,7 +708,7 @@ export function pack(options: PackOptions): Pack {
           };
           const done = run();
           sub.checking = { abort, done };
-          if (observers && !sub.unwatch) sub.unwatch = watchCheckedTree(sub.dir, () => void refresh(sub));
+          observe(sub);
           notify(sub);
           return { done };
         });
@@ -716,12 +726,13 @@ export function pack(options: PackOptions): Pack {
             throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
           const tree = await snapshotTree(sub.dir);
           const checks = sub.checks;
-          if (checks?.review || checks?.verify || expected) {
+          if (sub.inspected || checks?.review || checks?.verify || expected) {
             updateRevision(sub, tree);
             if (
               expected
                 ? expected !== tree
-                : [checks?.review, checks?.verify].some((result) => result && result.revision !== tree)
+                : (sub.inspected && sub.inspected !== tree) ||
+                  [checks?.review, checks?.verify].some((result) => result && result.revision !== tree)
             )
               throw new PackActionError('stale');
           }
@@ -730,7 +741,7 @@ export function pack(options: PackOptions): Pack {
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
           const repo = sub.repo;
           const leadPaths = paths.map((file) => path.relative(leadCwd, path.join(repo, file)));
-          if (patch.trim()) {
+          if (patch.length) {
             const applied = await applyPatch(sub.repo, patch, threeWay);
             if (!applied.ok) {
               if (!applied.conflicts)
@@ -773,13 +784,16 @@ export function pack(options: PackOptions): Pack {
         return `Stopped ${sub.id}.`;
       };
 
-      const diff = (sub: Sub) =>
+      const diff = (sub: Sub, expected?: string) =>
         withWorktree(async () => {
           if (!sub.dir || !sub.start)
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           const tree = await snapshotTree(sub.dir);
-          if (sub.checks?.review || sub.checks?.verify) updateRevision(sub, tree);
-          return clip(await worktreeDiff(sub.dir, sub.start, tree), MAX_DIFF) || 'No changes.';
+          updateRevision(sub, tree);
+          if (expected && expected !== tree) throw new PackActionError('stale');
+          const patch = await worktreeDiff(sub.dir, sub.start, tree);
+          sub.inspected = tree;
+          return clip(patch.toString('utf8'), MAX_DIFF) || 'No changes.';
         });
 
       const discard = (sub: Sub) =>
@@ -1004,6 +1018,7 @@ export function pack(options: PackOptions): Pack {
             };
             listeners.add(scoped);
             observers++;
+            if (observers === 1) for (const sub of mine) observe(sub);
             return () => {
               if (!listeners.delete(scoped)) return;
               if (--observers === 0)
@@ -1022,7 +1037,7 @@ export function pack(options: PackOptions): Pack {
               case 'stop':
                 return stop(sub);
               case 'diff':
-                return diff(sub);
+                return diff(sub, action.revision);
               case 'review':
               case 'verify':
                 return check(sub, action.type, context);

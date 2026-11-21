@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { PackAction, PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
@@ -95,6 +95,7 @@ function TaskDetail({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ text: string; revision?: string }>();
+  const inspected = useRef<string>(undefined);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const running = task.status === 'running';
   const worktree = task.state === 'unmerged';
@@ -107,9 +108,12 @@ function TaskDetail({
     setFeedback(undefined);
     try {
       const text = await act(turnId, task.id, action);
-      if (action.type === 'diff') setDiff({ text, revision: checks?.revision });
-      else {
+      if (action.type === 'diff') {
+        inspected.current = action.revision;
+        setDiff({ text, revision: action.revision });
+      } else {
         if (action.type !== 'review' && action.type !== 'verify') setFeedback({ text });
+        else inspected.current = undefined;
         setMode(undefined);
         setInput('');
       }
@@ -246,7 +250,11 @@ function TaskDetail({
                   <button
                     type="button"
                     className="gc-btn"
-                    onClick={() => (visibleDiff === undefined ? void perform({ type: 'diff' }) : setDiff(undefined))}
+                    onClick={() =>
+                      visibleDiff === undefined
+                        ? void perform({ type: 'diff', revision: checks?.revision })
+                        : setDiff(undefined)
+                    }
                   >
                     {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
                   </button>
@@ -254,7 +262,7 @@ function TaskDetail({
                     type="button"
                     className="gc-btn gc-primary"
                     disabled={checking}
-                    onClick={() => void perform({ type: 'merge', revision: checks?.revision })}
+                    onClick={() => void perform({ type: 'merge', revision: inspected.current ?? checks?.revision })}
                   >
                     Merge locally
                   </button>

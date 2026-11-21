@@ -1476,14 +1476,36 @@ async function npmTestCommand(cwd: string): Promise<string | undefined> {
 function shellCheck(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult> {
   return new Promise((done) => {
     let output = '';
-    const child = spawn(command, { cwd, env, shell: true, stdio: ['ignore', 'pipe', 'pipe'], signal });
+    if (signal?.aborted) return done({ exitCode: null, output: 'Check stopped.' });
+    const group = process.platform !== 'win32';
+    const child = spawn(command, { cwd, env, shell: true, detached: group, stdio: ['ignore', 'pipe', 'pipe'] });
+    let escalation: NodeJS.Timeout | undefined;
+    const stop = (how: NodeJS.Signals) => {
+      try {
+        if (group && child.pid) process.kill(-child.pid, how);
+        else child.kill(how);
+      } catch {
+        // The test command has already exited.
+      }
+    };
+    const abort = () => {
+      stop('SIGTERM');
+      escalation = setTimeout(() => stop('SIGKILL'), 1000).unref();
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     const collect = (chunk: Buffer) => {
       output = (output + chunk.toString('utf8')).slice(-CHECK_OUTPUT_LIMIT);
     };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
     child.on('error', (error) => done({ exitCode: null, output: `${output}\n${error.message}`.trim() }));
-    child.on('close', (code) => done({ exitCode: code, output }));
+    child.on('close', (code) => {
+      signal?.removeEventListener('abort', abort);
+      clearTimeout(escalation);
+      // A runner may ignore SIGTERM and close its output before its shell exits.
+      if (signal?.aborted) stop('SIGKILL');
+      done({ exitCode: signal?.aborted ? null : code, output });
+    });
   });
 }
 

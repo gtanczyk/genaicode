@@ -599,6 +599,34 @@ describe('genaicode CLI', () => {
     expect(await main(cli)).toBe(EXIT_FAILED);
     expect(readFileSync(join(dir, 'marker'), 'utf8').trim()).toBe('checked');
   });
+
+  it.skipIf(process.platform === 'win32')('stops the shell runner and its test process on cancellation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genaicode-check-stop-'));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, 'test.cjs'),
+      "require('node:fs').writeFileSync('pid', String(process.pid)); setInterval(() => {}, 1000);",
+    );
+    const stop = new AbortController();
+    const { cli } = environment({
+      argv: ['run', '-a', 'alpha', '--verify', 'node test.cjs && echo done', '--max-repairs', '0', 'x'],
+      agents: [fakeAgent('alpha', [{ events: [], result: completed }])],
+      cwd: dir,
+      env: process.env,
+      signal: stop.signal,
+    });
+    const running = main(cli);
+    try {
+      const pid = await vi.waitFor(() => Number(readFileSync(join(dir, 'pid'), 'utf8')));
+      expect(pid).toBeGreaterThan(1);
+      stop.abort();
+      await running;
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    } finally {
+      stop.abort();
+      await running;
+    }
+  });
 });
 
 describe('acp', () => {

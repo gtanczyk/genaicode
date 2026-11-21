@@ -37,7 +37,7 @@ export interface PackCheckContext {
 /** Give the reviewer the complete immutable patch, including changes beyond the chat diff limit. */
 export async function reviewPatch(
   agent: CodingAgent,
-  patch: string,
+  patch: Buffer,
   env: NodeJS.ProcessEnv | undefined,
   context: PackCheckContext,
 ): Promise<VerifyReport> {
@@ -70,18 +70,29 @@ export async function reviewPatch(
 }
 
 /** Coalesce file events. Files ignored by Git leave the revision unchanged. */
-export function watchCheckedTree(dir: string, refresh: () => void): () => void {
+export function watchCheckedTree(dir: string, refresh: () => Promise<void>): () => void {
   let timer: NodeJS.Timeout | undefined;
   let fallback: NodeJS.Timeout | undefined;
+  let active = false;
+  let dirty = false;
+  let closed = false;
   const schedule = () => {
-    if (timer) return;
-    timer = setTimeout(() => {
+    dirty = true;
+    if (closed || active || timer) return;
+    timer = setTimeout(async () => {
       timer = undefined;
-      refresh();
+      active = true;
+      dirty = false;
+      try {
+        await refresh();
+      } finally {
+        active = false;
+        if (dirty) schedule();
+      }
     }, 350).unref();
   };
   const poll = () => {
-    fallback ??= setInterval(refresh, 10_000).unref();
+    if (!closed) fallback ??= setInterval(schedule, 10_000).unref();
   };
   let watcher: FSWatcher | undefined;
   try {
@@ -92,6 +103,7 @@ export function watchCheckedTree(dir: string, refresh: () => void): () => void {
     poll();
   }
   return () => {
+    closed = true;
     watcher?.close();
     clearTimeout(timer);
     clearInterval(fallback);
