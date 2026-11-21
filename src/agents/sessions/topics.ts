@@ -21,6 +21,8 @@ export interface TopicStore {
   topics: Topic[];
   /** Session key (`source:id`) to topic id. */
   sessions: Record<string, string>;
+  /** claude.ai project id (`SessionInfo.project`) to the topic its sessions go to. */
+  projects?: Record<string, string>;
   /** Session keys of genaicode's own sorting runs, the newest last: nobody's conversations. */
   runs?: string[];
 }
@@ -58,6 +60,10 @@ export async function readTopics(env: NodeJS.ProcessEnv = process.env): Promise<
     for (const [key, id] of Object.entries(isRecord(saved.sessions) ? saved.sessions : {})) {
       if (typeof id === 'string' && known.has(id)) store.sessions[key] = id;
     }
+    const projects = Object.entries(isRecord(saved.projects) ? saved.projects : {}).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string' && known.has(entry[1]),
+    );
+    if (projects.length) store.projects = Object.fromEntries(projects);
     const runs = Array.isArray(saved.runs) ? saved.runs.filter((key): key is string => typeof key === 'string') : [];
     if (runs.length) store.runs = runs;
   } catch {
@@ -96,9 +102,56 @@ export function withTopicsRun(store: TopicStore, key: string): TopicStore {
   return { ...store, runs };
 }
 
-/** The sessions no topic has yet, as listed. */
+/**
+ * `store` with the sessions that came from a claude.ai project (`SessionInfo.project`) in the topic
+ * of that project, named as the project is: no agent is asked. A project keeps its topic once it has
+ * one, whatever that is renamed to or merged into. Sessions of a project no session names stay
+ * unsorted. Resolves to the new store and how many sessions it placed.
+ */
+export function projectTopics(
+  sessions: readonly SessionInfo[],
+  store: TopicStore,
+): { store: TopicStore; placed: number } {
+  const next: TopicStore = { ...store, topics: [...store.topics], sessions: { ...store.sessions } };
+  const projects = { ...store.projects };
+  const names = new Map<string, string>();
+  for (const { project } of sessions) if (project?.name && !names.has(project.id)) names.set(project.id, project.name);
+  let placed = 0;
+  for (const session of sessions) {
+    if (!session.project || next.sessions[archiveKey(session)] !== undefined || inRunDirectory(session.cwd)) continue;
+    const { id } = session.project;
+    const name = names.get(id);
+    const topic =
+      next.topics.find((one) => one.id === projects[id]) ?? (name ? topicNamed(next, flat(name, 80)) : undefined);
+    if (!topic) continue;
+    projects[id] = topic.id;
+    next.sessions[archiveKey(session)] = topic.id;
+    placed += 1;
+  }
+  if (Object.keys(projects).length) next.projects = projects;
+  return { store: next, placed };
+}
+
+/**
+ * Whether work in `cwd` is a run rather than a piece of somebody's work: a pack member's worktree
+ * (`.genaicode/worktrees`), or a temporary directory, where tests and one-off runs happen. Such
+ * sessions are listed as ever, but belong to no topic.
+ */
+export function inRunDirectory(cwd: string | undefined): boolean {
+  if (!cwd) return false;
+  const place = cwd.replace(/\\/g, '/');
+  return (
+    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
+    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
+    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
+  );
+}
+
+/** The sessions no topic has yet, as listed; those that ran in a run's directory need none. */
 export function unsortedSessions(sessions: readonly SessionInfo[], store: TopicStore): SessionInfo[] {
-  return sessions.filter((session) => store.sessions[archiveKey(session)] === undefined);
+  return sessions.filter(
+    (session) => store.sessions[archiveKey(session)] === undefined && !inRunDirectory(session.cwd),
+  );
 }
 
 const flat = (text: string, most: number): string => {
@@ -257,6 +310,13 @@ export function mergeTopics(store: TopicStore, from: Topic, into: Topic): TopicS
     sessions: Object.fromEntries(
       Object.entries(store.sessions).map(([key, id]) => [key, id === from.id ? into.id : id]),
     ),
+    ...(store.projects
+      ? {
+          projects: Object.fromEntries(
+            Object.entries(store.projects).map(([key, id]) => [key, id === from.id ? into.id : id]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -274,6 +334,12 @@ export function moveSessions(
   return { ...store, sessions: next };
 }
 
+/** Whether a session asks for you now: for approval, or with a message that asked something not long ago. */
+export function isAsking(session: SessionInfo, now = Date.now()): boolean {
+  if (session.archived || session.state !== 'waiting') return false;
+  return session.waitingFor === 'approval' || (!!session.ending && now - session.updatedAt < ASKING_MS);
+}
+
 /** A topic with its sessions as listed now. */
 export interface TopicSummary extends Topic {
   sessions: SessionInfo[];
@@ -282,11 +348,14 @@ export interface TopicSummary extends Topic {
   /** The directories or repositories it was worked on in, most sessions first. */
   projects: string[];
   updatedAt: number;
-  /** Sessions that ask for approval, or whose last message asks something. */
+  /** Sessions that ask for approval, or whose last message asked something in the last `ASKING_MS`. */
   asking: number;
   /** Sessions an agent works in now. */
   active: number;
 }
+
+/** A question at the end of a message still waits for this long; after, the thread was left. */
+export const ASKING_MS = 3 * 24 * 3600_000;
 
 /**
  * The topics with the sessions of a listing: what asks for you first, then the latest. Topics none
@@ -295,11 +364,13 @@ export interface TopicSummary extends Topic {
 export function summarizeTopics(
   sessions: readonly SessionInfo[],
   store: TopicStore,
+  now = Date.now(),
 ): { topics: TopicSummary[]; unsorted: SessionInfo[] } {
   const byId = new Map<string, TopicSummary>();
   const places = new Map<string, Map<string, number>>();
   const unsorted: SessionInfo[] = [];
   for (const session of sessions) {
+    if (inRunDirectory(session.cwd)) continue;
     const topic = store.topics.find((one) => one.id === store.sessions[archiveKey(session)]);
     if (!topic) {
       unsorted.push(session);
@@ -315,8 +386,7 @@ export function summarizeTopics(
     summary.agents[session.agent] = (summary.agents[session.agent] ?? 0) + 1;
     summary.updatedAt = Math.max(summary.updatedAt, session.updatedAt);
     if (session.state === 'active') summary.active += 1;
-    if (!session.archived && session.state === 'waiting' && (session.waitingFor === 'approval' || session.ending))
-      summary.asking += 1;
+    if (isAsking(session, now)) summary.asking += 1;
     const place = projectOf(session);
     const counts = places.get(topic.id)!;
     counts.set(place, (counts.get(place) ?? 0) + 1);

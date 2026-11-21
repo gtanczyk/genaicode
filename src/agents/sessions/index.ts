@@ -63,7 +63,10 @@ export {
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export {
   findTopic,
+  inRunDirectory,
+  isAsking,
   isTopicsRun,
+  projectTopics,
   mergeTopics,
   moveSessions,
   readTopics,

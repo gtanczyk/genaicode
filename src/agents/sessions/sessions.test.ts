@@ -149,6 +149,73 @@ describe('session sources', () => {
     expect(relay!.automated).toBeUndefined();
   });
 
+  it('tells runs a program made from chats through one, and reads the claude.ai project of a relayed session', async () => {
+    const dir = join(root, 'claude-origins');
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    const write = (name: string, minutesAgo: number, ...content: unknown[]) =>
+      file(join(dir, 'projects', '-work-app', `${name}.jsonl`), lines(...content), minutesAgo);
+    const sdk = { turnOrigin: 'sdk', entrypoint: 'sdk-cli' };
+    write('scheduled', 10, user('Pin the link', { turnOrigin: 'scheduled', entrypoint: 'claude-desktop' }), done);
+    write('headless', 20, user('Review the Git diff in changes.patch', sdk), done);
+    write(
+      'compacted',
+      25,
+      user('Run the suite', sdk),
+      user('This session is being continued...', { ...sdk, isCompactSummary: true }),
+      done,
+    );
+    // Too long to be read whole: a second prompt may sit in the middle, so it is not called a run.
+    write(
+      'long-chat',
+      27,
+      user('Add a tray icon', sdk),
+      assistant([{ type: 'text', text: 'x'.repeat(300_000) }]),
+      user('Make it monochrome', sdk),
+      assistant([{ type: 'text', text: 'y'.repeat(300_000) }]),
+    );
+    write('older-headless', 30, user('Reply with exactly: ok', { entrypoint: 'sdk-cli' }), done);
+    // Somebody chats through a program: more than one prompt.
+    write('chat', 40, user('Add a tray icon', sdk), done, user('Make it monochrome', sdk), done);
+    write(
+      'relayed',
+      50,
+      {
+        type: 'attachment',
+        attachment: {
+          type: 'prompt_snapshot',
+          systemPrompt: [
+            'You are...',
+            '## Where you are\n\nProject: "Ink & Fury" (id: `chan_01AbC`)\nTopic: "Cut the trailer"\n',
+          ],
+        },
+      },
+      user('<wake reason="mention"><project id="chan_01AbC" type="project">Cut the trailer</project></wake>', {
+        turnOrigin: 'human',
+        entrypoint: 'claude-desktop',
+      }),
+      done,
+    );
+    write(
+      'unnamed',
+      60,
+      user('<wake><project id="chan_02XyZ" type="project">Go</project></wake>', { turnOrigin: 'human' }),
+      done,
+    );
+    const all = await claudeSessions({ dir }).list();
+    expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual([
+      'scheduled',
+      'headless',
+      'compacted',
+      'older-headless',
+    ]);
+    expect(all.find((entry) => entry.id === 'relayed')).toMatchObject({
+      project: { id: 'chan_01AbC', name: 'Ink & Fury' },
+      title: 'Cut the trailer',
+    });
+    expect(all.find((entry) => entry.id === 'unnamed')!.project).toEqual({ id: 'chan_02XyZ' });
+    expect(all.find((entry) => entry.id === 'chat')!.project).toBeUndefined();
+  });
+
   it('tells the sessions nobody typed into, and leaves them out of a listing unless asked', async () => {
     const dir = join(root, 'claude-automated');
     const done = assistant([{ type: 'text', text: 'Done.' }]);
