@@ -241,6 +241,7 @@ Sessions options:
   "sessions send <id> <prompt>" streams the reply. It also reads the prompt from stdin.
   --detach returns when the agent starts; -a chooses the agent's store. --sandbox takes
   read-only, workspace-write or unrestricted. Without it the driver uses its own defaults.
+  From a shell that a coding agent runs it refuses unless you pass --force.
 
   "sessions archive <id...>" hides sessions you will not come back to; "sessions archive --stale"
   (--older 5d, -a) does it for every one waiting for you or left half way for 2 days or more.
@@ -1627,11 +1628,23 @@ async function handoffFrom(
   return handoffPreamble(turns, file);
 }
 
+/** Variables the agent CLIs set in the shells they run commands in. */
+const AGENT_SHELL_MARKERS = ['CLAUDECODE', 'CODEX_SANDBOX', 'CODEX_THREAD_ID', 'GEMINI_CLI', 'CURSOR_AGENT'];
+
 async function sendPrompt(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'send' }>,
 ): Promise<number> {
+  // A person sends prompts to other sessions. This catches an agent doing it by accident, not on purpose.
+  const marker = command.force ? undefined : AGENT_SHELL_MARKERS.find((name) => cli.env[name]);
+  if (marker) {
+    cli.stderr.write(
+      `This shell belongs to a coding agent (${marker} is set). Prompts to other sessions are sent by a person: ` +
+        'run "genaicode sessions send" in your own terminal, or pass --force.\n',
+    );
+    return EXIT_USAGE;
+  }
   const prompt = command.prompt ?? (await cli.readStdin());
   if (!prompt?.trim()) {
     cli.stderr.write('Pass a prompt as arguments or on stdin.\n');

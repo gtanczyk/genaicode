@@ -23,7 +23,16 @@ export type CliCommand =
   /** `npx genaicode install`: what scripts/install.sh does, from npm. */
   | { kind: 'install'; version?: string; binDir?: string; force: boolean }
   | { kind: 'agents'; json: boolean }
-  | { kind: 'send'; id: string; prompt?: string; agent?: string; sandbox?: SandboxPolicy; detach: boolean }
+  | {
+      kind: 'send';
+      id: string;
+      prompt?: string;
+      agent?: string;
+      sandbox?: SandboxPolicy;
+      detach: boolean;
+      /** `--force`: send even from a shell an agent runs. */
+      force: boolean;
+    }
   | {
       kind: 'sessions';
       json: boolean;
@@ -218,6 +227,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           agent: { type: 'string', short: 'a' },
           sandbox: { type: 'string' },
           detach: { type: 'boolean' },
+          force: { type: 'boolean' },
         },
       }),
     );
@@ -233,6 +243,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       agent: values.agent,
       sandbox,
       detach: values.detach === true,
+      force: values.force === true,
     };
   }
 
