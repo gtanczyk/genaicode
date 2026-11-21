@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -204,6 +205,8 @@ export function AgentChat(props: AgentChatProps) {
       : [];
   const choice = offered[Math.min(picked, offered.length - 1)];
   // The list is shorter than a host's commands: the chosen one stays in view.
+  const listId = useId();
+  const optionId = (index: number) => `${listId}-${index}`;
   const chosen = useRef<HTMLLIElement>(null);
   const chosenName = choice?.name;
   useEffect(() => {
@@ -347,10 +350,11 @@ export function AgentChat(props: AgentChatProps) {
           </div>
         ) : null}
         {choice ? (
-          <ul className="gc-completions" role="listbox" aria-label="Commands">
-            {offered.map((one) => (
+          <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+            {offered.map((one, index) => (
               <li
                 key={one.name}
+                id={optionId(index)}
                 ref={one === choice ? chosen : undefined}
                 role="option"
                 aria-selected={one === choice}
@@ -393,6 +397,10 @@ export function AgentChat(props: AgentChatProps) {
               setClosedAt(undefined);
             }}
             aria-autocomplete={props.completions ? 'list' : undefined}
+            role={props.completions ? 'combobox' : undefined}
+            aria-expanded={props.completions ? !!choice : undefined}
+            aria-controls={choice ? listId : undefined}
+            aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />

@@ -305,6 +305,11 @@ describe('AgentChat', () => {
     });
     key({ key: 'ArrowUp' });
     expect(shown.at(-1)).toBe('/help');
+    // The box says which list it drives and which option is chosen.
+    const box = $('textarea');
+    expect(box.getAttribute('aria-controls')).toBe($('.gc-completions').id);
+    expect(box.getAttribute('aria-activedescendant')).toBe($('.gc-completions li[aria-selected="true"]').id);
+    expect(box.getAttribute('aria-expanded')).toBe('true');
     scroll.mockRestore();
     key({ key: 'ArrowDown' });
     key({ key: 'Enter' });
