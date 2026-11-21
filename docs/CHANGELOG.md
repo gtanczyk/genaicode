@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `npx genaicode install`: installs the `genaicode` command that updates itself, the same as the shell installer, with `--version`, `--bin-dir` and `--force` (#PR)
+
 ## 2.41.0 — 2026-11-21
 
 ### Added

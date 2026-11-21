@@ -18,6 +18,8 @@ export type CliCommand =
     }
   /** Run once by scripts/install.sh from the freshly installed version. */
   | { kind: 'self-install'; binDir?: string; force: boolean }
+  /** `npx genaicode install`: what scripts/install.sh does, from npm. */
+  | { kind: 'install'; version?: string; binDir?: string; force: boolean }
   | { kind: 'agents'; json: boolean }
   | { kind: 'send'; id: string; prompt?: string; agent?: string; sandbox?: SandboxPolicy; detach: boolean }
   | {
@@ -158,6 +160,17 @@ export function parseCli(argv: readonly string[]): CliCommand {
       auto: values.auto === undefined ? undefined : values.auto === 'on',
       background: values.background === true,
     };
+  }
+
+  if (command === 'install') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: { version: { type: 'string' }, 'bin-dir': { type: 'string' }, force: { type: 'boolean' } },
+      }),
+    );
+    return { kind: 'install', version: values.version, binDir: values['bin-dir'], force: values.force === true };
   }
 
   if (command === 'self-install') {

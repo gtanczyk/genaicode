@@ -5,18 +5,22 @@
 ## Install the command
 
 `npx genaicode` works without installing anything. To type just `genaicode`, and have it
-update itself, run the installer (macOS and Linux, Node.js 20+ with npm):
+update itself, install it once (macOS and Linux, Node.js 20+ with npm):
 
 ```bash
+npx genaicode install
+# or, without npx:
 curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh
 ```
 
-It is a short shell script ([scripts/install.sh](../scripts/install.sh), read it first) that
-`npm install`s the published package without lifecycle scripts into
+Both do the same thing (the shell version is [scripts/install.sh](../scripts/install.sh), read
+it first): `npm install` the published package without lifecycle scripts into
 `~/.genaicode/versions/<version>`, points `~/.genaicode/current` at it and writes a
 `~/.local/bin/genaicode` shim. Nothing needs sudo. If `~/.local/bin` is not on your `PATH`,
-it prints the line to add to your shell profile. `GENAICODE_VERSION`, `GENAICODE_HOME` and
-`GENAICODE_BIN_DIR` change the version, the install directory and the bin directory.
+it prints the line to add to your shell profile. `npx genaicode install` installs the version
+npx ran; `--version <v>`, `--bin-dir <dir>` and `GENAICODE_HOME` change the version, the bin
+directory and the install directory (for the script: `GENAICODE_VERSION`, `GENAICODE_BIN_DIR`,
+`GENAICODE_HOME`).
 
 ```bash
 genaicode update            # install the latest version now and print what changed
