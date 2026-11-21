@@ -389,6 +389,52 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.gc-diff-stat {
+  display: flex;
+  gap: 6px;
+  font: 0.92em var(--_mono);
+  white-space: nowrap;
+}
+.gc-diff-stat ins {
+  color: var(--_ok);
+  text-decoration: none;
+}
+.gc-diff-stat del {
+  color: var(--_error);
+  text-decoration: none;
+}
+.gc-diff {
+  border-top: 1px solid var(--_border);
+  font: 12px/1.5 var(--_mono);
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px 0;
+}
+.gc-diff > div {
+  padding: 0 12px 0 26px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  position: relative;
+  color: var(--_muted);
+}
+.gc-diff > div[data-sign='+'] {
+  background: color-mix(in srgb, var(--_ok) 14%, transparent);
+  color: var(--_text);
+}
+.gc-diff > div[data-sign='-'] {
+  background: color-mix(in srgb, var(--_error) 14%, transparent);
+  color: var(--_text);
+}
+.gc-diff > div[data-sign='+']::before,
+.gc-diff > div[data-sign='-']::before {
+  content: attr(data-sign);
+  position: absolute;
+  left: 12px;
+  color: var(--_muted);
+}
+.gc-diff > .gc-diff-more {
+  color: var(--_faint);
+}
 .gc-tool pre {
   margin: 0;
   padding: 10px 12px;

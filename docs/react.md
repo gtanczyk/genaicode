@@ -71,24 +71,24 @@ HTML; links open in a new tab; GFM tables, strikethrough and task lists), collap
 own approval requests, queued prompts and a working indicator, and an input where Enter
 sends, Shift+Enter adds a line and Esc stops. Props:
 
-| Prop                                                                           |                                                                                                                    |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `state`                                                                        | `SessionState`, or null before there is a session                                                                  |
-| `onSend(text)`, `onStop()`                                                     | Enter or Send; Stop or Esc. No `onStop`, no Stop button                                                            |
-| `onApprove(id, decision)`                                                      | answers `state.approvals`; without it they show as waiting                                                         |
-| `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests          |
-| `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                      |
-| `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                   |
-| `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                           |
-| `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                   |
-| `artifactUrl(artifact)`, `renderArtifact(artifact, url)`                       | where your server serves a published artifact; your own card ([artifacts](agents.md#artifacts))                    |
-| `onArtifactSubmit(artifact, data)`                                             | a page the agent published sent data and the user confirmed it; default sends it as a message; `null` turns it off |
-| `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line                                                           |
-| `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                        |
-| `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                     |
-| `composerExtras`                                                               | host controls inside the composer, under the text and before Send (agent, model, mode)                             |
-| `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input                                                                 |
-| `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                    |
+| Prop                                                                           |                                                                                                                             |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `state`                                                                        | `SessionState`, or null before there is a session                                                                           |
+| `onSend(text)`, `onStop()`                                                     | Enter or Send; Stop or Esc. No `onStop`, no Stop button                                                                     |
+| `onApprove(id, decision)`                                                      | answers `state.approvals`; without it they show as waiting                                                                  |
+| `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests                   |
+| `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                               |
+| `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                            |
+| `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                                    |
+| `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                            |
+| `artifactUrl(artifact)`, `renderArtifact(artifact, url)`                       | where your server serves a published artifact; your own card ([artifacts](agents.md#artifacts))                             |
+| `onArtifactSubmit(artifact, data)`                                             | a page the agent published sent data and the user confirmed it; default sends it as a message; `null` turns it off          |
+| `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line. An edit step shows its diff (added and removed lines) when opened |
+| `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                                 |
+| `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
+| `composerExtras`                                                               | host controls inside the composer, under the text and before Send (agent, model, mode)                                      |
+| `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input                                                                          |
+| `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                             |
 
 Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,
 `--gc-panel`, `--gc-border`, `--gc-text`, `--gc-muted`, `--gc-accent`, `--gc-accent-text`,

@@ -56,6 +56,98 @@ export function toolArgument(input: unknown, cwd?: string): string {
   return cwd ? text.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : text;
 }
 
+/** One line of a change an agent made: added, removed, or left as it was. */
+export interface DiffLine {
+  sign: '+' | '-' | ' ';
+  text: string;
+}
+
+/** What an edit changed, as lines to show. `more` counts the lines left out of a long one. */
+export interface ToolDiff {
+  lines: DiffLine[];
+  added: number;
+  removed: number;
+  more: number;
+}
+
+const DIFF_SHOWN = 400;
+
+/**
+ * The change a tool call makes to a file, read from its input: an edit (`old_string` and
+ * `new_string`, alone or in `edits`), a written file (`content`), or a patch (`patch`, or input that
+ * is one). Undefined for a call that changes no file, or whose input says nothing of how.
+ */
+export function toolDiff(input: unknown): ToolDiff | undefined {
+  const lines: DiffLine[] = [];
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  const pick = (record: Record<string, unknown>, keys: string[]) =>
+    keys.map((key) => text(record[key])).find((v) => v !== undefined);
+  const edit = (record: Record<string, unknown>): boolean => {
+    const before = pick(record, ['old_string', 'oldString', 'old_str', 'oldText']);
+    const after = pick(record, ['new_string', 'newString', 'new_str', 'newText']);
+    if (before === undefined || after === undefined) return false;
+    if (lines.length) lines.push({ sign: ' ', text: '⋯' });
+    lines.push(...changedLines(before, after));
+    return true;
+  };
+  const patch = (value: string): boolean => {
+    if (!/^(\*\*\* Begin Patch|@@|diff --git|--- )/m.test(value)) return false;
+    for (const line of value.split('\n')) {
+      if (/^(\*\*\* (Begin|End) Patch|diff --git|index |\+\+\+ |--- )/.test(line)) continue;
+      if (line.startsWith('+')) lines.push({ sign: '+', text: line.slice(1) });
+      else if (line.startsWith('-')) lines.push({ sign: '-', text: line.slice(1) });
+      else lines.push({ sign: ' ', text: line.startsWith(' ') ? line.slice(1) : line });
+    }
+    return true;
+  };
+  if (typeof input === 'string') {
+    if (!patch(input)) return undefined;
+  } else if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const record = input as Record<string, unknown>;
+    const edits = Array.isArray(record.edits) ? record.edits : undefined;
+    const patched = pick(record, ['patch', 'diff', 'input']);
+    const content = pick(record, ['content', 'contents', 'file_text']);
+    if (edits) {
+      for (const one of edits) if (one && typeof one === 'object') edit(one as Record<string, unknown>);
+    } else if (edit(record)) {
+      // One replacement.
+    } else if (patched !== undefined && patch(patched)) {
+      // A patch in the agent's own format.
+    } else if (content !== undefined && pick(record, ['file_path', 'filePath', 'path']) !== undefined) {
+      lines.push(...content.split('\n').map((line): DiffLine => ({ sign: '+', text: line })));
+    }
+  } else return undefined;
+  if (!lines.length) return undefined;
+  return {
+    lines: lines.slice(0, DIFF_SHOWN),
+    added: lines.filter((line) => line.sign === '+').length,
+    removed: lines.filter((line) => line.sign === '-').length,
+    more: Math.max(0, lines.length - DIFF_SHOWN),
+  };
+}
+
+/** `before` turned into `after`: the lines they share at both ends stay, the middle is replaced. */
+function changedLines(before: string, after: string): DiffLine[] {
+  const from = before.split('\n');
+  const to = after.split('\n');
+  let head = 0;
+  while (head < from.length && head < to.length && from[head] === to[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < from.length - head &&
+    tail < to.length - head &&
+    from[from.length - 1 - tail] === to[to.length - 1 - tail]
+  )
+    tail += 1;
+  const same = (line: string): DiffLine => ({ sign: ' ', text: line });
+  return [
+    ...from.slice(0, head).map(same),
+    ...from.slice(head, from.length - tail).map((line): DiffLine => ({ sign: '-', text: line })),
+    ...to.slice(head, to.length - tail).map((line): DiffLine => ({ sign: '+', text: line })),
+    ...from.slice(from.length - tail).map(same),
+  ];
+}
+
 /** {@link toolArgument} on one line, cut to `width`. */
 export function toolSummary(input: unknown, width = 80, cwd?: string): string {
   const shown = toolArgument(input, cwd).replace(/\s+/g, ' ');
