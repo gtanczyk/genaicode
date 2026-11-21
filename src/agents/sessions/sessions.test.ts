@@ -164,6 +164,15 @@ describe('session sources', () => {
       user('This session is being continued...', { ...sdk, isCompactSummary: true }),
       done,
     );
+    // Too long to be read whole: a second prompt may sit in the middle, so it is not called a run.
+    write(
+      'long-chat',
+      27,
+      user('Add a tray icon', sdk),
+      assistant([{ type: 'text', text: 'x'.repeat(300_000) }]),
+      user('Make it monochrome', sdk),
+      assistant([{ type: 'text', text: 'y'.repeat(300_000) }]),
+    );
     write('older-headless', 30, user('Reply with exactly: ok', { entrypoint: 'sdk-cli' }), done);
     // Somebody chats through a program: more than one prompt.
     write('chat', 40, user('Add a tray icon', sdk), done, user('Make it monochrome', sdk), done);

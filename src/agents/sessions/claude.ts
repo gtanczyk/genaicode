@@ -214,7 +214,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   // notes none, the session is a headless run or opens with a scheduled task and no typed prompt is seen.
   // A program driving Claude Code (`sdk`) with one prompt is a run, with more a chat somebody has
   // through that program.
-  const run = prompts.size <= 1;
+  // Only a transcript read whole says so: the middle of a long one may hold more prompts.
+  const run = head === tail && prompts.size <= 1;
   if (sent ? !human && (!program || run) : entrypoint?.startsWith('sdk') ? run : scheduled && !typed)
     info.automated = true;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
