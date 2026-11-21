@@ -52,7 +52,7 @@ it('asks once per session, then sends without asking, and reports the answer', a
   expect(await tool.call({ id: session.id, text: 'Hi' })).toContain('did not allow');
   expect(agent.run).not.toHaveBeenCalled();
 
-  gate.attach({ confirm, done });
+  const detach = gate.attach({ confirm, done });
   expect(await tool.call({ id: session.id, text: 'The bakery is done.' })).toContain('owner · "Knights concept"');
   await gate.settled();
   expect(confirm).toHaveBeenCalledTimes(1);
@@ -66,6 +66,16 @@ it('asks once per session, then sends without asking, and reports the answer', a
   await gate.settled();
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(agent.run).toHaveBeenCalledTimes(2);
+
+  // Detached, or another chat attached: what was allowed is gone.
+  detach();
+  expect(await tool.call({ id: session.id, text: 'Still there?' })).toContain('did not allow');
+  const again = vi.fn(async () => true);
+  gate.attach({ confirm: again });
+  await tool.call({ id: session.id, text: 'New chat.' });
+  await gate.settled();
+  expect(again).toHaveBeenCalledTimes(1);
+  expect(agent.run).toHaveBeenCalledTimes(3);
 
   // An unfinished session takes it too, not only one waiting for a reply.
   const unfinished = owner([{ ...session, state: 'unfinished' }]);

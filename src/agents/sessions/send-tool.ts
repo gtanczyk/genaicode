@@ -34,17 +34,22 @@ export class SessionSendGate {
 
   /** Attach the chat that asks and shows. Returns the detach. */
   attach(handler: SessionSendHandler): () => void {
+    // What the person allowed was allowed to the chat they allowed it in.
+    this.allowed.clear();
     this.handler = handler;
     return () => {
-      if (this.handler === handler) this.handler = undefined;
+      if (this.handler !== handler) return;
+      this.handler = undefined;
+      this.allowed.clear();
     };
   }
 
   async allow(target: SessionSendTarget, text: string): Promise<boolean> {
+    const handler = this.handler;
+    if (!handler) return false;
     const key = `${target.source}:${target.id}`;
     if (this.allowed.has(key)) return true;
-    const handler = this.handler;
-    if (!handler || !(await handler.confirm(target, text))) return false;
+    if (!(await handler.confirm(target, text)) || this.handler !== handler) return false;
     this.allowed.add(key);
     return true;
   }
