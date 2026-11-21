@@ -397,7 +397,7 @@ describe('genaicode install', () => {
     dirs.push(base);
     const { deps, npm } = npxDeps(base);
     const result = await installCommand(deps, {});
-    const home = join(base, '.genaicode');
+    const home = realpathSync(join(base, '.genaicode'));
     expect(npm).toEqual(['genaicode@2.36.0']);
     expect(result).toMatchObject({ home, version: '2.36.0', shim: join(base, '.local', 'bin', 'genaicode') });
     expect(readlinkSync(join(home, 'current'))).toBe(join('versions', '2.36.0'));
