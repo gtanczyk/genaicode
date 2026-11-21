@@ -6,10 +6,6 @@ releases. A PR that changes `src/` (tests excluded) must add a line under `## Un
 fails. Merging to master refreshes the `release` PR; merging that publishes to npm. See
 [AGENTS.md](../AGENTS.md#changelog-and-releases).
 
-### Fixed
-
-- `genaicode topics refresh` says how many runs it takes and how far it is after each one, and gives sessions that say the very same thing (the hundredth run of one prompt) a single line, so there are fewer runs (#PRNUM)
-
 ## Unreleased
 
 ### Added
