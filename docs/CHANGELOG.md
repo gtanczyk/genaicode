@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.46.0 — 2026-11-21
+
 ### Added
 
 - Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
