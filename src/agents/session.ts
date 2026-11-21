@@ -243,7 +243,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
   const packRuns = new Map<number, { agent: CodingAgent; controls: PackControls; unsubscribe?: () => void }>();
-  const checkLifetime = new AbortController();
+  let checkLifetime = new AbortController();
+  let activeReviews = 0;
+  const budgetInReview = () =>
+    activeReviews > 0 && (state.budget?.maxTokens !== undefined || state.budget?.maxCostUsd !== undefined);
   const idleWaiters: Array<() => void> = [];
   let run: AgentRun | undefined;
   let controller: AbortController | undefined;
@@ -492,7 +495,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 
   const settleIdle = () => {
-    if (state.status !== 'idle' || state.queued.length) return;
+    if (state.status !== 'idle' || state.queued.length || budgetInReview()) return;
     for (const resolve of idleWaiters.splice(0)) resolve();
   };
 
@@ -735,11 +738,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         set({ notes: [...(state.notes ?? []), prompt] });
         // A new note releases the held ones, oldest first: now, or as the running turn ends.
         holdNotes = false;
-        if (state.status === 'idle') return startTurn(shiftNote());
+        if (state.status === 'idle' && !budgetInReview()) return startTurn(shiftNote());
         return;
       }
       holdNotes = false;
-      if (state.status === 'idle') {
+      if (state.status === 'idle' && !budgetInReview()) {
         // Held notes go first: the agent hears what happened before the user's next words.
         if (!state.notes?.length) return startTurn(prompt);
         set({ queued: [...state.queued, prompt] });
@@ -764,7 +767,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
           set({ queued: [...state.queued, prompt] });
-          if (state.status === 'idle') {
+          if (state.status === 'idle' && !budgetInReview()) {
             const next = takeNext();
             if (next !== undefined) startTurn(next);
           }
@@ -774,6 +777,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       set({ queued: [...state.queued, prompt] });
     },
     stop() {
+      checkLifetime.abort();
+      if (!closed) checkLifetime = new AbortController();
       if (state.queued.length) set({ queued: [] });
       if (noteTurn) {
         set({ notes: [noteTurn.text, ...(state.notes ?? [])] });
@@ -796,10 +801,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     async actOnPackTask(turnId, id, action) {
       const controls = packRuns.get(turnId)?.controls;
       if (closed || !controls?.task(id)) throw new PackActionError('missing', `No pack task ${id} in turn ${turnId}.`);
+      const reviewing = action.type === 'review';
+      const left = reviewing ? remainingBudget(state.budget, state.usage, state.costUsd) : undefined;
+      if (left?.spent) throw new PackActionError('budget', left.spent);
+      if (left?.budget && (activeReviews || state.status !== 'idle')) throw new PackActionError('budget-busy');
+      if (reviewing) activeReviews++;
       try {
-        if (action.type === 'review' || action.type === 'verify') {
-          const left = remainingBudget(state.budget, state.usage, state.costUsd);
-          if (action.type === 'review' && left?.spent) throw new PackActionError('budget', left.spent);
+        if (reviewing || action.type === 'verify') {
           return await controls.act(id, action, {
             signal: checkLifetime.signal,
             budget: tighterBudget(left?.budget, options.task?.budget),
@@ -815,7 +823,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }
         return await controls.act(id, action);
       } finally {
+        if (reviewing) activeReviews--;
         syncPackTask(turnId, id);
+        if (reviewing && !activeReviews && state.status === 'idle') {
+          const next = !closed && takeNext();
+          if (next) startTurn(next);
+          else settleIdle();
+        }
       }
     },
     setAgent(next, switchOptions) {
@@ -876,12 +890,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return true;
     },
     idle() {
-      if (state.status === 'idle' && !state.queued.length) return Promise.resolve();
+      if (state.status === 'idle' && !state.queued.length && !budgetInReview()) return Promise.resolve();
       return new Promise((resolve) => idleWaiters.push(resolve));
     },
     close() {
       closed = true;
-      checkLifetime.abort();
       for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
       if (state.notes?.length) set({ notes: [] });

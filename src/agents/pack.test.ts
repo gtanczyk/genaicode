@@ -299,6 +299,59 @@ describe('pack', () => {
     }
   });
 
+  it('reserves a session budget for one operator review and gives a queued turn the remainder', async () => {
+    const caps: number[] = [];
+    let release!: () => void;
+    const reviewer = fake(
+      'reader',
+      async (task) => {
+        caps.push(task.budget!.maxTokens!);
+        if (caps.length === 1)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        return { text: 'Reviewed.', usage: { totalTokens: Math.min(8, task.budget!.maxTokens!) } };
+      },
+      { permissions: { approval: ['deny'], sandbox: ['read-only'] } },
+    );
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (task.prompt.endsWith('next')) return;
+        for (const prompt of ['one', 'two']) await tool(task, 'delegate', { agent: 'worker', prompt });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, task.prompt), 'fixture');
+    });
+    const team = pack({ lead, members: [worker, reviewer] });
+    const session = createAgentSession({ agent: team, cwd: repo(), budget: { maxTokens: 10 } });
+    try {
+      session.send('delegate');
+      await session.idle();
+      const first = session.actOnPackTask!(1, 't1', { type: 'review' });
+      await vi.waitFor(() => expect(caps).toEqual([10]));
+      await expect(session.actOnPackTask!(1, 't2', { type: 'review' })).rejects.toMatchObject({
+        reason: 'budget-busy',
+      });
+      session.send('next');
+      expect(session.get().queued).toEqual(['next']);
+      release();
+      await first;
+      await session.idle();
+      expect(session.get().turns[1].pack?.budget?.maxTokens).toBe(2);
+      await session.actOnPackTask!(1, 't2', { type: 'review' });
+      expect(caps).toEqual([10, 2]);
+      expect(session.get().usage.totalTokens).toBe(10);
+    } finally {
+      release?.();
+      session.close();
+      await team.close();
+    }
+  });
+
   it('delegates in parallel worktrees and merges the results', async () => {
     const cwd = repo();
     writeFileSync(join(cwd, 'draft.txt'), 'uncommitted\n');

@@ -12,6 +12,7 @@ it('verifies the worker files in a private copy with a clean environment', async
   writeFileSync(join(work, 'input'), 'worker data');
   const outside = join(dir, 'outside-fixture');
   writeFileSync(outside, 'scope marker');
+  writeFileSync(join(nested, 'scope.json'), JSON.stringify({ outside }));
   writeFileSync(join(nested, 'package.json'), JSON.stringify({ scripts: { test: 'node test.cjs' } }));
   writeFileSync(
     join(nested, 'test.cjs'),
@@ -20,7 +21,8 @@ it('verifies the worker files in a private copy with a clean environment', async
       "const assert = require('node:assert/strict');",
       'assert.equal(process.env.GENAICODE_TEST_HOST_MARKER, undefined);',
       "assert.equal(fs.readFileSync('../input', 'utf8'), 'worker data');",
-      `assert.throws(() => fs.readFileSync(${JSON.stringify(outside)}));`,
+      "const { outside } = JSON.parse(fs.readFileSync('scope.json', 'utf8'));",
+      'assert.throws(() => fs.readFileSync(outside));',
       "fs.writeFileSync('../input', 'test output');",
       "console.log('isolated fixture passed');",
     ].join('\n'),

@@ -125,6 +125,7 @@ const packActionRefusals = {
   verification: 'No test command is configured for this pack.',
   stale: 'The worktree changed. Open the updated diff before merging.',
   budget: 'The session has used its review budget.',
+  'budget-busy': 'A turn or review is using the remaining budget. Try again when it finishes.',
   capacity: 'All pack worker slots are in use. Try the review when a slot is free.',
 };
 
@@ -419,6 +420,7 @@ export function pack(options: PackOptions): Pack {
       let reviewUsage: TokenUsage | undefined;
       let reviewCost: number | undefined;
       const leadReviews = new AbortController();
+      let reviewBudgetReserved = false;
       let overBudget: string | undefined;
       const warned = new Set<BudgetWarning['kind']>();
 
@@ -892,15 +894,21 @@ export function pack(options: PackOptions): Pack {
             const used = total();
             const left = remainingBudget(task.budget, used.usage ?? {}, used.costUsd);
             if (left?.spent) throw new PackActionError('budget', left.spent);
-            await check(sub, 'review', {
-              signal: leadReviews.signal,
-              budget: left?.budget,
-              onReviewUsage(usage, cost) {
-                if (usage) reviewUsage = addUsage(reviewUsage ?? {}, usage);
-                if (cost !== undefined) reviewCost = (reviewCost ?? 0) + cost;
-                usageChanged();
-              },
-            });
+            if (reviewBudgetReserved) throw new PackActionError('budget-busy');
+            reviewBudgetReserved = !!left?.budget;
+            try {
+              await check(sub, 'review', {
+                signal: leadReviews.signal,
+                budget: left?.budget,
+                onReviewUsage(usage, cost) {
+                  if (usage) reviewUsage = addUsage(reviewUsage ?? {}, usage);
+                  if (cost !== undefined) reviewCost = (reviewCost ?? 0) + cost;
+                  usageChanged();
+                },
+              });
+            } finally {
+              reviewBudgetReserved = false;
+            }
             return JSON.stringify(sub.checks);
           },
         },
