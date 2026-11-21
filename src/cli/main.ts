@@ -52,6 +52,14 @@ import {
   type Notice,
   type NotifySettings,
 } from '../agents/sessions/notify.js';
+import {
+  describeKnownLimits,
+  knownLimits,
+  recordLimits,
+  shortLimit,
+  statusLineLimits,
+  type KnownLimit,
+} from '../agents/sessions/limits.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -178,6 +186,7 @@ Usage:
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
+  genaicode limits [--json]           How much of each agent's plan is used, as last seen
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
@@ -247,6 +256,14 @@ Hooks options:
   minutes: Claude Code shows its dialog as always, and "sessions --waiting" or the browser's
   Sessions view can answer it too ("sessions approve <q>", "sessions deny <q> -m <why>").
   Whichever answer comes first counts.
+
+Limits:
+  "limits" shows how much of each agent's plan is used, in the plan's own measure: the share of
+  each window (5h, 7d...) and when it resets, with the age of the reading. Nothing is asked of
+  the agents for it: genaicode keeps what they report when they run through it, reads what Codex
+  notes in its own sessions, and what Claude Code gives its status line. For that last one, set
+  "statusLine": {"type": "command", "command": "genaicode limits record"} in
+  ~/.claude/settings.json; it prints the limits as the line.
 
 Notify options:
       --done              With "on": also when a session finishes its turn
@@ -387,6 +404,8 @@ function dispatch(
       return manageHooks(cli, command, updater);
     case 'notify':
       return manageNotify(cli, command);
+    case 'limits':
+      return showLimits(cli, command);
     case 'answer':
       return answerQuestion(cli, command);
     case 'archive':
@@ -828,6 +847,41 @@ async function answerQuestion(cli: CliEnvironment, command: Extract<CliCommand, 
   return EXIT_OK;
 }
 
+/**
+ * `limits`: how much of each agent's plan is used, as last seen, in the plan's own measure (share
+ * of a window), never dollars. `limits record` is for Claude Code's status line: it keeps the
+ * limits in the input and prints them as the line.
+ */
+async function showLimits(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'limits' }>): Promise<number> {
+  if (command.action === 'record') {
+    let input: unknown;
+    try {
+      input = JSON.parse((await cli.readStdin()) ?? '');
+    } catch {
+      // Not a status line input: nothing to keep, and nothing to say in a status line.
+      return EXIT_OK;
+    }
+    const limits = statusLineLimits(input);
+    recordLimits('claude', limits, cli.env);
+    if (limits.length) cli.stdout.write(`${limits.map(shortLimit).join(' · ')}\n`);
+    return EXIT_OK;
+  }
+  const limits = await knownLimits(cli.env);
+  if (command.json) {
+    cli.stdout.write(`${JSON.stringify({ limits })}\n`);
+    return EXIT_OK;
+  }
+  if (!limits.length) {
+    cli.stdout.write(
+      "No limits known yet. They are kept when an agent runs through genaicode, read from Codex's own\n" +
+        'sessions, and from Claude Code\'s status line once it runs "genaicode limits record".\n',
+    );
+    return EXIT_OK;
+  }
+  cli.stdout.write(`${describeKnownLimits(limits).join('\n')}\n`);
+  return EXIT_OK;
+}
+
 async function manageNotify(cli: CliEnvironment, command: Extract<CliCommand, { kind: 'notify' }>): Promise<number> {
   const describe = (settings: NotifySettings) =>
     settings.approval ? `on: when a session asks for approval${settings.done ? ' or finishes its turn' : ''}` : 'off';
@@ -978,6 +1032,7 @@ async function watchWaiting(
   let last: string | undefined;
   let said = '';
   let sessions: readonly SessionInfo[] = [];
+  let limits: readonly KnownLimit[] = [];
   let mark: string | undefined;
   let since = 0;
   try {
@@ -990,6 +1045,8 @@ async function watchWaiting(
         const full = await look();
         if (stop.signal.aborted) break;
         ({ sessions, questions } = full);
+        limits = await knownLimits(cli.env);
+        if (stop.signal.aborted) break;
         // The mark from before the read: what a hook wrote meanwhile brings the next look.
         mark = now;
         since = 0;
@@ -998,7 +1055,10 @@ async function watchWaiting(
         if (trouble !== said) cli.stderr.write(trouble);
         said = trouble;
       }
-      const line = JSON.stringify({ sessions: sessions.map((session) => withAsks(session, questions)) });
+      const line = JSON.stringify({
+        sessions: sessions.map((session) => withAsks(session, questions)),
+        ...(limits.length ? { limits } : {}),
+      });
       if (line !== last) cli.stdout.write(`${line}\n`);
       last = line;
       // Its own abort listener goes with the timer, so a watch left open for days keeps none.

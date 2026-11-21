@@ -58,6 +58,8 @@ export type CliCommand =
     }
   /** `sessions approve|deny <id>`: answer a question a session holds open. */
   | { kind: 'answer'; id: string; behavior: 'allow' | 'deny'; message?: string }
+  /** `limits`: each agent's plan limits as last seen; `record` keeps Claude Code's status line input. */
+  | { kind: 'limits'; action: 'show' | 'record'; json: boolean }
   /** `notify`: desktop notifications when a session asks for approval (`--done`: or finishes a turn). */
   | { kind: 'notify'; action: 'status' | 'on' | 'off' | 'test'; done: boolean }
   | {
@@ -345,6 +347,17 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ...(values.watch === true ? { watch: true } : {}),
       ...(values['exit-with-stdin'] === true ? { exitWithStdin: true } : {}),
     };
+  }
+
+  if (command === 'limits') {
+    const { values, positionals } = parse(() =>
+      parseArgs({ args: rest, strict: true, allowPositionals: true, options: { json: { type: 'boolean' } } }),
+    );
+    const action = positionals[0] ?? 'show';
+    if (positionals.length > 1 || (action !== 'show' && action !== 'record') || (values.json && action === 'record')) {
+      throw new UsageError('Usage: genaicode limits [--json] | genaicode limits record');
+    }
+    return { kind: 'limits', action, json: values.json === true };
   }
 
   if (command === 'notify') {

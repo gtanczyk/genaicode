@@ -117,7 +117,36 @@ asking again and again: `npx genaicode sessions --waiting --json --watch` prints
 `{"sessions":[...]}` at once and another whenever the waiting sessions or their open questions
 change. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
 It looks every 3 seconds: a question or anything else a hook reports shows at once, a session
-that only finished its turn within 15 seconds.
+that only finished its turn within 15 seconds. Once limits are known, the line also carries them
+as `"limits":[...]`.
+
+### How much of your plans is used: `limits`
+
+`npx genaicode limits` shows how much of each agent's plan is used, in the plan's own measure: the
+share of each window and when it resets, never dollars.
+
+```
+claude  5h      62% used  resets in 2 h 10 min  (read 4 min ago)
+        7d      41% used  resets in 3 d  (read 4 min ago)
+codex   5h      12% used  resets in 48 min  (read 1 h 5 min ago)
+```
+
+No agent is asked for it, so looking costs nothing. The readings come from three places:
+
+- every run through genaicode (`run`, `chat`, `ui`, the library) keeps what the agent reports in
+  `~/.genaicode/limits` (`GENAICODE_LIMITS=off` keeps nothing);
+- Codex notes its limits in its own session files, and the newest ones are read;
+- Claude Code gives them to its status line. To keep those too, set in `~/.claude/settings.json`:
+
+  ```json
+  { "statusLine": { "type": "command", "command": "npx genaicode limits record" } }
+  ```
+
+  It prints `5h 62% · 7d 41%` as the line. With a status line of your own, pipe its input to
+  `genaicode limits record` as well.
+
+A window that has reset since it was read is left out: what is used of it now is not known until
+the agent says so again. `--json` prints `{"limits":[{"agent","window","status","usedPercent","resetsAt","at"}]}`.
 
 `npx genaicode sessions archive --stale` puts away every session left waiting or half way for 2
 days or more (`sessions archive <id>` for one, `unarchive` to bring it back, `--archived` to list

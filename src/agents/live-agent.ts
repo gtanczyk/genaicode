@@ -1,3 +1,4 @@
+import { limitsAgent, recordLimits } from './sessions/limits.js';
 import { randomBytes } from 'node:crypto';
 import { resolvePermissions } from './permissions.js';
 import { planError, planSpawn, type PreparedRun } from './prepare.js';
@@ -86,7 +87,9 @@ export function liveAgent(definition: LiveAgentDefinition): CodingAgent {
 }
 
 function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRun {
-  const recorder = new RunRecorder(definition.name, definition.command);
+  const recorder = new RunRecorder(definition.name, definition.command, (limit) =>
+    recordLimits(limitsAgent(definition.name), [limit]),
+  );
   const iterate = () => recorder.events.iterate();
   let steer: ((text: string) => Promise<void>) | undefined;
   // A consumer that falls behind pauses the agent's output. A steer awaited from inside the
