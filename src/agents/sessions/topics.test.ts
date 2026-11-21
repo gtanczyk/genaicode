@@ -10,6 +10,7 @@ import {
   isAsking,
   mergeTopics,
   moveSessions,
+  folderTopics,
   projectTopics,
   readTopics,
   renameTopic,
@@ -147,6 +148,34 @@ describe('topics', () => {
     const later = projectTopics([session('f', { project: { id: 'chan_ink' } })], store);
     expect(later.store.sessions['claude:f']).toBe('t2');
     expect(projectTopics([session('g')], store)).toMatchObject({ placed: 0 });
+  });
+
+  it('puts the sessions of a folder the user named in its topic, whichever agent they were in', () => {
+    const folders = [
+      { key: 'codex:1', name: 'Knights', roots: ['/Users/me/games/knights/'] },
+      { key: 'codex:2', name: 'Games', roots: ['/Users/me/games'] },
+    ];
+    const listed = [
+      session('a', { cwd: '/Users/me/games/knights/src' }),
+      session('b', { agent: 'codex', source: 'codex', cwd: '/Users/me/.codex/worktrees/a07c/knights' }),
+      session('c', { cwd: '/Users/me/games/other' }),
+      session('d', { cwd: '/Users/me/games-old' }),
+      session('e', { cwd: '/Users/me/games/knights' }),
+      session('f', { cwd: '/tmp/games' }),
+    ];
+    const first = folderTopics(listed, { topics: [], sessions: { 'claude:e': 't9' } }, folders);
+    expect(first.placed).toBe(3);
+    expect(first.store.topics).toEqual([
+      { id: 't1', name: 'Knights' },
+      { id: 't2', name: 'Games' },
+    ]);
+    expect(first.store.sessions).toEqual({ 'claude:e': 't9', 'claude:a': 't1', 'codex:b': 't1', 'claude:c': 't2' });
+    expect(first.store.projects).toEqual({ 'codex:1': 't1', 'codex:2': 't2' });
+    // Renamed, the folder still goes where its topic is.
+    const store = renameTopic(first.store, first.store.topics[0]!, 'K.N.I.G.H.T.S');
+    const later = folderTopics([session('g', { cwd: '/Users/me/games/knights' })], store, folders);
+    expect(later.store.sessions['claude:g']).toBe('t1');
+    expect(later.store.topics).toHaveLength(2);
   });
 
   it('asks for you for approvals, and for a while after a message asked something', () => {

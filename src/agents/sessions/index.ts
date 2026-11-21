@@ -15,7 +15,8 @@ export type { SessionListing, SessionProject } from './group.js';
 
 export { claudeSessions, claudeTranscript, readClaudeSession } from './claude.js';
 export type { ClaudeSessionsOptions } from './claude.js';
-export { codexSessions, codexTranscript, readCodexSession } from './codex.js';
+export { codexProjects, codexSessions, codexTranscript, readCodexSession } from './codex.js';
+export type { CodexProject } from './codex.js';
 export type { CodexSessionsOptions, CodexSessionsVia } from './codex.js';
 export { codexThreads, codexTurns, openCodexServer, readCodexThread } from './codex-api.js';
 export type { CodexServer, CodexServerOptions } from './codex-api.js';
@@ -66,6 +67,7 @@ export {
   inRunDirectory,
   isAsking,
   isTopicsRun,
+  folderTopics,
   projectTopics,
   mergeTopics,
   moveSessions,
@@ -83,7 +85,7 @@ export {
   withTopicsRun,
   writeTopics,
 } from './topics.js';
-export type { Topic, TopicStore, TopicSummary } from './topics.js';
+export type { Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';

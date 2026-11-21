@@ -157,9 +157,9 @@ with several agents and from several directories. `npx genaicode topics` shows t
 agents as topics, what asks for you first:
 
 ```
-● Pack mode       t1    claude 9, codex 3  12m ago  1 ask you  src/genaicode
-▶ Desktop app     t2    claude 6           1h ago   1 working  src/genaicode, src/site
-  YouTube pins    t3    codex 2            2d ago   src/site
+● Pack mode       t1    claude 9, codex 3  12m ago  1 ask you
+▶ Desktop app     t2    claude 6           1h ago   1 working
+  YouTube pins    t3    codex 2            2d ago
 14 sessions not sorted yet: "genaicode topics refresh" sorts them.
 ```
 
@@ -172,7 +172,9 @@ otherwise); `--since` looks further back than the 30 days it and `topics` cover 
 
 Sessions that Claude Code ran for a claude.ai project (Remote Control) say which project in their
 first message. Those go to a topic named as the project, before any agent is asked and at no
-cost, so the topics start from the projects you already have. `topics refresh --again` drops the
+cost, so the topics start from the projects you already have. What is left and worked in a
+directory of a project of the Codex desktop app goes to a topic named as that project, whichever
+agent it was. Only the rest is given to an agent. `topics refresh --again` drops the
 topics there are, corrections included, and sorts every session anew.
 
 A topic asks for you (`●`) when a session waits for an approval, or when its last message asked

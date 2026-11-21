@@ -76,6 +76,8 @@ export function museSessions(options: StoreOptions = {}): SessionSource {
         'updated_at_us',
         'msp_kind',
         'status',
+        'msp_created_by_client_name',
+        'provider_id',
       ]);
       return select(
         found
@@ -101,6 +103,11 @@ export function museSessions(options: StoreOptions = {}): SessionSource {
                 updatedAt,
                 model: text(row.model_id),
                 path: text(row.session_log_path),
+                // A probe of the agent, or its test provider: nobody's conversation.
+                automated:
+                  text(row.msp_created_by_client_name) === 'probe_client' || text(row.provider_id) === 'echo'
+                    ? true
+                    : undefined,
                 ...activeIfRecent(updatedAt),
               }),
             ];

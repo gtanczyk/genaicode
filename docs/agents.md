@@ -338,7 +338,8 @@ statement is not seen.
 Sessions nobody typed into are left out of every listing: scheduled tasks and notifications in
 Claude Code (every prompt has `origin.kind` or `turnOrigin` other than `human`, or the session
 opens with a scheduled task nobody answered), headless runs of it with a single prompt (a program
-driving it through more prompts is somebody's chat) and `codex exec` runs. They carry `automated: true`;
+driving it through more prompts is somebody's chat), `codex exec` runs, threads the Codex desktop
+app's server ran for another program, and Muse Code's probes. They carry `automated: true`;
 `sessions --automated`, or `{ automated: true }` in the query, lists them too.
 
 **Topics.** Sessions can be kept as pieces of work that cross agents and directories
