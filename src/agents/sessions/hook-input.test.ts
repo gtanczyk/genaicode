@@ -187,4 +187,14 @@ describe("other agents' hooks", () => {
     await uninstallHooks('cursor', { env });
     expect(existsSync(cursorFile)).toBe(false);
   });
+
+  it('says when the Node of the installed command is gone', async () => {
+    const env = home();
+    const node = join(env.HOME, 'node');
+    writeFileSync(node, '');
+    const command = `"${node}" "${node}" hook`;
+    expect((await installHooks('claude', { env, command })).missing).toBeUndefined();
+    rmSync(node);
+    expect(await hooksStatus('claude', { env, command })).toMatchObject({ installed: true, missing: node });
+  });
 });

@@ -22,6 +22,7 @@ import {
   cliVersion,
   findSession,
   groupSessions,
+  isAsking,
   waitingSessions,
   HOOK_AGENTS,
   hooksFile,
@@ -1256,11 +1257,13 @@ async function manageHooks(
         );
       } else {
         const status = await hooksStatus(agent, hookOptions);
-        const state = status.installed
-          ? 'installed'
-          : status.events.length
-            ? 'installed by another genaicode or incomplete: run "genaicode hooks install"'
-            : 'not installed';
+        const state = status.missing
+          ? `broken, ${status.missing} is gone: run "genaicode hooks install"`
+          : status.installed
+            ? 'installed'
+            : status.events.length
+              ? 'installed by another genaicode or incomplete: run "genaicode hooks install"'
+              : 'not installed';
         const line = status.statusLine === 'genaicode' ? ', status line keeps limits' : '';
         cli.stdout.write(`${agent}: ${state}${status.answer ? ', answers from here' : ''}${line}  ${status.file}\n`);
       }
@@ -1385,7 +1388,9 @@ async function watchWaiting(
       if (mark !== now || since >= WATCH_FULL_EVERY) {
         const full = await look();
         if (stop.signal.aborted) break;
-        ({ sessions, questions } = full);
+        ({ questions } = full);
+        // A menu shows who asks now: a thread left days ago, or one that merely ended, is not that.
+        sessions = full.sessions.filter((session) => isAsking(session));
         limits = await knownLimits(cli.env);
         if (stop.signal.aborted) break;
         ({ topics, topicOf } = watchedTopics(full.listed, await readTopics(cli.env)));

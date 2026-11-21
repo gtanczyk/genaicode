@@ -1009,7 +1009,7 @@ describe('genaicode sessions --waiting', () => {
 
     const home = mkdtempSync(join(tmpdir(), 'genaicode-watch-'));
     dirs.push(home);
-    const base = { source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app' };
+    const base = { source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app', lastReply: 'Ship it?' };
     const listed = [{ ...base, id: 'one', state: 'waiting' as const, updatedAt: Date.now() - 1000, title: 'First' }];
     let looks = 0;
     const agent = {
@@ -1040,6 +1040,22 @@ describe('genaicode sessions --waiting', () => {
     // Nothing changed: one line, however often it looked.
     expect(lines().map((line) => line.sessions.map((one) => one.id))).toEqual([['one']]);
     listed.push({ ...base, id: 'two', state: 'waiting' as const, updatedAt: Date.now(), title: 'Second' });
+    // One that only finished its turn, and a question left for a week: neither asks now.
+    listed.push({
+      ...base,
+      id: 'done',
+      state: 'waiting' as const,
+      updatedAt: Date.now(),
+      title: 'Third',
+      lastReply: 'Done.',
+    });
+    listed.push({
+      ...base,
+      id: 'old',
+      state: 'waiting' as const,
+      updatedAt: Date.now() - 7 * 24 * 3600_000,
+      title: 'Old',
+    });
     await vi.waitFor(() => expect(lines()).toHaveLength(2));
     expect(
       lines()[1]!
@@ -1073,7 +1089,7 @@ describe('genaicode sessions --waiting', () => {
       ['one', 'Pack mode'],
       ['two', undefined],
     ]);
-    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 0, active: 0 }]);
+    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 1, active: 0 }]);
 
     // Ctrl-C ends it too, and lets go of a stdin that is still open.
     const open = new PassThrough();
