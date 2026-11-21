@@ -796,10 +796,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       run?.abort();
       settleIdle();
     },
-    ask(request) {
+    async ask(request) {
       const turn = state.turns.at(-1);
-      if (closed || !run || !turn || turn.result) return Promise.resolve('deny');
-      return onApproval(turn.id, request);
+      if (closed || !run || !turn || turn.result) return 'deny';
+      const automatic = !!options.autoApprove?.(request);
+      const decision = await onApproval(turn.id, request);
+      // No agent event follows a question of the host's own: its entry records the answer here.
+      updateTurn(turn.id, (asked) => ({
+        ...asked,
+        entries: asked.entries.map((entry) =>
+          entry.kind === 'approval' && entry.request.id === request.id && !entry.decision
+            ? { ...entry, decision, ...(automatic ? { automatic: true } : {}) }
+            : entry,
+        ),
+      }));
+      return decision;
     },
     approve(id, decision) {
       const resolve = waiting.get(id);

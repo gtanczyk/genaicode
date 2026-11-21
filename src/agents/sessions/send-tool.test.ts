@@ -94,21 +94,25 @@ it('sends nothing when the person says no, or the session cannot take it', async
 });
 
 it('asks the person through the running turn, and auto-approve answers for them', async () => {
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => (release = resolve));
-  const lead = {
-    name: 'lead',
-    command: 'custom',
-    capabilities: {},
-    run: (): AgentRun => ({
-      abort() {},
-      result: held.then(() => ok),
-      async *[Symbol.asyncIterator]() {
-        await held;
-        yield { type: 'done', result: ok };
-      },
-    }),
-  } satisfies CodingAgent;
+  const holding = () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const agent = {
+      name: 'lead',
+      command: 'custom',
+      capabilities: {},
+      run: (): AgentRun => ({
+        abort() {},
+        result: held.then(() => ok),
+        async *[Symbol.asyncIterator]() {
+          await held;
+          yield { type: 'done', result: ok };
+        },
+      }),
+    } satisfies CodingAgent;
+    return { agent, release };
+  };
+  const { agent: lead, release } = holding();
   const chat = createAgentSession({ agent: lead, cwd: root });
   const request = { id: 'q1', kind: 'other' as const, summary: 'Send to owner' };
   expect(await chat.ask(request)).toBe('deny');
@@ -117,13 +121,28 @@ it('asks the person through the running turn, and auto-approve answers for them'
   await vi.waitFor(() => expect(chat.get().approvals).toEqual([request]));
   expect(chat.approve('q1', 'approve')).toBe(true);
   expect(await answer).toBe('approve');
+  const entry = () =>
+    chat
+      .get()
+      .turns.at(-1)!
+      .entries.find((e) => e.kind === 'approval');
+  expect(entry()).toMatchObject({ kind: 'approval', decision: 'approve' });
   // Unanswered when the turn ends: denied.
   const late = chat.ask({ ...request, id: 'q2' });
   release();
   expect(await late).toBe('deny');
   chat.close();
 
-  const yes = createAgentSession({ agent: lead, cwd: root, autoApprove: () => 'approve' });
+  const busy = holding();
+  const yes = createAgentSession({ agent: busy.agent, cwd: root, autoApprove: () => 'approve' });
   expect(await yes.ask(request)).toBe('deny');
+  yes.send('go');
+  await vi.waitFor(() => expect(yes.get().turns).toHaveLength(1));
+  expect(await yes.ask(request)).toBe('approve');
+  expect(yes.get().turns[0]!.entries.find((e) => e.kind === 'approval')).toMatchObject({
+    decision: 'approve',
+    automatic: true,
+  });
+  busy.release();
   yes.close();
 });
