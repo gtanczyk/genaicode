@@ -34,6 +34,9 @@ jobs:
           restore-keys: desktop-${{ runner.os }}-${{ runner.arch }}-
       - run: npm ci
       - run: npm run desktop:prepare
+      - name: Test the shell
+        working-directory: src/desktop/src-tauri
+        run: cargo test
       - name: Build the app
         working-directory: src/desktop
         env:

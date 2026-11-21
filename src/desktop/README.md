@@ -14,12 +14,20 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 On start the shell asks for a project folder (remembered for next time, **Project → Open Folder…**
 changes it), reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
 `node cli.js ui --no-open --exit-with-stdin --cwd <folder>` and shows the address that prints. The
-page gets no Tauri commands; it is the page a browser would load. Closing the app stops the server.
+page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
+
+It also keeps an icon in the menu bar with the sessions of every agent that wait for you, read from
+`node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
+how many. A session opens its project in the window; a question an agent holds open for an answer
+from outside (`genaicode hooks install --answer`) has **Approve** and **Deny**, which run
+`sessions approve|deny <question>`. On macOS closing the window hides it and the app stays in the
+menu bar; **Quit** ends it. What the menu shows is decided in `src-tauri/src/tower.rs`.
 
 ## Build it
 
 Needs Rust (stable), Node.js 22+ and, on Linux, the
-[Tauri system packages](https://v2.tauri.app/start/prerequisites/). From the repository root:
+[Tauri system packages](https://v2.tauri.app/start/prerequisites/) with
+`libayatana-appindicator3-dev` for the menu bar icon. From the repository root:
 
 ```bash
 npm ci

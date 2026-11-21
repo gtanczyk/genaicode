@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
 import {
@@ -759,6 +759,60 @@ describe('genaicode sessions --waiting', () => {
     expect((await run('-w', '--since', '60d')).out).toContain('Old');
     expect((await run('-w', '-n', '1')).out).toMatch(/^1 session waits for you/);
     expect((await run('-w', '--since', '1m')).out).toBe('Nothing waits for you in the last 1m.\n');
+  });
+
+  it('--watch prints the waiting sessions again when they change, until its stdin closes', async () => {
+    expect(parseCli(['sessions', '-w', '--json', '--watch', '--exit-with-stdin'])).toMatchObject({
+      kind: 'sessions',
+      watch: true,
+      exitWithStdin: true,
+    });
+    expect(() => parseCli(['sessions', '--watch'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', '-w', '--watch'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', 'doctor', '--json', '-w', '--watch'])).toThrow(UsageError);
+    expect(() => parseCli(['sessions', '-w', '--json', '--exit-with-stdin'])).toThrow(UsageError);
+
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-watch-'));
+    dirs.push(home);
+    const base = { source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app' };
+    const listed = [{ ...base, id: 'one', state: 'waiting' as const, updatedAt: Date.now() - 1000, title: 'First' }];
+    let looks = 0;
+    const agent = {
+      ...fakeAgent('alpha', []),
+      sessions: {
+        name: 'alpha',
+        where: 'local' as const,
+        list: async () => {
+          looks += 1;
+          return [...listed];
+        },
+      },
+    };
+    const { PassThrough } = await import('node:stream');
+    const input = new PassThrough();
+    const { cli, out } = environment({
+      argv: ['sessions', '--waiting', '--json', '--watch', '--exit-with-stdin'],
+      env: { HOME: home, PATH: '' },
+      agents: [agent],
+    });
+    const done = main({ ...cli, input, watchEveryMs: 5 });
+    const lines = () =>
+      out()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { sessions: { id: string }[] });
+    await vi.waitFor(() => expect(looks).toBeGreaterThan(3));
+    // Nothing changed: one line, however often it looked.
+    expect(lines().map((line) => line.sessions.map((one) => one.id))).toEqual([['one']]);
+    listed.push({ ...base, id: 'two', state: 'waiting' as const, updatedAt: Date.now(), title: 'Second' });
+    await vi.waitFor(() => expect(lines()).toHaveLength(2));
+    expect(
+      lines()[1]!
+        .sessions.map((one) => one.id)
+        .sort(),
+    ).toEqual(['one', 'two']);
+    input.end();
+    expect(await done).toBe(EXIT_OK);
   });
 });
 

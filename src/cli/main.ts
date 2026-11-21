@@ -96,6 +96,8 @@ export interface CliEnvironment {
   loadUi?(): Promise<UiModule>;
   /** What `update` and the daily check use. Defaults to the npm registry and this package. */
   updater?: Partial<UpdateDeps>;
+  /** How often `sessions --watch` looks again, in milliseconds. Default: 3 seconds. */
+  watchEveryMs?: number;
   /** Shows a desktop notification (`notify test`). Default: `sendNotice()`. */
   notify?(notice: Notice): boolean;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
@@ -202,6 +204,8 @@ Sessions options:
       --since <age>       Only sessions active in the last 90m, 12h, 7d, 2w...
   -n, --limit <n>         At most this many sessions, newest first (default 30)
       --json              One JSON object per session
+      --watch             With --waiting --json: stay open and print {"sessions":[...]} as one
+                          line whenever what waits changes (--exit-with-stdin: until stdin closes)
       --archived          Also the sessions put away with "sessions archive"
 
   Each line ends with the session id: continue it with
@@ -924,6 +928,61 @@ async function manageHooks(
   return failed ? EXIT_FAILED : EXIT_OK;
 }
 
+const WATCH_EVERY_MS = 3000;
+
+/**
+ * `sessions --waiting --json --watch`: one line `{"sessions":[...]}` now, and again whenever what
+ * waits changes. For a program that shows it (the desktop app's menu bar): it reads lines instead
+ * of starting the CLI again for every look. Ends on Ctrl-C, or with its stdin when asked to.
+ */
+async function watchWaiting(
+  cli: CliEnvironment,
+  exitWithStdin: boolean,
+  look: () => Promise<{
+    sessions: readonly SessionInfo[];
+    questions: readonly PendingAsk[];
+    errors: readonly { source: string; message: string }[];
+  }>,
+  withAsks: (session: SessionInfo, questions: readonly PendingAsk[]) => object,
+): Promise<number> {
+  const stop = new AbortController();
+  const end = () => stop.abort();
+  cli.signal?.addEventListener('abort', end, { once: true });
+  if (cli.signal?.aborted) end();
+  const input = exitWithStdin ? (cli.input ?? process.stdin) : undefined;
+  input?.on('end', end).on('close', end).on('error', end).resume();
+  let last: string | undefined;
+  let said = '';
+  try {
+    while (!stop.signal.aborted) {
+      const { sessions, questions, errors } = await look();
+      if (stop.signal.aborted) break;
+      // A store that cannot be read is said once, not on every look.
+      const trouble = errors.map((error) => `${error.source}: ${error.message}\n`).join('');
+      if (trouble !== said) cli.stderr.write(trouble);
+      said = trouble;
+      const line = JSON.stringify({ sessions: sessions.map((session) => withAsks(session, questions)) });
+      if (line !== last) cli.stdout.write(`${line}\n`);
+      last = line;
+      await new Promise<void>((done) => {
+        const timer = setTimeout(done, cli.watchEveryMs ?? WATCH_EVERY_MS);
+        stop.signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            done();
+          },
+          { once: true },
+        );
+      });
+    }
+  } finally {
+    cli.signal?.removeEventListener('abort', end);
+    input?.off('end', end).off('close', end).off('error', end);
+  }
+  return EXIT_OK;
+}
+
 async function showSessions(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
@@ -943,36 +1002,40 @@ async function showSessions(
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
   }
-  const now = Date.now();
   // What waits is picked from everything listed, so the limit comes after; a week back by default.
   const sinceMs = command.sinceMs ?? (command.waiting ? WAITING_SINCE_MS : undefined);
-  // Archived sessions may take places in the listing: as many more are read, and left out after.
-  const extra = command.archived || command.waiting ? 0 : (await readArchive(cli.env)).size;
-  const listing = await listSessions(sources, {
-    ...(command.waiting ? {} : { limit: command.limit + extra }),
-    env: cli.env,
-    ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
-    ...(sinceMs !== undefined ? { since: now - sinceMs } : {}),
-    ...(cli.signal ? { signal: cli.signal } : {}),
-  });
-  const { errors } = listing;
-  // Archived sessions stay out unless asked for.
-  const listed = command.archived ? listing.sessions : listing.sessions.filter((session) => !session.archived);
-  const hidden = listing.sessions.length - listed.length;
-  const sessions = (command.waiting ? waitingSessions(listed) : listed).slice(0, command.limit);
+  const look = async () => {
+    const now = Date.now();
+    // Archived sessions may take places in the listing: as many more are read, and left out after.
+    const extra = command.archived || command.waiting ? 0 : (await readArchive(cli.env)).size;
+    const listing = await listSessions(sources, {
+      ...(command.waiting ? {} : { limit: command.limit + extra }),
+      env: cli.env,
+      ...(command.cwd !== undefined ? { cwd: resolve(cli.cwd, command.cwd) } : {}),
+      ...(sinceMs !== undefined ? { since: now - sinceMs } : {}),
+      ...(cli.signal ? { signal: cli.signal } : {}),
+    });
+    // Archived sessions stay out unless asked for.
+    const listed = command.archived ? listing.sessions : listing.sessions.filter((session) => !session.archived);
+    const sessions = (command.waiting ? waitingSessions(listed) : listed).slice(0, command.limit);
+    const questions = command.waiting ? await pendingAsks(cli.env) : [];
+    return { now, sessions, questions, errors: listing.errors, hidden: listing.sessions.length - listed.length };
+  };
+  // `--waiting`: with the questions a session holds open for the tower (`hooks install --answer`).
+  const withAsks = (session: SessionInfo, questions: readonly PendingAsk[]) => {
+    const asks = asksForSession(questions, session).map(({ id, tool, preview, at }) => ({
+      id,
+      ...(tool ? { tool } : {}),
+      ...(preview ? { preview } : {}),
+      at,
+    }));
+    return asks.length ? { ...session, asks } : session;
+  };
+  if (command.watch) return watchWaiting(cli, command.exitWithStdin === true, look, withAsks);
+  const { now, sessions, questions, errors, hidden } = await look();
   for (const error of errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
-  const questions = command.waiting ? await pendingAsks(cli.env) : [];
   if (command.json) {
-    for (const session of sessions) {
-      // `--waiting`: with the questions it holds open for the tower (`hooks install --answer`).
-      const asks = asksForSession(questions, session).map(({ id, tool, preview, at }) => ({
-        id,
-        ...(tool ? { tool } : {}),
-        ...(preview ? { preview } : {}),
-        at,
-      }));
-      cli.stdout.write(`${JSON.stringify(asks.length ? { ...session, asks } : session)}\n`);
-    }
+    for (const session of sessions) cli.stdout.write(`${JSON.stringify(withAsks(session, questions))}\n`);
     return EXIT_OK;
   }
   if (command.waiting) return showWaiting(cli, sessions, now, sinceMs, questions);

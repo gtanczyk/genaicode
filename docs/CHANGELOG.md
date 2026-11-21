@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode chat --pack`, `ui --pack` and `tower --pack` work without an explicit `lead:members` value, automatically assembling a pack from all installed agents (first MCP-capable one leads, or pass `-a <lead>` to choose the lead) (#226)
+- `genaicode sessions --waiting --json --watch`: stays open and prints the waiting sessions as one JSON line whenever they change, for programs that show them; `--exit-with-stdin` ends it with its parent (#231)
 - `npx genaicode install`: installs the `genaicode` command that updates itself, the same as the shell installer, with `--version`, `--bin-dir` and `--force` (#225)
 
 ### Fixed
@@ -20,6 +21,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Internal
 
+- Desktop app: a menu bar icon lists the sessions that wait for you, with Approve and Deny for open questions; closing the window keeps the app in the menu bar (#231)
 - First skeleton of a macOS desktop app in `src/desktop` (Tauri 2 shell that runs a bundled Node.js on `genaicode ui`); not part of the npm package (#228)
 
 ## 2.41.1 — 2026-11-21

@@ -38,6 +38,10 @@ export type CliCommand =
       waiting?: true;
       /** `--archived`: the archived sessions too (`sessions archive`). */
       archived?: true;
+      /** `--watch`: keep looking, and print the waiting sessions again whenever they change. */
+      watch?: true;
+      /** `--exit-with-stdin`: `--watch` ends when its stdin closes, so it cannot outlive the app that started it. */
+      exitWithStdin?: true;
     }
   /** `sessions archive|unarchive`: put sessions away, or bring them back; `stale`: all those left for `olderMs`. */
   | { kind: 'archive'; ids: string[]; archived: boolean; stale: boolean; olderMs?: number; agent?: string }
@@ -234,6 +238,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
           since: { type: 'string' },
           limit: { type: 'string', short: 'n' },
           waiting: { type: 'boolean', short: 'w' },
+          watch: { type: 'boolean' },
+          'exit-with-stdin': { type: 'boolean' },
           message: { type: 'string', short: 'm' },
           archived: { type: 'boolean' },
           stale: { type: 'boolean' },
@@ -242,6 +248,10 @@ export function parseCli(argv: readonly string[]): CliCommand {
       }),
     );
     const limit = optionalNumber(values.limit, '--limit');
+    if (values.watch && (positionals.length || !values.waiting || !values.json || values.archived)) {
+      throw new UsageError('--watch goes with "genaicode sessions --waiting --json".');
+    }
+    if (values['exit-with-stdin'] && !values.watch) throw new UsageError('--exit-with-stdin goes with --watch.');
     if (positionals[0] === 'approve' || positionals[0] === 'deny') {
       const deny = positionals[0] === 'deny';
       const extra =
@@ -332,6 +342,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
       limit: limit ?? 30,
       ...(values.waiting === true ? { waiting: true } : {}),
       ...(values.archived === true ? { archived: true } : {}),
+      ...(values.watch === true ? { watch: true } : {}),
+      ...(values['exit-with-stdin'] === true ? { exitWithStdin: true } : {}),
     };
   }
 
