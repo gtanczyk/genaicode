@@ -7,6 +7,7 @@ import { detectAgents } from '../agents/discovery.js';
 import { sendSession } from '../agents/sessions/send.js';
 import { knownLimits } from '../agents/sessions/limits.js';
 import { readTopics } from '../agents/sessions/topics.js';
+import { topicShares } from '../agents/sessions/shares.js';
 import type { EmbeddedWeb as PublicEmbeddedWeb, EmbeddedWebBundleOptions } from '../ui.js';
 import {
   createChatController,
@@ -231,6 +232,13 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
           permissions: sandbox ? { sandbox } : undefined,
         }),
       limits: () => knownLimits(options.env),
+      // Automatic runs too: they use the plan like everything else.
+      shares: async (query) => {
+        const sources = options.sessionSources ?? agentSessionSources(options.agents);
+        const env = options.env ? { env: options.env } : {};
+        const listing = await listSessions(sources, { ...query, ...env, automated: true, live: false });
+        return topicShares(listing.sessions, await readTopics(options.env));
+      },
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
     }).catch((error: unknown) => {

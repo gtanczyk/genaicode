@@ -10,6 +10,7 @@ import { isScratchDir, mapLimited } from './files.js';
 import { replyEnding } from './group.js';
 import { isTopicsRun, readTopics } from './topics.js';
 
+export { AUTOMATIC_SHARE, UNSORTED_SHARE, topicShares, type AgentShares, type WorkShare } from './shares.js';
 export { groupSessions, replyEnding, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
 

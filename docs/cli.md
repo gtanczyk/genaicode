@@ -206,7 +206,10 @@ updates: counts per store, never content, exit code 1 when one looks broken (see
 
 With `ui --sessions`, and once `genaicode topics refresh` has sorted your sessions, the empty
 chat page starts with your topics: those that wait for you, those agents work on now, and how
-much of each agent's plan is used. A topic opens the Sessions view on its sessions.
+much of each agent's plan is used. Under each plan it says which topics that agent's work of the
+last 7 days went to, in percent, with automatic runs as a part of their own. The parts are weighed
+by what the agent says its sessions used (its price estimate, else tokens) in their whole life, so
+they are a guide, not a bill. A topic opens the Sessions view on its sessions.
 
 In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 `sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including

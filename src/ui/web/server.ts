@@ -7,6 +7,7 @@ import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.j
 import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
+import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
@@ -47,6 +48,11 @@ export interface WebUiOptions {
    * page shows the chosen agent's when its session reported none yet.
    */
   limits?: () => Promise<Array<RateLimit & { agent: string }>>;
+  /**
+   * Which topics each agent's work went to since `since` (`topicShares`), at GET /api/shares: the
+   * start screen shows it beside the plan limits.
+   */
+  shares?: (query: { since: number }) => Promise<AgentShares[]>;
   /** Answers a question a session holds open (`asks` of the listing), at POST /api/asks/<id>. */
   answer?: (id: string, decision: AskDecision) => Promise<boolean>;
   /** Archives sessions (`archived` false: brings them back), at POST /api/archive. */
@@ -328,6 +334,15 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       const limits = options.limits ? await options.limits().catch(() => []) : [];
       return send(res, 200, 'application/json', JSON.stringify({ limits }));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/shares') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      const days = Number(url.searchParams.get('days'));
+      const since = Date.now() - (Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 7) * 86_400_000;
+      const shares = options.shares ? await options.shares({ since }).catch(() => []) : [];
+      return send(res, 200, 'application/json', JSON.stringify({ shares }));
     }
     if (req.method === 'GET' && url.pathname === '/api/sessions') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
