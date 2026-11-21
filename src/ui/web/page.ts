@@ -1,5 +1,9 @@
+// Move ?token= out of the address bar into origin-isolated sessionStorage before first paint.
+// Skips framed loads (dev overlays keep the token in the iframe URL).
+const STRIP_TOKEN_SCRIPT = `<script>(()=>{const u=new URL(location.href),t=u.searchParams.get('token');if(!t||window.self!==window.top)return;try{sessionStorage.setItem('genaicode-token',t)}catch{window.__genaicodeToken=t}u.searchParams.delete('token');history.replaceState(null,'',u.pathname+u.search+u.hash)})()</script>`;
+
 /** The single HTML page of the web UI. Styles are inline; the app is /app.js. */
-export function pageHtml(title: { version: string; cwd: string; sessions?: boolean }): string {
+export function pageHtml(title: { version: string; cwd: string; sessions?: boolean; stripToken?: boolean }): string {
   const escape = (text: string) =>
     text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   return `<!doctype html>
@@ -9,7 +13,7 @@ export function pageHtml(title: { version: string; cwd: string; sessions?: boole
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>genaicode</title>
-<link rel="icon" type="image/png" href="/assets/wolf-64.png">
+<link rel="icon" type="image/png" href="/assets/wolf-64.png">${title.stripToken ? `\n${STRIP_TOKEN_SCRIPT}` : ''}
 <style>${STYLES}</style>
 </head>
 <body>

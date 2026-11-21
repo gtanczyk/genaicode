@@ -13,7 +13,18 @@ const style = document.createElement('style');
 style.textContent = styles;
 document.head.append(style);
 
-const token = new URLSearchParams(location.search).get('token') ?? '';
+// Top-level tabs move ?token= into origin-isolated sessionStorage before paint; framed loads keep it in the URL.
+const token = (() => {
+  const win = window as unknown as { __genaicodeToken?: string };
+  const initial = win.__genaicodeToken ?? new URLSearchParams(location.search).get('token') ?? '';
+  delete win.__genaicodeToken;
+  if (initial) return initial;
+  try {
+    return sessionStorage.getItem('genaicode-token') ?? '';
+  } catch {
+    return '';
+  }
+})();
 
 async function postCommand(body: WebCommand) {
   const res = await fetch('/api/command', {
@@ -28,19 +39,76 @@ async function command(body: WebCommand): Promise<boolean> {
   return (await postCommand(body)).ok === true;
 }
 
-function useView(): { view?: ChatView; connected: boolean } {
+interface PageConfig {
+  cwd: string;
+  sessions: boolean;
+}
+
+function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
   const [view, setView] = useState<ChatView>();
+  const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
+  const [rejected, setRejected] = useState(!token);
   useEffect(() => {
-    const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
-    source.addEventListener('view', (event) => {
-      setView(JSON.parse((event as MessageEvent<string>).data) as ChatView);
-      setConnected(true);
-    });
-    source.onerror = () => setConnected(false);
-    return () => source.close();
+    if (!token) return;
+    const abort = new AbortController();
+    let timer: number | undefined;
+    const connect = async () => {
+      try {
+        const res = await fetch('/api/events', {
+          headers: { 'x-genaicode-token': token },
+          signal: abort.signal,
+        });
+        if (res.status === 403) {
+          setConnected(false);
+          setRejected(true);
+          try {
+            sessionStorage.removeItem('genaicode-token');
+          } catch {
+            // Storage unavailable.
+          }
+          return;
+        }
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          for (let sep = buffer.indexOf('\n\n'); sep !== -1; sep = buffer.indexOf('\n\n')) {
+            const block = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            let event = 'message';
+            const data: string[] = [];
+            for (const line of block.split(/\r?\n/)) {
+              if (line.startsWith('event:')) event = line.slice(6).trim();
+              else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+            }
+            if (!data.length) continue;
+            const payload = data.join('\n');
+            if (event === 'view') {
+              setView(JSON.parse(payload) as ChatView);
+              setConnected(true);
+            } else if (event === 'config') {
+              setConfig(JSON.parse(payload) as PageConfig);
+            }
+          }
+        }
+      } catch {
+        if (abort.signal.aborted) return;
+      }
+      setConnected(false);
+      if (!abort.signal.aborted) timer = window.setTimeout(() => void connect(), 1500);
+    };
+    void connect();
+    return () => {
+      abort.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, []);
-  return { view, connected };
+  return { view, config, connected, rejected };
 }
 
 /**
@@ -89,8 +157,9 @@ const IDEAS = ['Explain how this project is organized', 'Find and fix a failing 
 
 function App() {
   const root = document.getElementById('root')!;
-  const cwd = root.dataset.cwd ?? '';
-  const { view, connected } = useView();
+  const { view, config, connected, rejected } = useView();
+  const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
+  const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
   const [model, setModel] = useState<string>();
   // The Sessions view takes the chat's place; the chat keeps running behind it.
@@ -152,7 +221,7 @@ function App() {
                 {chip.text}
               </span>
             ))}
-            {root.dataset.sessions ? (
+            {hasSessions ? (
               <button
                 className={`chip${showSessions ? '' : ' off'}`}
                 title="What every agent on this machine has going on, by project"
@@ -253,6 +322,8 @@ function App() {
                 ))}
               </div>
             </div>
+          ) : rejected ? (
+            <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
           ) : (
             <div className="gc-empty">Connecting…</div>
           )

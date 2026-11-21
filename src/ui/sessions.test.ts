@@ -111,6 +111,19 @@ describe('the Sessions view', () => {
         text: 'Done.',
       });
       expect(calls).toEqual([['echo', 'a b', 'go', 'read-only']]);
+      // The reload-shell cookie never authorizes session sends, even with matching Origin.
+      const page = await fetch(ui.url);
+      const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0]!;
+      const origin = new URL(ui.url).origin;
+      expect(
+        (
+          await fetch(new URL('/api/sessions/echo/id/send', ui.url), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie, origin, 'sec-fetch-site': 'same-origin' },
+            body: JSON.stringify({ prompt: 'go' }),
+          })
+        ).status,
+      ).toBe(403);
       const busy = await post('busy', { prompt: 'go' });
       expect(busy.status).toBe(409);
       expect(await busy.json()).toEqual({ error: 'A prompt is already running in this session.' });
@@ -149,8 +162,15 @@ describe('the Sessions view', () => {
     const ui = await start(true);
     const base = ui.url.replace(/\/\?.*$/, '');
     try {
-      expect(await (await fetch(ui.url)).text()).toContain('data-sessions="1"');
+      const page = await fetch(ui.url);
+      const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0]!;
+      expect(await page.text()).toContain('data-sessions="1"');
+      // Reload shell served via cookie omits session metadata and does not authorize /api/sessions.
+      expect(await (await fetch(`${base}/`, { headers: { cookie } })).text()).not.toContain('data-sessions');
       expect((await fetch(`${base}/api/sessions`)).status).toBe(403);
+      expect(
+        (await fetch(`${base}/api/sessions`, { headers: { cookie, 'sec-fetch-site': 'same-origin' } })).status,
+      ).toBe(403);
       const before = Date.now();
       const res = await fetch(`${base}/api/sessions?days=7`, { headers: { 'x-genaicode-token': 't0k' } });
       expect(res.status).toBe(200);
