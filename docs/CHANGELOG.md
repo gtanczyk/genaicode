@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.44.0 — 2026-11-21
+
 ### Added
 
 - `genaicode topics`: your sessions as pieces of work, whichever agents and directories they were in, with what asks for you first. `topics refresh` has an agent sort the sessions no topic has yet (one line per session; kept in `~/.genaicode/topics.json`), and `topics rename|merge|move` correct it. From `genaicode/agents`: `topicsPrompt()`, `sortedTopics()`, `summarizeTopics()`, `readTopics()`, `writeTopics()` (#241)
