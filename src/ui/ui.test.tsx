@@ -793,11 +793,49 @@ describe('web UI server', () => {
     const base = ui.url.replace(/\?.*$/, '');
     try {
       expect(ui.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=t0k$/);
+      const port = new URL(ui.url).port;
+      const origin = new URL(ui.url).origin;
       expect((await fetch(base)).status).toBe(403);
+      expect((await fetch(`${base}?token=wrong`)).status).toBe(403);
+
+      // Opening the tokenized link sets a reload-shell cookie and includes the pre-paint URL cleaner.
       const page = await fetch(ui.url);
       expect(page.status).toBe(200);
       expect(page.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
-      expect(await page.text()).toContain('data-cwd="/w &lt;&amp;&gt;"');
+      const setCookie = page.headers.get('set-cookie') ?? '';
+      expect(setCookie).toMatch(new RegExp(`^genaicode_${port}=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Path=/$`));
+      expect(setCookie).not.toContain('t0k');
+      const cookie = setCookie.split(';')[0]!;
+      const cookieValue = cookie.split('=')[1]!;
+      const html = await page.text();
+      expect(html).toContain('data-cwd="/w &lt;&amp;&gt;"');
+      expect(html).toContain('history.replaceState');
+
+      // Reloading / with the cookie serves an empty shell without leaking cwd or session metadata.
+      const reload = await fetch(base, { headers: { cookie } });
+      expect(reload.status).toBe(200);
+      expect(reload.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      const reloadHtml = await reload.text();
+      expect(reloadHtml).toContain('data-cwd=""');
+      expect(reloadHtml).not.toContain('history.replaceState');
+
+      // A wrong query token is still rejected even when the browser holds a valid cookie.
+      expect((await fetch(`${base}?token=wrong`, { headers: { cookie } })).status).toBe(403);
+      // Framed loads keep the token in the iframe URL without setting a cookie or stripping it.
+      const framed = await fetch(ui.url, { headers: { 'sec-fetch-dest': 'iframe' } });
+      expect(framed.status).toBe(200);
+      expect(framed.headers.get('set-cookie')).toBeNull();
+      expect(await framed.text()).not.toContain('history.replaceState');
+
+      // Excess stale genaicode_<port> cookies from prior runs are expired, leaving unrelated cookies alone.
+      const stale = Array.from({ length: 9 }, (_, i) => `genaicode_${1000 + i}=old`).join('; ');
+      const pruned = await fetch(ui.url, { headers: { cookie: `other=keep; ${stale}` } });
+      const prunedSet = pruned.headers.getSetCookie();
+      expect(prunedSet).toHaveLength(3);
+      expect(prunedSet[0]).toMatch(new RegExp(`^genaicode_${port}=`));
+      expect(prunedSet[1]).toBe('genaicode_1000=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+      expect(prunedSet[2]).toBe('genaicode_1001=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+
       expect(await (await fetch(`${base}app.js`)).text()).toBe('console.log(1)');
       // The wolf and its bark need no token (an <img> or <audio> cannot send one).
       const wolf = await fetch(`${base}assets/wolf-64.png`);
@@ -813,7 +851,32 @@ describe('web UI server', () => {
           body: JSON.stringify(body),
         });
       expect((await post({ type: 'submit', text: 'hi' }, 'wrong')).status).toBe(403);
+      expect((await post({ type: 'submit', text: 'hi' }, cookieValue)).status).toBe(403);
       expect((await post({ type: 'shell', text: 'hi' })).status).toBe(400);
+      // Replaying the reload cookie from another local service on 127.0.0.1 never authorizes /api/*.
+      expect(
+        (
+          await fetch(`${base}api/command`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie, origin, 'sec-fetch-site': 'same-origin' },
+            body: JSON.stringify({ type: 'stop' }),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (await fetch(`${base}api/events`, { headers: { cookie, origin, 'sec-fetch-site': 'same-origin' } })).status,
+      ).toBe(403);
+      expect((await fetch(`${base}api/events`, { headers: { 'x-genaicode-token': cookieValue } })).status).toBe(403);
+
+      // /api/events accepts x-genaicode-token so browsers do not put the token in the SSE URL.
+      const headerEvents = await fetch(`${base}api/events`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(headerEvents.status).toBe(200);
+      const headerReader = headerEvents.body!.getReader();
+      let initial = '';
+      while (!initial.includes('event: config')) initial += new TextDecoder().decode((await headerReader.read()).value);
+      expect(initial).toContain('event: view\n');
+      expect(initial).toContain('"cwd":"/w <&>"');
+      await headerReader.cancel();
 
       const events = await fetch(`${base}api/events?token=t0k`);
       expect(events.headers.get('content-type')).toBe('text/event-stream');

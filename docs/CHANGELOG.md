@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - `claude()` inherits `permissions.defaultMode` from Claude Code user settings (`~/.claude/settings.json` / `$CLAUDE_CONFIG_DIR`) or `options.settings` instead of overriding it with `--permission-mode acceptEdits`, keeping `acceptEdits` as the fallback when no default mode is configured (#238)
 
+### Fixed
+
+- `genaicode ui` (and `chat --web` / `tower`) strips `?token=` from the browser address bar into origin-isolated `sessionStorage`, sends the token in headers for `/api/events` and commands, and keeps reloads working via a reload-only `HttpOnly` shell cookie (#236)
+
 ## 2.43.0 — 2026-11-21
 
 ### Added
