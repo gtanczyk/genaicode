@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
-import { formatUsage, limitChips, needsAttention, shortId, SLASH_COMMANDS, splitAttached } from '../format.js';
+import {
+  formatUsage,
+  limitChips,
+  needsAttention,
+  parseSlash,
+  shortId,
+  SLASH_COMMANDS,
+  splitAttached,
+} from '../format.js';
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
@@ -284,6 +292,20 @@ function App() {
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
   const submit = (text: string, files?: File[]): Promise<boolean> => {
+    // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
+    const own = parseSlash(text);
+    if (own) {
+      if (files?.length) {
+        setUnsent({ problem: 'Not sent: files go with a prompt, not with a command.', text: text.trim() });
+        return Promise.resolve(false);
+      }
+      // Stopping or leaving the conversation drops what still waits here, as the buttons do.
+      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) stops += 1;
+      return command({ type: 'submit', text }).then(
+        () => true,
+        () => true,
+      );
+    }
     const before = stops;
     const mine = sending.then(() => sendPrompt(text, files, () => stops !== before));
     sending = mine;
