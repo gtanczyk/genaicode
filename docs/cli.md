@@ -195,6 +195,16 @@ worktree's diff, merge the changes into the lead's directory, or discard the wor
 Merging leaves the files available for review and commit. Unmerged worktrees stay on disk
 when you exit. The task controls belong to the chat process that started them.
 
+Chat packs leave completed changes on the task card by default. Choose **Request review**
+to give the full diff to another agent in read-only mode. The lead reviews when eligible.
+**Run tests** runs the displayed command in the worker's directory. A project with an npm
+test script gets a test button automatically. Choose a different check at startup, for
+example `genaicode ui --pack --verify "python -m pytest"`. Tests run when you request them.
+
+Read **Review notes** and **Test output** beside **Merge locally**. A further edit marks
+earlier results **Outdated**. Run the checks again, or inspect the changed diff and decide
+whether to merge it. In the terminal use `r` for review, `v` for tests and `c` to read the results.
+
 Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`

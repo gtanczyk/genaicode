@@ -5,8 +5,23 @@ import { findExecutable } from './discovery.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { startLocalMcpServer } from './mcp-server.js';
 import type { McpTool } from './mcp-tools.js';
-import { addWorktree, applyPatch, removeWorktree, repoRoot, worktreeChanges, worktreeDiff } from './pack-git.js';
-import { addUsage, tokenCount } from './usage.js';
+import {
+  addWorktree,
+  applyPatch,
+  removeWorktree,
+  repoRoot,
+  snapshotTree,
+  worktreeChanges,
+  worktreeDiff,
+} from './pack-git.js';
+import {
+  reviewPatch,
+  watchCheckedTree,
+  type PackCheckContext,
+  type PackTaskChecks,
+  type PackVerification,
+} from './pack-checks.js';
+import { addUsage, remainingBudget, tokenCount } from './usage.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -39,6 +54,10 @@ export interface PackOptions {
    * holds the repository's files without anything git ignores.
    */
   prepareWorktree?(dir: string, repo: string): void | Promise<void>;
+  /** A fixed check the operator can run in a finished task's working directory. */
+  verification?: PackVerification;
+  /** Leave worktrees on the chat's task cards unless the operator asks the lead to merge. */
+  operatorMerge?: boolean;
 }
 
 /** What the lead learns about a member from the `agents` tool. */
@@ -75,6 +94,7 @@ export interface PackTask {
   changes?: string[];
   /** What became of a worktree task's changes. */
   state?: 'unmerged' | 'merged' | 'discarded';
+  checks?: PackTaskChecks;
 }
 
 export interface Pack extends CodingAgent {
@@ -84,7 +104,10 @@ export interface Pack extends CodingAgent {
   close(): Promise<void>;
 }
 
-export type PackAction = { type: 'steer'; text: string } | { type: 'stop' | 'diff' | 'merge' | 'discard' };
+export type PackAction =
+  | { type: 'steer'; text: string }
+  | { type: 'merge'; revision?: string }
+  | { type: 'stop' | 'diff' | 'discard' | 'review' | 'verify' };
 
 const packActionRefusals = {
   missing: 'This pack task could not be found.',
@@ -97,6 +120,12 @@ const packActionRefusals = {
   discarded: 'This task was already discarded.',
   unavailable: 'This task no longer has a worktree.',
   conflict: 'These changes do not apply cleanly; nothing was changed.',
+  checking: 'A check is running. Wait for its result.',
+  reviewer: 'This pack has no other installed agent with a read-only mode.',
+  verification: 'No test command is configured for this pack.',
+  stale: 'The changes have been updated. Inspect the current results before merging.',
+  budget: 'The session has used its review budget.',
+  capacity: 'All pack worker slots are in use. Try the review when a slot is free.',
 };
 
 export type PackActionErrorReason = keyof typeof packActionRefusals;
@@ -137,7 +166,9 @@ export interface PackControls {
   readonly lead: string;
   readonly maxParallel: number;
   task(id: string): PackTask | undefined;
-  act(id: string, action: PackAction): Promise<string>;
+  act(id: string, action: PackAction, context?: PackCheckContext): Promise<string>;
+  /** Includes operator actions and worktree edits after the lead's turn ends. */
+  onTaskChange?(listener: (id: string) => void): () => void;
 }
 
 /** Events and the approval callback use the same identity in the chat's shared queue. */
@@ -166,6 +197,11 @@ interface Sub {
   usage?: TokenUsage;
   costUsd?: number;
   changes?: string[];
+  reviewer?: CodingAgent;
+  checks?: PackTaskChecks;
+  checking?: { abort: AbortController; done: Promise<string> };
+  unwatch?: () => void;
+  closing?: boolean;
   state?: 'unmerged' | 'merged' | 'discarded';
   /** A `wait` already told the lead how it ended. */
   reported?: boolean;
@@ -187,7 +223,7 @@ function projectDirectory(cwd: string): string {
   }
 }
 
-function defaultBrief(members: readonly PackMember[]): string {
+function defaultBrief(members: readonly PackMember[], operatorMerge = false): string {
   const names = members.filter((member) => member.installed).map((member) => member.name);
   return [
     'You lead a pack of coding agents on this machine. Besides doing work yourself, you can hand parts of it to the',
@@ -197,8 +233,11 @@ function defaultBrief(members: readonly PackMember[]): string {
     '- By default a delegated task works in its own git worktree, a copy of the current files. Nothing it does',
     '  reaches your directory until you `merge` it (`diff` shows it first, `discard` drops it). Use mode `shared`',
     '  for read-only work such as a review, which then runs in your directory.',
-    '- `wait` blocks until tasks finish (or its timeout passes; call it again). Always wait for, and then merge or',
-    '  discard, every task before you finish. Tasks still running when you finish are stopped.',
+    '- `wait` blocks until tasks finish (or its timeout passes; call it again). Tasks still running when you finish are stopped.',
+    operatorMerge
+      ? '- Leave finished worktrees on their task cards for the operator to review, test and merge. Merge or discard them when the operator requests it.'
+      : '- Wait for, and then merge or discard, every task before you finish.',
+    '- Use `review` for an independent read-only review of a finished worker’s exact patch when requested.',
     '- Delegate what gains from it: independent pieces in parallel, a second opinion or review from a different',
     '  agent, or work for an agent that still has quota when another ran out. Small tasks are faster done yourself.',
   ].join('\n');
@@ -260,6 +299,16 @@ export function pack(options: PackOptions): Pack {
   const subs = new Map<string, Sub>();
   const limits = new Map<string, Map<string, RateLimit>>();
   const lastFailure = new Map<string, AgentFailure>();
+  const listeners = new Set<(sub: Sub) => void>();
+  const notify = (sub: Sub) => {
+    for (const listener of listeners) {
+      try {
+        listener(sub);
+      } catch {
+        /* Observers do not control a check. */
+      }
+    }
+  };
   // Lead and chat share one queue: a discard cannot remove a worktree while a patch is being read or applied.
   let worktreeQueue: Promise<unknown> = Promise.resolve();
   const withWorktree = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -270,6 +319,9 @@ export function pack(options: PackOptions): Pack {
   let nextId = 1;
   // Delegations still setting up their worktree: they hold a `maxParallel` slot already.
   let starting = 0;
+  const occupied = () =>
+    starting +
+    [...subs.values()].filter((sub) => sub.status === 'running' || sub.checks?.review?.status === 'running').length;
 
   const noteLimit = (agent: string, limit: RateLimit) => {
     let known = limits.get(agent);
@@ -284,7 +336,11 @@ export function pack(options: PackOptions): Pack {
       return {
         name: member.name,
         installed: findExecutable(member.command, env) !== null,
-        running: [...subs.values()].filter((sub) => sub.agent === member && sub.status === 'running').length,
+        running: [...subs.values()].filter(
+          (sub) =>
+            (sub.agent === member && sub.status === 'running') ||
+            (sub.reviewer === member && sub.checks?.review?.status === 'running'),
+        ).length,
         steer: !!member.capabilities.steer,
         ...(known.length ? { limits: known } : {}),
         ...(failure ? { lastFailure: failure } : {}),
@@ -308,9 +364,12 @@ export function pack(options: PackOptions): Pack {
     ...(sub.result?.failure ? { failure: sub.result.failure } : {}),
     ...(sub.changes ? { changes: sub.changes } : {}),
     ...(sub.state ? { state: sub.state } : {}),
+    ...(sub.checks ? { checks: { ...sub.checks } } : {}),
   });
 
   const drop = async (sub: Sub) => {
+    sub.unwatch?.();
+    sub.unwatch = undefined;
     if (sub.repo && sub.dir) await removeWorktree(sub.repo, sub.dir);
     sub.dir = undefined;
   };
@@ -324,8 +383,13 @@ export function pack(options: PackOptions): Pack {
     tasks: () => [...subs.values()].map(report),
     async close() {
       const all = [...subs.values()];
-      for (const sub of all) sub.run?.abort();
-      await Promise.all(all.map((sub) => sub.ended));
+      for (const sub of all) sub.closing = true;
+      await withWorktree(async () => {});
+      for (const sub of all) {
+        sub.run?.abort();
+        sub.checking?.abort.abort();
+      }
+      await Promise.allSettled(all.flatMap((sub) => [sub.ended, sub.checking?.done]));
       await withWorktree(async () => {
         for (const sub of all) {
           if (sub.dir && sub.state === 'unmerged') sub.state = 'discarded';
@@ -340,16 +404,28 @@ export function pack(options: PackOptions): Pack {
       const ended = new AbortController();
       const mine = new Set<Sub>();
       const settingUp = new Set<Promise<string>>();
+      let observers = 0;
+      const reviewers = [lead, ...members].filter(
+        (agent) =>
+          agent.capabilities.permissions?.sandbox?.includes('read-only') &&
+          agent.capabilities.permissions.approval?.includes('deny') &&
+          findExecutable(agent.command, task.env) !== null,
+      );
       let leadRun: AgentRun | undefined;
       let stopped = false;
       let leadUsage: TokenUsage | undefined;
       let leadCost: number | undefined;
+      let reviewUsage: TokenUsage | undefined;
+      let reviewCost: number | undefined;
+      const leadReviews = new AbortController();
       let overBudget: string | undefined;
       const warned = new Set<BudgetWarning['kind']>();
 
       const total = (): { usage?: TokenUsage; costUsd?: number } => {
         let usage = leadUsage;
         let costUsd = leadCost;
+        if (reviewUsage) usage = addUsage(usage ?? {}, reviewUsage);
+        if (reviewCost !== undefined) costUsd = (costUsd ?? 0) + reviewCost;
         for (const sub of mine) {
           if (sub.usage) usage = usage ? addUsage(usage, sub.usage) : sub.usage;
           if (sub.costUsd !== undefined) costUsd = (costUsd ?? 0) + sub.costUsd;
@@ -359,6 +435,7 @@ export function pack(options: PackOptions): Pack {
 
       const stopAll = () => {
         leadRun?.abort();
+        leadReviews.abort();
         for (const sub of mine) sub.run?.abort();
       };
 
@@ -409,7 +486,7 @@ export function pack(options: PackOptions): Pack {
           throw new Error(`No agent ${String(args.agent)}. Available: ${members.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
         if (ended.signal.aborted) throw new Error('The run has ended.');
-        const running = [...subs.values()].filter((sub) => sub.status === 'running').length + starting;
+        const running = occupied();
         if (running >= maxParallel)
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
         // Taken before the first await, so calls made at the same moment cannot share a slot.
@@ -455,6 +532,8 @@ export function pack(options: PackOptions): Pack {
           sub.repo = repo;
           sub.dir = dir;
           sub.state = 'unmerged';
+          sub.reviewer = reviewers.find((candidate) => candidate.name !== agent.name);
+          sub.checks = { reviewer: sub.reviewer?.name, command: options.verification?.label };
           sub.cwd = path.join(dir, relativeCwd);
           try {
             mkdirSync(sub.cwd, { recursive: true });
@@ -559,15 +638,95 @@ export function pack(options: PackOptions): Pack {
               ? 'discarded'
               : 'unavailable';
 
-      const merge = (sub: Sub, threeWay = false): Promise<string> => {
+      const updateRevision = (sub: Sub, revision?: string) => {
+        if (!sub.checks || sub.checks.revision === revision) return;
+        sub.checks.revision = revision;
+        notify(sub);
+      };
+
+      const refresh = (sub: Sub) =>
+        withWorktree(async () => {
+          if (!sub.dir || sub.state !== 'unmerged' || sub.closing) return;
+          updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
+        });
+
+      const check = async (sub: Sub, kind: 'review' | 'verify', context: PackCheckContext = {}) => {
+        const { done } = await withWorktree(async () => {
+          if (sub.status === 'running') throw new PackActionError('running');
+          if (!sub.dir || !sub.start || !sub.checks || sub.state !== 'unmerged' || sub.closing)
+            throw new PackActionError(worktreeReason(sub));
+          if (sub.checking) throw new PackActionError('checking');
+          const reviewer = sub.reviewer;
+          const verification = options.verification;
+          if (kind === 'review' && !reviewer) throw new PackActionError('reviewer');
+          if (kind === 'verify' && !verification) throw new PackActionError('verification');
+          const revision = await snapshotTree(sub.dir);
+          const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : '';
+          if (kind === 'review' && occupied() >= maxParallel) throw new PackActionError('capacity');
+          const checks = sub.checks;
+          const abort = new AbortController();
+          const cancel = () => abort.abort();
+          context.signal?.addEventListener('abort', cancel, { once: true });
+          if (context.signal?.aborted || sub.closing) cancel();
+          checks.revision = revision;
+          checks[kind] = { revision, status: 'running' };
+          const run = async () => {
+            try {
+              abort.signal.throwIfAborted();
+              const report =
+                kind === 'review'
+                  ? await reviewPatch(reviewer!, patch, task.env, { ...context, signal: abort.signal })
+                  : await verification!.run(sub.cwd, abort.signal);
+              checks[kind] = {
+                revision,
+                status: report.ok ? 'completed' : 'failed',
+                detail: report.detail && clip(report.detail, 16_000),
+              };
+            } catch (error) {
+              checks[kind] = {
+                revision,
+                status: 'failed',
+                detail: clip(error instanceof Error ? error.message : String(error)),
+              };
+            } finally {
+              context.signal?.removeEventListener('abort', cancel);
+              await refresh(sub);
+              sub.checking = undefined;
+              notify(sub);
+            }
+            return checks[kind]!.status === 'failed' ? 'Check failed.' : 'Check complete.';
+          };
+          const done = run();
+          sub.checking = { abort, done };
+          if (observers && !sub.unwatch) sub.unwatch = watchCheckedTree(sub.dir, () => void refresh(sub));
+          notify(sub);
+          return { done };
+        });
+        return done;
+      };
+
+      const merge = (sub: Sub, threeWay = false, expected?: string): Promise<string> => {
         return withWorktree(async () => {
+          if (sub.checking) throw new PackActionError('checking');
           if (sub.status === 'running')
             throw new PackActionError('running', `${sub.id} is still running. Wait for it first.`);
           if (sub.mode !== 'worktree')
             throw new PackActionError('shared', `${sub.id} ran in the shared directory: there is nothing to merge.`);
           if (sub.state !== 'unmerged' || !sub.dir || !sub.start || !sub.repo)
             throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
-          const patch = await worktreeDiff(sub.dir, sub.start);
+          const tree = await snapshotTree(sub.dir);
+          const checks = sub.checks;
+          if (checks?.review || checks?.verify || expected) {
+            updateRevision(sub, tree);
+            if (
+              expected
+                ? expected !== tree
+                : [checks?.review, checks?.verify].some((result) => result && result.revision !== tree)
+            )
+              throw new PackActionError('stale');
+          }
+          const patch = await worktreeDiff(sub.dir, sub.start, tree);
+          sub.changes = await worktreeChanges(sub.dir, sub.start, tree);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
           const repo = sub.repo;
           const leadPaths = paths.map((file) => path.relative(leadCwd, path.join(repo, file)));
@@ -618,11 +777,14 @@ export function pack(options: PackOptions): Pack {
         withWorktree(async () => {
           if (!sub.dir || !sub.start)
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
-          return clip(await worktreeDiff(sub.dir, sub.start), MAX_DIFF) || 'No changes.';
+          const tree = await snapshotTree(sub.dir);
+          if (sub.checks?.review || sub.checks?.verify) updateRevision(sub, tree);
+          return clip(await worktreeDiff(sub.dir, sub.start, tree), MAX_DIFF) || 'No changes.';
         });
 
       const discard = (sub: Sub) =>
         withWorktree(async () => {
+          if (sub.checking) throw new PackActionError('checking');
           if (sub.status === 'running')
             throw new PackActionError('running', `${sub.id} is still running. Stop it first.`);
           if (sub.state !== 'unmerged')
@@ -706,15 +868,45 @@ export function pack(options: PackOptions): Pack {
           call: (args) => diff(find(args.id)),
         },
         {
+          name: 'review',
+          description:
+            'Have another installed agent review the complete patch of a finished worktree task, read-only. Returns its findings, also available on the task card.',
+          inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          async call(args) {
+            const sub = find(args.id);
+            const used = total();
+            const left = remainingBudget(task.budget, used.usage ?? {}, used.costUsd);
+            if (left?.spent) throw new PackActionError('budget', left.spent);
+            await check(sub, 'review', {
+              signal: leadReviews.signal,
+              budget: left?.budget,
+              onReviewUsage(usage, cost) {
+                if (usage) reviewUsage = addUsage(reviewUsage ?? {}, usage);
+                if (cost !== undefined) reviewCost = (reviewCost ?? 0) + cost;
+                usageChanged();
+              },
+            });
+            return JSON.stringify(sub.checks);
+          },
+        },
+        {
           name: 'merge',
           description:
             "Apply a finished worktree task's changes to your directory and remove its worktree. All or nothing, unless threeWay is true: then what fits is merged and the rest gets conflict markers for you to resolve.",
           inputSchema: {
             type: 'object',
-            properties: { id: { type: 'string' }, threeWay: { type: 'boolean' } },
+            properties: {
+              id: { type: 'string' },
+              threeWay: { type: 'boolean' },
+              revision: {
+                type: 'string',
+                description: 'Current tree from the task report, when deliberately merging with outdated results.',
+              },
+            },
             required: ['id'],
           },
-          call: (args) => merge(find(args.id), args.threeWay === true),
+          call: (args) =>
+            merge(find(args.id), args.threeWay === true, typeof args.revision === 'string' ? args.revision : undefined),
         },
         {
           name: 'discard',
@@ -738,7 +930,10 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
-          const brief = task.resume ? '' : `${(options.brief ?? defaultBrief)(describeMembers(task.env))}\n\n`;
+          const roster = describeMembers(task.env);
+          const brief = task.resume
+            ? ''
+            : `${options.brief ? options.brief(roster) : defaultBrief(roster, options.operatorMerge)}\n\n`;
           const run = startRun(lead, {
             ...task,
             prompt: `${brief}${task.prompt}`,
@@ -768,6 +963,7 @@ export function pack(options: PackOptions): Pack {
         } finally {
           // The lead is gone: nobody is left to wait for, merge or steer what still runs.
           ended.abort();
+          leadReviews.abort();
           // A delegation still setting up sees the run ended and removes its worktree.
           await Promise.allSettled([...settingUp]);
           for (const sub of mine) sub.run?.abort();
@@ -802,7 +998,22 @@ export function pack(options: PackOptions): Pack {
             const sub = subs.get(id);
             return sub && mine.has(sub) ? report(sub) : undefined;
           },
-          async act(id, action) {
+          onTaskChange(listener) {
+            const scoped = (sub: Sub) => {
+              if (mine.has(sub)) listener(sub.id);
+            };
+            listeners.add(scoped);
+            observers++;
+            return () => {
+              if (!listeners.delete(scoped)) return;
+              if (--observers === 0)
+                for (const sub of mine) {
+                  sub.unwatch?.();
+                  sub.unwatch = undefined;
+                }
+            };
+          },
+          async act(id, action, context) {
             const sub = find(id);
             if (!mine.has(sub)) throw new PackActionError('missing', `Task ${id} belongs to another turn.`);
             switch (action.type) {
@@ -812,8 +1023,11 @@ export function pack(options: PackOptions): Pack {
                 return stop(sub);
               case 'diff':
                 return diff(sub);
+              case 'review':
+              case 'verify':
+                return check(sub, action.type, context);
               case 'merge':
-                return merge(sub);
+                return merge(sub, false, action.revision);
               case 'discard':
                 return discard(sub);
             }

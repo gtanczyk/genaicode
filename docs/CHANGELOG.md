@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Pack task cards let you request an independent review, run project tests in the worker's directory and see when either result is outdated before merging (#239)
+
 ### Fixed
 
 - `genaicode ui` (and `chat --web` / `tower`) strips `?token=` from the browser address bar into origin-isolated `sessionStorage`, sends the token in headers for `/api/events` and commands, and keeps reloads working via a reload-only `HttpOnly` shell cookie (#236)

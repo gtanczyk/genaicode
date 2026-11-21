@@ -64,6 +64,7 @@ export type CliCommand =
       kind: 'chat' | 'ui' | 'tower';
       agent?: string;
       pack?: PackSpec;
+      verify?: string;
       cwd?: string;
       model?: string;
       effort?: string;
@@ -386,6 +387,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       agent: { type: 'string' as const, short: 'a' },
       pack: { type: 'string' as const },
       'max-parallel': { type: 'string' as const },
+      verify: { type: 'string' as const },
       cwd: { type: 'string' as const, short: 'C' },
       model: { type: 'string' as const, short: 'm' },
       effort: { type: 'string' as const },
@@ -432,11 +434,14 @@ export function parseCli(argv: readonly string[]): CliCommand {
       if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
       pack = { lead: lead.trim(), members: [...new Set(members)], maxParallel };
     } else if (maxParallel !== undefined) throw new UsageError('--max-parallel requires --pack.');
+    if (values.verify !== undefined && (!pack || !values.verify.trim()))
+      throw new UsageError('--verify needs --pack and a nonempty test command.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
       kind: command,
       ...(pack ? { pack } : {}),
+      ...(values.verify !== undefined ? { verify: values.verify } : {}),
       agent: values.agent,
       cwd: values.cwd,
       model: values.model,

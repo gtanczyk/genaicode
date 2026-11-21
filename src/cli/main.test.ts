@@ -118,6 +118,8 @@ describe('parseCli', () => {
       ['--pack', 'a:b', '-a', 'c'],
       ['--max-parallel', '2'],
       ['--pack', 'a:b', '--max-parallel', '0'],
+      ['--verify', 'npm test'],
+      ['--pack', '--verify', '  '],
     ])
       expect(() => parseCli(['ui', ...args])).toThrow(UsageError);
     for (const spec of ['lead:unknown', 'worker:lead']) {
@@ -126,6 +128,10 @@ describe('parseCli', () => {
   });
 
   it('auto-assembles a pack from installed agents when --pack is passed without a value', async () => {
+    expect(parseCli(['ui', '--pack', '--verify', 'node --test'])).toMatchObject({
+      pack: { auto: true },
+      verify: 'node --test',
+    });
     expect(parseCli(['ui', '--pack'])).toMatchObject({ kind: 'ui', pack: { auto: true } });
     expect(parseCli(['chat', '--pack', '--web', '--max-parallel', '3'])).toMatchObject({
       kind: 'chat',

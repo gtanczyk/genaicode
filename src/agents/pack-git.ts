@@ -57,7 +57,7 @@ export async function repoRoot(cwd: string): Promise<string | null> {
 }
 
 /** Everything in `dir` (tracked, changed and untracked, minus ignored) as a git tree. Stages nothing. */
-async function snapshotTree(dir: string): Promise<string> {
+export async function snapshotTree(dir: string): Promise<string> {
   const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, 'index') };
   try {
@@ -106,14 +106,14 @@ export async function removeWorktree(repo: string, dir: string): Promise<void> {
 }
 
 /** Files the worktree changed since `start`, as `git diff --name-status` lines. */
-export async function worktreeChanges(dir: string, start: string): Promise<string[]> {
-  const tree = await snapshotTree(dir);
+export async function worktreeChanges(dir: string, start: string, tree?: string): Promise<string[]> {
+  tree ??= await snapshotTree(dir);
   return (await must(dir, ['diff', '--name-status', '--no-renames', start, tree])).split('\n').filter(Boolean);
 }
 
 /** The worktree's changes since `start` as a patch `git apply` takes. */
-export async function worktreeDiff(dir: string, start: string): Promise<string> {
-  const tree = await snapshotTree(dir);
+export async function worktreeDiff(dir: string, start: string, tree?: string): Promise<string> {
+  tree ??= await snapshotTree(dir);
   return must(dir, ['diff', '--binary', '--no-renames', start, tree]);
 }
 

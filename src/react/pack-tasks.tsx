@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { PackAction, PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
-import { packMetrics, packTaskStatus, relativePath } from './format.js';
+import { packCheckLabel, packMetrics, packTaskStatus, relativePath } from './format.js';
 import { Markdown } from './markdown.js';
 
 export type PackActionHandler = (turnId: number, id: string, action: PackAction) => Promise<string>;
@@ -94,19 +94,22 @@ function TaskDetail({
   const [mode, setMode] = useState<'steer' | 'stop' | 'discard'>();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [diff, setDiff] = useState<string>();
+  const [diff, setDiff] = useState<{ text: string; revision?: string }>();
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const running = task.status === 'running';
   const worktree = task.state === 'unmerged';
+  const checks = task.checks;
+  const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
+  const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
   const perform = async (action: PackAction) => {
     if (!act || busy) return;
     setBusy(true);
     setFeedback(undefined);
     try {
       const text = await act(turnId, task.id, action);
-      if (action.type === 'diff') setDiff(text);
+      if (action.type === 'diff') setDiff({ text, revision: checks?.revision });
       else {
-        setFeedback({ text });
+        if (action.type !== 'review' && action.type !== 'verify') setFeedback({ text });
         setMode(undefined);
         setInput('');
       }
@@ -138,7 +141,56 @@ function TaskDetail({
           ))}
         </ul>
       ) : null}
-      {worktree && diff !== undefined && <pre className="gc-pack-diff">{diff}</pre>}
+      {worktree && visibleDiff !== undefined && <pre className="gc-pack-diff">{visibleDiff}</pre>}
+      {checks && !running && (worktree || checks.review || checks.verify) && (
+        <div className="gc-pack-checks" aria-label="Pre-merge checks">
+          {(['review', 'verify'] as const).map((kind) => {
+            const label = kind === 'review' ? 'Code review' : 'Tests';
+            const source = kind === 'review' ? checks.reviewer : checks.command;
+            const status = packCheckLabel(checks, kind);
+            const result = checks[kind];
+            return (
+              <div key={kind}>
+                <div className="gc-pack-check-row">
+                  <strong>{label}</strong>
+                  {source && <code>{source}</code>}
+                  {result && (
+                    <span
+                      className={status === 'Outdated' || status === 'Failed' ? 'gc-pack-warn' : undefined}
+                      role="status"
+                    >
+                      {status}
+                    </span>
+                  )}
+                  {act && worktree && source && (
+                    <button
+                      type="button"
+                      className="gc-btn"
+                      disabled={busy || checking}
+                      onClick={() => void perform({ type: kind })}
+                    >
+                      {kind === 'review' ? 'Request review' : 'Run tests'}
+                    </button>
+                  )}
+                </div>
+                {!source && worktree && (
+                  <small>
+                    {kind === 'review'
+                      ? 'Requires another installed agent with a read-only mode.'
+                      : 'Choose the test command with --verify.'}
+                  </small>
+                )}
+                {result?.detail && (
+                  <details>
+                    <summary>{kind === 'review' ? 'Review notes' : 'Test output'}</summary>
+                    <pre className="gc-pack-diff">{result.detail}</pre>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {act && (
         <fieldset disabled={busy} aria-label={'Actions for ' + task.id}>
           {confirm ? (
@@ -194,14 +246,24 @@ function TaskDetail({
                   <button
                     type="button"
                     className="gc-btn"
-                    onClick={() => (diff === undefined ? void perform({ type: 'diff' }) : setDiff(undefined))}
+                    onClick={() => (visibleDiff === undefined ? void perform({ type: 'diff' }) : setDiff(undefined))}
                   >
-                    {diff === undefined ? 'Show diff' : 'Hide diff'}
+                    {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
                   </button>
-                  <button type="button" className="gc-btn gc-primary" onClick={() => void perform({ type: 'merge' })}>
+                  <button
+                    type="button"
+                    className="gc-btn gc-primary"
+                    disabled={checking}
+                    onClick={() => void perform({ type: 'merge', revision: checks?.revision })}
+                  >
                     Merge locally
                   </button>
-                  <button type="button" className="gc-btn gc-danger" onClick={() => setMode('discard')}>
+                  <button
+                    type="button"
+                    className="gc-btn gc-danger"
+                    disabled={checking}
+                    onClick={() => setMode('discard')}
+                  >
                     Discard
                   </button>
                 </>

@@ -261,6 +261,7 @@ Chat and UI options:
                           explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
                           the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
+      --verify <command>  Test command on each pack task's card (default: the project's npm test script)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
       --effort <level>    Reasoning effort, in the agent's own vocabulary
@@ -659,11 +660,25 @@ async function runUi(
       sessionAgents = packAgents;
       towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
+    const command = options.verify ?? (await npmTestCommand(resolve(cli.cwd, options.cwd ?? '.')));
     const team = pack({
       lead,
       members,
       maxParallel: spec.maxParallel,
+      operatorMerge: true,
       sessionProposalTool: towerInbox?.proposalTool,
+      verification: command
+        ? {
+            label: command,
+            async run(cwd, signal) {
+              const result = await (cli.runCheck ?? shellCheck)(command, cwd, cli.env, signal);
+              return {
+                ok: result.exitCode === 0,
+                detail: [`Exit ${result.exitCode ?? 'by signal'}`, result.output.trim()].filter(Boolean).join('\n'),
+              };
+            },
+          }
+        : undefined,
     });
     agents = [team, ...agents];
     initial = team.name;
@@ -1446,6 +1461,17 @@ function exitCode(result: AgentResult): number {
 
 /** Keep the tail of the check's output: that is where test runners put the failures. */
 const CHECK_OUTPUT_LIMIT = 16_000;
+
+async function npmTestCommand(cwd: string): Promise<string | undefined> {
+  try {
+    const manifest = JSON.parse(await fs.readFile(join(cwd, 'package.json'), 'utf8'));
+    // Pin npm to the task directory even if the worker removes its manifest.
+    if (typeof manifest?.scripts?.test === 'string' && manifest.scripts.test.trim()) return 'npm --prefix . test';
+  } catch {
+    // Projects without an npm test script can supply their command with --verify.
+  }
+  return undefined;
+}
 
 function shellCheck(command: string, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<CheckResult> {
   return new Promise((done) => {

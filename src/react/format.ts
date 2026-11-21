@@ -3,6 +3,16 @@ import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { AgentBudget, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
 import type { PackTask } from '../agents/pack.js';
+import type { PackTaskChecks } from '../agents/pack-checks.js';
+
+export function packCheckLabel(checks: PackTaskChecks, kind: 'review' | 'verify'): string {
+  const result = checks[kind];
+  if (!result) return 'Not run';
+  if (result.revision !== checks.revision) return 'Outdated';
+  if (result.status === 'running') return 'Running…';
+  if (result.status === 'failed') return 'Failed';
+  return kind === 'review' ? 'Reviewed' : 'Passed';
+}
 
 export function packTaskStatus(task: PackTask, waiting: boolean): string {
   if (waiting) return 'Needs approval';

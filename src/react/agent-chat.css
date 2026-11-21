@@ -1081,6 +1081,26 @@ img.gc-artifact-view {
 .gc-chat .gc-pack-detail .gc-buttons {
   flex-wrap: wrap;
 }
+.gc-chat .gc-pack-checks {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding: 0.65rem 0;
+  border-block: 1px solid var(--_border);
+}
+.gc-chat .gc-pack-check-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.gc-chat .gc-pack-check-row code {
+  color: var(--_muted);
+  overflow-wrap: anywhere;
+}
+.gc-chat .gc-pack-checks summary {
+  cursor: pointer;
+}
 .gc-chat .gc-pack-detail textarea {
   display: block;
   box-sizing: border-box;
