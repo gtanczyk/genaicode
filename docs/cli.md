@@ -170,6 +170,14 @@ in `~/.genaicode/topics.json`. The next refresh sorts only the new sessions into
 are. `-a` picks the agent and `-m` the model (Claude Code sorts with `haiku` unless told
 otherwise); `--since` looks further back than the 30 days it and `topics` cover by default.
 
+Sessions that Claude Code ran for a claude.ai project (Remote Control) say which project in their
+first message. Those go to a topic named as the project, before any agent is asked and at no
+cost, so the topics start from the projects you already have. `topics refresh --again` drops the
+topics there are, corrections included, and sorts every session anew.
+
+A topic asks for you (`●`) when a session waits for an approval, or when its last message asked
+something in the last 3 days; an older question is a thread you left.
+
 The result is yours to correct, and corrections stay: `topics rename <topic> <name>`,
 `topics merge <topic> <into>`, `topics move <session id...> --to <topic or new name>` (`--out`
 takes sessions out, to be sorted again). A topic is named by its id, its name, or a part of the

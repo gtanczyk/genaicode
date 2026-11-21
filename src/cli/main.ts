@@ -66,6 +66,7 @@ import {
   findTopic,
   mergeTopics,
   moveSessions,
+  projectTopics,
   readTopics,
   renameTopic,
   sortedTopics,
@@ -262,7 +263,7 @@ Sessions options:
 Topics:
   genaicode topics [--json] [--since 30d]       The topics, what asks for you first
   genaicode topics show <topic>                 The sessions of one (by id, name or part of it)
-  genaicode topics refresh [-a <agent>] [-m <model>]
+  genaicode topics refresh [--again] [-a <agent>] [-m <model>]
                                                 Have an agent sort the sessions no topic has yet
   genaicode topics rename <topic> <name>
   genaicode topics merge <topic> <into>
@@ -271,7 +272,10 @@ Topics:
   A topic is one piece of work, whichever agents and directories its sessions were in. Nothing is
   sorted until you run "topics refresh": it gives an agent one line per unsorted session (agent,
   directory, title or prompts) and keeps the answer in ~/.genaicode/topics.json. Only new sessions
-  are sorted the next time, and what you renamed, merged or moved stays.
+  are sorted the next time, and what you renamed, merged or moved stays. Sessions relayed from a
+  claude.ai project go to a topic named as that project, without asking an agent. "--again" drops
+  the topics there are, your corrections too, and sorts everything anew. A topic "asks you" for
+  approvals, and for 3 days after a session's last message asked something.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
@@ -1017,9 +1021,23 @@ async function manageTopics(
   const period = ago(command.sinceMs ?? TOPICS_SINCE_MS);
 
   if (command.action === 'refresh') {
-    const todo = unsortedSessions(listing.sessions, store);
+    // `--again`: what was sorted so far is dropped, your corrections with it; the runs noted stay.
+    const before: TopicStore = command.again
+      ? { topics: [], sessions: {}, ...(store.runs ? { runs: store.runs } : {}) }
+      : store;
+    // Sessions relayed from a claude.ai project go to the topic of that project: no agent is asked.
+    const own = projectTopics(listing.sessions, before);
+    if (own.placed || command.again) await writeTopics(own.store, cli.env);
+    if (own.placed) {
+      cli.stderr.write(`${count(own.placed)} placed by the claude.ai project they came from.\n`);
+    }
+    const todo = unsortedSessions(listing.sessions, own.store);
     if (!todo.length) {
-      cli.stdout.write(`Every session of the last ${period} has a topic.\n`);
+      cli.stdout.write(
+        own.placed
+          ? `Sorted ${count(own.placed)} into ${own.store.topics.length} topic${own.store.topics.length === 1 ? '' : 's'}. See them with "genaicode topics".\n`
+          : `Every session of the last ${period} has a topic.\n`,
+      );
       return EXIT_OK;
     }
     const agent = pickAgent(cli, agents, command.agent);
@@ -1031,8 +1049,8 @@ async function manageTopics(
     );
     // An empty directory: the agent has nothing to read there, and is told to read nothing.
     const cwd = await fs.mkdtemp(join(tmpdir(), 'genaicode-topics-'));
-    let current = store;
-    let placed = 0;
+    let current = own.store;
+    let placed = own.placed;
     try {
       let done = 0;
       for (const batch of batches) {

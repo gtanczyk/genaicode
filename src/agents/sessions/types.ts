@@ -58,6 +58,11 @@ export interface SessionInfo {
   /** Where to open it in a browser (cloud). */
   url?: string;
   /**
+   * The claude.ai project the session's messages were relayed from (Remote Control), read from the
+   * first of them: its id, and its name where the message's context gives it.
+   */
+  project?: { id: string; name?: string };
+  /**
    * Nobody typed into it, as far as the agent's store says: a scheduled task, a notification, a
    * headless `codex exec`. Listings leave these out unless asked (`SessionQuery.automated`).
    */

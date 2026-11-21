@@ -948,6 +948,21 @@ describe('genaicode sessions --waiting', () => {
     await run('move', 'two', '--to', 't2');
     await run('move', 'old', '--out');
 
+    // Sessions of a claude.ai project need no agent, and `--again` starts over.
+    listed.push({
+      ...listed[0]!,
+      id: 'relayed',
+      updatedAt: now - 5000,
+      project: { id: 'chan_1', name: 'Ink & Fury' },
+    } as never);
+    const sorted = agent.tasks.length;
+    const own = await run('refresh', '-a', 'alpha');
+    expect(own.err).toBe('1 session placed by the claude.ai project they came from.\n');
+    expect(agent.tasks).toHaveLength(sorted);
+    expect((await run('show', 'ink')).out).toContain('Ink & Fury (t');
+    expect(parseCli(['topics', 'refresh', '--again'])).toMatchObject({ action: 'refresh', again: true });
+    listed.pop();
+
     expect((await run('rename', 't2', 'Mac', 'app')).out).toBe('t2 is now "Mac app".\n');
     expect((await run('move', 'three', '--to', 'Worktrees')).out).toBe('1 session now in "Worktrees".\n');
     expect((await run('merge', 'worktrees', 'mac')).out).toBe('"Worktrees" is now part of "Mac app".\n');

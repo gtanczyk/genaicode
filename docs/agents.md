@@ -351,8 +351,9 @@ it). Those come right after the approvals in `--waiting`, marked `●`, and `ses
 statement is not seen.
 
 Sessions nobody typed into are left out of every listing: scheduled tasks and notifications in
-Claude Code (every prompt has `origin.kind` other than `human`, or the session opens with a
-scheduled task nobody answered) and `codex exec` runs. They carry `automated: true`;
+Claude Code (every prompt has `origin.kind` or `turnOrigin` other than `human`, or the session
+opens with a scheduled task nobody answered), headless runs of it with a single prompt (a program
+driving it through more prompts is somebody's chat) and `codex exec` runs. They carry `automated: true`;
 `sessions --automated`, or `{ automated: true }` in the query, lists them too.
 
 **Topics.** Sessions can be kept as pieces of work that cross agents and directories
@@ -381,7 +382,10 @@ const { topics, unsorted } = summarizeTopics(sessions, sorted.store); // asking 
 
 The prompt holds one line per session (agent, last two directory names, title or first and last
 prompt), quoted as data. `renameTopic()`, `mergeTopics()` and `moveSessions()` correct a store; a
-session that has a topic is never moved by a later answer.
+session that has a topic is never moved by a later answer. `projectTopics(sessions, store)` places
+the sessions relayed from a claude.ai project (`SessionInfo.project`: its id, and its name where
+the session gives it; such a session is titled as its thread there) in a topic named as the project, without an agent. What ran in a pack member's worktree
+(`.genaicode/worktrees`) or a temporary directory (`inRunDirectory()`) is listed as ever but takes no topic.
 
 For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
 200 characters of each matching command. Genaicode keeps a digest in its private hook record

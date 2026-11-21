@@ -64,7 +64,8 @@ export type CliCommand =
   | { kind: 'limits'; action: 'show' | 'record'; json: boolean }
   /** `topics`: the sessions as pieces of work, sorted by an agent (`refresh`) and corrected by you. */
   | { kind: 'topics'; action: 'show'; json: boolean; topic?: string; sinceMs?: number }
-  | { kind: 'topics'; action: 'refresh'; agent?: string; model?: string; sinceMs?: number }
+  /** `again`: drop the topics there are and sort every session anew. */
+  | { kind: 'topics'; action: 'refresh'; agent?: string; model?: string; sinceMs?: number; again?: true }
   | { kind: 'topics'; action: 'rename'; topic: string; name: string }
   | { kind: 'topics'; action: 'merge'; from: string; into: string }
   /** `to`: a topic, or the name of a new one; none takes the sessions out of their topic. */
@@ -391,12 +392,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
           model: { type: 'string', short: 'm' },
           to: { type: 'string' },
           out: { type: 'boolean' },
+          again: { type: 'boolean' },
         },
       }),
     );
     const usage = () =>
       new UsageError(
-        'Usage: genaicode topics [show <topic>] [--json] [--since 30d] | topics refresh [-a <agent>] [-m <model>] [--since 30d]\n' +
+        'Usage: genaicode topics [show <topic>] [--json] [--since 30d] | topics refresh [--again] [-a <agent>] [-m <model>] [--since 30d]\n' +
           '       genaicode topics rename <topic> <name> | topics merge <topic> <into> | topics move <session id...> --to <topic> | --out',
       );
     const [action = 'show', ...words] = positionals;
@@ -418,11 +420,12 @@ export function parseCli(argv: readonly string[]): CliCommand {
       };
     }
     if (action === 'refresh') {
-      only('agent', 'model', 'since');
+      only('agent', 'model', 'since', 'again');
       if (words.length) throw usage();
       return {
         kind: 'topics',
         action,
+        ...(values.again === true ? { again: true } : {}),
         ...(values.agent !== undefined ? { agent: values.agent } : {}),
         ...(values.model !== undefined ? { model: values.model } : {}),
         ...since,
