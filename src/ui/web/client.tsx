@@ -53,16 +53,18 @@ async function command(body: WebCommand): Promise<boolean> {
  * Sends `text`, first keeping `files` with the server so the agent can read them from the project.
  * Resolves to what went wrong when nothing was sent: a prompt never goes without one of its files.
  */
-async function sendPrompt(text: string, files: File[] = [], stopped = () => false): Promise<string | undefined> {
+async function sendPrompt(text: string, files: File[], dropped: AbortSignal): Promise<string | undefined> {
   const ids: string[] = [];
   for (const file of files) {
-    if (stopped()) return STOPPED;
+    if (dropped.aborted) return STOPPED;
     const name = file.name || 'file';
     const res = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
       headers: { 'x-genaicode-token': token, 'content-type': 'application/octet-stream' },
       body: file,
+      signal: dropped,
     }).catch(() => undefined);
+    if (dropped.aborted) return STOPPED;
     const kept = res?.ok ? ((await res.json().catch(() => undefined)) as { id?: string } | undefined) : undefined;
     if (!kept?.id) {
       const why = !res ? 'genaicode did not answer' : res.status === 413 ? 'it is over 20 MB' : 'it could not be kept';
@@ -71,7 +73,7 @@ async function sendPrompt(text: string, files: File[] = [], stopped = () => fals
     ids.push(kept.id);
   }
   // Stop drops what waits, as it does the prompts queued with the agent.
-  if (stopped()) return STOPPED;
+  if (dropped.aborted) return STOPPED;
   const sent = await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text }).catch(
     () => false,
   );
@@ -81,10 +83,16 @@ async function sendPrompt(text: string, files: File[] = [], stopped = () => fals
 const STOPPED = 'Not sent: stopped, or the conversation changed, before it left.';
 
 /**
- * How many times the user stopped the agent or moved to another agent or conversation: a prompt
- * still waiting here when that happens does not leave.
+ * Aborted when the user stops the agent or moves to another agent or conversation: a prompt still
+ * waiting here does not leave, its upload ends, and the next prompt does not wait behind it.
  */
-let stops = 0;
+let waiting = new AbortController();
+
+function dropWaiting() {
+  waiting.abort();
+  waiting = new AbortController();
+  sending = Promise.resolve();
+}
 
 /** Prompts leave in the order they were sent, also while the files of an earlier one upload. */
 let sending: Promise<unknown> = Promise.resolve();
@@ -300,14 +308,14 @@ function App() {
         return Promise.resolve(false);
       }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
-      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) stops += 1;
+      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
       return command({ type: 'submit', text }).then(
         () => true,
         () => true,
       );
     }
-    const before = stops;
-    const mine = sending.then(() => sendPrompt(text, files, () => stops !== before));
+    const dropped = waiting.signal;
+    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped));
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
@@ -332,7 +340,7 @@ function App() {
           disabled={running}
           onChange={(event) => {
             // What still waits here was meant for the other agent.
-            stops += 1;
+            dropWaiting();
             void command({ type: 'agent', name: event.target.value });
           }}
         >
@@ -433,7 +441,7 @@ function App() {
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             // What still waits here was meant for the conversation that is left.
-            stops += 1;
+            dropWaiting();
             void command({ type: 'continue', id: found.id });
             setPanel('chat');
           }}
@@ -470,7 +478,7 @@ function App() {
         }
         onSend={submit}
         onStop={() => {
-          stops += 1;
+          dropWaiting();
           void command({ type: 'stop' });
         }}
         canStop={!!view?.shells}
