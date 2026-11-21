@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -65,6 +65,44 @@ export async function snapshotTree(dir: string): Promise<string> {
     if (head.code === 0) await must(dir, ['read-tree', head.stdout.toString().trim()], { env });
     await must(dir, ['add', '-A'], { env });
     return (await must(dir, ['write-tree'], { env })).trim();
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** Check out the recorded objects into an empty directory, without the worker's ignored files, Git config or hooks. */
+export async function withSnapshot<T>(repo: string, tree: string, inspect: (dir: string) => Promise<T>): Promise<T> {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-checkout-'));
+  const directory = path.join(scratch, 'project');
+  const metadata = path.join(scratch, 'git');
+  try {
+    mkdirSync(directory);
+    const objects = (await must(repo, ['rev-parse', '--path-format=absolute', '--git-path', 'objects'])).trim();
+    const env = {
+      PATH: process.env.PATH,
+      SystemRoot: process.env.SystemRoot,
+      HOME: scratch,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: path.join(scratch, 'empty.config'),
+      GIT_ATTR_NOSYSTEM: '1',
+      GIT_NO_REPLACE_OBJECTS: '1',
+    };
+    await must(
+      scratch,
+      [
+        'init',
+        '--quiet',
+        '--bare',
+        '--template=',
+        '--object-format=' + (tree.length === 64 ? 'sha256' : 'sha1'),
+        metadata,
+      ],
+      { env },
+    );
+    await must(scratch, ['--git-dir', metadata, '--work-tree', directory, 'read-tree', '--reset', '-u', tree], {
+      env: { ...env, GIT_OBJECT_DIRECTORY: objects },
+    });
+    return await inspect(realpathSync(directory));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

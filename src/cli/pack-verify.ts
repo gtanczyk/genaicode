@@ -1,7 +1,8 @@
 import { constants } from 'node:fs';
-import { access, mkdtemp, open, realpath, rm, symlink } from 'node:fs/promises';
+import { access, lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { repoRoot } from '../agents/pack-git.js';
 import { runCheckProcess, type CheckResult } from './check-process.js';
 
 // macOS resolves each file access against this policy, including the targets of symlinks.
@@ -14,23 +15,39 @@ const macProfile = [
   '(allow signal (target same-sandbox))',
   '(allow sysctl-read (sysctl-name-prefix "hw.") (sysctl-name "kern.hostname" "kern.osrelease" "kern.ostype" "kern.osrevision" "kern.osversion" "kern.osproductversion" "kern.version" "kern.argmax" "kern.usrstack64"))',
   '(allow file-read-metadata)',
-  '(allow file-map-executable (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (literal (param "NODE")) (subpath (param "DEPS")) (subpath (param "SCRATCH")))',
+  '(allow file-map-executable (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (literal (param "NODE")) (subpath (param "WORK")) (subpath (param "SCRATCH")))',
   '(allow file-read* (subpath "/System/Library") (subpath "/bin") (subpath "/sbin") (subpath "/usr/bin") (subpath "/usr/lib") (subpath "/usr/libexec") (subpath "/usr/share") (subpath "/Library/Developer/CommandLineTools") (subpath "/private/var/db/dyld") (literal "/dev/urandom") (literal "/dev/random"))',
-  '(allow file-read* (subpath (param "WORK")) (literal (param "NODE")) (subpath (param "NPM")) (subpath (param "DEPS")))',
-  '(allow file-read* file-write* (subpath (param "SCRATCH")) (literal "/dev/null"))',
+  '(allow file-read* (literal (param "NODE")) (subpath (param "NPM")))',
+  '(allow file-read* file-write* (subpath (param "WORK")) (subpath (param "SCRATCH")) (literal "/dev/null"))',
 ].join('\n');
 
-// Copy inside the sandbox. Test caches and generated files can be written freely in the
-// private copy. Links from the worker cannot grant access to anything else on the host.
-const runInCopy =
-  'set -e; exec 3<&-; /bin/mkdir "$2/project"; /bin/cp -RP "$1/." "$2/project"; cd "$2/project/$3"; exec /bin/sh -c "$4"';
+/** Keep installed packages at their original depth so workspace links resolve into the worker's tree. */
+async function dependencyDirectories(project: string, nested: string, worktree: string) {
+  const root = (nested && (await repoRoot(project))) || project;
+  const installed: { source: string; path: string }[] = [];
+  let directory = project;
+  let location = nested;
+  for (;;) {
+    const source = join(directory, 'node_modules');
+    const path = join(location, 'node_modules');
+    if (
+      (await realpath(source).catch(() => undefined)) === source &&
+      !(await lstat(join(worktree, path)).catch(() => undefined))
+    )
+      installed.push({ source, path });
+    if (!location || directory === root || dirname(directory) === directory) return installed;
+    directory = dirname(directory);
+    location = dirname(location);
+    if (location === '.') location = '';
+  }
+}
 
 const unavailable = (detail: string): CheckResult => ({
   exitCode: null,
   output: 'Isolated test runner unavailable. ' + detail,
 });
 
-/** The host chooses the runner and its environment. The worker controls only files inside the worktree. */
+/** Run the host's command in the disposable checkout supplied by the pack. */
 export async function worktreeCheck(
   command: string,
   cwd: string,
@@ -51,7 +68,7 @@ export async function worktreeCheck(
   const work = await realpath(cwd);
   const nested = relative(root, work);
   if ((await realpath(root)) !== root || nested === '..' || nested.startsWith('..' + sep) || isAbsolute(nested))
-    return unavailable('The task directory has moved outside its original worktree.');
+    return unavailable('The test directory is outside the recorded Git tree.');
   const scratch = await realpath(await mkdtemp(join(tmpdir(), 'genaicode-test-')));
   try {
     const node = await realpath(process.execPath);
@@ -60,23 +77,38 @@ export async function worktreeCheck(
       npm && basename(npm) === 'npm-cli.js' && basename(dirname(dirname(npm))) === 'npm'
         ? dirname(dirname(npm))
         : undefined;
-    const dependencies = join(project, 'node_modules');
-    const deps = (await realpath(dependencies).catch(() => undefined)) === dependencies ? dependencies : undefined;
+    const dependencies = await dependencyDirectories(project, nested, root);
     const env = { PATH: [dirname(node), '/usr/bin', '/bin'].join(':'), HOME: scratch, TMPDIR: scratch, LANG: 'C' };
     if (platform === 'darwin') {
-      if (deps) await symlink(deps, join(scratch, 'node_modules'));
-      const params = { WORK: root, SCRATCH: scratch, NODE: node, NPM: npmRoot ?? scratch, DEPS: deps ?? scratch };
+      const params: Record<string, string> = { SCRATCH: scratch, NODE: node, NPM: npmRoot ?? scratch, WORK: root };
+      let prepareProfile = macProfile;
+      let testProfile = macProfile;
+      const copies: string[] = [];
+      for (const [i, dep] of dependencies.entries()) {
+        const dest = join(root, dep.path);
+        params['SOURCE' + i] = dep.source;
+        params['COPY' + i] = dest;
+        prepareProfile += '\n(allow file-read* (subpath (param "SOURCE' + i + '")))';
+        testProfile += '\n(deny file-write* (subpath (param "COPY' + i + '")))';
+        copies.push(dep.source, dest);
+      }
       const args = Object.entries(params).flatMap(([key, path]) => ['-D', key + '=' + path]);
-      return await runCheckProcess(
-        runner,
-        [...args, '-p', macProfile, '/bin/sh', '-c', runInCopy, 'verify', root, scratch, nested, command],
-        scratch,
-        env,
-        signal,
-      );
+      // APFS clones preserve relative links and share unchanged file data with the installation.
+      // Only the fixed preparation command gets read access to the original dependency trees.
+      if (copies.length) {
+        const prepare = 'set -e; while [ "$#" -gt 0 ]; do /bin/cp -cRP "$1" "$2"; shift 2; done';
+        const prepared = await runCheckProcess(
+          runner,
+          [...args, '-p', prepareProfile, '/bin/sh', '-c', prepare, 'copy', ...copies],
+          scratch,
+          env,
+          signal,
+        );
+        if (prepared.exitCode !== 0) return prepared;
+      }
+      return await runCheckProcess(runner, [...args, '-p', testProfile, '/bin/sh', '-c', command], work, env, signal);
     }
-    // Pin the source directory before bubblewrap resolves its mounts. A link or rename in
-    // the worker's files cannot substitute a different host directory for /work.
+    // Bind only the disposable checkout and mount dependencies read-only inside it.
     const directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
     try {
       if ((await realpath('/proc/self/fd/' + directory.fd)) !== root) return unavailable('The worktree moved.');
@@ -114,13 +146,11 @@ export async function worktreeCheck(
         if (!npmRoot.startsWith('/usr/share/')) args.push('--ro-bind', npmRoot, npmRoot);
         args.push('--symlink', npm, '/tools/npm');
       }
-      if (deps) args.push('--ro-bind', deps, '/node_modules');
+      args.push('--bind', '/proc/self/fd/3', '/work');
+      for (const dep of dependencies) args.push('--ro-bind', dep.source, join('/work', dep.path));
       args.push(
-        '--ro-bind',
-        '/proc/self/fd/3',
-        '/work',
         '--chdir',
-        '/tmp',
+        join('/work', nested),
         '--setenv',
         'PATH',
         '/tools:/usr/bin:/bin',
@@ -136,11 +166,8 @@ export async function worktreeCheck(
         '--',
         '/bin/sh',
         '-c',
-        runInCopy,
+        'exec 3<&-; exec /bin/sh -c "$1"',
         'verify',
-        '/work',
-        '/tmp',
-        nested,
         command,
       );
       return await runCheckProcess(runner, args, scratch, env, signal, false, directory.fd);

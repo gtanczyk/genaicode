@@ -10,7 +10,8 @@ import type { VerifyReport } from './verify.js';
 export interface PackVerification {
   /** The operator sees this command or check name before starting it. */
   label: string;
-  run(cwd: string, signal: AbortSignal, worktreeRoot: string): VerifyReport | Promise<VerifyReport>;
+  /** Both directories belong to a private checkout of the Git tree recorded for this result. */
+  run(cwd: string, signal: AbortSignal, snapshotRoot: string): VerifyReport | Promise<VerifyReport>;
 }
 
 export interface PackCheckResult {

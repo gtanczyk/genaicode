@@ -114,9 +114,11 @@ describe('pack', () => {
     const correct = 'module.exports = (n) => n ?? 1;\n';
     const latin1 = Buffer.from('caf\u00e9\n', 'latin1');
     writeFileSync(join(cwd, 'seats.cjs'), correct);
+    writeFileSync(join(cwd, '.gitignore'), 'worker.cache\n');
     const worker = fake('worker', async (task) => {
       writeFileSync(join(task.cwd, 'seats.cjs'), 'module.exports = (n) => n || 1;\n');
       writeFileSync(join(task.cwd, 'menu.txt'), latin1);
+      writeFileSync(join(task.cwd, 'worker.cache'), 'local scratch note');
       writeFileSync(join(task.cwd, 'extra.txt'), 'a'.repeat(70_000) + ' end of new file\n');
     });
     let reviewDir = '';
@@ -149,6 +151,8 @@ describe('pack', () => {
         label: 'test zero seats',
         run(dir) {
           expect(dir).not.toBe(cwd);
+          expect(existsSync(join(dir, 'worker.cache'))).toBe(false);
+          expect(existsSync(join(dir, '.git'))).toBe(false);
           const result = testSeats(dir);
           return { ok: result.status === 0, detail: result.stderr.toString() };
         },

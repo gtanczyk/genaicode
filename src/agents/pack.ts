@@ -11,6 +11,7 @@ import {
   removeWorktree,
   repoRoot,
   snapshotTree,
+  withSnapshot,
   worktreeChanges,
   worktreeDiff,
 } from './pack-git.js';
@@ -54,7 +55,7 @@ export interface PackOptions {
    * holds the repository's files without anything git ignores.
    */
   prepareWorktree?(dir: string, repo: string): void | Promise<void>;
-  /** A fixed check the operator can run in a finished task's working directory. */
+  /** A fixed check the operator can run on the finished task's recorded Git tree. */
   verification?: PackVerification;
   /** Leave worktrees on the chat's task cards unless the operator asks the lead to merge. */
   operatorMerge?: boolean;
@@ -662,7 +663,7 @@ export function pack(options: PackOptions): Pack {
       const check = async (sub: Sub, kind: 'review' | 'verify', context: PackCheckContext = {}) => {
         const { done } = await withWorktree(async () => {
           if (sub.status === 'running') throw new PackActionError('running');
-          if (!sub.dir || !sub.start || !sub.checks || sub.state !== 'unmerged' || sub.closing)
+          if (!sub.dir || !sub.repo || !sub.start || !sub.checks || sub.state !== 'unmerged' || sub.closing)
             throw new PackActionError(worktreeReason(sub));
           if (sub.checking) throw new PackActionError('checking');
           const reviewer = sub.reviewer;
@@ -670,6 +671,7 @@ export function pack(options: PackOptions): Pack {
           if (kind === 'review' && !reviewer) throw new PackActionError('reviewer');
           if (kind === 'verify' && !verification) throw new PackActionError('verification');
           const root = sub.dir;
+          const repo = sub.repo;
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
           if (kind === 'review' && occupied() >= maxParallel) throw new PackActionError('capacity');
@@ -686,7 +688,13 @@ export function pack(options: PackOptions): Pack {
               const report =
                 kind === 'review'
                   ? await reviewPatch(reviewer!, patch, task.env, { ...context, signal: abort.signal })
-                  : await verification!.run(sub.cwd, abort.signal, root);
+                  : await withSnapshot(repo, revision, async (copy) => {
+                      abort.signal.throwIfAborted();
+                      const cwd = realpathSync(path.join(copy, path.relative(root, sub.cwd)));
+                      if (cwd !== copy && !cwd.startsWith(copy + path.sep))
+                        throw new Error('The test directory is outside the recorded Git tree.');
+                      return verification!.run(cwd, abort.signal, copy);
+                    });
               checks[kind] = {
                 revision,
                 status: report.ok ? 'completed' : 'failed',

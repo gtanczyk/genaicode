@@ -261,9 +261,10 @@ Claude Code supports this mode. For example, Claude can review a Codex worker in
 test script gets a test button automatically. Choose a different check at startup, for
 example `genaicode ui --pack --verify "python -m pytest"`. Tests run when you request them.
 
-The CLI uses Seatbelt on macOS or `/usr/bin/bwrap` (bubblewrap) on Linux. Tests get a
-temporary home, a clean environment, read access to the project's existing `node_modules`
-and writable space for test output. Network access is disabled. A missing or disabled
+The CLI checks out the recorded Git tree, excluding the worker's ignored files. It runs
+tests under Seatbelt on macOS or `/usr/bin/bwrap` (bubblewrap) on Linux, with a temporary
+home and writable space for test output. Installed dependencies are read-only, and npm
+workspace links point to the checked-out packages. Network access is disabled. A missing or disabled
 sandbox reports a failed check. The built-in test runner is unavailable on Windows.
 
 Read **Review notes** and **Test output** beside **Merge locally**. A further edit marks

@@ -265,7 +265,8 @@ starting with the lead and excluding the worker. The pack passes the complete pa
 to `CodingAgent.runText`. Claude Code implements this with tools, MCP, hooks and project
 context disabled. A custom driver can supply the same capability. Other drivers remain
 eligible to do the work. `{ type: 'verify' }` runs the pack's configured
-`verification: { label, run(cwd, signal, worktreeRoot) }` for the worker's directory. An
+`verification: { label, run(cwd, signal, snapshotRoot) }` in a private checkout of the
+recorded Git tree. The pack removes the checkout after the callback finishes. An
 embedding application supplies the isolation for its own verifier. The callback returns
 `{ ok, detail }`. Both results appear in `task.checks`. Each result records its
 Git tree in `revision`. Compare it with `checks.revision` to spot an outdated result.
