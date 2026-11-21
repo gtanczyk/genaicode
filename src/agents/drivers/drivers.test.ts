@@ -55,6 +55,32 @@ describe('claude driver', () => {
     });
   });
 
+  it('omits the fallback --permission-mode when settings or inheritPermissionMode provides defaultMode', () => {
+    const inherited = claudeArgs({ prompt: 'hi', cwd: '.' }, {}, undefined, undefined, false, true);
+    expect(inherited).not.toContain('--permission-mode');
+    const viaSettings = claudeArgs({ prompt: 'hi', cwd: '.' }, { settings: { permissions: { defaultMode: 'auto' } } });
+    expect(viaSettings).not.toContain('--permission-mode');
+    const disabledAuto = claudeArgs(
+      { prompt: 'hi', cwd: '.' },
+      { settings: { permissions: { defaultMode: 'auto' }, disableAutoMode: 'disable' } },
+    );
+    expect(
+      disabledAuto.slice(disabledAuto.indexOf('--permission-mode'), disabledAuto.indexOf('--permission-mode') + 2),
+    ).toEqual(['--permission-mode', 'acceptEdits']);
+    const explicit = claudeArgs(
+      { prompt: 'hi', cwd: '.' },
+      { permissionMode: 'plan', settings: { permissions: { defaultMode: 'auto' } } },
+      undefined,
+      undefined,
+      false,
+      true,
+    );
+    expect(explicit.slice(explicit.indexOf('--permission-mode'), explicit.indexOf('--permission-mode') + 2)).toEqual([
+      '--permission-mode',
+      'plan',
+    ]);
+  });
+
   it('decodes stream-json into agent events', () => {
     const parser = createClaudeParser();
     const events = feed(parser, [

@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentTask, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
-import { claude } from './claude.js';
+import { claude, hasClaudeDefaultMode, type ClaudeAgentOptions } from './claude.js';
 import {
   claudeApprovalArgs,
   claudeApprovalEnv,
@@ -222,12 +222,25 @@ describe('claude() with onApproval', () => {
     onApproval: ApprovalHandler | undefined,
     mcpServers?: { name: string; url: string }[],
     permissions?: AgentTask['permissions'],
+    extra: { options?: Omit<ClaudeAgentOptions, 'command'>; env?: NodeJS.ProcessEnv; extraArgs?: string[] } = {},
   ) {
-    const agent = claude({ command: bin });
+    const agent = claude({ command: bin, ...extra.options });
     const events: AgentEvent[] = [];
-    const env = { ...process.env };
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: join(dir, 'empty-claude-config'),
+      ...extra.env,
+    };
     delete env.MCP_TOOL_TIMEOUT;
-    const task = agent.run({ prompt: 'fix it', cwd: dir, env, onApproval, mcpServers, permissions });
+    const task = agent.run({
+      prompt: 'fix it',
+      cwd: dir,
+      env,
+      onApproval,
+      mcpServers,
+      permissions,
+      extraArgs: extra.extraArgs,
+    });
     for await (const event of task) events.push(event);
     const result = await task.result;
     expect(result.status).toBe('completed');
@@ -282,5 +295,111 @@ describe('claude() with onApproval', () => {
     expect(events.filter((event) => event.type === 'approval-resolved')).toEqual([
       { type: 'approval-resolved', id: 'tu-9', decision: 'deny', automatic: true },
     ]);
+  });
+
+  it('inherits permissions.defaultMode from user settings unless overridden', async () => {
+    const configDir = join(dir, 'user-auto');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'auto' } }));
+
+    // Inherits defaultMode: omits --permission-mode.
+    const inherited = await run(() => 'approve', undefined, undefined, { env: { CLAUDE_CONFIG_DIR: configDir } });
+    expect(inherited.report.args).not.toContain('--permission-mode');
+
+    // Explicit permissionMode option overrides user settings.
+    const explicit = await run(() => 'approve', undefined, undefined, {
+      options: { permissionMode: 'plan' },
+      env: { CLAUDE_CONFIG_DIR: configDir },
+    });
+    expect(
+      explicit.report.args.slice(
+        explicit.report.args.indexOf('--permission-mode'),
+        explicit.report.args.indexOf('--permission-mode') + 2,
+      ),
+    ).toEqual(['--permission-mode', 'plan']);
+
+    // Explicit task.permissions overrides user settings.
+    const owned = await run(
+      () => 'approve',
+      undefined,
+      { approval: 'ask', sandbox: 'read-only' },
+      {
+        env: { CLAUDE_CONFIG_DIR: configDir },
+      },
+    );
+    expect(
+      owned.report.args.slice(
+        owned.report.args.indexOf('--permission-mode'),
+        owned.report.args.indexOf('--permission-mode') + 2,
+      ),
+    ).toEqual(['--permission-mode', 'plan']);
+
+    // Excluding user settings falls back to acceptEdits.
+    const noUser = await run(() => 'approve', undefined, undefined, {
+      env: { CLAUDE_CONFIG_DIR: configDir },
+      extraArgs: ['--setting-sources', 'project'],
+    });
+    expect(noUser.report.args).toContain('acceptEdits');
+
+    const bare = await run(() => 'approve', undefined, undefined, {
+      env: { CLAUDE_CONFIG_DIR: configDir },
+      extraArgs: ['--bare'],
+    });
+    expect(bare.report.args).toContain('acceptEdits');
+  });
+});
+
+describe('hasClaudeDefaultMode', () => {
+  const withSettings = (name: string, content: string) => {
+    const configDir = join(dir, name);
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'settings.json'), content);
+    return { CLAUDE_CONFIG_DIR: configDir };
+  };
+
+  it('reads permissions.defaultMode from CLAUDE_CONFIG_DIR or HOME/.claude', () => {
+    expect(hasClaudeDefaultMode({ CLAUDE_CONFIG_DIR: join(dir, 'missing') })).toBe(false);
+    expect(hasClaudeDefaultMode(withSettings('bad-json', '{not json'))).toBe(false);
+    expect(hasClaudeDefaultMode(withSettings('auto-block-only', JSON.stringify({ autoMode: { allow: [] } })))).toBe(
+      false,
+    );
+    expect(
+      hasClaudeDefaultMode(withSettings('auto-default', JSON.stringify({ permissions: { defaultMode: 'auto' } }))),
+    ).toBe(true);
+
+    const home = join(dir, 'home-test');
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'plan' } }));
+    expect(hasClaudeDefaultMode({ HOME: home })).toBe(true);
+    expect(hasClaudeDefaultMode({ HOME: home, CLAUDE_CONFIG_DIR: '' })).toBe(true);
+  });
+
+  it('falls back when the configured mode is disabled or user settings are skipped', () => {
+    expect(
+      hasClaudeDefaultMode(
+        withSettings(
+          'auto-disabled',
+          JSON.stringify({ permissions: { defaultMode: 'auto' }, disableAutoMode: 'disable' }),
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      hasClaudeDefaultMode(
+        withSettings(
+          'bypass-disabled',
+          JSON.stringify({
+            permissions: { defaultMode: 'bypassPermissions', disableBypassPermissionsMode: 'disable' },
+          }),
+        ),
+      ),
+    ).toBe(false);
+    const enabled = withSettings('auto-enabled', JSON.stringify({ permissions: { defaultMode: 'auto' } }));
+    expect(hasClaudeDefaultMode(enabled, { disableAutoMode: 'disable' })).toBe(false);
+    expect(hasClaudeDefaultMode(enabled, undefined, ['--setting-sources=project,local'])).toBe(false);
+    expect(hasClaudeDefaultMode(enabled, undefined, ['--setting-sources', 'user,project'])).toBe(true);
+    expect(hasClaudeDefaultMode(enabled, undefined, ['--bare'])).toBe(false);
+    expect(
+      hasClaudeDefaultMode({ CLAUDE_CONFIG_DIR: join(dir, 'missing') }, { permissions: { defaultMode: 'auto' } }),
+    ).toBe(true);
   });
 });
