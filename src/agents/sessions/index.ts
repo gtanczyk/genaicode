@@ -8,6 +8,7 @@ import { withCommandPreviews } from './approval-previews.js';
 import { mapLimited } from './files.js';
 
 import { replyEnding } from './group.js';
+import { isTopicsRun, readTopics } from './topics.js';
 
 export { groupSessions, replyEnding, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -60,6 +61,25 @@ export {
   uninstallHooks,
 } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
+export {
+  findTopic,
+  isTopicsRun,
+  mergeTopics,
+  moveSessions,
+  readTopics,
+  renameTopic,
+  sortedTopics,
+  summarizeTopics,
+  topicNamed,
+  TOPICS_BATCH,
+  TOPICS_PROMPT_MARK,
+  topicsFile,
+  topicsPrompt,
+  unsortedSessions,
+  withTopicsRun,
+  writeTopics,
+} from './topics.js';
+export type { Topic, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
@@ -87,13 +107,20 @@ export async function listSessions(
   query: SessionQuery = {},
 ): Promise<SessionListing> {
   const errors: SessionListing['errors'] = [];
+  // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
+  const runs = new Set((await readTopics(query.env)).runs);
+  const marked = (entry: SessionInfo): SessionInfo =>
+    isTopicsRun(entry, runs) ? { ...entry, automated: true } : entry;
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
-        source.list(asked).catch((error: unknown) => {
-          errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
-          return [] as SessionInfo[];
-        }),
+        source.list(asked).then(
+          (list) => list.map(marked),
+          (error: unknown) => {
+            errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
+            return [] as SessionInfo[];
+          },
+        ),
       ),
     );
   let lists = await read(query);
@@ -107,7 +134,8 @@ export async function listSessions(
   let found = lists.flat();
   if (live?.size) {
     if (query.limit !== undefined || query.since !== undefined) {
-      found = found.concat(await reported(sources, found, live, query));
+      // Those come straight from their stores: a sorting run among them is marked here.
+      found = found.concat((await reported(sources, found, live, query)).map(marked));
     }
     // A session counts from its latest news, which may be a hook's.
     found = withLive(found, live).filter((session) => query.since === undefined || session.updatedAt >= query.since);

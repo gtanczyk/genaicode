@@ -62,6 +62,13 @@ export type CliCommand =
   | { kind: 'answer'; id: string; behavior: 'allow' | 'deny'; message?: string }
   /** `limits`: each agent's plan limits as last seen; `record` keeps Claude Code's status line input. */
   | { kind: 'limits'; action: 'show' | 'record'; json: boolean }
+  /** `topics`: the sessions as pieces of work, sorted by an agent (`refresh`) and corrected by you. */
+  | { kind: 'topics'; action: 'show'; json: boolean; topic?: string; sinceMs?: number }
+  | { kind: 'topics'; action: 'refresh'; agent?: string; model?: string; sinceMs?: number }
+  | { kind: 'topics'; action: 'rename'; topic: string; name: string }
+  | { kind: 'topics'; action: 'merge'; from: string; into: string }
+  /** `to`: a topic, or the name of a new one; none takes the sessions out of their topic. */
+  | { kind: 'topics'; action: 'move'; ids: string[]; to?: string }
   /** `notify`: desktop notifications when a session asks for approval (`--done`: or finishes a turn). */
   | { kind: 'notify'; action: 'status' | 'on' | 'off' | 'test'; done: boolean }
   | {
@@ -369,6 +376,76 @@ export function parseCli(argv: readonly string[]): CliCommand {
       throw new UsageError('Usage: genaicode limits [--json] | genaicode limits record');
     }
     return { kind: 'limits', action, json: values.json === true };
+  }
+
+  if (command === 'topics') {
+    const { values, positionals } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        allowPositionals: true,
+        options: {
+          json: { type: 'boolean' },
+          since: { type: 'string' },
+          agent: { type: 'string', short: 'a' },
+          model: { type: 'string', short: 'm' },
+          to: { type: 'string' },
+          out: { type: 'boolean' },
+        },
+      }),
+    );
+    const usage = () =>
+      new UsageError(
+        'Usage: genaicode topics [show <topic>] [--json] [--since 30d] | topics refresh [-a <agent>] [-m <model>] [--since 30d]\n' +
+          '       genaicode topics rename <topic> <name> | topics merge <topic> <into> | topics move <session id...> --to <topic> | --out',
+      );
+    const [action = 'show', ...words] = positionals;
+    const since = values.since !== undefined ? { sinceMs: durationOf(values.since) } : {};
+    const only = (...allowed: string[]) => {
+      for (const [name, value] of Object.entries(values)) {
+        if (value !== undefined && !allowed.includes(name)) throw usage();
+      }
+    };
+    if (action === 'show') {
+      only('json', 'since');
+      if (words.length > 1 || (positionals.length === 1 && positionals[0] === 'show')) throw usage();
+      return {
+        kind: 'topics',
+        action,
+        json: values.json === true,
+        ...(words[0] !== undefined ? { topic: words[0] } : {}),
+        ...since,
+      };
+    }
+    if (action === 'refresh') {
+      only('agent', 'model', 'since');
+      if (words.length) throw usage();
+      return {
+        kind: 'topics',
+        action,
+        ...(values.agent !== undefined ? { agent: values.agent } : {}),
+        ...(values.model !== undefined ? { model: values.model } : {}),
+        ...since,
+      };
+    }
+    if (action === 'rename') {
+      only();
+      const [topic, ...name] = words;
+      if (!topic || !name.join(' ').trim()) throw usage();
+      return { kind: 'topics', action, topic, name: name.join(' ').trim() };
+    }
+    if (action === 'merge') {
+      only();
+      if (words.length !== 2) throw usage();
+      return { kind: 'topics', action, from: words[0]!, into: words[1]! };
+    }
+    if (action === 'move') {
+      only('to', 'out');
+      const to = values.to?.trim();
+      if (!words.length || (to ? values.out === true : !values.out)) throw usage();
+      return { kind: 'topics', action, ids: words, ...(to ? { to } : {}) };
+    }
+    throw usage();
   }
 
   if (command === 'notify') {

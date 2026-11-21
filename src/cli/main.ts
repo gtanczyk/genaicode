@@ -2,6 +2,7 @@ import { runCheckProcess, type CheckResult } from './check-process.js';
 import { worktreeCheck } from './pack-verify.js';
 import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
@@ -61,6 +62,22 @@ import {
   statusLineLimits,
   type KnownLimit,
 } from '../agents/sessions/limits.js';
+import {
+  findTopic,
+  mergeTopics,
+  moveSessions,
+  readTopics,
+  renameTopic,
+  sortedTopics,
+  summarizeTopics,
+  topicNamed,
+  TOPICS_BATCH,
+  topicsPrompt,
+  unsortedSessions,
+  withTopicsRun,
+  writeTopics,
+  type TopicStore,
+} from '../agents/sessions/topics.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -185,6 +202,7 @@ Usage:
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
   genaicode limits [--json]           How much of each agent's plan is used, as last seen
+  genaicode topics [refresh]          Your sessions as pieces of work, across agents and directories
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
@@ -240,6 +258,20 @@ Sessions options:
   "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
   the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
   In that chat, /waiting [project] refreshes the queue and /read <id> previews a conversation.
+
+Topics:
+  genaicode topics [--json] [--since 30d]       The topics, what asks for you first
+  genaicode topics show <topic>                 The sessions of one (by id, name or part of it)
+  genaicode topics refresh [-a <agent>] [-m <model>]
+                                                Have an agent sort the sessions no topic has yet
+  genaicode topics rename <topic> <name>
+  genaicode topics merge <topic> <into>
+  genaicode topics move <session id...> --to <topic or new name> | --out
+
+  A topic is one piece of work, whichever agents and directories its sessions were in. Nothing is
+  sorted until you run "topics refresh": it gives an agent one line per unsorted session (agent,
+  directory, title or prompts) and keeps the answer in ~/.genaicode/topics.json. Only new sessions
+  are sorted the next time, and what you renamed, merged or moved stays.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
@@ -406,6 +438,8 @@ function dispatch(
       return manageNotify(cli, command);
     case 'limits':
       return showLimits(cli, command);
+    case 'topics':
+      return manageTopics(cli, agents, command);
     case 'answer':
       return answerQuestion(cli, command);
     case 'archive':
@@ -905,6 +939,199 @@ async function showLimits(cli: CliEnvironment, command: Extract<CliCommand, { ki
     return EXIT_OK;
   }
   cli.stdout.write(`${describeKnownLimits(limits).join('\n')}\n`);
+  return EXIT_OK;
+}
+
+/** `topics` looks this far back unless told otherwise. */
+const TOPICS_SINCE_MS = 30 * 24 * 3600_000;
+
+/** What a sorting run asks for when no model is named: sorting titles needs no large one. */
+const SORTING_MODEL: Record<string, string> = { claude: 'haiku' };
+
+/**
+ * `topics`: the sessions of every agent as pieces of work. An agent sorts them only when asked
+ * (`refresh`, the sessions no topic has yet); what it decided is kept and yours to correct.
+ */
+async function manageTopics(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: Extract<CliCommand, { kind: 'topics' }>,
+): Promise<number> {
+  const sources = agentSessionSources(agents);
+  const query = { env: cli.env, ...(cli.signal ? { signal: cli.signal } : {}) };
+  const store = await readTopics(cli.env);
+  const named = (text: string) => {
+    const topic = findTopic(store, text);
+    if (!topic) cli.stderr.write(`No one topic "${text}". "genaicode topics" lists them, with their ids.\n`);
+    return topic;
+  };
+  const count = (n: number) => `${n} session${n === 1 ? '' : 's'}`;
+
+  if (command.action === 'rename') {
+    const topic = named(command.topic);
+    if (!topic) return EXIT_FAILED;
+    await writeTopics(renameTopic(store, topic, command.name), cli.env);
+    cli.stdout.write(`${topic.id} is now "${oneLine(command.name, 80)}".\n`);
+    return EXIT_OK;
+  }
+  if (command.action === 'merge') {
+    const from = named(command.from);
+    const into = from && named(command.into);
+    if (!from || !into) return EXIT_FAILED;
+    if (from.id === into.id) {
+      cli.stderr.write('Those are the same topic.\n');
+      return EXIT_USAGE;
+    }
+    await writeTopics(mergeTopics(store, from, into), cli.env);
+    cli.stdout.write(`"${from.name}" is now part of "${into.name}".\n`);
+    return EXIT_OK;
+  }
+  if (command.action === 'move') {
+    const found: SessionInfo[] = [];
+    for (const id of command.ids) {
+      let match: SessionInfo | undefined;
+      try {
+        match = (await findSession(sources, id, query))?.session;
+      } catch (error) {
+        cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+        return EXIT_USAGE;
+      }
+      if (!match) {
+        cli.stderr.write(`No session "${id}". Ids are at the end of each line of "genaicode topics show <topic>".\n`);
+        return EXIT_FAILED;
+      }
+      found.push(match);
+    }
+    const next: TopicStore = { ...store, topics: [...store.topics] };
+    const topic = command.to === undefined ? undefined : (findTopic(next, command.to) ?? topicNamed(next, command.to));
+    await writeTopics(moveSessions(next, found, topic), cli.env);
+    cli.stdout.write(
+      topic ? `${count(found.length)} now in "${topic.name}".\n` : `${count(found.length)} out of any topic.\n`,
+    );
+    return EXIT_OK;
+  }
+
+  const now = Date.now();
+  const listing = await listSessions(sources, { ...query, since: now - (command.sinceMs ?? TOPICS_SINCE_MS) });
+  for (const error of listing.errors) cli.stderr.write(`${error.source}: ${error.message}\n`);
+  const period = ago(command.sinceMs ?? TOPICS_SINCE_MS);
+
+  if (command.action === 'refresh') {
+    const todo = unsortedSessions(listing.sessions, store);
+    if (!todo.length) {
+      cli.stdout.write(`Every session of the last ${period} has a topic.\n`);
+      return EXIT_OK;
+    }
+    const agent = pickAgent(cli, agents, command.agent);
+    if (!agent) return EXIT_USAGE;
+    const model = command.model ?? SORTING_MODEL[agent.name];
+    cli.stderr.write(`Sorting ${count(todo.length)} with ${agent.name}${model ? ` (${model})` : ''}...\n`);
+    // An empty directory: the agent has nothing to read there, and is told to read nothing.
+    const cwd = await fs.mkdtemp(join(tmpdir(), 'genaicode-topics-'));
+    let current = store;
+    let placed = 0;
+    try {
+      for (let at = 0; at < todo.length; at += TOPICS_BATCH) {
+        const batch = todo.slice(at, at + TOPICS_BATCH);
+        const run = agent.run({
+          prompt: topicsPrompt(batch, current),
+          cwd,
+          env: cli.env,
+          ...(model ? { model } : {}),
+          ...(cli.signal ? { signal: cli.signal } : {}),
+        });
+        let said = '';
+        for await (const event of run) if (event.type === 'message') said += `${event.text}\n`;
+        const result = await run.result;
+        // The run's own session is noted first, so no later refresh takes it for one of yours.
+        const own = result.sessionId && agent.sessions ? `${agent.sessions.name}:${result.sessionId}` : undefined;
+        if (own) await writeTopics(withTopicsRun(await readTopics(cli.env), own), cli.env);
+        if (!result.ok) {
+          cli.stderr.write(`${describeResult(agent.name, result)}\n`);
+          return result.status === 'aborted' ? EXIT_ABORTED : EXIT_FAILED;
+        }
+        // The answer is read against what is kept now: topics may have been corrected meanwhile, and
+        // a new topic gets an id that is free there.
+        const sorted = sortedTopics(result.text ?? said, batch, await readTopics(cli.env));
+        if (!sorted.placed) {
+          cli.stderr.write(`${agent.name} gave no topics that could be read. Nothing more was sorted.\n`);
+          return EXIT_FAILED;
+        }
+        current = sorted.store;
+        await writeTopics(current, cli.env);
+        placed += sorted.placed;
+      }
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+      if (placed)
+        cli.stdout.write(
+          `Sorted ${count(placed)} into ${current.topics.length} topic${current.topics.length === 1 ? '' : 's'}. See them with "genaicode topics".\n`,
+        );
+    }
+    return EXIT_OK;
+  }
+
+  const { topics, unsorted } = summarizeTopics(listing.sessions, store);
+  if (command.topic !== undefined) {
+    const topic = named(command.topic);
+    if (!topic) return EXIT_FAILED;
+    const sessions = topics.find((one) => one.id === topic.id)?.sessions ?? [];
+    if (command.json) {
+      for (const session of sessions) cli.stdout.write(`${JSON.stringify(session)}\n`);
+      return EXIT_OK;
+    }
+    cli.stdout.write(`${topic.name} (${topic.id}): ${count(sessions.length)} in the last ${period}\n`);
+    for (const session of sessions) {
+      const label = session.title ?? session.lastPrompt ?? session.firstPrompt ?? '(no prompt)';
+      const mark = session.state === 'active' ? '▶' : session.ending || session.waitingFor === 'approval' ? '●' : ' ';
+      cli.stdout.write(
+        `${mark} ${session.agent}  ${ago(now - session.updatedAt)} ago  ${oneLine(label, 70)}  ${session.id}\n`,
+      );
+    }
+    return EXIT_OK;
+  }
+  if (command.json) {
+    cli.stdout.write(
+      `${JSON.stringify({
+        topics: topics.map(({ sessions, ...topic }) => ({
+          ...topic,
+          sessions: sessions.map(({ source, id, agent, updatedAt, state }) => ({
+            source,
+            id,
+            agent,
+            updatedAt,
+            state,
+          })),
+        })),
+        unsorted: unsorted.length,
+      })}\n`,
+    );
+    return EXIT_OK;
+  }
+  if (!topics.length) {
+    cli.stdout.write(
+      unsorted.length
+        ? `No topics yet. "genaicode topics refresh" has an agent sort the ${count(unsorted.length)} of the last ${period}.\n`
+        : `No sessions in the last ${period}.\n`,
+    );
+    return EXIT_OK;
+  }
+  const width = Math.min(32, Math.max(...topics.map((topic) => topic.name.length)));
+  for (const topic of topics) {
+    const agentsOf = Object.entries(topic.agents)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, n]) => `${name} ${n}`)
+      .join(', ');
+    const state = [topic.asking ? `${topic.asking} ask you` : '', topic.active ? `${topic.active} working` : '']
+      .filter(Boolean)
+      .join(', ');
+    cli.stdout.write(
+      `${topic.asking ? '●' : topic.active ? '▶' : ' '} ${oneLine(topic.name, width).padEnd(width)}  ${topic.id.padEnd(4)}  ${agentsOf}  ${ago(now - topic.updatedAt)} ago${state ? `  ${state}` : ''}${topic.projects.length ? `  ${topic.projects.slice(0, 2).join(', ')}` : ''}\n`,
+    );
+  }
+  if (unsorted.length) {
+    cli.stdout.write(`${count(unsorted.length)} not sorted yet: "genaicode topics refresh" sorts them.\n`);
+  }
   return EXIT_OK;
 }
 

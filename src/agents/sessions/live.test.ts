@@ -276,6 +276,10 @@ describe('sessions with what the hooks reported', () => {
     };
     expect((await listSessions([finder], { env, limit: 1 })).sessions[0]!.id).toBe('old');
     expect(looked).toEqual(['old']);
+    // A sorting run of genaicode's own stays out, though its hook reported last.
+    all[1] = session({ id: 'old', updatedAt: now - 300_000, firstPrompt: 'genaicode topics: sort...' });
+    expect((await listSessions([finder], { env, limit: 1 })).sessions.map((entry) => entry.id)).toEqual(['new']);
+    all[1] = session({ id: 'old', updatedAt: now - 300_000 });
     // The same for `since`: the file is older, the question is not.
     const dated: SessionSource = {
       ...source,
