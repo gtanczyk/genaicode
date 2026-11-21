@@ -73,6 +73,13 @@ button.chip:hover { border-color: var(--accent); }
 .ideas { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
 .ideas button { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; box-shadow: var(--shadow); }
 .ideas button:hover { border-color: var(--accent); }
+.home { max-width: 640px; margin: 28px auto 0; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.home h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 2px; }
+.home .plans { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.home .plan { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.home .topic { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; cursor: pointer; color: var(--text); }
+.home .topic:hover { border-color: var(--accent); }
+.home .topic span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
 .sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .sessions .tools input[type='search'] { flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }

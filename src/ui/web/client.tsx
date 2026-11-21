@@ -7,6 +7,7 @@ import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
+import { Home } from './home.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -200,6 +201,8 @@ function App() {
   // The Sessions view takes the chat's place; the chat keeps running behind it.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
   const showSessions = panel === 'sessions';
+  // The topic picked on the start screen: the Sessions view shows only it.
+  const [topic, setTopic] = useState<string>();
   const session = view?.session;
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
@@ -266,7 +269,10 @@ function App() {
                 className={`chip${showSessions ? '' : ' off'}`}
                 title="What every agent on this machine has going on, by project"
                 aria-pressed={showSessions}
-                onClick={() => setPanel(showSessions ? 'chat' : 'sessions')}
+                onClick={() => {
+                  setTopic(undefined);
+                  setPanel(showSessions ? 'chat' : 'sessions');
+                }}
               >
                 {showSessions ? '← Chat' : 'Sessions'}
               </button>
@@ -310,6 +316,8 @@ function App() {
         <Sessions
           token={token}
           cwd={cwd}
+          topic={topic}
+          onAllTopics={() => setTopic(undefined)}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             void command({ type: 'continue', id: found.id });
@@ -356,6 +364,15 @@ function App() {
               <div className="wolf" role="img" aria-label="genaicode wolf" />
               <h1>What should {session.agent} work on?</h1>
               <div>It works in {cwd}, with its own login, tools and permissions.</div>
+              {hasSessions ? (
+                <Home
+                  token={token}
+                  onTopic={(id) => {
+                    setTopic(id);
+                    setPanel('sessions');
+                  }}
+                />
+              ) : null}
               <div className="ideas">
                 {IDEAS.map((idea) => (
                   <button key={idea} onClick={() => submit(idea)}>

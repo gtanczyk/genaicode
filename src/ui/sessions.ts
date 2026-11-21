@@ -95,6 +95,31 @@ export function groupByTopic(
   );
 }
 
+/** Topics a start screen shows at most, per list. */
+const MOST_TOPICS = 6;
+
+/**
+ * What to look at first: the topics that ask for you, then those agents work on now and that ask
+ * nothing. Sessions no topic has are left out: they have no name to show.
+ */
+export function topicsNow(
+  sessions: readonly SessionInfo[],
+  topics: ReadonlyArray<{ id: string; name: string }>,
+  topicOf: Readonly<Record<string, string>>,
+  now = Date.now(),
+): { asking: SessionTopic[]; working: SessionTopic[] } {
+  const named = groupByTopic(
+    sessions.filter((session) => !session.archived),
+    topics,
+    topicOf,
+    now,
+  ).filter((group) => group.key !== UNSORTED_TOPIC);
+  return {
+    asking: named.filter((group) => group.asking).slice(0, MOST_TOPICS),
+    working: named.filter((group) => !group.asking && group.active).slice(0, MOST_TOPICS),
+  };
+}
+
 /** `5m`, `3h`, `12d`: how long ago, in the largest unit that fits. */
 export function ago(ms: number): string {
   const minutes = Math.max(0, Math.round(ms / 60_000));

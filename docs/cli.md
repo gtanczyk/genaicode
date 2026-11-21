@@ -204,6 +204,10 @@ them); the agents' files stay as they are (see
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).
 
+With `ui --sessions`, and once `genaicode topics refresh` has sorted your sessions, the empty
+chat page starts with your topics: those that wait for you, those agents work on now, and how
+much of each agent's plan is used. A topic opens the Sessions view on its sessions.
+
 In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 `sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including
 the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
