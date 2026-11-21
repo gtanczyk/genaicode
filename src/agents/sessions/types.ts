@@ -8,6 +8,8 @@ import type { SessionTurn } from '../session.js';
  */
 export type SessionActivity = 'active' | 'waiting' | 'unfinished';
 
+export type ReplyEnding = 'question' | 'command' | 'offer' | 'unreported';
+
 /** One conversation with a coding agent, wherever the agent keeps it. */
 export interface SessionInfo {
   /** The `SessionSource` that found it. */
@@ -55,6 +57,17 @@ export interface SessionInfo {
   path?: string;
   /** Where to open it in a browser (cloud). */
   url?: string;
+  /**
+   * Nobody typed into it, as far as the agent's store says: a scheduled task, a notification, a
+   * headless `codex exec`. Listings leave these out unless asked (`SessionQuery.automated`).
+   */
+  automated?: true;
+  /**
+   * What the end of the agent's latest message asks of the user, read from `lastReply` of a
+   * `waiting` session (`replyEnding()`): a `question`, a `command` to run, an `offer` to go on, or
+   * `unreported` when it says it could not report back to whoever sent it. None: it just ended.
+   */
+  ending?: ReplyEnding;
   /** Put away with `genaicode sessions archive` and nothing happened in it since. */
   archived?: true;
 }
@@ -70,6 +83,8 @@ export interface SessionQuery {
   env?: NodeJS.ProcessEnv;
   /** `false`: leave out what the agents' hooks reported (`listSessions()` adds it by default). */
   live?: boolean;
+  /** `true`: also the sessions nobody typed into (`SessionInfo.automated`), left out by default. */
+  automated?: boolean;
   /** Leave expired hook reports on disk when listing, as the read-only session tools do. */
   readOnly?: boolean;
   signal?: AbortSignal;

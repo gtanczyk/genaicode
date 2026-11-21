@@ -92,6 +92,8 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       if (line.type === 'session_meta' || line.type === undefined) {
         // A helper thread another session started, as the thread index marks them.
         if (JSON.stringify(payload.source ?? '').includes('subagent')) subagent = true;
+        // `codex exec`: a headless run nobody typed into.
+        if (payload.source === 'exec' || payload.originator === 'codex_exec') info.automated = true;
         if (typeof payload.id === 'string') info.id = payload.id;
         if (typeof payload.cwd === 'string') info.cwd = payload.cwd;
         if (typeof payload.timestamp === 'string') {
@@ -217,6 +219,8 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
         id,
         where: 'local',
         updatedAt,
+        // `codex exec`: a headless run nobody typed into.
+        ...(text(row.source) === 'exec' ? { automated: true as const } : {}),
         ...(text(row.cwd) ? { cwd: text(row.cwd)! } : {}),
         ...(text(row.git_branch) ? { branch: text(row.git_branch)! } : {}),
         ...(text(row.git_origin_url) ? { repository: text(row.git_origin_url)! } : {}),
@@ -255,6 +259,7 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
+    if (read.automated) info.automated = true;
     // A state the app server reported (it asks for approval) is not the rollout's to change.
     if (info.state !== 'active' && !info.waitingFor) info.state = read.state;
   } catch {

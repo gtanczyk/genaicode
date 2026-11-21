@@ -38,6 +38,8 @@ export type CliCommand =
       waiting?: true;
       /** `--archived`: the archived sessions too (`sessions archive`). */
       archived?: true;
+      /** Also the sessions nobody typed into (scheduled tasks, headless runs). */
+      automated?: true;
       /** `--watch`: keep looking, and print the waiting sessions again whenever they change. */
       watch?: true;
       /** `--exit-with-stdin`: `--watch` ends when its stdin closes, so it cannot outlive the app that started it. */
@@ -245,6 +247,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
           'exit-with-stdin': { type: 'boolean' },
           message: { type: 'string', short: 'm' },
           archived: { type: 'boolean' },
+          automated: { type: 'boolean' },
           stale: { type: 'boolean' },
           older: { type: 'string' },
         },
@@ -345,6 +348,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       limit: limit ?? 30,
       ...(values.waiting === true ? { waiting: true } : {}),
       ...(values.archived === true ? { archived: true } : {}),
+      ...(values.automated === true ? { automated: true } : {}),
       ...(values.watch === true ? { watch: true } : {}),
       ...(values['exit-with-stdin'] === true ? { exitWithStdin: true } : {}),
     };

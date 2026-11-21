@@ -7,7 +7,9 @@ import { readArchive, withArchive } from './archive.js';
 import { withCommandPreviews } from './approval-previews.js';
 import { mapLimited } from './files.js';
 
-export { groupSessions, waitingSessions } from './group.js';
+import { replyEnding } from './group.js';
+
+export { groupSessions, replyEnding, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
 
 export { claudeSessions, claudeTranscript, readClaudeSession } from './claude.js';
@@ -85,14 +87,21 @@ export async function listSessions(
   query: SessionQuery = {},
 ): Promise<SessionListing> {
   const errors: SessionListing['errors'] = [];
-  const lists = await Promise.all(
-    sources.map((source) =>
-      source.list(query).catch((error: unknown) => {
-        errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
-        return [] as SessionInfo[];
-      }),
-    ),
-  );
+  const read = (asked: SessionQuery) =>
+    Promise.all(
+      sources.map((source) =>
+        source.list(asked).catch((error: unknown) => {
+          errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
+          return [] as SessionInfo[];
+        }),
+      ),
+    );
+  let lists = await read(query);
+  // Sessions nobody typed into are left out below: where they took places, more are read to fill the limit.
+  if (!query.automated && query.limit !== undefined && lists.some((list) => list.some((entry) => entry.automated))) {
+    errors.length = 0;
+    lists = await read({ ...query, limit: query.limit * AUTOMATED_ROOM });
+  }
   // What the agents' own hooks reported goes over what their files suggest.
   const live = query.live === false ? undefined : await readLive(query.env, undefined, query).catch(() => undefined);
   let found = lists.flat();
@@ -105,7 +114,10 @@ export async function listSessions(
   }
   // Sessions put away (`genaicode sessions archive`) say so.
   const archive = await readArchive(query.env);
-  const sessions = withArchive(found, archive).sort((a, b) => b.updatedAt - a.updatedAt);
+  const sessions = withArchive(found, archive)
+    .filter((session) => query.automated || !session.automated)
+    .map(withEnding)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   const shown = query.limit === undefined ? sessions : sessions.slice(0, query.limit);
   return {
     sessions: live?.size
@@ -113,6 +125,15 @@ export async function listSessions(
       : shown,
     errors,
   };
+}
+
+/** Scheduled tasks can be most of a store: this many times the limit is read to fill it without them. */
+const AUTOMATED_ROOM = 3;
+
+/** A waiting session says what the end of its last message asks, when it asks something. */
+function withEnding(session: SessionInfo): SessionInfo {
+  const ending = session.state === 'waiting' ? replyEnding(session.lastReply) : undefined;
+  return ending ? { ...session, ending } : session;
 }
 
 /**

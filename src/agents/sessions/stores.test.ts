@@ -181,7 +181,9 @@ describe('agent session stores', () => {
       updatedAt: T,
       state: 'waiting',
     });
-    expect(sessions[2]).toMatchObject({ updatedAt: T - 60_000 });
+    // The index says it was a `codex exec` run: nobody typed into it.
+    expect(sessions[2]).toMatchObject({ updatedAt: T - 60_000, automated: true });
+    expect(sessions[0]!.automated).toBeUndefined();
     expect(sessions[2]!.state).toBeUndefined();
   });
 
