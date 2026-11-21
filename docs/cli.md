@@ -128,7 +128,9 @@ asking again and again: `npx genaicode sessions --waiting --json --watch` prints
 change. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
 It looks every 3 seconds: a question or anything else a hook reports shows at once, a session
 that only finished its turn within 15 seconds. Once limits are known, the line also carries them
-as `"limits":[...]`.
+as `"limits":[...]`. Once there are [topics](#your-work-as-topics-topics), each session carries the name
+of its topic as `"topic"`, and the line the topics of the listed week as
+`"topics":[{"id","name","sessions","asking","active"}]`, at most 12, those that ask first.
 
 ### How much of your plans is used: `limits`
 
