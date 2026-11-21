@@ -928,8 +928,8 @@ describe('genaicode sessions --waiting', () => {
     expect(agent.tasks).toHaveLength(1);
 
     const shown = (await run()).out.split('\n');
-    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 ask you\s+work\/app$/);
-    expect(shown[1]).toMatch(/^ {2}Desktop app\s+t2\s+alpha 1\s+1h ago\s+work\/app$/);
+    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 ask you$/);
+    expect(shown[1]).toMatch(/^ {2}Desktop app\s+t2\s+alpha 1\s+1h ago$/);
     expect((await run('show', 'pack')).out).toMatch(
       /^Pack mode \(t1\): 2 sessions in the last 30d\n● alpha .* one\n {2}alpha .* three\n$/,
     );

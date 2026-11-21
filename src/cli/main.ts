@@ -34,6 +34,7 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import {
   answerAsk,
@@ -66,6 +67,7 @@ import {
   findTopic,
   mergeTopics,
   moveSessions,
+  folderTopics,
   projectTopics,
   readTopics,
   renameTopic,
@@ -1032,6 +1034,19 @@ async function manageTopics(
     if (own.placed) {
       cli.stderr.write(`${count(own.placed)} placed by the claude.ai project they came from.\n`);
     }
+    // Then by the project of the Codex desktop app they worked in, whichever agent it was.
+    const folders = (await codexProjects({ env: cli.env })).map(({ id, name, roots }) => ({
+      key: `codex:${id}`,
+      name,
+      roots,
+    }));
+    const filed = folderTopics(listing.sessions, own.store, folders);
+    if (filed.placed) {
+      await writeTopics(filed.store, cli.env);
+      cli.stderr.write(`${count(filed.placed)} placed by the Codex project they worked in.\n`);
+      own.store = filed.store;
+      own.placed += filed.placed;
+    }
     const todo = unsortedSessions(listing.sessions, own.store);
     if (!todo.length) {
       cli.stdout.write(
@@ -1142,7 +1157,7 @@ async function manageTopics(
     );
     return EXIT_OK;
   }
-  const width = Math.min(32, Math.max(...topics.map((topic) => topic.name.length)));
+  const width = Math.min(48, Math.max(...topics.map((topic) => topic.name.length)));
   for (const topic of topics) {
     const agentsOf = Object.entries(topic.agents)
       .sort((a, b) => b[1] - a[1])
@@ -1152,7 +1167,7 @@ async function manageTopics(
       .filter(Boolean)
       .join(', ');
     cli.stdout.write(
-      `${topic.asking ? '●' : topic.active ? '▶' : ' '} ${oneLine(topic.name, width).padEnd(width)}  ${topic.id.padEnd(4)}  ${agentsOf}  ${ago(now - topic.updatedAt)} ago${state ? `  ${state}` : ''}${topic.projects.length ? `  ${topic.projects.slice(0, 2).join(', ')}` : ''}\n`,
+      `${topic.asking ? '●' : topic.active ? '▶' : ' '} ${oneLine(topic.name, width).padEnd(width)}  ${topic.id.padEnd(4)}  ${agentsOf}  ${ago(now - topic.updatedAt)} ago${state ? `  ${state}` : ''}\n`,
     );
   }
   if (unsorted.length) {

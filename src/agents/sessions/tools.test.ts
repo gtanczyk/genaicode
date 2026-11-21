@@ -97,7 +97,9 @@ describe('sessionTools', () => {
   it('sessions_list shows what each session waits for, and filters', async () => {
     const list = tools().sessions_list!;
     const all = await call(list);
-    expect(all).toContain('- claude aaaaaaaa-1111  waiting [ends with: question]  1h ago  /work/api\n    Fix the login');
+    expect(all).toContain(
+      '- claude aaaaaaaa-1111  waiting [ends with: question]  1h ago  /work/api\n    Fix the login',
+    );
     expect(all).toContain('latest prompt: now add a test');
     expect(all).toContain('agent: Added the test. Shall I push?');
     expect(all).toContain('- claude bbbbbbbb-2222  approval (Bash)  2h ago  /work/site');

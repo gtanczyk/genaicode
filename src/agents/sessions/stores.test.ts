@@ -13,6 +13,7 @@ import { museLive } from '../drivers/muse-live.js';
 import {
   agentSessionSources,
   antigravitySessions,
+  codexProjects,
   codexSessions,
   copilotSessions,
   cursorSessions,
@@ -187,10 +188,44 @@ describe('agent session stores', () => {
     expect(sessions[2]!.state).toBeUndefined();
   });
 
+  it("knows the Codex threads nobody started, and the desktop app's projects", async () => {
+    const dir = join(home, 'codex-desktop');
+    database(
+      join(dir, 'state_5.sqlite'),
+      'CREATE TABLE threads (id TEXT PRIMARY KEY, updated_at_ms, source, thread_source, originator)',
+      'threads',
+      [
+        { id: 'typed', updated_at_ms: T, source: 'vscode', thread_source: 'user', originator: 'Codex Desktop' },
+        { id: 'served', updated_at_ms: T - 1, source: 'vscode', thread_source: '', originator: 'Codex Desktop' },
+        { id: 'studio', updated_at_ms: T - 2, source: 'vscode', thread_source: '', originator: 'genaicode' },
+        { id: 'exec', updated_at_ms: T - 3, source: 'exec', thread_source: 'user', originator: 'codex_exec' },
+        { id: 'tui', updated_at_ms: T - 4, source: 'cli', thread_source: 'user', originator: 'codex-tui' },
+      ],
+    );
+    const listed = await codexSessions({ dir }).list({ env });
+    expect(listed.map(({ id, automated }) => [id, automated])).toEqual([
+      ['typed', undefined],
+      ['served', true],
+      ['studio', undefined],
+      ['exec', true],
+      ['tui', undefined],
+    ]);
+    expect(await codexProjects({ dir })).toEqual([]);
+    const db = new DatabaseSync(join(dir, 'state_5.sqlite'));
+    db.exec('CREATE TABLE projects (id TEXT PRIMARY KEY, name); CREATE TABLE project_roots (project_id, path)');
+    db.exec("INSERT INTO projects VALUES ('p1', 'Knights'), ('p2', 'No roots')");
+    db.exec("INSERT INTO project_roots VALUES ('p1', '/work/knights'), ('p1', '/work/knights-art')");
+    db.close();
+    expect(await codexProjects({ dir })).toEqual([
+      { id: 'p1', name: 'Knights', roots: ['/work/knights', '/work/knights-art'] },
+    ]);
+    expect(await codexProjects({ dir: join(home, 'no-codex') })).toEqual([]);
+  });
+
   it('reads the Muse session index', async () => {
     database(
       join(home, '.local', 'share', 'muse', 'session-index.db'),
-      'CREATE TABLE sessions (session_id TEXT PRIMARY KEY, session_log_path, workspace_root, model_id, git_branch, title, session_name, first_user_prompt, created_at_us, updated_at_us, msp_kind, status)',
+      'CREATE TABLE sessions (session_id TEXT PRIMARY KEY, session_log_path, workspace_root, model_id, git_branch, title, session_name, first_user_prompt, created_at_us, updated_at_us, msp_kind, status, msp_created_by_client_name, provider_id)',
       'sessions',
       [
         {
@@ -206,6 +241,26 @@ describe('agent session stores', () => {
           status: 'valid',
         },
         { session_id: 'm2', updated_at_us: T * 1000, msp_kind: 'subagent', status: 'valid' },
+        {
+          session_id: 'm4',
+          msp_kind: 'root',
+          updated_at_us: (T - 5) * 1000,
+          msp_created_by_client_name: 'probe_client',
+        },
+        {
+          session_id: 'm5',
+          msp_kind: 'root',
+          updated_at_us: (T - 6) * 1000,
+          msp_created_by_client_name: 'genaicode',
+          provider_id: 'echo',
+        },
+        {
+          session_id: 'm6',
+          msp_kind: 'root',
+          updated_at_us: (T - 7) * 1000,
+          msp_created_by_client_name: 'genaicode',
+          provider_id: 'meta',
+        },
         { session_id: 'm3', updated_at_us: T * 1000, msp_kind: 'root', status: 'corrupt' },
       ],
     );
@@ -223,6 +278,11 @@ describe('agent session stores', () => {
         updatedAt: T,
         model: 'muse-spark-1.3',
       },
+      // A probe of the agent and its test provider: nobody's conversations.
+      { source: 'muse', agent: 'muse', id: 'm4', where: 'local', updatedAt: T - 5, automated: true },
+      { source: 'muse', agent: 'muse', id: 'm5', where: 'local', updatedAt: T - 6, automated: true },
+      // An app built on genaicode started it: somebody's chat there.
+      { source: 'muse', agent: 'muse', id: 'm6', where: 'local', updatedAt: T - 7 },
     ]);
   });
 

@@ -167,6 +167,49 @@ async function stateDatabase(dir: string): Promise<string | undefined> {
   return versions[0] ? path.join(dir, versions[0].name) : undefined;
 }
 
+/**
+ * Whether nobody typed into a thread, as the index says: a headless `codex exec`, or a thread the
+ * desktop app's server ran for another program (`thread_source` is `user` for those somebody
+ * started). Threads genaicode started are somebody's chat in an app built on it, and stay.
+ */
+function unattended(row: Record<string, unknown>): boolean {
+  if (text(row.source) === 'exec' || text(row.originator) === 'codex_exec') return true;
+  return row.thread_source === '' && text(row.originator) === 'Codex Desktop';
+}
+
+/** A project of the Codex desktop app: its name and the directories it holds. */
+export interface CodexProject {
+  id: string;
+  name: string;
+  roots: string[];
+}
+
+/**
+ * The projects the Codex desktop app keeps (`projects` and `project_roots` of its index), for
+ * `folderTopics()`. Empty when this Codex keeps none.
+ */
+export async function codexProjects(options: Pick<CodexSessionsOptions, 'dir' | 'env'> = {}): Promise<CodexProject[]> {
+  const env = options.env ?? process.env;
+  const file = await stateDatabase(options.dir ?? env.CODEX_HOME ?? path.join(homeOf(env), '.codex'));
+  if (!file) return [];
+  try {
+    const [named, placed] = await Promise.all([tableColumns(file, 'projects'), tableColumns(file, 'project_roots')]);
+    if (!named?.has('id') || !named.has('name') || !placed?.has('project_id') || !placed.has('path')) return [];
+    const roots = (await queryDatabase(file, 'SELECT project_id, path FROM project_roots')) ?? [];
+    return ((await queryDatabase(file, 'SELECT id, name FROM projects')) ?? []).flatMap((row): CodexProject[] => {
+      const id = text(row.id) ?? (number(row.id) === undefined ? undefined : String(number(row.id)));
+      const name = text(row.name);
+      if (!id || !name) return [];
+      const own = roots
+        .filter((root) => String(root.project_id) === id)
+        .flatMap((root) => (text(root.path) ? [text(root.path)!] : []));
+      return own.length ? [{ id, name, roots: own }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 /** Threads from Codex's own index, or null when this Codex keeps none (older versions). */
 async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] | null> {
   const file = await stateDatabase(dir);
@@ -187,6 +230,8 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
     'updated_at',
     'updated_at_ms',
     'source',
+    'thread_source',
+    'originator',
     'archived',
   ];
   const columns = await tableColumns(file, 'threads');
@@ -219,8 +264,7 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
         id,
         where: 'local',
         updatedAt,
-        // `codex exec`: a headless run nobody typed into.
-        ...(text(row.source) === 'exec' ? { automated: true as const } : {}),
+        ...(unattended(row) ? { automated: true as const } : {}),
         ...(text(row.cwd) ? { cwd: text(row.cwd)! } : {}),
         ...(text(row.git_branch) ? { branch: text(row.git_branch)! } : {}),
         ...(text(row.git_origin_url) ? { repository: text(row.git_origin_url)! } : {}),

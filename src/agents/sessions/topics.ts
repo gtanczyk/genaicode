@@ -21,7 +21,10 @@ export interface TopicStore {
   topics: Topic[];
   /** Session key (`source:id`) to topic id. */
   sessions: Record<string, string>;
-  /** claude.ai project id (`SessionInfo.project`) to the topic its sessions go to. */
+  /**
+   * What already holds work to the topic its sessions go to: a claude.ai project id
+   * (`SessionInfo.project`), or `codex:<id>` for a project of the Codex desktop app.
+   */
   projects?: Record<string, string>;
   /** Session keys of genaicode's own sorting runs, the newest last: nobody's conversations. */
   runs?: string[];
@@ -132,6 +135,66 @@ export function projectTopics(
   return { store: next, placed };
 }
 
+/** A place work is kept in under a name the user gave it, such as a project of the Codex desktop app. */
+export interface TopicFolder {
+  /** Stable, and unlike a claude.ai project id: `codex:<id>`. */
+  key: string;
+  name: string;
+  /** The directories it holds. */
+  roots: string[];
+}
+
+const slashed = (place: string): string => {
+  const flat = place.replace(/\\/g, '/');
+  let end = flat.length;
+  while (end > 1 && flat[end - 1] === '/') end -= 1;
+  return flat.slice(0, end);
+};
+
+/** The folder `cwd` is in: the one with the deepest root, or the one a Codex worktree is a copy of. */
+function folderOf(cwd: string, folders: readonly TopicFolder[]): TopicFolder | undefined {
+  const place = slashed(cwd);
+  let best: { folder: TopicFolder; depth: number } | undefined;
+  for (const folder of folders) {
+    for (const root of folder.roots.map(slashed)) {
+      if (root && (place === root || place.startsWith(`${root}/`)) && root.length > (best?.depth ?? 0))
+        best = { folder, depth: root.length };
+    }
+  }
+  if (best) return best.folder;
+  // Codex works in copies: `<home>/worktrees/<id>/<the root's name>`.
+  const copy = /\/\.codex\/worktrees\/[^/]+\/([^/]+)/.exec(place)?.[1];
+  if (!copy) return undefined;
+  const same = folders.filter((folder) => folder.roots.some((root) => slashed(root).split('/').pop() === copy));
+  return same.length === 1 ? same[0] : undefined;
+}
+
+/**
+ * `store` with the sessions no topic has yet in the topic of the folder they worked in, whichever
+ * agent it was: no agent is asked. Run after `projectTopics()`, which knows more. A folder keeps its
+ * topic once it has one. Resolves to the new store and how many sessions it placed.
+ */
+export function folderTopics(
+  sessions: readonly SessionInfo[],
+  store: TopicStore,
+  folders: readonly TopicFolder[],
+): { store: TopicStore; placed: number } {
+  const next: TopicStore = { ...store, topics: [...store.topics], sessions: { ...store.sessions } };
+  const projects = { ...store.projects };
+  let placed = 0;
+  for (const session of sessions) {
+    if (!session.cwd || next.sessions[archiveKey(session)] !== undefined || inRunDirectory(session.cwd)) continue;
+    const folder = folderOf(session.cwd, folders);
+    if (!folder) continue;
+    const topic = next.topics.find((one) => one.id === projects[folder.key]) ?? topicNamed(next, flat(folder.name, 80));
+    projects[folder.key] = topic.id;
+    next.sessions[archiveKey(session)] = topic.id;
+    placed += 1;
+  }
+  if (Object.keys(projects).length) next.projects = projects;
+  return { store: next, placed };
+}
+
 /**
  * Whether work in `cwd` is a run rather than a piece of somebody's work: a pack member's worktree
  * (`.genaicode/worktrees`), or a temporary directory, where tests and one-off runs happen. Such
@@ -217,7 +280,7 @@ export function topicsPrompt(sessions: readonly SessionInfo[], store: TopicStore
   });
   return `${TOPICS_PROMPT_MARK} sort coding-agent sessions into topics. Use no tools and read no files: everything needed is below.
 
-A topic is one piece of work a person would name ("pack mode", "desktop app", "YouTube pin links"), whichever agent or directory its sessions were in. The same topic is often worked on with several agents and from several directories, and one directory holds many topics. Prefer a topic that exists; make a new one only for work none covers. Name a topic in 2 to 5 words, in the language the sessions use. Throwaway sessions (a quick question, a test of the tool itself) go to a topic named "Misc".
+A topic is one piece of work a person would name ("pack mode", "desktop app", "YouTube pin links"), whichever agent or directory its sessions were in. The same topic is often worked on with several agents and from several directories, and one directory holds many topics. Prefer a topic that exists; make a new one only for work none covers. Keep topics few and broad: work on one product or repository is one topic, unless a part of it is plainly a project of its own; do not make a topic for one or two sessions when a broader one fits. Name a topic in 2 to 5 words, in the language the sessions use. Throwaway sessions (a quick question, a test of the tool itself) go to a topic named "Misc".
 
 Topics so far (id, name):
 ${existing}
