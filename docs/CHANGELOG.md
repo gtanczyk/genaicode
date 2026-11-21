@@ -10,11 +10,16 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
+
+## 2.44.0 — 2026-11-21
+
+### Added
+
 - `genaicode topics`: your sessions as pieces of work, whichever agents and directories they were in, with what asks for you first. `topics refresh` has an agent sort the sessions no topic has yet (one line per session; kept in `~/.genaicode/topics.json`), and `topics rename|merge|move` correct it. From `genaicode/agents`: `topicsPrompt()`, `sortedTopics()`, `summarizeTopics()`, `readTopics()`, `writeTopics()` (#241)
 - `genaicode sessions` leaves out the sessions nobody typed into (Claude Code's scheduled tasks and notifications, `codex exec` runs; `--automated` or `{ automated: true }` lists them, and they carry `automated: true`), and says what a waiting session's last message asks of you: `SessionInfo.ending` (`question`, `command`, `offer`, `unreported`) from `replyEnding()`. `sessions --waiting`, the session tools and the desktop menu show those right after the approvals (#240)
 - `genaicode limits`: how much of each agent's plan is used (share of each window, when it resets), as last seen and without asking any agent. Runs through genaicode keep what the agents report, Codex's limits are read from its sessions, and `genaicode hooks install` makes `genaicode limits record` Claude Code's status line (unless you have your own), which keeps Claude's. `sessions --waiting --json --watch` carries them as `limits`, and the desktop app's menu shows them (#235)
 - `claude()` inherits `permissions.defaultMode` from Claude Code user settings (`~/.claude/settings.json` / `$CLAUDE_CONFIG_DIR`) or `options.settings` instead of overriding it with `--permission-mode acceptEdits`, keeping `acceptEdits` as the fallback when no default mode is configured (#238)
-- Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
 
 ### Fixed
 
