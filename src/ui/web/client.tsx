@@ -328,6 +328,8 @@ function App() {
         state={session}
         style={panel !== 'chat' ? { display: 'none' } : undefined}
         header={null}
+        // The work in one line that opens on click: a long run of tool calls buries the answer.
+        foldSteps
         autoFocus
         disabled={!connected}
         notices={view?.notices}
