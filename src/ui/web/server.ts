@@ -84,6 +84,30 @@ export type WebCommand =
   | { type: 'model'; model: string };
 
 const MAX_BODY = 64 * 1024;
+/** Cap on port-scoped cookies left on the host so repeated random-port runs do not bloat Cookie headers. */
+const MAX_PORT_COOKIES = 8;
+
+function secretOk(candidate: string | null | undefined, expected: string): boolean {
+  if (!candidate) return false;
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function sessionCookies(cookieHeader: string | undefined, currentName: string, secret: string): string[] {
+  const headers = [`${currentName}=${secret}; HttpOnly; SameSite=Lax; Path=/`];
+  const others: string[] = [];
+  for (const part of (cookieHeader ?? '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const name = part.slice(0, eq).trim();
+    if (name !== currentName && /^genaicode_\d+$/.test(name) && !others.includes(name)) others.push(name);
+  }
+  for (const stale of others.slice(0, Math.max(0, others.length - (MAX_PORT_COOKIES - 1)))) {
+    headers.push(`${stale}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  }
+  return headers;
+}
 
 export function parseCommand(value: unknown): WebCommand | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -151,6 +175,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const { controller } = options;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
+  // Separate secret for the reload-shell cookie only; cookies are shared across ports on the host,
+  // so this cookie never authorizes /api/* endpoints and never returns cwd/session metadata.
+  const pageCookieSecret = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
   const lifetime = new AbortController();
   let port = 0;
@@ -159,18 +186,26 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     if (!header) return false;
     return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, `${host}:${port}`].includes(header);
   };
-  const tokenOk = (candidate: string | null | undefined) => {
-    if (!candidate) return false;
-    const a = Buffer.from(candidate);
-    const b = Buffer.from(token);
-    return a.length === b.length && timingSafeEqual(a, b);
+  const cookieName = () => `genaicode_${port}`;
+  const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  const cookieOk = (req: IncomingMessage) => {
+    const header = req.headers.cookie;
+    if (!header) return false;
+    const expectedName = cookieName();
+    let ok = false;
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      if (part.slice(0, eq).trim() === expectedName && secretOk(part.slice(eq + 1).trim(), pageCookieSecret)) ok = true;
+    }
+    return ok;
   };
   const send = (
     res: ServerResponse,
     status: number,
     type: string,
     body: string,
-    headers: Record<string, string> = {},
+    headers: Record<string, string | string[]> = {},
   ) => {
     res.writeHead(status, {
       'content-type': type,
@@ -199,11 +234,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
     if (req.method === 'GET' && url.pathname === '/') {
-      if (!tokenOk(url.searchParams.get('token'))) {
+      const ancestors = options.frameAncestors?.() ?? [];
+      const inFrame = ancestors.length > 0 || req.headers['sec-fetch-dest'] === 'iframe';
+      const queryToken = url.searchParams.get('token');
+      if (queryToken !== null) {
+        if (!tokenOk(queryToken)) {
+          return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
+        }
+        return send(
+          res,
+          200,
+          'text/html; charset=utf-8',
+          pageHtml({ ...options.title, sessions: !!options.sessions, stripToken: !inFrame }),
+          {
+            'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
+            ...(inFrame ? {} : { 'set-cookie': sessionCookies(req.headers.cookie, cookieName(), pageCookieSecret) }),
+          },
+        );
+      }
+      if (!cookieOk(req)) {
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
       }
-      const ancestors = options.frameAncestors?.() ?? [];
-      return send(res, 200, 'text/html; charset=utf-8', pageHtml({ ...options.title, sessions: !!options.sessions }), {
+      // Reload shell only: holds no cwd or session metadata because cookies are shared across ports on the host.
+      return send(res, 200, 'text/html; charset=utf-8', pageHtml({ version: options.title.version, cwd: '' }), {
         'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
       });
     }
@@ -231,13 +284,19 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return res.end(response.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
-      if (!tokenOk(url.searchParams.get('token'))) return send(res, 403, 'text/plain', 'Bad token');
+      const header = req.headers['x-genaicode-token'];
+      const candidate =
+        header !== undefined ? (typeof header === 'string' ? header : null) : url.searchParams.get('token');
+      if (!tokenOk(candidate)) return send(res, 403, 'text/plain', 'Bad token');
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
         connection: 'keep-alive',
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
+      res.write(`event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions })}\n\n`);
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
