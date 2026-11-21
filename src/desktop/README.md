@@ -38,5 +38,7 @@ identity for one other Macs accept.
 | `GENAICODE_DESKTOP_NODE` | Node.js binary to run, instead of the bundled one       |
 | `GENAICODE_DESKTOP_CLI`  | `cli.js` to run, e.g. `dist/cli.js` of the working tree |
 
-To move to a newer Node.js, change `version` in `node-runtime.json` and copy the four checksums
-from `https://nodejs.org/dist/v<version>/SHASUMS256.txt`.
+The app needs macOS 13.5 or newer, the oldest the bundled Node.js 24 supports. To move to a newer
+Node.js, change `version` in `node-runtime.json`, copy the four checksums from
+`https://nodejs.org/dist/v<version>/SHASUMS256.txt` and check `minimumSystemVersion` in
+`tauri.conf.json` against that release's macOS target.
