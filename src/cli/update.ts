@@ -539,8 +539,9 @@ async function registryVersion(tag: string, env: NodeJS.ProcessEnv): Promise<str
   return version;
 }
 
-function npmInstall(prefix: string, spec: string, env: NodeJS.ProcessEnv): Promise<void> {
-  const args = [
+/** Arguments passed to `npm` when staging a version. Revalidates cached packuments so fresh releases do not ETARGET. */
+export function npmInstallArgs(prefix: string, spec: string): string[] {
+  return [
     'install',
     '--prefix',
     prefix,
@@ -550,8 +551,14 @@ function npmInstall(prefix: string, spec: string, env: NodeJS.ProcessEnv): Promi
     '--no-fund',
     '--loglevel=error',
     '--update-notifier=false',
+    '--prefer-online',
+    '--no-prefer-offline',
     spec,
   ];
+}
+
+function npmInstall(prefix: string, spec: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const args = npmInstallArgs(prefix, spec);
   return new Promise((done, fail) => {
     const child = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
       env,

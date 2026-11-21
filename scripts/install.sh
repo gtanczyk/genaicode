@@ -38,7 +38,7 @@ rm -rf "$staging"
 mkdir -p "$staging"
 
 echo "Installing $SPEC into $HOME_DIR"
-npm install --prefix "$staging" --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error --update-notifier=false "$SPEC" \
+npm install --prefix "$staging" --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error --update-notifier=false --prefer-online --no-prefer-offline "$SPEC" \
   || fail "npm install $SPEC failed"
 
 pkg="$staging/node_modules/genaicode"
