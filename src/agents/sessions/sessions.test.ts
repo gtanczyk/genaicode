@@ -284,6 +284,7 @@ describe('session sources', () => {
         at('typed', '/Users/me/src/app'),
         at('temp', '/var/folders/ab/T/run-1'),
         at('tmp', '/private/tmp/bench'),
+        at('windows', 'C:\\Users\\me\\AppData\\Local\\Temp\\run'),
         at('delegated', '/Users/me/src/app/.genaicode/worktrees/t1/app'),
         // A directory that only starts like one of those.
         at('near', '/tmpfiles/app'),
@@ -298,7 +299,7 @@ describe('session sources', () => {
         .filter((entry) => entry.automated)
         .map((entry) => entry.id)
         .sort(),
-    ).toEqual(['delegated', 'temp', 'tmp']);
+    ).toEqual(['delegated', 'temp', 'tmp', 'windows']);
   });
 
   it('reads what the end of a message asks of the user', () => {

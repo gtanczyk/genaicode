@@ -182,16 +182,18 @@ export function timeOf(value: unknown): number | undefined {
   return Number.isNaN(at) || at <= 0 ? undefined : at;
 }
 
-const SCRATCH = ['/tmp/', '/private/tmp/', '/var/folders/', '/private/var/folders/'];
-
 /**
  * Whether `cwd` is where programs run agents, not people: a temporary directory, or a worktree
  * genaicode made for a delegated task (`.genaicode/worktrees`).
  */
 export function isScratchDir(cwd: string | undefined): boolean {
   if (!cwd) return false;
-  const dir = `${cwd.replace(/\\/g, '/')}/`;
-  return SCRATCH.some((root) => dir.startsWith(root)) || dir.includes('/.genaicode/worktrees/');
+  const place = cwd.replace(/\\/g, '/');
+  return (
+    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
+    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
+    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
+  );
 }
 
 /** Whether `cwd` is a worktree an agent's app keeps for its own tasks (Antigravity, Codex, Claude Code). */
