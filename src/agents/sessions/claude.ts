@@ -99,6 +99,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   let sent = false;
   let human = false;
   let scheduled = false;
+  let typed = false;
   const sender = (line: Record<string, unknown>, asked: boolean) => {
     if (!asked || line.type !== 'user' || !isRecord(line.origin)) return;
     sent = true;
@@ -115,6 +116,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     titleOf(line, info);
     const prompt = promptOf(line);
+    if (prompt.typed && line.type === 'user') typed = true;
     if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
     if (prompt.wrapped && line.type === 'user') {
       if (firstWrapped === undefined && !info.firstPrompt)
@@ -124,7 +126,6 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     sender(line, !!(prompt.typed ?? prompt.wrapped));
   }
   let agentLast = false;
-  let typedLater = false;
   for (const line of tail) {
     if (!isRecord(line)) continue;
     // The directory it started in names the project; later lines follow the agent's `cd`.
@@ -140,7 +141,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
       // Claude Code's own note of the latest prompt; it says nothing about whose turn it is.
       if (prompt.typed) info.lastPrompt = oneLine(prompt.typed);
     } else if (prompt.typed) {
-      typedLater = true;
+      typed = true;
       info.lastPrompt = oneLine(prompt.typed);
       agentLast = false;
     } else if (prompt.wrapped) {
@@ -164,8 +165,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   info.firstPrompt ??= firstWrapped;
   info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
   // Nobody typed into it: every prompt Claude Code noted a sender for came from a task, or, where it
-  // notes none, the session opens with a scheduled task and no typed prompt follows.
-  if (sent ? !human : scheduled && !typedLater) info.automated = true;
+  // notes none, the session opens with a scheduled task and no typed prompt is seen.
+  if (sent ? !human : scheduled && !typed) info.automated = true;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
   return info;
 }

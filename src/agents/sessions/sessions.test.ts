@@ -172,9 +172,19 @@ describe('session sources', () => {
     // `! git status` has no sender noted: not enough to call it automated.
     write('shell', 40, user('<bash-input>git status</bash-input>'), done);
     write('typed', 50, user('Ship it', human), assistant([{ type: 'text', text: 'Shipped. Should I tag it?' }]));
+    // No sender noted, a scheduled opening, and a typed follow-up far from the end: a conversation.
+    write(
+      'long',
+      60,
+      user('<scheduled-task name="n">Check</scheduled-task>'),
+      done,
+      user('Why did it fail?'),
+      ...Array.from({ length: 40 }, () => assistant([{ type: 'text', text: 'x'.repeat(20_000) }])),
+    );
+    write('unanswered', 70, user('<scheduled-task name="n">Check</scheduled-task>'), done);
     const source = claudeSessions({ dir });
     const all = await source.list();
-    expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual(['notified']);
+    expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual(['notified', 'unanswered']);
     const shown = await listSessions([source], { limit: 4, live: false, env: { HOME: join(root, 'nobody') } });
     expect(shown.sessions.map((entry) => entry.id)).toEqual(['answered', 'remote', 'shell', 'typed']);
     expect(shown.sessions.map((entry) => entry.ending)).toEqual([undefined, undefined, undefined, 'question']);
