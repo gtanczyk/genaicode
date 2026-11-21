@@ -18,6 +18,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Pack tasks work in projects opened through a symlink, and the browser explains merge conflicts when running the installed CLI (#229)
 - `genaicode update`, `genaicode install` and `scripts/install.sh` revalidate npm's local package cache (`--prefer-online --no-prefer-offline`) so installing a newly published release no longer fails with `ETARGET` (#230)
 
+### Internal
+
+- First skeleton of a macOS desktop app in `src/desktop` (Tauri 2 shell that runs a bundled Node.js on `genaicode ui`); not part of the npm package (#228)
+
 ## 2.41.1 — 2026-11-21
 
 ### Fixed
