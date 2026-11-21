@@ -1,6 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
-import { packApproval, type PackAction, type PackControls, type PackTask } from './pack.js';
+import { packApproval, PackActionError, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { addUsage, tokenCount } from './runtime.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
@@ -786,7 +786,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     async actOnPackTask(turnId, id, action) {
       const controls = packRuns.get(turnId)?.controls;
-      if (closed || !controls?.task(id)) throw new Error(`No pack task ${id} in turn ${turnId}.`);
+      if (closed || !controls?.task(id)) throw new PackActionError('missing', `No pack task ${id} in turn ${turnId}.`);
       try {
         return await controls.act(id, action);
       } finally {

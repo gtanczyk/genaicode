@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
-import { pack } from './pack.js';
+import { pack, PackActionError } from './pack.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -450,6 +450,7 @@ describe('pack chat turns', () => {
       session.send('next');
       await session.idle();
       expect(session.get().turns[0].pack?.tasks[1].state).toBe('discarded');
+      await expect(session.actOnPackTask!(2, 't1', { type: 'merge' })).rejects.toThrow(PackActionError);
       await expect(session.actOnPackTask!(2, 't1', { type: 'merge' })).rejects.toThrow('No pack task');
       expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain('+edited');
       // A competing discard cannot drop the worktree from under the merge.
@@ -458,6 +459,11 @@ describe('pack chat turns', () => {
         session.actOnPackTask!(1, 't1', { type: 'discard' }),
       ]);
       expect(race.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+      expect(race[1].status === 'rejected' && race[1].reason).toMatchObject({
+        name: 'PackActionError',
+        reason: 'merged',
+        publicMessage: 'This task was already merged.',
+      });
       expect(session.get().turns[0].pack?.tasks[0].state).toBe('merged');
       expect(readFileSync(join(cwd, 'first.txt'), 'utf8')).toBe('edited\n');
       session.adopt([first]);
