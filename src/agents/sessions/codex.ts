@@ -219,6 +219,8 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
         id,
         where: 'local',
         updatedAt,
+        // `codex exec`: a headless run nobody typed into.
+        ...(text(row.source) === 'exec' ? { automated: true as const } : {}),
         ...(text(row.cwd) ? { cwd: text(row.cwd)! } : {}),
         ...(text(row.git_branch) ? { branch: text(row.git_branch)! } : {}),
         ...(text(row.git_origin_url) ? { repository: text(row.git_origin_url)! } : {}),
@@ -257,6 +259,7 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
+    if (read.automated) info.automated = true;
     // A state the app server reported (it asks for approval) is not the rollout's to change.
     if (info.state !== 'active' && !info.waitingFor) info.state = read.state;
   } catch {
