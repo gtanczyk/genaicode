@@ -57,8 +57,10 @@ export interface AgentChatProps {
   /**
    * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
    * files go with it: `files` is there when `attachments` is on and the user attached some.
+   * A promise that resolves to false says the message was not sent: the composer takes the
+   * text and the files back for another try.
    */
-  onSend(text: string, files?: File[]): void;
+  onSend(text: string, files?: File[]): void | Promise<boolean | void>;
   /**
    * Let the user send files with a prompt: an attach button, paste and drop, and with `voice` a
    * microphone that records a voice message. Without it the composer takes text only. The host
@@ -179,11 +181,22 @@ export function AgentChat(props: AgentChatProps) {
   const send = () => {
     if (!sendable) return;
     follow();
-    if (attached.files.length) props.onSend(draft, attached.files);
-    else props.onSend(draft);
+    const sent = { draft, files: attached.files };
+    const outcome = sent.files.length ? props.onSend(draft, sent.files) : props.onSend(draft);
     setDraft('');
     setClosedAt(undefined);
     attached.clear();
+    // A host that could not send gives the message back, unless another was started meanwhile.
+    if (outcome instanceof Promise) {
+      void outcome.then(
+        (ok) => {
+          if (ok !== false) return;
+          setDraft((current) => current || sent.draft);
+          if (sent.files.length) attached.add(sent.files);
+        },
+        () => undefined,
+      );
+    }
   };
   const onPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
     if (!attached.enabled || !event.clipboardData.files.length) return;

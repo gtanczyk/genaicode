@@ -285,6 +285,22 @@ describe('AgentChat', () => {
     expect(props.onSend).toHaveBeenLastCalledWith('again');
   });
 
+  it('takes the message back when the host says it was not sent', async () => {
+    const onSend = vi.fn<AgentChatProps['onSend']>().mockReturnValueOnce(Promise.resolve(false));
+    render({ state: fixture({ status: 'idle', queued: [] }), onSend });
+    type('keep me');
+    key({ key: 'Enter' });
+    expect($<HTMLTextAreaElement>('textarea').value).toBe('');
+    await act(async () => {});
+    expect($<HTMLTextAreaElement>('textarea').value).toBe('keep me');
+    // One that left stays gone.
+    onSend.mockReturnValueOnce(Promise.resolve(true));
+    key({ key: 'Enter' });
+    await act(async () => {});
+    expect(onSend).toHaveBeenCalledTimes(2);
+    expect($<HTMLTextAreaElement>('textarea').value).toBe('');
+  });
+
   it('puts the host controls in the composer, under the text', () => {
     render({ state: fixture({ status: 'idle', queued: [] }), composerExtras: <select aria-label="Agent" /> });
     const box = $('.gc-box');

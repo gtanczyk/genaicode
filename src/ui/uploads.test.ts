@@ -108,7 +108,6 @@ describe('files sent with a prompt', () => {
         () => 413,
       );
       expect(big).toBe(413);
-      expect(controller.get().notices.at(-1)?.text).toContain('big.bin is over 20 MB');
 
       expect((await post({ type: 'submit', text: 'look', files: ['nope'] })).status).toBe(400);
       expect((await post({ type: 'submit', text: 'look', files: 'a' })).status).toBe(400);

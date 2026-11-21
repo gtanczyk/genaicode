@@ -345,13 +345,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       try {
         body = await readBytes(req, MAX_UPLOAD_BYTES);
       } catch {
-        controller.note(`Not attached: ${name} is over ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`, 'error');
         // The rest of the body is not read.
         res.setHeader('connection', 'close');
         return send(res, 413, 'application/json', '{"error":"too large"}');
       }
-      const kept = options.uploads.save(name, body);
-      return send(res, 200, 'application/json', JSON.stringify({ id: kept.id, name: kept.name, size: kept.size }));
+      try {
+        const kept = options.uploads.save(name, body);
+        return send(res, 200, 'application/json', JSON.stringify({ id: kept.id, name: kept.name, size: kept.size }));
+      } catch {
+        // A full disk, a project that cannot be written to: the page says the message did not leave.
+        return send(res, 500, 'application/json', '{"error":"not kept"}');
+      }
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];

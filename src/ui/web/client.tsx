@@ -41,24 +41,34 @@ async function command(body: WebCommand): Promise<boolean> {
   return (await postCommand(body)).ok === true;
 }
 
-/** Sends `text`, first keeping `files` with the server so the agent can read them from the project. */
-async function sendPrompt(text: string, files: File[] = []): Promise<void> {
+/**
+ * Sends `text`, first keeping `files` with the server so the agent can read them from the project.
+ * Resolves to what went wrong when nothing was sent: a prompt never goes without one of its files.
+ */
+async function sendPrompt(text: string, files: File[] = []): Promise<string | undefined> {
   const ids: string[] = [];
   for (const file of files) {
-    // One that fails is left out: the server says why in the chat.
-    const kept = await fetch(`/api/upload?name=${encodeURIComponent(file.name || 'file')}`, {
+    const name = file.name || 'file';
+    const res = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
       headers: { 'x-genaicode-token': token, 'content-type': 'application/octet-stream' },
       body: file,
-    }).then(
-      (res) => (res.ok ? (res.json() as Promise<{ id?: string }>) : undefined),
-      () => undefined,
-    );
-    if (kept?.id) ids.push(kept.id);
+    }).catch(() => undefined);
+    const kept = res?.ok ? ((await res.json().catch(() => undefined)) as { id?: string } | undefined) : undefined;
+    if (!kept?.id) {
+      const why = !res ? 'genaicode did not answer' : res.status === 413 ? 'it is over 20 MB' : 'it could not be kept';
+      return `Not sent: ${name} could not be attached (${why}).`;
+    }
+    ids.push(kept.id);
   }
-  if (!text.trim() && files.length && !ids.length) return;
-  await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text });
+  const sent = await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text }).catch(
+    () => false,
+  );
+  return sent ? undefined : 'Not sent: genaicode did not take the message.';
 }
+
+/** Prompts leave in the order they were sent, also while the files of an earlier one upload. */
+let sending: Promise<unknown> = Promise.resolve();
 
 /** A prompt as its bubble shows it: the files sent with it as thumbnails and names, not as paths. */
 function promptBubble(text: string) {
@@ -258,7 +268,16 @@ function App() {
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   const limits = session ? limitChips({ ...session, rateLimits }) : [];
-  const submit = (text: string, files?: File[]) => void sendPrompt(text, files);
+  // Why the last message did not leave, shown under the transcript until the next one does.
+  const [unsent, setUnsent] = useState<string>();
+  const submit = (text: string, files?: File[]): Promise<boolean> => {
+    const mine = sending.then(() => sendPrompt(text, files));
+    sending = mine;
+    return mine.then((problem) => {
+      setUnsent(problem);
+      return !problem;
+    });
+  };
 
   // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
   const controls =
@@ -306,7 +325,7 @@ function App() {
               : 'The agent asks before commands and edits it needs permission for'
           }
           aria-pressed={view.autoApprove}
-          onClick={() => submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
+          onClick={() => void submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
         >
           {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
         </button>
@@ -315,7 +334,7 @@ function App() {
           aria-label={view.bark ? 'Bark on' : 'Bark off'}
           title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
           aria-pressed={view.bark}
-          onClick={() => submit(`/bark ${view.bark ? 'off' : 'on'}`)}
+          onClick={() => void submit(`/bark ${view.bark ? 'off' : 'on'}`)}
         >
           {view.bark ? '🔊' : '🔇'}
         </button>
@@ -398,11 +417,12 @@ function App() {
         composerExtras={controls}
         attachments={config?.uploads ? ATTACH : undefined}
         renderPrompt={promptBubble}
+        renderFooter={() => (unsent ? <div className="gc-notice gc-err">{unsent}</div> : null)}
         onSend={submit}
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-        onAutoApprove={view?.autoApprove ? undefined : () => submit('/auto on')}
+        onAutoApprove={view?.autoApprove ? undefined : () => void submit('/auto on')}
         onPackAction={async (turnId, id, action) => {
           const reply = await postCommand({ type: 'pack-task', turnId, id, action });
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
@@ -431,7 +451,7 @@ function App() {
               ) : null}
               <div className="ideas">
                 {IDEAS.map((idea) => (
-                  <button key={idea} onClick={() => submit(idea)}>
+                  <button key={idea} onClick={() => void submit(idea)}>
                     {idea}
                   </button>
                 ))}
