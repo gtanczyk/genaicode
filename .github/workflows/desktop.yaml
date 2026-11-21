@@ -1,11 +1,9 @@
 name: Desktop app
 
 # Builds the macOS app (ad-hoc signed, not notarized) whenever the shell or its build changes.
+# On push to any branch: pull_request runs do not start for PRs opened by the Claude app here.
 on:
-  pull_request:
-    paths: ['src/desktop/**', '.github/workflows/desktop.yaml']
   push:
-    branches: [master]
     paths: ['src/desktop/**', '.github/workflows/desktop.yaml']
   workflow_dispatch:
 
