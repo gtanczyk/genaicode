@@ -317,11 +317,20 @@ describe('AgentChat', () => {
     key({ key: 'Escape' });
     expect($('.gc-completions')).toBeNull();
     expect(props.onStop).not.toHaveBeenCalled();
+    // Escape closed that list only: the same start typed again offers it again.
+    type('');
+    type('/h');
+    expect(offered()).toEqual(['/help']);
     type('/he');
     act(() => {
       $('.gc-completions li').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     });
     expect(value()).toBe('/help');
+    // A whole command that also starts a longer one is sent as typed.
+    render({ state: fixture({ status: 'idle', queued: [] }), completions: [{ name: '/foo' }, { name: '/foobar' }] });
+    type('/foo');
+    expect($('.gc-completions')).toBeNull();
+    render({ state: fixture({ status: 'idle', queued: [] }), completions });
     // Not a command: nothing is offered, and nothing without the host's list.
     type('fix /model');
     expect($('.gc-completions')).toBeNull();

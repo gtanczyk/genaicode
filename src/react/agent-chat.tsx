@@ -176,6 +176,7 @@ export function AgentChat(props: AgentChatProps) {
     if (attached.files.length) props.onSend(draft, attached.files);
     else props.onSend(draft);
     setDraft('');
+    setClosedAt(undefined);
     attached.clear();
   };
   const onPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
@@ -193,8 +194,13 @@ export function AgentChat(props: AgentChatProps) {
   const [picked, setPicked] = useState(0);
   const [closedAt, setClosedAt] = useState<string>();
   const offered =
-    props.completions && draft && !/\s/.test(draft) && closedAt !== draft
-      ? props.completions.filter((one) => one.name.startsWith(draft) && one.name !== draft)
+    // A whole command is sent as typed, even when it starts a longer one.
+    props.completions &&
+    draft &&
+    !/\s/.test(draft) &&
+    closedAt !== draft &&
+    !props.completions.some((one) => one.name === draft)
+      ? props.completions.filter((one) => one.name.startsWith(draft))
       : [];
   const choice = offered[Math.min(picked, offered.length - 1)];
   const complete = (one: ChatCompletion) => {
@@ -377,6 +383,7 @@ export function AgentChat(props: AgentChatProps) {
             onChange={(event) => {
               setDraft(event.target.value);
               setPicked(0);
+              setClosedAt(undefined);
             }}
             aria-autocomplete={props.completions ? 'list' : undefined}
             onKeyDown={onKeyDown}
