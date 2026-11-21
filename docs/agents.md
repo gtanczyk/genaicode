@@ -388,7 +388,12 @@ prompt), quoted as data. `renameTopic()`, `mergeTopics()` and `moveSessions()` c
 session that has a topic is never moved by a later answer. `projectTopics(sessions, store)` places
 the sessions relayed from a claude.ai project (`SessionInfo.project`: its id, and its name where
 the session gives it; such a session is titled as its thread there) in a topic named as the project, without an agent. What ran in a pack member's worktree
-(`.genaicode/worktrees`) or a temporary directory (`inRunDirectory()`) is listed as ever but takes no topic.
+(`.genaicode/worktrees`) or a temporary directory (`inRunDirectory()`) takes no topic.
+
+`topicShares(sessions, store)` says where each agent's work went: per agent, the part every topic
+took (0 to 1), with `Automatic runs` and `Not sorted yet` as parts of their own. Sessions are
+weighed by `costUsd` where the agent keeps one, else by tokens; only proportions are returned.
+List the sessions with `automated: true`, or scheduled runs are missing from the picture.
 
 For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
 200 characters of each matching command. Genaicode keeps a digest in its private hook record

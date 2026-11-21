@@ -75,8 +75,18 @@ button.chip:hover { border-color: var(--accent); }
 .ideas button:hover { border-color: var(--accent); }
 .home { max-width: 640px; margin: 28px auto 0; text-align: left; display: flex; flex-direction: column; gap: 6px; }
 .home h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 2px; }
-.home .plans { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-.home .plan { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.home .plans { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+.home .plan { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); min-width: 240px; flex: 1; }
+.home .plan > span { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.home .plan > small { font-size: 11px; }
+.home .went { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.home .went li { position: relative; display: flex; justify-content: space-between; gap: 8px; padding: 2px 6px; border-radius: 5px; overflow: hidden; }
+.home .went li > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .16; }
+.home .went li > :not(i) { position: relative; z-index: 1; }
+.home .went button, .home .went span { background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home .went button { cursor: pointer; }
+.home .went button:hover { text-decoration: underline; }
+.home .went b { font-weight: 500; color: var(--muted); }
 .home .topic { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; cursor: pointer; color: var(--text); }
 .home .topic:hover { border-color: var(--accent); }
 .home .topic span { font-size: 12px; color: var(--muted); white-space: nowrap; }

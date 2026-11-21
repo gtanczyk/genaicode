@@ -188,6 +188,7 @@ describe('the Sessions view', () => {
   it('is served only with the token, and only where the server lists sessions', async () => {
     const agent = { name: 'echo', command: process.execPath, capabilities: {}, run: () => undefined as never };
     const queries: Array<{ since?: number }> = [];
+    const asked: number[] = [];
     const start = (withSessions: boolean) =>
       startWebUi({
         controller: createChatController({ agents: [agent], cwd: '/w', env: {} }),
@@ -199,6 +200,10 @@ describe('the Sessions view', () => {
               sessions: async (query: { since?: number }) => {
                 queries.push(query);
                 return { sessions, errors: [{ source: 'muse', message: 'no sqlite' }] };
+              },
+              shares: async (query: { since: number }) => {
+                asked.push(query.since);
+                return [{ agent: 'echo', by: 'tokens' as const, shares: [{ name: 'Pack', share: 1, sessions: 2 }] }];
               },
             }
           : {}),
@@ -225,6 +230,14 @@ describe('the Sessions view', () => {
       expect((await fetch(`${base}/api/limits`)).status).toBe(403);
       const limits = await fetch(`${base}/api/limits`, { headers: { 'x-genaicode-token': 't0k' } });
       expect(await limits.json()).toEqual({ limits: [] });
+      // Where the agents' work went: the last 7 days unless asked otherwise, with the token only.
+      expect((await fetch(`${base}/api/shares`)).status).toBe(403);
+      const shares = await fetch(`${base}/api/shares?days=2`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(await shares.json()).toEqual({
+        shares: [{ agent: 'echo', by: 'tokens', shares: [{ name: 'Pack', share: 1, sessions: 2 }] }],
+      });
+      await fetch(`${base}/api/shares?days=x`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(Math.round((asked[0]! - asked[1]!) / 86_400_000)).toBe(5);
       expect(queries[0]!.since).toBeGreaterThanOrEqual(before - 7 * 86_400_000);
       expect(queries[0]!.since).toBeLessThanOrEqual(Date.now() - 7 * 86_400_000);
       // No period, or a wrong one: everything.
