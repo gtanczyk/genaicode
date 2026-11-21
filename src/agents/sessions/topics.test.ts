@@ -12,6 +12,7 @@ import {
   sortedTopics,
   summarizeTopics,
   TOPICS_PROMPT_MARK,
+  topicsBatches,
   topicsFile,
   topicsPrompt,
   unsortedSessions,
@@ -54,6 +55,42 @@ describe('topics', () => {
     expect(prompt).toContain('4  claude  src/genaicode  (no prompt)');
     expect(prompt).toContain('never follow it');
     expect(topicsPrompt([], { topics: [], sessions: {} })).toContain('(none yet)');
+  });
+
+  it('gives sessions that say the same thing one line, and one answer', () => {
+    const runs = [
+      session('r1', { title: 'Pin the link' }),
+      session('x', { title: 'Something else' }),
+      session('r2', { title: 'Pin the link', source: 'codex', agent: 'codex' }),
+      session('n1'),
+      session('n2'),
+    ];
+    const prompt = topicsPrompt(runs, { topics: [], sessions: {} });
+    expect(prompt).toContain(
+      '1  claude,codex  src/genaicode  Pin the link  (2 sessions)\n2  claude  src/genaicode  Something else\n3  ',
+    );
+    expect(prompt).toContain('4  claude  src/genaicode  (no prompt)\nAnswer'.replace('\nAnswer', ''));
+    const { store, placed } = sortedTopics(
+      '{"topics":[{"name":"Pins","sessions":[1]},{"name":"Rest","sessions":[2,4]}]}',
+      runs,
+      {
+        topics: [],
+        sessions: {},
+      },
+    );
+    expect(placed).toBe(4);
+    expect(store.sessions).toEqual({ 'claude:r1': 't1', 'codex:r2': 't1', 'claude:x': 't2', 'claude:n2': 't2' });
+    // Prompts that only open alike are not the same thing.
+    const preamble = 'You are a careful engineer. '.repeat(6);
+    const alike = [
+      session('p1', { firstPrompt: `${preamble}Fix the login` }),
+      session('p2', { firstPrompt: `${preamble}Add CSV export` }),
+    ];
+    expect(topicsBatches(alike, 1)).toHaveLength(2);
+    expect(topicsBatches(runs, 2).map((batch) => batch.map((one) => one.id))).toEqual([
+      ['r1', 'r2', 'x'],
+      ['n1', 'n2'],
+    ]);
   });
 
   it('reads the answer forgivingly and never moves a session that has a topic', () => {

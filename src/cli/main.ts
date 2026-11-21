@@ -70,7 +70,7 @@ import {
   sortedTopics,
   summarizeTopics,
   topicNamed,
-  TOPICS_BATCH,
+  topicsBatches,
   topicsPrompt,
   unsortedSessions,
   withTopicsRun,
@@ -1010,14 +1010,17 @@ async function manageTopics(
     const agent = pickAgent(cli, agents, command.agent);
     if (!agent) return EXIT_USAGE;
     const model = command.model ?? SORTING_MODEL[agent.name];
-    cli.stderr.write(`Sorting ${count(todo.length)} with ${agent.name}${model ? ` (${model})` : ''}...\n`);
+    const batches = topicsBatches(todo);
+    cli.stderr.write(
+      `Sorting ${count(todo.length)} with ${agent.name}${model ? ` (${model})` : ''}${batches.length > 1 ? `, ${batches.length} runs one after another` : ''}...\n`,
+    );
     // An empty directory: the agent has nothing to read there, and is told to read nothing.
     const cwd = await fs.mkdtemp(join(tmpdir(), 'genaicode-topics-'));
     let current = store;
     let placed = 0;
     try {
-      for (let at = 0; at < todo.length; at += TOPICS_BATCH) {
-        const batch = todo.slice(at, at + TOPICS_BATCH);
+      let done = 0;
+      for (const batch of batches) {
         const run = agent.run({
           prompt: topicsPrompt(batch, current),
           cwd,
@@ -1045,6 +1048,10 @@ async function manageTopics(
         current = sorted.store;
         await writeTopics(current, cli.env);
         placed += sorted.placed;
+        done += batch.length;
+        if (batches.length > 1) {
+          cli.stderr.write(`  ${done} of ${todo.length} looked at, ${current.topics.length} topics so far\n`);
+        }
       }
     } finally {
       await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
