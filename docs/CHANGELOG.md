@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode limits`: how much of each agent's plan is used (share of each window, when it resets), as last seen and without asking any agent. Runs through genaicode keep what the agents report, Codex's limits are read from its sessions, and `genaicode limits record` as Claude Code's status line keeps Claude's. `sessions --waiting --json --watch` carries them as `limits`, and the desktop app's menu shows them (#235)
+- `<AgentChat>` (`onAutoApprove`) and the browser UI show an **Auto-approve all** button right on permission requests, matching the terminal chat's `a` shortcut to approve pending and future requests in one click (#234)
 
 ### Fixed
 

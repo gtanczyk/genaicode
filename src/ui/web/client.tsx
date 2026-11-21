@@ -227,6 +227,7 @@ function App() {
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+        onAutoApprove={view?.autoApprove ? undefined : () => submit('/auto on')}
         onPackAction={async (turnId, id, action) => {
           const reply = await postCommand({ type: 'pack-task', turnId, id, action });
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');

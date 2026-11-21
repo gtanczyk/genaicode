@@ -136,9 +136,12 @@ describe('AgentChat', () => {
     };
     const onPackAction = vi.fn(async () => '+added');
     const onApprove = vi.fn();
-    render({ state, onApprove, onPackAction });
+    const onAutoApprove = vi.fn();
+    render({ state, onApprove, onAutoApprove, onPackAction });
     expect($$('.gc-approval:not(.gc-done)')).toHaveLength(1);
     click(button('Approvals · 1')!);
+    click(button('Auto-approve all')!);
+    expect(onAutoApprove).toHaveBeenCalledTimes(1);
     click(button('Approve')!);
     expect(onApprove).toHaveBeenCalledWith('t1:a', 'approve');
     click($$('.gc-pack-list button')[1]);
@@ -299,18 +302,26 @@ describe('AgentChat', () => {
   });
 
   it('answers pending approvals through onApprove, or shows them as waiting', () => {
-    render({ onApprove: undefined });
+    const onAutoApprove = vi.fn();
+    render({ onApprove: undefined, onAutoApprove });
     expect($('.gc-waiting')?.textContent).toBe('Waiting for approval…');
+    expect(button('Auto-approve all')).toBeUndefined();
     const onApprove = vi.fn();
     render({ onApprove });
+    expect(button('Auto-approve all')).toBeUndefined();
     click(button('Approve')!);
     click(button('Deny')!);
     expect(onApprove.mock.calls).toEqual([
       ['ap-1', 'approve'],
       ['ap-1', 'deny'],
     ]);
-    render({ onApprove, state: fixture({ approvals: [] }) });
+    render({ onApprove, onAutoApprove });
+    click(button('Auto-approve all')!);
+    expect(onAutoApprove).toHaveBeenCalledTimes(1);
+    expect(onApprove).toHaveBeenCalledTimes(2);
+    render({ onApprove, onAutoApprove, state: fixture({ approvals: [] }) });
     expect(button('Approve')).toBeUndefined();
+    expect(button('Auto-approve all')).toBeUndefined();
     expect($('.gc-approval.gc-done')?.textContent).toContain('Not answered');
   });
 
