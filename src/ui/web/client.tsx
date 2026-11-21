@@ -45,9 +45,10 @@ async function command(body: WebCommand): Promise<boolean> {
  * Sends `text`, first keeping `files` with the server so the agent can read them from the project.
  * Resolves to what went wrong when nothing was sent: a prompt never goes without one of its files.
  */
-async function sendPrompt(text: string, files: File[] = []): Promise<string | undefined> {
+async function sendPrompt(text: string, files: File[] = [], stopped = () => false): Promise<string | undefined> {
   const ids: string[] = [];
   for (const file of files) {
+    if (stopped()) return STOPPED;
     const name = file.name || 'file';
     const res = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
@@ -61,11 +62,18 @@ async function sendPrompt(text: string, files: File[] = []): Promise<string | un
     }
     ids.push(kept.id);
   }
+  // Stop drops what waits, as it does the prompts queued with the agent.
+  if (stopped()) return STOPPED;
   const sent = await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text }).catch(
     () => false,
   );
   return sent ? undefined : 'Not sent: genaicode did not take the message.';
 }
+
+const STOPPED = 'Not sent: stopped before it left.';
+
+/** How many times Stop was pressed: a prompt still waiting here when it is does not leave. */
+let stops = 0;
 
 /** Prompts leave in the order they were sent, also while the files of an earlier one upload. */
 let sending: Promise<unknown> = Promise.resolve();
@@ -271,7 +279,8 @@ function App() {
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
   const submit = (text: string, files?: File[]): Promise<boolean> => {
-    const mine = sending.then(() => sendPrompt(text, files));
+    const before = stops;
+    const mine = sending.then(() => sendPrompt(text, files, () => stops !== before));
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
@@ -427,7 +436,10 @@ function App() {
           ) : null
         }
         onSend={submit}
-        onStop={() => void command({ type: 'stop' })}
+        onStop={() => {
+          stops += 1;
+          void command({ type: 'stop' });
+        }}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
         onAutoApprove={view?.autoApprove ? undefined : () => void submit('/auto on')}
