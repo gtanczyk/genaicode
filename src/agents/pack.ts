@@ -178,6 +178,15 @@ const MAX_DIFF = 60_000;
 const clip = (text: string, max = CLIP) =>
   text.length > max ? `${text.slice(0, max)}\n[... ${text.length - max} more characters]` : text;
 
+function projectDirectory(cwd: string): string {
+  try {
+    return realpathSync(cwd);
+  } catch {
+    // The driver can report an unavailable project through its normal run result.
+    return path.resolve(cwd);
+  }
+}
+
 function defaultBrief(members: readonly PackMember[]): string {
   const names = members.filter((member) => member.installed).map((member) => member.name);
   return [
@@ -325,6 +334,8 @@ export function pack(options: PackOptions): Pack {
       });
     },
     run(task) {
+      // Keep the lead's physical location for later actions even if its symlink moves.
+      const leadCwd = projectDirectory(task.cwd);
       const events = new EventQueue<AgentEvent>(approximateSize);
       const ended = new AbortController();
       const mine = new Set<Sub>();
@@ -412,7 +423,7 @@ export function pack(options: PackOptions): Pack {
       };
 
       const start = async (agent: CodingAgent, prompt: string, wanted: unknown): Promise<string> => {
-        const repo = await repoRoot(task.cwd);
+        const repo = await repoRoot(leadCwd);
         const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
         if (!mode) throw new Error('`mode` is `worktree` or `shared`.');
         if (mode === 'worktree' && !repo)
@@ -432,8 +443,7 @@ export function pack(options: PackOptions): Pack {
           ended: new Promise<void>((resolve) => (settle = resolve)),
         };
         if (mode === 'worktree' && repo) {
-          // Git reports the physical repository root, including when cwd is a symlink to a subdirectory.
-          const relativeCwd = path.relative(repo, realpathSync(task.cwd));
+          const relativeCwd = path.relative(repo, leadCwd);
           if (relativeCwd === '..' || relativeCwd.startsWith('..' + path.sep) || path.isAbsolute(relativeCwd))
             throw new Error('The working directory is outside the Git worktree.');
           const dir = path.join(
@@ -560,7 +570,6 @@ export function pack(options: PackOptions): Pack {
           const patch = await worktreeDiff(sub.dir, sub.start);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
           const repo = sub.repo;
-          const leadCwd = realpathSync(task.cwd);
           const leadPaths = paths.map((file) => path.relative(leadCwd, path.join(repo, file)));
           if (patch.trim()) {
             const applied = await applyPatch(sub.repo, patch, threeWay);

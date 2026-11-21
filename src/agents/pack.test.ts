@@ -195,6 +195,7 @@ describe('pack', () => {
         await tool(task, 'delegate', { agent: 'b', prompt: 'edit the fixture' });
         await tool(task, 'wait');
         expect(readFileSync(join(link, 'fixture.txt'), 'utf8')).toBe('original');
+        rmSync(link);
         await tool(task, 'merge', { id: 't1' });
       },
       { mcp: true },
