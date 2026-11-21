@@ -19,12 +19,10 @@ import { worktreeCheck } from './pack-verify.js';
 
 it.skipIf(process.platform === 'win32')('ends a sleeping check at its wall-clock deadline', async () => {
   const result = await runCheckProcess(
-    '/bin/sh',
-    ['-c', 'sleep 5'],
+    { executable: '/bin/sh', args: ['-c', 'sleep 5'] },
     tmpdir(),
     { PATH: '/bin:/usr/bin' },
     undefined,
-    false,
     undefined,
     { ...packTestLimits, timeoutMs: 75 },
   );
@@ -37,7 +35,7 @@ it('checks a private workspace using the worker’s linked packages and read-onl
     expect(result).toMatchObject({ exitCode: null, output: expect.stringContaining('unavailable') });
     return;
   }
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-isolation-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode workspace-')));
   const work = join(dir, 'worker');
   const nested = join(work, 'package');
   const lead = join(dir, 'lead');

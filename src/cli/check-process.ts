@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import { limitedCommand, packTestLimits, watchCheck, type CheckLimits } from './check-limits.js';
 
 export interface CheckResult {
@@ -10,12 +10,10 @@ export interface CheckResult {
 const CHECK_OUTPUT_LIMIT = 16_000;
 
 export function runCheckProcess(
-  command: string,
-  args: string[],
+  program: { executable: string; args: string[] } | { shellCommand: string },
   cwd: string,
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
-  shell = false,
   directoryFd?: number,
   limits?: CheckLimits,
 ): Promise<CheckResult> {
@@ -23,13 +21,16 @@ export function runCheckProcess(
     let output = '';
     if (signal?.aborted) return done({ exitCode: null, output: 'Check stopped.' });
     const group = process.platform !== 'win32';
-    const child = spawn(command, args, {
+    const options: SpawnOptions = {
       cwd,
       env,
-      shell,
       detached: group,
       stdio: directoryFd === undefined ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe', directoryFd],
-    });
+    };
+    const child =
+      'shellCommand' in program
+        ? spawn(program.shellCommand, { ...options, shell: true })
+        : spawn(program.executable, program.args, { ...options, shell: false });
     let escalation: NodeJS.Timeout | undefined;
     const stop = (how: NodeJS.Signals) => {
       try {
@@ -86,7 +87,14 @@ export async function runPackCheck(
 ): Promise<CheckResult> {
   try {
     const limited = await limitedCommand(command, args);
-    return await runCheckProcess('/bin/bash', limited, cwd, env, signal, false, directoryFd, packTestLimits);
+    return await runCheckProcess(
+      { executable: '/bin/bash', args: limited },
+      cwd,
+      env,
+      signal,
+      directoryFd,
+      packTestLimits,
+    );
   } catch (error) {
     return {
       exitCode: null,

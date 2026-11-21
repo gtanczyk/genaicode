@@ -1710,7 +1710,7 @@ async function runTask(
 
   const verify = options.verify;
   const runCheck: NonNullable<CliEnvironment['runCheck']> =
-    cli.runCheck ?? ((command, cwd, env, signal) => runCheckProcess(command, [], cwd, env, signal, true));
+    cli.runCheck ?? ((command, cwd, env, signal) => runCheckProcess({ shellCommand: command }, cwd, env, signal));
   const loop = await runWithVerify(agent, task, {
     maxRepairs: options.maxRepairs,
     onEvent: (event) => {
