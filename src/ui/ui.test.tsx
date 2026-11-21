@@ -217,6 +217,19 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('shows a startupNotice immediately when provided', () => {
+    const chat = createChatController({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      startupNotice: 'Pack: echo leads · members: echo.',
+    });
+    expect(chat.get().notices).toMatchObject([
+      { afterTurn: 0, tone: 'info', text: 'Pack: echo leads · members: echo.' },
+    ]);
+    chat.close();
+  });
+
   it('picks the first installed agent and resumes its session on the next prompt', async () => {
     const missing = echoAgent('missing', 'not-installed');
     const echo = echoAgent();
