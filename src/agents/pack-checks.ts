@@ -9,7 +9,7 @@ import type { VerifyReport } from './verify.js';
 export interface PackVerification {
   /** The operator sees this command or check name before starting it. */
   label: string;
-  run(cwd: string, signal: AbortSignal): VerifyReport | Promise<VerifyReport>;
+  run(cwd: string, signal: AbortSignal, worktreeRoot: string): VerifyReport | Promise<VerifyReport>;
 }
 
 export interface PackCheckResult {

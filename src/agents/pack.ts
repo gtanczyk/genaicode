@@ -670,7 +670,8 @@ export function pack(options: PackOptions): Pack {
           const verification = options.verification;
           if (kind === 'review' && !reviewer) throw new PackActionError('reviewer');
           if (kind === 'verify' && !verification) throw new PackActionError('verification');
-          const revision = await snapshotTree(sub.dir);
+          const root = sub.dir;
+          const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
           if (kind === 'review' && occupied() >= maxParallel) throw new PackActionError('capacity');
           const checks = sub.checks;
@@ -686,7 +687,7 @@ export function pack(options: PackOptions): Pack {
               const report =
                 kind === 'review'
                   ? await reviewPatch(reviewer!, patch, task.env, { ...context, signal: abort.signal })
-                  : await verification!.run(sub.cwd, abort.signal);
+                  : await verification!.run(sub.cwd, abort.signal, root);
               checks[kind] = {
                 revision,
                 status: report.ok ? 'completed' : 'failed',

@@ -263,8 +263,9 @@ finished tasks after a later turn starts. Adopted transcripts are read-only.
 Use `{ type: 'review' }` to get a fresh review from the first eligible installed agent,
 starting with the lead and excluding the worker. The reviewer reads a private copy of
 the complete patch. `{ type: 'verify' }` runs the pack's configured
-`verification: { label, run(cwd, signal) }` in the worker's directory. The callback
-returns `{ ok, detail }`. Both results appear in `task.checks`. Each result records its
+`verification: { label, run(cwd, signal, worktreeRoot) }` for the worker's directory. An
+embedding application supplies the isolation for its own verifier. The callback returns
+`{ ok, detail }`. Both results appear in `task.checks`. Each result records its
 Git tree in `revision`. Compare it with `checks.revision` to spot an outdated result.
 Pass the revision displayed to the operator in `{ type: 'merge', revision }` so a
 concurrent edit leaves the worktree open for inspection. Set `operatorMerge: true` to
