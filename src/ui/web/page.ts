@@ -71,6 +71,15 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sent-files:first-child { margin-top: 0; }
 .sent-files img { max-width: 160px; max-height: 120px; border-radius: 8px; border: 1px solid var(--line); display: block; }
+.file-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 92vw); z-index: 20; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25); }
+.file-panel header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.file-panel header code { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.file-panel header small { color: var(--muted); white-space: nowrap; }
+.file-panel header button { cursor: pointer; }
+.file-text { flex: 1; margin: 0; overflow: auto; padding: 10px 0; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; counter-reset: line; tab-size: 2; }
+.file-text span { display: block; padding: 0 14px 0 0; white-space: pre; counter-increment: line; }
+.file-text span::before { content: counter(line); display: inline-block; width: 3.5em; padding-right: 1em; text-align: right; color: var(--faint); user-select: none; }
+.file-problem { margin: 0; padding: 12px 14px; color: var(--muted); font-size: 13px; }
 .spacer { flex: 1; }
 .chip { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .chip[data-level='warning'] { color: #e8590c; border-color: currentColor; }

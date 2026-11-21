@@ -1,4 +1,6 @@
 import {
+  createContext,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -25,6 +27,7 @@ import {
   toolArgument,
   toolDiff,
   toolLabel,
+  toolPath,
   turnFooter,
 } from './format.js';
 import { Markdown } from './markdown.js';
@@ -90,6 +93,11 @@ export interface AgentChatProps {
    * input sent while the agent works.
    */
   renderPrompt?(text: string, turn?: SessionTurn): ReactNode;
+  /**
+   * Makes the file paths in the transcript (edited files, the file a tool step read or changed)
+   * buttons: called with the path as the agent gave it, usually absolute. The host shows the file.
+   */
+  onOpenFile?(path: string): void;
   /** Tool name as shown, e.g. without an MCP server prefix. Default: friendlier names for common tools. */
   formatToolName?(name: string): string;
   /**
@@ -152,6 +160,9 @@ export interface AgentChatProps {
  * reports what the user does through callbacks. It runs nothing, fetches nothing and holds no
  * token; the host owns the `AgentSession`. Import `genaicode/react/styles.css` once.
  */
+/** The host's `onOpenFile`, for the entries deep in the transcript. */
+const OpenFile = createContext<AgentChatProps['onOpenFile']>(undefined);
+
 export function AgentChat(props: AgentChatProps) {
   const state = props.state ?? NO_SESSION;
   const [draft, setDraft] = useState('');
@@ -331,157 +342,139 @@ export function AgentChat(props: AgentChatProps) {
   const footer = props.renderFooter?.();
 
   return (
-    <div
-      className={rootClass}
-      data-theme={theme}
-      data-status={state.status}
-      style={props.style}
-      onDrop={onDrop}
-      onDragOver={onDragOver}
-    >
-      {props.header !== undefined ? (
-        props.header
-      ) : (
-        <div className="gc-header">
-          {state.agent ? (
-            <span className="gc-avatar" aria-hidden="true">
-              {state.agent.slice(0, 2)}
-            </span>
-          ) : null}
-          <b className="gc-agent">{state.agent || 'Agent'}</b>
-          {state.model ? <span className="gc-model">{state.model}</span> : null}
-          {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
-          <span className="gc-spacer" />
-          {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
-          {usage ? <span className="gc-chip">{usage}</span> : null}
-          {limits.map((chip) => (
-            <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
-              {chip.text}
-            </span>
-          ))}
-          {props.headerExtras}
-        </div>
-      )}
-      <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
-        <div className="gc-thread" role="log" aria-live="polite">
-          {state.turns.length === 0
-            ? (props.emptyState ?? (
-                <div className="gc-empty">
-                  <div className="gc-empty-title">What should {agentName} work on?</div>
-                </div>
-              ))
-            : null}
-          {items}
-          {footer !== undefined && footer !== null && footer !== false ? (
-            <div className="gc-footer-slot">{footer}</div>
-          ) : null}
-        </div>
-      </div>
-      <div className="gc-composer">
-        {state.queued.length ? (
-          <div className="gc-queued">
-            {state.queued.map((prompt, i) => {
-              const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
-              return shown === null || shown === undefined || shown === false ? null : <span key={i}>⏸ {shown}</span>;
-            })}
-          </div>
-        ) : null}
-        {choice ? (
-          <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
-            {offered.map((one, index) => (
-              <li
-                key={one.name}
-                id={optionId(index)}
-                ref={one === choice ? chosen : undefined}
-                role="option"
-                aria-selected={one === choice}
-                // Before the box loses focus.
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  complete(one);
-                }}
-              >
-                <span className="gc-completion-name">
-                  <b>{one.name}</b>
-                  {one.args ? <code>{one.args}</code> : null}
-                </span>
-                {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
-              </li>
+    <OpenFile.Provider value={props.onOpenFile}>
+      <div
+        className={rootClass}
+        data-theme={theme}
+        data-status={state.status}
+        style={props.style}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+      >
+        {props.header !== undefined ? (
+          props.header
+        ) : (
+          <div className="gc-header">
+            {state.agent ? (
+              <span className="gc-avatar" aria-hidden="true">
+                {state.agent.slice(0, 2)}
+              </span>
+            ) : null}
+            <b className="gc-agent">{state.agent || 'Agent'}</b>
+            {state.model ? <span className="gc-model">{state.model}</span> : null}
+            {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
+            <span className="gc-spacer" />
+            {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
+            {usage ? <span className="gc-chip">{usage}</span> : null}
+            {limits.map((chip) => (
+              <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
+                {chip.text}
+              </span>
             ))}
-          </ul>
-        ) : null}
-        {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
-        {attached.problem ? (
-          <div className="gc-attach-problem" role="alert">
-            {attached.problem}
+            {props.headerExtras}
           </div>
-        ) : null}
-        <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
-          <textarea
-            ref={input}
-            rows={1}
-            autoFocus={props.autoFocus}
-            value={draft}
-            placeholder={placeholder}
-            aria-label="Message"
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setPicked(0);
-              setClosedAt(undefined);
-            }}
-            aria-autocomplete={props.completions ? 'list' : undefined}
-            role={props.completions ? 'combobox' : undefined}
-            aria-expanded={props.completions ? !!choice : undefined}
-            aria-controls={choice ? listId : undefined}
-            aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-          />
-          {attached.enabled ? (
-            <>
-              <input
-                ref={picker}
-                type="file"
-                multiple
-                hidden
-                accept={attached.accept}
-                onChange={(event) => {
-                  if (event.target.files) attached.add(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              <button
-                type="button"
-                className="gc-btn gc-icon"
-                aria-label="Attach files"
-                title="Attach files (or paste, or drop them here)"
-                disabled={attached.files.length >= attached.max}
-                onClick={() => picker.current?.click()}
-              >
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                  <path
-                    d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              {attached.canRecord ? (
+        )}
+        <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
+          <div className="gc-thread" role="log" aria-live="polite">
+            {state.turns.length === 0
+              ? (props.emptyState ?? (
+                  <div className="gc-empty">
+                    <div className="gc-empty-title">What should {agentName} work on?</div>
+                  </div>
+                ))
+              : null}
+            {items}
+            {footer !== undefined && footer !== null && footer !== false ? (
+              <div className="gc-footer-slot">{footer}</div>
+            ) : null}
+          </div>
+        </div>
+        <div className="gc-composer">
+          {state.queued.length ? (
+            <div className="gc-queued">
+              {state.queued.map((prompt, i) => {
+                const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
+                return shown === null || shown === undefined || shown === false ? null : (
+                  <span key={i}>⏸ {shown}</span>
+                );
+              })}
+            </div>
+          ) : null}
+          {choice ? (
+            <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+              {offered.map((one, index) => (
+                <li
+                  key={one.name}
+                  id={optionId(index)}
+                  ref={one === choice ? chosen : undefined}
+                  role="option"
+                  aria-selected={one === choice}
+                  // Before the box loses focus.
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    complete(one);
+                  }}
+                >
+                  <span className="gc-completion-name">
+                    <b>{one.name}</b>
+                    {one.args ? <code>{one.args}</code> : null}
+                  </span>
+                  {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
+          {attached.problem ? (
+            <div className="gc-attach-problem" role="alert">
+              {attached.problem}
+            </div>
+          ) : null}
+          <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
+            <textarea
+              ref={input}
+              rows={1}
+              autoFocus={props.autoFocus}
+              value={draft}
+              placeholder={placeholder}
+              aria-label="Message"
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setPicked(0);
+                setClosedAt(undefined);
+              }}
+              aria-autocomplete={props.completions ? 'list' : undefined}
+              role={props.completions ? 'combobox' : undefined}
+              aria-expanded={props.completions ? !!choice : undefined}
+              aria-controls={choice ? listId : undefined}
+              aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+            />
+            {attached.enabled ? (
+              <>
+                <input
+                  ref={picker}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={attached.accept}
+                  onChange={(event) => {
+                    if (event.target.files) attached.add(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
                 <button
                   type="button"
-                  className={`gc-btn gc-icon${attached.recording ? ' gc-recording' : ''}`}
-                  aria-label={attached.recording ? 'Stop recording' : 'Record a voice message'}
-                  aria-pressed={attached.recording}
-                  title={attached.recording ? 'Stop recording' : 'Record a voice message'}
-                  disabled={!attached.recording && attached.files.length >= attached.max}
-                  onClick={() => void attached.toggleRecording()}
+                  className="gc-btn gc-icon"
+                  aria-label="Attach files"
+                  title="Attach files (or paste, or drop them here)"
+                  disabled={attached.files.length >= attached.max}
+                  onClick={() => picker.current?.click()}
                 >
                   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                     <path
-                      d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5.5 11.5a6.5 6.5 0 0013 0M12 18v3"
+                      d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
@@ -490,27 +483,49 @@ export function AgentChat(props: AgentChatProps) {
                     />
                   </svg>
                 </button>
-              ) : null}
-            </>
-          ) : null}
-          {stacked ? <span className="gc-grow" /> : null}
-          {hasExtras ? extras : null}
-          {(running || props.canStop) && props.onStop ? (
-            <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
-              Stop
+                {attached.canRecord ? (
+                  <button
+                    type="button"
+                    className={`gc-btn gc-icon${attached.recording ? ' gc-recording' : ''}`}
+                    aria-label={attached.recording ? 'Stop recording' : 'Record a voice message'}
+                    aria-pressed={attached.recording}
+                    title={attached.recording ? 'Stop recording' : 'Record a voice message'}
+                    disabled={!attached.recording && attached.files.length >= attached.max}
+                    onClick={() => void attached.toggleRecording()}
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                      <path
+                        d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5.5 11.5a6.5 6.5 0 0013 0M12 18v3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            {stacked ? <span className="gc-grow" /> : null}
+            {hasExtras ? extras : null}
+            {(running || props.canStop) && props.onStop ? (
+              <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
+                Stop
+              </button>
+            ) : null}
+            <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
+              {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
             </button>
-          ) : null}
-          <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
-            {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
-          </button>
-        </div>
-        {props.hint === null ? null : (
-          <div className="gc-hint">
-            {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
           </div>
-        )}
+          {props.hint === null ? null : (
+            <div className="gc-hint">
+              {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </OpenFile.Provider>
   );
 }
 
@@ -716,12 +731,14 @@ function Entry({
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
 }) {
+  const openFile = useContext(OpenFile);
   switch (entry.kind) {
     case 'text':
       return <Markdown text={entry.text} streaming={entry.streaming} />;
     case 'tool': {
       const argument = toolArgument(entry.input, cwd);
       const diff = toolDiff(entry.input);
+      const file = openFile ? toolPath(entry.input) : undefined;
       const output = entry.output?.trim();
       return (
         <details className="gc-tool">
@@ -738,6 +755,11 @@ function Entry({
               </span>
             ) : null}
           </summary>
+          {file ? (
+            <button type="button" className="gc-open-file" onClick={() => openFile?.(file)}>
+              Open {relativePath(file, cwd)}
+            </button>
+          ) : null}
           {diff ? (
             <div className="gc-diff">
               {diff.lines.map((line, index) => (
@@ -759,9 +781,15 @@ function Entry({
       return (
         <div className="gc-files">
           <span>✎ Edited</span>
-          {entry.paths.map((path) => (
-            <code key={path}>{relativePath(path, cwd)}</code>
-          ))}
+          {entry.paths.map((path) =>
+            openFile ? (
+              <button key={path} type="button" className="gc-open-file" onClick={() => openFile(path)}>
+                {relativePath(path, cwd)}
+              </button>
+            ) : (
+              <code key={path}>{relativePath(path, cwd)}</code>
+            ),
+          )}
         </div>
       );
     case 'artifact': {
