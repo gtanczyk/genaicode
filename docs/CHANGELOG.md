@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.45.0 — 2026-11-21
+
 ### Added
 
 - `genaicode topics refresh` puts the sessions Claude Code ran for a claude.ai project (`SessionInfo.project`, read from the session) in a topic named as that project, without asking an agent (`projectTopics()`); `--again` sorts everything anew (#244)
