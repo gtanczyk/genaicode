@@ -5,7 +5,7 @@ import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } fro
 import { readLive, withLive, type LiveRecord } from './live.js';
 import { readArchive, withArchive } from './archive.js';
 import { withCommandPreviews } from './approval-previews.js';
-import { mapLimited } from './files.js';
+import { isScratchDir, mapLimited } from './files.js';
 
 import { replyEnding } from './group.js';
 import { isTopicsRun, readTopics } from './topics.js';
@@ -117,8 +117,9 @@ export async function listSessions(
   const errors: SessionListing['errors'] = [];
   // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
   const runs = new Set((await readTopics(query.env)).runs);
+  // Nor is what ran in a temporary directory or in a worktree genaicode made for a delegated task.
   const marked = (entry: SessionInfo): SessionInfo =>
-    isTopicsRun(entry, runs) ? { ...entry, automated: true } : entry;
+    !entry.automated && (isTopicsRun(entry, runs) || isScratchDir(entry.cwd)) ? { ...entry, automated: true } : entry;
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>

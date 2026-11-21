@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { EXIT_OK, main as runCli } from '../../cli/main.js';
+import type { SessionInfo } from './types.js';
 import {
   claudeSessions,
   codexSessions,
@@ -265,6 +266,39 @@ describe('session sources', () => {
     // The automated one took the only place: more are read, so the listing is still full.
     const one = await listSessions([source], { limit: 1, live: false, env: { HOME: join(root, 'nobody') } });
     expect(one.sessions.map((entry) => entry.id)).toEqual(['answered']);
+  });
+
+  it('leaves out what ran in a temporary directory or in a worktree genaicode made', async () => {
+    const at = (id: string, cwd: string): SessionInfo => ({
+      source: 'any',
+      agent: 'any',
+      id,
+      where: 'local',
+      cwd,
+      updatedAt: 1,
+    });
+    const source: SessionSource = {
+      name: 'any',
+      where: 'local',
+      list: async () => [
+        at('typed', '/Users/me/src/app'),
+        at('temp', '/var/folders/ab/T/run-1'),
+        at('tmp', '/private/tmp/bench'),
+        at('delegated', '/Users/me/src/app/.genaicode/worktrees/t1/app'),
+        // A directory that only starts like one of those.
+        at('near', '/tmpfiles/app'),
+      ],
+    };
+    const env = { HOME: join(root, 'nobody') };
+    const shown = await listSessions([source], { live: false, env });
+    expect(shown.sessions.map((entry) => entry.id).sort()).toEqual(['near', 'typed']);
+    const all = await listSessions([source], { automated: true, live: false, env });
+    expect(
+      all.sessions
+        .filter((entry) => entry.automated)
+        .map((entry) => entry.id)
+        .sort(),
+    ).toEqual(['delegated', 'temp', 'tmp']);
   });
 
   it('reads what the end of a message asks of the user', () => {

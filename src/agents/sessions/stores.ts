@@ -13,6 +13,7 @@ import {
   readJson,
   select,
   timeOf,
+  isAgentWorktree,
 } from './files.js';
 import { number, queryDatabase, tableColumns, text, type Row } from './sqlite.js';
 import type { SessionTurn } from '../session.js';
@@ -205,6 +206,7 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
           'status',
           'nesting_depth',
           'parent_conversation_id',
+          'source',
         ]);
         for (const row of found) {
           const id = text(row.conversation_id);
@@ -214,6 +216,8 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
           const known = byId.get(id);
           if (known && known.updatedAt >= updatedAt) continue;
           const status = text(row.status) ?? '';
+          const cwd = firstFileUri(row.workspace_uris);
+          const headless = text(row.source) === 'CORTEX_TRAJECTORY_SOURCE_CLI';
           byId.set(
             id,
             session({
@@ -221,7 +225,10 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
               agent: 'antigravity',
               id,
               where: 'local',
-              cwd: firstFileUri(row.workspace_uris),
+              cwd,
+              // Started from the command line by a program, outside any project: a test or an agent's errand.
+              // A CLI run in a project stays: it can be somebody's chat in an app built on genaicode.
+              automated: headless && (!cwd || isAgentWorktree(cwd)) ? true : undefined,
               title: title(row.title) ?? title(row.preview),
               updatedAt,
               state: status.endsWith('_RUNNING') ? 'active' : status.endsWith('_IDLE') ? 'waiting' : undefined,

@@ -317,6 +317,42 @@ describe('agent session stores', () => {
     expect(sessions[0]!.updatedAt).toBe(T + 484);
   });
 
+  it('marks Antigravity runs a program started outside any project', async () => {
+    const cliHome = { ...env, HOME: join(home, 'agy-cli') };
+    const cli = 'CORTEX_TRAJECTORY_SOURCE_CLI';
+    const at = '2026-11-10 12:00:00+00:00';
+    database(
+      join(cliHome.HOME, '.gemini', 'antigravity', 'conversation_summaries.db'),
+      'CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, title, last_modified_time, workspace_uris, source)',
+      'conversation_summaries',
+      [
+        { conversation_id: 'app', last_modified_time: at, workspace_uris: '["file:///work/ops"]', source: '' },
+        // A chat in an app built on genaicode runs the CLI in its project: somebody typed it.
+        { conversation_id: 'studio', last_modified_time: at, workspace_uris: '["file:///work/diorama"]', source: cli },
+        { conversation_id: 'errand', last_modified_time: at, workspace_uris: '[]', source: cli },
+        {
+          conversation_id: 'test',
+          last_modified_time: at,
+          workspace_uris: '["file:///Users/me/.gemini/antigravity/worktrees/genaicode/x"]',
+          source: cli,
+        },
+        {
+          conversation_id: 'task',
+          last_modified_time: at,
+          workspace_uris: '["file:///Users/me/.gemini/antigravity/worktrees/genaicode/y"]',
+          source: '',
+        },
+      ],
+    );
+    const sessions = await antigravitySessions().list({ env: cliHome });
+    expect(
+      sessions
+        .filter((session) => session.automated)
+        .map((session) => session.id)
+        .sort(),
+    ).toEqual(['errand', 'test']);
+  });
+
   it('reads Copilot workspaces and their events', async () => {
     const state = join(home, '.copilot', 'session-state');
     write(
