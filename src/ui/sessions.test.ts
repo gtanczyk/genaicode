@@ -111,28 +111,19 @@ describe('the Sessions view', () => {
         text: 'Done.',
       });
       expect(calls).toEqual([['echo', 'a b', 'go', 'read-only']]);
-      // Cookie auth works from the UI's own origin and rejects cross-origin requests.
-      const login = await fetch(ui.url, { redirect: 'manual' });
-      const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0]!;
+      // The reload-shell cookie never authorizes session sends, even with matching Origin.
+      const page = await fetch(ui.url);
+      const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0]!;
       const origin = new URL(ui.url).origin;
       expect(
         (
           await fetch(new URL('/api/sessions/echo/id/send', ui.url), {
             method: 'POST',
-            headers: { 'content-type': 'application/json', cookie, origin: 'http://127.0.0.1:3000' },
+            headers: { 'content-type': 'application/json', cookie, origin, 'sec-fetch-site': 'same-origin' },
             body: JSON.stringify({ prompt: 'go' }),
           })
         ).status,
       ).toBe(403);
-      expect(
-        await (
-          await fetch(new URL('/api/sessions/echo/id/send', ui.url), {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', cookie, origin },
-            body: JSON.stringify({ prompt: 'go' }),
-          })
-        ).json(),
-      ).toEqual({ ok: true, text: 'Done.' });
       const busy = await post('busy', { prompt: 'go' });
       expect(busy.status).toBe(409);
       expect(await busy.json()).toEqual({ error: 'A prompt is already running in this session.' });
@@ -168,27 +159,18 @@ describe('the Sessions view', () => {
             }
           : {}),
       });
-    const openPage = async (url: string) => {
-      const login = await fetch(url, { redirect: 'manual' });
-      expect(login.status).toBe(303);
-      const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0]!;
-      const page = await fetch(new URL('/', url), { headers: { cookie } });
-      expect(page.status).toBe(200);
-      return { html: await page.text(), cookie };
-    };
     const ui = await start(true);
     const base = ui.url.replace(/\/\?.*$/, '');
     try {
-      const { html, cookie } = await openPage(ui.url);
-      expect(html).toContain('data-sessions="1"');
+      const page = await fetch(ui.url);
+      const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0]!;
+      expect(await page.text()).toContain('data-sessions="1"');
+      // Reload shell served via cookie omits session metadata and does not authorize /api/sessions.
+      expect(await (await fetch(`${base}/`, { headers: { cookie } })).text()).not.toContain('data-sessions');
       expect((await fetch(`${base}/api/sessions`)).status).toBe(403);
       expect(
-        (await fetch(`${base}/api/sessions`, { headers: { cookie, 'sec-fetch-site': 'cross-site' } })).status,
-      ).toBe(403);
-      expect(
         (await fetch(`${base}/api/sessions`, { headers: { cookie, 'sec-fetch-site': 'same-origin' } })).status,
-      ).toBe(200);
-      queries.length = 0;
+      ).toBe(403);
       const before = Date.now();
       const res = await fetch(`${base}/api/sessions?days=7`, { headers: { 'x-genaicode-token': 't0k' } });
       expect(res.status).toBe(200);
@@ -205,7 +187,7 @@ describe('the Sessions view', () => {
     }
     const plain = await start(false);
     try {
-      expect((await openPage(plain.url)).html).not.toContain('data-sessions');
+      expect(await (await fetch(plain.url)).text()).not.toContain('data-sessions');
       const res = await fetch(`${plain.url.replace(/\/\?.*$/, '')}/api/sessions`, {
         headers: { 'x-genaicode-token': 't0k' },
       });

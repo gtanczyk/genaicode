@@ -57,14 +57,9 @@ export function Sessions({
   const [copied, setCopied] = useState<string>();
   const [round, setRound] = useState(0);
 
-  const authHeaders = useMemo<Record<string, string> | undefined>(
-    () => (token ? { 'x-genaicode-token': token } : undefined),
-    [token],
-  );
-
   useEffect(() => {
     let current = true;
-    fetch(`/api/sessions?days=${days}`, authHeaders ? { headers: authHeaders } : undefined)
+    fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
         return (await res.json()) as WebSessionListing;
@@ -80,7 +75,7 @@ export function Sessions({
     return () => {
       current = false;
     };
-  }, [days, authHeaders, round]);
+  }, [days, token, round]);
 
   const all = listing?.sessions ?? [];
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
@@ -95,7 +90,7 @@ export function Sessions({
       for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
         const res = await fetch('/api/archive', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', ...authHeaders },
+          headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
           body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
         });
         if (!res.ok) return `The server answered ${res.status}.`;
@@ -130,7 +125,7 @@ export function Sessions({
     setAnswering(ask.id);
     fetch(`/api/asks/${ask.id}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeaders },
+      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ behavior, ...(message ? { message } : {}) }),
     })
       .then((res) =>

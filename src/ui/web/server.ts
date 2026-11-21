@@ -175,8 +175,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const { controller } = options;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
-  // Separate secret for the HttpOnly session cookie so the printed URL token never sits in Cookie headers.
-  const cookieSecret = randomBytes(32).toString('hex');
+  // Separate secret for the reload-shell cookie only; cookies are shared across ports on the host,
+  // so this cookie never authorizes /api/* endpoints and never returns cwd/session metadata.
+  const pageCookieSecret = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
   const lifetime = new AbortController();
   let port = 0;
@@ -195,37 +196,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     for (const part of header.split(';')) {
       const eq = part.indexOf('=');
       if (eq === -1) continue;
-      if (part.slice(0, eq).trim() === expectedName && secretOk(part.slice(eq + 1).trim(), cookieSecret)) ok = true;
+      if (part.slice(0, eq).trim() === expectedName && secretOk(part.slice(eq + 1).trim(), pageCookieSecret)) ok = true;
     }
     return ok;
-  };
-  // Cookie-authenticated API requests must come from this origin (guards against CSRF and other local ports).
-  const cookieAuthOk = (req: IncomingMessage, url: URL) => {
-    if (!cookieOk(req)) return false;
-    const site = req.headers['sec-fetch-site'];
-    if (site !== undefined && site !== 'same-origin') return false;
-    if (req.headers['sec-fetch-mode'] === 'navigate') return false;
-    const origin = req.headers.origin;
-    if (origin !== undefined) {
-      try {
-        if (new URL(origin).origin !== url.origin) return false;
-      } catch {
-        return false;
-      }
-    } else if (req.method !== 'GET' && site !== 'same-origin') {
-      return false;
-    }
-    return true;
-  };
-  const apiAuthorized = (req: IncomingMessage, url: URL) => {
-    const header = req.headers['x-genaicode-token'];
-    if (header !== undefined) return typeof header === 'string' && tokenOk(header);
-    return cookieAuthOk(req, url);
-  };
-  const eventsAuthorized = (req: IncomingMessage, url: URL) => {
-    const query = url.searchParams.get('token');
-    if (query !== null) return tokenOk(query);
-    return cookieAuthOk(req, url);
   };
   const send = (
     res: ServerResponse,
@@ -268,16 +241,22 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         if (!tokenOk(queryToken)) {
           return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
         }
-        if (!inFrame) {
-          return send(res, 303, 'text/plain', '', {
-            location: '/',
-            'set-cookie': sessionCookies(req.headers.cookie, cookieName(), cookieSecret),
-          });
-        }
-      } else if (!cookieOk(req)) {
+        return send(
+          res,
+          200,
+          'text/html; charset=utf-8',
+          pageHtml({ ...options.title, sessions: !!options.sessions, stripToken: !inFrame }),
+          {
+            'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
+            ...(inFrame ? {} : { 'set-cookie': sessionCookies(req.headers.cookie, cookieName(), pageCookieSecret) }),
+          },
+        );
+      }
+      if (!cookieOk(req)) {
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
       }
-      return send(res, 200, 'text/html; charset=utf-8', pageHtml({ ...options.title, sessions: !!options.sessions }), {
+      // Reload shell only: holds no cwd or session metadata because cookies are shared across ports on the host.
+      return send(res, 200, 'text/html; charset=utf-8', pageHtml({ version: options.title.version, cwd: '' }), {
         'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
       });
     }
@@ -305,7 +284,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return res.end(response.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
-      if (!eventsAuthorized(req, url)) return send(res, 403, 'text/plain', 'Bad token');
+      const header = req.headers['x-genaicode-token'];
+      const candidate =
+        header !== undefined ? (typeof header === 'string' ? header : null) : url.searchParams.get('token');
+      if (!tokenOk(candidate)) return send(res, 403, 'text/plain', 'Bad token');
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
@@ -314,6 +296,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         connection: 'keep-alive',
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
+      res.write(`event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions })}\n\n`);
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
@@ -323,7 +306,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/sessions') {
-      if (!apiAuthorized(req, url)) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.sessions) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
@@ -335,7 +318,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
     if (req.method === 'POST' && target) {
-      if (!apiAuthorized(req, url)) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.sendPrompt) return send(res, 404, 'application/json', '{"error":"no session sender here"}');
@@ -376,7 +359,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);
     if (req.method === 'POST' && asked) {
-      if (!apiAuthorized(req, url)) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.answer) return send(res, 404, 'application/json', '{"error":"no questions here"}');
@@ -398,7 +381,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
     }
     if (req.method === 'POST' && url.pathname === '/api/archive') {
-      if (!apiAuthorized(req, url)) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.archive) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
@@ -430,7 +413,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return send(res, 200, 'application/json', JSON.stringify({ changed }));
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
-      if (!apiAuthorized(req, url)) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {

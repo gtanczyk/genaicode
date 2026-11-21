@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- `genaicode ui` (and `chat --web` / `tower`) exchanges the `?token=` URL parameter for a port-scoped `HttpOnly` session cookie and redirects to `/` so the access token does not stay in the browser address bar or history (#236)
+- `genaicode ui` (and `chat --web` / `tower`) strips `?token=` from the browser address bar into origin-isolated `sessionStorage`, sends the token in headers for `/api/events` and commands, and keeps reloads working via a reload-only `HttpOnly` shell cookie (#236)
 - `sessions --waiting --json --watch` reads every agent's session store on each fifth look only, and at once when a hook reports something new, so a watch left open uses far less CPU (#232)
 
 ## 2.42.0 — 2026-11-21

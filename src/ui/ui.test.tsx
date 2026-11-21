@@ -796,34 +796,40 @@ describe('web UI server', () => {
       const port = new URL(ui.url).port;
       const origin = new URL(ui.url).origin;
       expect((await fetch(base)).status).toBe(403);
-      expect((await fetch(`${base}?token=wrong`, { redirect: 'manual' })).status).toBe(403);
+      expect((await fetch(`${base}?token=wrong`)).status).toBe(403);
 
-      // Opening the tokenized link exchanges it for a port-scoped HttpOnly cookie and cleans the URL.
-      const login = await fetch(ui.url, { redirect: 'manual' });
-      expect(login.status).toBe(303);
-      expect(login.headers.get('location')).toBe('/');
-      const setCookie = login.headers.get('set-cookie') ?? '';
+      // Opening the tokenized link sets a reload-shell cookie and includes the pre-paint URL cleaner.
+      const page = await fetch(ui.url);
+      expect(page.status).toBe(200);
+      expect(page.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      const setCookie = page.headers.get('set-cookie') ?? '';
       expect(setCookie).toMatch(new RegExp(`^genaicode_${port}=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Path=/$`));
       expect(setCookie).not.toContain('t0k');
       const cookie = setCookie.split(';')[0]!;
+      const cookieValue = cookie.split('=')[1]!;
+      const html = await page.text();
+      expect(html).toContain('data-cwd="/w &lt;&amp;&gt;"');
+      expect(html).toContain('history.replaceState');
 
-      const page = await fetch(base, { headers: { cookie } });
-      expect(page.status).toBe(200);
-      expect(page.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
-      expect(await page.text()).toContain('data-cwd="/w &lt;&amp;&gt;"');
+      // Reloading / with the cookie serves an empty shell without leaking cwd or session metadata.
+      const reload = await fetch(base, { headers: { cookie } });
+      expect(reload.status).toBe(200);
+      expect(reload.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      const reloadHtml = await reload.text();
+      expect(reloadHtml).toContain('data-cwd=""');
+      expect(reloadHtml).not.toContain('history.replaceState');
+
       // A wrong query token is still rejected even when the browser holds a valid cookie.
-      expect((await fetch(`${base}?token=wrong`, { headers: { cookie }, redirect: 'manual' })).status).toBe(403);
-      // Framed loads stay on 200 without setting a cookie so cross-site dev overlays work.
-      const framed = await fetch(ui.url, { headers: { 'sec-fetch-dest': 'iframe' }, redirect: 'manual' });
+      expect((await fetch(`${base}?token=wrong`, { headers: { cookie } })).status).toBe(403);
+      // Framed loads keep the token in the iframe URL without setting a cookie or stripping it.
+      const framed = await fetch(ui.url, { headers: { 'sec-fetch-dest': 'iframe' } });
       expect(framed.status).toBe(200);
       expect(framed.headers.get('set-cookie')).toBeNull();
+      expect(await framed.text()).not.toContain('history.replaceState');
 
       // Excess stale genaicode_<port> cookies from prior runs are expired, leaving unrelated cookies alone.
       const stale = Array.from({ length: 9 }, (_, i) => `genaicode_${1000 + i}=old`).join('; ');
-      const pruned = await fetch(ui.url, {
-        headers: { cookie: `other=keep; ${stale}` },
-        redirect: 'manual',
-      });
+      const pruned = await fetch(ui.url, { headers: { cookie: `other=keep; ${stale}` } });
       const prunedSet = pruned.headers.getSetCookie();
       expect(prunedSet).toHaveLength(3);
       expect(prunedSet[0]).toMatch(new RegExp(`^genaicode_${port}=`));
@@ -844,46 +850,33 @@ describe('web UI server', () => {
           headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
           body: JSON.stringify(body),
         });
-      const postCookie = (body: unknown, headers: Record<string, string> = {}) =>
-        fetch(`${base}api/command`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', cookie, ...headers },
-          body: JSON.stringify(body),
-        });
       expect((await post({ type: 'submit', text: 'hi' }, 'wrong')).status).toBe(403);
+      expect((await post({ type: 'submit', text: 'hi' }, cookieValue)).status).toBe(403);
       expect((await post({ type: 'shell', text: 'hi' })).status).toBe(400);
-      // Cookie-authenticated POST requires a matching same-origin request (blocks CSRF and other local ports).
-      expect((await postCookie({ type: 'stop' })).status).toBe(403);
-      expect((await postCookie({ type: 'stop' }, { origin: 'http://127.0.0.1:3000' })).status).toBe(403);
-      expect((await postCookie({ type: 'stop' }, { origin, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
-      expect((await postCookie({ type: 'stop' }, { origin, 'sec-fetch-site': 'same-site' })).status).toBe(403);
-      expect((await postCookie({ type: 'stop' }, { origin, 'x-genaicode-token': 'wrong' })).status).toBe(403);
-      expect(await (await postCookie({ type: 'stop' }, { origin })).json()).toEqual({ ok: true });
+      // Replaying the reload cookie from another local service on 127.0.0.1 never authorizes /api/*.
+      expect(
+        (
+          await fetch(`${base}api/command`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', cookie, origin, 'sec-fetch-site': 'same-origin' },
+            body: JSON.stringify({ type: 'stop' }),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (await fetch(`${base}api/events`, { headers: { cookie, origin, 'sec-fetch-site': 'same-origin' } })).status,
+      ).toBe(403);
+      expect((await fetch(`${base}api/events`, { headers: { 'x-genaicode-token': cookieValue } })).status).toBe(403);
 
-      expect((await fetch(`${base}api/events`, { headers: { cookie, 'sec-fetch-site': 'cross-site' } })).status).toBe(
-        403,
-      );
-      expect((await fetch(`${base}api/events`, { headers: { cookie, 'sec-fetch-site': 'same-site' } })).status).toBe(
-        403,
-      );
-      // Use node:http directly because fetch overwrites Sec-Fetch-Mode with "cors".
-      const navigateEvents = await new Promise<number>((resolve, reject) => {
-        const req = request(`${base}api/events`, { headers: { cookie, 'sec-fetch-mode': 'navigate' } }, (res) => {
-          res.resume();
-          resolve(res.statusCode ?? 0);
-        });
-        req.on('error', reject);
-        req.end();
-      });
-      expect(navigateEvents).toBe(403);
-      expect((await fetch(`${base}api/events`, { headers: { cookie, origin: 'http://127.0.0.1:3000' } })).status).toBe(
-        403,
-      );
-      const cookieEvents = await fetch(`${base}api/events`, {
-        headers: { cookie, 'sec-fetch-site': 'same-origin' },
-      });
-      expect(cookieEvents.status).toBe(200);
-      await cookieEvents.body!.cancel();
+      // /api/events accepts x-genaicode-token so browsers do not put the token in the SSE URL.
+      const headerEvents = await fetch(`${base}api/events`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(headerEvents.status).toBe(200);
+      const headerReader = headerEvents.body!.getReader();
+      let initial = '';
+      while (!initial.includes('event: config')) initial += new TextDecoder().decode((await headerReader.read()).value);
+      expect(initial).toContain('event: view\n');
+      expect(initial).toContain('"cwd":"/w <&>"');
+      await headerReader.cancel();
 
       const events = await fetch(`${base}api/events?token=t0k`);
       expect(events.headers.get('content-type')).toBe('text/event-stream');
@@ -1046,7 +1039,7 @@ describe('web UI server', () => {
     });
     await until(() => /Open (\S+)/.test(errors));
     const url = /Open (\S+)/.exec(errors)![1];
-    expect((await fetch(url, { redirect: 'manual' })).status).toBe(303);
+    expect((await fetch(url)).status).toBe(200);
     (stdin as unknown as PassThrough).end();
     expect(await done).toBe(0);
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
