@@ -36,15 +36,16 @@ struct Shell {
     server: Option<Server>,
     /// Bumped on every start, so the reader of a replaced server stays quiet.
     generation: u64,
-    /// PATH of the user's login shell, read once: where their agent CLIs live.
-    path: Option<String>,
+    /// The user's login shell environment, read once: where their agent CLIs live, their keys.
+    login: Option<Vec<(String, String)>>,
 }
 
 type ShellState = Mutex<Shell>;
 
-/// A GUI app starts with the system PATH, without what the shell profile adds (Homebrew, nvm,
-/// `~/.local/bin`), so `claude` or `codex` would not be found. Ask the login shell once.
-fn login_path() -> Option<String> {
+/// A GUI app starts with launchd's environment, without what the shell profile adds: PATH entries
+/// (Homebrew, nvm, `~/.local/bin`) and exported API keys, so `claude` or `codex` would not be found
+/// and providers would see no keys. Ask the login shell once and pass its whole environment on.
+fn login_env() -> Option<Vec<(String, String)>> {
     if cfg!(windows) {
         return None;
     }
@@ -52,19 +53,24 @@ fn login_path() -> Option<String> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let output = Command::new(shell)
-            .args(["-ilc", "printf '__GENAICODE_PATH__%s__END__' \"$PATH\""])
+            .args(["-ilc", "printf '__GENAICODE_ENV__'; env -0"])
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output();
         let _ = tx.send(output);
     });
-    // A profile that waits for input must not hold the app: go on with the PATH we have.
+    // A profile that waits for input must not hold the app: go on with the environment we have.
     let output = rx.recv_timeout(Duration::from_secs(5)).ok()?.ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    let start = text.find("__GENAICODE_PATH__")? + "__GENAICODE_PATH__".len();
-    let end = text[start..].find("__END__")? + start;
-    let path = text[start..end].trim();
-    (!path.is_empty()).then(|| path.to_string())
+    let start = text.find("__GENAICODE_ENV__")? + "__GENAICODE_ENV__".len();
+    let vars: Vec<(String, String)> = text[start..]
+        .split('\0')
+        .filter_map(|entry| entry.split_once('='))
+        // What belongs to that shell process, not to the user's setup.
+        .filter(|(name, _)| !matches!(*name, "PWD" | "OLDPWD" | "SHLVL" | "_"))
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect();
+    vars.iter().any(|(name, _)| name == "PATH").then_some(vars)
 }
 
 /// Node.js ships as an external binary beside the app's executable.
@@ -144,8 +150,8 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
     stop(&mut shell);
     shell.generation += 1;
     let generation = shell.generation;
-    if shell.path.is_none() {
-        shell.path = login_path();
+    if shell.login.is_none() {
+        shell.login = login_env();
     }
 
     let mut command = Command::new(node);
@@ -156,12 +162,13 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
         .current_dir(folder)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        // The app updates itself as a whole; the copy inside it must not look for newer ones.
-        .env("GENAICODE_NO_AUTO_UPDATE", "1");
-    if let Some(path) = &shell.path {
-        command.env("PATH", path);
+        .stderr(Stdio::piped());
+    if let Some(vars) = &shell.login {
+        command.envs(vars.iter().map(|(name, value)| (name, value)));
     }
+    // After the login environment, so a profile cannot turn it back on: the app updates itself
+    // as a whole, and the copy inside it must not look for newer ones.
+    command.env("GENAICODE_NO_AUTO_UPDATE", "1");
     let mut child = command
         .spawn()
         .map_err(|error| format!("Could not start genaicode: {error}"))?;
@@ -247,9 +254,17 @@ fn choose_folder(app: &AppHandle) {
         });
 }
 
+/// The start page's button. Only that bundled page can call it: the capability that allows it
+/// covers local content, not the `genaicode ui` page on 127.0.0.1.
+#[tauri::command]
+fn open_folder(app: AppHandle) {
+    choose_folder(&app);
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![open_folder])
         .manage(ShellState::default())
         .setup(|app| {
             let handle = app.handle();

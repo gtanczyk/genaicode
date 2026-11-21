@@ -32,15 +32,30 @@
         margin: 0 0 0.5rem;
       }
       p {
-        margin: 0;
+        margin: 0 0 1.25rem;
         opacity: 0.7;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1.25rem;
+        border-radius: 8px;
+        border: 0;
+        background: #3b5bdb;
+        color: #fff;
+        cursor: pointer;
       }
     </style>
   </head>
   <body>
     <main>
       <h1>genaicode</h1>
-      <p>Choose a project folder with Project → Open Folder… to start a chat with your coding agent.</p>
+      <p>Choose a project folder to start a chat with your coding agent there.</p>
+      <button id="open" type="button">Open Folder…</button>
     </main>
+    <script>
+      document.getElementById('open').addEventListener('click', () => {
+        window.__TAURI_INTERNALS__.invoke('open_folder');
+      });
+    </script>
   </body>
 </html>

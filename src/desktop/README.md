@@ -12,7 +12,7 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 | `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
 
 On start the shell asks for a project folder (remembered for next time, **Project → Open Folder…**
-changes it), reads `PATH` from your login shell so the agent CLIs are found, runs
+changes it), reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
 `node cli.js ui --no-open --exit-with-stdin --cwd <folder>` and shows the address that prints. The
 page gets no Tauri commands; it is the page a browser would load. Closing the app stops the server.
 

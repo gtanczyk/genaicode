@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-folder"
+description = "Show the folder picker and start genaicode in the chosen folder."
+commands.allow = ["open_folder"]
