@@ -111,6 +111,7 @@ export interface UiLaunch {
   sessionTools?: readonly McpTool[];
   towerInbox?: TowerInbox;
   waitingOnStart?: boolean;
+  startupNotice?: string;
   agent?: string;
   cwd: string;
   model?: string;
@@ -251,9 +252,10 @@ Notify options:
   tool, nothing of what was said. It needs "genaicode hooks install". "notify test" shows one now.
 
 Chat and UI options:
-  -a, --agent <name>      Agent to start with (default: the first installed one)
-      --pack <lead:list>  Start a pack, e.g. claude:codex,gemini. Follow its tasks in the chat
-                          In the tower, Ctrl+G opens approvals and proposed session messages
+  -a, --agent <name>      Agent to start with (default: the first installed one; with --pack, the lead)
+      --pack [lead:list]  Start a pack: omit the value to use all installed agents, or name them
+                          explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
+                          the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
@@ -595,10 +597,10 @@ async function runUi(
   const indexed = agentSessionSources(agents);
   let sessionAgents = agents;
   let towerInbox: TowerInbox | undefined;
+  let startupNotice: string | undefined;
   let initial = options.agent;
   if (options.pack) {
     const spec = options.pack;
-    if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
     if (options.mcpServers.some((server) => server.name === 'pack')) {
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
@@ -611,10 +613,43 @@ async function runUi(
         return agent;
       });
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
-    const lead = member(spec.lead);
-    if (!lead.capabilities.mcp) {
-      cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
-      return EXIT_USAGE;
+    let lead: CodingAgent;
+    let members: CodingAgent[];
+    if ('auto' in spec) {
+      const installed = detectAgents(packAgents, cli.env)
+        .filter((found) => found.path !== null)
+        .map((found) => found.agent);
+      if (options.agent !== undefined) {
+        if (!knownAgents(cli, agents, [options.agent], '--agent')) return EXIT_USAGE;
+        lead = member(options.agent);
+      } else {
+        const picked = installed.find((agent) => agent.capabilities.mcp);
+        if (!picked) {
+          const mcpNames = packAgents
+            .filter((agent) => agent.capabilities.mcp)
+            .map((agent) => agent.name)
+            .join(', ');
+          const hint = mcpNames ? ` (needs one of: ${mcpNames})` : '';
+          cli.stderr.write(`No installed agent with MCP support found for --pack${hint}.\n`);
+          return EXIT_USAGE;
+        }
+        lead = picked;
+      }
+      if (!lead.capabilities.mcp) {
+        cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
+        return EXIT_USAGE;
+      }
+      // Every installed agent joins the pack (including the lead).
+      members = installed.includes(lead) ? installed : [lead, ...installed];
+      startupNotice = `Pack: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
+    } else {
+      if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
+      lead = member(spec.lead);
+      if (!lead.capabilities.mcp) {
+        cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
+        return EXIT_USAGE;
+      }
+      members = spec.members.map(member);
     }
     if (options.sessions) {
       sessionAgents = packAgents;
@@ -622,7 +657,7 @@ async function runUi(
     }
     const team = pack({
       lead,
-      members: spec.members.map(member),
+      members,
       maxParallel: spec.maxParallel,
       sessionProposalTool: towerInbox?.proposalTool,
     });
@@ -662,6 +697,7 @@ async function runUi(
     ...(tools ? { sessionTools: tools } : {}),
     ...(towerInbox ? { towerInbox } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
+    ...(startupNotice ? { startupNotice } : {}),
     agent: initial,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
     model: options.model,

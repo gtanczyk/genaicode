@@ -160,6 +160,7 @@ npx genaicode                      # chat in this terminal (same as "genaicode c
 npx genaicode chat -a claude -C ../api
 npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
 npx genaicode chat --web           # both: the terminal and the browser on one session
+npx genaicode ui --pack            # pack using all installed agents (first MCP agent leads)
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
@@ -174,7 +175,8 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-With `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
+With `--pack` (all installed agents, first MCP-capable one leads; pass `-a <lead>` to choose the
+lead) or `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
 under its turn shows each worker's prompt, activity, result and changed files. The slot counter
 includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
 `--max-tokens` and `--max-cost` include the lead and its workers.
