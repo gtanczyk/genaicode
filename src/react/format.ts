@@ -138,8 +138,9 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
 
 /** `before` turned into `after`: the lines they share at both ends stay, the middle is replaced. */
 function changedLines(before: string, after: string): DiffLine[] {
-  const from = before.split('\n');
-  const to = after.split('\n');
+  // No text is no lines, not one empty line.
+  const from = before === '' ? [] : before.split('\n');
+  const to = after === '' ? [] : after.split('\n');
   let head = 0;
   while (head < from.length && head < to.length && from[head] === to[head]) head += 1;
   let tail = 0;

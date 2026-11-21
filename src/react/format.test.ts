@@ -7,7 +7,9 @@ describe('toolDiff', () => {
   it('reads one replacement, keeping the lines both ends share', () => {
     expect(shown({ file_path: 'a', old_string: 'x\ny\nz', new_string: 'x\nY\nz' })).toEqual([' x', '-y', '+Y', ' z']);
     expect(toolDiff({ oldString: 'a', newString: 'a\nb' })).toMatchObject({ added: 1, removed: 0, more: 0 });
-    // Text taken out.
+    // Text taken out, down to nothing, and put into nothing.
+    expect(shown({ old_string: 'remove me', new_string: '' })).toEqual(['-remove me']);
+    expect(shown({ old_string: '', new_string: 'new' })).toEqual(['+new']);
     expect(shown({ old_str: 'a\nb', new_str: 'a' })).toEqual([' a', '-b']);
   });
 
