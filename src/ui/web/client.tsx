@@ -70,9 +70,12 @@ async function sendPrompt(text: string, files: File[] = [], stopped = () => fals
   return sent ? undefined : 'Not sent: genaicode did not take the message.';
 }
 
-const STOPPED = 'Not sent: stopped before it left.';
+const STOPPED = 'Not sent: stopped, or the conversation changed, before it left.';
 
-/** How many times Stop was pressed: a prompt still waiting here when it is does not leave. */
+/**
+ * How many times the user stopped the agent or moved to another agent or conversation: a prompt
+ * still waiting here when that happens does not leave.
+ */
 let stops = 0;
 
 /** Prompts leave in the order they were sent, also while the files of an earlier one upload. */
@@ -276,6 +279,8 @@ function App() {
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   const limits = session ? limitChips({ ...session, rateLimits }) : [];
+  // A setting takes effect now: it does not wait behind a prompt whose files still upload.
+  const control = (text: string) => void command({ type: 'submit', text });
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
   const submit = (text: string, files?: File[]): Promise<boolean> => {
@@ -303,7 +308,11 @@ function App() {
           title="The agent the next prompt goes to"
           value={session.agent}
           disabled={running}
-          onChange={(event) => void command({ type: 'agent', name: event.target.value })}
+          onChange={(event) => {
+            // What still waits here was meant for the other agent.
+            stops += 1;
+            void command({ type: 'agent', name: event.target.value });
+          }}
         >
           {view.agents.map((agent) => (
             <option key={agent.name} value={agent.name}>
@@ -335,7 +344,7 @@ function App() {
               : 'The agent asks before commands and edits it needs permission for'
           }
           aria-pressed={view.autoApprove}
-          onClick={() => void submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
+          onClick={() => control(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
         >
           {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
         </button>
@@ -344,7 +353,7 @@ function App() {
           aria-label={view.bark ? 'Bark on' : 'Bark off'}
           title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
           aria-pressed={view.bark}
-          onClick={() => void submit(`/bark ${view.bark ? 'off' : 'on'}`)}
+          onClick={() => control(`/bark ${view.bark ? 'off' : 'on'}`)}
         >
           {view.bark ? '🔊' : '🔇'}
         </button>
@@ -401,6 +410,8 @@ function App() {
           onAllTopics={() => setTopic(undefined)}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
+            // What still waits here was meant for the conversation that is left.
+            stops += 1;
             void command({ type: 'continue', id: found.id });
             setPanel('chat');
           }}
@@ -442,7 +453,7 @@ function App() {
         }}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-        onAutoApprove={view?.autoApprove ? undefined : () => void submit('/auto on')}
+        onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
         onPackAction={async (turnId, id, action) => {
           const reply = await postCommand({ type: 'pack-task', turnId, id, action });
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
