@@ -15,6 +15,7 @@ import {
   topicsFile,
   topicsPrompt,
   unsortedSessions,
+  withTopicsRun,
   writeTopics,
   type TopicStore,
 } from './topics.js';
@@ -157,10 +158,28 @@ describe('topics', () => {
     const source = {
       name: 'claude',
       where: 'local' as const,
-      list: async () => [session('own', { firstPrompt: `${TOPICS_PROMPT_MARK} sort...` }), session('mine')],
+      list: async () => [
+        session('own', { firstPrompt: `${TOPICS_PROMPT_MARK} sort...` }),
+        session('titled', { title: `${TOPICS_PROMPT_MARK} sort coding-agent sessions` }),
+        session('noted'),
+        session('mine'),
+      ],
     };
     const env = { HOME: mkdtempSync(join(tmpdir(), 'genaicode-topics-')) };
     dirs.push(env.HOME);
+    // A store that keeps neither prompt nor title of the run: its id was noted.
+    let store = withTopicsRun({ topics: [{ id: 't1', name: 'One' }], sessions: {} }, 'claude:noted');
+    store = mergeTopics(
+      sortedTopics('{"topics":[]}', [], withTopicsRun(store, 'claude:noted')).store,
+      store.topics[0]!,
+      {
+        id: 't2',
+        name: 'Two',
+      },
+    );
+    expect(store.runs).toEqual(['claude:noted']);
+    await writeTopics(store, env);
+    expect((await readTopics(env)).runs).toEqual(['claude:noted']);
     expect((await listSessions([source], { env })).sessions.map((one) => one.id)).toEqual(['mine']);
     expect((await listSessions([source], { env, automated: true })).sessions[0]).toMatchObject({ automated: true });
   });

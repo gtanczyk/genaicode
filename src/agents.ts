@@ -156,6 +156,7 @@ export {
   topicsFile,
   topicsPrompt,
   unsortedSessions,
+  withTopicsRun,
   writeTopics,
   describeKnownLimits,
   knownLimits,

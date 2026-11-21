@@ -834,7 +834,7 @@ describe('genaicode sessions --waiting', () => {
       { id: 'three', updatedAt: now - 7_200_000, title: 'Pack worktrees' },
       { id: 'old', updatedAt: now - 90 * 86_400_000, title: 'Long ago' },
     ].map((one) => ({ source: 'alpha', agent: 'alpha', where: 'local' as const, cwd: '/work/app', ...one }));
-    const reply = (text: string) => ({ events: [], result: { ...completed, text } });
+    const reply = (text: string) => ({ events: [], result: { ...completed, text, sessionId: 'sorting' } });
     const agent = {
       ...fakeAgent('alpha', [
         reply('{"topics":[{"name":"Pack mode","sessions":[1,3]},{"name":"Desktop app","sessions":[2]}]}'),
@@ -865,6 +865,9 @@ describe('genaicode sessions --waiting', () => {
     });
     expect(agent.tasks[0]).toMatchObject({ model: 'small' });
     expect(agent.tasks[0]!.cwd).not.toBe('/work');
+    expect(JSON.parse(readFileSync(join(home, '.genaicode', 'topics.json'), 'utf8'))).toMatchObject({
+      runs: ['alpha:sorting'],
+    });
     expect(agent.tasks[0]!.prompt).toContain('1  alpha  work/app  Pack mode: split work');
     expect(agent.tasks[0]!.prompt).not.toContain('Long ago');
     expect((await run('refresh', '-a', 'alpha')).out).toBe('Every session of the last 30d has a topic.\n');

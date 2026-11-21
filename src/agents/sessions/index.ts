@@ -8,7 +8,7 @@ import { withCommandPreviews } from './approval-previews.js';
 import { mapLimited } from './files.js';
 
 import { replyEnding } from './group.js';
-import { isTopicsRun } from './topics.js';
+import { isTopicsRun, readTopics } from './topics.js';
 
 export { groupSessions, replyEnding, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -76,6 +76,7 @@ export {
   topicsFile,
   topicsPrompt,
   unsortedSessions,
+  withTopicsRun,
   writeTopics,
 } from './topics.js';
 export type { Topic, TopicStore, TopicSummary } from './topics.js';
@@ -106,11 +107,13 @@ export async function listSessions(
   query: SessionQuery = {},
 ): Promise<SessionListing> {
   const errors: SessionListing['errors'] = [];
+  // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
+  const runs = new Set((await readTopics(query.env)).runs);
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
         source.list(asked).then(
-          (list) => list.map(ownRun),
+          (list) => list.map((entry) => (isTopicsRun(entry, runs) ? { ...entry, automated: true as const } : entry)),
           (error: unknown) => {
             errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
             return [] as SessionInfo[];
@@ -148,9 +151,6 @@ export async function listSessions(
     errors,
   };
 }
-
-/** genaicode's own sorting runs (`topics refresh`) are nobody's conversation. */
-const ownRun = (entry: SessionInfo): SessionInfo => (isTopicsRun(entry) ? { ...entry, automated: true } : entry);
 
 /** Scheduled tasks can be most of a store: this many times the limit is read to fill it without them. */
 const AUTOMATED_ROOM = 3;

@@ -73,6 +73,7 @@ import {
   TOPICS_BATCH,
   topicsPrompt,
   unsortedSessions,
+  withTopicsRun,
   writeTopics,
   type TopicStore,
 } from '../agents/sessions/topics.js';
@@ -986,7 +987,7 @@ async function manageTopics(
       }
       found.push(match);
     }
-    const next: TopicStore = { topics: [...store.topics], sessions: store.sessions };
+    const next: TopicStore = { ...store, topics: [...store.topics] };
     const topic = command.to === undefined ? undefined : (findTopic(next, command.to) ?? topicNamed(next, command.to));
     await writeTopics(moveSessions(next, found, topic), cli.env);
     cli.stdout.write(
@@ -1027,6 +1028,9 @@ async function manageTopics(
         let said = '';
         for await (const event of run) if (event.type === 'message') said += `${event.text}\n`;
         const result = await run.result;
+        // The run's own session is noted first, so no later refresh takes it for one of yours.
+        const own = result.sessionId && agent.sessions ? `${agent.sessions.name}:${result.sessionId}` : undefined;
+        if (own) await writeTopics(withTopicsRun(await readTopics(cli.env), own), cli.env);
         if (!result.ok) {
           cli.stderr.write(`${describeResult(agent.name, result)}\n`);
           return result.status === 'aborted' ? EXIT_ABORTED : EXIT_FAILED;

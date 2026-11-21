@@ -21,7 +21,12 @@ export interface TopicStore {
   topics: Topic[];
   /** Session key (`source:id`) to topic id. */
   sessions: Record<string, string>;
+  /** Session keys of genaicode's own sorting runs, the newest last: nobody's conversations. */
+  runs?: string[];
 }
+
+/** This many sorting runs are remembered. */
+const RUNS_KEPT = 200;
 
 /** What opens the prompt of a sorting run, so the run's own session is known for what it is. */
 export const TOPICS_PROMPT_MARK = 'genaicode topics:';
@@ -53,6 +58,8 @@ export async function readTopics(env: NodeJS.ProcessEnv = process.env): Promise<
     for (const [key, id] of Object.entries(isRecord(saved.sessions) ? saved.sessions : {})) {
       if (typeof id === 'string' && known.has(id)) store.sessions[key] = id;
     }
+    const runs = Array.isArray(saved.runs) ? saved.runs.filter((key): key is string => typeof key === 'string') : [];
+    if (runs.length) store.runs = runs;
   } catch {
     // None kept yet.
   }
@@ -68,9 +75,25 @@ export async function writeTopics(store: TopicStore, env: NodeJS.ProcessEnv = pr
   await fs.rename(temporary, file);
 }
 
-/** Whether a session is a sorting run of genaicode's own, which nobody typed. */
-export function isTopicsRun(session: Pick<SessionInfo, 'firstPrompt'>): boolean {
-  return session.firstPrompt?.trimStart().startsWith(TOPICS_PROMPT_MARK) === true;
+/**
+ * Whether a session is a sorting run of genaicode's own, which nobody typed: its prompt or title
+ * opens with the mark, or (`runs`: `TopicStore.runs`) it was noted as one, for the stores that
+ * keep neither.
+ */
+export function isTopicsRun(
+  session: Pick<SessionInfo, 'source' | 'id' | 'firstPrompt' | 'title'>,
+  runs?: ReadonlySet<string>,
+): boolean {
+  return (
+    [session.firstPrompt, session.title].some((text) => text?.trimStart().startsWith(TOPICS_PROMPT_MARK)) ||
+    runs?.has(archiveKey(session)) === true
+  );
+}
+
+/** `store` with the session `key` (`source:id`) noted as a sorting run. */
+export function withTopicsRun(store: TopicStore, key: string): TopicStore {
+  const runs = [...(store.runs ?? []).filter((one) => one !== key), key].slice(-RUNS_KEPT);
+  return { ...store, runs };
 }
 
 /** The sessions no topic has yet, as listed. */
@@ -130,7 +153,7 @@ export function sortedTopics(
   sessions: readonly SessionInfo[],
   store: TopicStore,
 ): { store: TopicStore; placed: number } {
-  const next: TopicStore = { topics: [...store.topics], sessions: { ...store.sessions } };
+  const next: TopicStore = { ...store, topics: [...store.topics], sessions: { ...store.sessions } };
   const start = reply.indexOf('{');
   const end = reply.lastIndexOf('}');
   let answer: unknown;
@@ -193,6 +216,7 @@ export function renameTopic(store: TopicStore, topic: Topic, name: string): Topi
 export function mergeTopics(store: TopicStore, from: Topic, into: Topic): TopicStore {
   if (from.id === into.id) return store;
   return {
+    ...store,
     topics: store.topics.filter((topic) => topic.id !== from.id),
     sessions: Object.fromEntries(
       Object.entries(store.sessions).map(([key, id]) => [key, id === from.id ? into.id : id]),
