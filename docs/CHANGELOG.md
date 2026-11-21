@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.41.0 — 2026-11-21
+
 ### Added
 
 - `genaicode tower --pack` brings pack and session approvals into one inbox and lets you review, send or dismiss each message the lead proposes for another session (#221)
