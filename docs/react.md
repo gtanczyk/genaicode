@@ -85,6 +85,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `onArtifactSubmit(artifact, data)`                                             | a page the agent published sent data and the user confirmed it; default sends it as a message; `null` turns it off |
 | `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line                                                           |
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                        |
+| `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                     |
 | `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input                                                                 |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                    |
 

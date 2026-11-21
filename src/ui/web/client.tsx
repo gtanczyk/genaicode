@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
-import { formatUsage, limitChips, needsAttention, shortId } from '../format.js';
+import { formatUsage, limitChips, needsAttention, shortId, SLASH_COMMANDS } from '../format.js';
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
@@ -342,6 +342,7 @@ function App() {
         disabled={!connected}
         notices={view?.notices}
         artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+        completions={SLASH_COMMANDS}
         onSend={submit}
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}

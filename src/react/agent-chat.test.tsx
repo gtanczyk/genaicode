@@ -285,6 +285,51 @@ describe('AgentChat', () => {
     expect(props.onSend).toHaveBeenLastCalledWith('again');
   });
 
+  it('offers the host commands while the message starts one, and completes the chosen one', () => {
+    const completions = [
+      { name: '/model', args: '[id]', help: 'set the model' },
+      { name: '/new', help: 'start again' },
+      { name: '/help' },
+    ];
+    const props = render({ state: fixture({ status: 'idle', queued: [] }), completions });
+    const offered = () => text('.gc-completions li b');
+    const value = () => $<HTMLTextAreaElement>('textarea').value;
+    expect($('.gc-completions')).toBeNull();
+    type('/');
+    expect(offered()).toEqual(['/model', '/new', '/help']);
+    expect($('.gc-completions li[aria-selected="true"]').textContent).toContain('/model');
+    // Arrows go round; Enter completes instead of sending. A command with arguments leaves room for them.
+    key({ key: 'ArrowUp' });
+    key({ key: 'ArrowDown' });
+    key({ key: 'Enter' });
+    expect(value()).toBe('/model ');
+    expect(props.onSend).not.toHaveBeenCalled();
+    expect($('.gc-completions')).toBeNull();
+    type('/n');
+    expect(offered()).toEqual(['/new']);
+    key({ key: 'Tab' });
+    expect(value()).toBe('/new');
+    // A whole command is sent as typed.
+    key({ key: 'Enter' });
+    expect(props.onSend).toHaveBeenCalledWith('/new');
+    // Escape closes the list and does not stop anything; a click completes.
+    type('/h');
+    key({ key: 'Escape' });
+    expect($('.gc-completions')).toBeNull();
+    expect(props.onStop).not.toHaveBeenCalled();
+    type('/he');
+    act(() => {
+      $('.gc-completions li').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
+    expect(value()).toBe('/help');
+    // Not a command: nothing is offered, and nothing without the host's list.
+    type('fix /model');
+    expect($('.gc-completions')).toBeNull();
+    render({ state: fixture({ status: 'idle', queued: [] }) });
+    type('/');
+    expect($('.gc-completions')).toBeNull();
+  });
+
   it('stops with the Stop button and Esc while running', () => {
     const props = render();
     click(button('Stop')!);

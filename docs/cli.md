@@ -327,7 +327,7 @@ Auto-approve chip in the browser; `-y` starts that way). `!` on an empty prompt 
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
 model and session; `/fallback codex,gemini` picks the agents to switch to when the current one
-runs out (`/fallback off` stops it); `/help` lists the rest. `/agent codex` hands the
+runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. `/agent codex` hands the
 conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
 switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
 context).

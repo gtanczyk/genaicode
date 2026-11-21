@@ -12,7 +12,7 @@
  * React (18 or newer) comes from the host; genaicode does not install it.
  */
 export { AgentChat, artifactSubmission } from './react/agent-chat.js';
-export type { AgentChatProps, ChatNotice } from './react/agent-chat.js';
+export type { AgentChatProps, ChatCompletion, ChatNotice } from './react/agent-chat.js';
 export { matchesAccept } from './react/attachments.js';
 export type { ChatAttachments } from './react/attachments.js';
 export { Markdown } from './react/markdown.js';
