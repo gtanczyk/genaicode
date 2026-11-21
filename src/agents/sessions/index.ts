@@ -8,6 +8,7 @@ import { withCommandPreviews } from './approval-previews.js';
 import { mapLimited } from './files.js';
 
 import { replyEnding } from './group.js';
+import { isTopicsRun } from './topics.js';
 
 export { groupSessions, replyEnding, waitingSessions } from './group.js';
 export type { SessionListing, SessionProject } from './group.js';
@@ -60,6 +61,24 @@ export {
   uninstallHooks,
 } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
+export {
+  findTopic,
+  isTopicsRun,
+  mergeTopics,
+  moveSessions,
+  readTopics,
+  renameTopic,
+  sortedTopics,
+  summarizeTopics,
+  topicNamed,
+  TOPICS_BATCH,
+  TOPICS_PROMPT_MARK,
+  topicsFile,
+  topicsPrompt,
+  unsortedSessions,
+  writeTopics,
+} from './topics.js';
+export type { Topic, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
@@ -90,10 +109,13 @@ export async function listSessions(
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
-        source.list(asked).catch((error: unknown) => {
-          errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
-          return [] as SessionInfo[];
-        }),
+        source.list(asked).then(
+          (list) => list.map(ownRun),
+          (error: unknown) => {
+            errors.push({ source: source.name, message: error instanceof Error ? error.message : String(error) });
+            return [] as SessionInfo[];
+          },
+        ),
       ),
     );
   let lists = await read(query);
@@ -126,6 +148,9 @@ export async function listSessions(
     errors,
   };
 }
+
+/** genaicode's own sorting runs (`topics refresh`) are nobody's conversation. */
+const ownRun = (entry: SessionInfo): SessionInfo => (isTopicsRun(entry) ? { ...entry, automated: true } : entry);
 
 /** Scheduled tasks can be most of a store: this many times the limit is read to fill it without them. */
 const AUTOMATED_ROOM = 3;
