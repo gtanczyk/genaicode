@@ -181,6 +181,12 @@ export interface AgentSession {
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
   approve(id: string, decision: ApprovalDecision): boolean;
+  /**
+   * Ask the person about something the host app does for the running turn (a tool of its own):
+   * the request joins `approvals` like the agent's, and `autoApprove` decides it the same way.
+   * Resolves 'deny' when no turn runs, or once the turn ends unanswered.
+   */
+  ask(request: ApprovalRequest): Promise<ApprovalDecision>;
   /** Operate on a delegated task in its original turn. A diff is returned only to the caller. */
   actOnPackTask?(turnId: number, id: string, action: PackAction): Promise<string>;
   /**
@@ -789,6 +795,22 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       controller?.abort();
       run?.abort();
       settleIdle();
+    },
+    async ask(request) {
+      const turn = state.turns.at(-1);
+      if (closed || !run || !turn || turn.result) return 'deny';
+      const automatic = !!options.autoApprove?.(request);
+      const decision = await onApproval(turn.id, request);
+      // No agent event follows a question of the host's own: its entry records the answer here.
+      updateTurn(turn.id, (asked) => ({
+        ...asked,
+        entries: asked.entries.map((entry) =>
+          entry.kind === 'approval' && entry.request.id === request.id && !entry.decision
+            ? { ...entry, decision, ...(automatic ? { automatic: true } : {}) }
+            : entry,
+        ),
+      }));
+      return decision;
     },
     approve(id, decision) {
       const resolve = waiting.get(id);

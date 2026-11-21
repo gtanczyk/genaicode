@@ -208,7 +208,9 @@ In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 `sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including
 the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
 the same read-only tools over stdio. The agent can read what the other sessions said and what
-their open questions ask. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
+their open questions ask. Ask it to pass something to another session ("tell Codex in
+knights that...") and it sends it with `sessions_send`; you allow the first message to each
+session in the chat. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
 ### Open the session tower
 

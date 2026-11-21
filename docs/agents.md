@@ -544,7 +544,7 @@ app-server protocol (`codex app-server generate-ts`) no longer has a field that 
 
 ### Asking an agent about the sessions: `sessions mcp`
 
-The session index provides four read-only MCP tools. In `genaicode chat --sessions`, ask
+The session index provides four read-only MCP tools (and, in a chat, `sessions_send`, below). In `genaicode chat --sessions`, ask
 "Which sessions need my attention?" to see which project needs a decision or a reply.
 
 | tool                | what it returns                                                                               |
@@ -569,6 +569,17 @@ view and appear with `[archived]` in `sessions_list` and `sessions_read`.
 The [session tower](cli.md#open-the-session-tower) opens an indexed chat with a local preview
 of the queue. Its `/waiting [project]` and `/read <id>` commands call the same read-only
 operations and display the results to the user. A regular chat message starts an agent turn.
+
+In `chat --sessions` and `ui --sessions` (the desktop app) the agent also gets `sessions_send`:
+ask it "tell Codex in knights that the bakery is done" and it finds the session and sends the
+message there as a new turn, with that session's own agent in its own directory. The first
+message to each session shows as an approval in the chat, with the recipient and the exact
+text; once allowed, later messages to that session go without asking until the chat closes.
+With auto-approve on (`--yes`, `/auto`) nothing is asked. The tool returns once the message is
+sent, and the chat shows the session's answer when its turn ends. Only a waiting or unfinished
+local session takes a message, as with `sessions send`; closing the chat stops a turn still
+running there. In code: `sessionSendTool(agents, gate)` with a `SessionSendGate` the chat
+attaches to, and `AgentSession.ask()` for the question.
 
 When the tower runs a pack, its lead also receives `propose_session_message` on the pack MCP
 server. It takes the full session `id`, the exact `text` and an optional `source`. A successful
