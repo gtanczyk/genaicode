@@ -118,6 +118,8 @@ describe('parseCli', () => {
       ['--pack', 'a:b', '-a', 'c'],
       ['--max-parallel', '2'],
       ['--pack', 'a:b', '--max-parallel', '0'],
+      ['--verify', 'npm test'],
+      ['--pack', '--verify', '  '],
     ])
       expect(() => parseCli(['ui', ...args])).toThrow(UsageError);
     for (const spec of ['lead:unknown', 'worker:lead']) {
@@ -126,6 +128,10 @@ describe('parseCli', () => {
   });
 
   it('auto-assembles a pack from installed agents when --pack is passed without a value', async () => {
+    expect(parseCli(['ui', '--pack', '--verify', 'node --test'])).toMatchObject({
+      pack: { auto: true },
+      verify: 'node --test',
+    });
     expect(parseCli(['ui', '--pack'])).toMatchObject({ kind: 'ui', pack: { auto: true } });
     expect(parseCli(['chat', '--pack', '--web', '--max-parallel', '3'])).toMatchObject({
       kind: 'chat',
@@ -592,6 +598,34 @@ describe('genaicode CLI', () => {
     });
     expect(await main(cli)).toBe(EXIT_FAILED);
     expect(readFileSync(join(dir, 'marker'), 'utf8').trim()).toBe('checked');
+  });
+
+  it.skipIf(process.platform === 'win32')('stops the shell runner and its test process on cancellation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genaicode-check-stop-'));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, 'test.cjs'),
+      "require('node:fs').writeFileSync('pid', String(process.pid)); setInterval(() => {}, 1000);",
+    );
+    const stop = new AbortController();
+    const { cli } = environment({
+      argv: ['run', '-a', 'alpha', '--verify', 'node test.cjs && echo done', '--max-repairs', '0', 'x'],
+      agents: [fakeAgent('alpha', [{ events: [], result: completed }])],
+      cwd: dir,
+      env: process.env,
+      signal: stop.signal,
+    });
+    const running = main(cli);
+    try {
+      const pid = await vi.waitFor(() => Number(readFileSync(join(dir, 'pid'), 'utf8')));
+      expect(pid).toBeGreaterThan(1);
+      stop.abort();
+      await running;
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    } finally {
+      stop.abort();
+      await running;
+    }
   });
 });
 

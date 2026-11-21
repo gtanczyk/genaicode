@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -109,6 +109,249 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 }
 
 describe('pack', () => {
+  it('reviews the complete patch and tests the worker directory before accepting a new revision', async () => {
+    const cwd = repo();
+    const correct = 'module.exports = (n) => n ?? 1;\n';
+    const latin1 = Buffer.from('caf\u00e9\n', 'latin1');
+    writeFileSync(join(cwd, 'seats.cjs'), correct);
+    writeFileSync(join(cwd, '.gitignore'), 'worker.cache\n');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'seats.cjs'), 'module.exports = (n) => n || 1;\n');
+      writeFileSync(join(task.cwd, 'menu.txt'), latin1);
+      writeFileSync(join(task.cwd, 'worker.cache'), 'local scratch note');
+      writeFileSync(join(task.cwd, 'extra.txt'), 'a'.repeat(70_000) + ' end of new file\n');
+    });
+    let reviewDir = '';
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Change the default.' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    lead.runText = fake('lead', async (task) => {
+      reviewDir = task.cwd;
+      expect(readdirSync(reviewDir)).toEqual([]);
+      expect(task.mcpServers).toBeUndefined();
+      expect(task.prompt).toContain('Patch encoding: latin1.');
+      expect(Buffer.from(task.prompt, 'latin1').includes(latin1)).toBe(true);
+      expect(task.prompt).toContain(' end of new file');
+      expect(task.prompt).toContain('+module.exports');
+      return { text: 'Check how zero seats are handled.', usage: { totalTokens: 8 } };
+    }).run;
+    const testSeats = (dir: string) =>
+      spawnSync(process.execPath, ['-e', "require('node:assert/strict').equal(require('./seats.cjs')(0), 0)"], {
+        cwd: dir,
+      });
+    const team = pack({
+      lead,
+      members: [worker],
+      verification: {
+        label: 'test zero seats',
+        run(dir) {
+          expect(dir).not.toBe(cwd);
+          expect(existsSync(join(dir, 'worker.cache'))).toBe(false);
+          expect(existsSync(join(dir, '.git'))).toBe(false);
+          const result = testSeats(dir);
+          return { ok: result.status === 0, detail: result.stderr.toString() };
+        },
+      },
+    });
+    const session = createAgentSession({ cwd, agent: team, budget: { maxTokens: 8 } });
+    const task = () => session.get().turns[0].pack!.tasks[0];
+    try {
+      session.send('Delegate and leave the change for review.');
+      await session.idle();
+      await session.actOnPackTask!(1, 't1', { type: 'review' });
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      const before = task().checks!;
+      expect(before.review).toMatchObject({
+        revision: before.revision,
+        status: 'completed',
+        detail: 'Check how zero seats are handled.',
+      });
+      expect(before.verify).toMatchObject({ revision: before.revision, status: 'failed' });
+      expect(existsSync(reviewDir)).toBe(false);
+      expect(testSeats(cwd).status).toBe(0);
+      expect(session.get().usage.totalTokens).toBe(8);
+      await expect(session.actOnPackTask!(1, 't1', { type: 'review' })).rejects.toMatchObject({ reason: 'budget' });
+      writeFileSync(join(task().cwd, 'seats.cjs'), correct);
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge', revision: before.revision })).rejects.toMatchObject(
+        { reason: 'stale' },
+      );
+      expect(existsSync(join(cwd, 'extra.txt'))).toBe(false);
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(task().checks!.verify).toMatchObject({ revision: task().checks!.revision, status: 'completed' });
+      expect(task().checks!.review!.revision).not.toBe(task().checks!.revision);
+      const last = task().checks!.revision;
+      writeFileSync(join(task().cwd, 'extra.txt'), 'correction\n');
+      await vi.waitFor(() => expect(task().checks!.revision).not.toBe(last), { timeout: 5000 });
+      await session.actOnPackTask!(1, 't1', { type: 'merge', revision: task().checks!.revision });
+      expect(readFileSync(join(cwd, 'extra.txt'), 'utf8')).toBe('correction\n');
+      expect(readFileSync(join(cwd, 'menu.txt'))).toEqual(latin1);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('keeps the worktree until an in-flight check stops and refuses an unavailable reviewer', async () => {
+    const cwd = repo();
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Make a change.' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Make another change.' });
+        await tool(task, 'wait');
+      },
+      { mcp: true, permissions: { approval: ['deny'], sandbox: ['read-only'] } },
+    );
+    const team = pack({
+      lead,
+      members: [writer('worker', 'b.txt', 'b\n')],
+      verification: {
+        label: 'slow test',
+        run: (_dir, signal) =>
+          new Promise((resolve) => {
+            signal.addEventListener('abort', () => resolve({ ok: false, detail: 'Stopped' }), { once: true });
+          }),
+      },
+    });
+    const run = team.run({ cwd, prompt: 'go' });
+    try {
+      await run.result;
+      const controls = run.pack!;
+      await expect(controls.act('t1', { type: 'review' })).rejects.toMatchObject({ reason: 'reviewer' });
+      const verify = controls.act('t1', { type: 'verify' });
+      await vi.waitFor(() => expect(controls.task('t1')?.checks?.verify?.status).toBe('running'));
+      await expect(controls.act('t2', { type: 'verify' })).rejects.toMatchObject({ reason: 'checking' });
+      for (const type of ['verify', 'merge', 'discard'] as const)
+        await expect(controls.act('t1', { type })).rejects.toMatchObject({ reason: 'checking' });
+      await team.close();
+      await verify;
+      expect(controls.task('t1')?.checks?.verify).toMatchObject({ status: 'failed' });
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('keeps an edit made after the operator opens the diff out of a merge without checks', async () => {
+    const cwd = repo();
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Write a greeting.' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [writer('worker', 'new.txt', 'first\n')] });
+    try {
+      const run = team.run({ cwd, prompt: 'Leave the greeting for the operator.' });
+      await run.result;
+      const controls = run.pack!;
+      const worker = controls.task('t1')!;
+      const revision = worker.checks!.revision;
+      expect(revision).toMatch(/^[0-9a-f]+$/);
+      expect(await controls.act('t1', { type: 'diff', revision })).toContain('+first');
+      writeFileSync(join(worker.cwd, 'new.txt'), 'second\n');
+      await expect(controls.act('t1', { type: 'merge' })).rejects.toMatchObject({ reason: 'stale' });
+      const latest = controls.task('t1')!.checks!.revision;
+      expect(latest).not.toBe(revision);
+      expect(await controls.act('t1', { type: 'diff', revision: latest })).toContain('+second');
+      // Another client viewed the correction, but the first client's click still carries the old tree.
+      await expect(controls.act('t1', { type: 'merge', revision })).rejects.toMatchObject({ reason: 'stale' });
+      expect(existsSync(join(cwd, 'new.txt'))).toBe(false);
+      await controls.act('t1', { type: 'merge', revision: latest });
+      expect(readFileSync(join(cwd, 'new.txt'), 'utf8')).toBe('second\n');
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('lets the lead ask a different member to review and accounts for the review in the pack budget', async () => {
+    const cwd = repo();
+    const reviewer = fake('reader', async (task) => {
+      expect(task.budget?.maxTokens).toBe(5);
+      expect(task.prompt).toContain('Patch encoding: utf8.');
+      expect(task.prompt).toContain('+hello');
+      return { text: 'No findings.', usage: { totalTokens: 5 } };
+    });
+    reviewer.runText = reviewer.run;
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'writer', prompt: 'Write the greeting.' });
+        await tool(task, 'wait');
+        const checks = JSON.parse(await tool(task, 'review', { id: 't1' }));
+        expect(checks).toMatchObject({
+          reviewer: 'reader',
+          review: { detail: 'No findings.', revision: checks.revision },
+        });
+        await expect(tool(task, 'review', { id: 't1' })).rejects.toThrow('used its token budget');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [writer('writer', 'new.txt', 'hello\n'), reviewer] });
+    try {
+      const run = team.run({ cwd, prompt: 'Request an independent review.', budget: { maxTokens: 20 } });
+      expect(await run.result).toMatchObject({ ok: true, usage: { totalTokens: 20 } });
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('reserves a session budget for one operator review and gives a queued turn the remainder', async () => {
+    const caps: number[] = [];
+    let release!: () => void;
+    const reviewer = fake('reader', async (task) => {
+      caps.push(task.budget!.maxTokens!);
+      if (caps.length === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return { text: 'Reviewed.', usage: { totalTokens: Math.min(8, task.budget!.maxTokens!) } };
+    });
+    reviewer.runText = reviewer.run;
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (task.prompt.endsWith('next')) return;
+        for (const prompt of ['one', 'two']) await tool(task, 'delegate', { agent: 'worker', prompt });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, task.prompt), 'fixture');
+    });
+    const team = pack({ lead, members: [worker, reviewer] });
+    const session = createAgentSession({ agent: team, cwd: repo(), budget: { maxTokens: 10 } });
+    try {
+      session.send('delegate');
+      await session.idle();
+      const first = session.actOnPackTask!(1, 't1', { type: 'review' });
+      await vi.waitFor(() => expect(caps).toEqual([10]));
+      await expect(session.actOnPackTask!(1, 't2', { type: 'review' })).rejects.toMatchObject({
+        reason: 'budget-busy',
+      });
+      session.send('next');
+      expect(session.get().queued).toEqual(['next']);
+      release();
+      await first;
+      await session.idle();
+      expect(session.get().turns[1].pack?.budget?.maxTokens).toBe(2);
+      await session.actOnPackTask!(1, 't2', { type: 'review' });
+      expect(caps).toEqual([10, 2]);
+      expect(session.get().usage.totalTokens).toBe(10);
+    } finally {
+      release?.();
+      session.close();
+      await team.close();
+    }
+  });
+
   it('delegates in parallel worktrees and merges the results', async () => {
     const cwd = repo();
     writeFileSync(join(cwd, 'draft.txt'), 'uncommitted\n');

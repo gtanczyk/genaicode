@@ -1,8 +1,8 @@
+import { addUsage, remainingBudget } from './usage.js';
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
 import { packApproval, PackActionError, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
-import { addUsage, tokenCount } from './runtime.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import type {
   AgentBudget,
@@ -242,7 +242,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let steeredBefore: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
   const waiting = new Map<string, (decision: ApprovalDecision) => void>();
-  const packRuns = new Map<number, { agent: CodingAgent; controls: PackControls }>();
+  const packRuns = new Map<number, { agent: CodingAgent; controls: PackControls; unsubscribe?: () => void }>();
+  let checkLifetime = new AbortController();
+  let activeReviews = 0;
+  const budgetInReview = () =>
+    activeReviews > 0 && (state.budget?.maxTokens !== undefined || state.budget?.maxCostUsd !== undefined);
   const idleWaiters: Array<() => void> = [];
   let run: AgentRun | undefined;
   let controller: AbortController | undefined;
@@ -297,7 +301,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   const keepTurns = (turns: SessionTurn[]) => {
     const kept = turns.slice(-maxTurns);
-    for (const id of packRuns.keys()) if (!kept.some((turn) => turn.id === id)) packRuns.delete(id);
+    for (const [id, packRun] of packRuns)
+      if (!kept.some((turn) => turn.id === id)) {
+        packRun.unsubscribe?.();
+        packRuns.delete(id);
+      }
     return kept;
   };
 
@@ -487,7 +495,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 
   const settleIdle = () => {
-    if (state.status !== 'idle' || state.queued.length) return;
+    if (state.status !== 'idle' || state.queued.length || budgetInReview()) return;
     for (const resolve of idleWaiters.splice(0)) resolve();
   };
 
@@ -636,7 +644,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       });
       if (current.pack) {
         const { lead, maxParallel } = current.pack;
-        packRuns.set(turnId, { agent: turnAgent, controls: current.pack });
+        packRuns.set(turnId, {
+          agent: turnAgent,
+          controls: current.pack,
+          unsubscribe: current.pack.onTaskChange?.((id) => syncPackTask(turnId, id)),
+        });
         updateTurn(turnId, (started) => ({
           ...started,
           pack: { lead, maxParallel, budget, tasks: [], interactive: true },
@@ -726,11 +738,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         set({ notes: [...(state.notes ?? []), prompt] });
         // A new note releases the held ones, oldest first: now, or as the running turn ends.
         holdNotes = false;
-        if (state.status === 'idle') return startTurn(shiftNote());
+        if (state.status === 'idle' && !budgetInReview()) return startTurn(shiftNote());
         return;
       }
       holdNotes = false;
-      if (state.status === 'idle') {
+      if (state.status === 'idle' && !budgetInReview()) {
         // Held notes go first: the agent hears what happened before the user's next words.
         if (!state.notes?.length) return startTurn(prompt);
         set({ queued: [...state.queued, prompt] });
@@ -755,7 +767,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
           set({ queued: [...state.queued, prompt] });
-          if (state.status === 'idle') {
+          if (state.status === 'idle' && !budgetInReview()) {
             const next = takeNext();
             if (next !== undefined) startTurn(next);
           }
@@ -765,6 +777,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       set({ queued: [...state.queued, prompt] });
     },
     stop() {
+      checkLifetime.abort();
+      if (!closed) checkLifetime = new AbortController();
       if (state.queued.length) set({ queued: [] });
       if (noteTurn) {
         set({ notes: [noteTurn.text, ...(state.notes ?? [])] });
@@ -787,10 +801,35 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     async actOnPackTask(turnId, id, action) {
       const controls = packRuns.get(turnId)?.controls;
       if (closed || !controls?.task(id)) throw new PackActionError('missing', `No pack task ${id} in turn ${turnId}.`);
+      const reviewing = action.type === 'review';
+      const left = reviewing ? remainingBudget(state.budget, state.usage, state.costUsd) : undefined;
+      if (left?.spent) throw new PackActionError('budget', left.spent);
+      if (left?.budget && (activeReviews || state.status !== 'idle')) throw new PackActionError('budget-busy');
+      if (reviewing) activeReviews++;
       try {
+        if (reviewing || action.type === 'verify') {
+          return await controls.act(id, action, {
+            signal: checkLifetime.signal,
+            budget: tighterBudget(left?.budget, options.task?.budget),
+            onReviewUsage(usage, costUsd) {
+              if (usage) pastUsage = addUsage(pastUsage, usage);
+              if (costUsd !== undefined) pastCost = (pastCost ?? 0) + costUsd;
+              set({
+                usage: usage ? addUsage(state.usage, usage) : state.usage,
+                costUsd: costUsd === undefined ? state.costUsd : (state.costUsd ?? 0) + costUsd,
+              });
+            },
+          });
+        }
         return await controls.act(id, action);
       } finally {
+        if (reviewing) activeReviews--;
         syncPackTask(turnId, id);
+        if (reviewing && !activeReviews && state.status === 'idle') {
+          const next = !closed && takeNext();
+          if (next) startTurn(next);
+          else settleIdle();
+        }
       }
     },
     setAgent(next, switchOptions) {
@@ -851,11 +890,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return true;
     },
     idle() {
-      if (state.status === 'idle' && !state.queued.length) return Promise.resolve();
+      if (state.status === 'idle' && !state.queued.length && !budgetInReview()) return Promise.resolve();
       return new Promise((resolve) => idleWaiters.push(resolve));
     },
     close() {
       closed = true;
+      for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
       if (state.notes?.length) set({ notes: [] });
       this.stop();
@@ -877,29 +917,6 @@ function isPublishRequest(request: ApprovalRequest, server: McpServer | undefine
   );
 }
 
-/** A run that failed before it started. */
-/** What a session budget leaves for the next turn, or why nothing is left. */
-function remainingBudget(
-  budget: AgentBudget | undefined,
-  usage: TokenUsage,
-  costUsd: number | undefined,
-): { budget?: AgentBudget; spent?: string } | undefined {
-  if (!budget || (budget.maxTokens === undefined && budget.maxCostUsd === undefined)) return undefined;
-  const tokens = tokenCount(usage);
-  if (budget.maxTokens !== undefined && tokens >= budget.maxTokens)
-    return { spent: `The session used its token budget (${tokens} of ${budget.maxTokens}).` };
-  if (budget.maxCostUsd !== undefined && (costUsd ?? 0) >= budget.maxCostUsd)
-    return { spent: `The session used its cost budget ($${(costUsd ?? 0).toFixed(4)} of $${budget.maxCostUsd}).` };
-  return {
-    budget: {
-      ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens - tokens } : {}),
-      ...(budget.maxCostUsd !== undefined ? { maxCostUsd: budget.maxCostUsd - (costUsd ?? 0) } : {}),
-      // Warnings belong to the whole session (`budgetStatus`), not to what one turn has left.
-      warnAt: Infinity,
-    },
-  };
-}
-
 /** Both budgets' caps, the lower one where both set the same cap. */
 function tighterBudget(session: AgentBudget | undefined, turn: AgentBudget | undefined): AgentBudget | undefined {
   if (!session || !turn) return session ?? turn;
@@ -914,6 +931,7 @@ function tighterBudget(session: AgentBudget | undefined, turn: AgentBudget | und
   };
 }
 
+/** A run that failed before it started. */
 function failedRun(message: string): AgentRun {
   const result: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
   return {
