@@ -46,6 +46,51 @@ describe('toolDiff', () => {
     expect(toolDiff(['a'])).toBeUndefined();
   });
 
+  it('tells the next file of a patch from a changed line that looks like a header', () => {
+    const two = [
+      '--- a/one.txt',
+      '+++ b/one.txt',
+      '@@ -1 +1 @@',
+      '-a',
+      '+b',
+      '--- a/two.txt',
+      '+++ b/two.txt',
+      '@@ -1,2 +1,2 @@',
+      ' keep',
+      '--- old',
+      '+++ new',
+    ].join('\n');
+    const diff = toolDiff(two);
+    expect(diff).toMatchObject({ added: 2, removed: 2 });
+    expect(diff?.lines.filter((line) => line.sign !== ' ').map((line) => line.text)).toEqual([
+      'a',
+      'b',
+      '-- old',
+      '++ new',
+    ]);
+  });
+
+  it('keeps the change in view when a long text around it stays the same', () => {
+    const shared = Array.from({ length: 500 }, (_, i) => `l${i}`);
+    const diff = toolDiff({
+      old_string: [...shared, 'old', ...shared].join('\n'),
+      new_string: [...shared, 'new', ...shared].join('\n'),
+    });
+    expect(diff).toMatchObject({ added: 1, removed: 1, more: 0 });
+    expect(diff?.lines.map((line) => `${line.sign}${line.text}`)).toEqual([
+      ' ⋯',
+      ' l497',
+      ' l498',
+      ' l499',
+      '-old',
+      '+new',
+      ' l0',
+      ' l1',
+      ' l2',
+      ' ⋯',
+    ]);
+  });
+
   it('cuts a long change and says how much is left out', () => {
     const long = toolDiff({ path: 'big', content: Array.from({ length: 450 }, (_, i) => `l${i}`).join('\n') });
     expect(long).toMatchObject({ added: 450, more: 50 });

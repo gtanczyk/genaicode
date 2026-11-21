@@ -95,18 +95,40 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
     if (!/^(\*\*\* Begin Patch|@@|diff --git|--- )/m.test(value)) return false;
     // A `--- ` line names a file before a hunk starts, and is a removed `-- ` line inside one.
     let inHunk = false;
+    // Lines a counted hunk (`@@ -1,3 +1,4 @@`) still holds: after them the next file's header can come.
+    let left: { old: number; new: number } | undefined;
     for (const line of value.split('\n')) {
       if (/^\*\*\* (Begin|End) Patch/.test(line)) continue;
       if (line.startsWith('diff --git')) {
         inHunk = false;
         continue;
       }
+      if (left && left.old <= 0 && left.new <= 0) {
+        inHunk = false;
+        left = undefined;
+      }
       if (!inHunk && /^(index |\+\+\+ |--- )/.test(line)) continue;
       // A patch in an agent's own format has no file header lines of that kind.
-      if (line.startsWith('@@') || line.startsWith('*** ')) inHunk = true;
-      if (line.startsWith('+')) lines.push({ sign: '+', text: line.slice(1) });
-      else if (line.startsWith('-')) lines.push({ sign: '-', text: line.slice(1) });
-      else lines.push({ sign: ' ', text: line.startsWith(' ') ? line.slice(1) : line });
+      if (line.startsWith('@@') || line.startsWith('*** ')) {
+        inHunk = true;
+        const counted = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+        left = counted ? { old: Number(counted[1] ?? 1), new: Number(counted[2] ?? 1) } : undefined;
+        lines.push({ sign: ' ', text: line });
+        continue;
+      }
+      if (line.startsWith('+')) {
+        lines.push({ sign: '+', text: line.slice(1) });
+        if (left) left.new -= 1;
+      } else if (line.startsWith('-')) {
+        lines.push({ sign: '-', text: line.slice(1) });
+        if (left) left.old -= 1;
+      } else if (!line.startsWith('\\')) {
+        lines.push({ sign: ' ', text: line.startsWith(' ') ? line.slice(1) : line });
+        if (left) {
+          left.old -= 1;
+          left.new -= 1;
+        }
+      }
     }
     return true;
   };
@@ -136,7 +158,12 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
   };
 }
 
-/** `before` turned into `after`: the lines they share at both ends stay, the middle is replaced. */
+const DIFF_CONTEXT = 3;
+
+/**
+ * `before` turned into `after`: the middle is replaced, with a few of the lines they share at both
+ * ends around it, so a small change in a long text is what shows.
+ */
 function changedLines(before: string, after: string): DiffLine[] {
   // No text is no lines, not one empty line.
   const from = before === '' ? [] : before.split('\n');
@@ -151,10 +178,13 @@ function changedLines(before: string, after: string): DiffLine[] {
   )
     tail += 1;
   const out: DiffLine[] = [];
-  for (let i = 0; i < head; i += 1) out.push({ sign: ' ', text: from[i]! });
+  if (head > DIFF_CONTEXT) out.push({ sign: ' ', text: '⋯' });
+  for (let i = Math.max(0, head - DIFF_CONTEXT); i < head; i += 1) out.push({ sign: ' ', text: from[i]! });
   for (let i = head; i < from.length - tail; i += 1) out.push({ sign: '-', text: from[i]! });
   for (let i = head; i < to.length - tail; i += 1) out.push({ sign: '+', text: to[i]! });
-  for (let i = from.length - tail; i < from.length; i += 1) out.push({ sign: ' ', text: from[i]! });
+  const end = Math.min(from.length, from.length - tail + DIFF_CONTEXT);
+  for (let i = from.length - tail; i < end; i += 1) out.push({ sign: ' ', text: from[i]! });
+  if (tail > DIFF_CONTEXT) out.push({ sign: ' ', text: '⋯' });
   return out;
 }
 
