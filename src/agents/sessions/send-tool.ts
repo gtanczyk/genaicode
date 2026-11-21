@@ -116,6 +116,8 @@ export function sessionSendTool(
         env: options.env,
         signal: options.signal,
         expectedTarget: { agent: found.session.agent, cwd: found.session.cwd },
+        // Unfinished sessions take a message too, as `sessions send` lets them.
+        waitingOnly: false,
       }).then(
         (result) => gate.report(target, { result }),
         (error: unknown) => gate.report(target, { error: error instanceof Error ? error.message : String(error) }),

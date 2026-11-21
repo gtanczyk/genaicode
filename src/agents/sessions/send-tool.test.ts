@@ -66,6 +66,15 @@ it('asks once per session, then sends without asking, and reports the answer', a
   await gate.settled();
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(agent.run).toHaveBeenCalledTimes(2);
+
+  // An unfinished session takes it too, not only one waiting for a reply.
+  const unfinished = owner([{ ...session, state: 'unfinished' }]);
+  const other = new SessionSendGate();
+  other.attach({ confirm, done });
+  await sessionSendTool([unfinished], other, { env }).call({ id: session.id, text: 'Pick it up.' });
+  await other.settled();
+  expect(unfinished.run).toHaveBeenCalledTimes(1);
+  expect(done).toHaveBeenLastCalledWith(expect.objectContaining({ id: session.id }), { result: ok });
 });
 
 it('sends nothing when the person says no, or the session cannot take it', async () => {

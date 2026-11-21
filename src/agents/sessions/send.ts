@@ -42,6 +42,8 @@ export interface SessionSendOptions extends Pick<AgentTask, 'env' | 'permissions
   source?: string;
   /** A proposed message must still target the reviewed agent and project and be waiting for a reply. */
   expectedTarget?: Pick<SessionInfo, 'agent' | 'cwd'>;
+  /** Only a session waiting for a reply takes it. Default: when `expectedTarget` is given (a reviewed proposal). */
+  waitingOnly?: boolean;
   onEvent?(event: AgentEvent, session: SessionInfo): void;
 }
 
@@ -97,7 +99,7 @@ export async function sendSession(
     const expected = options.expectedTarget;
     if (expected && (fresh.cwd !== expected.cwd || fresh.agent !== expected.agent))
       throw new SessionSendError('changed');
-    const { session, cwd, agent } = await sessionRecipient(local, fresh, env, !!expected);
+    const { session, cwd, agent } = await sessionRecipient(local, fresh, env, options.waitingOnly ?? !!expected);
     const task: AgentTask = {
       cwd,
       resume: session.id,
