@@ -64,6 +64,8 @@ export interface ChatOptions {
   towerInbox?: TowerInbox;
   /** Show the first five waiting sessions as soon as the tower opens. */
   waitingOnStart?: boolean;
+  /** Informational line shown as soon as the chat opens (e.g. auto-selected pack roster). */
+  startupNotice?: string;
   /** Agent to start with. Default: the first installed one. */
   agent?: string;
   cwd: string;
@@ -395,6 +397,7 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(plainSessionText(`${heading}\n${errorText(error)}`), 'error');
     }
   };
+  if (options.startupNotice) notice(options.startupNotice);
   if (options.waitingOnStart) {
     void showIndex('sessions_waiting', { limit: 5 }, 'Use /waiting [project] to refresh or /read <id> to preview.');
   }

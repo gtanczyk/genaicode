@@ -64,11 +64,11 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A PATH directory holding an executable named `command`. */
-function pathWith(command: string): string {
+/** A PATH directory holding executables named `commands`. */
+function pathWith(...commands: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), 'genaicode-cli-'));
   dirs.push(dir);
-  writeFileSync(join(dir, command), '#!/bin/sh\n', { mode: 0o755 });
+  for (const command of commands) writeFileSync(join(dir, command), '#!/bin/sh\n', { mode: 0o755 });
   return dir;
 }
 
@@ -123,6 +123,88 @@ describe('parseCli', () => {
     for (const spec of ['lead:unknown', 'worker:lead']) {
       expect(await main(environment({ argv: ['ui', '--pack', spec], agents, loadUi }).cli)).toBe(EXIT_USAGE);
     }
+  });
+
+  it('auto-assembles a pack from installed agents when --pack is passed without a value', async () => {
+    expect(parseCli(['ui', '--pack'])).toMatchObject({ kind: 'ui', pack: { auto: true } });
+    expect(parseCli(['chat', '--pack', '--web', '--max-parallel', '3'])).toMatchObject({
+      kind: 'chat',
+      web: true,
+      pack: { auto: true, maxParallel: 3 },
+    });
+    expect(parseCli(['tower', '--pack', '-a', 'second'])).toMatchObject({
+      kind: 'tower',
+      agent: 'second',
+      pack: { auto: true },
+    });
+    expect(parseCli(['ui', '-a', 'second', '--pack'])).toMatchObject({
+      kind: 'ui',
+      agent: 'second',
+      pack: { auto: true },
+    });
+    // `--pack` as the value of another string flag stays a value, not bare `--pack`.
+    expect(parseCli(['ui', '--model=--pack'])).toMatchObject({ kind: 'ui', model: '--pack' });
+    expect(parseCli(['ui', '--model=--pack'])).not.toHaveProperty('pack');
+    expect(parseCli(['ui', '-ym--pack'])).toMatchObject({ kind: 'ui', approveAll: true, model: '--pack' });
+    expect(parseCli(['ui', '-ym--pack'])).not.toHaveProperty('pack');
+    for (const args of [
+      ['-m', '--pack'],
+      ['-ym', '--pack'],
+      ['--pack='],
+      ['--pack', 'onlylead'],
+      ['--pack', '--max-parallel', '0'],
+      ['--pack', 'a:b', '--pack'],
+      ['--pack', '--pack', 'a:b'],
+    ])
+      expect(() => parseCli(['ui', ...args])).toThrow(UsageError);
+
+    const plain = fakeAgent('plain', []);
+    const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
+    const second = { ...fakeAgent('second', []), capabilities: { mcp: true } };
+    const missing = { ...fakeAgent('missing', []), capabilities: { mcp: true } };
+    const agents = [plain, lead, second, missing];
+    const bin = pathWith(plain.command, lead.command, second.command);
+
+    const launches: UiLaunch[] = [];
+    const loadUi = async () => {
+      const capture = async (launch: UiLaunch) => {
+        launches.push(launch);
+        return 0;
+      };
+      return { runChat: capture, runWeb: capture };
+    };
+
+    expect(await main(environment({ argv: ['ui', '--pack'], agents, env: { PATH: bin }, loadUi }).cli)).toBe(EXIT_OK);
+    expect(launches[0]).toMatchObject({
+      agent: 'pack',
+      startupNotice: 'Pack: lead leads · members: plain, lead, second.',
+    });
+    expect(launches[0]!.agents[0]).toMatchObject({ name: 'pack', command: lead.command });
+
+    expect(
+      await main(
+        environment({ argv: ['chat', '--pack', '-a', 'second'], agents, env: { PATH: bin }, interactive: true, loadUi })
+          .cli,
+      ),
+    ).toBe(EXIT_OK);
+    expect(launches[1]).toMatchObject({
+      agent: 'pack',
+      startupNotice: 'Pack: second leads · members: plain, lead, second.',
+    });
+    expect(launches[1]!.agents[0]).toMatchObject({ name: 'pack', command: second.command });
+
+    const nonMcpLead = environment({ argv: ['ui', '--pack', '-a', 'plain'], agents, env: { PATH: bin }, loadUi });
+    expect(await main(nonMcpLead.cli)).toBe(EXIT_USAGE);
+    expect(nonMcpLead.err()).toContain('does not support MCP');
+
+    const unknownLead = environment({ argv: ['ui', '--pack', '-a', 'ghost'], agents, env: { PATH: bin }, loadUi });
+    expect(await main(unknownLead.cli)).toBe(EXIT_USAGE);
+    expect(unknownLead.err()).toContain('Unknown agent "ghost"');
+
+    const onlyPlain = pathWith(plain.command);
+    const noMcp = environment({ argv: ['ui', '--pack'], agents, env: { PATH: onlyPlain }, loadUi });
+    expect(await main(noMcp.cli)).toBe(EXIT_USAGE);
+    expect(noMcp.err()).toContain('No installed agent with MCP support found for --pack');
   });
   it('parses run options', () => {
     expect(
