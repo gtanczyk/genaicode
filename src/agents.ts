@@ -142,6 +142,27 @@ export {
   serveMcpStdio,
   SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,
+  findTopic,
+  isTopicsRun,
+  mergeTopics,
+  moveSessions,
+  readTopics,
+  renameTopic,
+  sortedTopics,
+  summarizeTopics,
+  topicNamed,
+  TOPICS_BATCH,
+  TOPICS_PROMPT_MARK,
+  topicsFile,
+  topicsPrompt,
+  unsortedSessions,
+  writeTopics,
+  describeKnownLimits,
+  knownLimits,
+  recordLimits,
+  shortLimit,
+  statusLineLimits,
+  replyEnding,
 } from './agents/sessions/index.js';
 export type {
   ClaudeSessionsOptions,
@@ -171,6 +192,10 @@ export type {
   CodexServerOptions,
   CodexSessionsVia,
   SessionToolsOptions,
+  Topic,
+  TopicStore,
+  TopicSummary,
+  KnownLimit,
 } from './agents/sessions/index.js';
 export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport } from './agents/verify.js';
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
