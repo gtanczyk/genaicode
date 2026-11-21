@@ -1,6 +1,6 @@
 import { claudeSessions } from '../sessions/claude.js';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { decideApproval, reportApproval } from '../live-agent.js';
@@ -29,7 +29,11 @@ export type ClaudePermissionMode =
 export interface ClaudeAgentOptions {
   /** Executable name or path. Default `claude`. */
   command?: string;
-  /** Default `acceptEdits`: file edits run unattended, other tools follow Claude Code settings. */
+  /**
+   * Permission mode passed as `--permission-mode`. When omitted (and `task.permissions` is unset),
+   * inherits `permissions.defaultMode` from `options.settings` or the user's Claude Code
+   * `settings.json`, falling back to `acceptEdits` when none is configured.
+   */
   permissionMode?: ClaudePermissionMode;
   /** Passed as `--allowedTools`. */
   allowedTools?: readonly string[];
@@ -53,6 +57,90 @@ export interface ClaudeAgentOptions {
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const MAX_SETTINGS_BYTES = 1024 * 1024;
+
+function claudeUserSettingsPath(env: NodeJS.ProcessEnv): string {
+  const dir = env.CLAUDE_CONFIG_DIR || join(env.HOME || env.USERPROFILE || homedir(), '.claude');
+  return join(dir, 'settings.json');
+}
+
+function readClaudeUserSettings(env: NodeJS.ProcessEnv): Record<string, unknown> | undefined {
+  const file = claudeUserSettingsPath(env);
+  try {
+    const stat = statSync(file);
+    if (!stat.isFile() || stat.size > MAX_SETTINGS_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    return isObject(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readsUserSettings(extraArgs?: readonly string[]): boolean {
+  if (!extraArgs?.length) return true;
+  let sources: string | undefined;
+  for (let i = 0; i < extraArgs.length; i++) {
+    const arg = extraArgs[i]!;
+    if (arg === '--') break;
+    if (arg === '--bare') return false;
+    if (arg === '--setting-sources') {
+      sources = extraArgs[i + 1] ?? '';
+      i++;
+    } else if (arg.startsWith('--setting-sources=')) {
+      sources = arg.slice('--setting-sources='.length);
+    }
+  }
+  if (sources === undefined) return true;
+  return sources
+    .split(',')
+    .map((part) => part.trim())
+    .includes('user');
+}
+
+function isModeDisabled(
+  user: Record<string, unknown> | undefined,
+  userPerms: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+  overridePerms: Record<string, unknown> | undefined,
+  key: 'disableAutoMode' | 'disableBypassPermissionsMode',
+): boolean {
+  const from = (root: Record<string, unknown> | undefined, perms: Record<string, unknown> | undefined) =>
+    perms?.[key] === 'disable' || root?.[key] === 'disable' ? 'disable' : (perms?.[key] ?? root?.[key]);
+  return (from(override, overridePerms) ?? from(user, userPerms)) === 'disable';
+}
+
+function hasDefaultModeInSettings(
+  user: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+): boolean {
+  const userPerms = user && isObject(user.permissions) ? user.permissions : undefined;
+  const overridePerms = override && isObject(override.permissions) ? override.permissions : undefined;
+  const mode =
+    stringField(overridePerms, 'defaultMode')?.trim() || stringField(userPerms, 'defaultMode')?.trim() || undefined;
+  if (!mode) return false;
+  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return false;
+  if (
+    mode === 'bypassPermissions' &&
+    isModeDisabled(user, userPerms, override, overridePerms, 'disableBypassPermissionsMode')
+  )
+    return false;
+  return true;
+}
+
+/**
+ * Whether Claude Code already has a usable `permissions.defaultMode` in `options.settings` or
+ * the user's `settings.json` (`$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json`).
+ * Project settings are ignored: Claude rejects elevated modes such as `auto` there, and an
+ * untrusted repository must not weaken the driver's fallback.
+ */
+export function hasClaudeDefaultMode(
+  env: NodeJS.ProcessEnv = process.env,
+  override?: Record<string, unknown>,
+  extraArgs?: readonly string[],
+): boolean {
+  const user = readsUserSettings(extraArgs) ? readClaudeUserSettings(env) : undefined;
+  return hasDefaultModeInSettings(user, override);
+}
 
 /**
  * Claude Code in print mode (`claude -p --output-format stream-json`).
@@ -108,11 +196,16 @@ async function prepareClaude(
   context: PrepareContext,
   stdinPrompt: boolean,
 ): Promise<PreparedRun> {
-  const policy = resolvePermissions(task.permissions).approval;
-  const asks = policy ? policy !== 'deny' : !!task.onApproval;
+  const permissions = resolvePermissions(task.permissions);
+  const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
+  const asks = permissions.approval ? permissions.approval !== 'deny' : !!task.onApproval;
   const approvals = asks ? await claudeApprovals(task, context) : undefined;
   const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
-  if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt) };
+  const inheritMode =
+    !owned &&
+    options.permissionMode === undefined &&
+    hasClaudeDefaultMode(task.env ?? process.env, options.settings, task.extraArgs);
+  if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt, inheritMode) };
   let dir: string | undefined;
   let file: string;
   try {
@@ -126,7 +219,7 @@ async function prepareClaude(
   }
   const created = dir;
   return {
-    args: claudeArgs(task, options, file, approvals?.args, stdinPrompt),
+    args: claudeArgs(task, options, file, approvals?.args, stdinPrompt, inheritMode),
     ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
     cleanup: () => {
       void approvals?.close();
@@ -177,6 +270,8 @@ export function claudeArgs(
   approvalArgs?: readonly string[],
   /** The prompt comes as stream-json on stdin (see `claude({ steer })`), not as an argument. */
   stdinPrompt = false,
+  /** Omit the default `--permission-mode acceptEdits` so Claude Code uses `permissions.defaultMode` from settings. */
+  inheritPermissionMode?: boolean,
 ): string[] {
   const args = ['-p', '--verbose'];
   // Multi-value flags come first: a single-value flag must follow them before the prompt.
@@ -193,9 +288,14 @@ export function claudeArgs(
   exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
   args.push('--output-format', 'stream-json');
   if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
+  const inheritMode = inheritPermissionMode ?? hasDefaultModeInSettings(undefined, options.settings);
   const modeArgs = owned
     ? claudePermissionFlags(permissions).args
-    : ['--permission-mode', options.permissionMode ?? 'acceptEdits'];
+    : options.permissionMode !== undefined
+      ? ['--permission-mode', options.permissionMode]
+      : inheritMode
+        ? []
+        : ['--permission-mode', 'acceptEdits'];
   if (options.settings) {
     // One `--settings`: a second one would replace the first.
     const at = modeArgs.indexOf('--settings');
