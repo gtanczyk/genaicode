@@ -144,7 +144,12 @@ export interface TopicFolder {
   roots: string[];
 }
 
-const slashed = (place: string): string => place.replace(/\\/g, '/').replace(/\/+$/, '');
+const slashed = (place: string): string => {
+  const flat = place.replace(/\\/g, '/');
+  let end = flat.length;
+  while (end > 1 && flat[end - 1] === '/') end -= 1;
+  return flat.slice(0, end);
+};
 
 /** The folder `cwd` is in: the one with the deepest root, or the one a Codex worktree is a copy of. */
 function folderOf(cwd: string, folders: readonly TopicFolder[]): TopicFolder | undefined {
