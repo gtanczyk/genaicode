@@ -40,6 +40,7 @@ jobs:
         run: |
           sudo apt-get -o Acquire::Retries=3 install -y bubblewrap apparmor-profiles
           sudo apparmor_parser -r /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          sudo systemctl start "user@$(id -u).service"
       - run: npm run check
         env:
           GENAICODE_TEST_REQUIRE_BWRAP: '1'

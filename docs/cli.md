@@ -275,9 +275,12 @@ home and writable space for test output and bundler caches. Installed dependenci
 and npm workspace links point to the checked-out packages. Network access is disabled. A missing or disabled
 sandbox reports a failed check. The built-in test runner is unavailable on Windows.
 
-Each pack runs one test command at a time under an unprivileged account. The command has
-five minutes, 180 CPU seconds per process, up to 64 processes and 2 GiB of total resident
-memory. A resource limit ends the check and its output appears on the task card.
+Each pack runs one test command at a time under an unprivileged account, for up to five
+minutes and 180 CPU seconds per process. On Linux, a systemd user manager (254 or newer)
+and cgroup v2 enforce 2 GiB of memory across the whole check, zero swap and 64 tasks,
+including threads. The runner checks the kernel's limits before executing the command.
+On macOS, it monitors total resident memory and process count, stopping the group above
+2 GiB or 64 processes. macOS also applies a system memory limit of 1.5 GiB per process.
 
 Each check has a disposable 1 GiB filesystem for the workspace and temporary files. Linux
 mounts the installed dependencies read-only and allows another 16 MiB of shared memory.

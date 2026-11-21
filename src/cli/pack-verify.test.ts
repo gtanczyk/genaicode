@@ -113,17 +113,14 @@ it('checks a private workspace using the worker’s linked packages and read-onl
         new AbortController().signal,
       ),
     );
-    if (
-      process.env.GENAICODE_TEST_REQUIRE_BWRAP === '1' ||
-      (process.getuid?.() !== 0 &&
-        (process.platform === 'darwin' ||
-          (process.platform === 'linux' && existsSync('/usr/bin/bwrap') && !result.output.startsWith('bwrap:'))))
-    ) {
+    const requireSandbox =
+      process.env.GENAICODE_TEST_REQUIRE_BWRAP === '1' || (process.platform === 'darwin' && process.getuid?.() !== 0);
+    const unavailable = /Isolated test runner unavailable|^bwrap:.*(?:namespace|permitted)/i.test(result.output);
+    if (requireSandbox || !unavailable) {
       expect(result, result.output).toMatchObject({ exitCode: 0 });
       expect(result.output).toContain('isolated fixture passed');
     } else {
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toMatch(/Isolated test runner unavailable|bwrap:.*(?:namespace|permitted)/i);
     }
     expect(readFileSync(join(work, 'input'), 'utf8')).toBe('edit made after the check was requested');
     expect(readFileSync(external, 'utf8')).toBe(installedCode);

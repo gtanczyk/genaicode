@@ -89,7 +89,8 @@ export async function runPackCheck(
 ): Promise<CheckResult> {
   try {
     const limited = await limitedCommand(command, args);
-    return await runCheckProcess(limited, cwd, env, signal, directoryFd, packTestLimits);
+    const scopeEnv = process.platform === 'linux' ? { ...env, XDG_RUNTIME_DIR: '/run/user/' + process.getuid!() } : env;
+    return await runCheckProcess(limited, cwd, scopeEnv, signal, directoryFd, packTestLimits);
   } catch (error) {
     return {
       exitCode: null,

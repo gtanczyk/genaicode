@@ -18,11 +18,32 @@ export async function limitedCommand(command: string, args: string[]) {
     timeout: 3000,
   });
   const baseline = stdout.trim().split(/\s+/).length;
+  const wrapper = fileURLToPath(new URL('./limit-test.sh', import.meta.url));
+  const memoryBytes = packTestLimits.memoryKiB * 1024;
+  const scope = darwin
+    ? []
+    : [
+        '--user',
+        '--scope',
+        '--quiet',
+        '--collect',
+        '--expand-environment=no',
+        '--description=GenAIcode pack test',
+        '--property=MemoryMax=' + memoryBytes,
+        '--property=MemorySwapMax=0',
+        '--property=TasksMax=' + extraProcesses,
+        '--property=RuntimeMaxSec=' + packTestLimits.timeoutMs / 1000,
+        '--',
+        wrapper,
+      ];
   return {
-    executable: fileURLToPath(new URL('./limit-test.sh', import.meta.url)),
+    executable: darwin ? wrapper : '/usr/bin/systemd-run',
     args: [
+      ...scope,
       String(baseline + extraProcesses),
       darwin ? '0' : String(memoryMiB * 1024),
+      String(memoryBytes),
+      String(extraProcesses),
       ...(darwin ? ['/usr/sbin/taskpolicy', '-m', String(memoryMiB)] : []),
       command,
       ...args,

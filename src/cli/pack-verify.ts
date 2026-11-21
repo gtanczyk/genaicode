@@ -71,6 +71,14 @@ export async function worktreeCheck(
   } catch {
     return unavailable('Install or enable ' + runner + ' to run this check.');
   }
+  if (platform === 'linux') {
+    try {
+      await access('/usr/bin/systemd-run', constants.X_OK);
+      await access('/run/user/' + process.getuid!() + '/systemd/private');
+    } catch {
+      return unavailable('Linux tests need a running systemd user manager with cgroup v2 memory and task limits.');
+    }
+  }
 
   const work = await realpath(cwd);
   const nested = relative(root, work);
