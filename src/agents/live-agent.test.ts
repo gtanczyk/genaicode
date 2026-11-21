@@ -71,11 +71,23 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.method === 'thread/start') { started = msg.params; return send({ id: msg.id, result: { thread: { id: 'th-1' } } }); }
   if (msg.method === 'thread/resume') {
     started = { ...msg.params, resumed: msg.params.threadId };
+    if (mode === 'usage-replay') note('thread/tokenUsage/updated', { turnId: 'old', tokenUsage: { total: { inputTokens: 1000, outputTokens: 80, cachedInputTokens: 500 } } });
     return send({ id: msg.id, result: { thread: { id: 'th-1', status: { type: mode === 'busy' ? 'active' : 'idle' } } } });
   }
   if (msg.method === 'session/start') { started = msg.params; return send({ id: msg.id, result: { session: { sessionId: 'se-1' } } }); }
   if (msg.method === 'session/resume') { started = { resumed: msg.params.sessionId, excludeItems: msg.params.excludeItems }; return send({ id: msg.id, result: { session: { sessionId: 'se-1' }, history: { mode: 'none' }, pendingRequests: [] } }); }
   if (msg.method === 'turn/start') {
+    if (mode === 'usage-replay' || mode === 'usage-last') {
+      const update = (input, output, cached, last) => note('thread/tokenUsage/updated', { turnId: 'tu-1', tokenUsage: {
+        total: { inputTokens: input, outputTokens: output, cachedInputTokens: cached }, last,
+      } });
+      update(1010, 82, 508, { inputTokens: 10, outputTokens: 2, cachedInputTokens: 8 });
+      send({ id: msg.id, result: { turn: { id: 'tu-1' } } });
+      update(1015, 85, 510, { inputTokens: 5, outputTokens: 3, cachedInputTokens: 2 });
+      update(1015, 85, 510, { inputTokens: 5, outputTokens: 3, cachedInputTokens: 2 });
+      note('turn/completed', { turn: { id: 'tu-1', status: 'completed' } });
+      return;
+    }
     if (codex && started.resumed && (msg.params.threadId !== started.resumed || !started.excludeTurns)) return send({ id: msg.id, error: { code: -32602, message: 'Invalid resumed turn' } });
     send({ id: msg.id, result: codex ? { turn: { id: 'tu-1' } } : { turnId: 'tu-1' } });
     // Another thread's completion must not end this task.
@@ -135,6 +147,22 @@ async function collect(run: AgentRun, onEvent?: (event: AgentEvent) => void) {
 }
 
 describe('codexLive', () => {
+  it.each(['usage-replay', 'usage-last'])('charges only the resumed turn to its token budget (%s)', async (mode) => {
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'continue',
+      cwd: dir,
+      resume: 'th-1',
+      env: env(mode),
+      budget: { maxTokens: 25 },
+    });
+    const events = await collect(run);
+    const samples = events.flatMap((event) => (event.type === 'usage' ? [event.usage] : []));
+    expect(samples.map((usage) => usage.totalTokens)).toEqual([12, 20, 20]);
+    expect(await run.result).toMatchObject({
+      ok: true,
+      usage: { inputTokens: 15, outputTokens: 5, cachedInputTokens: 10, totalTokens: 20 },
+    });
+  });
   it('resumes the reviewed thread with its saved policies and routes its approvals to the operator', async () => {
     const agent = codexLive({ command: codexBin });
     const task = { prompt: 'go', cwd: dir, resume: 'th-1' };

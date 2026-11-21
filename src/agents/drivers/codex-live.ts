@@ -1,4 +1,5 @@
 import { codexSessions } from '../sessions/codex.js';
+import type { TokenUsage } from '../../core/types.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
 import type { AgentEvent, CodingAgent } from '../types.js';
@@ -80,7 +81,37 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   });
   const ours = (params: unknown) => ids.thread !== undefined && stringField(params, 'threadId') === ids.thread;
 
+  // thread/resume replays the previous turn's cumulative counter. Notifications can arrive
+  // before either RPC promise settles, so identify the new turn before charging its usage.
+  let baseline: TokenUsage | undefined;
+  let startingTurn = false;
+  let counted = false;
+  const earlyUsage: JsonObject[] = [];
+  const resumedUsage = (params: JsonObject) => {
+    const report = params.tokenUsage;
+    if (!isObject(report)) return;
+    const total = codexUsage(report.total ?? report);
+    if (!total) return;
+    const turnId = stringField(params, 'turnId');
+    if (!startingTurn || (ids.turn && turnId && ids.turn !== turnId)) {
+      if (!counted) baseline = total;
+      return;
+    }
+    if (!ids.turn) {
+      earlyUsage.push(params);
+      return;
+    }
+    // A server without the replay still reports the most recent model call in `last`.
+    baseline ??= usageDifference(total, codexUsage(report.last) ?? {});
+    counted = true;
+    session.emit({ type: 'usage', usage: usageDifference(total, baseline) });
+  };
+
   session.onNotification((method, params) => {
+    if (task.resume && method === 'thread/tokenUsage/updated' && isObject(params) && params.threadId === task.resume) {
+      resumedUsage(params);
+      return;
+    }
     // Account-wide: no threadId, and this app-server serves only our task.
     if (method === 'account/rateLimits/updated') {
       for (const event of codexNotification(method, params)) session.emit(event);
@@ -135,6 +166,7 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   session.emit({ type: 'session', sessionId: threadId });
 
   const input = (text: string) => [{ type: 'text', text }];
+  startingTurn = true;
   const started = await rpc.request(
     'turn/start',
     { threadId, input: input(task.prompt), ...(task.effort ? { effort: task.effort } : {}) },
@@ -143,11 +175,33 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   const turnId = stringField(isObject(started) ? started.turn : undefined, 'id');
   ids.turn = turnId;
   if (!turnId) throw new Error('Codex did not return a turn id.');
+  for (const params of earlyUsage.splice(0)) resumedUsage(params);
 
   session.setSteer(async (text) => {
     await rpc.request('turn/steer', { threadId, expectedTurnId: turnId, input: input(text) }, timeout);
   });
   return finished;
+}
+
+function codexUsage(value: unknown): TokenUsage | undefined {
+  const inputTokens = numberField(value, 'inputTokens');
+  const outputTokens = numberField(value, 'outputTokens');
+  const cachedInputTokens = numberField(value, 'cachedInputTokens');
+  if (inputTokens === undefined && outputTokens === undefined) return undefined;
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(inputTokens !== undefined && outputTokens !== undefined ? { totalTokens: inputTokens + outputTokens } : {}),
+  };
+}
+
+function usageDifference(total: TokenUsage, before: TokenUsage): TokenUsage {
+  const delta: TokenUsage = {};
+  for (const key of ['inputTokens', 'outputTokens', 'cachedInputTokens', 'totalTokens'] as const) {
+    if (total[key] !== undefined) delta[key] = Math.max(0, total[key] - (before[key] ?? 0));
+  }
+  return delta;
 }
 
 /** Map one app-server notification to agent events. */
@@ -204,24 +258,8 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
       return [];
     case 'thread/tokenUsage/updated': {
       const usage = isObject(params.tokenUsage) ? params.tokenUsage : undefined;
-      const total = isObject(usage?.total) ? usage.total : usage;
-      const inputTokens = numberField(total, 'inputTokens');
-      const outputTokens = numberField(total, 'outputTokens');
-      const cachedInputTokens = numberField(total, 'cachedInputTokens');
-      if (inputTokens === undefined && outputTokens === undefined) return [];
-      return [
-        {
-          type: 'usage',
-          usage: {
-            ...(inputTokens !== undefined ? { inputTokens } : {}),
-            ...(outputTokens !== undefined ? { outputTokens } : {}),
-            ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
-            ...(inputTokens !== undefined && outputTokens !== undefined
-              ? { totalTokens: inputTokens + outputTokens }
-              : {}),
-          },
-        },
-      ];
+      const total = codexUsage(usage?.total ?? usage);
+      return total ? [{ type: 'usage', usage: total }] : [];
     }
     case 'account/rateLimits/updated':
       return codexRateLimits(params.rateLimits);
