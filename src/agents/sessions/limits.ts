@@ -29,6 +29,15 @@ export function limitsAgent(driver: string): string {
   return driver.replace(/Live$/, '');
 }
 
+/**
+ * What a run does with a limit its agent reports: kept under the home of the environment the agent
+ * ran in. Off in the caller's own environment counts too, whatever the agent was given.
+ */
+export function keepRunLimit(driver: string, limit: RateLimit, env: NodeJS.ProcessEnv | undefined): void {
+  if (process.env.GENAICODE_LIMITS === 'off') return;
+  recordLimits(limitsAgent(driver), [limit], env ?? process.env);
+}
+
 const keyOf = (limit: RateLimit): string => (limit.name ? `${limit.window}:${limit.name}` : limit.window);
 
 function fileOf(dir: string, agent: string): string | undefined {

@@ -1,4 +1,4 @@
-import { limitsAgent, recordLimits } from './sessions/limits.js';
+import { keepRunLimit } from './sessions/limits.js';
 import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
@@ -67,7 +67,7 @@ export function cliAgent(definition: CliAgentDefinition): CodingAgent {
 
 function runCliAgent(definition: CliAgentDefinition, task: AgentTask): AgentRun {
   const recorder = new RunRecorder(definition.name, definition.command, (limit) =>
-    recordLimits(limitsAgent(definition.name), [limit]),
+    keepRunLimit(definition.name, limit, task.env),
   );
   const iterate = () => recorder.events.iterate();
   const lifetime = new AbortController();

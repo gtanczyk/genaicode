@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { claude } from '../drivers/claude.js';
-import { knownLimits, limitsAgent, recordLimits, rolloutLimits, statusLineLimits } from './limits.js';
+import { keepRunLimit, knownLimits, limitsAgent, recordLimits, rolloutLimits, statusLineLimits } from './limits.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -125,7 +125,18 @@ describe('known limits', () => {
     expect(statusLineLimits({ model: {} })).toEqual([]);
   });
 
-  it('a driver names the account its limits belong to', () => {
-    expect(limitsAgent(claude().name)).toBe('claude');
+  it("a run's limit is kept under the home its agent ran in, unless the caller turned it off", async () => {
+    const env = home();
+    const limit = { window: '5h', status: 'ok' as const, usedPercent: 7, resetsAt: Date.now() + 3600_000 };
+    // The suite itself runs with it off.
+    keepRunLimit(claude().name, limit, env);
+    expect(await knownLimits(env)).toEqual([]);
+    vi.stubEnv('GENAICODE_LIMITS', '');
+    try {
+      keepRunLimit('codexLive', limit, env);
+      expect((await knownLimits(env)).map((known) => known.agent)).toEqual(['codex']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
