@@ -13,12 +13,15 @@ const style = document.createElement('style');
 style.textContent = styles;
 document.head.append(style);
 
+// Top-level tabs exchange ?token= for an HttpOnly session cookie; embedded frames keep it in the URL.
 const token = new URLSearchParams(location.search).get('token') ?? '';
 
 async function postCommand(body: WebCommand) {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (token) headers['x-genaicode-token'] = token;
   const res = await fetch('/api/command', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+    headers,
     body: JSON.stringify(body),
   });
   return (await res.json()) as { ok?: boolean; text?: string; error?: string };
@@ -32,7 +35,7 @@ function useView(): { view?: ChatView; connected: boolean } {
   const [view, setView] = useState<ChatView>();
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
+    const source = new EventSource(token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events');
     source.addEventListener('view', (event) => {
       setView(JSON.parse((event as MessageEvent<string>).data) as ChatView);
       setConnected(true);

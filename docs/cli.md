@@ -261,9 +261,11 @@ An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it
 its stdin, which also reaches the server when a launcher such as npx sits in between.
 
 `genaicode ui` listens on the loopback address and prints a link with a random access
-token. The page, the event stream and every command need that token; only the bundled
-script and the four mascot files (`/app.js`, `/assets/…`) are served without it, since they
-hold nothing about your session. Both front ends are bundled into the package and load
+token. Opening it in a browser exchanges the token for an `HttpOnly` session cookie and
+redirects to `/`, so the token does not stay in the address bar. The page, the event stream
+and every command need that cookie or the token; only the bundled script and the four mascot
+files (`/app.js`, `/assets/…`) are served without it, since they hold nothing about your
+session. Both front ends are bundled into the package and load
 only for these commands; importing `genaicode` or `genaicode/agents` pulls in no UI code.
 In code, the same conversation is `createAgentSession` from `genaicode/agents` (see
 [agents.md](agents.md#chat-sessions)); with a live driver (`codexLive`,

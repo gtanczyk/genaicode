@@ -26,9 +26,11 @@ export function SessionReply({
     setError(undefined);
     try {
       const target = [session.source, session.id].map(encodeURIComponent).join('/');
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (token) headers['x-genaicode-token'] = token;
       const response = await fetch(`/api/sessions/${target}/send`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+        headers,
         body: JSON.stringify({ prompt, sandbox: sandbox || undefined }),
       });
       const result = await response.json();

@@ -84,6 +84,30 @@ export type WebCommand =
   | { type: 'model'; model: string };
 
 const MAX_BODY = 64 * 1024;
+/** Cap on port-scoped cookies left on the host so repeated random-port runs do not bloat Cookie headers. */
+const MAX_PORT_COOKIES = 8;
+
+function secretOk(candidate: string | null | undefined, expected: string): boolean {
+  if (!candidate) return false;
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function sessionCookies(cookieHeader: string | undefined, currentName: string, secret: string): string[] {
+  const headers = [`${currentName}=${secret}; HttpOnly; SameSite=Lax; Path=/`];
+  const others: string[] = [];
+  for (const part of (cookieHeader ?? '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const name = part.slice(0, eq).trim();
+    if (name !== currentName && /^genaicode_\d+$/.test(name) && !others.includes(name)) others.push(name);
+  }
+  for (const stale of others.slice(0, Math.max(0, others.length - (MAX_PORT_COOKIES - 1)))) {
+    headers.push(`${stale}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  }
+  return headers;
+}
 
 export function parseCommand(value: unknown): WebCommand | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -151,6 +175,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const { controller } = options;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
+  // Separate secret for the HttpOnly session cookie so the printed URL token never sits in Cookie headers.
+  const cookieSecret = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
   const lifetime = new AbortController();
   let port = 0;
@@ -159,18 +185,54 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     if (!header) return false;
     return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, `${host}:${port}`].includes(header);
   };
-  const tokenOk = (candidate: string | null | undefined) => {
-    if (!candidate) return false;
-    const a = Buffer.from(candidate);
-    const b = Buffer.from(token);
-    return a.length === b.length && timingSafeEqual(a, b);
+  const cookieName = () => `genaicode_${port}`;
+  const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  const cookieOk = (req: IncomingMessage) => {
+    const header = req.headers.cookie;
+    if (!header) return false;
+    const expectedName = cookieName();
+    let ok = false;
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      if (part.slice(0, eq).trim() === expectedName && secretOk(part.slice(eq + 1).trim(), cookieSecret)) ok = true;
+    }
+    return ok;
+  };
+  // Cookie-authenticated API requests must come from this origin (guards against CSRF and other local ports).
+  const cookieAuthOk = (req: IncomingMessage, url: URL) => {
+    if (!cookieOk(req)) return false;
+    const site = req.headers['sec-fetch-site'];
+    if (site !== undefined && site !== 'same-origin') return false;
+    if (req.headers['sec-fetch-mode'] === 'navigate') return false;
+    const origin = req.headers.origin;
+    if (origin !== undefined) {
+      try {
+        if (new URL(origin).origin !== url.origin) return false;
+      } catch {
+        return false;
+      }
+    } else if (req.method !== 'GET' && site !== 'same-origin') {
+      return false;
+    }
+    return true;
+  };
+  const apiAuthorized = (req: IncomingMessage, url: URL) => {
+    const header = req.headers['x-genaicode-token'];
+    if (header !== undefined) return typeof header === 'string' && tokenOk(header);
+    return cookieAuthOk(req, url);
+  };
+  const eventsAuthorized = (req: IncomingMessage, url: URL) => {
+    const query = url.searchParams.get('token');
+    if (query !== null) return tokenOk(query);
+    return cookieAuthOk(req, url);
   };
   const send = (
     res: ServerResponse,
     status: number,
     type: string,
     body: string,
-    headers: Record<string, string> = {},
+    headers: Record<string, string | string[]> = {},
   ) => {
     res.writeHead(status, {
       'content-type': type,
@@ -199,10 +261,22 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
     if (req.method === 'GET' && url.pathname === '/') {
-      if (!tokenOk(url.searchParams.get('token'))) {
+      const ancestors = options.frameAncestors?.() ?? [];
+      const inFrame = ancestors.length > 0 || req.headers['sec-fetch-dest'] === 'iframe';
+      const queryToken = url.searchParams.get('token');
+      if (queryToken !== null) {
+        if (!tokenOk(queryToken)) {
+          return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
+        }
+        if (!inFrame) {
+          return send(res, 303, 'text/plain', '', {
+            location: '/',
+            'set-cookie': sessionCookies(req.headers.cookie, cookieName(), cookieSecret),
+          });
+        }
+      } else if (!cookieOk(req)) {
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
       }
-      const ancestors = options.frameAncestors?.() ?? [];
       return send(res, 200, 'text/html; charset=utf-8', pageHtml({ ...options.title, sessions: !!options.sessions }), {
         'content-security-policy': `frame-ancestors ${ancestors.length ? ancestors.join(' ') : "'none'"}`,
       });
@@ -231,10 +305,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return res.end(response.body);
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
-      if (!tokenOk(url.searchParams.get('token'))) return send(res, 403, 'text/plain', 'Bad token');
+      if (!eventsAuthorized(req, url)) return send(res, 403, 'text/plain', 'Bad token');
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
         connection: 'keep-alive',
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
@@ -247,7 +323,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/sessions') {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+      if (!apiAuthorized(req, url)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.sessions) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
@@ -259,7 +335,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
     if (req.method === 'POST' && target) {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+      if (!apiAuthorized(req, url)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.sendPrompt) return send(res, 404, 'application/json', '{"error":"no session sender here"}');
@@ -300,7 +376,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);
     if (req.method === 'POST' && asked) {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+      if (!apiAuthorized(req, url)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.answer) return send(res, 404, 'application/json', '{"error":"no questions here"}');
@@ -322,7 +398,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
     }
     if (req.method === 'POST' && url.pathname === '/api/archive') {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+      if (!apiAuthorized(req, url)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.archive) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
@@ -354,7 +430,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       return send(res, 200, 'application/json', JSON.stringify({ changed }));
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+      if (!apiAuthorized(req, url)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {

@@ -136,8 +136,15 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     await vi.waitFor(() => expect(opened).toBeTruthy());
     const desktop = await browser.newPage();
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const apiUrls: string[] = [];
     for (const page of [desktop, mobile]) {
+      page.on('request', (req) => {
+        if (req.url().includes('/api/')) apiUrls.push(req.url());
+      });
       await page.goto(opened!);
+      expect(page.url()).toBe(new URL('/', opened!).href);
+      await page.reload();
+      expect(page.url()).toBe(new URL('/', opened!).href);
       await page.getByRole('button', { name: 'Tower inbox · 5' }).click();
       await page.getByText('Pack task t1').waitFor();
     }
@@ -173,6 +180,11 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(await hook).toEqual({ behavior: 'allow' });
     expect(received.map((t) => [t.resume, t.cwd, t.prompt])).toEqual([[row.id, project, message]]);
     expect(decisions).toEqual(['session approve', 'worker deny']);
+    await desktop.getByRole('button', { name: 'Sessions' }).click();
+    await desktop.locator('main.sessions').getByText('catalog', { exact: true }).waitFor();
+    expect(apiUrls.some((url) => url.endsWith('/api/events'))).toBe(true);
+    expect(apiUrls.some((url) => url.includes('/api/sessions'))).toBe(true);
+    expect(apiUrls.every((url) => !url.includes('token='))).toBe(true);
     expect(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally {
     stop.abort();
