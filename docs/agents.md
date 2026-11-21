@@ -370,7 +370,7 @@ The prompt holds one line per session (agent, last two directory names, title or
 prompt), quoted as data. `renameTopic()`, `mergeTopics()` and `moveSessions()` correct a store; a
 session that has a topic is never moved by a later answer. `projectTopics(sessions, store)` places
 the sessions relayed from a claude.ai project (`SessionInfo.project`: its id, and its name where
-the session gives it) in a topic named as the project, without an agent.
+the session gives it; such a session is titled as its thread there) in a topic named as the project, without an agent.
 
 For Copilot and Gemini shell approvals, `waitingCommands` contains the tool name and up to
 200 characters of each matching command. Genaicode keeps a digest in its private hook record

@@ -163,7 +163,16 @@ describe('session sources', () => {
     write(
       'relayed',
       50,
-      user('<session-context>Project: "Ink & Fury" (id: chan_01AbC)</session-context>', { isMeta: true }),
+      {
+        type: 'attachment',
+        attachment: {
+          type: 'prompt_snapshot',
+          systemPrompt: [
+            'You are...',
+            '## Where you are\n\nProject: "Ink & Fury" (id: `chan_01AbC`)\nTopic: "Cut the trailer"\n',
+          ],
+        },
+      },
       user('<wake reason="mention"><project id="chan_01AbC" type="project">Cut the trailer</project></wake>', {
         turnOrigin: 'human',
         entrypoint: 'claude-desktop',
@@ -182,7 +191,10 @@ describe('session sources', () => {
       'headless',
       'older-headless',
     ]);
-    expect(all.find((entry) => entry.id === 'relayed')!.project).toEqual({ id: 'chan_01AbC', name: 'Ink & Fury' });
+    expect(all.find((entry) => entry.id === 'relayed')).toMatchObject({
+      project: { id: 'chan_01AbC', name: 'Ink & Fury' },
+      title: 'Cut the trailer',
+    });
     expect(all.find((entry) => entry.id === 'unnamed')!.project).toEqual({ id: 'chan_02XyZ' });
     expect(all.find((entry) => entry.id === 'chat')!.project).toBeUndefined();
   });

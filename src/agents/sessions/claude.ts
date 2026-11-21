@@ -38,10 +38,13 @@ function textOf(content: unknown, type: string): string | undefined {
 const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[\s>]/;
 
 const SCHEDULED = /^\s*<scheduled-task[\s>]/;
-// How a message relayed from a claude.ai project names it: in its envelope, and in the context it opens with.
+// How a session relayed from a claude.ai project names it: by id in a message's envelope, and by
+// name in the snapshot of its instructions.
 const PROJECT_ID = /<project id="(chan_[A-Za-z0-9]+)"/;
 const PROJECT_LINES = 6;
-const PROJECT_NAMED = /Project: "([^"\n]{1,120})" \(id: (chan_[A-Za-z0-9]+)\)/;
+const PROJECT_NAMED = /Project: "([^"\n]{1,120})" \(id: `?(chan_[A-Za-z0-9]+)`?\)/;
+// The thread of that project the session works for, as its title there.
+const PROJECT_TOPIC = /\nTopic: "([^"\n]{1,200})"/;
 const messageOf = (line: Record<string, unknown>): unknown =>
   isRecord(line.message) ? line.message.content : undefined;
 
@@ -123,11 +126,22 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   // The claude.ai project a relayed message came from, with its name where the context gives it:
   // looked for in what the first few user lines say.
   let looked = 0;
+  let thread: string | undefined;
   const project = (line: Record<string, unknown>) => {
-    if (info.project?.name || line.type !== 'user' || looked >= PROJECT_LINES) return;
-    const text = textOf(messageOf(line), 'text');
+    if (info.project?.name) return;
+    let text: string | undefined;
+    if (line.type === 'attachment' && isRecord(line.attachment) && line.attachment.type === 'prompt_snapshot') {
+      // The snapshot of the session's instructions is where the project is named.
+      const prompt = line.attachment.systemPrompt;
+      text = Array.isArray(prompt) ? prompt.filter((part) => typeof part === 'string').join('\n') : undefined;
+      if (typeof prompt === 'string') text = prompt;
+      const topic = text && PROJECT_NAMED.test(text) ? PROJECT_TOPIC.exec(text)?.[1] : undefined;
+      if (topic) thread = oneLine(topic, 120);
+    } else if (line.type === 'user' && looked < PROJECT_LINES) {
+      text = textOf(messageOf(line), 'text');
+      if (text) looked += 1;
+    }
     if (!text) return;
-    looked += 1;
     const named = PROJECT_NAMED.exec(text);
     const id = named?.[2] ?? PROJECT_ID.exec(text)?.[1];
     if (!id || (info.project && info.project.id !== id)) return;
@@ -191,6 +205,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   }
   if (!conversed) return null;
   // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
+  // A session relayed from a claude.ai thread is called what the thread is, unless it has a title of its own.
+  if (info.project) info.title ??= thread;
   info.firstPrompt ??= firstWrapped;
   info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
   // Nobody typed into it: every prompt Claude Code noted a sender for came from a task, or, where it
