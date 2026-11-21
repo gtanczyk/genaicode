@@ -73,6 +73,25 @@ function pathWith(command: string): string {
 }
 
 describe('parseCli', () => {
+  it('uses the resumable interactive Codex and Muse drivers in the tower inbox', async () => {
+    const inspect = async (launch: UiLaunch) => {
+      expect(launch.towerInbox).toBeDefined();
+      for (const name of ['codex', 'muse']) {
+        expect(launch.sessionAgents?.find((agent) => agent.name === name)?.capabilities).toMatchObject({
+          approvals: true,
+          resume: true,
+          steer: true,
+        });
+      }
+      return 0;
+    };
+    const { cli } = environment({
+      argv: ['tower', '--pack', 'claude:codex'],
+      interactive: true,
+      loadUi: async () => ({ runWeb: inspect, runChat: inspect }),
+    });
+    expect(await main(cli)).toBe(EXIT_OK);
+  });
   it('opens the requested pack in either chat and keeps the original session sources', async () => {
     const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
     const worker = fakeAgent('worker', []);

@@ -69,9 +69,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (msg.method === 'initialize') return send({ id: msg.id, result: {} });
   if (msg.method === 'thread/start') { started = msg.params; return send({ id: msg.id, result: { thread: { id: 'th-1' } } }); }
+  if (msg.method === 'thread/resume') {
+    started = { ...msg.params, resumed: msg.params.threadId };
+    return send({ id: msg.id, result: { thread: { id: 'th-1', status: { type: mode === 'busy' ? 'active' : 'idle' } } } });
+  }
   if (msg.method === 'session/start') { started = msg.params; return send({ id: msg.id, result: { session: { sessionId: 'se-1' } } }); }
   if (msg.method === 'session/resume') { started = { resumed: msg.params.sessionId, excludeItems: msg.params.excludeItems }; return send({ id: msg.id, result: { session: { sessionId: 'se-1' }, history: { mode: 'none' }, pendingRequests: [] } }); }
   if (msg.method === 'turn/start') {
+    if (codex && started.resumed && (msg.params.threadId !== started.resumed || !started.excludeTurns)) return send({ id: msg.id, error: { code: -32602, message: 'Invalid resumed turn' } });
     send({ id: msg.id, result: codex ? { turn: { id: 'tu-1' } } : { turnId: 'tu-1' } });
     // Another thread's completion must not end this task.
     send({ method: 'turn/completed', params: { threadId: 'other', sessionId: 'other', turn: { id: 'x', status: 'failed' }, terminal: 'failed' } });
@@ -130,6 +135,29 @@ async function collect(run: AgentRun, onEvent?: (event: AgentEvent) => void) {
 }
 
 describe('codexLive', () => {
+  it('resumes the reviewed thread with its saved policies and routes its approvals to the operator', async () => {
+    const agent = codexLive({ command: codexBin });
+    const task = { prompt: 'go', cwd: dir, resume: 'th-1' };
+    const saved = await agent.run({ ...task, env: env('policy') }).result;
+    expect(saved).toMatchObject({ ok: true, sessionId: 'th-1', text: '{}' });
+    const asked = await agent.run({ ...task, env: env('approval'), onApproval: () => 'deny' }).result;
+    expect(asked).toMatchObject({ ok: true, text: 'decision:{"decision":"decline"}' });
+    const explicit = await agent.run({
+      ...task,
+      env: env('policy'),
+      permissions: { sandbox: 'read-only', approval: 'ask' },
+      onApproval: () => 'deny',
+    }).result;
+    expect(JSON.parse(explicit.text!)).toEqual({ sandbox: 'read-only', approvalPolicy: 'on-request' });
+    expect(await agent.run({ ...task, resume: 'another', env: env('basic') }).result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('different thread'),
+    });
+    expect(await agent.run({ ...task, env: env('busy') }).result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('active turn'),
+    });
+  });
   it('runs one turn and folds its events', async () => {
     const run = codexLive({ command: codexBin }).run({ prompt: 'go', cwd: dir, env: env('basic') });
     const events = await collect(run);

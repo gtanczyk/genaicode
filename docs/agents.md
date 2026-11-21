@@ -591,7 +591,8 @@ const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
 const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
 ```
 
-`claude`, `codex`, `cursor`, `opencode`, `copilot`, `antigravity` and `museLive` support it (`capabilities.resume`).
+`claude`, `codex`, `codexLive`, `cursor`, `opencode`, `copilot`, `antigravity` and `museLive` support it (`capabilities.resume`).
+`codexLive` resumes the stored thread with its saved sandbox and approval policy unless the caller overrides them.
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
 ## Chat sessions

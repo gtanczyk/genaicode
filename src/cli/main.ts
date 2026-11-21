@@ -557,8 +557,8 @@ async function runUi(
   }
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
-  const sessionAgents = agents;
-  const towerInbox = options.pack && options.sessions ? new TowerInbox(sessionAgents, cli.env) : undefined;
+  let sessionAgents = agents;
+  let towerInbox: TowerInbox | undefined;
   let initial = options.agent;
   if (options.pack) {
     const spec = options.pack;
@@ -567,15 +567,22 @@ async function runUi(
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    const member = (name: string) => {
-      if (!cli.agents && name === 'codex') return codexLive();
-      if (!cli.agents && name === 'muse') return museLive();
-      return sessionAgents.find((agent) => agent.name === name)!;
-    };
+    const packAgents =
+      cli.agents ??
+      agents.map((agent) => {
+        if (agent.name === 'codex') return codexLive();
+        if (agent.name === 'muse') return museLive();
+        return agent;
+      });
+    const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     const lead = member(spec.lead);
     if (!lead.capabilities.mcp) {
       cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
       return EXIT_USAGE;
+    }
+    if (options.sessions) {
+      sessionAgents = packAgents;
+      towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
     const team = pack({
       lead,

@@ -36,6 +36,7 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
       usage: true,
       rateLimits: true,
       approvals: true,
+      resume: true,
       mcp: true,
       permissions: {
         approval: ['ask', 'auto-approve', 'deny'],
@@ -110,18 +111,27 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
   rpc.notify('initialized');
 
+  const policy = codexThreadPolicy(task, options);
+  const explicit = resolvePermissions(task.permissions);
+  // A resume inherits the saved policy. Only caller-specified settings override it.
   const thread = await rpc.request(
-    'thread/start',
+    task.resume ? 'thread/resume' : 'thread/start',
     {
       cwd: task.cwd,
       ...(task.model ? { model: task.model } : {}),
-      ...codexThreadPolicy(task, options),
+      ...(task.resume ? { threadId: task.resume, excludeTurns: true } : {}),
+      ...(!task.resume || explicit.sandbox || options.sandbox ? { sandbox: policy.sandbox } : {}),
+      ...(!task.resume || explicit.approval ? { approvalPolicy: policy.approvalPolicy } : {}),
     },
     timeout,
   );
-  const threadId = stringField(isObject(thread) ? thread.thread : undefined, 'id');
-  ids.thread = threadId;
+  const info = isObject(thread) && isObject(thread.thread) ? thread.thread : undefined;
+  const threadId = stringField(info, 'id');
   if (!threadId) throw new Error('Codex did not return a thread id.');
+  if (task.resume && threadId !== task.resume) throw new Error('Codex returned a different thread on resume.');
+  if (task.resume && stringField(info?.status, 'type') === 'active')
+    throw new Error('The Codex thread already has an active turn.');
+  ids.thread = threadId;
   session.emit({ type: 'session', sessionId: threadId });
 
   const input = (text: string) => [{ type: 'text', text }];
