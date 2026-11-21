@@ -175,6 +175,11 @@ const DIFF_CONTEXT = 3;
 function changedLines(before: string, after: string): DiffLine[] {
   const from = textLines(before);
   const to = textLines(after);
+  // Only one of them ends its last line: that is a change too, so that line says it.
+  if (from.length && to.length && before.endsWith('\n') !== after.endsWith('\n')) {
+    const open = before.endsWith('\n') ? to : from;
+    open[open.length - 1] += ' (no newline at end)';
+  }
   let head = 0;
   while (head < from.length && head < to.length && from[head] === to[head]) head += 1;
   let tail = 0;

@@ -97,6 +97,12 @@ describe('toolDiff', () => {
     expect(toolDiff({ old_string: 'one\n', new_string: '' })).toMatchObject({ added: 0, removed: 1 });
     expect(toolDiff({ old_string: 'one\n', new_string: 'one\ntwo\n' })).toMatchObject({ added: 1, removed: 0 });
     expect(toolDiff('@@ -1 +1 @@\n-a\n+b\n')?.lines).toHaveLength(3);
+    // Dropping only that newline is still a change to the last line.
+    expect(toolDiff({ old_string: 'a\none\n', new_string: 'a\none' })?.lines).toEqual([
+      { sign: ' ', text: 'a' },
+      { sign: '-', text: 'one' },
+      { sign: '+', text: 'one (no newline at end)' },
+    ]);
   });
 
   it('cuts a long change and says how much is left out', () => {
