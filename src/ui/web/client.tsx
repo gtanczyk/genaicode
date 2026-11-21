@@ -308,7 +308,7 @@ function App() {
           aria-pressed={view.autoApprove}
           onClick={() => submit(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
         >
-          {view.autoApprove ? 'Auto-approve' : 'Ask first'}
+          {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
         </button>
         <button
           type="button"
