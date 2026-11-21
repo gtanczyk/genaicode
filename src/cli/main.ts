@@ -64,7 +64,8 @@ import {
   backgroundUpdate,
   defaultUpdateDeps,
   findInstall,
-  INSTALL_SCRIPT_URL,
+  installCommand,
+  shadowingCommand,
   registerRun,
   selfInstall,
   setAutoUpdate,
@@ -110,6 +111,7 @@ export interface UiLaunch {
   sessionTools?: readonly McpTool[];
   towerInbox?: TowerInbox;
   waitingOnStart?: boolean;
+  startupNotice?: string;
   agent?: string;
   cwd: string;
   model?: string;
@@ -178,7 +180,13 @@ Usage:
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
+  genaicode install [options]          Install "genaicode" as a command that updates itself
   genaicode update [options]           Update the installed genaicode command
+
+Install options (macOS, Linux; same as scripts/install.sh):
+      --version <v>       Install this version (default: the one running, e.g. via npx)
+      --bin-dir <dir>     Where the command goes (default: ~/.local/bin)
+      --force             Replace a "genaicode" there that the installer did not write
 
 Update options (for the command scripts/install.sh installs; npx and npm -g update through npm):
       --check             Only say whether a newer version is out
@@ -244,9 +252,10 @@ Notify options:
   tool, nothing of what was said. It needs "genaicode hooks install". "notify test" shows one now.
 
 Chat and UI options:
-  -a, --agent <name>      Agent to start with (default: the first installed one)
-      --pack <lead:list>  Start a pack, e.g. claude:codex,gemini. Follow its tasks in the chat
-                          In the tower, Ctrl+G opens approvals and proposed session messages
+  -a, --agent <name>      Agent to start with (default: the first installed one; with --pack, the lead)
+      --pack [lead:list]  Start a pack: omit the value to use all installed agents, or name them
+                          explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
+                          the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
@@ -335,7 +344,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
-  const quick = ['help', 'version', 'update', 'self-install'].includes(command.kind);
+  const quick = ['help', 'version', 'update', 'self-install', 'install'].includes(command.kind);
   // Machine-readable output and protocol servers get no banner and start no updater.
   const machine = command.kind === 'acp' || command.kind === 'sessions-mcp' || ('json' in command && command.json);
   if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
@@ -392,6 +401,8 @@ function dispatch(
       return runUpdate(cli, updater, command);
     case 'self-install':
       return runSelfInstall(cli, updater, command);
+    case 'install':
+      return runInstall(cli, updater, command);
   }
 }
 
@@ -409,7 +420,7 @@ async function runUpdate(
     cli.stderr.write(
       `This genaicode runs from ${deps.packageRoot}, not from the installed command.\n` +
         'Update it with npm ("npm install -g genaicode@latest", or bump it in your project), ' +
-        `or install the command, which updates itself:\n  curl -fsSL ${INSTALL_SCRIPT_URL} | sh\n`,
+        `or install the command, which updates itself:\n  npx genaicode install\n`,
     );
     return EXIT_FAILED;
   }
@@ -454,24 +465,51 @@ function runSelfInstall(
   options: Extract<CliCommand, { kind: 'self-install' }>,
 ): number {
   try {
-    const result = selfInstall({
-      packageRoot: deps.packageRoot,
-      binDir: options.binDir,
-      force: options.force,
-      env: cli.env,
-    });
-    cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
-    if (!result.onPath) {
-      const dir = dirname(result.shim);
-      cli.stdout.write(
-        `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
-          `  export PATH="${dir}:$PATH"\n`,
-      );
-    }
+    reportInstall(
+      cli,
+      selfInstall({ packageRoot: deps.packageRoot, binDir: options.binDir, force: options.force, env: cli.env }),
+    );
     return EXIT_OK;
   } catch (error) {
     cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return EXIT_FAILED;
+  }
+}
+
+async function runInstall(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'install' }>,
+): Promise<number> {
+  try {
+    cli.stderr.write('Installing genaicode with npm (no install scripts)...\n');
+    const result = await installCommand(deps, options);
+    reportInstall(cli, result);
+    const shadow = shadowingCommand(cli.env, dirname(result.shim));
+    if (shadow) {
+      cli.stdout.write(
+        `Note: "genaicode" on your PATH is ${shadow}, which comes before ${dirname(result.shim)}.\n` +
+          'Remove it ("npm uninstall -g genaicode") or put that directory first on PATH.\n',
+      );
+    }
+    cli.stdout.write(
+      'Run "genaicode" to start. It checks for updates once a day; "genaicode update --auto off" turns that off.\n',
+    );
+    return EXIT_OK;
+  } catch (error) {
+    cli.stderr.write(`Install failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
+  }
+}
+
+function reportInstall(cli: CliEnvironment, result: { version: string; shim: string; onPath: boolean }): void {
+  cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
+  if (!result.onPath) {
+    const dir = dirname(result.shim);
+    cli.stdout.write(
+      `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
+        `  export PATH="${dir}:$PATH"\n`,
+    );
   }
 }
 
@@ -559,10 +597,10 @@ async function runUi(
   const indexed = agentSessionSources(agents);
   let sessionAgents = agents;
   let towerInbox: TowerInbox | undefined;
+  let startupNotice: string | undefined;
   let initial = options.agent;
   if (options.pack) {
     const spec = options.pack;
-    if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
     if (options.mcpServers.some((server) => server.name === 'pack')) {
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
@@ -575,10 +613,43 @@ async function runUi(
         return agent;
       });
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
-    const lead = member(spec.lead);
-    if (!lead.capabilities.mcp) {
-      cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
-      return EXIT_USAGE;
+    let lead: CodingAgent;
+    let members: CodingAgent[];
+    if ('auto' in spec) {
+      const installed = detectAgents(packAgents, cli.env)
+        .filter((found) => found.path !== null)
+        .map((found) => found.agent);
+      if (options.agent !== undefined) {
+        if (!knownAgents(cli, agents, [options.agent], '--agent')) return EXIT_USAGE;
+        lead = member(options.agent);
+      } else {
+        const picked = installed.find((agent) => agent.capabilities.mcp);
+        if (!picked) {
+          const mcpNames = packAgents
+            .filter((agent) => agent.capabilities.mcp)
+            .map((agent) => agent.name)
+            .join(', ');
+          const hint = mcpNames ? ` (needs one of: ${mcpNames})` : '';
+          cli.stderr.write(`No installed agent with MCP support found for --pack${hint}.\n`);
+          return EXIT_USAGE;
+        }
+        lead = picked;
+      }
+      if (!lead.capabilities.mcp) {
+        cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
+        return EXIT_USAGE;
+      }
+      // Every installed agent joins the pack (including the lead).
+      members = installed.includes(lead) ? installed : [lead, ...installed];
+      startupNotice = `Pack: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
+    } else {
+      if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
+      lead = member(spec.lead);
+      if (!lead.capabilities.mcp) {
+        cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
+        return EXIT_USAGE;
+      }
+      members = spec.members.map(member);
     }
     if (options.sessions) {
       sessionAgents = packAgents;
@@ -586,7 +657,7 @@ async function runUi(
     }
     const team = pack({
       lead,
-      members: spec.members.map(member),
+      members,
       maxParallel: spec.maxParallel,
       sessionProposalTool: towerInbox?.proposalTool,
     });
@@ -626,6 +697,7 @@ async function runUi(
     ...(tools ? { sessionTools: tools } : {}),
     ...(towerInbox ? { towerInbox } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
+    ...(startupNotice ? { startupNotice } : {}),
     agent: initial,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
     model: options.model,

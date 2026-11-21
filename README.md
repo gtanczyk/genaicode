@@ -34,13 +34,9 @@ to the agent for another try. `-a codex` (or `claude`, `copilot`, `opencode`...)
 agent, and the command stays the same. Node.js 20+; the agent CLIs are yours to install and
 log in to (`npx genaicode agents` lists what it finds).
 
-To have `genaicode` as a command that keeps itself up to date (macOS, Linux):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh
-```
-
-See [Install the command](docs/cli.md#install-the-command).
+To have `genaicode` as a command that keeps itself up to date (macOS, Linux), run
+`npx genaicode install` once, or the
+[shell installer](docs/cli.md#install-the-command) without npx.
 
 ## What's inside
 

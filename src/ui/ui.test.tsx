@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
@@ -217,6 +217,19 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('shows a startupNotice immediately when provided', () => {
+    const chat = createChatController({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      startupNotice: 'Pack: echo leads · members: echo.',
+    });
+    expect(chat.get().notices).toMatchObject([
+      { afterTurn: 0, tone: 'info', text: 'Pack: echo leads · members: echo.' },
+    ]);
+    chat.close();
+  });
+
   it('picks the first installed agent and resumes its session on the next prompt', async () => {
     const missing = echoAgent('missing', 'not-installed');
     const echo = echoAgent();
@@ -333,7 +346,7 @@ describe('chat controller', () => {
     await expect.poll(() => texts().at(-1)).toContain('exit code 3');
     expect(texts().slice(first)).toEqual([
       '$ printf "\\033[32mready\\033[0m\\n" && pwd && exit 3',
-      `ready\n${bin}`,
+      `ready\n${realpathSync(bin)}`,
       'printf "\\033[32mready\\033[0m\\n" && pwd && exit 3: exit code 3.',
     ]);
     expect(chat.get().notices.at(-1)?.tone).toBe('error');
@@ -702,11 +715,15 @@ describe('web UI server', () => {
   });
 
   it('returns public pack action reasons and keeps internal diagnostics local', async () => {
+    vi.resetModules();
+    const { PackActionError: DriverError } = await import('../agents/pack.js');
+    expect(DriverError).not.toBe(PackActionError);
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     chat.session.actOnPackTask = async (_turnId, id) => {
       if (id === 'missing') throw new PackActionError('missing', 'private diagnostic');
-      if (id === 'conflict') throw new PackActionError('conflict', 'private git stderr');
-      if (id === 'unexpected') throw new Error('private diagnostic');
+      if (id === 'conflict') throw new DriverError('conflict', 'private git stderr');
+      if (id === 'unexpected')
+        throw Object.assign(new Error('private diagnostic'), { name: 'PackActionError', reason: 'conflict' });
       return '+added';
     };
     const ui = await startWebUi({

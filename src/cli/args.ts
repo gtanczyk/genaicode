@@ -2,6 +2,8 @@ import { parseArgs } from 'node:util';
 import { isSandboxPolicy } from '../agents/permissions.js';
 import type { AgentBudget, McpServer, SandboxPolicy } from '../agents/types.js';
 
+export type PackSpec = { auto: true; maxParallel?: number } | { lead: string; members: string[]; maxParallel?: number };
+
 export type CliCommand =
   | { kind: 'help' }
   | { kind: 'version' }
@@ -18,6 +20,8 @@ export type CliCommand =
     }
   /** Run once by scripts/install.sh from the freshly installed version. */
   | { kind: 'self-install'; binDir?: string; force: boolean }
+  /** `npx genaicode install`: what scripts/install.sh does, from npm. */
+  | { kind: 'install'; version?: string; binDir?: string; force: boolean }
   | { kind: 'agents'; json: boolean }
   | { kind: 'send'; id: string; prompt?: string; agent?: string; sandbox?: SandboxPolicy; detach: boolean }
   | {
@@ -55,7 +59,7 @@ export type CliCommand =
   | {
       kind: 'chat' | 'ui' | 'tower';
       agent?: string;
-      pack?: { lead: string; members: string[]; maxParallel?: number };
+      pack?: PackSpec;
       cwd?: string;
       model?: string;
       effort?: string;
@@ -158,6 +162,17 @@ export function parseCli(argv: readonly string[]): CliCommand {
       auto: values.auto === undefined ? undefined : values.auto === 'on',
       background: values.background === true,
     };
+  }
+
+  if (command === 'install') {
+    const { values } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        options: { version: { type: 'string' }, 'bin-dir': { type: 'string' }, force: { type: 'boolean' } },
+      }),
+    );
+    return { kind: 'install', version: values.version, binDir: values['bin-dir'], force: values.force === true };
   }
 
   if (command === 'self-install') {
@@ -355,41 +370,51 @@ export function parseCli(argv: readonly string[]): CliCommand {
   }
 
   if (command === 'chat' || command === 'ui' || command === 'tower') {
+    const parseOptions = {
+      agent: { type: 'string' as const, short: 'a' },
+      pack: { type: 'string' as const },
+      'max-parallel': { type: 'string' as const },
+      cwd: { type: 'string' as const, short: 'C' },
+      model: { type: 'string' as const, short: 'm' },
+      effort: { type: 'string' as const },
+      resume: { type: 'string' as const, short: 'r' },
+      from: { type: 'string' as const },
+      yes: { type: 'boolean' as const, short: 'y' },
+      port: { type: 'string' as const },
+      mcp: { type: 'string' as const, multiple: true as const },
+      'max-tokens': { type: 'string' as const },
+      'max-cost': { type: 'string' as const },
+      fallback: { type: 'string' as const, multiple: true as const },
+      'no-artifacts': { type: 'boolean' as const },
+      sessions: { type: 'boolean' as const },
+      ...(command === 'ui'
+        ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
+        : { web: { type: 'boolean' as const } }),
+    };
+    const { args, barePack, explicitPack } = extractBarePack(rest, parseOptions);
+    if (barePack && explicitPack) {
+      throw new UsageError('Use --pack once, either by itself or with lead:member[,member].');
+    }
     const { values } = parse(() =>
       parseArgs({
-        args: rest,
+        args,
         strict: true,
-        options: {
-          agent: { type: 'string', short: 'a' },
-          pack: { type: 'string' },
-          'max-parallel': { type: 'string' },
-          cwd: { type: 'string', short: 'C' },
-          model: { type: 'string', short: 'm' },
-          effort: { type: 'string' },
-          resume: { type: 'string', short: 'r' },
-          from: { type: 'string' },
-          yes: { type: 'boolean', short: 'y' },
-          port: { type: 'string' },
-          mcp: { type: 'string', multiple: true },
-          'max-tokens': { type: 'string' },
-          'max-cost': { type: 'string' },
-          fallback: { type: 'string', multiple: true },
-          'no-artifacts': { type: 'boolean' },
-          sessions: { type: 'boolean' },
-          ...(command === 'ui'
-            ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
-            : { web: { type: 'boolean' as const } }),
-        },
+        options: parseOptions,
       }),
     );
     const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
-    let pack: Extract<CliCommand, { kind: 'chat' | 'ui' | 'tower' }>['pack'];
-    if (typeof values.pack === 'string') {
+    let pack: PackSpec | undefined;
+    if (barePack) {
+      if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
+      pack = { auto: true, ...(maxParallel !== undefined ? { maxParallel } : {}) };
+    } else if (typeof values.pack === 'string') {
       const [lead, list, ...extraParts] = values.pack.split(':');
       const members = list?.split(',').map((name) => name.trim());
       if (!lead.trim() || !members?.length || members.some((name) => !name) || extraParts.length)
-        throw new UsageError('--pack expects lead:member[,member], for example claude:codex,gemini.');
+        throw new UsageError(
+          '--pack takes no value (auto-detect installed agents) or lead:member[,member], for example claude:codex,gemini.',
+        );
       if (values.agent !== undefined && values.agent !== lead.trim())
         throw new UsageError('--pack already chooses the lead agent. Use the same name with --agent or omit it.');
       if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
@@ -585,4 +610,62 @@ function optionalNumber(value: string | boolean | undefined, flag: string): numb
     throw new UsageError(`${flag} expects a non-negative whole number, got "${String(value)}".`);
   }
   return number;
+}
+
+/**
+ * Strip a bare `--pack` (no value, or followed by another flag) before `parseArgs`, since Node's
+ * `parseArgs` does not support optional values on string options. Values of other string options
+ * (such as `-m --pack`) are left untouched.
+ */
+function extractBarePack(
+  rest: readonly string[],
+  options: Record<string, { type: 'string' | 'boolean'; short?: string }>,
+): { args: string[]; barePack: boolean; explicitPack: boolean } {
+  const longValueOpts = new Set<string>();
+  const shortValueOpts = new Set<string>();
+  for (const [name, config] of Object.entries(options)) {
+    if (config.type !== 'string' || name === 'pack') continue;
+    longValueOpts.add(`--${name}`);
+    if (config.short) shortValueOpts.add(config.short);
+  }
+  const args: string[] = [];
+  let barePack = false;
+  let explicitPack = false;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
+    if (arg === '--') {
+      args.push(...rest.slice(i));
+      break;
+    }
+    if (arg === '--pack') {
+      const next = rest[i + 1];
+      if (next === undefined || next.startsWith('-')) {
+        barePack = true;
+        continue;
+      }
+      explicitPack = true;
+      args.push(arg, next);
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--pack=')) {
+      explicitPack = true;
+      args.push(arg);
+      continue;
+    }
+    args.push(arg);
+    if (takesNextValue(arg, longValueOpts, shortValueOpts) && i + 1 < rest.length) {
+      args.push(rest[++i]!);
+    }
+  }
+  return { args, barePack, explicitPack };
+}
+
+function takesNextValue(arg: string, longValueOpts: ReadonlySet<string>, shortValueOpts: ReadonlySet<string>): boolean {
+  if (arg.startsWith('--')) return longValueOpts.has(arg);
+  if (!arg.startsWith('-') || arg.length < 2) return false;
+  for (let i = 1; i < arg.length; i++) {
+    if (shortValueOpts.has(arg[i]!)) return i === arg.length - 1;
+  }
+  return false;
 }

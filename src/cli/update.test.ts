@@ -3,24 +3,34 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { main, type CliEnvironment } from './main.js';
 import {
   autoUpdate,
   CHECK_INTERVAL_MS,
   compareVersions,
+  defaultUpdateDeps,
   findInstall,
+  installCommand,
+  npmInstallArgs,
+  shadowingCommand,
   readState,
+  readVersion,
   registerRun,
   writeState,
   releaseNotes,
@@ -71,7 +81,7 @@ const CHANGELOG = `# Changelog
 
 /** An install as scripts/install.sh leaves it, running `version`. */
 function installed(version = '2.35.0') {
-  const base = mkdtempSync(join(tmpdir(), 'genaicode-update-'));
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-update-')));
   dirs.push(base);
   const home = join(base, '.genaicode');
   const root = writePackage(join(home, 'versions', version), version);
@@ -360,6 +370,207 @@ describe('genaicode update', () => {
     const result = await run(['update'], { packageRoot: process.cwd() });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('npm install -g genaicode@latest');
-    expect(result.stderr).toContain('scripts/install.sh | sh');
+    expect(result.stderr).toContain('npx genaicode install');
   });
+});
+
+describe('genaicode install', () => {
+  function npxDeps(base: string, version = '2.36.0') {
+    const root = writePackage(join(base, 'npx-cache'), version);
+    const npm: string[] = [];
+    const deps: UpdateDeps = {
+      packageRoot: root,
+      env: { HOME: base, PATH: '' },
+      now: () => Date.now(),
+      resolveVersion: async (tag) => tag.replace(/^v/, ''),
+      npmInstall: async (prefix, spec) => {
+        npm.push(spec);
+        writePackage(prefix, spec.split('@')[1]);
+      },
+      spawnBackground: () => {},
+    };
+    return { deps, npm };
+  }
+
+  it('installs the running version from npm and sets up the command', async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-install-')));
+    dirs.push(base);
+    const { deps, npm } = npxDeps(base);
+    const result = await installCommand(deps, {});
+    const home = realpathSync(join(base, '.genaicode'));
+    expect(npm).toEqual(['genaicode@2.36.0']);
+    expect(result).toMatchObject({ home, version: '2.36.0', shim: join(base, '.local', 'bin', 'genaicode') });
+    expect(readlinkSync(join(home, 'current'))).toBe(join('versions', '2.36.0'));
+    expect(readdirSync(join(home, 'versions'))).toEqual(['2.36.0']);
+    expect(findInstall(join(home, 'versions', '2.36.0', 'node_modules', 'genaicode'))).toEqual({
+      home,
+      version: '2.36.0',
+    });
+  });
+
+  it('takes --version, GENAICODE_HOME and reuses a version already there', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps, npm } = npxDeps(base);
+    deps.env.GENAICODE_HOME = join(base, 'gc');
+    await installCommand(deps, { version: 'v2.35.1', binDir: join(base, 'bin') });
+    await installCommand(deps, { version: '2.35.1', binDir: join(base, 'bin') });
+    expect(npm).toEqual(['genaicode@2.35.1']);
+    expect(readlinkSync(join(base, 'gc', 'current'))).toBe(join('versions', '2.35.1'));
+    expect(existsSync(join(base, 'bin', 'genaicode'))).toBe(true);
+  });
+
+  it('keeps a version another installer finished while npm ran', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps } = npxDeps(base);
+    const theirs = join(base, '.genaicode', 'versions', '2.36.0');
+    deps.npmInstall = async (prefix, spec) => {
+      writePackage(theirs, '2.36.0');
+      writeFileSync(join(theirs, 'marker'), 'theirs');
+      writePackage(prefix, spec.split('@')[1]);
+    };
+    await installCommand(deps, {});
+    expect(readFileSync(join(theirs, 'marker'), 'utf8')).toBe('theirs');
+    expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual(['2.36.0']);
+  });
+
+  it('reports a failed npm install and leaves nothing behind', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps } = npxDeps(base);
+    deps.npmInstall = async () => {
+      throw new Error('E404');
+    };
+    await expect(installCommand(deps, {})).rejects.toThrow('E404');
+    expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual([]);
+  });
+
+  it("finds a genaicode that comes before the shim on PATH, but not npx's own", () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const global = join(base, 'global', 'bin');
+    const npx = join(base, '.npm', '_npx', 'abc', 'node_modules', '.bin');
+    const bin = join(base, '.local', 'bin');
+    for (const dir of [global, npx, bin]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'genaicode'), '');
+    }
+    expect(shadowingCommand({ PATH: [npx, global, bin].join(delimiter) }, bin)).toBe(join(global, 'genaicode'));
+    expect(shadowingCommand({ PATH: [npx, bin, global].join(delimiter) }, bin)).toBeUndefined();
+  });
+});
+
+/** Builds a minimal `.tgz` package tarball for mock npm registry tests. */
+function makeTarball(version: string): Buffer {
+  const entry = (name: string, content: string): Buffer => {
+    const data = Buffer.from(content);
+    const header = Buffer.alloc(512);
+    header.write(name, 0, 100);
+    header.write('0000644\0', 100);
+    header.write('0000000\0', 108);
+    header.write('0000000\0', 116);
+    header.write(`${data.length.toString(8).padStart(11, '0')}\0`, 124);
+    header.write('00000000000\0', 136);
+    header.write('        ', 148);
+    header.write('0', 156);
+    header.write('ustar\0', 257);
+    header.write('00', 263);
+    let checksum = 0;
+    for (let i = 0; i < 512; i++) checksum += header[i];
+    header.write(`${checksum.toString(8).padStart(6, '0')}\0 `, 148);
+    const pad = (512 - (data.length % 512)) % 512;
+    return Buffer.concat([header, data, Buffer.alloc(pad)]);
+  };
+  return gzipSync(
+    Buffer.concat([
+      entry('package/package.json', JSON.stringify({ name: 'genaicode', version })),
+      entry('package/dist/cli.js', '// cli\n'),
+      Buffer.alloc(1024),
+    ]),
+  );
+}
+
+describe('npmInstall', () => {
+  it('forces online packument revalidation in update and install.sh', () => {
+    const args = npmInstallArgs('/tmp/staging', 'genaicode@2.41.0');
+    expect(args).toContain('--prefer-online');
+    expect(args).toContain('--no-prefer-offline');
+
+    const installScript = readFileSync(join(process.cwd(), 'scripts', 'install.sh'), 'utf8');
+    expect(installScript).toMatch(/npm install[^\n]*--prefer-online[^\n]*--no-prefer-offline/);
+  });
+
+  it('revalidates a fresh cached packument so a newly published version does not ETARGET', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-npm-cache-'));
+    dirs.push(base);
+    const cache = join(base, 'cache');
+    const userconfig = join(base, 'empty.npmrc');
+    writeFileSync(userconfig, '');
+
+    const published = ['2.40.0'];
+    let etag = '"v1"';
+    const packumentIfNoneMatch: Array<string | undefined> = [];
+
+    const server = createServer((req, res) => {
+      const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      if (req.url === '/genaicode') {
+        packumentIfNoneMatch.push(req.headers['if-none-match']);
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304, { 'cache-control': 'public, max-age=300', etag });
+          res.end();
+          return;
+        }
+        const versions = Object.fromEntries(
+          published.map((v) => [
+            v,
+            { name: 'genaicode', version: v, dist: { tarball: `${host}/genaicode/-/${v}.tgz` } },
+          ]),
+        );
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', etag });
+        res.end(JSON.stringify({ name: 'genaicode', 'dist-tags': { latest: published.at(-1) }, versions }));
+        return;
+      }
+      const match = /^\/genaicode\/-\/([^/]+)\.tgz$/.exec(req.url ?? '');
+      if (match) {
+        res.writeHead(200, { 'content-type': 'application/gzip' });
+        res.end(makeTarball(match[1]));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const registry = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
+      for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) {
+        delete cleanEnv[key];
+      }
+      const env: NodeJS.ProcessEnv = {
+        ...cleanEnv,
+        npm_config_cache: cache,
+        npm_config_registry: registry,
+        npm_config_userconfig: userconfig,
+      };
+
+      const first = join(base, 'v2.40.0');
+      mkdirSync(first, { recursive: true });
+      await defaultUpdateDeps(env).npmInstall(first, 'genaicode@2.40.0');
+      expect(readVersion(join(first, 'node_modules', 'genaicode'))).toBe('2.40.0');
+
+      // Publish 2.41.0 well inside the cached packument's max-age=300 window.
+      published.push('2.41.0');
+      etag = '"v2"';
+
+      const second = join(base, 'v2.41.0');
+      mkdirSync(second, { recursive: true });
+      await defaultUpdateDeps({ ...env, npm_config_prefer_offline: 'true' }).npmInstall(second, 'genaicode@2.41.0');
+      expect(readVersion(join(second, 'node_modules', 'genaicode'))).toBe('2.41.0');
+      expect(packumentIfNoneMatch).toEqual([undefined, '"v1"']);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
 });

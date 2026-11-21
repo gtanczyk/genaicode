@@ -5,18 +5,22 @@
 ## Install the command
 
 `npx genaicode` works without installing anything. To type just `genaicode`, and have it
-update itself, run the installer (macOS and Linux, Node.js 20+ with npm):
+update itself, install it once (macOS and Linux, Node.js 20+ with npm):
 
 ```bash
+npx genaicode install
+# or, without npx:
 curl -fsSL https://raw.githubusercontent.com/gtanczyk/genaicode/master/scripts/install.sh | sh
 ```
 
-It is a short shell script ([scripts/install.sh](../scripts/install.sh), read it first) that
-`npm install`s the published package without lifecycle scripts into
+Both do the same thing (the shell version is [scripts/install.sh](../scripts/install.sh), read
+it first): `npm install` the published package without lifecycle scripts into
 `~/.genaicode/versions/<version>`, points `~/.genaicode/current` at it and writes a
 `~/.local/bin/genaicode` shim. Nothing needs sudo. If `~/.local/bin` is not on your `PATH`,
-it prints the line to add to your shell profile. `GENAICODE_VERSION`, `GENAICODE_HOME` and
-`GENAICODE_BIN_DIR` change the version, the install directory and the bin directory.
+it prints the line to add to your shell profile. `npx genaicode install` installs the version
+npx ran; `--version <v>`, `--bin-dir <dir>` and `GENAICODE_HOME` change the version, the bin
+directory and the install directory (for the script: `GENAICODE_VERSION`, `GENAICODE_BIN_DIR`,
+`GENAICODE_HOME`).
 
 ```bash
 genaicode update            # install the latest version now and print what changed
@@ -156,6 +160,7 @@ npx genaicode                      # chat in this terminal (same as "genaicode c
 npx genaicode chat -a claude -C ../api
 npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
 npx genaicode chat --web           # both: the terminal and the browser on one session
+npx genaicode ui --pack            # pack using all installed agents (first MCP agent leads)
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
@@ -170,7 +175,8 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-With `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
+With `--pack` (all installed agents, first MCP-capable one leads; pass `-a <lead>` to choose the
+lead) or `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
 under its turn shows each worker's prompt, activity, result and changed files. The slot counter
 includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
 `--max-tokens` and `--max-cost` include the lead and its workers.
