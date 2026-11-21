@@ -386,6 +386,14 @@ describe('hasClaudeDefaultMode', () => {
     expect(
       hasClaudeDefaultMode(
         withSettings(
+          'auto-nested-disabled',
+          JSON.stringify({ permissions: { defaultMode: 'auto', disableAutoMode: 'disable' } }),
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      hasClaudeDefaultMode(
+        withSettings(
           'bypass-disabled',
           JSON.stringify({
             permissions: { defaultMode: 'bypassPermissions', disableBypassPermissionsMode: 'disable' },
@@ -395,6 +403,7 @@ describe('hasClaudeDefaultMode', () => {
     ).toBe(false);
     const enabled = withSettings('auto-enabled', JSON.stringify({ permissions: { defaultMode: 'auto' } }));
     expect(hasClaudeDefaultMode(enabled, { disableAutoMode: 'disable' })).toBe(false);
+    expect(hasClaudeDefaultMode(enabled, { permissions: { disableAutoMode: 'disable' } })).toBe(false);
     expect(hasClaudeDefaultMode(enabled, undefined, ['--setting-sources=project,local'])).toBe(false);
     expect(hasClaudeDefaultMode(enabled, undefined, ['--setting-sources', 'user,project'])).toBe(true);
     expect(hasClaudeDefaultMode(enabled, undefined, ['--bare'])).toBe(false);

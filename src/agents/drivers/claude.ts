@@ -97,6 +97,18 @@ function readsUserSettings(extraArgs?: readonly string[]): boolean {
     .includes('user');
 }
 
+function isModeDisabled(
+  user: Record<string, unknown> | undefined,
+  userPerms: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+  overridePerms: Record<string, unknown> | undefined,
+  key: 'disableAutoMode' | 'disableBypassPermissionsMode',
+): boolean {
+  const from = (root: Record<string, unknown> | undefined, perms: Record<string, unknown> | undefined) =>
+    perms?.[key] === 'disable' || root?.[key] === 'disable' ? 'disable' : (perms?.[key] ?? root?.[key]);
+  return (from(override, overridePerms) ?? from(user, userPerms)) === 'disable';
+}
+
 function hasDefaultModeInSettings(
   user: Record<string, unknown> | undefined,
   override: Record<string, unknown> | undefined,
@@ -106,10 +118,10 @@ function hasDefaultModeInSettings(
   const mode =
     stringField(overridePerms, 'defaultMode')?.trim() || stringField(userPerms, 'defaultMode')?.trim() || undefined;
   if (!mode) return false;
-  if (mode === 'auto' && (override?.disableAutoMode ?? user?.disableAutoMode) === 'disable') return false;
+  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return false;
   if (
     mode === 'bypassPermissions' &&
-    (overridePerms?.disableBypassPermissionsMode ?? userPerms?.disableBypassPermissionsMode) === 'disable'
+    isModeDisabled(user, userPerms, override, overridePerms, 'disableBypassPermissionsMode')
   )
     return false;
   return true;

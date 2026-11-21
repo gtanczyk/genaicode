@@ -67,6 +67,16 @@ describe('claude driver', () => {
     expect(
       disabledAuto.slice(disabledAuto.indexOf('--permission-mode'), disabledAuto.indexOf('--permission-mode') + 2),
     ).toEqual(['--permission-mode', 'acceptEdits']);
+    const nestedDisabledAuto = claudeArgs(
+      { prompt: 'hi', cwd: '.' },
+      { settings: { permissions: { defaultMode: 'auto', disableAutoMode: 'disable' } } },
+    );
+    expect(
+      nestedDisabledAuto.slice(
+        nestedDisabledAuto.indexOf('--permission-mode'),
+        nestedDisabledAuto.indexOf('--permission-mode') + 2,
+      ),
+    ).toEqual(['--permission-mode', 'acceptEdits']);
     const explicit = claudeArgs(
       { prompt: 'hi', cwd: '.' },
       { permissionMode: 'plan', settings: { permissions: { defaultMode: 'auto' } } },
