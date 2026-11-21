@@ -1,9 +1,11 @@
 import { constants } from 'node:fs';
-import { access, lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
+import { access, lstat, mkdtemp, open, readdir, readlink, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { repoRoot } from '../agents/pack-git.js';
-import { runCheckProcess, type CheckResult } from './check-process.js';
+import { runPackCheck, type CheckResult } from './check-process.js';
+
+const packageCaches = ['.cache', '.vite', '.vite-temp', '.vitest'];
 
 // macOS resolves each file access against this policy, including the targets of symlinks.
 const macProfile = [
@@ -18,6 +20,7 @@ const macProfile = [
   '(allow file-map-executable (subpath "/System/Library") (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/bin") (literal (param "NODE")) (subpath (param "WORK")) (subpath (param "SCRATCH")))',
   '(allow file-read* (subpath "/System/Library") (subpath "/bin") (subpath "/sbin") (subpath "/usr/bin") (subpath "/usr/lib") (subpath "/usr/libexec") (subpath "/usr/share") (subpath "/Library/Developer/CommandLineTools") (subpath "/private/var/db/dyld") (literal "/dev/urandom") (literal "/dev/random"))',
   '(allow file-read* (literal (param "NODE")) (subpath (param "NPM")))',
+  '(allow file-read* (literal "/private/etc/hosts"))',
   '(allow file-read* file-write* (subpath (param "WORK")) (subpath (param "SCRATCH")) (literal "/dev/null"))',
 ].join('\n');
 
@@ -90,14 +93,23 @@ export async function worktreeCheck(
         params['COPY' + i] = dest;
         prepareProfile += '\n(allow file-read* (subpath (param "SOURCE' + i + '")))';
         testProfile += '\n(deny file-write* (subpath (param "COPY' + i + '")))';
+        for (const [j, cache] of packageCaches.entries()) {
+          const key = 'CACHE' + i + '_' + j;
+          params[key] = join(dest, cache);
+          testProfile += '\n(allow file-write* (subpath (param "' + key + '")))';
+        }
         copies.push(dep.source, dest);
       }
       const args = Object.entries(params).flatMap(([key, path]) => ['-D', key + '=' + path]);
       // APFS clones preserve relative links and share unchanged file data with the installation.
       // Only the fixed preparation command gets read access to the original dependency trees.
       if (copies.length) {
-        const prepare = 'set -e; while [ "$#" -gt 0 ]; do /bin/cp -cRP "$1" "$2"; shift 2; done';
-        const prepared = await runCheckProcess(
+        const prepare = [
+          'set -e; while [ "$#" -gt 0 ]; do /bin/cp -cRP "$1" "$2";',
+          'for cache in ' + packageCaches.join(' ') + '; do /bin/rm -rf "$2/$cache"; /bin/mkdir "$2/$cache"; done;',
+          'shift 2; done',
+        ].join(' ');
+        const prepared = await runPackCheck(
           runner,
           [...args, '-p', prepareProfile, '/bin/sh', '-c', prepare, 'copy', ...copies],
           scratch,
@@ -106,7 +118,7 @@ export async function worktreeCheck(
         );
         if (prepared.exitCode !== 0) return prepared;
       }
-      return await runCheckProcess(runner, [...args, '-p', testProfile, '/bin/sh', '-c', command], work, env, signal);
+      return await runPackCheck(runner, [...args, '-p', testProfile, '/bin/sh', '-c', command], work, env, signal);
     }
     // Bind only the disposable checkout and mount dependencies read-only inside it.
     const directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
@@ -147,7 +159,19 @@ export async function worktreeCheck(
         args.push('--symlink', npm, '/tools/npm');
       }
       args.push('--bind', '/proc/self/fd/3', '/work');
-      for (const dep of dependencies) args.push('--ro-bind', dep.source, join('/work', dep.path));
+      // A writable parent lets bundlers create caches even when the host has never run them.
+      // Mount each installed entry read-only and recreate local workspace links at the same depth.
+      for (const dep of dependencies) {
+        const dest = join('/work', dep.path);
+        args.push('--dir', dest);
+        for (const entry of await readdir(dep.source, { withFileTypes: true })) {
+          if (packageCaches.includes(entry.name)) continue;
+          const origin = join(dep.source, entry.name);
+          const target = join(dest, entry.name);
+          if (entry.isSymbolicLink()) args.push('--symlink', await readlink(origin), target);
+          else if (entry.isFile() || entry.isDirectory()) args.push('--ro-bind', origin, target);
+        }
+      }
       args.push(
         '--chdir',
         join('/work', nested),
@@ -170,7 +194,7 @@ export async function worktreeCheck(
         'verify',
         command,
       );
-      return await runCheckProcess(runner, args, scratch, env, signal, false, directory.fd);
+      return await runPackCheck(runner, args, scratch, env, signal, directory.fd);
     } finally {
       await directory.close();
     }

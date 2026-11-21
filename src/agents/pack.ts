@@ -127,7 +127,7 @@ const packActionRefusals = {
   stale: 'The worktree changed. Open the updated diff before merging.',
   budget: 'The session has used its review budget.',
   'budget-busy': 'A turn or review is using the remaining budget. Try again when it finishes.',
-  capacity: 'All pack worker slots are in use. Try the review when a slot is free.',
+  capacity: 'All pack worker slots are in use. Try the check when a slot is free.',
 };
 
 export type PackActionErrorReason = keyof typeof packActionRefusals;
@@ -322,9 +322,7 @@ export function pack(options: PackOptions): Pack {
   let nextId = 1;
   // Delegations still setting up their worktree: they hold a `maxParallel` slot already.
   let starting = 0;
-  const occupied = () =>
-    starting +
-    [...subs.values()].filter((sub) => sub.status === 'running' || sub.checks?.review?.status === 'running').length;
+  const occupied = () => starting + [...subs.values()].filter((sub) => sub.status === 'running' || sub.checking).length;
 
   const noteLimit = (agent: string, limit: RateLimit) => {
     let known = limits.get(agent);
@@ -665,16 +663,20 @@ export function pack(options: PackOptions): Pack {
           if (sub.status === 'running') throw new PackActionError('running');
           if (!sub.dir || !sub.repo || !sub.start || !sub.checks || sub.state !== 'unmerged' || sub.closing)
             throw new PackActionError(worktreeReason(sub));
-          if (sub.checking) throw new PackActionError('checking');
+          if (
+            sub.checking ||
+            (kind === 'verify' && [...subs.values()].some((other) => other.checks?.verify?.status === 'running'))
+          )
+            throw new PackActionError('checking');
           const reviewer = sub.reviewer;
           const verification = options.verification;
           if (kind === 'review' && !reviewer) throw new PackActionError('reviewer');
           if (kind === 'verify' && !verification) throw new PackActionError('verification');
+          if (occupied() >= maxParallel) throw new PackActionError('capacity');
           const root = sub.dir;
           const repo = sub.repo;
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
-          if (kind === 'review' && occupied() >= maxParallel) throw new PackActionError('capacity');
           const checks = sub.checks;
           const abort = new AbortController();
           const cancel = () => abort.abort();

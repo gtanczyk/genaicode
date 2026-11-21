@@ -263,9 +263,13 @@ example `genaicode ui --pack --verify "python -m pytest"`. Tests run when you re
 
 The CLI checks out the recorded Git tree, excluding the worker's ignored files. It runs
 tests under Seatbelt on macOS or `/usr/bin/bwrap` (bubblewrap) on Linux, with a temporary
-home and writable space for test output. Installed dependencies are read-only, and npm
-workspace links point to the checked-out packages. Network access is disabled. A missing or disabled
+home and writable space for test output and bundler caches. Installed dependencies are read-only,
+and npm workspace links point to the checked-out packages. Network access is disabled. A missing or disabled
 sandbox reports a failed check. The built-in test runner is unavailable on Windows.
+
+Each pack runs one test command at a time under an unprivileged account. The command has
+five minutes, 180 CPU seconds per process, up to 64 processes and 2 GiB of total resident
+memory. A resource limit ends the check and its output appears on the task card.
 
 Read **Review notes** and **Test output** beside **Merge locally**. A further edit marks
 earlier results **Outdated**. Run the checks again, or inspect the changed diff and decide

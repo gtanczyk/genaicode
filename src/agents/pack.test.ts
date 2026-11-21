@@ -202,6 +202,7 @@ describe('pack', () => {
       'lead',
       async (task) => {
         await tool(task, 'delegate', { agent: 'worker', prompt: 'Make a change.' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'Make another change.' });
         await tool(task, 'wait');
       },
       { mcp: true, permissions: { approval: ['deny'], sandbox: ['read-only'] } },
@@ -224,6 +225,7 @@ describe('pack', () => {
       await expect(controls.act('t1', { type: 'review' })).rejects.toMatchObject({ reason: 'reviewer' });
       const verify = controls.act('t1', { type: 'verify' });
       await vi.waitFor(() => expect(controls.task('t1')?.checks?.verify?.status).toBe('running'));
+      await expect(controls.act('t2', { type: 'verify' })).rejects.toMatchObject({ reason: 'checking' });
       for (const type of ['verify', 'merge', 'discard'] as const)
         await expect(controls.act('t1', { type })).rejects.toMatchObject({ reason: 'checking' });
       await team.close();
