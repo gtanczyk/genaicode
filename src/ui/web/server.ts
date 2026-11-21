@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, SandboxPolicy } from '../../agents/types.js';
-import type { PackAction } from '../../agents/pack.js';
+import { PackActionError, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
@@ -368,17 +368,20 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
       if (command.type === 'pack-task') {
+        if (!controller.session.actOnPackTask)
+          return send(res, 404, 'application/json', '{"ok":false,"error":"Pack controls are unavailable."}');
         try {
-          if (!controller.session.actOnPackTask) throw new Error('Pack controls are unavailable.');
           const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
         } catch (error) {
-          return send(
-            res,
-            409,
-            'application/json',
-            JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }),
-          );
+          if (error instanceof PackActionError)
+            return send(
+              res,
+              error.reason === 'missing' ? 404 : 409,
+              'application/json',
+              JSON.stringify({ ok: false, error: error.publicMessage }),
+            );
+          return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }
       }
       const ok = await run(controller, command);
