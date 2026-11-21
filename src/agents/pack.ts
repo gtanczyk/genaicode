@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { TokenUsage } from '../core/types.js';
 import { findExecutable } from './discovery.js';
@@ -101,6 +101,9 @@ const packActionRefusals = {
 
 export type PackActionErrorReason = keyof typeof packActionRefusals;
 
+// The CLI and bundled UI can load separate copies of this class in the same process.
+const packActionReason = Symbol.for('genaicode.PackActionError.reason');
+
 /** A refused pack action has a public explanation. Git, driver and filesystem exceptions may carry diagnostics. */
 export class PackActionError extends Error {
   override name = 'PackActionError';
@@ -115,6 +118,18 @@ export class PackActionError extends Error {
   get publicMessage(): string {
     return packActionRefusals[this.reason];
   }
+
+  get [packActionReason](): PackActionErrorReason {
+    return this.reason;
+  }
+}
+
+/** Look up the public text in this copy's table at the HTTP boundary. */
+export function publicPackRefusal(error: unknown): { reason: PackActionErrorReason; message: string } | undefined {
+  if (!(error instanceof Error) || !(packActionReason in error)) return;
+  const reason = error[packActionReason] as PackActionErrorReason;
+  if (typeof reason === 'string' && Object.hasOwn(packActionRefusals, reason))
+    return { reason, message: packActionRefusals[reason] };
 }
 
 /** The same operations as the lead's tools, scoped to the tasks delegated in one run. */
@@ -162,6 +177,15 @@ const MAX_DIFF = 60_000;
 
 const clip = (text: string, max = CLIP) =>
   text.length > max ? `${text.slice(0, max)}\n[... ${text.length - max} more characters]` : text;
+
+function projectDirectory(cwd: string): string {
+  try {
+    return realpathSync(cwd);
+  } catch {
+    // The driver can report an unavailable project through its normal run result.
+    return path.resolve(cwd);
+  }
+}
 
 function defaultBrief(members: readonly PackMember[]): string {
   const names = members.filter((member) => member.installed).map((member) => member.name);
@@ -310,6 +334,8 @@ export function pack(options: PackOptions): Pack {
       });
     },
     run(task) {
+      // Keep the lead's physical location for later actions even if its symlink moves.
+      const leadCwd = projectDirectory(task.cwd);
       const events = new EventQueue<AgentEvent>(approximateSize);
       const ended = new AbortController();
       const mine = new Set<Sub>();
@@ -397,7 +423,7 @@ export function pack(options: PackOptions): Pack {
       };
 
       const start = async (agent: CodingAgent, prompt: string, wanted: unknown): Promise<string> => {
-        const repo = await repoRoot(task.cwd);
+        const repo = await repoRoot(leadCwd);
         const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
         if (!mode) throw new Error('`mode` is `worktree` or `shared`.');
         if (mode === 'worktree' && !repo)
@@ -417,6 +443,9 @@ export function pack(options: PackOptions): Pack {
           ended: new Promise<void>((resolve) => (settle = resolve)),
         };
         if (mode === 'worktree' && repo) {
+          const relativeCwd = path.relative(repo, leadCwd);
+          if (relativeCwd === '..' || relativeCwd.startsWith('..' + path.sep) || path.isAbsolute(relativeCwd))
+            throw new Error('The working directory is outside the Git worktree.');
           const dir = path.join(
             repo,
             options.worktreeDir ?? path.join('.genaicode', 'worktrees'),
@@ -426,9 +455,9 @@ export function pack(options: PackOptions): Pack {
           sub.repo = repo;
           sub.dir = dir;
           sub.state = 'unmerged';
-          sub.cwd = path.join(dir, path.relative(repo, task.cwd));
-          mkdirSync(sub.cwd, { recursive: true });
+          sub.cwd = path.join(dir, relativeCwd);
           try {
+            mkdirSync(sub.cwd, { recursive: true });
             await options.prepareWorktree?.(dir, repo);
             // The lead finished while the worktree was being set up: nobody would follow the task.
             if (ended.signal.aborted) throw new Error('The run has ended.');
@@ -540,6 +569,8 @@ export function pack(options: PackOptions): Pack {
             throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
           const patch = await worktreeDiff(sub.dir, sub.start);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
+          const repo = sub.repo;
+          const leadPaths = paths.map((file) => path.relative(leadCwd, path.join(repo, file)));
           if (patch.trim()) {
             const applied = await applyPatch(sub.repo, patch, threeWay);
             if (!applied.ok) {
@@ -552,22 +583,14 @@ export function pack(options: PackOptions): Pack {
               sub.state = 'merged';
               await drop(sub);
               events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
-              events.push({
-                type: 'file-change',
-                paths: paths.map((file) => path.join(path.relative(task.cwd, sub.repo!), file)),
-              });
+              events.push({ type: 'file-change', paths: leadPaths });
               return `Merged ${sub.id} with conflicts. Resolve the conflict markers in:\n${clip(applied.error)}`;
             }
           }
           sub.state = 'merged';
-          const repo = sub.repo;
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
-          if (paths.length)
-            events.push({
-              type: 'file-change',
-              paths: paths.map((file) => path.join(path.relative(task.cwd, repo), file)),
-            });
+          if (paths.length) events.push({ type: 'file-change', paths: leadPaths });
           return paths.length ? `Merged ${sub.id}:\n${(sub.changes ?? []).join('\n')}` : `${sub.id} changed nothing.`;
         });
       };
