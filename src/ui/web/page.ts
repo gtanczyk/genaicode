@@ -67,6 +67,7 @@ button.chip:hover { border-color: var(--accent); }
 .run-with input::placeholder { color: var(--faint); }
 .run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
 .run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8em; overflow: auto; color: var(--text); }
 .sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sent-files:first-child { margin-top: 0; }
 .sent-files img { max-width: 160px; max-height: 120px; border-radius: 8px; border: 1px solid var(--line); display: block; }

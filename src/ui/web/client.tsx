@@ -269,12 +269,13 @@ function App() {
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   const limits = session ? limitChips({ ...session, rateLimits }) : [];
   // Why the last message did not leave, shown under the transcript until the next one does.
-  const [unsent, setUnsent] = useState<string>();
+  const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
   const submit = (text: string, files?: File[]): Promise<boolean> => {
     const mine = sending.then(() => sendPrompt(text, files));
     sending = mine;
     return mine.then((problem) => {
-      setUnsent(problem);
+      // With its words: the composer takes them back only while it is empty.
+      setUnsent(problem ? { problem, text: text.trim() } : undefined);
       return !problem;
     });
   };
@@ -417,7 +418,14 @@ function App() {
         composerExtras={controls}
         attachments={config?.uploads ? ATTACH : undefined}
         renderPrompt={promptBubble}
-        renderFooter={() => (unsent ? <div className="gc-notice gc-err">{unsent}</div> : null)}
+        renderFooter={() =>
+          unsent ? (
+            <div className="gc-notice gc-err">
+              {unsent.problem}
+              {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
+            </div>
+          ) : null
+        }
         onSend={submit}
         onStop={() => void command({ type: 'stop' })}
         canStop={!!view?.shells}
