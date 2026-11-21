@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.42.0 — 2026-11-21
+
 ### Added
 
 - `genaicode chat --pack`, `ui --pack` and `tower --pack` work without an explicit `lead:members` value, automatically assembling a pack from all installed agents (first MCP-capable one leads, or pass `-a <lead>` to choose the lead) (#226)
