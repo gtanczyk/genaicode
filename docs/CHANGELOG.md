@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `<AgentChat completions>` offers the host's commands while the user types one (arrows, Tab or Enter to complete, Escape to close), and `genaicode ui` lists its `/` commands that way (#259)
 - The start screen of `ui --sessions` (the desktop app) says, under each agent's plan limits, which topics that agent's work of the last 7 days went to, in percent; `topicShares()` in `genaicode/agents` computes it (#258)
 
 ### Fixed
