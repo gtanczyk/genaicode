@@ -283,6 +283,26 @@ describe('parseCli', () => {
     });
   });
 
+  it('refuses sessions send from a shell an agent runs unless forced', async () => {
+    const agent = fakeAgent('owner', []);
+    const inside = environment({
+      argv: ['sessions', 'send', 'abcdefgh', 'Go on.'],
+      agents: [agent],
+      env: { PATH: '', CLAUDECODE: '1' },
+    });
+    expect(await main(inside.cli)).toBe(EXIT_USAGE);
+    expect(inside.err()).toContain('CLAUDECODE');
+    expect(agent.tasks).toEqual([]);
+    const forced = environment({
+      argv: ['sessions', 'send', 'abcdefgh', '--force', 'Go on.'],
+      agents: [agent],
+      env: { PATH: '', GEMINI_CLI: '1', GENAICODE_HOME: pathWith('forced-cli') },
+    });
+    // Past the guard: the session lookup answers, not the refusal.
+    await main(forced.cli);
+    expect(forced.err()).not.toContain('coding agent');
+  });
+
   it('parses chat --web and its port, and keeps --web off ui', () => {
     expect(parseCli(['chat', '--web', '--port', '4000'])).toMatchObject({ kind: 'chat', web: true, port: 4000 });
     expect(parseCli(['ui', '--no-open'])).toMatchObject({ kind: 'ui', web: false, open: false });

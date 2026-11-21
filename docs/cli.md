@@ -93,6 +93,10 @@ You can pipe the prompt on stdin or use `-a <agent>` to search one agent's store
 stays in the native conversation. The driver uses its default permissions unless you select
 `--sandbox read-only|workspace-write|unrestricted`. Each driver accepts its supported modes.
 
+Prompts to other sessions are sent by a person. In a shell that a coding agent runs (the agent's
+CLI marks it with a variable such as `CLAUDECODE` or `GEMINI_CLI`) the command refuses unless you
+pass `--force`. This stops an agent sending by accident; it is not a security boundary.
+
 In the browser, choose **Sessions → Reply**, enter the message and choose **Send**. The reply appears
 in the Sessions view. Both entry points require a local session that is waiting for a reply or
 stopped mid-turn, with a driver that supports resuming. A running turn or pending tool approval
