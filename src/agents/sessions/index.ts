@@ -118,8 +118,10 @@ export async function listSessions(
   // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
   const runs = new Set((await readTopics(query.env)).runs);
   // Nor is what ran in a temporary directory or in a worktree genaicode made for a delegated task.
+  // A run in a temporary directory that asks for approval right now still has somebody to answer it.
+  const scratch = (entry: SessionInfo) => isScratchDir(entry.cwd) && entry.waitingFor !== 'approval';
   const marked = (entry: SessionInfo): SessionInfo =>
-    !entry.automated && (isTopicsRun(entry, runs) || isScratchDir(entry.cwd)) ? { ...entry, automated: true } : entry;
+    !entry.automated && (isTopicsRun(entry, runs) || scratch(entry)) ? { ...entry, automated: true } : entry;
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>

@@ -284,6 +284,8 @@ describe('session sources', () => {
         at('typed', '/Users/me/src/app'),
         at('temp', '/var/folders/ab/T/run-1'),
         at('tmp', '/private/tmp/bench'),
+        // Asking somebody right now: still listed.
+        { ...at('asking', '/tmp/try'), waitingFor: 'approval' },
         at('windows', 'C:\\Users\\me\\AppData\\Local\\Temp\\run'),
         at('delegated', '/Users/me/src/app/.genaicode/worktrees/t1/app'),
         // A directory that only starts like one of those.
@@ -292,7 +294,7 @@ describe('session sources', () => {
     };
     const env = { HOME: join(root, 'nobody') };
     const shown = await listSessions([source], { live: false, env });
-    expect(shown.sessions.map((entry) => entry.id).sort()).toEqual(['near', 'typed']);
+    expect(shown.sessions.map((entry) => entry.id).sort()).toEqual(['asking', 'near', 'typed']);
     const all = await listSessions([source], { automated: true, live: false, env });
     expect(
       all.sessions

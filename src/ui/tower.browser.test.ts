@@ -43,7 +43,9 @@ async function callPack(task: AgentTask, name: string, args: Record<string, unkn
 
 it('shares pack approvals, other sessions and individually reviewed messages between two browsers', async () => {
   const browser = await chromium.launch();
-  const root = mkdtempSync(join(tmpdir(), 'genaicode-tower-'));
+  // Not a temporary directory: sessions there are runs, left out of the listing.
+  mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+  const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'tower-'));
   const project = join(root, 'catalog');
   mkdirSync(project);
   const env = { GENAICODE_HOME: root, HOME: root };
