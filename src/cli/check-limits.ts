@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
@@ -8,7 +9,7 @@ export const packTestLimits = { timeoutMs: 5 * 60_000, memoryKiB: 2048 * 1024, p
 export type CheckLimits = typeof packTestLimits;
 
 /** Apply inherited hard limits before the sandbox starts or any worker file is used. */
-export async function limitedCommand(command: string, args: string[]): Promise<string[]> {
+export async function limitedCommand(command: string, args: string[]) {
   const uid = process.getuid?.();
   if (!uid) throw new Error('Isolated tests need an unprivileged account to enforce the process limit.');
   const darwin = process.platform === 'darwin';
@@ -17,24 +18,16 @@ export async function limitedCommand(command: string, args: string[]): Promise<s
     timeout: 3000,
   });
   const baseline = stdout.trim().split(/\s+/).length;
-  const script = [
-    'set -e;',
-    'cap() { local current; current=$(ulimit -S "$1"); if [ "$current" != unlimited ] && [ "$current" -lt "$2" ]; then ulimit "$1" "$current"; else ulimit "$1" "$2"; fi; };',
-    'cap -t 180; cap -u "$1"; shift;',
-    darwin ? '' : 'cap -d ' + memoryMiB * 1024 + ';',
-    'exec "$@"',
-  ].join(' ');
-  return [
-    '--noprofile',
-    '--norc',
-    '-c',
-    script,
-    'limit-tests',
-    String(baseline + extraProcesses),
-    ...(darwin ? ['/usr/sbin/taskpolicy', '-m', String(memoryMiB)] : []),
-    command,
-    ...args,
-  ];
+  return {
+    executable: fileURLToPath(new URL('./limit-test.sh', import.meta.url)),
+    args: [
+      String(baseline + extraProcesses),
+      darwin ? '0' : String(memoryMiB * 1024),
+      ...(darwin ? ['/usr/sbin/taskpolicy', '-m', String(memoryMiB)] : []),
+      command,
+      ...args,
+    ],
+  };
 }
 
 /** Observe the complete process tree, including children that start a new process group. */

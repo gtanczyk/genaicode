@@ -87,14 +87,7 @@ export async function runPackCheck(
 ): Promise<CheckResult> {
   try {
     const limited = await limitedCommand(command, args);
-    return await runCheckProcess(
-      { executable: '/bin/bash', args: limited },
-      cwd,
-      env,
-      signal,
-      directoryFd,
-      packTestLimits,
-    );
+    return await runCheckProcess(limited, cwd, env, signal, directoryFd, packTestLimits);
   } catch (error) {
     return {
       exitCode: null,
