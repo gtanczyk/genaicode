@@ -63,7 +63,9 @@ export {
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export {
   findTopic,
+  isAsking,
   isTopicsRun,
+  projectTopics,
   mergeTopics,
   moveSessions,
   readTopics,
@@ -111,7 +113,7 @@ export async function listSessions(
   // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
   const runs = new Set((await readTopics(query.env)).runs);
   const marked = (entry: SessionInfo): SessionInfo =>
-    isTopicsRun(entry, runs) ? { ...entry, automated: true } : entry;
+    !entry.automated && (isTopicsRun(entry, runs) || inRunDirectory(entry.cwd)) ? { ...entry, automated: true } : entry;
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
@@ -154,6 +156,20 @@ export async function listSessions(
       : shown,
     errors,
   };
+}
+
+/**
+ * Whether work in `cwd` is a run rather than somebody's conversation: a pack member's worktree
+ * (`.genaicode/worktrees`), or a temporary directory, where tests and one-off runs happen.
+ */
+export function inRunDirectory(cwd: string | undefined): boolean {
+  if (!cwd) return false;
+  const place = cwd.replace(/\\/g, '/');
+  return (
+    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
+    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
+    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
+  );
 }
 
 /** Scheduled tasks can be most of a store: this many times the limit is read to fill it without them. */

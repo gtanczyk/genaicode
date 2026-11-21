@@ -149,6 +149,44 @@ describe('session sources', () => {
     expect(relay!.automated).toBeUndefined();
   });
 
+  it('tells runs a program made from chats through one, and reads the claude.ai project of a relayed session', async () => {
+    const dir = join(root, 'claude-origins');
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    const write = (name: string, minutesAgo: number, ...content: unknown[]) =>
+      file(join(dir, 'projects', '-work-app', `${name}.jsonl`), lines(...content), minutesAgo);
+    const sdk = { turnOrigin: 'sdk', entrypoint: 'sdk-cli' };
+    write('scheduled', 10, user('Pin the link', { turnOrigin: 'scheduled', entrypoint: 'claude-desktop' }), done);
+    write('headless', 20, user('Review the Git diff in changes.patch', sdk), done);
+    write('older-headless', 30, user('Reply with exactly: ok', { entrypoint: 'sdk-cli' }), done);
+    // Somebody chats through a program: more than one prompt.
+    write('chat', 40, user('Add a tray icon', sdk), done, user('Make it monochrome', sdk), done);
+    write(
+      'relayed',
+      50,
+      user('<session-context>Project: "Ink & Fury" (id: chan_01AbC)</session-context>', { isMeta: true }),
+      user('<wake reason="mention"><project id="chan_01AbC" type="project">Cut the trailer</project></wake>', {
+        turnOrigin: 'human',
+        entrypoint: 'claude-desktop',
+      }),
+      done,
+    );
+    write(
+      'unnamed',
+      60,
+      user('<wake><project id="chan_02XyZ" type="project">Go</project></wake>', { turnOrigin: 'human' }),
+      done,
+    );
+    const all = await claudeSessions({ dir }).list();
+    expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual([
+      'scheduled',
+      'headless',
+      'older-headless',
+    ]);
+    expect(all.find((entry) => entry.id === 'relayed')!.project).toEqual({ id: 'chan_01AbC', name: 'Ink & Fury' });
+    expect(all.find((entry) => entry.id === 'unnamed')!.project).toEqual({ id: 'chan_02XyZ' });
+    expect(all.find((entry) => entry.id === 'chat')!.project).toBeUndefined();
+  });
+
   it('tells the sessions nobody typed into, and leaves them out of a listing unless asked', async () => {
     const dir = join(root, 'claude-automated');
     const done = assistant([{ type: 'text', text: 'Done.' }]);

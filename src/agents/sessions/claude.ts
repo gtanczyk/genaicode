@@ -38,6 +38,10 @@ function textOf(content: unknown, type: string): string | undefined {
 const WRAPPED_PROMPT = /^<(scheduled-task|relay|wake|pasted_content|bash-input)[\s>]/;
 
 const SCHEDULED = /^\s*<scheduled-task[\s>]/;
+// How a message relayed from a claude.ai project names it: in its envelope, and in the context it opens with.
+const PROJECT_ID = /<project id="(chan_[A-Za-z0-9]+)"/;
+const PROJECT_LINES = 6;
+const PROJECT_NAMED = /Project: "([^"\n]{1,120})" \(id: (chan_[A-Za-z0-9]+)\)/;
 const messageOf = (line: Record<string, unknown>): unknown =>
   isRecord(line.message) ? line.message.content : undefined;
 
@@ -95,15 +99,39 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   let conversed = false;
   let firstWrapped: string | undefined;
   let lastWrapped: string | undefined;
-  // Who sent the prompts, where Claude Code notes it (`origin.kind`): a person, or a task.
+  // Who sent the prompts, where Claude Code notes it (`origin.kind`, `turnOrigin`): a person, a
+  // task, or a program driving it (`sdk`).
   let sent = false;
   let human = false;
+  let program = true;
   let scheduled = false;
   let typed = false;
+  let entrypoint: string | undefined;
+  const prompts = new Set<unknown>();
   const sender = (line: Record<string, unknown>, asked: boolean) => {
-    if (!asked || line.type !== 'user' || !isRecord(line.origin)) return;
+    if (typeof line.entrypoint === 'string') entrypoint ??= line.entrypoint;
+    if (!asked || line.type !== 'user') return;
+    prompts.add(line);
+    const kinds = [isRecord(line.origin) ? line.origin.kind : undefined, line.turnOrigin].filter(
+      (kind): kind is string => typeof kind === 'string',
+    );
+    if (!kinds.length) return;
     sent = true;
-    if (line.origin.kind === 'human') human = true;
+    if (kinds.includes('human')) human = true;
+    if (kinds.some((kind) => kind !== 'sdk')) program = false;
+  };
+  // The claude.ai project a relayed message came from, with its name where the context gives it:
+  // looked for in what the first few user lines say.
+  let looked = 0;
+  const project = (line: Record<string, unknown>) => {
+    if (info.project?.name || line.type !== 'user' || looked >= PROJECT_LINES) return;
+    const text = textOf(messageOf(line), 'text');
+    if (!text) return;
+    looked += 1;
+    const named = PROJECT_NAMED.exec(text);
+    const id = named?.[2] ?? PROJECT_ID.exec(text)?.[1];
+    if (!id || (info.project && info.project.id !== id)) return;
+    info.project = { id, ...(named ? { name: oneLine(named[1]!, 80) } : {}) };
   };
   for (const line of head) {
     if (!isRecord(line)) continue;
@@ -115,6 +143,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     }
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     titleOf(line, info);
+    project(line);
     const prompt = promptOf(line);
     if (prompt.typed && line.type === 'user') typed = true;
     if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
@@ -165,8 +194,12 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   info.firstPrompt ??= firstWrapped;
   info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
   // Nobody typed into it: every prompt Claude Code noted a sender for came from a task, or, where it
-  // notes none, the session opens with a scheduled task and no typed prompt is seen.
-  if (sent ? !human : scheduled && !typed) info.automated = true;
+  // notes none, the session is a headless run or opens with a scheduled task and no typed prompt is seen.
+  // A program driving Claude Code (`sdk`) with one prompt is a run, with more a chat somebody has
+  // through that program.
+  const run = prompts.size <= 1;
+  if (sent ? !human && (!program || run) : entrypoint?.startsWith('sdk') ? run : scheduled && !typed)
+    info.automated = true;
   info.state = now - file.mtimeMs < ACTIVE_MS ? 'active' : agentLast ? 'waiting' : 'unfinished';
   return info;
 }

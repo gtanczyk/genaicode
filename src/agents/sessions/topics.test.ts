@@ -2,11 +2,14 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { listSessions } from './index.js';
+import { inRunDirectory, listSessions } from './index.js';
 import {
+  ASKING_MS,
   findTopic,
+  isAsking,
   mergeTopics,
   moveSessions,
+  projectTopics,
   readTopics,
   renameTopic,
   sortedTopics,
@@ -120,6 +123,43 @@ describe('topics', () => {
     expect(sortedTopics('{"topics": 3}', sessions, store).placed).toBe(0);
   });
 
+  it('puts sessions of a claude.ai project in the topic of that project, without an agent', () => {
+    const ink = { id: 'chan_ink', name: 'Ink & Fury' };
+    const listed = [
+      session('a', { project: ink }),
+      session('b', { project: { id: 'chan_ink' } }),
+      session('c', { project: { id: 'chan_unnamed' } }),
+      session('d'),
+      session('e', { project: { id: 'chan_city', name: 'Constantinople' } }),
+    ];
+    const first = projectTopics(listed, { topics: [{ id: 't1', name: 'ink & fury' }], sessions: { 'claude:e': 't1' } });
+    expect(first.placed).toBe(2);
+    expect(first.store.topics).toEqual([{ id: 't1', name: 'ink & fury' }]);
+    expect(first.store.sessions).toEqual({ 'claude:e': 't1', 'claude:a': 't1', 'claude:b': 't1' });
+    expect(first.store.projects).toEqual({ chan_ink: 't1' });
+    // Renamed and merged, the project still goes where its topic went.
+    let store = renameTopic(first.store, first.store.topics[0]!, 'Comics');
+    store = mergeTopics({ ...store, topics: [...store.topics, { id: 't2', name: 'Games' }] }, store.topics[0]!, {
+      id: 't2',
+      name: 'Games',
+    });
+    const later = projectTopics([session('f', { project: { id: 'chan_ink' } })], store);
+    expect(later.store.sessions['claude:f']).toBe('t2');
+    expect(projectTopics([session('g')], store)).toMatchObject({ placed: 0 });
+  });
+
+  it('asks for you for approvals, and for a while after a message asked something', () => {
+    const now = 10 * 24 * 3600_000;
+    const waiting = (more: Partial<SessionInfo>) =>
+      session('w', { state: 'waiting', updatedAt: now - 3600_000, ...more });
+    expect(isAsking(waiting({ ending: 'offer' }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'question', updatedAt: now - ASKING_MS - 1 }), now)).toBe(false);
+    expect(isAsking(waiting({ waitingFor: 'approval', updatedAt: 0 }), now)).toBe(true);
+    expect(isAsking(waiting({}), now)).toBe(false);
+    expect(isAsking(waiting({ ending: 'question', archived: true }), now)).toBe(false);
+    expect(isAsking(session('x', { state: 'active', ending: 'question', updatedAt: now }), now)).toBe(false);
+  });
+
   it('is corrected by renaming, merging and moving', () => {
     let store: TopicStore = {
       topics: [
@@ -219,5 +259,28 @@ describe('topics', () => {
     expect((await readTopics(env)).runs).toEqual(['claude:noted']);
     expect((await listSessions([source], { env })).sessions.map((one) => one.id)).toEqual(['mine']);
     expect((await listSessions([source], { env, automated: true })).sessions[0]).toMatchObject({ automated: true });
+  });
+
+  it('counts what ran in a pack worktree or a temporary directory as a run', async () => {
+    for (const cwd of [
+      '/tmp/tower-test',
+      '/private/tmp/x',
+      '/var/folders/zz/abc/T/genaicode-review-1',
+      '/Users/me/src/app/.genaicode/worktrees/task-1',
+      'C:\\Users\\me\\AppData\\Local\\Temp\\run',
+    ]) {
+      expect(inRunDirectory(cwd), cwd).toBe(true);
+    }
+    for (const cwd of ['/Users/me/src/app', '/Users/me/tmp/notes', '/work/.claude/worktrees/a', undefined]) {
+      expect(inRunDirectory(cwd), String(cwd)).toBe(false);
+    }
+    const source = {
+      name: 'codex',
+      where: 'local' as const,
+      list: async () => [session('worker', { cwd: '/w/app/.genaicode/worktrees/t1' }), session('mine')],
+    };
+    const env = { HOME: mkdtempSync(join(tmpdir(), 'genaicode-topics-')) };
+    dirs.push(env.HOME);
+    expect((await listSessions([source], { env })).sessions.map((one) => one.id)).toEqual(['mine']);
   });
 });
