@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
 
+### Fixed
+
+- `genaicode topics refresh` says how many runs it takes and how far it is after each one, and gives sessions that say the very same thing (the hundredth run of one prompt) a single line, so there are fewer runs (#242)
+
 ## 2.44.0 — 2026-11-21
 
 ### Added

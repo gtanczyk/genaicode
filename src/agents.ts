@@ -153,6 +153,7 @@ export {
   summarizeTopics,
   topicNamed,
   TOPICS_BATCH,
+  topicsBatches,
   TOPICS_PROMPT_MARK,
   topicsFile,
   topicsPrompt,
