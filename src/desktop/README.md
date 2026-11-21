@@ -1,0 +1,42 @@
+# genaicode desktop (macOS, in the making)
+
+A native shell around `genaicode ui`, built with [Tauri 2](https://v2.tauri.app). It is not part of
+the npm package and has no release yet.
+
+The app carries its own Node.js and its own copy of genaicode, so it needs neither on the machine:
+
+| In the app                    | What it is                                                                |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `Contents/MacOS/genaicode`    | The shell (`src-tauri/src/lib.rs`): window, menu, child process           |
+| `Contents/MacOS/node`         | The official Node.js binary, version and checksums in `node-runtime.json` |
+| `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
+
+On start the shell asks for a project folder (remembered for next time, **Project → Open Folder…**
+changes it), reads `PATH` from your login shell so the agent CLIs are found, runs
+`node cli.js ui --no-open --exit-with-stdin --cwd <folder>` and shows the address that prints. The
+page gets no Tauri commands; it is the page a browser would load. Closing the app stops the server.
+
+## Build it
+
+Needs Rust (stable), Node.js 22+ and, on Linux, the
+[Tauri system packages](https://v2.tauri.app/start/prerequisites/). From the repository root:
+
+```bash
+npm ci
+npm run desktop:prepare   # downloads Node.js, packs genaicode into src-tauri/runtime
+npm run desktop:dev       # run the shell from source
+npm run desktop:build     # genaicode.app and a .dmg under src-tauri/target/release/bundle
+```
+
+Run `desktop:prepare` again after changing genaicode itself. An unsigned local build runs on the
+Mac that built it; set `APPLE_SIGNING_IDENTITY=-` for an ad-hoc signature, or a Developer ID
+identity for one other Macs accept.
+
+| Variable                 | For development                                         |
+| ------------------------ | ------------------------------------------------------- |
+| `GENAICODE_DESKTOP_CWD`  | Project folder to open, instead of the remembered one   |
+| `GENAICODE_DESKTOP_NODE` | Node.js binary to run, instead of the bundled one       |
+| `GENAICODE_DESKTOP_CLI`  | `cli.js` to run, e.g. `dist/cli.js` of the working tree |
+
+To move to a newer Node.js, change `version` in `node-runtime.json` and copy the four checksums
+from `https://nodejs.org/dist/v<version>/SHASUMS256.txt`.

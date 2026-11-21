@@ -9,11 +9,11 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-          exclude: ['src/**/*.e2e.test.ts', 'src/**/*.browser.test.ts'],
+          exclude: ['src/**/*.e2e.test.ts', 'src/**/*.browser.test.ts', 'src/desktop/**'],
         },
       },
-      { test: { name: 'e2e', include: ['src/**/*.e2e.test.ts'] } },
-      { test: { name: 'browser', include: ['src/**/*.browser.test.ts'] } },
+      { test: { name: 'e2e', include: ['src/**/*.e2e.test.ts'], exclude: ['src/desktop/**'] } },
+      { test: { name: 'browser', include: ['src/**/*.browser.test.ts'], exclude: ['src/desktop/**'] } },
     ],
   },
 });

@@ -1,0 +1,58 @@
+name: Desktop app
+
+# Builds the macOS app (ad-hoc signed, not notarized) whenever the shell or its build changes.
+on:
+  pull_request:
+    paths: ['src/desktop/**', '.github/workflows/desktop.yaml']
+  push:
+    branches: [master]
+    paths: ['src/desktop/**', '.github/workflows/desktop.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/desktop/src-tauri/target
+          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-${{ runner.os }}-${{ runner.arch }}-
+      - run: npm ci
+      - run: npm run desktop:prepare
+      - name: Build the app
+        working-directory: src/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npx tauri build --bundles app
+      - name: Check what the app carries
+        run: |
+          set -euo pipefail
+          app="src/desktop/src-tauri/target/release/bundle/macos/genaicode.app"
+          "$app/Contents/MacOS/node" --version
+          "$app/Contents/MacOS/node" "$app/Contents/Resources/runtime/node_modules/genaicode/dist/cli.js" --version
+          codesign --verify --deep --strict --verbose=2 "$app"
+          du -sh "$app" "$app/Contents/MacOS/"* "$app/Contents/Resources/runtime"
+          ditto -c -k --keepParent "$app" genaicode-macos.zip
+          ls -lh genaicode-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: genaicode-macos-${{ runner.arch }}
+          path: genaicode-macos.zip
+          retention-days: 14

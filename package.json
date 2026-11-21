@@ -90,7 +90,10 @@
     "check": "npm run type-check && npm run lint && npm test && npm run build",
     "prepublishOnly": "npm run check",
     "prepare": "npm run build",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "desktop:prepare": "node src/desktop/scripts/prepare-runtime.mjs",
+    "desktop:dev": "cd src/desktop && tauri dev",
+    "desktop:build": "cd src/desktop && tauri build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -99,6 +102,7 @@
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "^2.0.2",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^20.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -145,6 +149,7 @@
     ],
     "ignorePatterns": [
       "docs/examples/**/*",
+      "src/desktop/src-tauri/**/*",
       "dist",
       "coverage"
     ],

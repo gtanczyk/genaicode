@@ -30,3 +30,9 @@ src/prompt-debug/current-prompt.js
 
 # Packed tarballs (npm pack)
 *.tgz
+
+# Desktop app: build output, downloaded Node.js, packed genaicode
+src/desktop/src-tauri/target
+src/desktop/src-tauri/gen
+src/desktop/src-tauri/binaries
+src/desktop/src-tauri/runtime

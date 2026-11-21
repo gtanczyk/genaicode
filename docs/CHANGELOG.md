@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Internal
+
+- First skeleton of a macOS desktop app in `src/desktop` (Tauri 2 shell that runs a bundled Node.js on `genaicode ui`); not part of the npm package (#PRNUM)
+
 ## 2.41.1 — 2026-11-21
 
 ### Fixed
