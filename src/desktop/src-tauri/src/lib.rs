@@ -24,8 +24,8 @@ const OPEN_FOLDER: &str = "open-folder";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
 const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
 
-/// The running `genaicode ui`. Closing its stdin stops it (`--exit-with-stdin`), so it cannot
-/// outlive the app even when the app is killed.
+/// The running `genaicode ui`. Closing its stdin stops it (`--exit-with-stdin`): that is how the
+/// shell stops it, and why it cannot outlive the app even when the app is killed.
 struct Server {
     child: Child,
     _stdin: Option<ChildStdin>,
@@ -128,11 +128,30 @@ fn fail(app: &AppHandle, message: String) {
         .show(|_| {});
 }
 
+/// How long `genaicode ui` gets to stop its agents and `!command`s before it is killed.
+const STOP_GRACE: Duration = Duration::from_secs(5);
+
+/// Close the server's stdin, so `--exit-with-stdin` shuts it down the way Ctrl-C would: its agents
+/// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
+/// them working on the old project. Kill it only if it has not exited within `STOP_GRACE`.
 fn stop(shell: &mut Shell) {
-    if let Some(mut server) = shell.server.take() {
-        let _ = server.child.kill();
-        let _ = server.child.wait();
+    let Some(Server {
+        mut child,
+        _stdin: stdin,
+    }) = shell.server.take()
+    else {
+        return;
+    };
+    drop(stdin);
+    let deadline = std::time::Instant::now() + STOP_GRACE;
+    while std::time::Instant::now() < deadline {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+        }
     }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Start `genaicode ui` in `folder` and show it once it says where it listens.
