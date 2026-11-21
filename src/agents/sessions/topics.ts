@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { archiveKey } from './archive.js';
+import { isScratchDir } from './files.js';
 import { liveDir } from './live.js';
 import { isAsking } from './group.js';
 import type { SessionInfo } from './types.js';
@@ -204,13 +205,7 @@ export function folderTopics(
  * sessions are listed as ever, but belong to no topic.
  */
 export function inRunDirectory(cwd: string | undefined): boolean {
-  if (!cwd) return false;
-  const place = cwd.replace(/\\/g, '/');
-  return (
-    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
-    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
-    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
-  );
+  return isScratchDir(cwd);
 }
 
 /** The sessions no topic has yet, as listed; those that ran in a run's directory need none. */

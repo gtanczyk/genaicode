@@ -181,3 +181,26 @@ export function timeOf(value: unknown): number | undefined {
   // A zero time (Go's 0001-01-01, the epoch) says no time was kept.
   return Number.isNaN(at) || at <= 0 ? undefined : at;
 }
+
+/**
+ * Whether `cwd` is where programs run agents, not people: a temporary directory, or a worktree
+ * genaicode made for a delegated task (`.genaicode/worktrees`).
+ */
+export function isScratchDir(cwd: string | undefined): boolean {
+  if (!cwd) return false;
+  const place = cwd.replace(/\\/g, '/');
+  return (
+    /\/\.genaicode\/worktrees(\/|$)/.test(place) ||
+    /^(\/private)?\/(tmp|var\/folders|var\/tmp)(\/|$)/.test(place) ||
+    /\/AppData\/Local\/Temp(\/|$)/i.test(place)
+  );
+}
+
+/** Whether `cwd` is a worktree an agent's app keeps for its own tasks (Antigravity, Codex, Claude Code). */
+export function isAgentWorktree(cwd: string | undefined): boolean {
+  if (!cwd) return false;
+  const dir = cwd.replace(/\\/g, '/');
+  return ['/.gemini/antigravity/worktrees/', '/.codex/worktrees/', '/.claude/worktrees/'].some((part) =>
+    dir.includes(part),
+  );
+}

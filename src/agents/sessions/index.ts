@@ -5,7 +5,7 @@ import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } fro
 import { readLive, withLive, type LiveRecord } from './live.js';
 import { readArchive, withArchive } from './archive.js';
 import { withCommandPreviews } from './approval-previews.js';
-import { mapLimited } from './files.js';
+import { isScratchDir, mapLimited } from './files.js';
 
 import { replyEnding } from './group.js';
 import { isTopicsRun, readTopics } from './topics.js';
@@ -117,8 +117,15 @@ export async function listSessions(
   const errors: SessionListing['errors'] = [];
   // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
   const runs = new Set((await readTopics(query.env)).runs);
-  const marked = (entry: SessionInfo): SessionInfo =>
-    isTopicsRun(entry, runs) ? { ...entry, automated: true } : entry;
+  // Nor is what ran in a temporary directory or in a worktree genaicode made for a delegated task.
+  const scratch = new Set<string>();
+  const marked = (entry: SessionInfo): SessionInfo => {
+    if (entry.automated) return entry;
+    if (isTopicsRun(entry, runs)) return { ...entry, automated: true };
+    if (!isScratchDir(entry.cwd)) return entry;
+    scratch.add(`${entry.source}:${entry.id}`);
+    return { ...entry, automated: true };
+  };
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
@@ -148,6 +155,11 @@ export async function listSessions(
     // A session counts from its latest news, which may be a hook's.
     found = withLive(found, live).filter((session) => query.since === undefined || session.updatedAt >= query.since);
   }
+  // A run in such a directory that asks for approval right now still has somebody to answer it.
+  found = found.map((entry) => {
+    if (entry.waitingFor !== 'approval' || !scratch.has(`${entry.source}:${entry.id}`)) return entry;
+    return { ...entry, automated: undefined };
+  });
   // Sessions put away (`genaicode sessions archive`) say so.
   const archive = await readArchive(query.env);
   const sessions = withArchive(found, archive)
