@@ -144,6 +144,8 @@ export {
   serveMcpStdio,
   SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,
+  SessionSendGate,
+  sessionSendTool,
   findTopic,
   inRunDirectory,
   isAsking,

@@ -8,6 +8,7 @@ import { agentSessionSources, findSession, readSession } from '../agents/session
 import { isWithin } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
+import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
 import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
@@ -60,6 +61,11 @@ export interface ChatOptions {
   sessionSources?: readonly SessionSource[];
   /** Tools explicitly enabled by `--sessions` or `tower`, also used for local previews. */
   sessionTools?: readonly McpTool[];
+  /**
+   * Backs the agent's `sessions_send` tool (`sessionSendTool`): the first message to each other
+   * session shows as an approval, and the answer it got as a line in the chat.
+   */
+  sessionSend?: SessionSendGate;
   /** Operator inbox shared with the pack's proposal tool in this tower. */
   towerInbox?: TowerInbox;
   /** Show the first five waiting sessions as soon as the tower opens. */
@@ -397,6 +403,22 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(plainSessionText(`${heading}\n${errorText(error)}`), 'error');
     }
   };
+  let sends = 0;
+  const offSend = options.sessionSend?.attach({
+    confirm: async (target, text) =>
+      (await session.ask({
+        id: `sessions-send-${++sends}`,
+        kind: 'other',
+        summary: plainSessionText(`Send to ${label(target)} (${target.cwd}):\n${text}`),
+        detail: { tool: 'sessions_send', target, text },
+      })) === 'approve',
+    done: (target, { result, error }) => {
+      const failed = error ?? (result && !result.ok ? (result.error ?? result.status) : undefined);
+      if (failed) return notice(plainSessionText(`${label(target)} did not take the message: ${failed}`), 'error');
+      const reply = result?.text?.trim().slice(0, 800);
+      notice(plainSessionText(reply ? `${label(target)} answered:\n${reply}` : `${label(target)} took the message.`));
+    },
+  });
   if (options.startupNotice) notice(options.startupNotice);
   if (options.waitingOnStart) {
     void showIndex('sessions_waiting', { limit: 5 }, 'Use /waiting [project] to refresh or /read <id> to preview.');
@@ -570,6 +592,7 @@ export function createChatController(options: ChatOptions): ChatController {
       clearInterval(inboxTimer);
       offInbox?.();
       inbox?.close();
+      offSend?.();
       stopShells();
       unsubscribe();
       listeners.clear();

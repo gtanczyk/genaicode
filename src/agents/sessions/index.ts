@@ -89,6 +89,8 @@ export type { Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
+export { SessionSendGate, sessionSendTool } from './send-tool.js';
+export type { SessionSendHandler, SessionSendTarget, SessionSendToolOptions } from './send-tool.js';
 export type { SessionToolsOptions } from './tools.js';
 export type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource, SessionActivity } from './types.js';
 

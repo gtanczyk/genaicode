@@ -13,6 +13,7 @@ import { pack } from '../agents/pack.js';
 import { codexLive } from '../agents/drivers/codex-live.js';
 import { museLive } from '../agents/drivers/muse-live.js';
 import { sendSession } from '../agents/sessions/send.js';
+import { SessionSendGate, sessionSendTool } from '../agents/sessions/send-tool.js';
 import { detachSend } from './detach-send.js';
 import { ago, resumeCommand } from '../ui/sessions.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
@@ -762,12 +763,21 @@ async function runUi(
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
   const ui = await (cli.loadUi ?? loadBundledUi)();
   // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
-  const tools = options.sessions ? sessionTools(indexed, { env: cli.env }) : undefined;
+  // ...and a way to pass a message to one of them, which the person allows first.
+  const sends = options.sessions ? new AbortController() : undefined;
+  const sendGate = sends ? new SessionSendGate() : undefined;
+  const tools =
+    options.sessions && sendGate
+      ? [
+          ...sessionTools(indexed, { env: cli.env }),
+          sessionSendTool(sessionAgents, sendGate, { env: cli.env, signal: sends!.signal }),
+        ]
+      : undefined;
   const index = tools
     ? await startLocalMcpServer({
         name: 'sessions',
         tools,
-        instructions: SESSION_TOOLS_INSTRUCTIONS,
+        instructions: `${SESSION_TOOLS_INSTRUCTIONS} When the user asks you to tell, ask or pass something to another session, send it with sessions_send.`,
       })
     : undefined;
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
@@ -777,6 +787,7 @@ async function runUi(
     sessionSources: indexed,
     ...(tools ? { sessionTools: tools } : {}),
     ...(towerInbox ? { towerInbox } : {}),
+    ...(sendGate ? { sessionSend: sendGate } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
     agent: initial,
@@ -806,6 +817,7 @@ async function runUi(
     return await (options.kind === 'ui' ? ui.runWeb(launch) : ui.runChat(launch));
   } finally {
     towerInbox?.close();
+    sends?.abort();
     await index?.close();
   }
 }
