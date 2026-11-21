@@ -9,8 +9,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { parseCli } from '../../cli/args.js';
 import { runAnswerHook } from '../../cli/hook.js';
 import { answerAsk, askPreview, asksDir, pendingAsks, waitForAnswer } from './answer.js';
 import { hookCommand, hooksStatus, installHooks, uninstallHooks } from './hooks.js';
@@ -182,6 +183,23 @@ describe('answering questions from the tower', () => {
     await installHooks('claude', { env, command, answer: true });
     expect(await uninstallHooks('claude', { env })).toBe(true);
     expect((await hooksStatus('claude', { env, command })).events).toEqual([]);
+    // Claude Code's status line keeps its plan limits, and goes with the hooks.
+    const claudeFile = (await installHooks('claude', { env, command })).file;
+    expect(JSON.parse(readFileSync(claudeFile, 'utf8')).statusLine).toEqual({
+      type: 'command',
+      command: '"/n" "/c.js" limits record --genaicode-live',
+    });
+    expect((await hooksStatus('claude', { env, command })).statusLine).toBe('genaicode');
+    expect(await uninstallHooks('claude', { env })).toBe(true);
+    expect((await hooksStatus('claude', { env, command })).statusLine).toBe('none');
+    // A status line of the user's own is left as it is, by install and by uninstall.
+    const own = { type: 'command', command: '~/.claude/statusline.sh' };
+    mkdirSync(dirname(claudeFile), { recursive: true });
+    writeFileSync(claudeFile, JSON.stringify({ statusLine: own }));
+    expect((await installHooks('claude', { env, command })).statusLine).toBe('other');
+    await uninstallHooks('claude', { env });
+    expect(JSON.parse(readFileSync(claudeFile, 'utf8'))).toEqual({ statusLine: own });
+    expect(parseCli(['limits', 'record', '--genaicode-live'])).toMatchObject({ kind: 'limits', action: 'record' });
     // Codex would hold its own prompt back while the hook waits.
     const codex = await installHooks('codex', { env, command, answer: true });
     expect(codex).toMatchObject({ installed: true, answer: false });

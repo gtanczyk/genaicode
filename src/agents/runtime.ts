@@ -33,6 +33,8 @@ export class RunRecorder {
   constructor(
     private readonly name: string,
     private readonly command: string,
+    /** Told every limit the agent reports with a number or a reset time, as it comes. */
+    private readonly onLimit?: (limit: RateLimit) => void,
   ) {}
 
   /** Enforce `task.budget`: warn past `warnAt`, call `stop` once a cap is passed. */
@@ -56,6 +58,8 @@ export class RunRecorder {
       this.usage = event.usage;
       if (event.costUsd !== undefined) this.costUsd = event.costUsd;
     }
+    if (event.type === 'rate-limit' && (event.limit.usedPercent !== undefined || event.limit.resetsAt !== undefined))
+      this.onLimit?.(event.limit);
     if (event.type === 'rate-limit' && event.limit.status === 'exceeded') {
       this.quotaReported = true;
       if (event.limit.resetsAt !== undefined)

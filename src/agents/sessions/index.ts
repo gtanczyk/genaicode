@@ -184,3 +184,13 @@ export async function readSession(
   if (!source?.read) throw new Error(`The conversations of ${session.agent} cannot be read yet, only listed.`);
   return source.read(session, options);
 }
+export {
+  describeKnownLimits,
+  knownLimits,
+  limitsAgent,
+  limitsDir,
+  recordLimits,
+  shortLimit,
+  statusLineLimits,
+  type KnownLimit,
+} from './limits.js';

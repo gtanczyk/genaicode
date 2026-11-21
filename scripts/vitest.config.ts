@@ -8,6 +8,8 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
+          // Agent runs in tests keep no plan limits in the home of whoever runs them.
+          env: { GENAICODE_LIMITS: 'off' },
           include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
           exclude: ['src/**/*.e2e.test.ts', 'src/**/*.browser.test.ts', 'src/desktop/**'],
         },

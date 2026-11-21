@@ -57,6 +57,11 @@ export interface HooksStatus {
   command?: string;
   /** Whether questions can be answered from the tower too (`--answer`). */
   answer: boolean;
+  /**
+   * Claude Code only: who has its status line. `genaicode`: it keeps the plan limits Claude Code
+   * reports (`limits record`). `other`: the user's own, left as it is. `none`: not set.
+   */
+  statusLine?: 'genaicode' | 'other' | 'none';
 }
 
 /**
@@ -196,10 +201,24 @@ function found(config: Json): { events: string[]; commands: Map<string, string>;
   return { events, commands, ...(answer ? { answer } : {}) };
 }
 
+/**
+ * The status line that keeps Claude Code's plan limits: the same `cli.js` as the hooks, running
+ * `limits record`. Claude Code tells its limits to its status line only.
+ */
+export function statusLineCommand(command: string): string {
+  return `${command.replace(/ hook$/, '')} limits record ${MARKER}`;
+}
+
+function statusLineOf(config: Json): 'genaicode' | 'other' | 'none' {
+  if (config.statusLine === undefined || config.statusLine === null) return 'none';
+  return ours(config.statusLine) ? 'genaicode' : 'other';
+}
+
 /** What is installed for `agent` now. */
 export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}): Promise<HooksStatus> {
   const file = hooksFile(agent, options.env);
-  const { events, commands, answer } = found(await readConfig(file));
+  const config = await readConfig(file);
+  const { events, commands, answer } = found(config);
   const base = options.command ?? defaultCommand();
   const command = [...commands.values()].pop();
   return {
@@ -209,6 +228,7 @@ export async function hooksStatus(agent: HookAgent, options: HooksOptions = {}):
     installed: EVENTS[agent].every((event) => commands.get(event) === commandFor(agent, base, event)),
     ...(command ? { command } : {}),
     answer: answer === hookCommand(agent, base, true),
+    ...(agent === 'claude' ? { statusLine: statusLineOf(config) } : {}),
   };
 }
 
@@ -235,8 +255,13 @@ export async function installHooks(agent: HookAgent, options: HooksOptions = {})
     };
     hooks.PermissionRequest = [...(hooks.PermissionRequest as unknown[]), { hooks: [handler] }];
   }
+  // Claude Code's status line is taken only when nobody has it: the user's own stays theirs.
+  const statusLine =
+    agent === 'claude' && statusLineOf(config) !== 'other'
+      ? { statusLine: { type: 'command', command: statusLineCommand(base) } }
+      : {};
   // Copilot and Cursor want to know which version of the file's format they read.
-  await writeConfig(file, { ...(FLAT.includes(agent) ? { version: 1 } : {}), ...config, hooks });
+  await writeConfig(file, { ...(FLAT.includes(agent) ? { version: 1 } : {}), ...config, ...statusLine, hooks });
   return hooksStatus(agent, options);
 }
 
@@ -267,8 +292,10 @@ export async function uninstallHooks(agent: HookAgent, options: HooksOptions = {
   const file = hooksFile(agent, options.env);
   const config = await readConfig(file);
   const { events, answer } = found(config);
-  if (!events.length && !answer) return false;
+  const line = agent === 'claude' && statusLineOf(config) === 'genaicode';
+  if (!events.length && !answer && !line) return false;
   const left = without(config);
+  if (line) delete left.statusLine;
   // A file only genaicode's hooks were in goes with them, and so does Copilot's folder for them.
   if (Object.keys(left).every((key) => key === 'version')) {
     await fs.rm(file, { force: true });

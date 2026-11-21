@@ -426,3 +426,16 @@ describe('review round 3', () => {
     expect(events.at(-1)?.type).toBe('done');
   });
 });
+
+describe('limits a run reports', () => {
+  it('are told to whoever keeps them, when they say a number or a reset time', async () => {
+    const { RunRecorder } = await import('./runtime.js');
+    const seen: string[] = [];
+    const recorder = new RunRecorder('claude', 'claude', (limit) => seen.push(limit.window));
+    recorder.emit({ type: 'rate-limit', limit: { window: '5h', status: 'ok', usedPercent: 12 } });
+    recorder.emit({ type: 'rate-limit', limit: { window: '7d', status: 'exceeded', resetsAt: 2_000_000_000_000 } });
+    recorder.emit({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
+    recorder.emit({ type: 'error', message: '429 too many requests' });
+    expect(seen).toEqual(['5h', '7d']);
+  });
+});
