@@ -111,12 +111,12 @@ const projectOf = (session: SessionInfo): string => {
   return place.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || '-';
 };
 
-/** What a session is called and was asked, as one line. */
-const saidOf = (session: SessionInfo): string =>
+/** What a session is called and was asked, as one line; each part no longer than `most`. */
+const saidOf = (session: SessionInfo, most = 110): string =>
   [session.title, session.firstPrompt, session.lastPrompt]
     .filter((text): text is string => !!text)
     .filter((text, at, all) => all.indexOf(text) === at)
-    .map((text) => flat(text, 110))
+    .map((text) => flat(text, most))
     .join(' | ');
 
 /**
@@ -126,7 +126,8 @@ const saidOf = (session: SessionInfo): string =>
 function sameSaid(sessions: readonly SessionInfo[]): SessionInfo[][] {
   const groups = new Map<string, SessionInfo[]>();
   sessions.forEach((session, index) => {
-    const key = saidOf(session) || `\u0000${index}`;
+    // The whole text, not the cut line: prompts that only open alike are different work.
+    const key = saidOf(session, Infinity) || `\u0000${index}`;
     const group = groups.get(key);
     if (group) group.push(session);
     else groups.set(key, [session]);

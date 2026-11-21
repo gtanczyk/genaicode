@@ -80,6 +80,13 @@ describe('topics', () => {
     );
     expect(placed).toBe(4);
     expect(store.sessions).toEqual({ 'claude:r1': 't1', 'codex:r2': 't1', 'claude:x': 't2', 'claude:n2': 't2' });
+    // Prompts that only open alike are not the same thing.
+    const preamble = 'You are a careful engineer. '.repeat(6);
+    const alike = [
+      session('p1', { firstPrompt: `${preamble}Fix the login` }),
+      session('p2', { firstPrompt: `${preamble}Add CSV export` }),
+    ];
+    expect(topicsBatches(alike, 1)).toHaveLength(2);
     expect(topicsBatches(runs, 2).map((batch) => batch.map((one) => one.id))).toEqual([
       ['r1', 'r2', 'x'],
       ['n1', 'n2'],
