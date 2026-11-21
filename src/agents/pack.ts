@@ -86,6 +86,37 @@ export interface Pack extends CodingAgent {
 
 export type PackAction = { type: 'steer'; text: string } | { type: 'stop' | 'diff' | 'merge' | 'discard' };
 
+const packActionRefusals = {
+  missing: 'This pack task could not be found.',
+  'not-running': 'This task is no longer running.',
+  'cannot-steer': 'This agent cannot take input while it runs.',
+  input: 'A nonempty instruction is required.',
+  running: 'This task is still running.',
+  shared: 'This task ran in the shared directory and has no worktree.',
+  merged: 'This task was already merged.',
+  discarded: 'This task was already discarded.',
+  unavailable: 'This task no longer has a worktree.',
+  conflict: 'These changes do not apply cleanly; nothing was changed.',
+};
+
+export type PackActionErrorReason = keyof typeof packActionRefusals;
+
+/** A refused pack action has a public explanation. Git, driver and filesystem exceptions may carry diagnostics. */
+export class PackActionError extends Error {
+  override name = 'PackActionError';
+
+  constructor(
+    readonly reason: PackActionErrorReason,
+    detail?: string,
+  ) {
+    super(detail ?? packActionRefusals[reason]);
+  }
+
+  get publicMessage(): string {
+    return packActionRefusals[this.reason];
+  }
+}
+
 /** The same operations as the lead's tools, scoped to the tasks delegated in one run. */
 export interface PackControls {
   readonly lead: string;
@@ -336,7 +367,11 @@ export function pack(options: PackOptions): Pack {
 
       const find = (id: unknown): Sub => {
         const sub = typeof id === 'string' ? subs.get(id) : undefined;
-        if (!sub) throw new Error(`No task ${String(id)}. Known: ${[...subs.keys()].join(', ') || 'none'}.`);
+        if (!sub)
+          throw new PackActionError(
+            'missing',
+            `No task ${String(id)}. Known: ${[...subs.keys()].join(', ') || 'none'}.`,
+          );
         return sub;
       };
 
@@ -486,20 +521,31 @@ export function pack(options: PackOptions): Pack {
         return JSON.stringify(chosen.map(report), null, 1);
       };
 
+      const worktreeReason = (sub: Sub): PackActionErrorReason =>
+        sub.mode !== 'worktree'
+          ? 'shared'
+          : sub.state === 'merged'
+            ? 'merged'
+            : sub.state === 'discarded'
+              ? 'discarded'
+              : 'unavailable';
+
       const merge = (sub: Sub, threeWay = false): Promise<string> => {
         return withWorktree(async () => {
-          if (sub.status === 'running') throw new Error(`${sub.id} is still running. Wait for it first.`);
+          if (sub.status === 'running')
+            throw new PackActionError('running', `${sub.id} is still running. Wait for it first.`);
           if (sub.mode !== 'worktree')
-            throw new Error(`${sub.id} ran in the shared directory: there is nothing to merge.`);
+            throw new PackActionError('shared', `${sub.id} ran in the shared directory: there is nothing to merge.`);
           if (sub.state !== 'unmerged' || !sub.dir || !sub.start || !sub.repo)
-            throw new Error(`${sub.id} is already ${sub.state}.`);
+            throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
           const patch = await worktreeDiff(sub.dir, sub.start);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
           if (patch.trim()) {
             const applied = await applyPatch(sub.repo, patch, threeWay);
             if (!applied.ok) {
               if (!applied.conflicts)
-                throw new Error(
+                throw new PackActionError(
+                  'conflict',
                   `The changes of ${sub.id} do not apply cleanly, nothing was changed:\n${clip(applied.error)}\n` +
                     'Call merge again with threeWay: true to merge what fits and get conflict markers in the rest, or apply the diff by hand.',
                 );
@@ -527,10 +573,13 @@ export function pack(options: PackOptions): Pack {
       };
 
       const steer = async (sub: Sub, text: unknown) => {
-        if (sub.status !== 'running' || !sub.run) throw new Error(`${sub.id} is not running.`);
+        if (sub.status !== 'running' || !sub.run) throw new PackActionError('not-running', `${sub.id} is not running.`);
         if (!sub.run.steer)
-          throw new Error(`${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`);
-        if (typeof text !== 'string' || !text.trim()) throw new Error('`text` is required.');
+          throw new PackActionError(
+            'cannot-steer',
+            `${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`,
+          );
+        if (typeof text !== 'string' || !text.trim()) throw new PackActionError('input', '`text` is required.');
         await sub.run.steer(text);
         return `Sent to ${sub.id}.`;
       };
@@ -544,15 +593,20 @@ export function pack(options: PackOptions): Pack {
 
       const diff = (sub: Sub) =>
         withWorktree(async () => {
-          if (!sub.dir || !sub.start) throw new Error(`${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
+          if (!sub.dir || !sub.start)
+            throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           return clip(await worktreeDiff(sub.dir, sub.start), MAX_DIFF) || 'No changes.';
         });
 
       const discard = (sub: Sub) =>
         withWorktree(async () => {
-          if (sub.status === 'running') throw new Error(`${sub.id} is still running. Stop it first.`);
+          if (sub.status === 'running')
+            throw new PackActionError('running', `${sub.id} is still running. Stop it first.`);
           if (sub.state !== 'unmerged')
-            throw new Error(`${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`);
+            throw new PackActionError(
+              worktreeReason(sub),
+              `${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`,
+            );
           sub.state = 'discarded';
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
@@ -727,7 +781,7 @@ export function pack(options: PackOptions): Pack {
           },
           async act(id, action) {
             const sub = find(id);
-            if (!mine.has(sub)) throw new Error(`Task ${id} belongs to another turn.`);
+            if (!mine.has(sub)) throw new PackActionError('missing', `Task ${id} belongs to another turn.`);
             switch (action.type) {
               case 'steer':
                 return steer(sub, action.text);

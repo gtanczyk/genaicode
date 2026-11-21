@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- Browser pack task actions return public refusal reasons (`PackActionError`) instead of raw exception messages from git, drivers or the filesystem (#223)
+
 ## 2.41.0 — 2026-11-21
 
 ### Added

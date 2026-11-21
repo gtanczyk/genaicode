@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
-import type { PackTask } from '../agents/pack.js';
+import { PackActionError, type PackTask } from '../agents/pack.js';
 import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
@@ -699,6 +699,59 @@ describe('web UI server', () => {
     for (const action of [{ type: 'delegate' }, { type: 'steer', text: '  ' }, 'merge'])
       expect(parseCommand({ ...base, action })).toBeUndefined();
     expect(parseCommand({ ...base, turnId: 0, action: { type: 'discard' } })).toBeUndefined();
+  });
+
+  it('returns public pack action reasons and keeps internal diagnostics local', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    chat.session.actOnPackTask = async (_turnId, id) => {
+      if (id === 'missing') throw new PackActionError('missing', 'private diagnostic');
+      if (id === 'conflict') throw new PackActionError('conflict', 'private git stderr');
+      if (id === 'unexpected') throw new Error('private diagnostic');
+      return '+added';
+    };
+    const ui = await startWebUi({
+      controller: chat,
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const post = (id: string) =>
+      fetch(`${base}api/command`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': 't0k' },
+        body: JSON.stringify({ type: 'pack-task', turnId: 1, id, action: { type: 'diff' } }),
+      });
+    try {
+      const ok = await post('t1');
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ ok: true, text: '+added' });
+
+      const missing = await post('missing');
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toEqual({ ok: false, error: 'This pack task could not be found.' });
+
+      const conflict = await post('conflict');
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toEqual({
+        ok: false,
+        error: 'These changes do not apply cleanly; nothing was changed.',
+      });
+
+      const unexpected = await post('unexpected');
+      expect(unexpected.status).toBe(500);
+      const body = await unexpected.text();
+      expect(JSON.parse(body)).toEqual({ ok: false, error: 'Could not run the pack task action.' });
+      expect(body).not.toContain('private diagnostic');
+
+      chat.session.actOnPackTask = undefined;
+      const unavailable = await post('t1');
+      expect(unavailable.status).toBe(404);
+      expect(await unavailable.json()).toEqual({ ok: false, error: 'Pack controls are unavailable.' });
+    } finally {
+      await ui.close();
+      chat.close();
+    }
   });
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
