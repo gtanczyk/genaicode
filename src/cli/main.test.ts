@@ -73,6 +73,25 @@ function pathWith(command: string): string {
 }
 
 describe('parseCli', () => {
+  it('uses the resumable interactive Codex and Muse drivers in the tower inbox', async () => {
+    const inspect = async (launch: UiLaunch) => {
+      expect(launch.towerInbox).toBeDefined();
+      for (const name of ['codex', 'muse']) {
+        expect(launch.sessionAgents?.find((agent) => agent.name === name)?.capabilities).toMatchObject({
+          approvals: true,
+          resume: true,
+          steer: true,
+        });
+      }
+      return 0;
+    };
+    const { cli } = environment({
+      argv: ['tower', '--pack', 'claude:codex'],
+      interactive: true,
+      loadUi: async () => ({ runWeb: inspect, runChat: inspect }),
+    });
+    expect(await main(cli)).toBe(EXIT_OK);
+  });
   it('opens the requested pack in either chat and keeps the original session sources', async () => {
     const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
     const worker = fakeAgent('worker', []);
@@ -81,10 +100,14 @@ describe('parseCli', () => {
       expect(launch.agent).toBe('pack');
       expect(launch.agents[0]).toMatchObject({ name: 'pack', command: lead.command });
       expect(launch.sessionAgents).toBe(agents);
+      if (launch.sessionTools) {
+        expect(launch.towerInbox?.proposalTool.name).toBe('propose_session_message');
+        expect(launch.sessionTools.map((t) => t.name)).not.toContain('propose_session_message');
+      } else expect(launch.towerInbox).toBeUndefined();
       return 0;
     };
     const loadUi = async () => ({ runChat: inspect, runWeb: inspect });
-    for (const kind of ['chat', 'ui']) {
+    for (const kind of ['chat', 'ui', 'tower']) {
       const argv = [kind, '--pack', 'lead:worker,worker', '--max-parallel', '2'];
       expect(parseCli(argv)).toMatchObject({ pack: { lead: 'lead', members: ['worker'], maxParallel: 2 } });
       expect(await main(environment({ argv, agents, interactive: true, loadUi }).cli)).toBe(EXIT_OK);

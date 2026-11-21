@@ -500,6 +500,12 @@ The [session tower](cli.md#open-the-session-tower) opens an indexed chat with a 
 of the queue. Its `/waiting [project]` and `/read <id>` commands call the same read-only
 operations and display the results to the user. A regular chat message starts an agent turn.
 
+When the tower runs a pack, its lead also receives `propose_session_message` on the pack MCP
+server. It takes the full session `id`, the exact `text` and an optional `source`. A successful
+call queues a draft in the operator's inbox. The operator can dismiss it or send it once,
+using the target agent's own driver in the reviewed directory. The tower checks the target
+again before resuming it. A closed tower forgets its drafts.
+
 `state` is `active`, `waiting`, `unfinished` or `approval` (a session that asks whether it may use
 a tool, known once the [hooks](#which-sessions-need-you-hooks) are installed). The tools only read
 the local stores. They are off unless you ask for them, because the agent that has them reads what
@@ -585,7 +591,8 @@ const first = await agent.run({ prompt: 'Add a --dry-run flag', cwd }).result;
 const next = await agent.run({ prompt: 'Now cover it with a test', cwd, resume: first.sessionId }).result;
 ```
 
-`claude`, `codex`, `cursor`, `opencode`, `copilot`, `antigravity` and `museLive` support it (`capabilities.resume`).
+`claude`, `codex`, `codexLive`, `cursor`, `opencode`, `copilot`, `antigravity` and `museLive` support it (`capabilities.resume`).
+`codexLive` resumes the stored thread with its saved sandbox and approval policy unless the caller overrides them.
 Other drivers fail the task before spawning anything rather than starting a fresh session.
 
 ## Chat sessions

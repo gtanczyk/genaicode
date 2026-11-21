@@ -5,6 +5,7 @@ import type { ChatController, ChatView, Notice } from '../controller.js';
 import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
 import { PackInspector, type TaskSelection } from './pack-inspector.js';
+import { TowerInboxPanel } from './tower-inbox.js';
 
 type StaticItem =
   | { key: string; kind: 'header' }
@@ -75,6 +76,7 @@ export function ChatApp({
   const shellMode = draftRef.current.shell;
   const [now, setNow] = useState(Date.now());
   const [armedExit, setArmedExit] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const [selection, selectTask] = useState<TaskSelection>();
   const history = useRef<string[]>([]);
   const historyIndex = useRef(0);
@@ -129,6 +131,8 @@ export function ChatApp({
 
   useInput((input, key) => {
     const { text: draft, cursor, shell } = draftRef.current;
+    if (inboxOpen) return;
+    if (view.tower && !currentTask && key.ctrl && input === 'g') return setInboxOpen(true);
     if (currentTask) return;
     if (key.tab && !draft && !shell && tasks.length) {
       const recent = tasks.filter(({ turn }) => turn.id === tasks.at(-1)!.turn.id);
@@ -166,6 +170,7 @@ export function ChatApp({
       if (history.current.at(-1) !== text) history.current.push(text);
       historyIndex.current = history.current.length;
       edit('', 0, false);
+      if (view.tower && text.trim() === '/inbox') return setInboxOpen(true);
       if (controller.submit(text) === 'quit') quit();
       return;
     }
@@ -240,7 +245,17 @@ export function ChatApp({
           )
         }
       </Static>
-      <Box flexDirection="column" width={width}>
+      {inboxOpen && view.tower && (
+        <TowerInboxPanel
+          view={view.tower}
+          rows={rows}
+          width={width}
+          decide={controller.decideTower}
+          back={() => setInboxOpen(false)}
+        />
+      )}
+      <Box display={inboxOpen ? 'none' : 'flex'} flexDirection="column" width={width}>
+        {view.tower && <Text color="cyan">Tower inbox · {view.tower.items.length} · Ctrl+G to open</Text>}
         {live.map((turn) => (
           <TurnView
             key={turn.id}

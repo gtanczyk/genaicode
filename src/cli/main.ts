@@ -32,6 +32,7 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { TowerInbox } from '../agents/sessions/tower.js';
 import {
   answerAsk,
   asksForSession,
@@ -107,6 +108,7 @@ export interface UiLaunch {
   sessionAgents?: readonly CodingAgent[];
   sessionSources?: readonly SessionSource[];
   sessionTools?: readonly McpTool[];
+  towerInbox?: TowerInbox;
   waitingOnStart?: boolean;
   agent?: string;
   cwd: string;
@@ -244,6 +246,7 @@ Notify options:
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one)
       --pack <lead:list>  Start a pack, e.g. claude:codex,gemini. Follow its tasks in the chat
+                          In the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
@@ -554,7 +557,8 @@ async function runUi(
   }
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
-  const sessionAgents = agents;
+  let sessionAgents = agents;
+  let towerInbox: TowerInbox | undefined;
   let initial = options.agent;
   if (options.pack) {
     const spec = options.pack;
@@ -563,17 +567,29 @@ async function runUi(
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    const member = (name: string) => {
-      if (!cli.agents && name === 'codex') return codexLive();
-      if (!cli.agents && name === 'muse') return museLive();
-      return sessionAgents.find((agent) => agent.name === name)!;
-    };
+    const packAgents =
+      cli.agents ??
+      agents.map((agent) => {
+        if (agent.name === 'codex') return codexLive();
+        if (agent.name === 'muse') return museLive();
+        return agent;
+      });
+    const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     const lead = member(spec.lead);
     if (!lead.capabilities.mcp) {
       cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
       return EXIT_USAGE;
     }
-    const team = pack({ lead, members: spec.members.map(member), maxParallel: spec.maxParallel });
+    if (options.sessions) {
+      sessionAgents = packAgents;
+      towerInbox = new TowerInbox(sessionAgents, cli.env);
+    }
+    const team = pack({
+      lead,
+      members: spec.members.map(member),
+      maxParallel: spec.maxParallel,
+      sessionProposalTool: towerInbox?.proposalTool,
+    });
     agents = [team, ...agents];
     initial = team.name;
   }
@@ -608,6 +624,7 @@ async function runUi(
     sessionAgents,
     sessionSources: indexed,
     ...(tools ? { sessionTools: tools } : {}),
+    ...(towerInbox ? { towerInbox } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     agent: initial,
     cwd: resolve(cli.cwd, options.cwd ?? '.'),
@@ -635,6 +652,7 @@ async function runUi(
   try {
     return await (options.kind === 'ui' ? ui.runWeb(launch) : ui.runChat(launch));
   } finally {
+    towerInbox?.close();
     await index?.close();
   }
 }

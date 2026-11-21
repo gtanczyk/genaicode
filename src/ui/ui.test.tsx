@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import type { PackTask } from '../agents/pack.js';
 import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
+import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
@@ -449,6 +450,43 @@ describe('chat controller', () => {
 });
 
 describe('terminal UI', () => {
+  it('reviews an exact recipient and multiline draft before sending, even in auto-approve mode', async () => {
+    const driver = echoAgent();
+    const row: SessionInfo = {
+      id: 'session-1234',
+      source: 'local-echo',
+      agent: driver.name,
+      where: 'local',
+      cwd: bin,
+      updatedAt: Date.now(),
+      state: 'waiting',
+    };
+    const owner = { ...driver, sessions: { name: row.source, where: 'local' as const, list: async () => [row] } };
+    const localEnv = { ...env, GENAICODE_HOME: bin };
+    const towerInbox = new TowerInbox([owner], localEnv);
+    const chat = createChatController({ agents: [owner], cwd: bin, env: localEnv, approveAll: true, towerInbox });
+    const app = render(<ChatApp controller={chat} cwd={bin} version="test" />);
+    const frame = (s: string) => vi.waitFor(() => expect(app.lastFrame()).toContain(s));
+    const text = 'Check the fixtures.\nKeep the empty row.';
+    try {
+      await towerInbox.proposalTool.call({ id: row.id, text });
+      await frame('Ctrl+G to open');
+      app.stdin.write('\x07');
+      await frame('Enter review');
+      app.stdin.write('\r');
+      await frame(text.split('\n')[1]);
+      expect(app.lastFrame()).toContain(row.id);
+      expect(owner.tasks).toHaveLength(0);
+      app.stdin.write('s');
+      await frame('Message sent');
+      expect(owner.tasks.map((t) => [t.resume, t.cwd, t.prompt])).toEqual([[row.id, bin, text]]);
+      app.stdin.write('\x1b');
+      await frame('Ask the agent');
+    } finally {
+      app.unmount();
+      chat.close();
+    }
+  });
   it('selects a finished worker, reads its diff and confirms a discard on that task only', async () => {
     const tasks: PackTask[] = ['t1', 't2'].map((id) => ({
       id,

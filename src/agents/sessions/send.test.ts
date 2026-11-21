@@ -7,6 +7,8 @@ import type { AgentEvent, AgentResult, AgentRun, CodingAgent } from '../types.js
 import { recordHook } from './live.js';
 import { claimSession } from './send-lock.js';
 import { sendSession } from './send.js';
+import { TowerInbox } from './tower.js';
+import { createAgentSession } from '../session.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-send-'));
@@ -41,6 +43,54 @@ function agentFor(rows: SessionInfo[] = [session], result = Promise.resolve(ok))
     ),
   } satisfies CodingAgent;
 }
+
+it('consumes the reviewed draft once, checks the project and activity again, and never retries a stale decision', async () => {
+  const rows = [{ ...session }];
+  const agent = agentFor(rows);
+  const inbox = new TowerInbox([agent], env);
+  const chat = createAgentSession({ agent, cwd: root });
+  const propose = () =>
+    inbox.proposalTool.call({ id: session.id, source: session.source, text: ' Review this exactly.\n ' });
+  const first = () => inbox.view(chat.get()).items[0];
+  try {
+    await propose();
+    const changed = first().id;
+    rows[0].cwd = join(root, 'another-project');
+    expect(await inbox.decide(chat, changed, 'send')).toBe(true);
+    await vi.waitFor(() => expect(inbox.view(chat.get()).status).toContain('has changed'));
+    expect(await inbox.decide(chat, changed, 'send')).toBe(false);
+    rows[0].cwd = root;
+    await propose();
+    rows[0].turnInProgress = true;
+    expect(await inbox.decide(chat, first().id, 'send')).toBe(true);
+    await vi.waitFor(() => expect(inbox.view(chat.get()).items).toHaveLength(0));
+    await expect(propose()).rejects.toThrow(/waiting/);
+    delete rows[0].turnInProgress;
+    await propose();
+    const dismissed = first().id;
+    expect(await inbox.decide(chat, dismissed, 'dismiss')).toBe(true);
+    expect(await inbox.decide(chat, dismissed, 'send')).toBe(false);
+    expect(agent.run).not.toHaveBeenCalled();
+    await propose();
+    const reviewed = first().id;
+    expect(await Promise.all([inbox.decide(chat, reviewed, 'send'), inbox.decide(chat, reviewed, 'send')])).toEqual([
+      true,
+      false,
+    ]);
+    await vi.waitFor(() => expect(inbox.view(chat.get()).status).toContain('Message sent'));
+    expect(agent.run).toHaveBeenCalledTimes(1);
+    expect(agent.run).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: ' Review this exactly.\n ', cwd: root, resume: session.id }),
+    );
+    await propose();
+    const closed = first().id;
+    inbox.close();
+    expect(await inbox.decide(chat, closed, 'send')).toBe(false);
+  } finally {
+    inbox.close();
+    chat.close();
+  }
+});
 
 it('resolves a prefix and resumes the owner in the stored directory with the exact prompt and chosen permissions', async () => {
   const agent = agentFor([{ ...session, state: 'unfinished' }]);
