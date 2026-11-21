@@ -27,6 +27,15 @@ describe('toolDiff', () => {
     expect(shown('--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b')).toEqual([' @@ -1 +1 @@', '-a', '+b']);
   });
 
+  it('keeps changed lines that look like file headers, and survives a huge file', () => {
+    const sql = 'diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n@@ -1 +1 @@\n--- old comment\n+++ plus';
+    expect(shown(sql)).toEqual([' @@ -1 +1 @@', '--- old comment', '+++ plus']);
+    expect(toolDiff(sql)).toMatchObject({ added: 1, removed: 1 });
+    const huge = 'x\n'.repeat(200_000);
+    expect(toolDiff({ path: 'large.txt', content: huge })?.added).toBe(200_001);
+    expect(toolDiff({ old_string: huge, new_string: `y\n${huge}` })?.added).toBe(1);
+  });
+
   it('is nothing for a call that changes no file', () => {
     expect(toolDiff({ command: 'ls -la' })).toBeUndefined();
     expect(toolDiff({ content: 'no path' })).toBeUndefined();

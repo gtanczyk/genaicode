@@ -87,13 +87,23 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
     const after = pick(record, ['new_string', 'newString', 'new_str', 'newText']);
     if (before === undefined || after === undefined) return false;
     if (lines.length) lines.push({ sign: ' ', text: '⋯' });
-    lines.push(...changedLines(before, after));
+    // Not spread into push: a change can be longer than a call takes arguments.
+    for (const line of changedLines(before, after)) lines.push(line);
     return true;
   };
   const patch = (value: string): boolean => {
     if (!/^(\*\*\* Begin Patch|@@|diff --git|--- )/m.test(value)) return false;
+    // A `--- ` line names a file before a hunk starts, and is a removed `-- ` line inside one.
+    let inHunk = false;
     for (const line of value.split('\n')) {
-      if (/^(\*\*\* (Begin|End) Patch|diff --git|index |\+\+\+ |--- )/.test(line)) continue;
+      if (/^\*\*\* (Begin|End) Patch/.test(line)) continue;
+      if (line.startsWith('diff --git')) {
+        inHunk = false;
+        continue;
+      }
+      if (!inHunk && /^(index |\+\+\+ |--- )/.test(line)) continue;
+      // A patch in an agent's own format has no file header lines of that kind.
+      if (line.startsWith('@@') || line.startsWith('*** ')) inHunk = true;
       if (line.startsWith('+')) lines.push({ sign: '+', text: line.slice(1) });
       else if (line.startsWith('-')) lines.push({ sign: '-', text: line.slice(1) });
       else lines.push({ sign: ' ', text: line.startsWith(' ') ? line.slice(1) : line });
@@ -114,7 +124,7 @@ export function toolDiff(input: unknown): ToolDiff | undefined {
     } else if (patched !== undefined && patch(patched)) {
       // A patch in the agent's own format.
     } else if (content !== undefined && pick(record, ['file_path', 'filePath', 'path']) !== undefined) {
-      lines.push(...content.split('\n').map((line): DiffLine => ({ sign: '+', text: line })));
+      for (const line of content.split('\n')) lines.push({ sign: '+', text: line });
     }
   } else return undefined;
   if (!lines.length) return undefined;
@@ -139,13 +149,12 @@ function changedLines(before: string, after: string): DiffLine[] {
     from[from.length - 1 - tail] === to[to.length - 1 - tail]
   )
     tail += 1;
-  const same = (line: string): DiffLine => ({ sign: ' ', text: line });
-  return [
-    ...from.slice(0, head).map(same),
-    ...from.slice(head, from.length - tail).map((line): DiffLine => ({ sign: '-', text: line })),
-    ...to.slice(head, to.length - tail).map((line): DiffLine => ({ sign: '+', text: line })),
-    ...from.slice(from.length - tail).map(same),
-  ];
+  const out: DiffLine[] = [];
+  for (let i = 0; i < head; i += 1) out.push({ sign: ' ', text: from[i]! });
+  for (let i = head; i < from.length - tail; i += 1) out.push({ sign: '-', text: from[i]! });
+  for (let i = head; i < to.length - tail; i += 1) out.push({ sign: '+', text: to[i]! });
+  for (let i = from.length - tail; i < from.length; i += 1) out.push({ sign: ' ', text: from[i]! });
+  return out;
 }
 
 /** {@link toolArgument} on one line, cut to `width`. */
