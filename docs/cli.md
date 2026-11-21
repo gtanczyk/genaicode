@@ -227,7 +227,8 @@ Merging leaves the files available for review and commit. Unmerged worktrees sta
 when you exit. The task controls belong to the chat process that started them.
 
 Chat packs leave completed changes on the task card by default. Choose **Request review**
-to give the full diff to another agent in read-only mode. The lead reviews when eligible.
+to send the full diff to another agent with its tools disabled. The lead reviews when eligible.
+Claude Code supports this mode. For example, Claude can review a Codex worker in `--pack claude:codex`.
 **Run tests** runs the displayed command in a private copy of the worker's directory. A project with an npm
 test script gets a test button automatically. Choose a different check at startup, for
 example `genaicode ui --pack --verify "python -m pytest"`. Tests run when you request them.

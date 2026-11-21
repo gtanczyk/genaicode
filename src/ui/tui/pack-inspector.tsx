@@ -157,7 +157,7 @@ export function PackInspector({
                 Code review ·{' '}
                 {checks.reviewer
                   ? `${plainSessionText(checks.reviewer)} · ${packCheckLabel(checks, 'review')}`
-                  : 'No read-only reviewer available'}
+                  : 'No reviewer with tools disabled'}
               </Text>
               <Text>
                 Tests ·{' '}

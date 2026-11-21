@@ -159,10 +159,12 @@ export function hasClaudeDefaultMode(
  */
 export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   const steer = options.steer ?? true;
-  return cliAgent({
+  const command = options.command ?? 'claude';
+  const input = { start: (task: AgentTask) => [claudeUserMessage(task.prompt)], steer: claudeUserMessage };
+  const agent = cliAgent({
     sessions: claudeSessions(),
     name: 'claude',
-    command: options.command ?? 'claude',
+    command,
     capabilities: {
       ...(steer ? { steer: true } : {}),
       effort: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -180,8 +182,59 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
     args: (task) => claudeArgs(task, options, undefined, undefined, steer),
     prepare: (task, context) => prepareClaude(task, options, context, steer),
     createParser: createClaudeParser,
-    ...(steer ? { input: { start: (task) => [claudeUserMessage(task.prompt)], steer: claudeUserMessage } } : {}),
+    ...(steer ? { input } : {}),
   });
+  // The model receives only the stdin message. Keep the user's login, without loading
+  // normal driver settings, tools or customizations into a review of untrusted text.
+  const text = cliAgent({
+    name: 'claude',
+    command,
+    input,
+    createParser: createClaudeParser,
+    env: (env) => {
+      const child: NodeJS.ProcessEnv = { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
+      for (const key of [
+        'PATH',
+        'HOME',
+        'USERPROFILE',
+        'SystemRoot',
+        'TMPDIR',
+        'TEMP',
+        'TMP',
+        'CLAUDE_CONFIG_DIR',
+        'CLAUDE_CODE_OAUTH_TOKEN',
+        'ANTHROPIC_API_KEY',
+        'ANTHROPIC_AUTH_TOKEN',
+      ]) {
+        if (env[key] !== undefined) child[key] = env[key];
+      }
+      return child;
+    },
+    args: (task) => [
+      '-p',
+      '--verbose',
+      '--output-format',
+      'stream-json',
+      '--input-format',
+      'stream-json',
+      '--replay-user-messages',
+      '--tools',
+      '',
+      '--strict-mcp-config',
+      '--safe-mode',
+      '--restricted',
+      '--disable-slash-commands',
+      '--settings',
+      '{"disableAllHooks":true}',
+      '--permission-mode',
+      'dontAsk',
+      '--no-session-persistence',
+      '--system-prompt',
+      'Answer using only the text supplied by the user.',
+      ...(task.budget?.maxCostUsd !== undefined ? ['--max-budget-usd', String(task.budget.maxCostUsd)] : []),
+    ],
+  });
+  return { ...agent, runText: text.run };
 }
 
 /** One `--input-format stream-json` line: a user message with `text`. */

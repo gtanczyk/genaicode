@@ -261,8 +261,10 @@ Each run also exposes these controls as `run.pack`. A chat can still review and 
 finished tasks after a later turn starts. Adopted transcripts are read-only.
 
 Use `{ type: 'review' }` to get a fresh review from the first eligible installed agent,
-starting with the lead and excluding the worker. The reviewer reads a private copy of
-the complete patch. `{ type: 'verify' }` runs the pack's configured
+starting with the lead and excluding the worker. The pack passes the complete patch as text
+to `CodingAgent.runText`. Claude Code implements this with tools, MCP, hooks and project
+context disabled. A custom driver can supply the same capability. Other drivers remain
+eligible to do the work. `{ type: 'verify' }` runs the pack's configured
 `verification: { label, run(cwd, signal, worktreeRoot) }` for the worker's directory. An
 embedding application supplies the isolation for its own verifier. The callback returns
 `{ ok, detail }`. Both results appear in `task.checks`. Each result records its

@@ -121,7 +121,7 @@ const packActionRefusals = {
   unavailable: 'This task no longer has a worktree.',
   conflict: 'These changes do not apply cleanly; nothing was changed.',
   checking: 'A check is running. Wait for its result.',
-  reviewer: 'This pack has no other installed agent with a read-only mode.',
+  reviewer: 'This pack has no other installed agent that can review without tools.',
   verification: 'No test command is configured for this pack.',
   stale: 'The worktree changed. Open the updated diff before merging.',
   budget: 'The session has used its review budget.',
@@ -408,10 +408,7 @@ export function pack(options: PackOptions): Pack {
       const settingUp = new Set<Promise<string>>();
       let observers = 0;
       const reviewers = [lead, ...members].filter(
-        (agent) =>
-          agent.capabilities.permissions?.sandbox?.includes('read-only') &&
-          agent.capabilities.permissions.approval?.includes('deny') &&
-          findExecutable(agent.command, task.env) !== null,
+        (agent) => agent.runText && findExecutable(agent.command, task.env) !== null,
       );
       let leadRun: AgentRun | undefined;
       let stopped = false;

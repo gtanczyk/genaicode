@@ -123,21 +123,21 @@ describe('pack', () => {
     const lead = fake(
       'lead',
       async (task) => {
-        if (task.permissions) {
-          expect(task.permissions).toEqual({ sandbox: 'read-only', approval: 'deny' });
-          expect(task.mcpServers).toBeUndefined();
-          reviewDir = task.cwd;
-          const patch = readFileSync(join(task.cwd, 'changes.patch'), 'utf8');
-          expect(readFileSync(join(task.cwd, 'changes.patch')).includes(latin1)).toBe(true);
-          expect(patch).toContain(' end of new file');
-          expect(patch).toContain('+module.exports');
-          return { text: 'Check how zero seats are handled.', usage: { totalTokens: 8 } };
-        }
         await tool(task, 'delegate', { agent: 'worker', prompt: 'Change the default.' });
         await tool(task, 'wait');
       },
-      { mcp: true, permissions: { approval: ['deny'], sandbox: ['read-only'] } },
+      { mcp: true },
     );
+    lead.runText = fake('lead', async (task) => {
+      reviewDir = task.cwd;
+      expect(readdirSync(reviewDir)).toEqual([]);
+      expect(task.mcpServers).toBeUndefined();
+      expect(task.prompt).toContain('Patch encoding: latin1.');
+      expect(Buffer.from(task.prompt, 'latin1').includes(latin1)).toBe(true);
+      expect(task.prompt).toContain(' end of new file');
+      expect(task.prompt).toContain('+module.exports');
+      return { text: 'Check how zero seats are handled.', usage: { totalTokens: 8 } };
+    }).run;
     const testSeats = (dir: string) =>
       spawnSync(process.execPath, ['-e', "require('node:assert/strict').equal(require('./seats.cjs')(0), 0)"], {
         cwd: dir,
@@ -200,7 +200,7 @@ describe('pack', () => {
         await tool(task, 'delegate', { agent: 'worker', prompt: 'Make a change.' });
         await tool(task, 'wait');
       },
-      { mcp: true },
+      { mcp: true, permissions: { approval: ['deny'], sandbox: ['read-only'] } },
     );
     const team = pack({
       lead,
@@ -266,16 +266,13 @@ describe('pack', () => {
 
   it('lets the lead ask a different member to review and accounts for the review in the pack budget', async () => {
     const cwd = repo();
-    const reviewer = fake(
-      'reader',
-      async (task) => {
-        expect(task.permissions).toEqual({ approval: 'deny', sandbox: 'read-only' });
-        expect(task.budget?.maxTokens).toBe(5);
-        expect(readFileSync(join(task.cwd, 'changes.patch'), 'utf8')).toContain('+hello');
-        return { text: 'No findings.', usage: { totalTokens: 5 } };
-      },
-      { permissions: { approval: ['deny'], sandbox: ['read-only'] } },
-    );
+    const reviewer = fake('reader', async (task) => {
+      expect(task.budget?.maxTokens).toBe(5);
+      expect(task.prompt).toContain('Patch encoding: utf8.');
+      expect(task.prompt).toContain('+hello');
+      return { text: 'No findings.', usage: { totalTokens: 5 } };
+    });
+    reviewer.runText = reviewer.run;
     const lead = fake(
       'lead',
       async (task) => {
@@ -302,18 +299,15 @@ describe('pack', () => {
   it('reserves a session budget for one operator review and gives a queued turn the remainder', async () => {
     const caps: number[] = [];
     let release!: () => void;
-    const reviewer = fake(
-      'reader',
-      async (task) => {
-        caps.push(task.budget!.maxTokens!);
-        if (caps.length === 1)
-          await new Promise<void>((resolve) => {
-            release = resolve;
-          });
-        return { text: 'Reviewed.', usage: { totalTokens: Math.min(8, task.budget!.maxTokens!) } };
-      },
-      { permissions: { approval: ['deny'], sandbox: ['read-only'] } },
-    );
+    const reviewer = fake('reader', async (task) => {
+      caps.push(task.budget!.maxTokens!);
+      if (caps.length === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return { text: 'Reviewed.', usage: { totalTokens: Math.min(8, task.budget!.maxTokens!) } };
+    });
+    reviewer.runText = reviewer.run;
     const lead = fake(
       'lead',
       async (task) => {

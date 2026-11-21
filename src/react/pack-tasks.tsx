@@ -180,7 +180,7 @@ function TaskDetail({
                 {!source && worktree && (
                   <small>
                     {kind === 'review'
-                      ? 'Requires another installed agent with a read-only mode.'
+                      ? 'Requires another agent that can review without tools.'
                       : 'Choose the test command with --verify.'}
                   </small>
                 )}
