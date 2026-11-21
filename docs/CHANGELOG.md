@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- `sessions --waiting --json --watch` reads every agent's session store on each fifth look only, and at once when a hook reports something new, so a watch left open uses far less CPU (#232)
+
 ## 2.42.0 — 2026-11-21
 
 ### Added
@@ -18,7 +22,6 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- `sessions --waiting --json --watch` reads every agent's session store on each fifth look only, and at once when a hook reports something new, so a watch left open uses far less CPU (#232)
 - Pack tasks work in projects opened through a symlink, and the browser explains merge conflicts when running the installed CLI (#229)
 - `genaicode update`, `genaicode install` and `scripts/install.sh` revalidate npm's local package cache (`--prefer-online --no-prefer-offline`) so installing a newly published release no longer fails with `ETARGET` (#230)
 
