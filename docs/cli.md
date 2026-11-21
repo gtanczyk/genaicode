@@ -112,6 +112,11 @@ With `hooks install --answer`, Claude Code's approval questions can also be answ
 the browser's Sessions view has Approve and Deny (see
 [answering](agents.md#answering-from-the-tower-hooks-install---answer)).
 
+A program that shows what waits (a menu bar, a status line) can keep one process open instead of
+asking again and again: `npx genaicode sessions --waiting --json --watch` prints one line
+`{"sessions":[...]}` at once and another whenever the waiting sessions or their open questions
+change. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
+
 `npx genaicode sessions archive --stale` puts away every session left waiting or half way for 2
 days or more (`sessions archive <id>` for one, `unarchive` to bring it back, `--archived` to list
 them); the agents' files stay as they are (see
