@@ -52,12 +52,18 @@ export function Sessions({
   token,
   cwd,
   onContinue,
+  topic,
+  onAllTopics,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
   cwd: string;
   /** Take the session over in the chat. */
   onContinue(session: SessionInfo): void;
+  /** Show only this topic (its id), as picked on the start screen. */
+  topic?: string;
+  /** Back to every topic. */
+  onAllTopics?(): void;
 }) {
   const [days, setDays] = useState(7);
   const [listing, setListing] = useState<WebSessionListing>();
@@ -119,10 +125,13 @@ export function Sessions({
       .finally(() => setRound((value) => value + 1));
   };
   const shown = useMemo(() => {
-    const found = filterSessions(all, { text, agent, state });
+    const inTopic = topic
+      ? all.filter((session) => listing?.topicOf?.[`${session.source}:${session.id}`] === topic)
+      : all;
+    const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
     return state === 'waiting' || state === 'approval' ? waitingSessions(found) : found;
-  }, [all, text, agent, state]);
+  }, [all, text, agent, state, topic, listing]);
   // What waits for you keeps its order across projects: the one with an approval first.
   const inbox = state === 'waiting' || state === 'approval';
   const now = Date.now();
@@ -184,6 +193,11 @@ export function Sessions({
   return (
     <main className="sessions">
       <div className="tools">
+        {topic ? (
+          <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
+            {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
+          </button>
+        ) : null}
         <input
           type="search"
           placeholder="Search titles, prompts, directories, branches…"

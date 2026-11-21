@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { waitingSessions, type SessionInfo } from '../agents/sessions/index.js';
 import { SessionSendError } from '../agents/sessions/send.js';
 import { createChatController } from './controller.js';
-import { ago, canContinueHere, filterSessions, groupByTopic, groupInOrder, resumeCommand } from './sessions.js';
+import {
+  ago,
+  canContinueHere,
+  filterSessions,
+  groupByTopic,
+  groupInOrder,
+  resumeCommand,
+  topicsNow,
+} from './sessions.js';
 import { pageHtml } from './web/page.js';
 import { startWebUi } from './web/server.js';
 
@@ -78,6 +86,14 @@ describe('the Sessions view', () => {
     ]);
     expect(groups[1]!.agents).toEqual({ codex: 1, claude: 1 });
     expect(groups[2]!.sessions.map((one) => one.id)).toEqual(['d', 'e']);
+    // The start screen: who asks, then who works; what no topic has is left out.
+    const topics = [
+      { id: 't1', name: 'Knights' },
+      { id: 't2', name: 'Pack mode' },
+    ];
+    const start = topicsNow(listed, topics, { 'codex:a': 't1', 'claude:b': 't2', 'claude:c': 't1' }, now);
+    expect(start.asking.map((group) => group.name)).toEqual(['Pack mode']);
+    expect(start.working.map((group) => group.name)).toEqual(['Knights']);
   });
 
   it('gives the command that continues a local session', () => {
