@@ -64,7 +64,8 @@ import {
   backgroundUpdate,
   defaultUpdateDeps,
   findInstall,
-  INSTALL_SCRIPT_URL,
+  installCommand,
+  shadowingCommand,
   registerRun,
   selfInstall,
   setAutoUpdate,
@@ -178,7 +179,13 @@ Usage:
   genaicode run [options] <prompt...>  Run one task (reads the prompt from stdin if omitted)
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
+  genaicode install [options]          Install "genaicode" as a command that updates itself
   genaicode update [options]           Update the installed genaicode command
+
+Install options (macOS, Linux; same as scripts/install.sh):
+      --version <v>       Install this version (default: the one running, e.g. via npx)
+      --bin-dir <dir>     Where the command goes (default: ~/.local/bin)
+      --force             Replace a "genaicode" there that the installer did not write
 
 Update options (for the command scripts/install.sh installs; npx and npm -g update through npm):
       --check             Only say whether a newer version is out
@@ -335,7 +342,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
-  const quick = ['help', 'version', 'update', 'self-install'].includes(command.kind);
+  const quick = ['help', 'version', 'update', 'self-install', 'install'].includes(command.kind);
   // Machine-readable output and protocol servers get no banner and start no updater.
   const machine = command.kind === 'acp' || command.kind === 'sessions-mcp' || ('json' in command && command.json);
   if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
@@ -392,6 +399,8 @@ function dispatch(
       return runUpdate(cli, updater, command);
     case 'self-install':
       return runSelfInstall(cli, updater, command);
+    case 'install':
+      return runInstall(cli, updater, command);
   }
 }
 
@@ -409,7 +418,7 @@ async function runUpdate(
     cli.stderr.write(
       `This genaicode runs from ${deps.packageRoot}, not from the installed command.\n` +
         'Update it with npm ("npm install -g genaicode@latest", or bump it in your project), ' +
-        `or install the command, which updates itself:\n  curl -fsSL ${INSTALL_SCRIPT_URL} | sh\n`,
+        `or install the command, which updates itself:\n  npx genaicode install\n`,
     );
     return EXIT_FAILED;
   }
@@ -454,24 +463,51 @@ function runSelfInstall(
   options: Extract<CliCommand, { kind: 'self-install' }>,
 ): number {
   try {
-    const result = selfInstall({
-      packageRoot: deps.packageRoot,
-      binDir: options.binDir,
-      force: options.force,
-      env: cli.env,
-    });
-    cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
-    if (!result.onPath) {
-      const dir = dirname(result.shim);
-      cli.stdout.write(
-        `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
-          `  export PATH="${dir}:$PATH"\n`,
-      );
-    }
+    reportInstall(
+      cli,
+      selfInstall({ packageRoot: deps.packageRoot, binDir: options.binDir, force: options.force, env: cli.env }),
+    );
     return EXIT_OK;
   } catch (error) {
     cli.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return EXIT_FAILED;
+  }
+}
+
+async function runInstall(
+  cli: CliEnvironment,
+  deps: UpdateDeps,
+  options: Extract<CliCommand, { kind: 'install' }>,
+): Promise<number> {
+  try {
+    cli.stderr.write('Installing genaicode with npm (no install scripts)...\n');
+    const result = await installCommand(deps, options);
+    reportInstall(cli, result);
+    const shadow = shadowingCommand(cli.env, dirname(result.shim));
+    if (shadow) {
+      cli.stdout.write(
+        `Note: "genaicode" on your PATH is ${shadow}, which comes before ${dirname(result.shim)}.\n` +
+          'Remove it ("npm uninstall -g genaicode") or put that directory first on PATH.\n',
+      );
+    }
+    cli.stdout.write(
+      'Run "genaicode" to start. It checks for updates once a day; "genaicode update --auto off" turns that off.\n',
+    );
+    return EXIT_OK;
+  } catch (error) {
+    cli.stderr.write(`Install failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_FAILED;
+  }
+}
+
+function reportInstall(cli: CliEnvironment, result: { version: string; shim: string; onPath: boolean }): void {
+  cli.stdout.write(`Installed genaicode ${result.version}: ${result.shim}\n`);
+  if (!result.onPath) {
+    const dir = dirname(result.shim);
+    cli.stdout.write(
+      `${dir} is not on your PATH. Add it to your shell profile (~/.zshrc, ~/.bashrc):\n` +
+        `  export PATH="${dir}:$PATH"\n`,
+    );
   }
 }
 

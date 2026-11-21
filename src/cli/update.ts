@@ -235,6 +235,69 @@ export function selfInstall(options: {
   return { home, version: readVersion(root), shim, onPath };
 }
 
+/**
+ * `npx genaicode install`: installs `version` (default: the one running) into `<home>/versions`
+ * the way scripts/install.sh does, then sets up `current` and the shim from it.
+ */
+export async function installCommand(
+  deps: UpdateDeps,
+  options: { version?: string; binDir?: string; force?: boolean },
+): Promise<ReturnType<typeof selfInstall>> {
+  if (process.platform === 'win32') {
+    throw new Error('The installed command is for macOS and Linux; on Windows use "npm install -g genaicode".');
+  }
+  const version = options.version
+    ? await deps.resolveVersion(options.version)
+    : readVersion(realpathSync(deps.packageRoot));
+  if (!VERSION.test(version)) throw new Error(`"${version}" is not a version`);
+  const home = resolve(deps.env.GENAICODE_HOME || join(deps.env.HOME ?? homedir(), '.genaicode'));
+  const versions = join(home, 'versions');
+  const dir = join(versions, version);
+  mkdirSync(versions, { recursive: true });
+  if (!isComplete(dir, version)) {
+    const staging = join(versions, `.staging-install-${process.pid}`);
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync(staging, { recursive: true });
+    try {
+      await deps.npmInstall(staging, `${PACKAGE_NAME}@${version}`);
+      if (!isComplete(staging, version)) throw new Error(`npm did not install ${PACKAGE_NAME}@${version}`);
+      // Another installer may have finished this version meanwhile: keep it, drop the copy.
+      if (!isComplete(dir, version)) {
+        rmSync(dir, { recursive: true, force: true });
+        renameSync(staging, dir);
+      }
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  }
+  return selfInstall({
+    packageRoot: join(dir, 'node_modules', PACKAGE_NAME),
+    binDir: options.binDir,
+    force: options.force,
+    env: deps.env,
+  });
+}
+
+/**
+ * The `genaicode` that runs instead of the shim: the first one on PATH before `binDir`.
+ * npx's own `.bin` directories are skipped, since they only exist while npx runs.
+ */
+export function shadowingCommand(env: NodeJS.ProcessEnv, binDir: string): string | undefined {
+  for (const entry of (env.PATH ?? '').split(delimiter)) {
+    if (!entry) continue;
+    const dir = resolve(entry);
+    if (dir === resolve(binDir)) return undefined;
+    if (/[\\/](_npx|node_modules[\\/]\.bin)([\\/]|$)/.test(dir)) continue;
+    const candidate = join(dir, 'genaicode');
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // not here
+    }
+  }
+  return undefined;
+}
+
 export type UpdateOutcome =
   | { kind: 'current'; version: string }
   | { kind: 'available'; from: string; to: string }
@@ -269,8 +332,11 @@ export async function updateInstall(
       try {
         await deps.npmInstall(staging, `${PACKAGE_NAME}@${target}`);
         if (!isComplete(staging, target)) throw new Error(`npm did not install ${PACKAGE_NAME}@${target}`);
-        rmSync(dir, { recursive: true, force: true });
-        renameSync(staging, dir);
+        // Another installer may have finished this version meanwhile: keep it, drop the copy.
+        if (!isComplete(dir, target)) {
+          rmSync(dir, { recursive: true, force: true });
+          renameSync(staging, dir);
+        }
       } finally {
         rmSync(staging, { recursive: true, force: true });
       }

@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   rmSync,
@@ -12,7 +13,7 @@ import {
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { main, type CliEnvironment } from './main.js';
 import {
@@ -20,6 +21,8 @@ import {
   CHECK_INTERVAL_MS,
   compareVersions,
   findInstall,
+  installCommand,
+  shadowingCommand,
   readState,
   registerRun,
   writeState,
@@ -360,6 +363,93 @@ describe('genaicode update', () => {
     const result = await run(['update'], { packageRoot: process.cwd() });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('npm install -g genaicode@latest');
-    expect(result.stderr).toContain('scripts/install.sh | sh');
+    expect(result.stderr).toContain('npx genaicode install');
+  });
+});
+
+describe('genaicode install', () => {
+  function npxDeps(base: string, version = '2.36.0') {
+    const root = writePackage(join(base, 'npx-cache'), version);
+    const npm: string[] = [];
+    const deps: UpdateDeps = {
+      packageRoot: root,
+      env: { HOME: base, PATH: '' },
+      now: () => Date.now(),
+      resolveVersion: async (tag) => tag.replace(/^v/, ''),
+      npmInstall: async (prefix, spec) => {
+        npm.push(spec);
+        writePackage(prefix, spec.split('@')[1]);
+      },
+      spawnBackground: () => {},
+    };
+    return { deps, npm };
+  }
+
+  it('installs the running version from npm and sets up the command', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps, npm } = npxDeps(base);
+    const result = await installCommand(deps, {});
+    const home = join(base, '.genaicode');
+    expect(npm).toEqual(['genaicode@2.36.0']);
+    expect(result).toMatchObject({ home, version: '2.36.0', shim: join(base, '.local', 'bin', 'genaicode') });
+    expect(readlinkSync(join(home, 'current'))).toBe(join('versions', '2.36.0'));
+    expect(readdirSync(join(home, 'versions'))).toEqual(['2.36.0']);
+    expect(findInstall(join(home, 'versions', '2.36.0', 'node_modules', 'genaicode'))).toEqual({
+      home,
+      version: '2.36.0',
+    });
+  });
+
+  it('takes --version, GENAICODE_HOME and reuses a version already there', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps, npm } = npxDeps(base);
+    deps.env.GENAICODE_HOME = join(base, 'gc');
+    await installCommand(deps, { version: 'v2.35.1', binDir: join(base, 'bin') });
+    await installCommand(deps, { version: '2.35.1', binDir: join(base, 'bin') });
+    expect(npm).toEqual(['genaicode@2.35.1']);
+    expect(readlinkSync(join(base, 'gc', 'current'))).toBe(join('versions', '2.35.1'));
+    expect(existsSync(join(base, 'bin', 'genaicode'))).toBe(true);
+  });
+
+  it('keeps a version another installer finished while npm ran', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps } = npxDeps(base);
+    const theirs = join(base, '.genaicode', 'versions', '2.36.0');
+    deps.npmInstall = async (prefix, spec) => {
+      writePackage(theirs, '2.36.0');
+      writeFileSync(join(theirs, 'marker'), 'theirs');
+      writePackage(prefix, spec.split('@')[1]);
+    };
+    await installCommand(deps, {});
+    expect(readFileSync(join(theirs, 'marker'), 'utf8')).toBe('theirs');
+    expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual(['2.36.0']);
+  });
+
+  it('reports a failed npm install and leaves nothing behind', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const { deps } = npxDeps(base);
+    deps.npmInstall = async () => {
+      throw new Error('E404');
+    };
+    await expect(installCommand(deps, {})).rejects.toThrow('E404');
+    expect(readdirSync(join(base, '.genaicode', 'versions'))).toEqual([]);
+  });
+
+  it("finds a genaicode that comes before the shim on PATH, but not npx's own", () => {
+    const base = mkdtempSync(join(tmpdir(), 'genaicode-install-'));
+    dirs.push(base);
+    const global = join(base, 'global', 'bin');
+    const npx = join(base, '.npm', '_npx', 'abc', 'node_modules', '.bin');
+    const bin = join(base, '.local', 'bin');
+    for (const dir of [global, npx, bin]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'genaicode'), '');
+    }
+    expect(shadowingCommand({ PATH: [npx, global, bin].join(delimiter) }, bin)).toBe(join(global, 'genaicode'));
+    expect(shadowingCommand({ PATH: [npx, bin, global].join(delimiter) }, bin)).toBeUndefined();
   });
 });
