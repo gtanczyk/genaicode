@@ -203,6 +203,12 @@ export function AgentChat(props: AgentChatProps) {
       ? props.completions.filter((one) => one.name.startsWith(draft))
       : [];
   const choice = offered[Math.min(picked, offered.length - 1)];
+  // The list is shorter than a host's commands: the chosen one stays in view.
+  const chosen = useRef<HTMLLIElement>(null);
+  const chosenName = choice?.name;
+  useEffect(() => {
+    chosen.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [chosenName]);
   const complete = (one: ChatCompletion) => {
     setDraft(one.args ? `${one.name} ` : one.name);
     setPicked(0);
@@ -345,6 +351,7 @@ export function AgentChat(props: AgentChatProps) {
             {offered.map((one) => (
               <li
                 key={one.name}
+                ref={one === choice ? chosen : undefined}
                 role="option"
                 aria-selected={one === choice}
                 // Before the box loses focus.

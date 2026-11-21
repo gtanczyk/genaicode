@@ -298,8 +298,14 @@ describe('AgentChat', () => {
     type('/');
     expect(offered()).toEqual(['/model', '/new', '/help']);
     expect($('.gc-completions li[aria-selected="true"]').textContent).toContain('/model');
-    // Arrows go round; Enter completes instead of sending. A command with arguments leaves room for them.
+    // Arrows go round, keeping the chosen one in view. Enter completes instead of sending.
+    const shown: string[] = [];
+    const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(function (this: HTMLElement) {
+      shown.push(this.querySelector('b')?.textContent ?? '');
+    });
     key({ key: 'ArrowUp' });
+    expect(shown.at(-1)).toBe('/help');
+    scroll.mockRestore();
     key({ key: 'ArrowDown' });
     key({ key: 'Enter' });
     expect(value()).toBe('/model ');
