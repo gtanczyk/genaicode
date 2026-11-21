@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { EXIT_OK, main as runCli } from '../../cli/main.js';
+import { recordHook } from './live.js';
 import type { SessionInfo } from './types.js';
 import {
   claudeSessions,
@@ -302,6 +303,29 @@ describe('session sources', () => {
         .map((entry) => entry.id)
         .sort(),
     ).toEqual(['delegated', 'temp', 'tmp', 'windows']);
+    // A hook reports that one of them asks for approval: it is listed while it asks.
+    const now = Date.now();
+    const fresh: SessionSource = {
+      ...source,
+      name: 'claude',
+      list: async () => [{ ...at('tmp', '/tmp/x'), source: 'claude', updatedAt: now }],
+    };
+    const hooked = { GENAICODE_HOME: join(root, 'hooked'), HOME: join(root, 'nobody') };
+    expect((await listSessions([fresh], { env: hooked })).sessions).toEqual([]);
+    await recordHook(
+      'claude',
+      {
+        session_id: 'tmp',
+        cwd: '/tmp/x',
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'Bash',
+        tool_input: { command: 'ls' },
+      },
+      { env: hooked, now },
+    );
+    expect((await listSessions([fresh], { env: hooked })).sessions).toMatchObject([
+      { id: 'tmp', waitingFor: 'approval' },
+    ]);
   });
 
   it('reads what the end of a message asks of the user', () => {

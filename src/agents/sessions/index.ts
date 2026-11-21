@@ -118,10 +118,14 @@ export async function listSessions(
   // genaicode's own sorting runs (`topics refresh`) are nobody's conversation.
   const runs = new Set((await readTopics(query.env)).runs);
   // Nor is what ran in a temporary directory or in a worktree genaicode made for a delegated task.
-  // A run in a temporary directory that asks for approval right now still has somebody to answer it.
-  const scratch = (entry: SessionInfo) => isScratchDir(entry.cwd) && entry.waitingFor !== 'approval';
-  const marked = (entry: SessionInfo): SessionInfo =>
-    !entry.automated && (isTopicsRun(entry, runs) || scratch(entry)) ? { ...entry, automated: true } : entry;
+  const scratch = new Set<string>();
+  const marked = (entry: SessionInfo): SessionInfo => {
+    if (entry.automated) return entry;
+    if (isTopicsRun(entry, runs)) return { ...entry, automated: true };
+    if (!isScratchDir(entry.cwd)) return entry;
+    scratch.add(`${entry.source}:${entry.id}`);
+    return { ...entry, automated: true };
+  };
   const read = (asked: SessionQuery) =>
     Promise.all(
       sources.map((source) =>
@@ -151,6 +155,11 @@ export async function listSessions(
     // A session counts from its latest news, which may be a hook's.
     found = withLive(found, live).filter((session) => query.since === undefined || session.updatedAt >= query.since);
   }
+  // A run in such a directory that asks for approval right now still has somebody to answer it.
+  found = found.map((entry) => {
+    if (entry.waitingFor !== 'approval' || !scratch.has(`${entry.source}:${entry.id}`)) return entry;
+    return { ...entry, automated: undefined };
+  });
   // Sessions put away (`genaicode sessions archive`) say so.
   const archive = await readArchive(query.env);
   const sessions = withArchive(found, archive)
