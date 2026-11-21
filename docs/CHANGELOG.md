@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `<AgentChat>` (`onAutoApprove`) and the browser UI show an **Auto-approve all** button right on permission requests, matching the terminal chat's `a` shortcut to approve pending and future requests in one click (#234)
+
 ### Fixed
 
 - `sessions --waiting --json --watch` reads every agent's session store on each fifth look only, and at once when a hook reports something new, so a watch left open uses far less CPU (#232)
