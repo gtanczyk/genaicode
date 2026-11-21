@@ -64,6 +64,11 @@ export interface AgentChatProps {
    * show as waiting, with no buttons.
    */
   onApprove?(id: string, decision: ApprovalDecision): void;
+  /**
+   * Approve pending requests and turn on auto-approve for future requests in this session.
+   * Shown beside Approve and Deny when `onApprove` is also set.
+   */
+  onAutoApprove?(): void;
   /** Control a delegated task in its owning turn. Without this, pack tasks are read-only. */
   onPackAction?: PackActionHandler;
   /**
@@ -200,6 +205,7 @@ export function AgentChat(props: AgentChatProps) {
         cwd={state.cwd}
         pending={turn.result ? [] : state.approvals}
         onApprove={props.onApprove}
+        onAutoApprove={props.onAutoApprove}
         onPackAction={props.disabled ? undefined : props.onPackAction}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
@@ -410,6 +416,7 @@ function Turn({
   cwd,
   pending,
   onApprove,
+  onAutoApprove,
   onPackAction,
   prompt,
   toolName,
@@ -426,6 +433,7 @@ function Turn({
   cwd: string;
   pending: SessionState['approvals'];
   onApprove?: AgentChatProps['onApprove'];
+  onAutoApprove?: AgentChatProps['onAutoApprove'];
   onPackAction?: PackActionHandler;
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
@@ -447,6 +455,7 @@ function Turn({
       cwd={cwd}
       pending={pending}
       onApprove={onApprove}
+      onAutoApprove={onAutoApprove}
       prompt={prompt}
       toolName={toolName}
       artifactUrl={artifactUrl}
@@ -562,6 +571,7 @@ function Entry({
   cwd,
   pending,
   onApprove,
+  onAutoApprove,
   prompt,
   toolName,
   artifactUrl,
@@ -576,6 +586,7 @@ function Entry({
   cwd: string;
   pending: SessionState['approvals'];
   onApprove?: AgentChatProps['onApprove'];
+  onAutoApprove?: AgentChatProps['onAutoApprove'];
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
 }) {
@@ -654,6 +665,16 @@ function Entry({
               >
                 {entry.request.scope === 'turn' ? 'Approve for this turn' : 'Approve'}
               </button>
+              {onAutoApprove ? (
+                <button
+                  type="button"
+                  className="gc-btn"
+                  title="Approve this and every future permission request in this session"
+                  onClick={() => onAutoApprove()}
+                >
+                  Auto-approve all
+                </button>
+              ) : null}
               <button type="button" className="gc-btn gc-danger" onClick={() => onApprove(entry.request.id, 'deny')}>
                 Deny
               </button>
