@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -36,6 +37,15 @@ export interface ChatNotice {
   afterTurn: number;
   text: ReactNode;
   tone?: 'info' | 'error';
+}
+
+/** A command the composer offers to complete. */
+export interface ChatCompletion {
+  /** What is typed, with its prefix: `/model`. */
+  name: string;
+  /** Its arguments, as a hint: `[id]`. Completing a command with arguments leaves a space to type them. */
+  args?: string;
+  help?: string;
 }
 
 export interface AgentChatProps {
@@ -112,6 +122,12 @@ export interface AgentChatProps {
   emptyState?: ReactNode;
   /** Composer placeholder. Default depends on the state (idle, steer, queue). */
   placeholder?: string;
+  /**
+   * Commands the host understands (`/help`...), offered while the message is the start of one:
+   * arrows choose, Tab or Enter completes, Escape closes the list. The host still gets the text
+   * through `onSend`.
+   */
+  completions?: readonly ChatCompletion[];
   /** Line under the composer. Default: the keys. Pass null for none. */
   hint?: ReactNode;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
@@ -161,6 +177,7 @@ export function AgentChat(props: AgentChatProps) {
     if (attached.files.length) props.onSend(draft, attached.files);
     else props.onSend(draft);
     setDraft('');
+    setClosedAt(undefined);
     attached.clear();
   };
   const onPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
@@ -174,7 +191,51 @@ export function AgentChat(props: AgentChatProps) {
     event.preventDefault();
     attached.add(event.dataTransfer.files);
   };
+  // Commands whose name the message starts, while it is one word and not yet one of them.
+  const [picked, setPicked] = useState(0);
+  const [closedAt, setClosedAt] = useState<string>();
+  const offered =
+    // A whole command is sent as typed, even when it starts a longer one.
+    props.completions &&
+    draft &&
+    !/\s/.test(draft) &&
+    closedAt !== draft &&
+    !props.completions.some((one) => one.name === draft)
+      ? props.completions.filter((one) => one.name.startsWith(draft))
+      : [];
+  const choice = offered[Math.min(picked, offered.length - 1)];
+  // The list is shorter than a host's commands: the chosen one stays in view.
+  const listId = useId();
+  const optionId = (index: number) => `${listId}-${index}`;
+  const chosen = useRef<HTMLLIElement>(null);
+  const chosenName = choice?.name;
+  useEffect(() => {
+    chosen.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [chosenName]);
+  const complete = (one: ChatCompletion) => {
+    setDraft(one.args ? `${one.name} ` : one.name);
+    setPicked(0);
+    input.current?.focus();
+  };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (choice && !event.nativeEvent.isComposing) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : offered.length - 1;
+        setPicked((Math.min(picked, offered.length - 1) + step) % offered.length);
+        return;
+      }
+      if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
+        event.preventDefault();
+        complete(choice);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setClosedAt(draft);
+        return;
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
@@ -288,6 +349,28 @@ export function AgentChat(props: AgentChatProps) {
             })}
           </div>
         ) : null}
+        {choice ? (
+          <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+            {offered.map((one, index) => (
+              <li
+                key={one.name}
+                id={optionId(index)}
+                ref={one === choice ? chosen : undefined}
+                role="option"
+                aria-selected={one === choice}
+                // Before the box loses focus.
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  complete(one);
+                }}
+              >
+                <b>{one.name}</b>
+                {one.args ? <code>{one.args}</code> : null}
+                {one.help ? <span>{one.help}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
         {attached.problem ? (
           <div className="gc-attach-problem" role="alert">
@@ -308,7 +391,16 @@ export function AgentChat(props: AgentChatProps) {
             value={draft}
             placeholder={placeholder}
             aria-label="Message"
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setPicked(0);
+              setClosedAt(undefined);
+            }}
+            aria-autocomplete={props.completions ? 'list' : undefined}
+            role={props.completions ? 'combobox' : undefined}
+            aria-expanded={props.completions ? !!choice : undefined}
+            aria-controls={choice ? listId : undefined}
+            aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />

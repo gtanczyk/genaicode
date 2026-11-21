@@ -634,6 +634,40 @@ img.gc-artifact-view {
   margin-left: auto;
   margin-right: auto;
 }
+.gc-completions {
+  list-style: none;
+  margin: 0 auto 8px;
+  padding: 4px;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--_bg);
+  border: 1px solid var(--_border);
+  border-radius: 10px;
+  font-size: 0.9em;
+}
+.gc-completions li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.gc-completions li[aria-selected='true'] {
+  background: color-mix(in srgb, var(--_accent) 18%, transparent);
+}
+.gc-completions code {
+  color: var(--_muted);
+  font-size: 0.9em;
+}
+.gc-completions span {
+  color: var(--_muted);
+  margin-left: auto;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .gc-queued {
   display: flex;
   gap: 6px;
