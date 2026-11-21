@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - Pack task cards let you request an independent review, test an isolated copy of the worker's files and see when either result is outdated before merging (#239)
 
+### Fixed
+
+- `replyEnding()` strips trailing punctuation/emoji and inspects the closing clause in linear time, eliminating polynomial regex backtracking on long whitespace runs (#245)
+
 ## 2.45.0 — 2026-11-21
 
 ### Added
