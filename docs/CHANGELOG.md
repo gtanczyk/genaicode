@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.47.0 — 2026-11-21
+
 ### Added
 
 - `sessions_send` in `chat --sessions` and `ui --sessions` (the desktop app): ask the agent to tell another session something and it sends it there; the first message to each session waits for your approval in the chat, and the chat shows the answer (#253)
