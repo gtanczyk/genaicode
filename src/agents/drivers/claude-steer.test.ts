@@ -34,7 +34,7 @@ async function run() {
   };
   take();
   if (process.argv.includes('--tools')) {
-    const result = JSON.stringify({ args: process.argv.slice(2), heard, ambient: process.env.GENAICODE_TEST_HOST_MARKER });
+    const result = JSON.stringify({ args: process.argv.slice(2), heard, user: process.env.USER, ambient: process.env.GENAICODE_TEST_HOST_MARKER });
     out({ type: 'result', subtype: 'success', is_error: false, result });
     busy = false;
     return;
@@ -78,12 +78,13 @@ describe('claude() steering', () => {
       cwd: dir,
       prompt,
       budget: { maxCostUsd: 0.25 },
-      env: { ...process.env, GENAICODE_TEST_HOST_MARKER: 'fixture' },
+      env: { ...process.env, USER: 'reviewer-fixture', GENAICODE_TEST_HOST_MARKER: 'fixture' },
     });
     const result = await run.result;
     expect(result.ok).toBe(true);
-    const { args, heard, ambient } = JSON.parse(result.text!);
+    const { args, heard, user, ambient } = JSON.parse(result.text!);
     expect(heard).toEqual([prompt]);
+    expect(user).toBe('reviewer-fixture');
     expect(ambient).toBeUndefined();
     expect(args).not.toContain(prompt);
     expect(args).not.toContain('--allowedTools');

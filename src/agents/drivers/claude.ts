@@ -196,6 +196,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       for (const key of [
         'PATH',
         'HOME',
+        'USER', // Claude selects its macOS Keychain login by account name.
         'USERPROFILE',
         'SystemRoot',
         'TMPDIR',
