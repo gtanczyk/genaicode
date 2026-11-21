@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { withFallback } from '../agents/failover.js';
@@ -929,11 +929,35 @@ async function manageHooks(
 }
 
 const WATCH_EVERY_MS = 3000;
+/** Every this many looks the session stores are read again, whatever the quick look says. */
+const WATCH_FULL_EVERY = 5;
+
+/**
+ * What the hooks last wrote, cheaply: the questions held open and the live records with their
+ * times. While it stays the same, a watch need not read every agent's store again.
+ */
+async function hookMark(env: NodeJS.ProcessEnv, questions: readonly PendingAsk[]): Promise<string> {
+  const dir = liveDir(env);
+  const names = await fs.readdir(dir).catch(() => [] as string[]);
+  const times = await Promise.all(
+    names.sort().map((name) =>
+      fs.stat(join(dir, name)).then(
+        (stat) => `${name}:${Math.round(stat.mtimeMs)}`,
+        () => name,
+      ),
+    ),
+  );
+  return [...questions.map((ask) => ask.id).sort(), '', ...times].join('\n');
+}
 
 /**
  * `sessions --waiting --json --watch`: one line `{"sessions":[...]}` now, and again whenever what
  * waits changes. For a program that shows it (the desktop app's menu bar): it reads lines instead
  * of starting the CLI again for every look. Ends on Ctrl-C, or with its stdin when asked to.
+ *
+ * Reading every store takes a moment where there are thousands of sessions, so most looks only ask
+ * what the hooks wrote: a new question or live record brings a full look at once, a session that
+ * merely finished its turn shows within `WATCH_FULL_EVERY` looks.
  */
 async function watchWaiting(
   cli: CliEnvironment,
@@ -953,14 +977,27 @@ async function watchWaiting(
   input?.on('end', end).on('close', end).on('error', end).resume();
   let last: string | undefined;
   let said = '';
+  let sessions: readonly SessionInfo[] = [];
+  let mark: string | undefined;
+  let since = 0;
   try {
     while (!stop.signal.aborted) {
-      const { sessions, questions, errors } = await look();
+      let questions: readonly PendingAsk[] = await pendingAsks(cli.env);
+      const now = await hookMark(cli.env, questions);
       if (stop.signal.aborted) break;
-      // A store that cannot be read is said once, not on every look.
-      const trouble = errors.map((error) => `${error.source}: ${error.message}\n`).join('');
-      if (trouble !== said) cli.stderr.write(trouble);
-      said = trouble;
+      since += 1;
+      if (mark !== now || since >= WATCH_FULL_EVERY) {
+        const full = await look();
+        if (stop.signal.aborted) break;
+        ({ sessions, questions } = full);
+        // The mark from before the read: what a hook wrote meanwhile brings the next look.
+        mark = now;
+        since = 0;
+        // A store that cannot be read is said once, not on every look.
+        const trouble = full.errors.map((error) => `${error.source}: ${error.message}\n`).join('');
+        if (trouble !== said) cli.stderr.write(trouble);
+        said = trouble;
+      }
       const line = JSON.stringify({ sessions: sessions.map((session) => withAsks(session, questions)) });
       if (line !== last) cli.stdout.write(`${line}\n`);
       last = line;
