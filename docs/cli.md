@@ -116,6 +116,8 @@ A program that shows what waits (a menu bar, a status line) can keep one process
 asking again and again: `npx genaicode sessions --waiting --json --watch` prints one line
 `{"sessions":[...]}` at once and another whenever the waiting sessions or their open questions
 change. With `--exit-with-stdin` it ends when its stdin closes, so it cannot outlive its parent.
+It looks every 3 seconds: a question or anything else a hook reports shows at once, a session
+that only finished its turn within 15 seconds.
 
 `npx genaicode sessions archive --stale` puts away every session left waiting or half way for 2
 days or more (`sessions archive <id>` for one, `unarchive` to bring it back, `--archived` to list
