@@ -114,7 +114,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   const sender = (line: Record<string, unknown>, asked: boolean) => {
     if (typeof line.entrypoint === 'string') entrypoint ??= line.entrypoint;
     if (!asked || line.type !== 'user') return;
-    prompts.add(line);
+    // A summary Claude Code wrote when it compacted the context is no prompt of anybody's.
+    if (line.isCompactSummary !== true) prompts.add(line);
     const kinds = [isRecord(line.origin) ? line.origin.kind : undefined, line.turnOrigin].filter(
       (kind): kind is string => typeof kind === 'string',
     );

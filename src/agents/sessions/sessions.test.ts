@@ -157,6 +157,13 @@ describe('session sources', () => {
     const sdk = { turnOrigin: 'sdk', entrypoint: 'sdk-cli' };
     write('scheduled', 10, user('Pin the link', { turnOrigin: 'scheduled', entrypoint: 'claude-desktop' }), done);
     write('headless', 20, user('Review the Git diff in changes.patch', sdk), done);
+    write(
+      'compacted',
+      25,
+      user('Run the suite', sdk),
+      user('This session is being continued...', { ...sdk, isCompactSummary: true }),
+      done,
+    );
     write('older-headless', 30, user('Reply with exactly: ok', { entrypoint: 'sdk-cli' }), done);
     // Somebody chats through a program: more than one prompt.
     write('chat', 40, user('Add a tray icon', sdk), done, user('Make it monochrome', sdk), done);
@@ -189,6 +196,7 @@ describe('session sources', () => {
     expect(all.filter((entry) => entry.automated).map((entry) => entry.id)).toEqual([
       'scheduled',
       'headless',
+      'compacted',
       'older-headless',
     ]);
     expect(all.find((entry) => entry.id === 'relayed')).toMatchObject({
