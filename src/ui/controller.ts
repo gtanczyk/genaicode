@@ -18,6 +18,8 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** The effort levels it takes, in its own words. Absent: none. */
+  effort?: readonly string[];
 }
 
 /** A line from the front end itself (agent switched, help...), shown after turn `afterTurn`. */
@@ -138,6 +140,7 @@ export function createChatController(options: ChatOptions): ChatController {
     installed: path !== null,
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
   let initial: CodingAgent | undefined;
@@ -524,6 +527,27 @@ export function createChatController(options: ChatOptions): ChatController {
           session.setModel(command.model);
           notice(command.model ? `Model set to ${command.model}.` : "Model cleared; using the agent's default.");
           return 'ok';
+        case 'effort': {
+          const levels = byName.get(session.get().agent)?.capabilities.effort ?? [];
+          if (command.effort === undefined) {
+            notice(
+              levels.length
+                ? `Effort: ${session.get().effort ?? 'default'}. ${session.get().agent} takes ${levels.join(', ')}; /effort default clears it.`
+                : `${session.get().agent} takes no effort setting.`,
+            );
+            return 'ok';
+          }
+          try {
+            const effort = command.effort === 'default' ? undefined : command.effort;
+            session.setEffort(effort);
+            notice(
+              effort ? `Effort set to ${effort}, from the next prompt.` : "Effort cleared; using the agent's default.",
+            );
+          } catch (error) {
+            notice(errorText(error), 'error');
+          }
+          return 'ok';
+        }
         case 'continue':
           if (command.id) void continueSession(command.id);
           else notice('Use /continue <session id>. `genaicode sessions` lists them.', 'error');

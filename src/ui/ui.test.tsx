@@ -82,6 +82,7 @@ describe('format helpers', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
     expect(parseSlash('/agent codex --fresh')).toEqual({ kind: 'agent', name: 'codex', fresh: true });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
+    expect(parseSlash('/effort XHigh')).toEqual({ kind: 'effort', effort: 'xhigh' });
     expect(parseSlash('/waiting Harbor Docs')).toEqual({ kind: 'waiting', project: 'Harbor Docs' });
     expect(parseSlash('/read 01234567')).toEqual({ kind: 'read', id: '01234567' });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
@@ -266,6 +267,71 @@ describe('chat controller', () => {
     ]);
     expect(notices[1].text).toMatch(/Switched to other/);
     chat.close();
+  });
+
+  it('sets the effort for the next prompt with /effort, in the words the agent takes', async () => {
+    const thinker = { ...echoAgent('thinker'), capabilities: { resume: true, effort: ['low', 'high'] } };
+    const chat = createChatController({ agents: [thinker, echoAgent('plain')], cwd: '/w', env });
+    expect(chat.get().agents.map((agent) => agent.effort)).toEqual([['low', 'high'], undefined]);
+    chat.submit('/effort High');
+    expect(chat.get().session.effort).toBe('high');
+    chat.submit('hi');
+    await chat.session.idle();
+    expect(thinker.tasks[0].effort).toBe('high');
+    chat.submit('/effort huge');
+    expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringMatching(/low, high/) });
+    expect(chat.get().session.effort).toBe('high');
+    chat.submit('/effort');
+    expect(chat.get().notices.at(-1)?.text).toMatch(/^Effort: high\./);
+    // Another agent's word for it means nothing to the next one.
+    chat.submit('/agent plain');
+    expect(chat.get().session.effort).toBeUndefined();
+    chat.submit('/effort low');
+    expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: 'plain takes no effort setting.' });
+    chat.submit('/agent thinker');
+    chat.submit('/effort low');
+    chat.submit('/effort default');
+    expect(chat.get().session.effort).toBeUndefined();
+    chat.close();
+    // An agent whose session keeps its effort: only a fresh session takes another.
+    const fixed = {
+      ...echoAgent('fixed'),
+      capabilities: { resume: true, effort: ['low', 'high'], effortAtStart: true },
+    };
+    const kept = createChatController({ agents: [fixed], cwd: '/w', env });
+    kept.submit('/effort low');
+    kept.submit('hi');
+    await kept.session.idle();
+    kept.submit('/effort high');
+    expect(kept.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringMatching(/\/new/) });
+    expect(kept.get().session.effort).toBe('low');
+    kept.submit('/new');
+    kept.submit('/effort high');
+    expect(kept.get().session.effort).toBe('high');
+    // While its first turn runs the session is already made with that effort.
+    kept.submit('again');
+    kept.submit('/effort low');
+    expect(kept.get().session.effort).toBe('high');
+    await kept.session.idle();
+    kept.close();
+    // Back at such an agent, its session is resumed at the effort it started with.
+    const other = { ...echoAgent('other'), capabilities: { resume: true, effort: ['low', 'high'] } };
+    const both = createChatController({ agents: [fixed, other], cwd: '/w', env, effort: 'low' });
+    both.submit('hi');
+    await both.session.idle();
+    both.submit('/agent other');
+    both.submit('/effort high');
+    both.submit('/agent fixed');
+    expect(both.get().session.effort).toBe('low');
+    // The same when a host comes back while that agent's first turn still runs.
+    both.submit('/new');
+    both.submit('again');
+    both.session.setAgent(other);
+    both.session.setEffort('high');
+    both.session.setAgent(fixed);
+    expect(both.get().session.effort).toBe('low');
+    await both.session.idle();
+    both.close();
   });
 
   it('toggles the bark', () => {

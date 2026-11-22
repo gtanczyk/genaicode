@@ -197,6 +197,8 @@ export interface AgentSession {
    */
   setAgent(agent: CodingAgent, options?: { handoff?: boolean }): void;
   setModel(model: string | undefined): void;
+  /** Change the reasoning effort, from the next turn. Throws for a level the agent does not list. */
+  setEffort(effort: string | undefined): void;
   /** Change the failover agents (`AgentSessionOptions.fallback`). Empty or undefined turns failover off. */
   setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
@@ -265,12 +267,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // turn reports when it ends.
   let forgetAfterTurn = false;
   let runningAgent: CodingAgent | undefined;
+  /** The effort the running turn started with. */
+  let runningEffort: string | undefined;
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
   // Per agent: its own session and the last turn that session knows about.
-  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>(
-    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
+  const known = new Map<CodingAgent, { sessionId?: string; upTo: number; effort?: string }>(
+    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0, effort: options.effort }]] : [],
   );
   // Turns after this id are news to the current agent; undefined: it knows everything.
   let missedAfter: number | undefined;
@@ -516,7 +520,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     missedAfter = carry ? Math.max(resetAt, sessionId ? before!.upTo : 0) : undefined;
     if (!carry) known.delete(next);
     // Limits belong to the agent that reported them.
-    set({ agent: next.name, sessionId, rateLimits: [] });
+    // An effort is a word of the agent's own: one the next agent does not know goes back to its default.
+    const effort =
+      // A session that keeps its effort is resumed at the one it started with: its running turn's, or its last one's.
+      next.capabilities.effortAtStart && carry && runningAgent === next
+        ? runningEffort
+        : sessionId && next.capabilities.effortAtStart
+          ? before!.effort
+          : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
+            ? state.effort
+            : undefined;
+    set({ agent: next.name, sessionId, rateLimits: [], effort });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
@@ -569,7 +583,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     forgetAfterTurn = false;
     // Another vendor's model name means nothing to the next agent; its default applies.
     if (state.model !== undefined) set({ model: undefined });
-    if (state.effort !== undefined && !next.capabilities.effort?.includes(state.effort)) set({ effort: undefined });
     return true;
   };
 
@@ -589,6 +602,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
     const turnAgent = agent;
+    const turnEffort = state.effort;
+    runningEffort = turnEffort;
     runningAgent = turnAgent;
     const own = () => agent === turnAgent;
     let preamble = '';
@@ -644,7 +659,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
         model: state.model,
-        effort: state.effort,
+        effort: turnEffort,
         resume,
         signal: turnController.signal,
         onApproval: (request, signal) => onApproval(turnId, request, signal),
@@ -704,7 +719,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (own()) set({ sessionId: undefined });
       } else {
         // The agent heard everything up to this turn, through its session or this turn's handoff.
-        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId });
+        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId, effort: turnEffort });
         if (own()) {
           if (sessionId || result.ok) missedAfter = undefined;
           if (sessionId) set({ sessionId });
@@ -877,6 +892,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     setModel(model) {
       set({ model });
     },
+    setEffort(effort) {
+      const levels = agent.capabilities.effort ?? [];
+      if (effort !== undefined && !levels.includes(effort))
+        throw new Error(
+          levels.length
+            ? `${agent.name} has no effort "${effort}". It takes: ${levels.join(', ')}.`
+            : `${agent.name} takes no effort setting.`,
+        );
+      // Such an agent would refuse every next prompt of the session it already has.
+      // The same while its first turn runs: the session being made already has the effort it got.
+      const started = state.sessionId !== undefined || (runningAgent === agent && !forgetAfterTurn);
+      if (agent.capabilities.effortAtStart && started && effort !== state.effort)
+        throw new Error(`${agent.name} keeps the effort its session started with. /new starts a fresh one.`);
+      set({ effort });
+    },
     setBudget(budget) {
       set({ budget });
     },
@@ -904,7 +934,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         // Its own session holds these turns; what it missed before them is left behind.
         explicitResume = undefined;
         missedAfter = undefined;
-        known.set(agent, { sessionId: own, upTo: nextTurnId - 1 });
+        known.set(agent, { sessionId: own, upTo: nextTurnId - 1, effort: state.effort });
       } else {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
