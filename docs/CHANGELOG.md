@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Internal
 
-- Desktop app: a release workflow builds the macOS app after each npm release, signs it with the Developer ID certificate, has Apple notarize it and adds the `.dmg` to the GitHub Release. It runs once the Apple secrets are in the repository (#PRNUM)
+- Desktop app: a release workflow builds the macOS app after each npm release, signs it with the Developer ID certificate, has Apple notarize it and adds the `.dmg` to the GitHub Release. It runs once the Apple secrets are in the repository (#276)
 
 ## 2.49.1 — 2026-11-22
 
