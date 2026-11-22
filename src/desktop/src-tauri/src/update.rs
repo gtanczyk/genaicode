@@ -19,7 +19,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// How often a running app looks again: it can stay in the menu bar for days.
-const EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+const EVERY: Duration = Duration::from_secs(30 * 60);
 
 /// Where a version the app cannot install itself is downloaded from.
 const RELEASES: &str = "https://github.com/gtanczyk/genaicode/releases/latest";
