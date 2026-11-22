@@ -328,6 +328,7 @@ function App() {
     });
   };
 
+  const efforts = view?.agents.find((agent) => agent.name === session?.agent)?.effort ?? [];
   // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
   const controls =
     view && session ? (
@@ -370,6 +371,21 @@ function App() {
             if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
           }}
         />
+        {efforts.length > 0 && (
+          <select
+            aria-label="Effort"
+            title="How hard the agent thinks, from the next prompt"
+            value={session.effort ?? 'default'}
+            onChange={(event) => control(`/effort ${event.target.value}`)}
+          >
+            <option value="default">default effort</option>
+            {efforts.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           title={

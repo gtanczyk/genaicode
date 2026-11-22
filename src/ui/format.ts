@@ -18,6 +18,7 @@ export {
 export function statusParts(state: SessionState): string[] {
   const parts = [state.agent];
   if (state.model) parts.push(state.model);
+  if (state.effort) parts.push(`effort ${state.effort}`);
   if (state.fallback?.length) parts.push(`fallback ${state.fallback.join(',')}`);
   if (state.sessionId) parts.push(`session ${shortId(state.sessionId)}`);
   const usage = formatUsage(state.usage, state.costUsd);
@@ -41,6 +42,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   },
   { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
+  { name: '/effort', args: '[level|default]', help: "set the reasoning effort, in the agent's own words, or clear it" },
   { name: '/waiting', args: '[project]', help: 'refresh the waiting queue (tower or --sessions)' },
   { name: '/read', args: '<session id>', help: 'preview recent turns locally (tower or --sessions)' },
   {
@@ -60,6 +62,8 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
 export type SlashCommand =
   | { kind: 'agent'; name?: string; fresh?: boolean }
   | { kind: 'model'; model?: string }
+  /** No `effort`: say what it is and what the agent takes. */
+  | { kind: 'effort'; effort?: string }
   /** No `names` and no `off`: show the list. */
   | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
@@ -125,6 +129,8 @@ export function parseSlash(text: string): SlashCommand | undefined {
     }
     case '/model':
       return { kind: 'model', model: arg };
+    case '/effort':
+      return { kind: 'effort', effort: arg?.toLowerCase() };
     case '/fallback':
     case '/failover':
       if (arg === undefined) return { kind: 'fallback' };

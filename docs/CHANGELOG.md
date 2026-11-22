@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `/effort [level|default]` in `genaicode chat`, `ui` and `tower` changes the reasoning effort from the next prompt, and the browser has an effort picker in the row under the prompt field for an agent that takes one. `AgentSession.setEffort()` does it for a host; switching to an agent that does not know the level goes back to that agent's default (#PRNUM)
 - `genaicode chat`, `ui` and `tower` run Codex without the MCP servers of its own config, which it would start with every turn; `--agent-mcp` keeps them. `codexLive({ onlyTaskMcpServers })` does it for the live driver (`'when-listed'`: a Codex that cannot list its servers keeps them, with a note), and `liveAgent`'s `prepare` may be async (#267)
 - `genaicode chat`, `ui` and `tower` run Codex over its live driver (`codexLive`), as a pack already did: "Ask first" asks before a step outside the sandbox, a message sent mid-turn steers the run, Codex's plan limits show, and an edit by Codex shows its diff. `genaicode run` keeps the headless driver (#266)
 - `<AgentChat>`: an edit an agent reports as changed files (Codex) shows its diff like an edit step, and a link to a file in a reply (`[a.txt](/path/a.txt)`) shows as its label and opens the file with `onOpenFile`. The `file-change` event and the session `files` entry take an optional `diff` (#265)

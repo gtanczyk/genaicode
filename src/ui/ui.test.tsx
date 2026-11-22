@@ -82,6 +82,7 @@ describe('format helpers', () => {
     expect(parseSlash('/agent codex')).toEqual({ kind: 'agent', name: 'codex' });
     expect(parseSlash('/agent codex --fresh')).toEqual({ kind: 'agent', name: 'codex', fresh: true });
     expect(parseSlash('/model')).toEqual({ kind: 'model', model: undefined });
+    expect(parseSlash('/effort XHigh')).toEqual({ kind: 'effort', effort: 'xhigh' });
     expect(parseSlash('/waiting Harbor Docs')).toEqual({ kind: 'waiting', project: 'Harbor Docs' });
     expect(parseSlash('/read 01234567')).toEqual({ kind: 'read', id: '01234567' });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
@@ -265,6 +266,32 @@ describe('chat controller', () => {
       [1, 'error'],
     ]);
     expect(notices[1].text).toMatch(/Switched to other/);
+    chat.close();
+  });
+
+  it('sets the effort for the next prompt with /effort, in the words the agent takes', async () => {
+    const thinker = { ...echoAgent('thinker'), capabilities: { resume: true, effort: ['low', 'high'] } };
+    const chat = createChatController({ agents: [thinker, echoAgent('plain')], cwd: '/w', env });
+    expect(chat.get().agents.map((agent) => agent.effort)).toEqual([['low', 'high'], undefined]);
+    chat.submit('/effort High');
+    expect(chat.get().session.effort).toBe('high');
+    chat.submit('hi');
+    await chat.session.idle();
+    expect(thinker.tasks[0].effort).toBe('high');
+    chat.submit('/effort huge');
+    expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringMatching(/low, high/) });
+    expect(chat.get().session.effort).toBe('high');
+    chat.submit('/effort');
+    expect(chat.get().notices.at(-1)?.text).toMatch(/^Effort: high\./);
+    // Another agent's word for it means nothing to the next one.
+    chat.submit('/agent plain');
+    expect(chat.get().session.effort).toBeUndefined();
+    chat.submit('/effort low');
+    expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: 'plain takes no effort setting.' });
+    chat.submit('/agent thinker');
+    chat.submit('/effort low');
+    chat.submit('/effort default');
+    expect(chat.get().session.effort).toBeUndefined();
     chat.close();
   });
 

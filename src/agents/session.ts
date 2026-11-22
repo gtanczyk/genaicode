@@ -197,6 +197,8 @@ export interface AgentSession {
    */
   setAgent(agent: CodingAgent, options?: { handoff?: boolean }): void;
   setModel(model: string | undefined): void;
+  /** Change the reasoning effort, from the next turn. Throws for a level the agent does not list. */
+  setEffort(effort: string | undefined): void;
   /** Change the failover agents (`AgentSessionOptions.fallback`). Empty or undefined turns failover off. */
   setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
@@ -516,7 +518,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     missedAfter = carry ? Math.max(resetAt, sessionId ? before!.upTo : 0) : undefined;
     if (!carry) known.delete(next);
     // Limits belong to the agent that reported them.
-    set({ agent: next.name, sessionId, rateLimits: [] });
+    // An effort is a word of the agent's own: one the next agent does not know goes back to its default.
+    const effort =
+      state.effort !== undefined && next.capabilities.effort?.includes(state.effort) ? state.effort : undefined;
+    set({ agent: next.name, sessionId, rateLimits: [], effort });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
@@ -569,7 +574,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     forgetAfterTurn = false;
     // Another vendor's model name means nothing to the next agent; its default applies.
     if (state.model !== undefined) set({ model: undefined });
-    if (state.effort !== undefined && !next.capabilities.effort?.includes(state.effort)) set({ effort: undefined });
     return true;
   };
 
@@ -876,6 +880,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     setModel(model) {
       set({ model });
+    },
+    setEffort(effort) {
+      const levels = agent.capabilities.effort ?? [];
+      if (effort !== undefined && !levels.includes(effort))
+        throw new Error(
+          levels.length
+            ? `${agent.name} has no effort "${effort}". It takes: ${levels.join(', ')}.`
+            : `${agent.name} takes no effort setting.`,
+        );
+      set({ effort });
     },
     setBudget(budget) {
       set({ budget });
