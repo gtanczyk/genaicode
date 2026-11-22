@@ -1,0 +1,206 @@
+name: Desktop app release
+
+# Builds the macOS app signed with the Developer ID certificate, has Apple notarize it and adds the
+# .dmg to the GitHub Release of that version. Two doors:
+#   - "Publish to npm" finished: the app of the version it released
+#   - Run workflow in Actions, for a version that already has a v* tag
+# Secrets of the `apple` environment (limited to the default branch), never in the code:
+#   APPLE_CERTIFICATE            the Developer ID Application certificate with its key, a .p12 in base64
+#   APPLE_CERTIFICATE_PASSWORD   the password of that .p12
+#   APPLE_API_KEY_ID             App Store Connect API key id (notarization)
+#   APPLE_API_ISSUER             its issuer id
+#   APPLE_API_KEY_P8             the key itself, the text of AuthKey_<id>.p8
+# Without APPLE_CERTIFICATE the run stops before building: the plain build is desktop.yaml's.
+on:
+  workflow_run:
+    workflows: ['Publish to npm']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, e.g. 2.49.1 (its v* tag must exist). Empty: the default branch's version"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    # Only a release this repository made itself: never a run that a fork's pull request started.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: macos-latest
+    # The Apple secrets live in this environment, which only the default branch may use.
+    environment: apple
+    timeout-minutes: 60
+    steps:
+      - name: Signing is set up
+        id: signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::notice::No APPLE_CERTIFICATE secret: nothing to sign with, no desktop release."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          node-version: 22
+      # What gets built and signed is always a v* tag of this repository: the version asked for by
+      # hand, the one the triggering publish released, else the default branch's.
+      - name: Check out the released version
+        if: steps.signing.outputs.ready == 'true'
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASKED: ${{ inputs.version }}
+          PUBLISHED: ${{ github.event.workflow_run.head_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          version="$ASKED"
+          if [ -z "$version" ] && [ -n "$PUBLISHED" ]; then
+            if ! [[ "$PUBLISHED" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::The publish run names no commit."
+              exit 1
+            fi
+            # Read as data: nothing of that commit runs before its tag is checked out.
+            version="$(git show "$PUBLISHED:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
+          fi
+          if [ -z "$version" ]; then
+            version="$(node -p "require('./package.json').version")"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Not a version: give it as 2.49.1"
+            exit 1
+          fi
+          # A tag off the default branch is not a release: only merged history gets signed.
+          if ! git merge-base --is-ancestor "refs/tags/v$version" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tag v$version is not on $DEFAULT_BRANCH."
+            exit 1
+          fi
+          git checkout --detach "refs/tags/v$version"
+          if [ "$(node -p "require('./package.json').version")" != "$version" ]; then
+            echo "::error::Tag v$version holds another version in package.json."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No GitHub Release v$version: the .dmg stays a run artifact."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+      # No build cache: what signs with the certificate is built from the checkout alone.
+      - if: steps.signing.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.signing.outputs.ready == 'true'
+        run: npm run desktop:prepare
+      - name: Import the certificate
+        if: steps.signing.outputs.ready == 'true'
+        id: keychain
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          # The identity counts as valid only with Apple's Developer ID intermediate beside it.
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          if [ -z "$identity" ]; then
+            echo "::error::The .p12 holds no Developer ID Application identity."
+            exit 1
+          fi
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      # Apple notarizes an app only when every program in it is signed: the packed runtime may carry some.
+      - name: Sign what the runtime carries
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          IDENTITY: ${{ steps.keychain.outputs.identity }}
+        run: |
+          set -euo pipefail
+          find src/desktop/src-tauri/runtime -type f \( -name '*.node' -o -name '*.dylib' -o -perm -u+x \) -print0 |
+            while IFS= read -r -d '' file; do
+              if file -b "$file" | grep -q 'Mach-O'; then
+                codesign --force --options runtime --timestamp --sign "$IDENTITY" \
+                  --entitlements src/desktop/src-tauri/Entitlements.plist "$file"
+                echo "signed $file"
+              fi
+            done
+      - name: Build, sign and notarize
+        if: steps.signing.outputs.ready == 'true'
+        working-directory: src/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ steps.keychain.outputs.identity }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          chmod 600 "$key"
+          export APPLE_API_KEY_PATH="$key"
+          npx tauri build --bundles app,dmg --config "{\"version\":\"$VERSION\"}"
+          rm "$key"
+      - name: Check what Apple will say on another Mac
+        if: steps.signing.outputs.ready == 'true'
+        id: dmg
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bundle="src/desktop/src-tauri/target/release/bundle"
+          app="$bundle/macos/genaicode.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          "$app/Contents/MacOS/node" "$app/Contents/Resources/runtime/node_modules/genaicode/dist/cli.js" --version
+          built="$(ls "$bundle"/dmg/*.dmg | head -1)"
+          out="genaicode-$VERSION-macos-$(uname -m).dmg"
+          cp "$built" "$out"
+          ls -lh "$out"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          name: genaicode-macos-dmg
+          path: ${{ steps.dmg.outputs.file }}
+          retention-days: 30
+      - name: Add the .dmg to the release
+        if: steps.signing.outputs.ready == 'true' && steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          FILE: ${{ steps.dmg.outputs.file }}
+        run: gh release upload "v$VERSION" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Remove the keychain
+        if: always() && steps.signing.outputs.ready == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

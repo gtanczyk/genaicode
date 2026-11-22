@@ -44,6 +44,16 @@ Run `desktop:prepare` again after changing genaicode itself. An unsigned local b
 Mac that built it; set `APPLE_SIGNING_IDENTITY=-` for an ad-hoc signature, or a Developer ID
 identity for one other Macs accept.
 
+## Release it
+
+`.github/workflows/desktop-release.yaml` builds the app after each npm release, signs it with the
+Developer ID certificate, has Apple notarize it and adds `genaicode-<version>-macos-arm64.dmg` to
+the GitHub Release of that version. It needs five secrets in the `apple` environment (limit that
+environment to the default branch, so no other branch can read them): `APPLE_CERTIFICATE` (the
+Developer ID Application certificate with its key, a `.p12` in base64), `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_API_KEY_ID`, `APPLE_API_ISSUER` and `APPLE_API_KEY_P8` (an App Store Connect API key, for the
+notarization). Without the certificate the run ends before it builds.
+
 | Variable                 | For development                                         |
 | ------------------------ | ------------------------------------------------------- |
 | `GENAICODE_DESKTOP_CWD`  | Project folder to open, instead of the remembered one   |
