@@ -31,6 +31,30 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 static TOLD: AtomicBool = AtomicBool::new(false);
 /// A newer version, downloaded and checked against the key: a relaunch installs it.
 static READY: Mutex<Option<(Update, Vec<u8>)>> = Mutex::new(None);
+/// The version that is on its way: being downloaded, or being installed after a relaunch was chosen.
+static UNDERWAY: Mutex<Option<(String, Stage)>> = Mutex::new(None);
+
+/// Where a newer version is on its way into the app.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Stage {
+    Downloading,
+    Ready,
+    Installing,
+}
+
+fn underway(now: Option<(String, Stage)>) {
+    if let Ok(mut underway) = UNDERWAY.lock() {
+        *underway = now;
+    }
+}
+
+/// The newer version and how far it is, for the page and the menu bar to say.
+pub fn stage() -> Option<(String, Stage)> {
+    if let Some(found) = UNDERWAY.lock().ok().and_then(|underway| underway.clone()) {
+        return Some(found);
+    }
+    ready().map(|version| (version, Stage::Ready))
+}
 
 fn say(app: &AppHandle, kind: MessageDialogKind, message: String) {
     app.dialog()
@@ -60,6 +84,10 @@ pub fn check(app: &AppHandle, asked: bool) {
         return;
     }
     if !asked && TOLD.load(Ordering::Relaxed) {
+        return;
+    }
+    // The app is replacing itself: there is nothing to look for until it starts again.
+    if matches!(stage(), Some((_, Stage::Installing))) {
         return;
     }
     if BUSY.swap(true, Ordering::SeqCst) {
@@ -121,7 +149,15 @@ async fn fetch(app: &AppHandle, update: Update, asked: bool) {
             ),
         );
     }
-    match update.download(|_, _| {}, || {}).await {
+    // Said while it runs: a download can take a minute, and silence looks like nothing happened.
+    underway(Some((update.version.clone(), Stage::Downloading)));
+    crate::update_ready(app);
+    let downloaded = update.download(|_, _| {}, || {}).await;
+    underway(None);
+    if downloaded.is_err() {
+        crate::update_ready(app);
+    }
+    match downloaded {
         Ok(bytes) => {
             let version = update.version.clone();
             if let Ok(mut ready) = READY.lock() {
@@ -167,6 +203,8 @@ pub fn relaunch(app: &AppHandle) {
         return;
     };
     let app = app.clone();
+    underway(Some((update.version.clone(), Stage::Installing)));
+    crate::update_ready(&app);
     // Off the main thread: replacing the app takes a moment.
     std::thread::spawn(move || match update.install(&bytes) {
         Ok(()) => app.restart(),
@@ -175,6 +213,8 @@ pub fn relaunch(app: &AppHandle) {
             if let Ok(mut ready) = READY.lock() {
                 *ready = Some((update, bytes));
             }
+            underway(None);
+            crate::update_ready(&app);
             say(
                 &app,
                 MessageDialogKind::Error,

@@ -64,6 +64,7 @@ header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; 
 button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--accent); }
 button.chip.update { color: var(--accent); border-color: currentColor; }
+button.chip.update:disabled { cursor: default; opacity: 0.7; }
 .brand small { font-weight: 400; color: var(--faint); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }

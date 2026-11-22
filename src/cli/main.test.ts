@@ -92,6 +92,48 @@ describe('parseCli', () => {
     });
     expect(await main(cli)).toBe(EXIT_OK);
   });
+  it('ui --restore opens on the last conversation of its directory', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-restore-'));
+    dirs.push(home);
+    const work = '/work/app';
+    const withSessions = (name: string, sessions: { id: string; cwd: string; updatedAt: number }[]) => ({
+      ...fakeAgent(name, []),
+      capabilities: { resume: true },
+      sessions: {
+        name,
+        where: 'local' as const,
+        list: async () =>
+          sessions.map((session) => ({ ...session, source: name, agent: name, where: 'local' as const })),
+      },
+    });
+    const agents = [
+      withSessions('alpha', [{ id: 'a-old', cwd: work, updatedAt: 1000 }]),
+      withSessions('beta', [
+        { id: 'b-elsewhere', cwd: '/work/other', updatedAt: 3000 },
+        { id: 'b-last', cwd: work, updatedAt: 2000 },
+      ]),
+      // Not installed: its conversation cannot be continued here.
+      withSessions('gamma', [{ id: 'g-newest', cwd: work, updatedAt: 4000 }]),
+    ];
+    const env = { PATH: pathWith('alpha-cli', 'beta-cli'), HOME: home };
+    const seen: UiLaunch[] = [];
+    const loadUi = async () => {
+      const inspect = async (launch: UiLaunch) => (seen.push(launch), 0);
+      return { runWeb: inspect, runChat: inspect };
+    };
+    const run = async (...argv: string[]) => {
+      expect(await main(environment({ argv: ['ui', ...argv], agents, env, cwd: work, loadUi }).cli)).toBe(EXIT_OK);
+      return seen.pop()!;
+    };
+    expect(await run('--restore')).toMatchObject({ continueFrom: 'b-last', agent: 'beta' });
+    expect(await run('--restore', '--agent', 'alpha')).toMatchObject({ continueFrom: 'a-old', agent: 'alpha' });
+    // A conversation that was named wins, and without the flag nothing is brought back.
+    expect(await run('--restore', '--from', 'a-old')).toMatchObject({ continueFrom: 'a-old' });
+    expect((await run()).continueFrom).toBeUndefined();
+    expect((await run('--restore', '--cwd', '/work/other')).continueFrom).toBe('b-elsewhere');
+    expect(parseCli(['ui', '--restore'])).toMatchObject({ restore: true });
+    expect(() => parseCli(['chat', '--restore'])).toThrow();
+  });
   it('runs Codex over its live driver in chat and ui, with or without a pack', async () => {
     const inspect = async (launch: UiLaunch) => {
       const codex = launch.agents.find((agent) => agent.name === 'codex');

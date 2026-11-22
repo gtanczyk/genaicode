@@ -221,6 +221,8 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             "--no-project",
             "--no-open",
             "--exit-with-stdin",
+            // A restart, for an update or not, comes back to the conversation it left.
+            "--restore",
             "--cwd",
         ])
         .arg(&folder)
@@ -312,21 +314,28 @@ fn show(app: &AppHandle) {
     }
 }
 
-/// An update is downloaded, or stopped being so: tell the chat's page, which then offers
+/// An update is being downloaded, waits, is being installed, or stopped being any of these: tell the chat's page, which then offers
 /// "Relaunch to update", and put the same into the menu bar.
 pub(crate) fn update_ready(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let state = handle.state::<ShellState>();
         let Ok(mut shell) = state.lock() else { return };
-        if let (Some(version), Some(stdin)) = (
-            update::ready(),
-            shell
-                .server
-                .as_mut()
-                .and_then(|server| server.stdin.as_mut()),
-        ) {
-            let _ = writeln!(stdin, "update-ready {version}");
+        if let Some(stdin) = shell
+            .server
+            .as_mut()
+            .and_then(|server| server.stdin.as_mut())
+        {
+            let _ = match update::stage() {
+                Some((version, update::Stage::Downloading)) => {
+                    writeln!(stdin, "update-downloading {version}")
+                }
+                Some((version, update::Stage::Ready)) => writeln!(stdin, "update-ready {version}"),
+                Some((version, update::Stage::Installing)) => {
+                    writeln!(stdin, "update-installing {version}")
+                }
+                None => writeln!(stdin, "update-none"),
+            };
             let _ = stdin.flush();
         }
         if let (Some(tray), Ok(menu)) = (
@@ -347,9 +356,13 @@ fn tower_menu(
 ) -> tauri::Result<Menu<Wry>> {
     let none = None::<&str>;
     let menu = Menu::new(app)?;
-    if let Some(version) = update::ready() {
-        let label = format!("Relaunch to Update ({version})");
-        menu.append(&MenuItem::with_id(app, RELAUNCH, label, true, none)?)?;
+    if let Some((version, stage)) = update::stage() {
+        let (label, can) = match stage {
+            update::Stage::Downloading => (format!("Downloading Update ({version})…"), false),
+            update::Stage::Ready => (format!("Relaunch to Update ({version})"), true),
+            update::Stage::Installing => (format!("Installing Update ({version})…"), false),
+        };
+        menu.append(&MenuItem::with_id(app, RELAUNCH, label, can, none)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
     // The quota comes first: it decides which agent gets the next task.
