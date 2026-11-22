@@ -79,6 +79,17 @@ it('weighs a Codex thread whose counter started over by the tokens of the period
     path: file('r.jsonl', [counted(20, 1_000, 0, 0), counted(3, 100, 0, 0)]),
   });
   const fresh = session('codex', 'f', { startedAt: now - day, usage: { inputTokens: 100, outputTokens: 0 } });
+  // A first report said again in the period adds nothing.
+  const said = () => {
+    const report = counted(20, 1_000, 0, 0);
+    Object.assign(report.payload.info, { last_token_usage: { input_tokens: 1_000, output_tokens: 0 } });
+    return report;
+  };
+  const again = session('codex', 'a', {
+    startedAt: now - 30 * day,
+    path: file('a.jsonl', [said(), { ...said(), timestamp: at(2) }]),
+  });
+  expect((await partsSince([again], since)).get(again)).toEqual({ part: 0, tokens: 0 });
   // Both counters inside the period, in a thread that began there: read all the same.
   const both = session('codex', 'b', {
     startedAt: now - 3 * day,

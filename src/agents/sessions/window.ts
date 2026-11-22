@@ -69,7 +69,8 @@ async function codexPart(file: string, since: number): Promise<WorkWithin | unde
     // A counter that starts over (a thread taken up by another process) goes on from where it was:
     // it is lower than before, or it equals its own latest call, which only a first call does.
     const call = isRecord(line.payload.info) ? line.payload.info.last_token_usage : undefined;
-    const startsOver = running < previous || (previous > 0 && isRecord(call) && codexWeight(call) === running);
+    // The same figure again is a repeated report, not new work.
+    const startsOver = running < previous || (running !== previous && isRecord(call) && codexWeight(call) === running);
     total += startsOver ? running : running - previous;
     previous = running;
     const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
