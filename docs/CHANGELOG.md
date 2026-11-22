@@ -10,8 +10,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode ui`, `chat` and the desktop app: when Claude Code or Codex asks you to choose (`AskUserQuestion`, `request_user_input`), the question shows as a card with its options, a field for an answer of your own, and Skip. In the terminal a number chooses and Enter sends. Before, Claude's question was a plain Approve / Deny request and came back unanswered (#PRNUM)
-- `task.onQuestion` answers an agent's questions (requests of `kind: 'question'` with `questions`); `capabilities.questions` on `claude()` and `codexLive()`. `AgentSession.answer()`, `<AgentChat onAnswer>`, `claudeApprovalTool({ onQuestion })`. `auto-approve` does not answer questions (#PRNUM)
+- `genaicode ui`, `chat` and the desktop app: when Claude Code or Codex asks you to choose (`AskUserQuestion`, `request_user_input`), the question shows as a card with its options, a field for an answer of your own, and Skip. In the terminal a number chooses and Enter sends. Before, Claude's question was a plain Approve / Deny request and came back unanswered (#300)
+- `task.onQuestion` answers an agent's questions (requests of `kind: 'question'` with `questions`); `capabilities.questions` on `claude()` and `codexLive()`. `AgentSession.answer()`, `<AgentChat onAnswer>`, `claudeApprovalTool({ onQuestion })`. `auto-approve` does not answer questions (#300)
 
 ## 2.52.2 — 2026-11-22
 
