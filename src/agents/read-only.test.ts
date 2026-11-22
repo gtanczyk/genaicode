@@ -114,6 +114,13 @@ describe('git helpers', () => {
       expect(isReadOnlyCommand('git log', repo)).toBe(false);
       expect(isReadOnlyCommand('git log --show-signature -1', cwd)).toBe(false);
       expect(isReadOnlyCommand('du -a --files0-from=list', cwd)).toBe(false);
+      execFileSync('git', ['config', '--unset', 'log.showSignature'], { cwd: repo });
+      writeFileSync(join(repo, '.gitmodules'), '');
+      expect(isReadOnlyCommand('git status --short', repo)).toBe(false);
+      rmSync(join(repo, '.gitmodules'));
+      expect(isReadOnlyCommand('git status --short', repo)).toBe(true);
+      mkdirSync(join(repo, '.git', 'modules'));
+      expect(isReadOnlyCommand('git status --short', repo)).toBe(false);
       expect(isReadOnlyCommand('wc --files0-from list', cwd)).toBe(false);
       expect(isReadOnlyCommand("git log --format='%h %G?'", cwd)).toBe(false);
       expect(isReadOnlyCommand('rg foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(false);

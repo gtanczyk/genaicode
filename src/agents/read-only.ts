@@ -133,6 +133,18 @@ function gitRunsHelpers(dir: string, env: NodeJS.ProcessEnv): boolean {
   // The agent's environment can name a diff program too; its `GIT_CONFIG_*` shows in the lookup below.
   if (env.GIT_EXTERNAL_DIFF) return true;
   try {
+    // Submodules have configs of their own that `status` and `diff` follow.
+    const [top = '', gitDir = ''] = execFileSync('git', ['rev-parse', '--show-toplevel', '--git-common-dir'], {
+      cwd: dir,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5_000,
+    })
+      .trim()
+      .split('\n');
+    if (!top || existsSync(path.join(top, '.gitmodules')) || existsSync(path.resolve(dir, gitDir, 'modules')))
+      return true;
     const found = execFileSync(
       'git',
       [
