@@ -58,11 +58,12 @@ button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
-.run-with { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-.gc-box .run-with :is(select, input, button) { background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 32px; }
+.run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.gc-under .run-with :is(select, input, button) { background: transparent; border: 0; border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 28px; }
 .run-with select, .run-with button { cursor: pointer; }
-.gc-box .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
-.run-with input { max-width: 22em; text-overflow: ellipsis; }
+.gc-under .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
+.run-with .chip { margin-right: 4px; padding: 2px 9px; }
+.run-with input { max-width: 16em; text-overflow: ellipsis; field-sizing: content; min-width: 7em; }
 .run-with input::placeholder { color: var(--faint); }
 .run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
 .run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

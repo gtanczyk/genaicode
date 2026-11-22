@@ -365,13 +365,20 @@ describe('AgentChat', () => {
     expect(onOpenFile).toHaveBeenCalledWith('/w/b.ts');
   });
 
-  it('puts the host controls in the composer, under the text', () => {
-    render({ state: fixture({ status: 'idle', queued: [] }), composerExtras: <select aria-label="Agent" /> });
+  it('puts the host controls in a row under the field, with the attach button', () => {
+    render({
+      state: fixture({ status: 'idle', queued: [] }),
+      composerExtras: <select aria-label="Agent" />,
+      attachments: {},
+    });
+    // The field keeps the text and Send only.
     const box = $('.gc-box');
-    expect(box.classList.contains('gc-stacked')).toBe(true);
-    const order = Array.from(box.children).map((child) => child.tagName);
-    expect(order.indexOf('TEXTAREA')).toBeLessThan(order.indexOf('SELECT'));
-    expect(order.indexOf('SELECT')).toBeLessThan(order.lastIndexOf('BUTTON'));
+    expect(box.classList.contains('gc-stacked')).toBe(false);
+    expect(Array.from(box.children).map((child) => child.tagName)).toEqual(['TEXTAREA', 'BUTTON']);
+    const under = $('.gc-under');
+    expect(box.nextElementSibling).toBe(under);
+    expect(under.querySelector('[aria-label="Attach files"]')).not.toBeNull();
+    expect(under.querySelector('select')).not.toBeNull();
   });
 
   it('offers the host commands while the message starts one, and completes the chosen one', () => {

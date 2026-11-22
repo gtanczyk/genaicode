@@ -327,7 +327,7 @@ the mode button in the browser's prompt box; `-y` starts that way). `!` on an em
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
 model and session; `/fallback codex,gemini` picks the agents to switch to when the current one
-runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. In the browser the agent, the model, the approval mode and the plan's limits sit in the prompt box, and files can be attached, pasted (a copied screenshot) or dropped on the chat: they are kept in `.genaicode/uploads/` in the project (git-ignored, 20 MB each, 8 per prompt) and the agent gets their paths. An edit step shows its diff, and the path of a file the agent read or edited opens the file beside the chat (text files inside the project only). `/agent codex` hands the
+runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. In the browser the agent, the model, the approval mode and the plan's limits sit in a row under the prompt field, and files can be attached, pasted (a copied screenshot) or dropped on the chat: they are kept in `.genaicode/uploads/` in the project (git-ignored, 20 MB each, 8 per prompt) and the agent gets their paths. An edit step shows its diff, and the path of a file the agent read or edited opens the file beside the chat (text files inside the project only). `/agent codex` hands the
 conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
 switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
 context).

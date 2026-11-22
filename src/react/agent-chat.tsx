@@ -140,8 +140,8 @@ export interface AgentChatProps {
    */
   completions?: readonly ChatCompletion[];
   /**
-   * Host controls inside the composer, in the row under the text, before Send: what the next
-   * prompt runs with (agent, model, mode). With them the text takes a row of its own.
+   * Host controls in a row under the message field: what the next prompt runs with (agent, model,
+   * mode). The attach buttons move to that row too, so the field holds the text and Send only.
    */
   composerExtras?: ReactNode;
   /** Line under the composer. Default: the keys. Pass null for none. */
@@ -231,7 +231,9 @@ export function AgentChat(props: AgentChatProps) {
   };
   const extras = props.composerExtras;
   const hasExtras = extras !== undefined && extras !== null && extras !== false;
-  const stacked = attached.enabled || hasExtras;
+  // Host controls take a row of their own under the field, with the attach buttons; without them
+  // the attach buttons sit inside the field, under the text.
+  const stacked = attached.enabled && !hasExtras;
   // Commands whose name the message starts, while it is one word and not yet one of them.
   const [picked, setPicked] = useState(0);
   const [closedAt, setClosedAt] = useState<string>();
@@ -340,6 +342,63 @@ export function AgentChat(props: AgentChatProps) {
   const usage = formatUsage(state.usage, state.costUsd);
   const limits = limitChips(state);
   const footer = props.renderFooter?.();
+
+  const attachButtons = attached.enabled ? (
+    <>
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        accept={attached.accept}
+        onChange={(event) => {
+          if (event.target.files) attached.add(event.target.files);
+          event.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        className="gc-btn gc-icon"
+        aria-label="Attach files"
+        title="Attach files (or paste, or drop them here)"
+        disabled={attached.files.length >= attached.max}
+        onClick={() => picker.current?.click()}
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {attached.canRecord ? (
+        <button
+          type="button"
+          className={`gc-btn gc-icon${attached.recording ? ' gc-recording' : ''}`}
+          aria-label={attached.recording ? 'Stop recording' : 'Record a voice message'}
+          aria-pressed={attached.recording}
+          title={attached.recording ? 'Stop recording' : 'Record a voice message'}
+          disabled={!attached.recording && attached.files.length >= attached.max}
+          onClick={() => void attached.toggleRecording()}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path
+              d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5.5 11.5a6.5 6.5 0 0013 0M12 18v3"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      ) : null}
+    </>
+  ) : null;
 
   return (
     <OpenFile.Provider value={props.onOpenFile}>
@@ -451,64 +510,8 @@ export function AgentChat(props: AgentChatProps) {
               onKeyDown={onKeyDown}
               onPaste={onPaste}
             />
-            {attached.enabled ? (
-              <>
-                <input
-                  ref={picker}
-                  type="file"
-                  multiple
-                  hidden
-                  accept={attached.accept}
-                  onChange={(event) => {
-                    if (event.target.files) attached.add(event.target.files);
-                    event.target.value = '';
-                  }}
-                />
-                <button
-                  type="button"
-                  className="gc-btn gc-icon"
-                  aria-label="Attach files"
-                  title="Attach files (or paste, or drop them here)"
-                  disabled={attached.files.length >= attached.max}
-                  onClick={() => picker.current?.click()}
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                    <path
-                      d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-                {attached.canRecord ? (
-                  <button
-                    type="button"
-                    className={`gc-btn gc-icon${attached.recording ? ' gc-recording' : ''}`}
-                    aria-label={attached.recording ? 'Stop recording' : 'Record a voice message'}
-                    aria-pressed={attached.recording}
-                    title={attached.recording ? 'Stop recording' : 'Record a voice message'}
-                    disabled={!attached.recording && attached.files.length >= attached.max}
-                    onClick={() => void attached.toggleRecording()}
-                  >
-                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                      <path
-                        d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5.5 11.5a6.5 6.5 0 0013 0M12 18v3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                ) : null}
-              </>
-            ) : null}
+            {hasExtras ? null : attachButtons}
             {stacked ? <span className="gc-grow" /> : null}
-            {hasExtras ? extras : null}
             {(running || props.canStop) && props.onStop ? (
               <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
                 Stop
@@ -518,6 +521,13 @@ export function AgentChat(props: AgentChatProps) {
               {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
             </button>
           </div>
+          {hasExtras ? (
+            <div className="gc-under">
+              {attachButtons}
+              <span className="gc-grow" />
+              {extras}
+            </div>
+          ) : null}
           {props.hint === null ? null : (
             <div className="gc-hint">
               {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
