@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- `genaicode ui`: the row under the prompt field is lighter. The line of key hints under it is gone (they are a tooltip on the field), the bark button left the row (`/bark` stays), and the model and effort controls take less room. `<AgentChat composerTitle>` sets such a tooltip for a host (#PRNUM)
 - `genaicode chat`, `ui` and `tower` run Codex without its plugins too (`features.plugins=false`): a plugin from a remote marketplace started an MCP server that `codex mcp list` does not name, so it could not be switched off alone. The plugins' skills go with them; `--agent-mcp` keeps both. The same holds for `onlyTaskMcpServers` of the `codex` and `codexLive` drivers (#273)
 
 ### Internal

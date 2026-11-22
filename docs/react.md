@@ -88,7 +88,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
 | `composerExtras`                                                               | host controls in a row under the message field, beside the attach button (agent, model, mode)                               |
 | `onOpenFile`                                                                   | makes file paths in the transcript (edited files, the file a tool step read) buttons; the host shows the file               |
-| `emptyState`, `placeholder`, `hint`                                            | text before the first turn, in and under the input                                                                          |
+| `emptyState`, `placeholder`, `hint`, `composerTitle`                           | text before the first turn, in and under the input, its tooltip                                                             |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                             |
 
 Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,

@@ -361,8 +361,8 @@ function App() {
         <input
           aria-label="Model"
           title="The model id, or empty for the agent's default"
-          placeholder="default model"
-          size={Math.max(12, (model ?? session.model ?? '').length)}
+          placeholder="model"
+          size={Math.max(5, (model ?? session.model ?? '').length)}
           value={model ?? session.model ?? ''}
           onChange={(event) => setModel(event.target.value)}
           onBlur={() => {
@@ -380,7 +380,7 @@ function App() {
             value={session.effort ?? 'default'}
             onChange={(event) => control(`/effort ${event.target.value}`)}
           >
-            <option value="default">default effort</option>
+            <option value="default">effort</option>
             {efforts.map((level) => (
               <option key={level} value={level}>
                 {level}
@@ -399,15 +399,6 @@ function App() {
           onClick={() => control(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
         >
           {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
-        </button>
-        <button
-          type="button"
-          aria-label={view.bark ? 'Bark on' : 'Bark off'}
-          title={view.bark ? 'The wolf barks when the agent needs you or finishes' : 'The wolf is quiet'}
-          aria-pressed={view.bark}
-          onClick={() => control(`/bark ${view.bark ? 'off' : 'on'}`)}
-        >
-          {view.bark ? '🔊' : '🔇'}
         </button>
       </div>
     ) : null;
@@ -513,12 +504,8 @@ function App() {
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
           return reply.text ?? '';
         }}
-        hint={
-          <>
-            <span>Enter to send · Shift+Enter for a new line · Esc stops</span>
-            <span>/ for commands{config?.uploads ? ' · paste or drop files' : ''}</span>
-          </>
-        }
+        hint={null}
+        composerTitle={`Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`}
         emptyState={
           session ? (
             <div className="gc-empty">
