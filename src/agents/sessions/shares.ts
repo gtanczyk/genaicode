@@ -1,5 +1,6 @@
 import type { TopicStore } from './topics.js';
 import type { SessionInfo } from './types.js';
+import type { WorkWithin } from './window.js';
 
 /** One part of an agent's work: a topic, or what has none. */
 export interface WorkShare {
@@ -23,19 +24,30 @@ export interface AgentShares {
 export const AUTOMATIC_SHARE = 'Automatic runs';
 export const UNSORTED_SHARE = 'Not sorted yet';
 
-const tokens = (session: SessionInfo): number =>
-  session.usage?.totalTokens ?? (session.usage?.inputTokens ?? 0) + (session.usage?.outputTokens ?? 0);
+/**
+ * Codex counts the input it read again from its cache inside its input: left out, as `partsSince()`
+ * leaves it out, or a long thread would weigh by its length alone.
+ */
+const tokens = (session: SessionInfo): number => {
+  const usage = session.usage;
+  if (session.source === 'codex' && usage?.inputTokens !== undefined) {
+    return Math.max(0, usage.inputTokens - (usage.cachedInputTokens ?? 0)) + (usage.outputTokens ?? 0);
+  }
+  return usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+};
 
 /**
  * Where each agent's work went: the part of it every topic took, among `sessions` (list them with
  * `automated: true`, or scheduled runs are missing from the picture). A session weighs what its
  * agent says it used in its whole life: the estimated price where the agent keeps one, else
- * tokens. Only the proportions mean something, so no amount is returned: a subscription is not
+ * tokens. For a period, pass `within` (`partsSince()`): the part of each session's work that falls
+ * in it, or a long session touched once counts whole. Only the proportions mean something, so no amount is returned: a subscription is not
  * charged by them. Agents whose sessions say nothing about use are left out.
  */
 export function topicShares(
   sessions: readonly SessionInfo[],
   store: Pick<TopicStore, 'topics' | 'sessions'>,
+  within?: ReadonlyMap<SessionInfo, WorkWithin>,
 ): AgentShares[] {
   const names = new Map(store.topics.map((topic) => [topic.id, topic.name]));
   const agents = new Map<string, SessionInfo[]>();
@@ -43,7 +55,11 @@ export function topicShares(
   const found: AgentShares[] = [];
   for (const [agent, own] of agents) {
     const by = own.some((session) => (session.costUsd ?? 0) > 0) ? 'cost' : 'tokens';
-    const weight = (session: SessionInfo) => (by === 'cost' ? (session.costUsd ?? 0) : tokens(session));
+    const weight = (session: SessionInfo) => {
+      const period = within?.get(session);
+      if (by === 'tokens' && period?.tokens !== undefined) return period.tokens;
+      return (by === 'cost' ? (session.costUsd ?? 0) : tokens(session)) * (period?.part ?? 1);
+    };
     const parts = new Map<string, WorkShare & { weight: number }>();
     let total = 0;
     for (const session of own) {
