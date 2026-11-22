@@ -271,6 +271,10 @@ describe('codex driver', () => {
       ].join('\n'),
     );
     expect(codexChangesDiff([{ path: '/w/a.txt' }])).toBeUndefined();
+    // A new file whose text is a patch is still three added lines.
+    expect(codexChangesDiff([{ path: '/w/f.patch', kind: { type: 'add' }, diff: '@@ -1 +1 @@\n-old\n+new\n' }])).toBe(
+      ['--- /dev/null', '+++ /w/f.patch', '@@ -0,0 +1,3 @@', '+@@ -1 +1 @@', '+-old', '++new'].join('\n'),
+    );
   });
 
   it('keeps a note about its own hook timeout out of the errors', () => {

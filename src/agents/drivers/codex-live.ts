@@ -321,7 +321,9 @@ export function codexChangesDiff(changes: unknown[]): string | undefined {
     const diff = stringField(change, 'diff');
     if (!path || !diff) continue;
     const kind = isObject(change.kind) ? stringField(change.kind, 'type') : stringField(change, 'kind');
-    const hunks = /^(@@|--- |diff --git )/m.test(diff);
+    // An added or deleted file comes as its text, which may itself look like a patch.
+    const whole = kind === 'add' || kind === 'delete';
+    const hunks = !whole && /^(@@|--- |diff --git )/m.test(diff);
     const lines = diff.replace(/\n$/, '').split('\n');
     if (hunks && /^(--- |diff --git )/.test(diff)) parts.push(lines.join('\n'));
     else if (hunks) parts.push([`--- ${path}`, `+++ ${path}`, ...lines].join('\n'));
