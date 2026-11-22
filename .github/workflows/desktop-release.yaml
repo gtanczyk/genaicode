@@ -70,6 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ASKED: ${{ inputs.version }}
           PUBLISHED: ${{ github.event.workflow_run.head_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           version="$ASKED"
@@ -86,6 +87,11 @@ jobs:
           fi
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Not a version: give it as 2.49.1"
+            exit 1
+          fi
+          # A tag off the default branch is not a release: only merged history gets signed.
+          if ! git merge-base --is-ancestor "refs/tags/v$version" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tag v$version is not on $DEFAULT_BRANCH."
             exit 1
           fi
           git checkout --detach "refs/tags/v$version"
