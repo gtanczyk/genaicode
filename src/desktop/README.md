@@ -11,7 +11,13 @@ the npm package: each release of genaicode carries the app as downloads of its G
 | `Genaicode-linux-x86_64.deb`      | Debian and Ubuntu                                |
 
 `https://github.com/gtanczyk/genaicode/releases/latest/download/<name>` is always the newest one.
-On a Mac, `brew install --cask gtanczyk/genaicode/genaicode` installs the same `.dmg`.
+On a Mac, Homebrew installs the same `.dmg`. Homebrew 7 loads casks only from taps you trust, so
+trust the tap first:
+
+```sh
+brew trust gtanczyk/genaicode
+brew install --cask gtanczyk/genaicode/genaicode
+```
 
 The app carries its own Node.js and its own copy of genaicode, so it needs neither on the machine:
 
