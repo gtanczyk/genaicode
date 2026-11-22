@@ -243,7 +243,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         const env = options.env ? { env: options.env } : {};
         const listing = await listSessions(sources, { ...query, ...env, automated: true, live: false });
         // Only what was done in the period: a session's own figures cover its whole life.
-        const parts = await partsSince(listing.sessions, query.since);
+        const parts = await partsSince(listing.sessions, query.since, env);
         return topicShares(listing.sessions, await readTopics(options.env), parts);
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),

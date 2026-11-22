@@ -1,5 +1,8 @@
-import { createReadStream } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream, promises as fs } from 'node:fs';
+import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { homeOf } from './files.js';
 import { zstdFile } from './transcript.js';
 import type { SessionInfo } from './types.js';
 
@@ -43,48 +46,176 @@ function codexWeight(report: Record<string, unknown>): number {
   return Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens)) + count(report.output_tokens);
 }
 
-/**
- * The part of a Codex thread's work done at or after `since`, from its rollout: Codex notes the
- * thread's running total with a time after every model call. Input it read again from its cache
- * is left out, or a long thread would outweigh everything by its length alone.
- */
-async function codexPart(file: string, since: number): Promise<WorkWithin | undefined> {
-  let total = 0;
+/** What was read of a Codex rollout so far: Codex only ever adds lines, so the next look goes on from `offset`. */
+interface RolloutScan {
+  /** Bytes read, up to the end of the last whole line. */
+  offset: number;
+  /** How the file begins: another file under the same name is read anew. */
+  head: string;
+  total: number;
+  /** The counter's last figure. */
+  previous: number;
+  reports: number;
+  /** The total after a report and its time, one per minute at most, in the file's order. */
+  points: Array<[at: number, total: number]>;
+}
+
+const HEAD = 256;
+/** A rollout smaller than this is read again every time: keeping its scan saves nothing. */
+const KEEP_FROM = 1024 * 1024;
+const scans = new Map<string, RolloutScan>();
+const freshScan = (head = ''): RolloutScan => ({ offset: 0, head, total: 0, previous: 0, reports: 0, points: [] });
+const isScan = (value: unknown): value is RolloutScan =>
+  isRecord(value) &&
+  [value.offset, value.total, value.previous, value.reports].every((n) => typeof n === 'number' && n >= 0) &&
+  typeof value.head === 'string' &&
+  Array.isArray(value.points) &&
+  value.points.every((point) => Array.isArray(point) && typeof point[0] === 'number' && typeof point[1] === 'number');
+
+/** Where scans of big rollouts are kept between runs: `~/.genaicode/cache/rollouts`. */
+function scanFile(file: string, env: NodeJS.ProcessEnv): string {
+  const home = env.GENAICODE_HOME ?? path.join(homeOf(env), '.genaicode');
+  return path.join(home, 'cache', 'rollouts', `${createHash('sha256').update(file).digest('hex').slice(0, 32)}.json`);
+}
+
+/** One line of a rollout: Codex notes the thread's running total with a time after every model call. */
+function takeLine(scan: RolloutScan, text: string): void {
+  if (!text.includes('token_count') && !text.includes('token_usage_record')) return;
+  let line: unknown;
+  try {
+    line = JSON.parse(text);
+  } catch {
+    return;
+  }
+  if (!isRecord(line) || !isRecord(line.payload)) return;
+  const report =
+    line.type === 'token_usage_record'
+      ? line.payload.thread_token_usage
+      : isRecord(line.payload.info)
+        ? line.payload.info.total_token_usage
+        : undefined;
+  if (!isRecord(report)) return;
+  scan.reports += 1;
+  const running = codexWeight(report);
+  // A counter that starts over (a thread taken up by another process) goes on from where it was:
+  // it is lower than before, or it equals its own latest call, which only a first call does.
+  const call = isRecord(line.payload.info) ? line.payload.info.last_token_usage : undefined;
+  // The same figure again is a repeated report, not new work.
+  const startsOver =
+    running < scan.previous || (running !== scan.previous && isRecord(call) && codexWeight(call) === running);
+  scan.total += startsOver ? running : running - scan.previous;
+  scan.previous = running;
+  const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
+  if (Number.isNaN(at)) return;
+  const last = scan.points.at(-1);
+  if (last && Math.floor(last[0] / 60_000) === Math.floor(at / 60_000)) scan.points.pop();
+  scan.points.push([at, scan.total]);
+}
+
+function workSince(scan: RolloutScan, since: number): WorkWithin | undefined {
+  if (scan.reports === 0) return undefined;
   let before = 0;
-  let previous = 0;
-  let reports = 0;
-  const done = await eachLine(file, (text) => {
-    if (!text.includes('token_count') && !text.includes('token_usage_record')) return;
-    let line: unknown;
-    try {
-      line = JSON.parse(text);
-    } catch {
-      return;
+  for (let i = scan.points.length - 1; i >= 0; i--) {
+    if (scan.points[i]![0] < since) {
+      before = scan.points[i]![1];
+      break;
     }
-    if (!isRecord(line) || !isRecord(line.payload)) return;
-    const report =
-      line.type === 'token_usage_record'
-        ? line.payload.thread_token_usage
-        : isRecord(line.payload.info)
-          ? line.payload.info.total_token_usage
-          : undefined;
-    if (!isRecord(report)) return;
-    reports += 1;
-    const running = codexWeight(report);
-    // A counter that starts over (a thread taken up by another process) goes on from where it was:
-    // it is lower than before, or it equals its own latest call, which only a first call does.
-    const call = isRecord(line.payload.info) ? line.payload.info.last_token_usage : undefined;
-    // The same figure again is a repeated report, not new work.
-    const startsOver = running < previous || (running !== previous && isRecord(call) && codexWeight(call) === running);
-    total += startsOver ? running : running - previous;
-    previous = running;
-    const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
-    if (at < since) before = total;
-  });
+  }
   // The tokens themselves too: the session's own figure is its latest counter, not this sum.
   // Reports that add up to nothing (all read from cache) are a measured zero, not a missing figure.
-  if (!done || reports === 0) return undefined;
-  return total > 0 ? { part: (total - before) / total, tokens: total - before } : { part: 0, tokens: 0 };
+  return scan.total > 0
+    ? { part: (scan.total - before) / scan.total, tokens: scan.total - before }
+    : { part: 0, tokens: 0 };
+}
+
+/** Read what the rollout gained since `scan`. Returns the scan up to its last whole line, and one with the unfinished line too. */
+async function readOn(file: string, scan: RolloutScan): Promise<{ kept: RolloutScan; all: RolloutScan }> {
+  let rest = Buffer.alloc(0);
+  for await (const chunk of createReadStream(file, { start: scan.offset }) as AsyncIterable<Buffer>) {
+    let data = rest.length ? Buffer.concat([rest, chunk]) : chunk;
+    let end: number;
+    while ((end = data.indexOf(10)) !== -1) {
+      takeLine(scan, data.toString('utf8', 0, end));
+      scan.offset += end + 1;
+      data = data.subarray(end + 1);
+    }
+    rest = data;
+  }
+  if (!rest.length) return { kept: scan, all: scan };
+  // A last line without its end may still be written: counted now, read again next time.
+  const all = { ...scan, points: [...scan.points] };
+  takeLine(all, rest.toString('utf8'));
+  return { kept: scan, all };
+}
+
+/**
+ * The part of a Codex thread's work done at or after `since`, from its rollout. Input it read
+ * again from its cache is left out, or a long thread would outweigh everything by its length
+ * alone. A long rollout is read once: later looks read only what it gained.
+ */
+async function codexPart(
+  file: string,
+  since: number,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<WorkWithin | undefined> {
+  let size: number;
+  let head: string;
+  try {
+    const handle = await fs.open(file, 'r');
+    try {
+      size = (await handle.stat()).size;
+      const start = Buffer.alloc(Math.min(HEAD, size));
+      await handle.read(start, 0, start.length, 0);
+      head = start.toString('latin1');
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // Codex packs an old rollout: read whole, it does not grow.
+    const scan = freshScan();
+    try {
+      const data = await zstdFile(`${file}.zst`);
+      if (!data) return undefined;
+      for (const line of data.toString('utf8').split('\n')) takeLine(scan, line);
+    } catch {
+      return undefined;
+    }
+    return workSince(scan, since);
+  }
+  let scan = scans.get(file);
+  if (!scan && size >= KEEP_FROM) {
+    try {
+      const saved: unknown = JSON.parse(await fs.readFile(scanFile(file, env), 'utf8'));
+      if (isScan(saved)) scan = saved;
+    } catch {
+      // Nothing kept yet, or not readable: read the rollout from its start.
+    }
+  }
+  // The same file, only longer: its beginning is as it was.
+  const same = scan && scan.head !== '' && scan.offset <= size && head.startsWith(scan.head);
+  // A copy: two looks at once must not both add to the one kept.
+  const from = same ? { ...scan!, points: [...scan!.points] } : freshScan(head);
+  const read = from.offset;
+  let result: { kept: RolloutScan; all: RolloutScan };
+  try {
+    result = await readOn(file, from);
+  } catch {
+    return undefined;
+  }
+  if (size >= KEEP_FROM) {
+    scans.set(file, result.kept);
+    if (result.kept.offset - read >= KEEP_FROM) {
+      const target = scanFile(file, env);
+      try {
+        await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+        await fs.writeFile(`${target}.tmp`, JSON.stringify(result.kept), { mode: 0o600 });
+        await fs.rename(`${target}.tmp`, target);
+      } catch {
+        // Only a saving: the next look reads the rollout again.
+      }
+    }
+  }
+  return workSince(result.all, since);
 }
 
 /**
@@ -134,10 +265,12 @@ function partByTime(session: SessionInfo, since: number): number {
  * figures cover its whole life, so one old, long session touched once in the window would
  * otherwise count as if all of it happened there. Read from the session's file where it keeps
  * times (Codex, Claude Code); elsewhere estimated from how much of its lifetime the window covers.
+ * What was read of a long Codex rollout is kept under `~/.genaicode/cache/rollouts` (`options.env` says where home is).
  */
 export async function partsSince(
   sessions: readonly SessionInfo[],
   since: number,
+  options: { env?: NodeJS.ProcessEnv } = {},
 ): Promise<Map<SessionInfo, WorkWithin>> {
   const parts = new Map<SessionInfo, WorkWithin>();
   const older = sessions.filter((session) => {
@@ -151,7 +284,7 @@ export async function partsSince(
     while (next < older.length) {
       const session = older[next++]!;
       let within: WorkWithin | undefined;
-      if (session.path && session.source === 'codex') within = await codexPart(session.path, since);
+      if (session.path && session.source === 'codex') within = await codexPart(session.path, since, options.env);
       else if (session.path && session.source === 'claude') {
         const part = await claudePart(session.path, since);
         if (part !== undefined) within = { part };
