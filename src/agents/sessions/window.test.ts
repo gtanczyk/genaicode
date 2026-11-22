@@ -40,14 +40,18 @@ it('counts only what a Codex thread did in the period, without input read again 
   // Months of work, then one prompt in the period: 1,000 of 101,000 new tokens.
   const old = session('codex', 'old', {
     startedAt: now - 80 * day,
-    usage: { totalTokens: 2_000_000 },
+    usage: { inputTokens: 2_000_800, cachedInputTokens: 1_900_000, outputTokens: 200, totalTokens: 2_001_000 },
     path: file('old.jsonl', [
       counted(60, 900_000, 800_000, 0),
       counted(30, 1_900_000, 1_800_000, 0),
       counted(6, 2_000_800, 1_900_000, 200),
     ]),
   });
-  const fresh = session('codex', 'fresh', { startedAt: now - 2 * day, usage: { totalTokens: 100_000 } });
+  // The same new work in the period, in a thread that began there.
+  const fresh = session('codex', 'fresh', {
+    startedAt: now - 2 * day,
+    usage: { inputTokens: 50_800, cachedInputTokens: 50_000, outputTokens: 200, totalTokens: 51_000 },
+  });
   const parts = await partsSince([old, fresh], since);
   expect(parts.get(old)).toBeCloseTo(1_000 / 101_000, 5);
   expect(parts.has(fresh)).toBe(false);
@@ -62,8 +66,8 @@ it('counts only what a Codex thread did in the period, without input read again 
   // Whole-life figures put the old thread first; the period's put it last.
   expect(topicShares([old, fresh], store)[0]!.shares[0]!.name).toBe('Kids');
   const within = topicShares([old, fresh], store, parts)[0]!.shares;
-  expect(within.map((share) => share.name)).toEqual(['Knights', 'Kids']);
-  expect(within[1]!.share).toBeLessThan(0.2);
+  // 1,000 new tokens each: cached input weighs nothing on either side.
+  expect(within.map((share) => share.share)).toEqual([0.5, 0.5]);
 });
 
 it('weighs a Claude Code transcript by the answers of the period, each counted once', async () => {

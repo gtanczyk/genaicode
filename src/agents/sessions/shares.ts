@@ -23,8 +23,17 @@ export interface AgentShares {
 export const AUTOMATIC_SHARE = 'Automatic runs';
 export const UNSORTED_SHARE = 'Not sorted yet';
 
-const tokens = (session: SessionInfo): number =>
-  session.usage?.totalTokens ?? (session.usage?.inputTokens ?? 0) + (session.usage?.outputTokens ?? 0);
+/**
+ * Codex counts the input it read again from its cache inside its input: left out, as `partsSince()`
+ * leaves it out, or a long thread would weigh by its length alone.
+ */
+const tokens = (session: SessionInfo): number => {
+  const usage = session.usage;
+  if (session.source === 'codex' && usage?.inputTokens !== undefined) {
+    return Math.max(0, usage.inputTokens - (usage.cachedInputTokens ?? 0)) + (usage.outputTokens ?? 0);
+  }
+  return usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+};
 
 /**
  * Where each agent's work went: the part of it every topic took, among `sessions` (list them with
