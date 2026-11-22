@@ -103,6 +103,17 @@ describe('git helpers', () => {
       expect(isReadOnlyCommand('git log', cwd, { GIT_EXTERNAL_DIFF: 'touch x' })).toBe(false);
       const config = { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'diff.external', GIT_CONFIG_VALUE_0: 'touch x' };
       expect(isReadOnlyCommand('git log', cwd, { ...process.env, ...config })).toBe(false);
+      execFileSync('git', ['config', '--unset', 'diff.evil.textconv'], { cwd: repo });
+      expect(isReadOnlyCommand('git show', repo)).toBe(true);
+      execFileSync('git', ['config', 'pretty.short', '%h %s'], { cwd: repo });
+      expect(isReadOnlyCommand('git show', repo)).toBe(true);
+      execFileSync('git', ['config', 'pretty.sig', '%h %G?'], { cwd: repo });
+      expect(isReadOnlyCommand('git show', repo)).toBe(false);
+      execFileSync('git', ['config', '--unset', 'pretty.sig'], { cwd: repo });
+      execFileSync('git', ['config', 'log.showSignature', 'true'], { cwd: repo });
+      expect(isReadOnlyCommand('git log', repo)).toBe(false);
+      expect(isReadOnlyCommand('git log --show-signature -1', cwd)).toBe(false);
+      expect(isReadOnlyCommand("git log --format='%h %G?'", cwd)).toBe(false);
       expect(isReadOnlyCommand('rg foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(false);
       expect(isReadOnlyCommand('rg --no-config foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(true);
     } finally {

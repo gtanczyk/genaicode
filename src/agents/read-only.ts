@@ -126,7 +126,8 @@ function programName(program: string): string | undefined {
 
 /**
  * Whether git's config in `dir` names programs that reading commands run on their own: diff
- * helpers (textconv, external diff) and an fsmonitor hook. Unknown counts as yes.
+ * helpers (textconv, external diff), an fsmonitor hook, signature checks (gpg.program) turned on by
+ * default or by a `%G` format alias. Unknown counts as yes.
  */
 function gitRunsHelpers(dir: string, env: NodeJS.ProcessEnv): boolean {
   // The agent's environment can name a diff program too; its `GIT_CONFIG_*` shows in the lookup below.
@@ -134,10 +135,20 @@ function gitRunsHelpers(dir: string, env: NodeJS.ProcessEnv): boolean {
   try {
     const found = execFileSync(
       'git',
-      ['config', '--get-regexp', '^(diff\\..*\\.(textconv|command)|diff\\.external|core\\.fsmonitor)$'],
+      [
+        'config',
+        '--get-regexp',
+        '^(diff\\..*\\.(textconv|command)|diff\\.external|core\\.fsmonitor|log\\.showsignature|pretty\\..*|format\\.pretty)$',
+      ],
       { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 },
     );
-    return found.split('\n').some((line) => line.trim() && !/^core\.fsmonitor\s+false$/i.test(line.trim()));
+    return found.split('\n').some((line) => {
+      const [key = '', value = ''] = line.trim().split(/\s+(.*)/);
+      if (!key) return false;
+      if (key === 'core.fsmonitor' || key === 'log.showsignature') return !/^(false|no|off|0)$/i.test(value);
+      if (key.startsWith('pretty.') || key === 'format.pretty') return value.includes('%G');
+      return true;
+    });
   } catch (error) {
     // Exit 1: no such key. Anything else (no git, timeout): assume the worst.
     return (error as { status?: number }).status !== 1;
@@ -162,6 +173,8 @@ const RISKY_LONG = [
   'dereference-recursive',
   'exec',
   'delete',
+  // Signature checks run gpg.program.
+  'show-signature',
   // `git log --help` runs the configured man viewer.
   'help',
 ];
@@ -178,6 +191,8 @@ function readerCommand(words: string[], base: string, env: NodeJS.ProcessEnv): b
   const name = program && programName(program);
   if (!name || args.some(riskyOption)) return false;
   if (name === 'git') {
+    // `%G` placeholders check signatures too.
+    if (args.some((arg) => arg.includes('%G'))) return false;
     // Options before the subcommand (`-C dir`, `--no-pager`) only; `-c` could set a program to run.
     let i = 0;
     let dir = base;
