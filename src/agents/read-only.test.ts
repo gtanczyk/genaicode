@@ -1,10 +1,13 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isReadOnlyApproval, isReadOnlyCommand } from './read-only.js';
 
-const cwd = '/work/game';
+const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-ro-repo-')));
+execFileSync('git', ['init', '-q', cwd]);
+afterAll(() => rmSync(cwd, { recursive: true, force: true }));
 const ro = (command: string | string[]) => isReadOnlyCommand(command, cwd);
 
 describe('isReadOnlyCommand', () => {
@@ -15,7 +18,7 @@ describe('isReadOnlyCommand', () => {
       'rg -n "useState" src',
       "grep -rn 'foo$' src | head -20",
       'git log --oneline -20',
-      'git -C sub diff HEAD~1 -- src',
+      'git -C . diff HEAD~1 -- src',
       'git status && git branch -a',
       'find . -name "*.ts" -type f',
       "sed -n '10,40p' src/a.ts",
@@ -61,9 +64,25 @@ describe('isReadOnlyCommand', () => {
       'find -L . -name x',
       'rg -L foo',
       'grep -R foo .',
+      'tree -ao out.txt .',
       '',
     ])
       expect(ro(command), command).toBe(false);
+  });
+});
+
+describe('git helpers', () => {
+  it('asks for git reads where the config names a program they would run', () => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-ro-helper-')));
+    try {
+      execFileSync('git', ['init', '-q', repo]);
+      expect(isReadOnlyCommand('git show', repo)).toBe(true);
+      execFileSync('git', ['config', 'diff.evil.textconv', 'touch pwned'], { cwd: repo });
+      expect(isReadOnlyCommand('git show', repo)).toBe(false);
+      expect(isReadOnlyCommand('ls', repo)).toBe(true);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

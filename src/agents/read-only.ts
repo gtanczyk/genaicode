@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { ApprovalRequest } from './types.js';
@@ -18,7 +19,6 @@ const READERS = new Set([
   'rg',
   'pwd',
   'stat',
-  'tree',
   'du',
   'basename',
   'dirname',
@@ -126,16 +126,38 @@ function programName(program: string): string | undefined {
   return SYSTEM_BIN.test(program) ? program.slice(program.lastIndexOf('/') + 1) : undefined;
 }
 
-function readerCommand(words: string[]): boolean {
+/**
+ * Whether git's config in `dir` names programs that reading commands run on their own: diff
+ * helpers (textconv, external diff) and an fsmonitor hook. Unknown counts as yes.
+ */
+function gitRunsHelpers(dir: string): boolean {
+  try {
+    const found = execFileSync(
+      'git',
+      ['config', '--get-regexp', '^(diff\\..*\\.(textconv|command)|diff\\.external|core\\.fsmonitor)$'],
+      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 },
+    );
+    return found.split('\n').some((line) => line.trim() && !/^core\.fsmonitor\s+false$/i.test(line.trim()));
+  } catch (error) {
+    // Exit 1: no such key. Anything else (no git, timeout): assume the worst.
+    return (error as { status?: number }).status !== 1;
+  }
+}
+
+function readerCommand(words: string[], base: string): boolean {
   const [program, ...args] = words;
   const name = program && programName(program);
   if (!name) return false;
   if (name === 'git') {
     // Options before the subcommand (`-C dir`, `--no-pager`) only; `-c` could set a program to run.
     let i = 0;
+    let dir = base;
     while (i < args.length && args[i]!.startsWith('-')) {
       const option = args[i]!;
-      if (option === '-C') i += 2;
+      if (option === '-C' && args[i + 1]) {
+        dir = path.resolve(dir, args[i + 1]!);
+        i += 2;
+      } else if (option === '-C') return false;
       else if (option === '--no-pager') i += 1;
       else return false;
     }
@@ -152,7 +174,7 @@ function readerCommand(words: string[]): boolean {
       return false;
     if (sub === 'branch' || sub === 'tag' || sub === 'remote')
       return rest.every((arg) => ['-a', '-r', '-v', '-vv', '--list', '-l', '--show-current'].includes(arg));
-    return GIT_READERS.has(sub);
+    return GIT_READERS.has(sub) && !gitRunsHelpers(dir);
   }
   // Following symlinks could read outside the project.
   if (name === 'find') return !args.some((arg) => FIND_WRITERS.has(arg) || arg === '-L' || arg === '-follow');
@@ -169,7 +191,6 @@ function readerCommand(words: string[]): boolean {
     );
   if (name === 'grep' || name === 'egrep' || name === 'fgrep')
     return !args.some((arg) => /^-[a-zA-Z]*R/.test(arg) || arg === '--dereference-recursive');
-  if (name === 'tree') return !args.includes('-o') && !args.includes('-l');
   return READERS.has(name);
 }
 
@@ -241,7 +262,7 @@ function readsOnly(command: string | readonly string[], base: string, root: stri
       continue;
     }
     if (words.slice(1).some((word) => outside(word, base, root))) return false;
-    if (!readerCommand(words)) return false;
+    if (!readerCommand(words, base)) return false;
     // Later commands run where `cd` went.
     if (name === 'cd') {
       if (words.length !== 2) return false;
