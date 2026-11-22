@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build, e.g. 2.49.1 (its v* tag must exist). Empty: package.json on this branch'
+        description: "Version to build, e.g. 2.49.1 (its v* tag must exist). Empty: the default branch's version"
         required: false
 
 permissions:
@@ -53,31 +53,44 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.signing.outputs.ready == 'true'
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
-      # The default branch, or the tag of the version asked for: nothing the triggering run names.
-      - name: Check out the version asked for
-        if: steps.signing.outputs.ready == 'true' && inputs.version
-        env:
-          ASKED: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$ASKED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Not a version: give it as 2.49.1"
-            exit 1
-          fi
-          git checkout --detach "refs/tags/v$ASKED"
       - uses: actions/setup-node@v4
         if: steps.signing.outputs.ready == 'true'
         with:
           node-version: 22
-      - name: Resolve the version
+      # What gets built and signed is always a v* tag of this repository: the version asked for by
+      # hand, the one the triggering publish released, else the default branch's.
+      - name: Check out the released version
         if: steps.signing.outputs.ready == 'true'
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
+          ASKED: ${{ inputs.version }}
+          PUBLISHED: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
+          version="$ASKED"
+          if [ -z "$version" ] && [ -n "$PUBLISHED" ]; then
+            if ! [[ "$PUBLISHED" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::The publish run names no commit."
+              exit 1
+            fi
+            # Read as data: nothing of that commit runs before its tag is checked out.
+            version="$(git show "$PUBLISHED:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
+          fi
+          if [ -z "$version" ]; then
+            version="$(node -p "require('./package.json').version")"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Not a version: give it as 2.49.1"
+            exit 1
+          fi
+          git checkout --detach "refs/tags/v$version"
+          if [ "$(node -p "require('./package.json').version")" != "$version" ]; then
+            echo "::error::Tag v$version holds another version in package.json."
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release=true" >> "$GITHUB_OUTPUT"
