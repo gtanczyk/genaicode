@@ -84,6 +84,8 @@ export function ChatApp({
   const width = Math.max(40, (stdout.columns || 80) - 1);
   const rows = stdout.rows || 24;
 
+  // Counts `/clear`: a new `<Static>` forgets what the old one printed.
+  const [cleared, setCleared] = useState(0);
   useEffect(() => {
     // The tower's initial read can finish between rendering and subscribing.
     const current = controller.get();
@@ -92,6 +94,11 @@ export function ChatApp({
     return controller.subscribe((next) => {
       // The terminal's bark: ring the bell when an approval waits or a turn finishes.
       if (next.bark && needsAttention(seen, next.session)) stdout.write('\x07');
+      // `/clear`: what the terminal already printed goes too, and the header prints again.
+      if (seen.turns.length && !next.session.turns.length) {
+        if (stdout.isTTY) stdout.write('\x1b[2J\x1b[3J\x1b[H');
+        setCleared((count) => count + 1);
+      }
       seen = next.session;
       setView(next);
     });
@@ -222,7 +229,7 @@ export function ChatApp({
 
   return (
     <>
-      <Static items={done}>
+      <Static key={cleared} items={done}>
         {(item) =>
           item.kind === 'header' ? (
             <Box key={item.key} flexDirection="column" marginBottom={1}>

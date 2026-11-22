@@ -54,6 +54,8 @@ export function Sessions({
   onContinue,
   topic,
   onAllTopics,
+  own,
+  onAllSessions,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
@@ -64,6 +66,10 @@ export function Sessions({
   topic?: string;
   /** Back to every topic. */
   onAllTopics?(): void;
+  /** Show only the conversations this chat had itself: those that ran in `cwd`. */
+  own?: boolean;
+  /** Back to every agent's sessions. */
+  onAllSessions?(): void;
 }) {
   const [days, setDays] = useState(7);
   const [listing, setListing] = useState<WebSessionListing>();
@@ -81,7 +87,7 @@ export function Sessions({
 
   useEffect(() => {
     let current = true;
-    fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
+    fetch(`/api/sessions?days=${days}${own ? '&own=1' : ''}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
         return (await res.json()) as WebSessionListing;
@@ -97,9 +103,14 @@ export function Sessions({
     return () => {
       current = false;
     };
-  }, [days, token, round]);
+  }, [days, token, round, own]);
 
-  const all = listing?.sessions ?? [];
+  const everyones = listing?.sessions ?? [];
+  const all = useMemo(() => {
+    if (!own) return everyones;
+    const here = cwd.replace(/[\\/]+$/, '');
+    return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
+  }, [everyones, own, cwd]);
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
   const waiting = useMemo(() => waitingSessions(all), [all]);
   const stale = useMemo(() => staleSessions(all), [all]);
@@ -136,7 +147,8 @@ export function Sessions({
   const inbox = state === 'waiting' || state === 'approval';
   const now = Date.now();
   const sorted = !!listing?.topics?.length;
-  const by = sorted ? (chosen ?? 'topic') : 'project';
+  // Its own conversations are one list: no topics among them.
+  const by = sorted && !own ? (chosen ?? 'topic') : 'project';
   const projects = useMemo(
     () =>
       by === 'topic'
@@ -193,6 +205,11 @@ export function Sessions({
   return (
     <main className="sessions">
       <div className="tools">
+        {own ? (
+          <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
+            Chats of this app ×
+          </button>
+        ) : null}
         {topic ? (
           <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
             {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
@@ -219,7 +236,7 @@ export function Sessions({
           <option value="unfinished">◌ Unfinished</option>
           <option value="archived">Archived</option>
         </select>
-        {sorted ? (
+        {sorted && !own ? (
           <select
             aria-label="Group by"
             value={by}
@@ -403,7 +420,11 @@ export function Sessions({
           </details>
         );
       })}
-      {listing && !shown.length ? <div className="count">No sessions match.</div> : null}
+      {listing && !shown.length ? (
+        <div className="count">
+          {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}
+        </div>
+      ) : null}
     </main>
   );
 }
