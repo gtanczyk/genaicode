@@ -118,7 +118,7 @@ export const MAX_FILES = 8;
 /** Cap on port-scoped cookies left on the host so repeated random-port runs do not bloat Cookie headers. */
 const MAX_PORT_COOKIES = 8;
 
-function secretOk(candidate: string | null | undefined, expected: string): boolean {
+export function secretOk(candidate: string | null | undefined, expected: string): boolean {
   if (!candidate) return false;
   const a = Buffer.from(candidate);
   const b = Buffer.from(expected);
