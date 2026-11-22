@@ -34,6 +34,12 @@ async function eachLine(file: string, take: (line: string) => void): Promise<boo
   }
 }
 
+/** Codex's count without the input it read again from its cache. */
+function codexWeight(report: Record<string, unknown>): number {
+  const fresh = Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens));
+  return fresh + count(report.output_tokens) || count(report.total_tokens);
+}
+
 /**
  * The part of a Codex thread's work done at or after `since`, from its rollout: Codex notes the
  * thread's running total with a time after every model call. Input it read again from its cache
@@ -59,10 +65,12 @@ async function codexPart(file: string, since: number): Promise<WorkWithin | unde
           ? line.payload.info.total_token_usage
           : undefined;
     if (!isRecord(report)) return;
-    const fresh = Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens));
-    const running = fresh + count(report.output_tokens) || count(report.total_tokens);
-    // A counter that starts over (a thread taken up by another process) goes on from where it was.
-    total += running >= previous ? running - previous : running;
+    const running = codexWeight(report);
+    // A counter that starts over (a thread taken up by another process) goes on from where it was:
+    // it is lower than before, or it equals its own latest call, which only a first call does.
+    const call = isRecord(line.payload.info) ? line.payload.info.last_token_usage : undefined;
+    const startsOver = running < previous || (previous > 0 && isRecord(call) && codexWeight(call) === running);
+    total += startsOver ? running : running - previous;
     previous = running;
     const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
     if (at < since) before = total;

@@ -79,6 +79,15 @@ it('weighs a Codex thread whose counter started over by the tokens of the period
     path: file('r.jsonl', [counted(20, 1_000, 0, 0), counted(3, 100, 0, 0)]),
   });
   const fresh = session('codex', 'f', { startedAt: now - day, usage: { inputTokens: 100, outputTokens: 0 } });
+  // A new counter already past the old one: its first report equals its own latest call.
+  const first = counted(3, 2_000, 0, 0);
+  const call = { input_tokens: 2_000, cached_input_tokens: 0, output_tokens: 0 };
+  Object.assign(first.payload.info, { last_token_usage: call });
+  const higher = session('codex', 'h', {
+    startedAt: now - 30 * day,
+    path: file('h.jsonl', [counted(20, 1_000, 0, 0), first, counted(2, 2_500, 0, 0)]),
+  });
+  expect((await partsSince([higher], since)).get(higher)).toEqual({ part: 2_500 / 3_500, tokens: 2_500 });
   const parts = await partsSince([resumed, fresh], since);
   expect(parts.get(resumed)).toEqual({ part: 100 / 1_100, tokens: 100 });
   const store = { topics: [{ id: 'a', name: 'A' }], sessions: { 'codex:r': 'a' } };
