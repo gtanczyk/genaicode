@@ -10,13 +10,14 @@ export function configuredMcpServers<T extends string | { name: string }>(
   command: string,
   task: AgentTask,
   servers: (listing: unknown) => T[],
+  signal?: AbortSignal,
 ): Promise<T[]> {
   return new Promise((resolve, reject) => {
     // `task.env` replaces the environment, as it does for the run itself: what the caller left out stays out.
     execFile(
       command,
       ['mcp', 'list', '--json'],
-      { cwd: task.cwd, env: task.env ?? process.env, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
+      { cwd: task.cwd, env: task.env ?? process.env, timeout: 30_000, maxBuffer: 8 * 1024 * 1024, signal },
       (error, stdout) => {
         if (error) {
           // The errno stays: a CLI that is not installed is `unavailable`, not a failed task.

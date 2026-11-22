@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { prepareCodex } from './codex.js';
-import { prepareCodexLive } from './codex-live.js';
+import { codexLive, prepareCodexLive } from './codex-live.js';
 import { prepareCopilot } from './copilot.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-mcp-isolation-'));
@@ -59,6 +59,17 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     await expect(prepareCodexLive(task, { command: clash, onlyTaskMcpServers: 'when-listed' })).rejects.toThrow(
       /already has an MCP server named "app"/,
     );
+  });
+
+  it('stops listing when the turn is stopped while it prepares', async () => {
+    const slow = join(dir, 'codex-slow');
+    writeFileSync(slow, '#!/bin/sh\n[ "$1" = mcp ] && exec sleep 20\nexit 1\n');
+    chmodSync(slow, 0o755);
+    const run = codexLive({ command: slow, onlyTaskMcpServers: 'when-listed' }).run({ prompt: 'go', cwd: dir });
+    const started = Date.now();
+    setTimeout(() => run.abort(), 50);
+    expect(await run.result).toMatchObject({ status: 'aborted' });
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it('refuses a task server whose name Codex already has', async () => {

@@ -64,19 +64,20 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
 export async function prepareCodexLive(
   task: AgentTask,
   options: CodexLiveOptions = {},
-  context?: Pick<PrepareContext, 'emit'>,
+  context?: Partial<PrepareContext>,
 ): Promise<PreparedRun> {
   codexThreadPolicy(task, options);
   const prepared = withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
   if (!options.onlyTaskMcpServers) return prepared;
   let off: string[];
   try {
-    off = await codexOwnServersOff(options.command ?? 'codex', task);
+    // Stopping the turn stops the listing too.
+    off = await codexOwnServersOff(options.command ?? 'codex', task, context?.signal);
   } catch (error) {
     // A name clash is the caller's to fix, and a missing CLI fails the run as it would anyway.
     const code = (error as { code?: unknown }).code;
     if (options.onlyTaskMcpServers !== 'when-listed' || code !== undefined) throw error;
-    context?.emit({ type: 'stderr', text: `${(error as Error).message}; Codex runs with its own MCP servers.\n` });
+    context?.emit?.({ type: 'stderr', text: `${(error as Error).message}; Codex runs with its own MCP servers.\n` });
     return prepared;
   }
   return { ...prepared, args: [...off, ...prepared.args] };

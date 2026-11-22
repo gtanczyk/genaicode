@@ -103,13 +103,18 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
  * `-c` overrides that switch off every MCP server Codex has in its own config, so a run sees the
  * task's only. Rejects when the list cannot be read, or when a task server reuses a listed name.
  */
-export async function codexOwnServersOff(command: string, task: AgentTask): Promise<string[]> {
+export async function codexOwnServersOff(command: string, task: AgentTask, signal?: AbortSignal): Promise<string[]> {
   let listed: string[] = [];
-  const others = await configuredMcpServers(command, task, (listing) => {
-    const servers = codexMcpServers(listing);
-    listed = servers.map((server) => server.name);
-    return servers;
-  });
+  const others = await configuredMcpServers(
+    command,
+    task,
+    (listing) => {
+      const servers = codexMcpServers(listing);
+      listed = servers.map((server) => server.name);
+      return servers;
+    },
+    signal,
+  );
   // `-c` merges into a table the config already has (a stdio server keeps its `command` next to the
   // task's `url`), and no override removes a key: a task server must not reuse a configured name.
   const clash = task.mcpServers?.find((server) => listed.includes(server.name));

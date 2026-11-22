@@ -208,18 +208,18 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
 
   const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
   const result = planSpawnAsync(definition, task, invalidCwd(task.cwd), context).then((plan) => {
+    // Stopped while `prepare` was still running: whatever it ended with, the run was aborted.
+    if (stopped || task.signal?.aborted) {
+      lifetime.abort();
+      if (plan.ok) plan.cleanup();
+      return recorder.finish({ exitCode: null, signal: null, reason: 'aborted' }, undefined);
+    }
     if (!plan.ok) {
       lifetime.abort();
       return recorder.finish(
         { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
         undefined,
       );
-    }
-    // Stopped while `prepare` was still running.
-    if (stopped || task.signal?.aborted) {
-      lifetime.abort();
-      plan.cleanup();
-      return recorder.finish({ exitCode: null, signal: null, reason: 'aborted' }, undefined);
     }
     return start(plan);
   });
