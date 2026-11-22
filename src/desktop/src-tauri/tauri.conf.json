@@ -25,6 +25,12 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5QzU4NDcwQUQwNzVFNUIKUldSYlhnZXRjSVRGYVhaRVJnbDJEVDNZdlRLMHNiRVZHMGZDWERNTFprWXFIcDlkWkhxNC9PVG4K",
+      "endpoints": ["https://github.com/gtanczyk/genaicode/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
