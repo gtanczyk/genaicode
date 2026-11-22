@@ -201,9 +201,10 @@ export function ChatApp({
         });
       }
       // Enter: what was typed is the answer (where the agent takes one), else the options picked so far.
-      // Only a known /command runs as one: `/work/repo` is an answer, and `//x` answers `/x`.
+      // Only a known /command runs as one: `/work/repo` is an answer; `//x` and `!!x` answer `/x` and `!x`.
       if (key.return && !isCommand(draft)) {
-        const typed = question.freeText ? (draft.startsWith('//') ? draft.slice(1) : draft).trim() : '';
+        const literal = draft.startsWith('//') || draft.startsWith('!!');
+        const typed = question.freeText ? (literal ? draft.slice(1) : draft).trim() : '';
         const chosen = question.multiple ? (partial[question.id] ?? []) : [];
         if (typed || chosen.length) {
           edit('', 0, false);
@@ -246,6 +247,8 @@ export function ChatApp({
     }
     if (key.leftArrow) return setCursor(Math.max(0, cursor - 1));
     if (key.rightArrow) return setCursor(Math.min(chars.length, cursor + 1));
+    // History never takes a secret along: it would come back unmasked once the question is gone.
+    if ((key.upArrow || key.downArrow) && question?.secret) return;
     if (key.upArrow) {
       if (!history.current.length || historyIndex.current === 0) return;
       if (historyIndex.current === history.current.length) stash.current = shell ? `!${draft}` : draft;
@@ -271,7 +274,9 @@ export function ChatApp({
     if (key.ctrl && input === 'u') return edit(chars.slice(cursor).join(''), 0);
     if (key.ctrl || key.meta || !input) return;
     let typed = [...input.replace(/\r\n?/g, '\n')];
-    if (!shell && !draft && typed[0] === '!' && typed[1] !== '!') {
+    // While the agent waits for a typed answer, `!` is part of it (a password may start with one).
+    const answers = asked && question?.freeText;
+    if (!shell && !draft && !answers && typed[0] === '!' && typed[1] !== '!') {
       typed = typed.slice(1);
       return edit(typed.join(''), typed.length, true);
     }
@@ -283,7 +288,10 @@ export function ChatApp({
   const current = live.find((turn) => !turn.result);
   // A secret typed for a question that went away (withdrawn, timed out) is dropped, never shown.
   const secretKey = asked && question?.secret ? `${asked.id}:${question.id}` : undefined;
-  if (secretFor.current && secretFor.current !== secretKey) draftRef.current = { text: '', cursor: 0, shell: false };
+  if (secretFor.current && secretFor.current !== secretKey) {
+    draftRef.current = { text: '', cursor: 0, shell: false };
+    stash.current = '';
+  }
   secretFor.current = secretKey;
   // A secret answer never shows as typed: the composer draws one dot per character.
   const { text: typed, cursor: at } = draftRef.current;

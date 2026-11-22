@@ -856,12 +856,16 @@ describe('terminal UI', () => {
     const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
     chat.submit('go');
     await tick();
-    for (const char of 's3cret') app.stdin.write(char);
+    // `!` does not open shell mode while an answer is typed, and history keys do nothing.
+    for (const char of '!s3cret') app.stdin.write(char);
     await tick();
-    expect(app.lastFrame()).toContain('••••••');
+    app.stdin.write('\u001B[A');
+    await tick();
+    expect(app.lastFrame()).toContain('•••••••');
     expect(app.lastFrame()).not.toContain('s3cret');
+    expect(app.lastFrame()).not.toContain('shell mode');
     app.stdin.write('\r');
-    await expect.poll(() => got).toEqual([{ token: ['s3cret'] }]);
+    await expect.poll(() => got).toEqual([{ token: ['!s3cret'] }]);
     app.unmount();
     chat.close();
   });
