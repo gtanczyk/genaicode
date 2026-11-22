@@ -30,7 +30,12 @@ concurrency:
 
 jobs:
   macos:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Only a release this repository made itself: never a run that a fork's pull request started.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -48,7 +53,19 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.signing.outputs.ready == 'true'
         with:
-          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      # The default branch, or the tag of the version asked for: nothing the triggering run names.
+      - name: Check out the version asked for
+        if: steps.signing.outputs.ready == 'true' && inputs.version
+        env:
+          ASKED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$ASKED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Not a version: give it as 2.49.1"
+            exit 1
+          fi
+          git checkout --detach "refs/tags/v$ASKED"
       - uses: actions/setup-node@v4
         if: steps.signing.outputs.ready == 'true'
         with:
