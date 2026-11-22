@@ -593,7 +593,7 @@ export function pack(options: PackOptions): Pack {
           ...(onApproval
             ? {
                 onApproval: (request, signal) =>
-                  readOnly && isReadOnlyApproval(request, sub.cwd)
+                  readOnly && isReadOnlyApproval(request, sub.cwd, task.env ?? process.env)
                     ? 'approve'
                     : onApproval(packApproval(id, agent.name, request), signal),
               }

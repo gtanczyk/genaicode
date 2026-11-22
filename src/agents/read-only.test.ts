@@ -7,6 +7,7 @@ import { isReadOnlyApproval, isReadOnlyCommand } from './read-only.js';
 
 const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-ro-repo-')));
 execFileSync('git', ['init', '-q', cwd]);
+mkdirSync(join(cwd, 'games', 'knights'), { recursive: true });
 afterAll(() => rmSync(cwd, { recursive: true, force: true }));
 const ro = (command: string | string[]) => isReadOnlyCommand(command, cwd);
 
@@ -91,6 +92,11 @@ describe('git helpers', () => {
       execFileSync('git', ['config', 'diff.evil.textconv', 'touch pwned'], { cwd: repo });
       expect(isReadOnlyCommand('git show', repo)).toBe(false);
       expect(isReadOnlyCommand('ls', repo)).toBe(true);
+      expect(isReadOnlyCommand('git log', cwd, { GIT_EXTERNAL_DIFF: 'touch x' })).toBe(false);
+      const config = { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'diff.external', GIT_CONFIG_VALUE_0: 'touch x' };
+      expect(isReadOnlyCommand('git log', cwd, { ...process.env, ...config })).toBe(false);
+      expect(isReadOnlyCommand('rg foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(false);
+      expect(isReadOnlyCommand('rg --no-config foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(true);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
@@ -142,6 +148,10 @@ describe('paths through symlinks and the command directory', () => {
     expect(isReadOnlyCommand('cd linked && cat key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cd src && cat a.ts', project)).toBe(true);
     expect(isReadOnlyCommand('cd src && cat ../../secret/key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cd missing || cat ../secret/key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cd missing && cat ../secret/key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cd src | cat ../a.ts', project)).toBe(false);
+    expect(isReadOnlyCommand('ls || cd src && cat a.ts', project)).toBe(false);
   });
 
   it('checks the directory the request says the command runs in', () => {

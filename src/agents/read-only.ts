@@ -129,12 +129,14 @@ function programName(program: string): string | undefined {
  * Whether git's config in `dir` names programs that reading commands run on their own: diff
  * helpers (textconv, external diff) and an fsmonitor hook. Unknown counts as yes.
  */
-function gitRunsHelpers(dir: string): boolean {
+function gitRunsHelpers(dir: string, env: NodeJS.ProcessEnv): boolean {
+  // The agent's environment can name a diff program too; its `GIT_CONFIG_*` shows in the lookup below.
+  if (env.GIT_EXTERNAL_DIFF) return true;
   try {
     const found = execFileSync(
       'git',
       ['config', '--get-regexp', '^(diff\\..*\\.(textconv|command)|diff\\.external|core\\.fsmonitor)$'],
-      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 },
+      { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 },
     );
     return found.split('\n').some((line) => line.trim() && !/^core\.fsmonitor\s+false$/i.test(line.trim()));
   } catch (error) {
@@ -169,7 +171,7 @@ function riskyOption(arg: string): boolean {
   return RISKY_LONG.some((risky) => risky.startsWith(name));
 }
 
-function readerCommand(words: string[], base: string): boolean {
+function readerCommand(words: string[], base: string, env: NodeJS.ProcessEnv): boolean {
   const [program, ...args] = words;
   const name = program && programName(program);
   if (!name || args.some(riskyOption)) return false;
@@ -199,7 +201,7 @@ function readerCommand(words: string[], base: string): boolean {
       return false;
     if (sub === 'branch' || sub === 'tag' || sub === 'remote')
       return rest.every((arg) => ['-a', '-r', '-v', '-vv', '--list', '-l', '--show-current'].includes(arg));
-    return GIT_READERS.has(sub) && !gitRunsHelpers(dir);
+    return GIT_READERS.has(sub) && !gitRunsHelpers(dir, env);
   }
   // Following symlinks could read outside the project.
   if (name === 'find') return !args.some((arg) => FIND_WRITERS.has(arg) || arg === '-L' || arg === '-follow');
@@ -208,6 +210,8 @@ function readerCommand(words: string[], base: string): boolean {
     const [flag, script, ...files] = args;
     return flag === '-n' && !!script && /^\d+(,\d+|,\$)?p$/.test(script) && files.every((f) => !f.startsWith('-'));
   }
+  // A config file named by the environment can set `--pre`.
+  if (name === 'rg' && env.RIPGREP_CONFIG_PATH && !args.includes('--no-config')) return false;
   if (name === 'rg')
     return !args.some(
       (arg) => arg === '--pre' || arg.startsWith('--pre=') || arg === '--follow' || /^-[a-zA-Z]*L/.test(arg),
@@ -257,13 +261,19 @@ function outside(word: string, base: string, root: string): boolean {
  * Whether every command of `command` (joined by `&&`, `||` or `|`) only reads, and only inside
  * `cwd`: no expansion, redirection or command that writes, and no path outside it.
  */
-export function isReadOnlyCommand(command: string | readonly string[], cwd: string): boolean {
+export function isReadOnlyCommand(
+  command: string | readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   const root = realTarget(path.resolve(cwd));
-  return readsOnly(command, root, root);
+  return readsOnly(command, root, root, env);
 }
 
-function readsOnly(command: string | readonly string[], base: string, root: string): boolean {
+function readsOnly(command: string | readonly string[], base: string, root: string, env: NodeJS.ProcessEnv): boolean {
   let parts: string[][];
+  // The operator before each part, and after it.
+  const ops: (string | undefined)[] = [undefined];
   if (Array.isArray(command)) parts = [[...command]];
   else {
     const tokens = tokenize(command as string);
@@ -273,24 +283,30 @@ function readsOnly(command: string | readonly string[], base: string, root: stri
       if ('op' in token) {
         if (!parts[parts.length - 1]!.length) return false;
         parts.push([]);
+        ops.push(token.op);
       } else parts[parts.length - 1]!.push(token.word);
     }
   }
-  for (const words of parts) {
+  ops.push(undefined);
+  for (const [i, words] of parts.entries()) {
     if (!words.length) return false;
     const name = programName(words[0]!);
     // `bash -lc '<command>'`, as Codex runs every command.
     if (name && SHELLS.has(name)) {
-      if (words.length !== 3 || !/^-l?c$|^-cl$/.test(words[1]!) || !readsOnly(words[2]!, base, root)) return false;
+      if (words.length !== 3 || !/^-l?c$|^-cl$/.test(words[1]!) || !readsOnly(words[2]!, base, root, env)) return false;
       continue;
     }
     if (words.slice(1).some((word) => outside(word, base, root))) return false;
-    if (!readerCommand(words, base)) return false;
+    if (!readerCommand(words, base, env)) return false;
     // Later commands run where `cd` went.
     if (name === 'cd') {
       // `cd -`, `cd --` and options go to `$OLDPWD`, `$HOME` and the like.
       if (words.length !== 2 || words[1]!.startsWith('-')) return false;
-      base = realTarget(path.resolve(base, words[1]!));
+      // Only where the next command surely runs there: not in a pipe, not after `||`.
+      if ((ops[i] !== undefined && ops[i] !== '&&') || (ops[i + 1] !== undefined && ops[i + 1] !== '&&')) return false;
+      const next = realTarget(path.resolve(base, words[1]!));
+      if (!existsSync(next)) return false;
+      base = next;
     }
   }
   return true;
@@ -339,12 +355,16 @@ function commandDirectory(value: unknown, depth = 0, found = new Set<unknown>())
 }
 
 /** A request to run a command that only reads inside `cwd`, by `isReadOnlyCommand`. */
-export function isReadOnlyApproval(request: ApprovalRequest, cwd: string): boolean {
+export function isReadOnlyApproval(
+  request: ApprovalRequest,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   const command = approvalCommand(request);
   if (command === undefined || escapesSandbox(request.detail)) return false;
   const root = realTarget(path.resolve(cwd));
   const dirs = [...commandDirectory(request.detail)];
   if (dirs.length > 1 || (dirs.length === 1 && (typeof dirs[0] !== 'string' || !dirs[0]))) return false;
   const base = dirs.length ? realTarget(path.resolve(root, dirs[0] as string)) : root;
-  return within(base, root) && readsOnly(command, base, root);
+  return within(base, root) && readsOnly(command, base, root, env);
 }
