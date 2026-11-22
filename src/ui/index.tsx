@@ -28,6 +28,7 @@ import {
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
 import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
+import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
 
@@ -57,6 +58,8 @@ export interface WebRunOptions extends UiRunOptions {
   openWeb?: boolean;
   host?: string;
   port?: number;
+  /** The link's access token. Default: a random one. */
+  token?: string;
   open?: boolean;
   /** Browser bundle. Default: `web-client.js` next to this module. */
   clientScript?: string;
@@ -122,7 +125,52 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   return 0;
 }
 
+/**
+ * While no agent CLI is installed, `genaicode ui` serves a page that says which ones it can use
+ * and how to get one. Resolves with the link the chat then takes over, or `null` when stopped first.
+ */
+async function welcome(options: WebRunOptions): Promise<{ port: number; token: string } | null | undefined> {
+  if (options.agent || detectAgents(options.agents, options.env).some(({ path }) => path)) return undefined;
+  const page = await startWelcome({
+    agents: options.agents,
+    env: options.env,
+    version: options.version,
+    host: options.host,
+    port: options.port,
+    assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
+  });
+  options.stderr.write(
+    `genaicode ${options.version} · no agent CLI found on PATH\n` +
+      `Open ${page.url}\n(it says how to install one, and goes on to the chat once one is there; Ctrl-C stops the server)\n`,
+  );
+  if (options.open !== false) (options.openUrl ?? openBrowser)(page.url);
+  const watchEnd = options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY);
+  const found = await new Promise<boolean>((resolve) => {
+    if (options.signal?.aborted) return resolve(false);
+    const stop = () => resolve(false);
+    options.signal?.addEventListener('abort', stop, { once: true });
+    if (watchEnd) {
+      options.stdin.once('end', stop);
+      options.stdin.resume();
+    }
+    void page.found.then(() => {
+      options.signal?.removeEventListener('abort', stop);
+      if (watchEnd) {
+        options.stdin.off('end', stop);
+        options.stdin.pause();
+      }
+      resolve(true);
+    });
+  });
+  await page.close();
+  return found ? { port: page.port, token: page.token } : null;
+}
+
 export async function runWeb(options: WebRunOptions): Promise<number> {
+  const welcomed = await welcome(options);
+  if (welcomed === null) return 0;
+  // The chat answers on the link the welcome page had, which the browser already shows.
+  if (welcomed) options = { ...options, ...welcomed, open: false };
   let controller: ChatController;
   const web = webLink(options, () => controller);
   const artifactChannel = await openArtifacts(options);
@@ -216,6 +264,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       files: createProjectFiles(options.cwd),
       host: options.host,
       port: options.port,
+      token: options.token,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async (query) => {

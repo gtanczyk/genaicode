@@ -11,7 +11,8 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 | `Contents/MacOS/node`         | The official Node.js binary, version and checksums in `node-runtime.json` |
 | `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
 
-The app has no project folder: it works where your agents work, and its chat is about their
+Without any agent CLI on the machine the window shows how to get one and goes on to the chat once
+one is installed. The app has no project folder: it works where your agents work, and its chat is about their
 sessions in every project. On start the shell reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
 `node cli.js ui --sessions --no-project --no-open --exit-with-stdin --cwd ~/.genaicode/home` (a
 directory of the app's own, outside every project) and shows the address that prints. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The

@@ -10,6 +10,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode ui` and the desktop app: with no agent CLI installed they no longer stop with an error. The page lists the agents genaicode can use, the command that installs each and how to sign in, and opens the chat by itself once one is found (#PRNUM)
+
+### Added
+
 - Desktop app: it has no project folder any more. It works where your agents work: no folder question at start, no Project menu, and its chat is about the sessions of every project. `genaicode ui --sessions --no-project` gives the same page in a browser (#281)
 
 ## 2.49.2 — 2026-11-22
