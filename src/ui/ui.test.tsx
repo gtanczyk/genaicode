@@ -866,6 +866,53 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('drops a secret draft when its question is withdrawn', async () => {
+    const stop = new AbortController();
+    let answered: unknown = 'pending';
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          answered = await task.onQuestion!(
+            {
+              id: 'q1',
+              kind: 'question',
+              questions: [{ id: 'token', question: 'Paste the token', options: [], freeText: true, secret: true }],
+            },
+            stop.signal,
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    for (const char of 's3cret') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('••••••');
+    stop.abort();
+    await expect.poll(() => answered).not.toBe('pending');
+    await tick();
+    expect(app.lastFrame()).not.toContain('Paste the token');
+    expect(app.lastFrame()).not.toContain('s3cret');
+    expect(app.lastFrame()).not.toContain('••••••');
+    app.unmount();
+    chat.close();
+  });
+
   it('picks an option past nine by its number and Enter', async () => {
     const got: unknown[] = [];
     const options = Array.from({ length: 12 }, (_, index) => ({ label: `opt${index + 1}` }));

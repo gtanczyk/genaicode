@@ -78,8 +78,8 @@ export function ChatApp({
   // `shell`: the draft is a shell command (`!` typed on an empty prompt, as in Claude Code).
   const draftRef = useRef({ text: '', cursor: 0, shell: false });
   const [, redraw] = useState(0);
+  const secretFor = useRef<string | undefined>(undefined);
   const draft = draftRef.current.text;
-  const cursor = draftRef.current.cursor;
   const shellMode = draftRef.current.shell;
   const [now, setNow] = useState(Date.now());
   const [armedExit, setArmedExit] = useState(false);
@@ -281,9 +281,14 @@ export function ChatApp({
 
   const { done, live, pending } = splitTranscript(view);
   const current = live.find((turn) => !turn.result);
+  // A secret typed for a question that went away (withdrawn, timed out) is dropped, never shown.
+  const secretKey = asked && question?.secret ? `${asked.id}:${question.id}` : undefined;
+  if (secretFor.current && secretFor.current !== secretKey) draftRef.current = { text: '', cursor: 0, shell: false };
+  secretFor.current = secretKey;
   // A secret answer never shows as typed: the composer draws one dot per character.
-  const shownDraft = question?.secret && !isCommand(draft) ? '•'.repeat([...draft].length) : draft;
-  const viewport = draftViewport(shownDraft, cursor, width - 6);
+  const { text: typed, cursor: at } = draftRef.current;
+  const shownDraft = secretKey && !isCommand(typed) ? '•'.repeat([...typed].length) : typed;
+  const viewport = draftViewport(shownDraft, at, width - 6);
   const spinner = SPINNER[Math.floor(now / 120) % SPINNER.length];
   const queued = view.session.queued;
 
@@ -429,7 +434,7 @@ export function ChatApp({
             <Text color={shellMode ? 'magenta' : 'cyan'} bold>
               {shellMode ? '!' : '›'}{' '}
             </Text>
-            {draft ? (
+            {typed ? (
               <Text>
                 {viewport.before}
                 <Text inverse>{viewport.at}</Text>
