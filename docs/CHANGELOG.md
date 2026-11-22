@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.50.0 — 2026-11-22
+
 ### Added
 
 - Desktop app for Linux: each release carries an AppImage (it updates itself) and a `.deb` for x86_64. The panel icon with the waiting sessions works where the desktop shows status icons; the package installs `genaicode-desktop` and leaves the `genaicode` command and the system's Node.js alone (#284)
