@@ -16,6 +16,7 @@ import type {
   Artifact,
   CodingAgent,
   McpServer,
+  QuestionAnswers,
   RateLimit,
 } from './types.js';
 
@@ -36,7 +37,14 @@ export type SessionEntry =
   /** The agent published something to look at; the content is in the session's `ArtifactStore`. */
   | { kind: 'artifact'; artifact: Artifact }
   /** `automatic`: decided by the task's `permissions.approval`, without asking. */
-  | { kind: 'approval'; request: ApprovalRequest; decision?: ApprovalDecision; automatic?: boolean }
+  | {
+      kind: 'approval';
+      request: ApprovalRequest;
+      decision?: ApprovalDecision;
+      automatic?: boolean;
+      /** A question's answers (`request.kind === 'question'`), secrets masked. */
+      answers?: QuestionAnswers;
+    }
   | { kind: 'input'; text: string }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
@@ -107,7 +115,7 @@ export interface AgentSessionOptions {
   /** Continue this agent session on the first turn. */
   resume?: string;
   /** Task fields applied to every turn (env, timeoutMs, maxTurns, mcpServers, extraArgs). */
-  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval'>;
+  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'onQuestion'>;
   /**
    * Decide approvals without asking. Return undefined to leave the request pending until
    * `approve()` is called. Without it every request waits for `approve()`.
@@ -183,6 +191,12 @@ export interface AgentSession {
   /** Answer a pending approval request. Returns false when no such request is pending. */
   approve(id: string, decision: ApprovalDecision): boolean;
   /**
+   * Answer a pending question of the agent (a request of `kind: 'question'` in `approvals`):
+   * the chosen option labels or typed text per question id. `approve(id, 'deny')` declines it.
+   * Returns false when no such question is pending.
+   */
+  answer(id: string, answers: QuestionAnswers): boolean;
+  /**
    * Ask the person about something the host app does for the running turn (a tool of its own):
    * the request joins `approvals` like the agent's, and `autoApprove` decides it the same way.
    * Resolves 'deny' when no turn runs, or once the turn ends unanswered.
@@ -255,7 +269,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // What the user steered into the failed turn: the next agent hears it after the prompt.
   let steeredBefore: string | undefined;
   const listeners = new Set<(state: SessionState) => void>();
-  const waiting = new Map<string, (decision: ApprovalDecision) => void>();
+  const waiting = new Map<string, (decision: ApprovalDecision, answers?: QuestionAnswers) => void>();
   const packRuns = new Map<number, { agent: CodingAgent; controls: PackControls; unsubscribe?: () => void }>();
   let checkLifetime = new AbortController();
   let activeReviews = 0;
@@ -422,7 +436,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ...turn,
           entries: turn.entries.map((entry) =>
             entry.kind === 'approval' && entry.request.id === event.id && !entry.decision
-              ? { ...entry, decision: event.decision, ...(event.automatic ? { automatic: true } : {}) }
+              ? {
+                  ...entry,
+                  decision: event.decision,
+                  ...(event.automatic ? { automatic: true } : {}),
+                  ...(event.answers ? { answers: event.answers } : {}),
+                }
               : entry,
           ),
         }));
@@ -497,6 +516,31 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const answer = (decision: ApprovalDecision) => {
         signal?.removeEventListener('abort', withdraw);
         resolve(decision);
+      };
+      signal?.addEventListener('abort', withdraw, { once: true });
+      waiting.set(request.id, answer);
+      set({ approvals: [...state.approvals, request] });
+    });
+  };
+
+  // An agent's question: it waits for `answer()` whatever `autoApprove` says, which cannot choose.
+  const onQuestion = (
+    turnId: number,
+    request: ApprovalRequest,
+    signal?: AbortSignal,
+  ): Promise<QuestionAnswers | undefined> => {
+    addApproval(turnId, request);
+    if (signal?.aborted) return Promise.resolve(undefined);
+    return new Promise((resolve) => {
+      const withdraw = () => {
+        if (waiting.get(request.id) !== answer) return;
+        waiting.delete(request.id);
+        set({ approvals: state.approvals.filter((pending) => pending.id !== request.id) });
+        resolve(undefined);
+      };
+      const answer = (decision: ApprovalDecision, answers?: QuestionAnswers) => {
+        signal?.removeEventListener('abort', withdraw);
+        resolve(decision === 'approve' ? (answers ?? {}) : undefined);
       };
       signal?.addEventListener('abort', withdraw, { once: true });
       waiting.set(request.id, answer);
@@ -668,6 +712,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         resume,
         signal: turnController.signal,
         onApproval: (request, signal) => onApproval(turnId, request, signal),
+        onQuestion: (request, signal) => onQuestion(turnId, request, signal),
       });
       if (current.pack) {
         const { lead, maxParallel } = current.pack;
@@ -839,6 +884,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       waiting.delete(id);
       set({ approvals: state.approvals.filter((request) => request.id !== id) });
       resolve(decision);
+      return true;
+    },
+    answer(id, answers) {
+      const resolve = waiting.get(id);
+      if (!resolve || !state.approvals.some((request) => request.id === id && request.kind === 'question'))
+        return false;
+      waiting.delete(id);
+      set({ approvals: state.approvals.filter((request) => request.id !== id) });
+      resolve('approve', answers);
       return true;
     },
     async actOnPackTask(turnId, id, action) {

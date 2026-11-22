@@ -1,7 +1,7 @@
 import { reportApproval, type LiveApprovalIds, type LiveApprovals, type LiveSession } from '../live-agent.js';
 import { resolvePermissions } from '../permissions.js';
 import { RpcError } from '../rpc.js';
-import type { ApprovalRequest } from '../types.js';
+import type { AgentQuestion, ApprovalRequest } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
 import { anySignal } from '../runtime.js';
 
@@ -14,6 +14,8 @@ const KINDS: Record<string, ApprovalRequest['kind']> = {
   applyPatchApproval: 'file-change',
 };
 const LEGACY = new Set(['execCommandApproval', 'applyPatchApproval']);
+/** Codex's `request_user_input` tool: questions with options for the person (experimental in Codex). */
+const QUESTION = 'item/tool/requestUserInput';
 
 /**
  * Codex app-server approvals (`codex app-server`, v2 protocol). Commands and file changes
@@ -23,6 +25,9 @@ const LEGACY = new Set(['execCommandApproval', 'applyPatchApproval']);
  * `task.permissions.sandbox` other than `unrestricted` it is denied without asking, since
  * the profile would widen that sandbox. A request from another thread or turn is rejected; an answer that arrives after the turn ended or after the
  * server withdrew the request (`serverRequest/resolved`) declines.
+ *
+ * `item/tool/requestUserInput` (Codex's `request_user_input` tool) becomes a request of
+ * `kind: 'question'` for `task.onQuestion`; unanswered, it gets an empty set of answers.
  */
 export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds): LiveApprovals {
   const turn = new AbortController();
@@ -44,6 +49,22 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
   const stillOpen = (params: unknown) => !turn.signal.aborted && !session.signal.aborted && ownTurn(params);
 
   const answer = async (method: string, params: JsonObject, signal: AbortSignal): Promise<unknown> => {
+    if (method === QUESTION) {
+      const itemId = stringField(params, 'itemId');
+      const questions = codexQuestions(params.questions);
+      if (!itemId || !questions) throw new RpcError('Invalid user input request.', -32602);
+      const request: ApprovalRequest = {
+        id: itemId,
+        kind: 'question',
+        scope: 'once',
+        summary: questions[0]!.question,
+        detail: params,
+        questions,
+      };
+      const asked = await session.ask(request, signal);
+      const given = asked.decision === 'approve' && stillOpen(params) ? (asked.answers ?? {}) : {};
+      return { answers: Object.fromEntries(Object.entries(given).map(([id, answers]) => [id, { answers }])) };
+    }
     if (method === 'item/permissions/requestApproval') {
       const asked = isObject(params.permissions) ? params.permissions : undefined;
       const itemId = stringField(params, 'itemId');
@@ -88,7 +109,7 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
 
   return {
     request(method, params, context) {
-      if (!KINDS[method]) return undefined;
+      if (!KINDS[method] && method !== QUESTION) return undefined;
       if (!isObject(params) || !ownTurn(params))
         return Promise.reject(new RpcError('This approval does not belong to the running turn.', -32602));
       const signal = context ? anySignal([turn.signal, context.signal]) : turn.signal;
@@ -104,6 +125,37 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
       turn.abort();
     },
   };
+}
+
+/** The questions of a `requestUserInput` request, or undefined when they are malformed. */
+function codexQuestions(asked: unknown): AgentQuestion[] | undefined {
+  if (!Array.isArray(asked) || !asked.length || asked.length > 8) return undefined;
+  const questions: AgentQuestion[] = [];
+  for (const item of asked) {
+    const id = stringField(item, 'id');
+    const question = stringField(item, 'question');
+    if (!isObject(item) || !id || !question) return undefined;
+    if (item.options != null && (!Array.isArray(item.options) || item.options.length > 20)) return undefined;
+    const options = [];
+    for (const option of (item.options as unknown[] | null | undefined) ?? []) {
+      const label = stringField(option, 'label');
+      if (!label) return undefined;
+      const description = stringField(option, 'description');
+      options.push({ label, ...(description ? { description } : {}) });
+    }
+    const header = stringField(item, 'header');
+    questions.push({
+      id,
+      question,
+      ...(header ? { header } : {}),
+      options,
+      // Without options the answer can only be typed.
+      ...(item.isOther === true || !options.length ? { freeText: true } : {}),
+      ...(item.isSecret === true ? { secret: true } : {}),
+    });
+  }
+  if (new Set(questions.map((question) => question.id)).size !== questions.length) return undefined;
+  return questions;
 }
 
 function summaryOf(params: JsonObject): { summary?: string } {

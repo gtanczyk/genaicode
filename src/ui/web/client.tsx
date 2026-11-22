@@ -567,6 +567,7 @@ function App() {
         }}
         canStop={!!view?.shells}
         onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+        onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
         onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
         onPackAction={async (turnId, id, action) => {
           const reply = await postCommand({ type: 'pack-task', turnId, id, action });

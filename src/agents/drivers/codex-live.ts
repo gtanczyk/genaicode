@@ -44,6 +44,7 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
       usage: true,
       rateLimits: true,
       approvals: true,
+      questions: true,
       resume: true,
       mcp: true,
       permissions: {

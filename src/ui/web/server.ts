@@ -135,6 +135,8 @@ export type WebCommand =
   | { type: 'submit'; text: string; files?: string[] }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  /** Answer a question of the agent: chosen option labels or typed text per question id. */
+  | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   /** Take over the session with this id (`ChatController.continueSession`). */
@@ -228,6 +230,20 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const decision = command.decision;
       if (id === undefined || (decision !== 'approve' && decision !== 'deny')) return undefined;
       return { type: 'approve', id, decision };
+    }
+    case 'answer': {
+      const id = text('id', 200);
+      const given = command.answers;
+      if (id === undefined || typeof given !== 'object' || given === null || Array.isArray(given)) return undefined;
+      const entries = Object.entries(given as Record<string, unknown>);
+      if (entries.length > 8) return undefined;
+      const answers: Record<string, string[]> = {};
+      for (const [key, value] of entries) {
+        if (key.length > 500 || !Array.isArray(value) || value.length > 21) return undefined;
+        if (!value.every((item) => typeof item === 'string' && item.length <= 10_000)) return undefined;
+        answers[key] = value as string[];
+      }
+      return { type: 'answer', id, answers };
     }
     case 'continue': {
       const id = text('id', 200);
@@ -676,6 +692,8 @@ async function run(
       return true;
     case 'approve':
       return controller.approve(command.id, command.decision);
+    case 'answer':
+      return controller.answer(command.id, command.answers);
     case 'tower':
       return controller.decideTower(command.id, command.decision);
     case 'continue':

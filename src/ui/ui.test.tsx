@@ -738,6 +738,92 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('answers an agent question from the terminal: numbers, typed text, skip', async () => {
+    const got: unknown[] = [];
+    const request = (id: string) => ({
+      id,
+      kind: 'question' as const,
+      questions: [
+        { id: 'color', question: 'Which color?', options: [{ label: 'Red' }, { label: 'Blue' }], freeText: true },
+        { id: 'sizes', question: 'Which sizes?', options: [{ label: 'S' }, { label: 'M' }], multiple: true },
+      ],
+    });
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(await task.onQuestion!(request('q1')));
+          got.push(await task.onQuestion!(request('q2')));
+          got.push(await task.onQuestion!(request('q3')));
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('ask me');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (1/2): Which color?');
+    expect(app.lastFrame()).toContain('2 Blue');
+    // `y` is no answer to a question, and /auto does not answer it either.
+    app.stdin.write('y');
+    await tick();
+    app.stdin.write('\x7f');
+    chat.submit('/auto');
+    await tick();
+    expect(got).toEqual([]);
+    app.stdin.write('2');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('2');
+    await tick();
+    expect(app.lastFrame()).toContain('[x] M');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ color: ['Blue'], sizes: ['M'] }]);
+
+    // A typed answer, then one choice for the second question.
+    await tick();
+    for (const char of 'Green') app.stdin.write(char);
+    await tick();
+    app.stdin.write('\r');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('\r');
+    await expect.poll(() => got.length).toBe(2);
+    expect(got[1]).toEqual({ color: ['Green'], sizes: ['S'] });
+
+    // The first question takes typed text, so an empty Enter skips; the second one skips on `n`.
+    await tick();
+    app.stdin.write('\r');
+    await tick();
+    expect(got.length).toBe(2);
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('2');
+    await tick();
+    app.stdin.write('n');
+    await expect.poll(() => got.length).toBe(3);
+    expect(got[2]).toBeUndefined();
+    app.unmount();
+    chat.close();
+  });
+
   it('switches to shell mode on ! like Claude Code, and back', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
@@ -888,6 +974,14 @@ describe('web UI server', () => {
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
     expect(parseCommand({ type: 'approve', id: 'a', decision: 'maybe' })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q', answers: { q1: ['Blue'] }, more: 1 })).toEqual({
+      type: 'answer',
+      id: 'q',
+      answers: { q1: ['Blue'] },
+    });
+    expect(parseCommand({ type: 'answer', id: 'q', answers: { q1: 'Blue' } })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q', answers: [['Blue']] })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q' })).toBeUndefined();
     expect(parseCommand({ type: 'continue', id: 'abcd1234' })).toEqual({ type: 'continue', id: 'abcd1234' });
     expect(parseCommand({ type: 'continue', id: '' })).toBeUndefined();
     expect(parseCommand({ type: 'submit', text: 1 })).toBeUndefined();

@@ -3,9 +3,17 @@ import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { askApproval } from '../live-agent.js';
+import { askApproval, askQuestion } from '../live-agent.js';
 import type { PermissionFlags } from '../permissions.js';
-import type { AgentPermissions, ApprovalHandler, ApprovalRequest, SandboxPolicy } from '../types.js';
+import type {
+  AgentPermissions,
+  AgentQuestion,
+  ApprovalHandler,
+  ApprovalRequest,
+  QuestionAnswers,
+  QuestionHandler,
+  SandboxPolicy,
+} from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
 import { anySignal } from '../runtime.js';
 
@@ -15,6 +23,9 @@ export const CLAUDE_APPROVAL_TOOL = 'approve';
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const MAX_BODY_BYTES = 1024 * 1024;
 const DENIED = 'Permission denied by the user, or the request was withdrawn.';
+const UNANSWERED = 'The user did not answer, or the question was withdrawn.';
+/** Claude Code's tool for asking the person to choose. It comes through the permission prompt tool. */
+export const CLAUDE_QUESTION_TOOL = 'AskUserQuestion';
 
 /** An MCP `tools/call` result. */
 export interface McpToolResult {
@@ -48,6 +59,11 @@ export interface ClaudeApprovalToolOptions {
   sandbox?: SandboxPolicy;
   /** The run's working directory. */
   cwd?: string;
+  /**
+   * Answers Claude's `AskUserQuestion` calls, which arrive here as requests of
+   * `kind: 'question'` and never go to `onApproval`. Without it they are declined.
+   */
+  onQuestion?: QuestionHandler;
 }
 
 /** Build the permission prompt tool around an approval handler. */
@@ -71,6 +87,17 @@ export function claudeApprovalTool(
       const request = refused ? undefined : parsed;
       // `updatedInput` is the input Claude asked about, copied before the handler can touch it.
       const input = request && isObject(args) ? structuredClone(args.input) : undefined;
+      if (request?.kind === 'question') {
+        const asked = await askQuestion({ onQuestion: options.onQuestion }, request, signal);
+        const answered =
+          asked.decision === 'approve'
+            ? {
+                behavior: 'allow',
+                updatedInput: { ...(input as JsonObject), answers: claudeAnswers(request, asked.answers ?? {}) },
+              }
+            : { behavior: 'deny', message: UNANSWERED };
+        return { content: [{ type: 'text', text: JSON.stringify(answered) }] };
+      }
       const decision = request ? await askApproval({ onApproval }, request, signal) : 'deny';
       const answer =
         decision === 'approve' ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: DENIED };
@@ -86,6 +113,16 @@ export function claudeApprovalRequest(args: unknown): ApprovalRequest | undefine
   if (!tool || tool.length > 200) return undefined;
   if (args.tool_use_id !== undefined && typeof args.tool_use_id !== 'string') return undefined;
   const input = args.input;
+  const questions = tool === CLAUDE_QUESTION_TOOL ? claudeQuestions(input) : undefined;
+  if (questions)
+    return {
+      id: stringField(args, 'tool_use_id') || `claude-${randomUUID()}`,
+      kind: 'question',
+      scope: 'once',
+      summary: questions[0]!.question,
+      detail: args,
+      questions,
+    };
   const kind: ApprovalRequest['kind'] = tool === 'Bash' ? 'command' : EDIT_TOOLS.has(tool) ? 'file-change' : 'other';
   const target =
     tool === 'Bash'
@@ -100,6 +137,51 @@ export function claudeApprovalRequest(args: unknown): ApprovalRequest | undefine
   };
 }
 
+/**
+ * The questions of an `AskUserQuestion` input, or undefined when it is not one Claude Code
+ * would accept (then the call is an ordinary permission prompt). Ids are `q1`, `q2`...; Claude
+ * always lets the person type an answer of their own.
+ */
+function claudeQuestions(input: JsonObject): AgentQuestion[] | undefined {
+  const asked = input.questions;
+  if (!Array.isArray(asked) || !asked.length || asked.length > 8) return undefined;
+  const questions: AgentQuestion[] = [];
+  for (const [index, item] of asked.entries()) {
+    const question = stringField(item, 'question');
+    const options = isObject(item) && Array.isArray(item.options) ? item.options : undefined;
+    if (!question || !options || options.length > 20) return undefined;
+    const choices = [];
+    for (const option of options) {
+      const label = stringField(option, 'label');
+      if (!label) return undefined;
+      const description = stringField(option, 'description');
+      choices.push({ label, ...(description ? { description } : {}) });
+    }
+    const header = stringField(item, 'header');
+    questions.push({
+      id: `q${index + 1}`,
+      question,
+      ...(header ? { header } : {}),
+      options: choices,
+      ...(isObject(item) && item.multiSelect === true ? { multiple: true } : {}),
+      freeText: true,
+    });
+  }
+  // Claude keys the answers by question text, so two questions with one text cannot both be answered.
+  if (new Set(questions.map((question) => question.question)).size !== questions.length) return undefined;
+  return questions;
+}
+
+/** Answers in Claude's form: question text to answer, several choices joined with ", ". */
+function claudeAnswers(request: ApprovalRequest, answers: QuestionAnswers): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const question of request.questions ?? []) {
+    const picked = answers[question.id];
+    if (picked?.length) out[question.question] = picked.join(', ');
+  }
+  return out;
+}
+
 // Tools that only read, which `read-only` may still grant.
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch', 'TodoWrite']);
 
@@ -112,6 +194,8 @@ const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFe
 export function claudeSandboxRefuses(args: unknown, sandbox: SandboxPolicy, cwd: string): boolean {
   if (sandbox === 'unrestricted') return false;
   const tool = stringField(args, 'tool_name') ?? '';
+  // A question changes nothing, so no sandbox refuses it.
+  if (claudeApprovalRequest(args)?.kind === 'question') return false;
   if (sandbox === 'read-only') return !READ_TOOLS.has(tool);
   if (tool === 'Bash') return true;
   if (!EDIT_TOOLS.has(tool)) return false;
@@ -209,10 +293,14 @@ export interface ClaudeApprovalServer {
  */
 export async function startClaudeApprovalServer(
   onApproval: ApprovalHandler | undefined,
-  options: { name?: string } & Pick<ClaudeApprovalToolOptions, 'sandbox' | 'cwd'> = {},
+  options: { name?: string } & Pick<ClaudeApprovalToolOptions, 'sandbox' | 'cwd' | 'onQuestion'> = {},
 ): Promise<ClaudeApprovalServer> {
   const name = options.name ?? 'genaicode_approval';
-  const tool = claudeApprovalTool(onApproval, { sandbox: options.sandbox, cwd: options.cwd });
+  const tool = claudeApprovalTool(onApproval, {
+    sandbox: options.sandbox,
+    cwd: options.cwd,
+    onQuestion: options.onQuestion,
+  });
   const token = randomBytes(32).toString('hex');
   const expected = Buffer.from(`Bearer ${token}`);
   const closing = new AbortController();

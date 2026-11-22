@@ -1,6 +1,7 @@
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTurn } from '../../agents/session.js';
+import type { QuestionAnswers } from '../../agents/types.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
 import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
@@ -78,6 +79,11 @@ export function ChatApp({
   const [armedExit, setArmedExit] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [selection, selectTask] = useState<TaskSelection>();
+  const [answering, setAnswering] = useState<{ id: string; answers: QuestionAnswers; done: string[] }>({
+    id: '',
+    answers: {},
+    done: [],
+  });
   const history = useRef<string[]>([]);
   const historyIndex = useRef(0);
   const stash = useRef('');
@@ -132,6 +138,21 @@ export function ChatApp({
   }, [draft]);
 
   const approval = view.session.approvals[0];
+  // A question of the agent is answered one question at a time; this holds what was chosen so far.
+  const asked = approval?.kind === 'question' && approval.questions?.length ? approval : undefined;
+  const partial = asked && answering.id === asked.id ? answering.answers : {};
+  const question = asked?.questions!.find((item) => !answering.done.includes(item.id) || answering.id !== asked.id);
+  /** Close the current question with `picked`; the last one sends every answer. */
+  const answerQuestion = (picked: string[]) => {
+    if (!asked || !question) return;
+    const others = Object.fromEntries(Object.entries(partial).filter(([id]) => id !== question.id));
+    const answers: QuestionAnswers = { ...others, ...(picked.length ? { [question.id]: picked } : {}) };
+    const done = [...(answering.id === asked.id ? answering.done : []), question.id];
+    if (done.length < asked.questions!.length) return setAnswering({ id: asked.id, answers, done });
+    setAnswering({ id: '', answers: {}, done: [] });
+    if (Object.keys(answers).length) controller.answer(asked.id, answers);
+    else controller.approve(asked.id, 'deny');
+  };
   const tasks = view.session.turns.flatMap((turn) => (turn.pack?.tasks ?? []).map((task) => ({ turn, task })));
   const currentTask =
     selection && tasks.find(({ turn, task }) => turn.id === selection.turnId && task.id === selection.id);
@@ -157,11 +178,37 @@ export function ChatApp({
     if (key.ctrl && input === 'd' && !draft) return quit();
     // Not while composing a shell command: its letters must not answer the approval.
     const plain = !key.ctrl && !key.meta && !shell;
-    if (approval && !draft && plain && (input === 'y' || input === 'n')) {
+    if (asked && question && plain) {
+      const option = !draft && /^[1-9]$/.test(input) ? question.options[Number(input) - 1] : undefined;
+      if (option) {
+        if (!question.multiple) return answerQuestion([option.label]);
+        const had = partial[question.id] ?? [];
+        const next = had.includes(option.label) ? had.filter((item) => item !== option.label) : [...had, option.label];
+        return setAnswering({
+          id: asked.id,
+          answers: { ...partial, [question.id]: next },
+          done: answering.id === asked.id ? answering.done : [],
+        });
+      }
+      // Enter: what was typed is the answer (where the agent takes one), else the options picked so far.
+      if (key.return && !draft.startsWith('/')) {
+        const typed = question.freeText ? draft.trim() : '';
+        const chosen = question.multiple ? (partial[question.id] ?? []) : [];
+        if (typed || chosen.length) {
+          edit('', 0, false);
+          return answerQuestion(typed ? [...chosen, typed] : chosen);
+        }
+        // Where an answer can be typed, letters belong to it: an empty Enter skips instead of `n`.
+        if (!draft && !question.freeText) return;
+      }
+      // Skip this question. With nothing answered at all, the agent is told so.
+      if (!draft && (question.freeText ? key.return : input === 'n')) return answerQuestion([]);
+    }
+    if (approval && !asked && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
     }
-    if (approval && !draft && plain && input === 'a') {
+    if (approval && !asked && !draft && plain && input === 'a') {
       controller.submit('/auto on');
       return;
     }
@@ -282,7 +329,39 @@ export function ChatApp({
         {currentTask ? (
           <PackInspector current={currentTask} tasks={tasks} controller={controller} select={selectTask} rows={rows} />
         ) : null}
-        {!currentTask && approval ? (
+        {!currentTask && asked && question ? (
+          <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
+            <Text>
+              <Text color="cyan" bold>
+                {asked.subtaskId ? `Task ${asked.subtaskId}` : (current?.pack?.lead ?? view.session.agent)} asks
+                {asked.questions!.length > 1
+                  ? ` (${asked.questions!.indexOf(question) + 1}/${asked.questions!.length})`
+                  : ''}
+                :{' '}
+              </Text>
+              {question.question}
+            </Text>
+            {question.options.map((option, index) => (
+              <Text key={option.label}>
+                <Text color="green" bold>
+                  {index + 1}
+                </Text>{' '}
+                {question.multiple ? ((partial[question.id] ?? []).includes(option.label) ? '[x] ' : '[ ] ') : ''}
+                {option.label}
+                {option.description ? <Text color="gray"> {option.description}</Text> : null}
+              </Text>
+            ))}
+            <Text color="gray">
+              {question.options.length ? (question.multiple ? 'numbers toggle, Enter sends' : 'a number chooses') : ''}
+              {question.freeText ? `${question.options.length ? ' · ' : ''}type an answer and press Enter` : ''} ·{' '}
+              <Text color="red" bold>
+                {question.freeText ? 'Enter' : 'n'}
+              </Text>{' '}
+              {question.freeText ? 'on an empty line skips' : 'skip'}
+            </Text>
+          </Box>
+        ) : null}
+        {!currentTask && approval && !asked ? (
           <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
             <Text>
               <Text color="yellow" bold>

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
-import { decideApproval, reportApproval } from '../live-agent.js';
+import { decideApproval, reportApproval, reportReply } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
 import { epochMs, limitStatus } from '../runtime.js';
@@ -174,6 +174,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       mcp: true,
       resume: true,
       approvals: true,
+      questions: true,
       permissions: {
         approval: ['ask', 'auto-approve', 'deny'],
         sandbox: ['workspace-write', 'read-only', 'unrestricted'],
@@ -298,7 +299,15 @@ async function claudeApprovals(task: AgentTask, context: PrepareContext) {
           : decideApproval(task, request, ended),
       );
     },
-    { name },
+    {
+      name,
+      // Asked whatever the approval policy: `auto-approve` cannot choose for the person.
+      onQuestion: async (request, signal) => {
+        const ended = signal ? anySignal([signal, context.signal]) : context.signal;
+        const outcome = await reportReply(context.emit, request, ended, () => decideApproval(task, request, ended));
+        return outcome.decision === 'approve' ? (outcome.answers ?? {}) : undefined;
+      },
+    },
   );
 }
 

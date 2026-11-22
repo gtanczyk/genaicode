@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { askApproval, type LiveApprovals, type LiveSession } from '../live-agent.js';
+import { askApproval, askQuestion, type LiveApprovals, type LiveSession } from '../live-agent.js';
 import { RpcError, RpcPeer } from '../rpc.js';
-import type { AgentEvent, AgentPermissions, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
+import type {
+  AgentEvent,
+  AgentPermissions,
+  ApprovalDecision,
+  ApprovalHandler,
+  ApprovalRequest,
+  QuestionHandler,
+} from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import { museApprovals } from './muse-approvals.js';
 
@@ -19,11 +26,12 @@ function harness(
   onApproval?: ApprovalHandler,
   decideAck: (params: Record<string, unknown>) => unknown = () => ({ terminal: true }),
   permissions?: AgentPermissions,
+  onQuestion?: QuestionHandler,
 ) {
   const sent: Sent[] = [];
   const events: AgentEvent[] = [];
   const lifetime = new AbortController();
-  const task = { prompt: 'p', cwd: '.', onApproval, permissions };
+  const task = { prompt: 'p', cwd: '.', onApproval, onQuestion, permissions };
   const rpc: RpcPeer = new RpcPeer(
     (line) => {
       const message = JSON.parse(line) as Sent;
@@ -46,6 +54,8 @@ function harness(
     onRequest() {},
     approve: (request, signal) =>
       askApproval(task, request, signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal),
+    ask: (request, signal) =>
+      askQuestion(task, request, signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal),
     setSteer() {},
   };
   const approvals = build(session);
@@ -84,7 +94,83 @@ function held() {
 
 describe('codexApprovals', () => {
   const ids = { session: 'th-1', turn: 'tu-1' };
-  const codex = (onApproval?: ApprovalHandler) => harness((session) => codexApprovals(session, () => ids), onApproval);
+  const codex = (onApproval?: ApprovalHandler, onQuestion?: QuestionHandler) =>
+    harness((session) => codexApprovals(session, () => ids), onApproval, undefined, undefined, onQuestion);
+
+  describe('request_user_input', () => {
+    const input = {
+      threadId: 'th-1',
+      turnId: 'tu-1',
+      itemId: 'q-item',
+      isBlocking: true,
+      questions: [
+        {
+          id: 'db',
+          header: 'Database',
+          question: 'Which database?',
+          isOther: true,
+          isSecret: false,
+          options: [
+            { label: 'Postgres', description: 'Relational' },
+            { label: 'SQLite', description: 'One file' },
+          ],
+        },
+        { id: 'token', header: 'Token', question: 'Paste the token', isOther: false, isSecret: true, options: null },
+      ],
+    };
+
+    it('asks onQuestion and answers per question id', async () => {
+      const onQuestion = vi.fn<QuestionHandler>(() => ({ db: ['SQLite'], token: ['s3cret'], other: ['x'] }));
+      const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+      const h = codex(onApproval, onQuestion);
+      expect((await h.request('item/tool/requestUserInput', input)).result).toEqual({
+        answers: { db: { answers: ['SQLite'] }, token: { answers: ['s3cret'] } },
+      });
+      expect(onApproval).not.toHaveBeenCalled();
+      expect(onQuestion.mock.calls[0]![0]).toEqual({
+        id: 'q-item',
+        kind: 'question',
+        scope: 'once',
+        summary: 'Which database?',
+        detail: input,
+        questions: [
+          {
+            id: 'db',
+            header: 'Database',
+            question: 'Which database?',
+            freeText: true,
+            options: [
+              { label: 'Postgres', description: 'Relational' },
+              { label: 'SQLite', description: 'One file' },
+            ],
+          },
+          { id: 'token', header: 'Token', question: 'Paste the token', options: [], freeText: true, secret: true },
+        ],
+      });
+    });
+
+    it('answers nothing when the person skips, or nobody can be asked', async () => {
+      expect((await codex(undefined, () => undefined).request('item/tool/requestUserInput', input)).result).toEqual({
+        answers: {},
+      });
+      expect((await codex(() => 'approve').request('item/tool/requestUserInput', input)).result).toEqual({
+        answers: {},
+      });
+    });
+
+    it('rejects malformed questions and another turn', async () => {
+      const onQuestion = vi.fn<QuestionHandler>(() => ({}));
+      const h = codex(undefined, onQuestion);
+      for (const questions of [[], 'x', [{ id: 'a' }], [input.questions[0], input.questions[0]]])
+        expect((await h.request('item/tool/requestUserInput', { ...input, questions })).error).toMatchObject({
+          code: -32602,
+        });
+      expect((await h.request('item/tool/requestUserInput', { ...input, turnId: 'old' })).error).toMatchObject({
+        code: -32602,
+      });
+      expect(onQuestion).not.toHaveBeenCalled();
+    });
+  });
   const command = {
     threadId: 'th-1',
     turnId: 'tu-1',
@@ -222,7 +308,7 @@ describe('codexApprovals', () => {
     ).toMatchObject({
       code: -32602,
     });
-    expect(h.approvals.request('item/tool/requestUserInput', command)).toBeUndefined();
+    expect(h.approvals.request('mcpServer/elicitation/request', command)).toBeUndefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
