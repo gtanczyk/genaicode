@@ -821,4 +821,14 @@ describe('createAgentSession', () => {
     const [tool] = session.get().turns[0].entries;
     expect(tool).toMatchObject({ kind: 'tool', output: 'xxxxxxxxxx\n… (truncated)', done: true });
   });
+  it('keeps the effort of a resumed session that cannot change it, across an agent switch', () => {
+    const fixed = fakeAgent([], { resume: true, effort: ['low', 'high'], effortAtStart: true }, 'fixed').agent;
+    const other = fakeAgent([], { resume: true, effort: ['low', 'high'] }, 'other').agent;
+    const session = createAgentSession({ agent: fixed, cwd: '/w', resume: 's-1', effort: 'low' });
+    session.setAgent(other);
+    session.setEffort('high');
+    session.setAgent(fixed);
+    expect(session.get()).toMatchObject({ sessionId: 's-1', effort: 'low' });
+    expect(() => session.setEffort('high')).toThrow(/keeps the effort/);
+  });
 });

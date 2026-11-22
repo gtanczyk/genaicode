@@ -274,7 +274,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
   // Per agent: its own session and the last turn that session knows about.
   const known = new Map<CodingAgent, { sessionId?: string; upTo: number; effort?: string }>(
-    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
+    options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0, effort: options.effort }]] : [],
   );
   // Turns after this id are news to the current agent; undefined: it knows everything.
   let missedAfter: number | undefined;
@@ -934,7 +934,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         // Its own session holds these turns; what it missed before them is left behind.
         explicitResume = undefined;
         missedAfter = undefined;
-        known.set(agent, { sessionId: own, upTo: nextTurnId - 1 });
+        known.set(agent, { sessionId: own, upTo: nextTurnId - 1, effort: state.effort });
       } else {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
