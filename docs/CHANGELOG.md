@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode ui`: the plan limits, agent, model, approval mode and the attach button sit in one row under the prompt field, which holds the text and Send only. `<AgentChat composerExtras>` renders in that row, with the attach buttons (#264)
 - `genaicode ui`: the path of a file the agent edited or read opens the file beside the chat (text files inside the project only). `<AgentChat>` takes `onOpenFile` to make those paths buttons, and `toolPath` is exported from `genaicode/react` (#262)
 - `<AgentChat>`: a step that edits a file shows what it changed, added and removed lines, when opened, with the counts on its line. `toolDiff` is exported from `genaicode/react` (#261)
 - `genaicode ui`: the agent, the model, the approval mode and the plan's limits sit in the prompt box instead of the top bar, and files can be attached, pasted or dropped on the chat (kept in `.genaicode/uploads/`, their paths go to the agent). `<AgentChat>` takes `composerExtras` for host controls in the composer (#260)
