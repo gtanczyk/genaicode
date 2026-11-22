@@ -269,6 +269,17 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('/clear empties the conversation and its notices', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    chat.submit('hi');
+    await chat.session.idle();
+    chat.submit('/help');
+    expect(chat.get().session.turns).toHaveLength(1);
+    expect(chat.submit('/clear')).toBe('ok');
+    expect(chat.get()).toMatchObject({ notices: [], session: { turns: [], sessionId: undefined } });
+    chat.close();
+  });
+
   it('sets the effort for the next prompt with /effort, in the words the agent takes', async () => {
     const thinker = { ...echoAgent('thinker'), capabilities: { resume: true, effort: ['low', 'high'] } };
     const chat = createChatController({ agents: [thinker, echoAgent('plain')], cwd: '/w', env });

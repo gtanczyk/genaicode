@@ -571,6 +571,12 @@ export function createChatController(options: ChatOptions): ChatController {
           session.reset();
           notice('Next prompt starts a new agent session.');
           return 'ok';
+        case 'clear':
+          if (session.clear()) {
+            notices = [];
+            publish();
+          } else notice('A turn is running. /stop it first, then /clear.', 'error');
+          return 'ok';
         case 'stop':
           stopAll();
           return 'ok';

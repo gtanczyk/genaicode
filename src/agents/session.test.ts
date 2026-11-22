@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createAgentSession } from './session.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
@@ -435,6 +435,30 @@ describe('createAgentSession', () => {
     session.send('c');
     await session.idle();
     expect(second.tasks[1].resume).toBeUndefined();
+  });
+
+  it('clear() starts a new conversation: no transcript, no session to resume, not during a turn', async () => {
+    let release = () => {};
+    const { agent, tasks } = fakeAgent([
+      async () => ({ sessionId: 's-1' }),
+      () => new Promise<void>((resolve) => (release = resolve)),
+      async () => {},
+    ]);
+    const session = createAgentSession({ agent: { ...agent, capabilities: { resume: true } }, cwd: '.' });
+    session.send('a');
+    await session.idle();
+    session.send('b');
+    await vi.waitFor(() => expect(tasks).toHaveLength(2));
+    expect(session.clear()).toBe(false);
+    expect(session.get().turns).toHaveLength(2);
+    release();
+    await session.idle();
+    expect(session.clear()).toBe(true);
+    expect(session.get()).toMatchObject({ turns: [], queued: [], sessionId: undefined });
+    session.send('c');
+    await session.idle();
+    expect(tasks[2]).toMatchObject({ prompt: 'c', resume: undefined });
+    expect(session.get().turns).toHaveLength(1);
   });
 
   it('hands the conversation over to the next agent', async () => {

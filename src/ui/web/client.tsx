@@ -299,6 +299,8 @@ function App() {
   // The Sessions view takes the chat's place; the chat keeps running behind it.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
   const showSessions = panel === 'sessions';
+  // Only the conversations this chat had itself, not every agent's sessions.
+  const [own, setOwn] = useState(false);
   // The topic picked on the start screen: the Sessions view shows only it.
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
@@ -328,7 +330,7 @@ function App() {
         return Promise.resolve(false);
       }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
-      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
+      if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
       return command({ type: 'submit', text }).then(
         () => true,
         () => true,
@@ -434,6 +436,31 @@ function App() {
           <>
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
+            {session.turns.length && !showSessions ? (
+              <button
+                className="chip off"
+                title="Start a new conversation: a fresh agent session and an empty screen. This one stays in the list."
+                onClick={() => {
+                  dropWaiting();
+                  void command({ type: 'submit', text: '/clear' });
+                }}
+              >
+                New chat
+              </button>
+            ) : null}
+            {hasSessions && !hasProject && !showSessions ? (
+              <button
+                className="chip off"
+                title="The conversations you had in this app"
+                onClick={() => {
+                  setTopic(undefined);
+                  setOwn(true);
+                  setPanel('sessions');
+                }}
+              >
+                Chats
+              </button>
+            ) : null}
             {hasSessions ? (
               <button
                 className={`chip${showSessions ? '' : ' off'}`}
@@ -441,6 +468,7 @@ function App() {
                 aria-pressed={showSessions}
                 onClick={() => {
                   setTopic(undefined);
+                  setOwn(false);
                   setPanel(showSessions ? 'chat' : 'sessions');
                 }}
               >
@@ -491,6 +519,8 @@ function App() {
           cwd={cwd}
           topic={topic}
           onAllTopics={() => setTopic(undefined)}
+          own={own}
+          onAllSessions={() => setOwn(false)}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             // What still waits here was meant for the conversation that is left.
