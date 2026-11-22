@@ -68,7 +68,8 @@ export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from '
 export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
-export { pack, PackActionError } from './agents/pack.js';
+export { delegationBrief, pack, PackActionError } from './agents/pack.js';
+export { isReadOnlyCommand } from './agents/read-only.js';
 export type { PackCheckContext, PackCheckResult, PackTaskChecks, PackVerification } from './agents/pack-checks.js';
 export type {
   Pack,

@@ -10,6 +10,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- `genaicode chat`, `ui` and `tower --delegate`: every agent may hand work to the other installed agents through the pack tools, so a delegated agent's approvals come to the chat. Before, asked for a second opinion from Antigravity, Claude started `agy` from its shell, where Antigravity could not ask and came back empty. The desktop app turns it on. A turn that delegates nothing looks as before (#288)
+- `pack()`: a delegated agent's commands that only read inside its directory, a git repository (`ls`, `cat`, `rg`, `git log`, `git diff`...), pass without asking; `readOnlyCommands: 'ask'` keeps asking. `delegate` takes a `cwd` for work in another directory. `isReadOnlyCommand()` and `delegationBrief` are exported (#288)
 - `genaicode ui` and the desktop app: **New chat** in the header starts a new conversation with an empty screen (`/clear` in `chat` too), and in the desktop app **Chats** lists the conversations you had in the app itself, apart from the sessions of every agent. `AgentSession.clear()` (#291)
 - Desktop app: it comes back to the conversation it had last, with its history, after a restart or an update. `genaicode ui --restore` does the same for any directory (#290)
 - Desktop app: an update says what it is doing: **Downloading update…** while it downloads and **Relaunching…** while it installs, in the window's header and in the menu bar (#290)

@@ -186,6 +186,33 @@ describe('parseCli', () => {
     }
   });
 
+  it('lets every MCP agent delegate to the installed ones with --delegate', async () => {
+    expect(parseCli(['ui', '--sessions', '--delegate'])).toMatchObject({ kind: 'ui', delegate: true });
+    expect(parseCli(['ui'])).not.toHaveProperty('delegate');
+    expect(() => parseCli(['ui', '--delegate', '--pack'])).toThrow(UsageError);
+    const plain = fakeAgent('plain', []);
+    const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
+    const missing = { ...fakeAgent('missing', []), capabilities: { mcp: true } };
+    const agents = [plain, lead, missing];
+    const bin = pathWith(plain.command, lead.command);
+    let launch: UiLaunch | undefined;
+    const capture = async (seen: UiLaunch) => {
+      launch = seen;
+      return 0;
+    };
+    const loadUi = async () => ({ runChat: capture, runWeb: capture });
+    const argv = ['ui', '--delegate'];
+    expect(await main(environment({ argv, agents, env: { PATH: bin }, loadUi }).cli)).toBe(EXIT_OK);
+    expect(launch!.agents.map((agent) => agent.name)).toEqual(['plain', 'lead', 'missing']);
+    expect(launch!.agents[0]).toBe(plain);
+    expect(launch!.agents[1]).not.toBe(lead);
+    expect(launch!.agents[1]).toMatchObject({ name: 'lead', command: lead.command, capabilities: { mcp: true } });
+    const mcp = ['ui', '--delegate', '--mcp', 'pack=http://127.0.0.1:1/mcp'];
+    const clash = environment({ argv: mcp, agents, env: { PATH: bin }, loadUi });
+    expect(await main(clash.cli)).toBe(EXIT_USAGE);
+    expect(clash.err()).toContain('--delegate provides an MCP server named "pack"');
+  });
+
   it('auto-assembles a pack from installed agents when --pack is passed without a value', async () => {
     expect(parseCli(['ui', '--pack', '--verify', 'node --test'])).toMatchObject({
       pack: { auto: true },

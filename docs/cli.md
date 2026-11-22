@@ -280,6 +280,13 @@ under its turn shows each worker's prompt, activity, result and changed files. T
 includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
 `--max-tokens` and `--max-cost` include the lead and its workers.
 
+`--delegate` keeps the usual agent picker but gives every agent that takes MCP servers the same
+tools, with all installed agents as members: ask Claude for a second opinion from Antigravity and
+Claude delegates it instead of starting `agy` from its shell, where Antigravity cannot ask for
+anything and returns empty. The delegated agent's approvals come to this chat, and commands that
+only read inside its directory pass without asking. A turn that delegates nothing looks as
+before. The desktop app starts its chat this way.
+
 In the browser, select a task or open **Approvals**. In the terminal, press Tab on an empty
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
 shows which keys are available. You can steer a live worker, stop it, inspect a finished

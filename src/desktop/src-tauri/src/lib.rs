@@ -218,6 +218,7 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
         .args([
             "ui",
             "--sessions",
+            "--delegate",
             "--no-project",
             "--no-open",
             "--exit-with-stdin",

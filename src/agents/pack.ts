@@ -1,9 +1,11 @@
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import type { TokenUsage } from '../core/types.js';
 import { findExecutable } from './discovery.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { startLocalMcpServer } from './mcp-server.js';
+import { isReadOnlyApproval } from './read-only.js';
 import type { McpTool } from './mcp-tools.js';
 import {
   addWorktree,
@@ -59,6 +61,11 @@ export interface PackOptions {
   verification?: PackVerification;
   /** Leave worktrees on the chat's task cards unless the operator asks the lead to merge. */
   operatorMerge?: boolean;
+  /**
+   * A delegated agent's request to run a command that only reads inside its directory
+   * (`isReadOnlyCommand`): `approve` (default) without asking, or `ask` like any other.
+   */
+  readOnlyCommands?: 'approve' | 'ask';
 }
 
 /** What the lead learns about a member from the `agents` tool. */
@@ -246,6 +253,21 @@ function defaultBrief(members: readonly PackMember[], operatorMerge = false): st
   ].join('\n');
 }
 
+/**
+ * A short briefing for an agent that works by itself and may hand work to others, as in
+ * `genaicode ui --delegate`: the pack tools are there when the person asks for another agent.
+ */
+export function delegationBrief(members: readonly PackMember[]): string {
+  const names = members.filter((member) => member.installed).map((member) => member.name);
+  return [
+    `Other coding agents on this machine (${names.join(', ') || 'none'}) are available through the \`pack\` MCP tools.`,
+    'When asked to involve another agent (a second opinion, a review, a parallel piece of work), use `delegate`',
+    'and `wait`, never its CLI from a shell: started from a shell it cannot ask for approval, so it gets nothing done.',
+    'Give `delegate` a complete prompt and, for work in another directory, its `cwd`. Use mode `shared` for read-only',
+    'work; a `worktree` task stays on its card for the person to review and merge.',
+  ].join('\n');
+}
+
 /** `agent.run(task)`, with a driver that throws on start turned into a run that failed. */
 function startRun(agent: CodingAgent, task: AgentTask): AgentRun {
   try {
@@ -379,6 +401,9 @@ export function pack(options: PackOptions): Pack {
     name: options.name ?? 'pack',
     command: lead.command,
     capabilities: lead.capabilities,
+    ...(lead.runText
+      ? { runText: (task: Parameters<NonNullable<CodingAgent['runText']>>[0]) => lead.runText!(task) }
+      : {}),
     // A pack turn is a session of its lead.
     ...(lead.sessions !== undefined ? { sessions: lead.sessions } : {}),
     tasks: () => [...subs.values()].map(report),
@@ -490,7 +515,7 @@ export function pack(options: PackOptions): Pack {
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
         // Taken before the first await, so calls made at the same moment cannot share a slot.
         starting += 1;
-        const setup = start(agent, prompt, args.mode).finally(() => {
+        const setup = start(agent, prompt, args.mode, args.cwd).finally(() => {
           starting -= 1;
           settingUp.delete(setup);
         });
@@ -498,8 +523,13 @@ export function pack(options: PackOptions): Pack {
         return setup;
       };
 
-      const start = async (agent: CodingAgent, prompt: string, wanted: unknown): Promise<string> => {
-        const repo = await repoRoot(leadCwd);
+      const start = async (agent: CodingAgent, prompt: string, wanted: unknown, where: unknown): Promise<string> => {
+        if (where !== undefined && (typeof where !== 'string' || !where.trim()))
+          throw new Error('`cwd` is a directory path.');
+        const base = typeof where === 'string' ? projectDirectory(path.resolve(leadCwd, where)) : leadCwd;
+        if (base !== leadCwd && !statSync(base, { throwIfNoEntry: false })?.isDirectory())
+          throw new Error(`${String(where)} is not a directory.`);
+        const repo = await repoRoot(base);
         const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
         if (!mode) throw new Error('`mode` is `worktree` or `shared`.');
         if (mode === 'worktree' && !repo)
@@ -514,12 +544,12 @@ export function pack(options: PackOptions): Pack {
           agent,
           prompt,
           mode,
-          cwd: task.cwd,
+          cwd: base === leadCwd ? task.cwd : base,
           status: 'running',
           ended: new Promise<void>((resolve) => (settle = resolve)),
         };
         if (mode === 'worktree' && repo) {
-          const relativeCwd = path.relative(repo, leadCwd);
+          const relativeCwd = path.relative(repo, base);
           if (relativeCwd === '..' || relativeCwd.startsWith('..' + path.sep) || path.isAbsolute(relativeCwd))
             throw new Error('The working directory is outside the Git worktree.');
           const dir = path.join(
@@ -549,6 +579,12 @@ export function pack(options: PackOptions): Pack {
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
 
         const onApproval = task.onApproval;
+        // Only inside a repository the lead named, never `/` or the home folder as a whole.
+        const readOnly =
+          options.readOnlyCommands !== 'ask' &&
+          !!repo &&
+          repo !== path.parse(repo).root &&
+          repo !== projectDirectory(homedir());
         const run = startRun(agent, {
           prompt,
           cwd: sub.cwd,
@@ -556,7 +592,10 @@ export function pack(options: PackOptions): Pack {
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
           ...(onApproval
             ? {
-                onApproval: (request, signal) => onApproval(packApproval(id, agent.name, request), signal),
+                onApproval: (request, signal) =>
+                  readOnly && isReadOnlyApproval(request, sub.cwd, task.env ?? process.env)
+                    ? 'approve'
+                    : onApproval(packApproval(id, agent.name, request), signal),
               }
             : {}),
         });
@@ -841,6 +880,10 @@ export function pack(options: PackOptions): Pack {
               agent: { type: 'string', description: 'Agent name, from `agents`.' },
               prompt: { type: 'string', description: 'The complete task, with all the context the agent needs.' },
               mode: { type: 'string', enum: ['worktree', 'shared'] },
+              cwd: {
+                type: 'string',
+                description: 'Directory to work in, when not yours: absolute, or relative to yours.',
+              },
             },
             required: ['agent', 'prompt'],
           },
