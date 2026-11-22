@@ -65,6 +65,11 @@ describe('isReadOnlyCommand', () => {
       'rg -L foo',
       'grep -R foo .',
       'tree -ao out.txt .',
+      'rg --hostname-bin ./helper --hyperlink-format default needle a',
+      'rg --hostname-bin=./helper needle a',
+      'cd -- && cat secret.txt',
+      'cd - && ls',
+      'cd && ls',
       '',
     ])
       expect(ro(command), command).toBe(false);

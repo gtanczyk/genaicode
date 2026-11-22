@@ -144,10 +144,13 @@ function gitRunsHelpers(dir: string): boolean {
   }
 }
 
+// Long options that name a program to run (`--hostname-bin`, `--compress-program`, `--pager`...).
+const RUNS_PROGRAM = /^--[\w-]*(-bin|exec|command|program|pager)(=|$)/;
+
 function readerCommand(words: string[], base: string): boolean {
   const [program, ...args] = words;
   const name = program && programName(program);
-  if (!name) return false;
+  if (!name || args.some((arg) => RUNS_PROGRAM.test(arg))) return false;
   if (name === 'git') {
     // Options before the subcommand (`-C dir`, `--no-pager`) only; `-c` could set a program to run.
     let i = 0;
@@ -265,7 +268,8 @@ function readsOnly(command: string | readonly string[], base: string, root: stri
     if (!readerCommand(words, base)) return false;
     // Later commands run where `cd` went.
     if (name === 'cd') {
-      if (words.length !== 2) return false;
+      // `cd -`, `cd --` and options go to `$OLDPWD`, `$HOME` and the like.
+      if (words.length !== 2 || words[1]!.startsWith('-')) return false;
       base = realTarget(path.resolve(base, words[1]!));
     }
   }
