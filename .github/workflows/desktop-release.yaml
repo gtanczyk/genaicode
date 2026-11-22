@@ -70,7 +70,6 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         with:
           node-version: 22
-          cache: npm
       - name: Resolve the version
         if: steps.signing.outputs.ready == 'true'
         id: version
@@ -86,15 +85,7 @@ jobs:
             echo "::notice::No GitHub Release v$version: the .dmg stays a run artifact."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/cache@v4
-        if: steps.signing.outputs.ready == 'true'
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src/desktop/src-tauri/target
-          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/desktop/src-tauri/Cargo.lock') }}
-          restore-keys: desktop-${{ runner.os }}-${{ runner.arch }}-
+      # No build cache: what signs with the certificate is built from the checkout alone.
       - if: steps.signing.outputs.ready == 'true'
         run: npm ci
       - if: steps.signing.outputs.ready == 'true'
