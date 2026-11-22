@@ -646,6 +646,21 @@ async function runEmbed(
   );
 }
 
+/**
+ * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
+ * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
+ * the headless ones.
+ */
+export function interactiveAgents(agents: readonly CodingAgent[], pack = false): CodingAgent[] {
+  return agents.map((agent) => {
+    if (agent.name === 'codex') return codexLive();
+    // Live Muse keeps the model its session started with, so outside a pack it stays headless,
+    // where the model picker applies to every turn.
+    if (agent.name === 'muse' && pack) return museLive();
+    return agent;
+  });
+}
+
 async function runUi(
   cli: CliEnvironment,
   agents: readonly CodingAgent[],
@@ -659,6 +674,8 @@ async function runUi(
     );
     return EXIT_USAGE;
   }
+  // A chat can ask the person, so it runs the drivers that ask, steer and report what they changed.
+  if (!cli.agents) agents = interactiveAgents(agents);
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
   let sessionAgents = agents;
@@ -671,13 +688,7 @@ async function runUi(
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    const packAgents =
-      cli.agents ??
-      agents.map((agent) => {
-        if (agent.name === 'codex') return codexLive();
-        if (agent.name === 'muse') return museLive();
-        return agent;
-      });
+    const packAgents = cli.agents ?? interactiveAgents(agents, true);
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     let lead: CodingAgent;
     let members: CodingAgent[];

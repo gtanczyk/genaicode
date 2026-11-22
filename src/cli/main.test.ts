@@ -92,6 +92,19 @@ describe('parseCli', () => {
     });
     expect(await main(cli)).toBe(EXIT_OK);
   });
+  it('runs Codex over its live driver in chat and ui, with or without a pack', async () => {
+    const inspect = async (launch: UiLaunch) => {
+      const codex = launch.agents.find((agent) => agent.name === 'codex');
+      expect(codex?.capabilities).toMatchObject({ approvals: true, steer: true });
+      // Muse stays headless there: its live session keeps the model it started with.
+      expect(launch.agents.find((agent) => agent.name === 'muse')?.capabilities.steer).toBeFalsy();
+      return 0;
+    };
+    const loadUi = async () => ({ runWeb: inspect, runChat: inspect });
+    for (const argv of [['chat'], ['ui'], ['ui', '--pack', 'claude:codex']]) {
+      expect(await main(environment({ argv, interactive: true, loadUi }).cli)).toBe(EXIT_OK);
+    }
+  });
   it('opens the requested pack in either chat and keeps the original session sources', async () => {
     const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
     const worker = fakeAgent('worker', []);
