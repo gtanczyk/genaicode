@@ -69,6 +69,11 @@ export interface WebRunOptions extends UiRunOptions {
    * launcher such as npx stops it by closing the pipe, which also reaches the server itself.
    */
   exitWithStdin?: boolean;
+  /**
+   * The page names no project (`ui --no-project`): the chat is about the sessions of every
+   * project, and the directory it runs in is only where its own agent starts.
+   */
+  noProject?: boolean;
 }
 
 const ASSET_TYPES: Record<string, string> = {
@@ -206,7 +211,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
     (running ??= startWebUi({
       controller: controller(),
       clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
-      title: { version: options.version, cwd: options.cwd },
+      title: { version: options.version, cwd: options.cwd, ...(options.noProject ? { project: false } : {}) },
       uploads: createUploads(options.cwd),
       files: createProjectFiles(options.cwd),
       host: options.host,

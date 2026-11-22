@@ -1,7 +1,9 @@
 //! The genaicode desktop shell.
 //!
 //! It owns no chat logic. It starts the bundled Node.js on the bundled `genaicode ui`, waits for
-//! the address that server prints, and shows that page in the window. The page gets no Tauri
+//! the address that server prints, and shows that page in the window. The app has no project
+//! folder: its chat is about the sessions of every agent, each of which has its own, so the server
+//! runs in a directory of the app's own and its page names none. The page gets no Tauri
 //! commands: there are no capabilities, so it is the same page a browser would load.
 //!
 //! Beside the window it keeps an icon in the menu bar: the sessions of every agent that wait for
@@ -14,7 +16,7 @@ mod update;
 use std::{
     env, fs,
     io::{BufRead, BufReader},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
@@ -28,12 +30,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-const OPEN_FOLDER: &str = "open-folder";
 const CHECK_UPDATES: &str = "check-updates";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
-/// `deny:<question>` and `open:<index of the session in the last snapshot>`.
+/// `deny:<question>` and `open:<index of the session in the last snapshot>`, which shows the window.
 const TRAY: &str = "tower";
-const TRAY_OPEN_FOLDER: &str = "tray-open-folder";
 const SHOW: &str = "show";
 const QUIT: &str = "quit";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
@@ -53,8 +53,6 @@ struct Shell {
     generation: u64,
     /// The user's login shell environment, read once: where their agent CLIs live, their keys.
     login: Option<Vec<(String, String)>>,
-    /// The project the server runs in.
-    folder: Option<PathBuf>,
     /// `genaicode sessions --waiting --json --watch`, which feeds the menu bar.
     watcher: Option<Server>,
     /// What it last said waits: the menu bar's items point into it.
@@ -141,24 +139,21 @@ fn genaicode(app: &AppHandle, shell: &mut Shell) -> Result<Command, String> {
     Ok(command)
 }
 
-fn folder_file(app: &AppHandle) -> Option<PathBuf> {
-    Some(app.path().app_config_dir().ok()?.join("folder"))
-}
-
-fn saved_folder(app: &AppHandle) -> Option<PathBuf> {
-    if let Some(folder) = env::var_os("GENAICODE_DESKTOP_CWD") {
-        return Some(folder.into());
-    }
-    let folder = PathBuf::from(fs::read_to_string(folder_file(app)?).ok()?.trim());
-    folder.is_dir().then_some(folder)
-}
-
-fn save_folder(app: &AppHandle, folder: &Path) {
-    let Some(file) = folder_file(app) else { return };
-    if let Some(dir) = file.parent() {
-        let _ = fs::create_dir_all(dir);
-    }
-    let _ = fs::write(file, folder.to_string_lossy().as_bytes());
+/// Where the app's own chat runs: a directory of its own under the user's `~/.genaicode`, outside
+/// every project. `GENAICODE_DESKTOP_CWD` names another one, for development.
+fn home_folder(app: &AppHandle) -> Result<PathBuf, String> {
+    let folder = match env::var_os("GENAICODE_DESKTOP_CWD") {
+        Some(folder) => PathBuf::from(folder),
+        None => app
+            .path()
+            .home_dir()
+            .map_err(|error| error.to_string())?
+            .join(".genaicode")
+            .join("home"),
+    };
+    fs::create_dir_all(&folder)
+        .map_err(|error| format!("Could not create {}: {error}", folder.display()))?;
+    Ok(folder)
 }
 
 fn fail(app: &AppHandle, message: String) {
@@ -174,7 +169,7 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 
 /// Close the server's stdin, so `--exit-with-stdin` shuts it down the way Ctrl-C would: its agents
 /// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
-/// them working on the old project. Kill it only if it has not exited within `STOP_GRACE`.
+/// them running. Kill it only if it has not exited within `STOP_GRACE`.
 fn stop(shell: &mut Shell) {
     let Some(Server {
         mut child,
@@ -195,14 +190,15 @@ fn stop(shell: &mut Shell) {
     let _ = child.wait();
 }
 
-/// Start `genaicode ui` in `folder` and show it once it says where it listens.
-fn start(app: &AppHandle, folder: PathBuf) {
-    if let Err(message) = try_start(app, &folder) {
+/// Start `genaicode ui` and show it once it says where it listens.
+fn start(app: &AppHandle) {
+    if let Err(message) = try_start(app) {
         fail(app, message);
     }
 }
 
-fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
+fn try_start(app: &AppHandle) -> Result<(), String> {
+    let folder = home_folder(app)?;
     let state = app.state::<ShellState>();
     let mut shell = state.lock().map_err(|_| "the shell state is poisoned")?;
     let mut command = genaicode(app, &mut shell)?;
@@ -213,12 +209,13 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
         .args([
             "ui",
             "--sessions",
+            "--no-project",
             "--no-open",
             "--exit-with-stdin",
             "--cwd",
         ])
-        .arg(folder)
-        .current_dir(folder)
+        .arg(&folder)
+        .current_dir(&folder)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -231,16 +228,7 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
         child,
         _stdin: stdin,
     });
-    shell.folder = Some(folder.to_path_buf());
     drop(shell);
-
-    if let Some(window) = app.get_webview_window("main") {
-        let name = folder
-            .file_name()
-            .unwrap_or(folder.as_os_str())
-            .to_string_lossy();
-        let _ = window.set_title(&format!("Genaicode — {name}"));
-    }
 
     let app = app.clone();
     thread::spawn(move || {
@@ -284,35 +272,25 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
         } else {
             format!("\n\n{}", said.join("\n"))
         };
-        let message = if opened {
-            "genaicode stopped. Choose Project → Open Folder… to start it again.".to_string()
-        } else {
-            format!("genaicode did not start.{detail}")
-        };
-        fail(&app, message);
+        if !opened {
+            return fail(&app, format!("genaicode did not start.{detail}"));
+        }
+        let handle = app.clone();
+        app.dialog()
+            .message("genaicode stopped.")
+            .title("Genaicode")
+            .kind(MessageDialogKind::Error)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Start Again".into(),
+                "Close".into(),
+            ))
+            .show(move |again| {
+                if again {
+                    start(&handle);
+                }
+            });
     });
     Ok(())
-}
-
-fn choose_folder(app: &AppHandle) {
-    let handle = app.clone();
-    app.dialog()
-        .file()
-        .set_title("Choose a project folder")
-        .pick_folder(move |picked| {
-            let Some(folder) = picked.and_then(|path| path.into_path().ok()) else {
-                return;
-            };
-            save_folder(&handle, &folder);
-            start(&handle, folder);
-        });
-}
-
-/// The start page's button. Only that bundled page can call it: the capability that allows it
-/// covers local content, not the `genaicode ui` page on 127.0.0.1.
-#[tauri::command]
-fn open_folder(app: AppHandle) {
-    choose_folder(&app);
 }
 
 fn show(app: &AppHandle) {
@@ -358,19 +336,8 @@ fn tower_menu(
                 let approve =
                     MenuItem::with_id(app, format!("approve:{ask}"), "Approve", true, none)?;
                 let deny = MenuItem::with_id(app, format!("deny:{ask}"), "Deny", true, none)?;
-                let open = MenuItem::with_id(
-                    app,
-                    format!("open:{session}:{ask}"),
-                    "Open Project",
-                    true,
-                    none,
-                )?;
-                menu.append(&Submenu::with_items(
-                    app,
-                    label,
-                    true,
-                    &[&approve, &deny, &PredefinedMenuItem::separator(app)?, &open],
-                )?)?
+                let _ = session;
+                menu.append(&Submenu::with_items(app, label, true, &[&approve, &deny])?)?
             }
         }
     }
@@ -384,13 +351,6 @@ fn tower_menu(
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, SHOW, "Show Genaicode", true, none)?)?;
-    menu.append(&MenuItem::with_id(
-        app,
-        TRAY_OPEN_FOLDER,
-        "Open Folder…",
-        true,
-        none,
-    )?)?;
     menu.append(&MenuItem::with_id(app, QUIT, "Quit Genaicode", true, none)?)?;
     Ok(menu)
 }
@@ -505,56 +465,8 @@ fn answer(app: &AppHandle, ask: &str, allow: bool) {
     });
 }
 
-/// Show the project of a waiting session. Another project replaces the one in the window, which
-/// stops what runs there, so that is asked first.
-fn open_session(app: &AppHandle, index: usize) {
-    let (folder, current) = {
-        let state = app.state::<ShellState>();
-        let Ok(shell) = state.lock() else { return };
-        let folder = shell
-            .waiting
-            .get(index)
-            .and_then(|session| session.cwd.as_ref())
-            .map(PathBuf::from);
-        (folder, shell.folder.clone())
-    };
-    show(app);
-    let Some(folder) = folder.filter(|folder| folder.is_dir()) else {
-        return;
-    };
-    if current.as_deref() == Some(folder.as_path()) {
-        return;
-    }
-    let Some(current) = current else {
-        save_folder(app, &folder);
-        start(app, folder);
-        return;
-    };
-    let handle = app.clone();
-    app.dialog()
-        .message(format!(
-            "Open {}?\n\ngenaicode in {} stops, with the agents it runs.",
-            folder.display(),
-            current.display()
-        ))
-        .title("Genaicode")
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Open".into(),
-            "Cancel".into(),
-        ))
-        .show(move |open| {
-            if open {
-                save_folder(&handle, &folder);
-                start(&handle, folder);
-            }
-        });
-}
-
 fn on_menu(app: &AppHandle, id: &str) {
-    if id == OPEN_FOLDER || id == TRAY_OPEN_FOLDER {
-        show(app);
-        choose_folder(app);
-    } else if id == SHOW {
+    if id == SHOW || id.starts_with("open:") {
         show(app);
     } else if id == CHECK_UPDATES {
         update::check(app, true);
@@ -564,12 +476,6 @@ fn on_menu(app: &AppHandle, id: &str) {
         answer(app, ask, true);
     } else if let Some(ask) = id.strip_prefix("deny:") {
         answer(app, ask, false);
-    } else if let Some(index) = id
-        .strip_prefix("open:")
-        .and_then(|rest| rest.split(':').next())
-        .and_then(|index| index.parse().ok())
-    {
-        open_session(app, index);
     }
 }
 
@@ -581,7 +487,6 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![open_folder])
         .manage(ShellState::default())
         .on_window_event(|window, event| {
             // On macOS the app lives on in the menu bar: closing the window hides it, and the
@@ -595,14 +500,6 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle();
-            let open = MenuItem::with_id(
-                handle,
-                OPEN_FOLDER,
-                "Open Folder…",
-                true,
-                Some("CmdOrCtrl+O"),
-            )?;
-            let project = Submenu::with_items(handle, "Project", true, &[&open])?;
             let updates = MenuItem::with_id(
                 handle,
                 CHECK_UPDATES,
@@ -611,11 +508,18 @@ pub fn run() {
                 None::<&str>,
             )?;
             let menu = Menu::default(handle)?;
-            menu.append(&project)?;
-            // Under the app's own menu on macOS, where such an item is looked for.
-            match menu.items()?.first().and_then(|item| item.as_submenu()) {
-                Some(first) if cfg!(target_os = "macos") => first.insert(&updates, 1)?,
-                _ => project.append(&updates)?,
+            // Under the app's own menu on macOS, where such an item is looked for; elsewhere under
+            // the last one, Help.
+            let menus = menu.items()?;
+            let own = if cfg!(target_os = "macos") {
+                menus.first()
+            } else {
+                menus.last()
+            };
+            match own.and_then(|item| item.as_submenu()) {
+                Some(own) if cfg!(target_os = "macos") => own.insert(&updates, 1)?,
+                Some(own) => own.append(&updates)?,
+                None => menu.append(&updates)?,
             }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
@@ -630,10 +534,7 @@ pub fn run() {
             if tray.build(app).is_ok() {
                 watch(handle);
             }
-            match saved_folder(handle) {
-                Some(folder) => start(handle, folder),
-                None => choose_folder(handle),
-            }
+            start(handle);
             update::watch(handle);
             Ok(())
         })

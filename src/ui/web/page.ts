@@ -3,7 +3,13 @@
 const STRIP_TOKEN_SCRIPT = `<script>(()=>{const u=new URL(location.href),t=u.searchParams.get('token');if(!t||window.self!==window.top)return;try{sessionStorage.setItem('genaicode-token',t)}catch{window.__genaicodeToken=t}u.searchParams.delete('token');history.replaceState(null,'',u.pathname+u.search+u.hash)})()</script>`;
 
 /** The single HTML page of the web UI. Styles are inline; the app is /app.js. */
-export function pageHtml(title: { version: string; cwd: string; sessions?: boolean; stripToken?: boolean }): string {
+export function pageHtml(title: {
+  version: string;
+  cwd: string;
+  project?: boolean;
+  sessions?: boolean;
+  stripToken?: boolean;
+}): string {
   const escape = (text: string) =>
     text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   return `<!doctype html>
@@ -17,7 +23,7 @@ export function pageHtml(title: { version: string; cwd: string; sessions?: boole
 <style>${STYLES}</style>
 </head>
 <body>
-<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"${title.sessions ? ' data-sessions="1"' : ''}></div>
+<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"${title.project === false ? ' data-no-project="1"' : ''}${title.sessions ? ' data-sessions="1"' : ''}></div>
 <script type="module" src="/app.js"></script>
 </body>
 </html>`;

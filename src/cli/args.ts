@@ -99,6 +99,8 @@ export type CliCommand =
       web: boolean;
       /** ui: stop when stdin ends (a host app closes the pipe). */
       exitWithStdin?: boolean;
+      /** `ui --no-project`: the page names no project, for a chat about the sessions of every one. */
+      noProject?: true;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
       /** `--agent-mcp`: Codex keeps the MCP servers of its own config. */
@@ -519,7 +521,11 @@ export function parseCli(argv: readonly string[]): CliCommand {
       'agent-mcp': { type: 'boolean' as const },
       sessions: { type: 'boolean' as const },
       ...(command === 'ui'
-        ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
+        ? {
+            'no-open': { type: 'boolean' as const },
+            'exit-with-stdin': { type: 'boolean' as const },
+            'no-project': { type: 'boolean' as const },
+          }
         : { web: { type: 'boolean' as const } }),
     };
     const { args, barePack, explicitPack } = extractBarePack(rest, parseOptions);
@@ -533,7 +539,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
         options: parseOptions,
       }),
     );
-    const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean };
+    const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean; 'no-project'?: boolean };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
     let pack: PackSpec | undefined;
     if (barePack) {
@@ -553,6 +559,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
     } else if (maxParallel !== undefined) throw new UsageError('--max-parallel requires --pack.');
     if (values.verify !== undefined && (!pack || !values.verify.trim()))
       throw new UsageError('--verify needs --pack and a nonempty test command.');
+    if (extra['no-project'] && values.sessions !== true)
+      throw new UsageError('--no-project goes with --sessions: without a project the chat is about the sessions.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
@@ -570,6 +578,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       open: extra['no-open'] !== true,
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
+      ...(extra['no-project'] === true ? { noProject: true as const } : {}),
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
       ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),

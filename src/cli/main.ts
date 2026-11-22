@@ -171,6 +171,8 @@ export interface UiLaunch {
   openWeb?: boolean;
   /** `ui --exit-with-stdin`: stop when stdin ends. */
   exitWithStdin?: boolean;
+  /** `ui --no-project`: the page names no project. */
+  noProject?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
   /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -330,6 +332,8 @@ Chat and UI options:
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
+      --no-project        (ui) The page names no project: for a chat about the sessions of
+                          every project, as the desktop app runs it
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --agent-mcp         Codex keeps its plugins and the MCP servers of its own config. Without
@@ -825,6 +829,7 @@ async function runUi(
     open: options.open,
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
+    ...(options.noProject ? { noProject: true } : {}),
     ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
     ...(options.budget ? { budget: options.budget } : {}),
