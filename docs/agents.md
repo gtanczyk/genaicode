@@ -250,7 +250,14 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 - `usage` events and `result.usage` add up the lead and every delegated task, and `task.budget`
   caps the sum. `maxParallel` (default 4) caps how many tasks run at once.
 - Delegated tasks get the run's `env`, `permissions` and `onApproval`; their request ids are
-  prefixed with the task id and the summary names the agent.
+  prefixed with the task id and the summary names the agent. A request to run a command that only
+  reads inside the task's directory (`ls`, `cat`, `rg`, `git log`/`diff`/`status`, `sed -n '1,20p'`,
+  joined by `&&` or `|`; `isReadOnlyCommand()` decides) is approved without asking, so a review
+  is not stopped by its first `ls`. `readOnlyCommands: 'ask'` asks for those too.
+- `delegate` takes an optional `cwd`, absolute or relative to the lead's, for work in another
+  directory than the lead's own.
+- `delegationBrief` is a short briefing for a lead that mostly works by itself: the tools are
+  there for when the person asks for another agent (`genaicode ui --delegate` uses it).
 - `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
   finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 

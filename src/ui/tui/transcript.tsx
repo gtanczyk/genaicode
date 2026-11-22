@@ -238,7 +238,7 @@ export function TurnView({
           </Box>
         ))}
       </Box>
-      {turn.pack ? (
+      {turn.pack && (turn.pack.tasks.length || approvals.some((request) => request.subtaskId)) ? (
         <Box flexDirection="column" paddingLeft={2} marginTop={1}>
           <Text bold>
             Pack tasks{' '}

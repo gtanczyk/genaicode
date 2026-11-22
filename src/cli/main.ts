@@ -9,7 +9,7 @@ import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpS
 import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
-import { pack } from '../agents/pack.js';
+import { delegationBrief, pack } from '../agents/pack.js';
 import { codexLive } from '../agents/drivers/codex-live.js';
 import { museLive } from '../agents/drivers/muse-live.js';
 import { sendSession } from '../agents/sessions/send.js';
@@ -320,6 +320,8 @@ Chat and UI options:
                           explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
                           the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
+      --delegate          Every agent may hand work to the other installed agents (the pack
+                          tools), so their approvals come to this chat; read-only commands pass
       --verify <command>  Test command on each pack task's card (default: the project's npm test script)
   -C, --cwd <dir>         Directory the agent works in (default: current directory)
   -m, --model <id>        Model id passed to the agent CLI
@@ -767,6 +769,21 @@ async function runUi(
     });
     agents = [team, ...agents];
     initial = team.name;
+  } else if (options.delegate) {
+    if (options.mcpServers.some((server) => server.name === 'pack')) {
+      cli.stderr.write('--delegate provides an MCP server named "pack". Give the --mcp server another name.\n');
+      return EXIT_USAGE;
+    }
+    // Each agent that takes MCP servers keeps its name and may hand work to the installed ones.
+    const helpers = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
+    const installed = detectAgents(helpers, cli.env)
+      .filter((found) => found.path !== null)
+      .map((found) => found.agent);
+    agents = agents.map((agent) =>
+      agent.capabilities.mcp
+        ? pack({ name: agent.name, lead: agent, members: installed, brief: delegationBrief, operatorMerge: true })
+        : agent,
+    );
   }
   if (options.sessions && options.mcpServers.some((server) => server.name === 'sessions')) {
     cli.stderr.write('--sessions adds an MCP server named "sessions": give the --mcp one another name.\n');

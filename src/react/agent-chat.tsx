@@ -628,8 +628,10 @@ function Turn({
       submitArtifact={submitArtifact}
     />
   );
+  // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
+  const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
   const transcript =
-    turn.pack && pending.length
+    packShown && pending.length
       ? {
           ...turn,
           entries: turn.entries.filter(
@@ -658,7 +660,7 @@ function Turn({
           </div>
         </div>
       ) : null}
-      {turn.pack ? (
+      {packShown ? (
         <PackTasks
           turn={turn}
           cwd={cwd}

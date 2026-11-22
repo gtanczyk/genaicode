@@ -85,6 +85,8 @@ export type CliCommand =
       kind: 'chat' | 'ui' | 'tower';
       agent?: string;
       pack?: PackSpec;
+      /** `--delegate`: each agent may hand work to the other installed agents. */
+      delegate?: true;
       verify?: string;
       cwd?: string;
       model?: string;
@@ -504,6 +506,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
     const parseOptions = {
       agent: { type: 'string' as const, short: 'a' },
       pack: { type: 'string' as const },
+      delegate: { type: 'boolean' as const },
       'max-parallel': { type: 'string' as const },
       verify: { type: 'string' as const },
       cwd: { type: 'string' as const, short: 'C' },
@@ -557,6 +560,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
       if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
       pack = { lead: lead.trim(), members: [...new Set(members)], maxParallel };
     } else if (maxParallel !== undefined) throw new UsageError('--max-parallel requires --pack.');
+    if (pack && values.delegate)
+      throw new UsageError('--delegate and --pack do not go together: a pack already delegates.');
     if (values.verify !== undefined && (!pack || !values.verify.trim()))
       throw new UsageError('--verify needs --pack and a nonempty test command.');
     if (extra['no-project'] && values.sessions !== true)
@@ -566,6 +571,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
     return {
       kind: command,
       ...(pack ? { pack } : {}),
+      ...(values.delegate === true ? { delegate: true as const } : {}),
       ...(values.verify !== undefined ? { verify: values.verify } : {}),
       agent: values.agent,
       cwd: values.cwd,
