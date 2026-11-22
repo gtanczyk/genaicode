@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionTurn } from '../session.js';
@@ -7,7 +7,19 @@ import { checkSessions, isNewer } from './doctor.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
 const NOW = Date.UTC(2026, 10, 18);
-const env = () => ({ HOME: mkdtempSync(join(tmpdir(), 'genaicode-doctor-')) });
+/** Every HOME made here, so the last test can see they are all gone again. */
+const made: string[] = [];
+const homes: string[] = [];
+const env = () => {
+  const home = mkdtempSync(join(tmpdir(), 'genaicode-doctor-'));
+  made.push(home);
+  homes.push(home);
+  return { HOME: home };
+};
+// Runs after a failed test too, so no run leaves an empty genaicode-doctor-* folder in the temp directory.
+afterEach(() => {
+  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
+});
 
 function info(id: string, extra: Partial<SessionInfo> = {}): SessionInfo {
   return { source: 'fake', agent: 'fake', id, where: 'local', updatedAt: NOW - 1000, ...extra };
@@ -149,5 +161,12 @@ describe('isNewer', () => {
     expect(isNewer('0.171.0', '0.170')).toBe(true);
     expect(isNewer('0.170.0', '0.170')).toBe(false);
     expect(isNewer('1.9', '1.10')).toBe(false);
+  });
+});
+
+describe('temporary homes', () => {
+  it('removes the HOME of every earlier test once it ends', () => {
+    expect(made.length).toBeGreaterThan(0);
+    expect(made.filter((home) => existsSync(home))).toEqual([]);
   });
 });

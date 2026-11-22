@@ -207,7 +207,7 @@ pub fn relaunch(app: &AppHandle) {
     crate::update_ready(&app);
     // Off the main thread: replacing the app takes a moment.
     std::thread::spawn(move || match update.install(&bytes) {
-        Ok(()) => app.restart(),
+        Ok(()) => restart(&app),
         Err(error) => {
             // It still waits: the page and the menu bar keep offering it, and it can be tried again.
             if let Ok(mut ready) = READY.lock() {
@@ -222,6 +222,84 @@ pub fn relaunch(app: &AppHandle) {
             );
         }
     });
+}
+
+/// Start the installed version once this one has quit.
+///
+/// Tauri's own restart runs `open -n` on the bundle while this process still runs, so for a
+/// moment two instances of the app exist. The Dock gives the second instance a tile of its own,
+/// and once the first one quits that tile stays beside the pinned one, which is left without its
+/// running dot: two "Genaicode" icons for one app. Here a small shell, detached from this
+/// process, waits until it has exited and only then asks LaunchServices to open the bundle, so the
+/// new version starts as the only instance and the Dock gives it the pinned tile.
+#[cfg(target_os = "macos")]
+fn restart(app: &AppHandle) {
+    match bundle().and_then(|bundle| open_after_exit(&bundle)) {
+        Ok(()) => app.exit(0),
+        Err(error) => {
+            eprintln!("Could not wait for the app to quit before opening it again: {error}");
+            app.restart()
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn restart(app: &AppHandle) {
+    app.restart()
+}
+
+/// The `.app` this process runs from: `<bundle>/Contents/MacOS/<binary>`.
+#[cfg(target_os = "macos")]
+fn bundle() -> std::io::Result<std::path::PathBuf> {
+    let binary = tauri::utils::platform::current_exe()?;
+    binary
+        .parent()
+        .filter(|macos| macos.ends_with("Contents/MacOS"))
+        .and_then(|macos| macos.parent()?.parent())
+        .filter(|bundle| {
+            bundle
+                .extension()
+                .is_some_and(|extension| extension == "app")
+        })
+        .map(std::path::Path::to_path_buf)
+        .ok_or_else(|| {
+            std::io::Error::other(format!("{} is not inside an app bundle", binary.display()))
+        })
+}
+
+/// How long the shell waits for this process to exit before it opens the bundle anyway.
+#[cfg(target_os = "macos")]
+const QUIT_WAIT_TENTHS: u32 = 600;
+
+/// The shell that waits for process `$1` to exit and then opens bundle `$2` with LaunchServices.
+#[cfg(target_os = "macos")]
+const OPEN_AFTER_EXIT: &str = r#"tries=0
+while /bin/kill -0 "$1" 2>/dev/null && [ "$tries" -lt "$3" ]; do
+  /bin/sleep 0.1
+  tries=$((tries + 1))
+done
+exec /usr/bin/open "$2""#;
+
+/// Start the shell that opens `bundle` once this process has exited. It gets its own process
+/// group and no stdio of ours, so it outlives the app and nothing it prints goes anywhere.
+#[cfg(target_os = "macos")]
+fn open_after_exit(bundle: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    Command::new("/bin/sh")
+        .arg("-c")
+        .arg(OPEN_AFTER_EXIT)
+        .arg("genaicode-relaunch")
+        .arg(std::process::id().to_string())
+        .arg(bundle)
+        .arg(QUIT_WAIT_TENTHS.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map(drop)
 }
 
 /// Look at start and then every few hours, for as long as the app runs.

@@ -11,6 +11,11 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Fixed
 
 - Desktop app's Homebrew cask: `brew info` no longer warns about the `verified` URL parameter and the `">= :ventura"` form of `depends_on macos`. The README says Homebrew 7 needs `brew trust gtanczyk/genaicode` before the install (#294)
+- Desktop app: **Relaunch to update** no longer leaves a second Genaicode icon in the Dock. The new version starts only after the old one has quit; before, both ran for a moment and the Dock gave the second one its own icon (#298)
+
+### Internal
+
+- Sessions doctor tests remove their temporary HOME folders, so runs no longer leave empty `genaicode-doctor-*` folders in the temp directory (#298)
 
 ## 2.52.1 — 2026-11-22
 
