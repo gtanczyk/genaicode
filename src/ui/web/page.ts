@@ -58,9 +58,8 @@ button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
-.run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-.run-with .chip { margin-right: 6px; }
-.gc-box .run-with :is(select, input, button) { background: transparent; border: 0; border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 32px; }
+.run-with { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.gc-box .run-with :is(select, input, button) { background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 32px; }
 .run-with select, .run-with button { cursor: pointer; }
 .gc-box .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
 .run-with input { max-width: 22em; text-overflow: ellipsis; }
