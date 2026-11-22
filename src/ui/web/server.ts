@@ -38,7 +38,14 @@ export interface WebUiOptions {
    * Lists the sessions the agents keep (`listSessions`), for the page's Sessions view at
    * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
    */
-  sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
+  sessions?: (query: {
+    since?: number;
+    /**
+     * Only the conversations of the chat's own directory, and all of them: a chat of one prompt
+     * reads like a program's run in the agent's store, and the listing leaves those out otherwise.
+     */
+    own?: boolean;
+  }) => Promise<WebSessionListing>;
   /** Run a turn in the named local session. Enabled only in the standalone tower. */
   sendPrompt?: (
     source: string,
@@ -459,9 +466,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       if (!options.sessions) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
       const days = Number(url.searchParams.get('days'));
-      const listing = await options.sessions(
-        Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {},
-      );
+      const listing = await options.sessions({
+        ...(Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {}),
+        ...(url.searchParams.get('own') === '1' ? { own: true } : {}),
+      });
       return send(res, 200, 'application/json', JSON.stringify(listing));
     }
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);

@@ -197,7 +197,7 @@ describe('the Sessions view', () => {
         token: 't0k',
         ...(withSessions
           ? {
-              sessions: async (query: { since?: number }) => {
+              sessions: async (query: { since?: number; own?: boolean }) => {
                 queries.push(query);
                 return { sessions, errors: [{ source: 'muse', message: 'no sqlite' }] };
               },
@@ -243,6 +243,9 @@ describe('the Sessions view', () => {
       // No period, or a wrong one: everything.
       await fetch(`${base}/api/sessions?days=x`, { headers: { 'x-genaicode-token': 't0k' } });
       expect(queries[1]).toEqual({});
+      // The chat's own conversations are asked for as such.
+      await fetch(`${base}/api/sessions?own=1`, { headers: { 'x-genaicode-token': 't0k' } });
+      expect(queries[2]).toEqual({ own: true });
     } finally {
       await ui.close();
     }

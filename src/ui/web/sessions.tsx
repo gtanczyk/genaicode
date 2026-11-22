@@ -87,7 +87,7 @@ export function Sessions({
 
   useEffect(() => {
     let current = true;
-    fetch(`/api/sessions?days=${days}`, { headers: { 'x-genaicode-token': token } })
+    fetch(`/api/sessions?days=${days}${own ? '&own=1' : ''}`, { headers: { 'x-genaicode-token': token } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The server answered ${res.status}.`);
         return (await res.json()) as WebSessionListing;
@@ -103,7 +103,7 @@ export function Sessions({
     return () => {
       current = false;
     };
-  }, [days, token, round]);
+  }, [days, token, round, own]);
 
   const everyones = listing?.sessions ?? [];
   const all = useMemo(() => {

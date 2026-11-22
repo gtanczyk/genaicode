@@ -676,7 +676,8 @@ async function lastSessionIn(
   // Asked of those agents and for this directory only: newer work elsewhere must not crowd it out.
   const listing = await listSessions(
     sources.filter((source) => usable.has(source.name)),
-    { cwd, limit: 200, live: false, ...(env ? { env } : {}) },
+    // With those of one prompt: such a chat reads like a program's run in the agent's store.
+    { cwd, limit: 200, live: false, automated: true, ...(env ? { env } : {}) },
   ).catch(() => undefined);
   for (const session of listing?.sessions ?? []) {
     const agent = usable.get(session.source);

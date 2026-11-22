@@ -324,9 +324,14 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       hostApp: options.hostApp,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
-      sessions: async (query) => {
+      sessions: async ({ own, ...query }) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
-        const listing = await listSessions(sources, { ...query, ...(options.env ? { env: options.env } : {}) });
+        const listing = await listSessions(sources, {
+          ...query,
+          // The chat's own conversations: asked for its directory, with the one-prompt ones too.
+          ...(own ? { cwd: options.cwd, automated: true, live: false } : {}),
+          ...(options.env ? { env: options.env } : {}),
+        });
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);
