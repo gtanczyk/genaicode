@@ -906,7 +906,8 @@ img.gc-artifact-view {
   margin-bottom: 8px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .gc-box .gc-icon.gc-recording {
+  .gc-box .gc-icon.gc-recording,
+  .gc-under .gc-icon.gc-recording {
     animation: none;
   }
 }
