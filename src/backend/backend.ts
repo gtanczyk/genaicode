@@ -191,7 +191,7 @@ class Refusal extends Error {
 /**
  * A model behind your server for `remote()` pages in `genaicode/browser`: the model and its key
  * stay here, page tools run in the page, server tools run here for the signed-in user.
- * `handle` takes a web `Request` (Node 20+ with `toNodeListener`, Workers, Deno, Bun, Vercel).
+ * `handle` takes a web `Request` (Node 22.5+ with `toNodeListener`, Workers, Deno, Bun, Vercel).
  *
  * Nothing that comes from the page is trusted: the conversation travels encrypted, tool results
  * are data, and costs are held by `limits` and `limiter`.

@@ -5,7 +5,7 @@
 genaicode runs coding agents on the developer's machine. Web apps get the [Vite panel](./vite.md),
 [`createDevOverlay`](./vite.md) or [`<AppAgentChat>`](./app-agent.md). This page is for every other
 host: desktop apps, game editors, terminal tools and programs that are not written in JavaScript.
-It is about development tools: the agent CLIs, their logins and Node 20+ come from the developer's
+It is about development tools: the agent CLIs, their logins and Node 22.5+ come from the developer's
 machine, so none of this belongs in an app you ship to end users.
 
 | Host                                   | What to use                                                                                                   |

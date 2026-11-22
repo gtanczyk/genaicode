@@ -24,7 +24,7 @@ scripts in `package.json`.
   `ModelProvider` (`{ name, async generate(request) }`) and pass it to `genaicode(provider)`.
   This is a documented first-class extension point and runs the full prompt/chain/plugin/tool
   code paths locally with no external calls.
-- `engines` asks for Node `>=20`; CI runs Node 22.
+- `engines` asks for Node `>=22.5` (`node:sqlite`); CI runs Node 22.
 - `npm run format` runs `prettier --write .`; there is no pre-commit hook, so run it before
   committing.
 
@@ -37,6 +37,8 @@ scripts in `package.json`.
   ending with the PR number: `- \`genaicode run\` resumes a Muse Code session (#149)`.
 - The category decides the bump: `### Breaking` major, `### Added` minor, `### Fixed` patch,
   `### Internal` (refactors, tooling, nothing a user notices) no release. The highest one present wins.
+- A paragraph between `## Unreleased` and its first category opens that release's notes (the
+  GitHub Release text). Use it for a major release; leave it out otherwise.
 - `release-pr.yaml` runs `scripts/release.mjs cut` on every master push that moves `docs/CHANGELOG.md`
   and keeps one PR, **`release: vX.Y.Z`** on branch `release/next`, up to date. Merging it is the
   cutoff: `publish.yaml` sees `package.json` change, publishes to npm (trusted publishing,

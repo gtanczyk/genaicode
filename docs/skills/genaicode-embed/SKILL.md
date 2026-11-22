@@ -86,9 +86,9 @@ allow, batch what must run into few commands, and do not run the dev server just
    manager (lockfile: `package-lock.json` npm, `pnpm-lock.yaml` pnpm, `yarn.lock` yarn,
    `bun.lockb`/`bun.lock` bun). If you may not run the install, add the dependency to
    `package.json` with the version from your task and tell the user to run it. genaicode
-   needs Node 20+ and declares no React peer: the app brings React 18+ for
+   needs Node 22.5+ and declares no React peer: the app brings React 18+ for
    `genaicode/react`. Option 5 outside Node installs nothing in the project: the app runs
-   `npx -y genaicode@<version> acp` (the version from your task) and needs Node 20+ on the
+   `npx -y genaicode@<version> acp` (the version from your task) and needs Node 22.5+ on the
    developer's machine.
 4. **Wire it in** (recipes below), matching the project's style: TypeScript or
    JavaScript, ESM or CJS, its formatter, its folder layout.
