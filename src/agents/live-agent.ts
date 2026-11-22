@@ -1,13 +1,14 @@
 import { keepRunLimit } from './sessions/limits.js';
 import { randomBytes } from 'node:crypto';
 import { resolvePermissions } from './permissions.js';
-import { planError, planSpawn, type PreparedRun } from './prepare.js';
+import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess } from './process.js';
 import { RpcError, RpcPeer, type RpcRequestContext } from './rpc.js';
 import { anySignal, invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
 import type {
   AgentCapabilities,
   AgentEvent,
+  AgentResult,
   AgentRun,
   AgentTask,
   ApprovalDecision,
@@ -66,7 +67,7 @@ export interface LiveAgentDefinition {
   /** Arguments that start the agent's JSON-RPC server on stdio. */
   args(task: AgentTask): string[];
   /** Replaces `args` when a task needs setup: extra env, temp files to clean up. */
-  prepare?(task: AgentTask): PreparedRun;
+  prepare?(task: AgentTask, context: PrepareContext): PreparedRun | Promise<PreparedRun>;
   env?(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
   /** Run one task over the session. Resolve with the agent's verdict when its turn ends. */
   drive(session: LiveSession): Promise<AgentOutcome>;
@@ -109,109 +110,124 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     }
   };
 
-  const plan = planSpawn(definition, task, invalidCwd(task.cwd));
-  if (!plan.ok) {
-    const result = recorder.finish(
-      { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
-      undefined,
-    );
-    return { result: Promise.resolve(result), abort() {}, steer: steerRun, [Symbol.asyncIterator]: iterate };
-  }
-
-  let notificationHandler: (method: string, params: unknown) => void = () => {};
-  let requestHandler: (method: string, params: unknown, context: RpcRequestContext) => unknown = (method) => {
-    throw new RpcError(`${method} is not supported by this client.`, -32601);
-  };
-
-  const handle = startProcess({
-    command: definition.command,
-    args: plan.args,
-    cwd: task.cwd,
-    env: plan.env,
-    timeoutMs: task.timeoutMs,
-    signal: task.signal,
-    stdin: true,
-    onLine(line) {
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch {
-        recorder.emit({ type: 'raw', line });
-        return;
-      }
-      if (!rpc.receive(value)) recorder.emit({ type: 'raw', line });
-    },
-    onStderr: (text) => recorder.emit({ type: 'stderr', text }),
-  });
-  flow = () => (pressure && !steering ? handle.pause() : handle.resume());
-  recorder.events.onPressure = (paused) => {
-    pressure = paused;
-    flow();
-  };
-  const rpc = new RpcPeer((line) => handle.write(line), {
-    notification: (method, params) => notificationHandler(method, params),
-    request: (method, params, context) => requestHandler(method, params, context),
-  });
   // Ends every open approval question when the task is over.
   const lifetime = new AbortController();
   linkAbort(task.signal, lifetime);
+  let stopped = false;
+  let kill: () => void = () => {};
 
-  const session: LiveSession = {
-    task,
-    rpc,
-    emit: (event) => recorder.emit(event),
-    onNotification(handler) {
-      notificationHandler = handler;
-    },
-    onRequest(handler) {
-      requestHandler = handler;
-    },
-    signal: lifetime.signal,
-    approve(request, signal) {
-      const ended = signal ? anySignal([lifetime.signal, signal]) : lifetime.signal;
-      return reportApproval(
-        (event) => recorder.emit(event),
-        request,
-        ended,
-        () => decideApproval(task, request, ended),
-      );
-    },
-    setSteer(next) {
-      steer = next;
-    },
+  const start = (plan: Extract<SpawnPlan, { ok: true }>): Promise<AgentResult> => {
+    let notificationHandler: (method: string, params: unknown) => void = () => {};
+    let requestHandler: (method: string, params: unknown, context: RpcRequestContext) => unknown = (method) => {
+      throw new RpcError(`${method} is not supported by this client.`, -32601);
+    };
+
+    const handle = startProcess({
+      command: definition.command,
+      args: plan.args,
+      cwd: task.cwd,
+      env: plan.env,
+      timeoutMs: task.timeoutMs,
+      signal: task.signal,
+      stdin: true,
+      onLine(line) {
+        let value: unknown;
+        try {
+          value = JSON.parse(line);
+        } catch {
+          recorder.emit({ type: 'raw', line });
+          return;
+        }
+        if (!rpc.receive(value)) recorder.emit({ type: 'raw', line });
+      },
+      onStderr: (text) => recorder.emit({ type: 'stderr', text }),
+    });
+    kill = () => handle.kill();
+    flow = () => (pressure && !steering ? handle.pause() : handle.resume());
+    recorder.events.onPressure = (paused) => {
+      pressure = paused;
+      flow();
+    };
+    const rpc = new RpcPeer((line) => handle.write(line), {
+      notification: (method, params) => notificationHandler(method, params),
+      request: (method, params, context) => requestHandler(method, params, context),
+    });
+    const session: LiveSession = {
+      task,
+      rpc,
+      emit: (event) => recorder.emit(event),
+      onNotification(handler) {
+        notificationHandler = handler;
+      },
+      onRequest(handler) {
+        requestHandler = handler;
+      },
+      signal: lifetime.signal,
+      approve(request, signal) {
+        const ended = signal ? anySignal([lifetime.signal, signal]) : lifetime.signal;
+        return reportApproval(
+          (event) => recorder.emit(event),
+          request,
+          ended,
+          () => decideApproval(task, request, ended),
+        );
+      },
+      setSteer(next) {
+        steer = next;
+      },
+    };
+
+    const exited = handle.exit.then((exit) => {
+      lifetime.abort();
+      plan.cleanup();
+      steer = undefined;
+      rpc.fail(new Error(`${definition.name} exited before the task finished.`));
+      return exit;
+    });
+    const outcome = definition.drive(session).then(
+      (verdict) => verdict,
+      (error: unknown): AgentOutcome => ({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+    );
+
+    return Promise.race([outcome.then(() => undefined), exited]).then(async (early) => {
+      steer = undefined;
+      lifetime.abort();
+      // Exiting before the turn ends is a failure even with exit code 0.
+      if (early)
+        return recorder.finish(
+          early,
+          (await settledOrUndefined(outcome)) ?? {
+            ok: false,
+            error: `${definition.name} exited before the task finished.`,
+          },
+        );
+      handle.close();
+      return recorder.finish(await exited, await outcome);
+    });
   };
 
-  const exited = handle.exit.then((exit) => {
-    lifetime.abort();
-    plan.cleanup();
-    steer = undefined;
-    rpc.fail(new Error(`${definition.name} exited before the task finished.`));
-    return exit;
-  });
-  const outcome = definition.drive(session).then(
-    (verdict) => verdict,
-    (error: unknown): AgentOutcome => ({ ok: false, error: error instanceof Error ? error.message : String(error) }),
-  );
-
-  const result = Promise.race([outcome.then(() => undefined), exited]).then(async (early) => {
-    steer = undefined;
-    lifetime.abort();
-    // Exiting before the turn ends is a failure even with exit code 0.
-    if (early)
+  const context: PrepareContext = { emit: (event) => recorder.emit(event), signal: lifetime.signal };
+  const result = planSpawnAsync(definition, task, invalidCwd(task.cwd), context).then((plan) => {
+    if (!plan.ok) {
+      lifetime.abort();
       return recorder.finish(
-        early,
-        (await settledOrUndefined(outcome)) ?? {
-          ok: false,
-          error: `${definition.name} exited before the task finished.`,
-        },
+        { exitCode: null, signal: null, reason: 'spawn-error', error: planError(plan) },
+        undefined,
       );
-    handle.close();
-    return recorder.finish(await exited, await outcome);
+    }
+    // Stopped while `prepare` was still running.
+    if (stopped || task.signal?.aborted) {
+      lifetime.abort();
+      plan.cleanup();
+      return recorder.finish({ exitCode: null, signal: null, reason: 'aborted' }, undefined);
+    }
+    return start(plan);
   });
 
   const abort = () => {
+    stopped = true;
     lifetime.abort();
-    handle.kill();
+    kill();
   };
   recorder.watchBudget(task.budget, abort);
   return { result, abort, steer: steerRun, [Symbol.asyncIterator]: iterate };

@@ -375,6 +375,10 @@ The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button
 prompt, e.g. `genaicode ui --mcp game=http://127.0.0.1:7777/mcp` from a game editor whose
 running game serves tools there. Only the agents that take MCP servers in genaicode (claude,
 codex, copilot) are offered then.
+Codex runs in `chat`, `ui` and `tower` without the MCP servers of its own config (`~/.codex/config.toml`,
+plugins): it starts every one of them with each turn, which is slow and can open apps you did not ask
+for. `--agent-mcp` keeps them. A Codex too old to list its servers (`codex mcp list --json`) keeps
+them too, with a note.
 The agent can publish artifacts: a report, chart or mockup as a self-contained HTML page, an
 image, a Markdown document. The browser UI shows each as a card that opens a preview; the
 terminal shows a line, and `/web` opens the browser on the same session. Pages run in a

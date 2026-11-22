@@ -105,6 +105,10 @@ describe('parseCli', () => {
       expect(await main(environment({ argv, interactive: true, loadUi }).cli)).toBe(EXIT_OK);
     }
   });
+  it('parses --agent-mcp for chat and ui', () => {
+    expect(parseCli(['ui', '--agent-mcp'])).toMatchObject({ kind: 'ui', agentMcp: true });
+    expect(parseCli(['chat'])).not.toHaveProperty('agentMcp');
+  });
   it('opens the requested pack in either chat and keeps the original session sources', async () => {
     const lead = { ...fakeAgent('lead', []), capabilities: { mcp: true } };
     const worker = fakeAgent('worker', []);

@@ -332,6 +332,8 @@ Chat and UI options:
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
+      --agent-mcp         Codex also starts the MCP servers of its own config. Without it, a
+                          chat gives Codex only the servers above and its own tools
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
       --sessions          Give the agent read access to the session index. Ask what needs your
@@ -649,11 +651,16 @@ async function runEmbed(
 /**
  * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
  * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
- * the headless ones.
+ * the headless ones. Codex gets the chat's MCP servers only, unless `agentMcp` keeps its own.
  */
-export function interactiveAgents(agents: readonly CodingAgent[], pack = false): CodingAgent[] {
+export function interactiveAgents(
+  agents: readonly CodingAgent[],
+  options: { pack?: boolean; agentMcp?: boolean } = {},
+): CodingAgent[] {
+  const { pack = false, agentMcp = false } = options;
   return agents.map((agent) => {
-    if (agent.name === 'codex') return codexLive();
+    // Codex starts every MCP server of its own config with each turn; a chat gives it only its own.
+    if (agent.name === 'codex') return codexLive(agentMcp ? {} : { onlyTaskMcpServers: 'when-listed' });
     // Live Muse keeps the model its session started with, so outside a pack it stays headless,
     // where the model picker applies to every turn.
     if (agent.name === 'muse' && pack) return museLive();
@@ -675,7 +682,7 @@ async function runUi(
     return EXIT_USAGE;
   }
   // A chat can ask the person, so it runs the drivers that ask, steer and report what they changed.
-  if (!cli.agents) agents = interactiveAgents(agents);
+  if (!cli.agents) agents = interactiveAgents(agents, { agentMcp: options.agentMcp });
   // Sessions are read from every agent's store, not only from the agents this chat can run.
   const indexed = agentSessionSources(agents);
   let sessionAgents = agents;
@@ -688,7 +695,7 @@ async function runUi(
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    const packAgents = cli.agents ?? interactiveAgents(agents, true);
+    const packAgents = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     let lead: CodingAgent;
     let members: CodingAgent[];
