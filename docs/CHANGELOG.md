@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Desktop app: it looks for a newer version every half hour, not every six hours, so a release shows as **Relaunch to update** soon after it comes out (#PRNUM)
+- Desktop app: it looks for a newer version every half hour, not every six hours, so a release shows as **Relaunch to update** soon after it comes out (#292)
 
 ## 2.52.0 — 2026-11-22
 
