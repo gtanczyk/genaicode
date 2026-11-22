@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { claudeArgs, createClaudeParser } from './claude.js';
 import { codexArgs, createCodexParser } from './codex.js';
+import { codexChangesDiff } from './codex-live.js';
 import { createMuseParser, museArgs } from './muse.js';
 import { museNotification } from './muse-live.js';
 import type { AgentOutputParser } from '../cli-agent.js';
@@ -241,6 +242,35 @@ describe('codex driver', () => {
       { type: 'error', message: 'quota' },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: false, error: 'quota' });
+  });
+
+  it('turns the changes of a file-change item into one patch', () => {
+    expect(
+      codexChangesDiff([
+        { path: '/w/a.txt', kind: { type: 'update' }, diff: '@@ -1 +1 @@\n-first\n+hello\n' },
+        { path: '/w/new.txt', kind: { type: 'add' }, diff: 'one\ntwo\n' },
+        { path: '/w/old.txt', kind: 'delete', diff: 'gone' },
+        { path: '/w/none.txt', kind: { type: 'update' } },
+      ]),
+    ).toBe(
+      [
+        '--- /w/a.txt',
+        '+++ /w/a.txt',
+        '@@ -1 +1 @@',
+        '-first',
+        '+hello',
+        '--- /dev/null',
+        '+++ /w/new.txt',
+        '@@ -0,0 +1,2 @@',
+        '+one',
+        '+two',
+        '--- /w/old.txt',
+        '+++ /dev/null',
+        '@@ -1,1 +0,0 @@',
+        '-gone',
+      ].join('\n'),
+    );
+    expect(codexChangesDiff([{ path: '/w/a.txt' }])).toBeUndefined();
   });
 
   it('keeps a note about its own hook timeout out of the errors', () => {

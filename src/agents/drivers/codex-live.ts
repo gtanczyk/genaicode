@@ -250,10 +250,10 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
           },
         ];
       if (type === 'fileChange') {
-        const paths = Array.isArray(item!.changes)
-          ? item!.changes.map((change) => stringField(change, 'path')).filter((path): path is string => !!path)
-          : [];
-        return paths.length ? [{ type: 'file-change', paths }] : [];
+        const changes = Array.isArray(item!.changes) ? item!.changes : [];
+        const paths = changes.map((change) => stringField(change, 'path')).filter((path): path is string => !!path);
+        const diff = codexChangesDiff(changes);
+        return paths.length ? [{ type: 'file-change', paths, ...(diff ? { diff } : {}) }] : [];
       }
       return [];
     case 'thread/tokenUsage/updated': {
@@ -307,4 +307,37 @@ export function codexRateLimits(snapshot: unknown): AgentEvent[] {
   if (reached && !events.some((event) => event.type === 'rate-limit' && event.limit.status === 'exceeded'))
     events.push({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded', ...(name ? { name } : {}) } });
   return events;
+}
+
+/**
+ * The changes of a Codex `fileChange` item as one unified patch. Each change carries its own
+ * `diff`: hunks for an update, the whole text for a file it adds or deletes.
+ */
+export function codexChangesDiff(changes: unknown[]): string | undefined {
+  const parts: string[] = [];
+  for (const change of changes) {
+    if (!isObject(change)) continue;
+    const path = stringField(change, 'path');
+    const diff = stringField(change, 'diff');
+    if (!path || !diff) continue;
+    const kind = isObject(change.kind) ? stringField(change.kind, 'type') : stringField(change, 'kind');
+    const hunks = /^(@@|--- |diff --git )/m.test(diff);
+    const lines = diff.replace(/\n$/, '').split('\n');
+    if (hunks && /^(--- |diff --git )/.test(diff)) parts.push(lines.join('\n'));
+    else if (hunks) parts.push([`--- ${path}`, `+++ ${path}`, ...lines].join('\n'));
+    else {
+      // The file's text, not a patch: every line of it was added, or removed.
+      const removed = kind === 'delete';
+      const count = `${lines.length ? 1 : 0},${lines.length}`;
+      parts.push(
+        [
+          `--- ${removed ? path : '/dev/null'}`,
+          `+++ ${removed ? '/dev/null' : path}`,
+          removed ? `@@ -${count} +0,0 @@` : `@@ -0,0 +${count} @@`,
+          ...lines.map((line) => `${removed ? '-' : '+'}${line}`),
+        ].join('\n'),
+      );
+    }
+  }
+  return parts.length ? parts.join('\n') : undefined;
 }

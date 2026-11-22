@@ -185,7 +185,8 @@ export type AgentEvent =
   | { type: 'message'; text: string }
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
-  | { type: 'file-change'; paths: string[] }
+  /** `diff`: what changed, as a unified patch, when the agent says. */
+  | { type: 'file-change'; paths: string[]; diff?: string }
   | { type: 'approval-request'; request: ApprovalRequest }
   /** `automatic`: decided by `permissions.approval`, without asking anyone. */
   | { type: 'approval-resolved'; id: string; decision: ApprovalDecision; automatic?: boolean }

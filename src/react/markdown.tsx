@@ -2,11 +2,12 @@ import type { ReactNode } from 'react';
 
 // A small, safe Markdown subset for agent replies: paragraphs, headings, lists, task lists,
 // quotes, tables, fenced code, inline code, bold, italic, strikethrough and links. Everything is a React text node, so HTML in the
-// text shows as text. Links must be http(s) or mailto and open in a new tab.
+// text shows as text. Links must be http(s) or mailto and open in a new tab. A link to a path on disk shows
+// its label as a `gc-file-link` button carrying the path in `data-gc-file`: the chat opens it when the host can.
 
 // Every repetition is bounded, so text full of unclosed markers stays linear to scan.
 const INLINE =
-  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])/g;
+  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])|(\[[^[\]\n]{1,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))/g;
 
 function link(href: string, label: ReactNode, key: number) {
   return (
@@ -32,6 +33,19 @@ function inline(text: string, links = true): ReactNode[] {
     else if (match[5]) {
       const label = inline(token.slice(1, token.indexOf(']')), false);
       out.push(links ? link(match[6], label, key++) : <span key={key++}>{label}</span>);
+    } else if (match[8]) {
+      // A link to a file on disk, as agents write them: the label, and the path for the host to open.
+      const label = inline(token.slice(1, token.indexOf(']')), false);
+      const path = match[9].replace(/(?::\d+(?::\d+)?|#L\d+\S*)$/, '');
+      out.push(
+        links ? (
+          <button key={key++} type="button" className="gc-file-link" data-gc-file={path} title={path}>
+            {label}
+          </button>
+        ) : (
+          <span key={key++}>{label}</span>
+        ),
+      );
     } else out.push(links ? link(token, token, key++) : token);
     last = at + token.length;
   }

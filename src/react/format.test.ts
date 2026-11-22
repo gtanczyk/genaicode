@@ -105,6 +105,22 @@ describe('toolDiff', () => {
     ]);
   });
 
+  it('reads a patch of several files with whole files added and removed', () => {
+    const patch = [
+      '--- /w/a.txt',
+      '+++ /w/a.txt',
+      '@@ -1 +1 @@',
+      '-first',
+      '+hello',
+      '--- /dev/null',
+      '+++ /w/new.txt',
+      '@@ -0,0 +1,2 @@',
+      '+one',
+      '+two',
+    ].join('\n');
+    expect(toolDiff(patch)).toMatchObject({ added: 3, removed: 1 });
+  });
+
   it('cuts a long change and says how much is left out', () => {
     const long = toolDiff({ path: 'big', content: Array.from({ length: 450 }, (_, i) => `l${i}`).join('\n') });
     expect(long).toMatchObject({ added: 450, more: 50 });

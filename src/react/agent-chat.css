@@ -487,6 +487,24 @@
   padding: 2px 8px;
   border-radius: 6px;
 }
+/* A link to a file in a reply: plain until the host can open it. */
+.gc-file-link {
+  font: 0.92em var(--_mono);
+  background: var(--_code-bg);
+  color: inherit;
+  border: 0;
+  border-radius: 5px;
+  padding: 1px 5px;
+  cursor: default;
+}
+.gc-opens-files .gc-file-link {
+  background: var(--_accent-soft);
+  cursor: pointer;
+}
+.gc-opens-files .gc-file-link:hover,
+.gc-opens-files .gc-file-link:focus-visible {
+  text-decoration: underline;
+}
 /* A path the host can open. */
 .gc-open-file {
   font: 0.92em var(--_mono);
@@ -502,6 +520,9 @@
 .gc-open-file:hover,
 .gc-open-file:focus-visible {
   text-decoration: underline;
+}
+.gc-edited > .gc-files {
+  padding: 6px 12px;
 }
 .gc-tool > .gc-open-file {
   margin: 6px 0 0;
