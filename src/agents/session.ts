@@ -267,6 +267,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // turn reports when it ends.
   let forgetAfterTurn = false;
   let runningAgent: CodingAgent | undefined;
+  /** The effort the running turn started with. */
+  let runningEffort: string | undefined;
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
@@ -520,12 +522,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     // Limits belong to the agent that reported them.
     // An effort is a word of the agent's own: one the next agent does not know goes back to its default.
     const effort =
-      // A session that keeps its effort is resumed at the one it started with.
-      sessionId && next.capabilities.effortAtStart
-        ? before!.effort
-        : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
-          ? state.effort
-          : undefined;
+      // A session that keeps its effort is resumed at the one it started with: its running turn's, or its last one's.
+      next.capabilities.effortAtStart && carry && runningAgent === next
+        ? runningEffort
+        : sessionId && next.capabilities.effortAtStart
+          ? before!.effort
+          : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
+            ? state.effort
+            : undefined;
     set({ agent: next.name, sessionId, rateLimits: [], effort });
   };
 
@@ -599,6 +603,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     nextIsNote = false;
     const turnAgent = agent;
     const turnEffort = state.effort;
+    runningEffort = turnEffort;
     runningAgent = turnAgent;
     const own = () => agent === turnAgent;
     let preamble = '';

@@ -323,6 +323,14 @@ describe('chat controller', () => {
     both.submit('/effort high');
     both.submit('/agent fixed');
     expect(both.get().session.effort).toBe('low');
+    // The same when a host comes back while that agent's first turn still runs.
+    both.submit('/new');
+    both.submit('again');
+    both.session.setAgent(other);
+    both.session.setEffort('high');
+    both.session.setAgent(fixed);
+    expect(both.get().session.effort).toBe('low');
+    await both.session.idle();
     both.close();
   });
 
