@@ -365,6 +365,47 @@ describe('AgentChat', () => {
     expect(onOpenFile).toHaveBeenCalledWith('/w/b.ts');
   });
 
+  it('shows the diff an agent reports with its changed files, and opens a file linked in a reply', () => {
+    const onOpenFile = vi.fn();
+    render({
+      onOpenFile,
+      state: fixture({
+        turns: [
+          {
+            id: 1,
+            agent: 'codex',
+            prompt: 'p',
+            startedAt: 1,
+            entries: [
+              {
+                kind: 'files',
+                paths: ['/w/a.txt'],
+                diff: '--- /w/a.txt\n+++ /w/a.txt\n@@ -1,2 +1,2 @@\n-first\n+hello\n second',
+              },
+              {
+                kind: 'text',
+                text: 'Changed [a.txt](/w/a.txt:1) and see [docs](https://example.com).',
+                streaming: false,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const edited = $('.gc-edited');
+    expect(edited.querySelector('.gc-diff-stat')?.textContent).toBe('+1−1');
+    expect(
+      Array.from(edited.querySelectorAll('.gc-diff > div[data-sign="+"], .gc-diff > div[data-sign="-"]')).map(
+        (line) => line.textContent,
+      ),
+    ).toEqual(['first', 'hello']);
+    const link = $<HTMLButtonElement>('.gc-file-link');
+    expect(link.textContent).toBe('a.txt');
+    act(() => link.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/w/a.txt');
+    expect(document.querySelector('a[href="https://example.com"]')).not.toBeNull();
+  });
+
   it('puts the host controls in a row under the field, with the attach button', () => {
     render({
       state: fixture({ status: 'idle', queued: [] }),

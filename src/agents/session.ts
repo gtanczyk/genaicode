@@ -31,7 +31,8 @@ export type SessionEntry =
       isError?: boolean;
       done: boolean;
     }
-  | { kind: 'files'; paths: string[] }
+  /** Files the agent changed; `diff` is the change as a unified patch, when the agent gave one. */
+  | { kind: 'files'; paths: string[]; diff?: string }
   /** The agent published something to look at; the content is in the session's `ArtifactStore`. */
   | { kind: 'artifact'; artifact: Artifact }
   /** `automatic`: decided by the task's `permissions.approval`, without asking. */
@@ -400,7 +401,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       case 'file-change':
-        addEntry(turnId, { kind: 'files', paths: event.paths });
+        addEntry(turnId, { kind: 'files', paths: event.paths, ...(event.diff ? { diff: event.diff } : {}) });
         return;
       case 'approval-request':
         // Usually added by `onApproval`, which holds the pending decision; this covers requests

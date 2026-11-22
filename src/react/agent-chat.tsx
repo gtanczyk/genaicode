@@ -29,6 +29,7 @@ import {
   toolLabel,
   toolPath,
   turnFooter,
+  type ToolDiff,
 } from './format.js';
 import { Markdown } from './markdown.js';
 import { PackTasks, type PackActionHandler } from './pack-tasks.js';
@@ -94,8 +95,8 @@ export interface AgentChatProps {
    */
   renderPrompt?(text: string, turn?: SessionTurn): ReactNode;
   /**
-   * Makes the file paths in the transcript (edited files, the file a tool step read or changed)
-   * buttons: called with the path as the agent gave it, usually absolute. The host shows the file.
+   * Makes the file paths in the transcript (edited files, the file a tool step read or changed,
+   * a link to a file in a reply) buttons: called with the path as the agent gave it, usually absolute. The host shows the file.
    */
   onOpenFile?(path: string): void;
   /** Tool name as shown, e.g. without an MCP server prefix. Default: friendlier names for common tools. */
@@ -183,7 +184,8 @@ export function AgentChat(props: AgentChatProps) {
     onArtifactSubmit === null || disabled
       ? undefined
       : (onArtifactSubmit ?? ((artifact, data) => onSend(artifactSubmission(artifact, data))));
-  const rootClass = ['gc-chat', props.className].filter(Boolean).join(' ');
+  const rootClass = ['gc-chat', props.onOpenFile && 'gc-opens-files', props.className].filter(Boolean).join(' ');
+  const { onOpenFile } = props;
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const agentName = state.agent || 'the agent';
 
@@ -409,6 +411,15 @@ export function AgentChat(props: AgentChatProps) {
         style={props.style}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        // A file link in a reply (`data-gc-file`, from the Markdown) opens like any other path.
+        onClick={
+          onOpenFile
+            ? (event) => {
+                const path = (event.target as Element).closest?.('[data-gc-file]')?.getAttribute('data-gc-file');
+                if (path) onOpenFile(path);
+              }
+            : undefined
+        }
       >
         {props.header !== undefined ? (
           props.header
@@ -758,28 +769,14 @@ function Entry({
             </span>
             <span className="gc-tool-name">{toolName(entry.name)}</span>
             <span className="gc-tool-arg">{argument}</span>
-            {diff ? (
-              <span className="gc-diff-stat" aria-label={`${diff.added} lines added, ${diff.removed} removed`}>
-                {diff.added ? <ins>+{diff.added}</ins> : null}
-                {diff.removed ? <del>−{diff.removed}</del> : null}
-              </span>
-            ) : null}
+            {diff ? <DiffStat diff={diff} /> : null}
           </summary>
           {file ? (
             <button type="button" className="gc-open-file" onClick={() => openFile?.(file)}>
               Open {relativePath(file, cwd)}
             </button>
           ) : null}
-          {diff ? (
-            <div className="gc-diff">
-              {diff.lines.map((line, index) => (
-                <div key={index} data-sign={line.sign}>
-                  {line.text || ' '}
-                </div>
-              ))}
-              {diff.more ? <div className="gc-diff-more">… {diff.more} more lines</div> : null}
-            </div>
-          ) : null}
+          {diff ? <DiffLines diff={diff} /> : null}
           {/* An edit that went through says nothing worth a box of its own. */}
           {diff && entry.done && !entry.isError && !output ? null : (
             <pre>{output || (entry.done ? 'No output.' : 'Running…')}</pre>
@@ -787,8 +784,8 @@ function Entry({
         </details>
       );
     }
-    case 'files':
-      return (
+    case 'files': {
+      const paths = (
         <div className="gc-files">
           <span>✎ Edited</span>
           {entry.paths.map((path) =>
@@ -802,6 +799,22 @@ function Entry({
           )}
         </div>
       );
+      // An agent that reports its edits as changed files, not as tool calls, says what changed here.
+      const diff = entry.diff ? toolDiff(entry.diff) : undefined;
+      if (!diff) return paths;
+      return (
+        <details className="gc-tool gc-edited">
+          <summary>
+            <span className="gc-state gc-ok">✓</span>
+            <span className="gc-tool-name">Edited</span>
+            <span className="gc-tool-arg">{entry.paths.map((path) => relativePath(path, cwd)).join(' ')}</span>
+            <DiffStat diff={diff} />
+          </summary>
+          {openFile ? paths : null}
+          <DiffLines diff={diff} />
+        </details>
+      );
+    }
     case 'artifact': {
       const url = artifactUrl?.(entry.artifact);
       const custom = renderArtifact?.(entry.artifact, url);
@@ -902,6 +915,28 @@ type SubmitArtifact = (artifact: Artifact, data: unknown) => void;
 const SUBMIT_MAX = 20_000;
 
 /** What a page's `postMessage` asks to send, as JSON text; undefined when it is not a submit. */
+function DiffStat({ diff }: { diff: ToolDiff }) {
+  return (
+    <span className="gc-diff-stat" aria-label={`${diff.added} lines added, ${diff.removed} removed`}>
+      {diff.added ? <ins>+{diff.added}</ins> : null}
+      {diff.removed ? <del>−{diff.removed}</del> : null}
+    </span>
+  );
+}
+
+function DiffLines({ diff }: { diff: ToolDiff }) {
+  return (
+    <div className="gc-diff">
+      {diff.lines.map((line, index) => (
+        <div key={index} data-sign={line.sign}>
+          {line.text || ' '}
+        </div>
+      ))}
+      {diff.more ? <div className="gc-diff-more">… {diff.more} more lines</div> : null}
+    </div>
+  );
+}
+
 function submitted(message: unknown): { data: unknown; json: string } | { tooLarge: true } | undefined {
   if (typeof message !== 'object' || message === null) return undefined;
   if ((message as { genaicode?: unknown }).genaicode !== 'submit') return undefined;
