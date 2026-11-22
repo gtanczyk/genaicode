@@ -389,9 +389,14 @@ sandboxed frame with no network and no access to the UI (see
 `--no-artifacts` leaves it out.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
-Such an app can also write `update-ready <version>` to that stdin once it has a newer version of
-itself ready: the page then shows **Relaunch to update**, and a click prints the line
-`Relaunch to update` on stderr for the app to act on.
+Such an app can also write `update-downloading <version>` to that stdin while it downloads a newer
+version of itself and `update-ready <version>` once that waits: the page shows **Downloading
+update…** and then **Relaunch to update**, and a click prints the line `Relaunch to update` on
+stderr for the app to act on. `update-installing <version>` shows **Relaunching…** and
+`update-none` takes the notice away.
+With `--restore` the page opens on the conversation the chat in this directory had last, with
+its agent and its history, so stopping and starting the server loses nothing; `--from` or
+`--resume` name another one.
 While no agent CLI is installed, `genaicode ui` does not give up: its link shows which agents
 it can use, the command that installs each and how to sign in, and it moves on to the chat by
 itself once one is found (it looks every few seconds and on **Check again**).

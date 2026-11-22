@@ -81,9 +81,17 @@ export interface WebUiOptions {
  * What a host app tells the page and takes from it. Today one thing: a newer version of the app
  * is downloaded, and the page's "Relaunch to update" asks the app to install it.
  */
+export interface HostUpdate {
+  version: string;
+  /** Downloaded: a relaunch installs it. */
+  ready: boolean;
+  /** The relaunch was chosen and the app is replacing itself. */
+  installing?: true;
+}
+
 export interface HostApp {
-  /** The version that waits for a relaunch, once there is one. */
-  update(): string | undefined;
+  /** The newer version of the app, once one is known: still downloading, or waiting for a relaunch. */
+  update(): HostUpdate | undefined;
   /** Calls `listener` when `update()` changes. Returns the way to stop. */
   subscribe(listener: () => void): () => void;
   /** The person asked for the relaunch. */
@@ -556,8 +564,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      // Only what the host itself announced can be asked for.
-      if (!options.hostApp?.update()) return send(res, 404, 'application/json', '{"ok":false}');
+      // Only what the host itself announced as ready can be asked for.
+      if (!options.hostApp?.update()?.ready) return send(res, 404, 'application/json', '{"ok":false}');
       options.hostApp.relaunch();
       return send(res, 200, 'application/json', '{"ok":true}');
     }
