@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.49.0 — 2026-11-22
+
 ### Added
 
 - `/effort [level|default]` in `genaicode chat`, `ui` and `tower` changes the reasoning effort from the next prompt, and the browser has an effort picker in the row under the prompt field for an agent that takes one. `AgentSession.setEffort()` does it for a host; switching to an agent that does not know the level goes back to that agent's default (#269)
