@@ -42,6 +42,8 @@ export type {
 } from './agents/types.js';
 export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
+export { ASK_USER_TOOL, askUserTool, startQuestionChannel } from './agents/ask-user.js';
+export type { QuestionChannel } from './agents/ask-user.js';
 export type {
   ApprovalOutcome,
   LiveAgentDefinition,

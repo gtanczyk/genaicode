@@ -87,6 +87,9 @@ describe('MCP servers', () => {
       'mcp_servers.fs.env_vars=["LOG"]',
     ]);
     expect(env).toEqual({ GENAICODE_MCP_0_HEADER_0: 'Bearer secret', LOG: '1' });
+    expect(codexMcpOverrides([{ name: 'ask', url: 'http://127.0.0.1:1/mcp', toolTimeoutSec: 600 }]).args).toContain(
+      'mcp_servers.ask.tool_timeout_sec=600',
+    );
 
     const result = await codex({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
     const report = JSON.parse(result.text!);

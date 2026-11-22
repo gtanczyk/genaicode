@@ -3,7 +3,12 @@ import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
 import { outputText, type McpTool } from '../agents/mcp-tools.js';
-import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
+import {
+  createAgentSession,
+  type AgentSession,
+  type AgentSessionOptions,
+  type SessionState,
+} from '../agents/session.js';
 import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
 import { isWithin } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
@@ -103,6 +108,8 @@ export interface ChatOptions {
   artifacts?: boolean;
   /** The running artifact channel, started by the front end (`AgentSessionOptions.artifacts`). */
   artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
+  /** The running `ask_user` channel (`AgentSessionOptions.questions`), started by the front end. */
+  questionChannel?: AgentSessionOptions['questions'];
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
 }
@@ -184,6 +191,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(options.budget ? { budget: options.budget } : {}),
     transformPrompt: options.transformPrompt,
     ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
+    ...(options.questionChannel ? { questions: options.questionChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
   let notices: Notice[] = [];

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
+import { startQuestionChannel } from '../agents/ask-user.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
 import { sendSession } from '../agents/sessions/send.js';
@@ -104,14 +105,32 @@ async function openArtifacts(options: ChatOptions): Promise<ArtifactChannel | un
   return startArtifactChannel({ cwd: options.cwd }).catch(() => undefined);
 }
 
+/**
+ * The session's MCP servers: artifacts, and `ask_user` for agents that cannot ask on their own.
+ * A port that will not open only means the agent goes without that one.
+ */
+async function openChannels(options: ChatOptions) {
+  const [artifactChannel, questionChannel] = await Promise.all([
+    openArtifacts(options),
+    startQuestionChannel().catch(() => undefined),
+  ]);
+  return {
+    artifactChannel,
+    questionChannel,
+    closeChannels: async () => {
+      await Promise.all([artifactChannel?.close(), questionChannel?.close()]);
+    },
+  };
+}
+
 export async function runChat(options: WebRunOptions): Promise<number> {
   let controller: ChatController;
   const web = webLink(options, () => controller);
-  const artifactChannel = await openArtifacts(options);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
   try {
-    controller = createChatController({ ...options, web, artifactChannel });
+    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
   } catch (error) {
-    await artifactChannel?.close();
+    await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
     return 2;
@@ -123,7 +142,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   await runTerminal(controller, options);
   await web.close();
   controller.close();
-  await artifactChannel?.close();
+  await closeChannels();
   return 0;
 }
 
@@ -227,11 +246,11 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   if (welcomed) options = { ...options, ...welcomed, open: false };
   let controller: ChatController;
   const web = webLink(options, () => controller);
-  const artifactChannel = await openArtifacts(options);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
   try {
-    controller = createChatController({ ...options, web, artifactChannel });
+    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
   } catch (error) {
-    await artifactChannel?.close();
+    await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
     return 2;
@@ -241,7 +260,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     url = await web.start();
   } catch (error) {
     controller.close();
-    await artifactChannel?.close();
+    await closeChannels();
     throw error;
   }
   // From a terminal, Enter brings the same session into it: the browser stays connected.
@@ -282,7 +301,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   if (next === 'terminal') await runTerminal(controller, options);
   await web.close();
   controller.close();
-  await artifactChannel?.close();
+  await closeChannels();
   return 0;
 }
 
@@ -407,12 +426,12 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const artifactChannel = await openArtifacts(options);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
   let controller: ChatController;
   try {
-    controller = createChatController({ ...options, artifactChannel });
+    controller = createChatController({ ...options, artifactChannel, questionChannel });
   } catch (error) {
-    await artifactChannel?.close();
+    await closeChannels();
     throw error;
   }
   try {
@@ -430,12 +449,12 @@ export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<Emb
       close: async () => {
         await ui.close();
         controller.close();
-        await artifactChannel?.close();
+        await closeChannels();
       },
     };
   } catch (error) {
     controller.close();
-    await artifactChannel?.close();
+    await closeChannels();
     throw error;
   }
 }

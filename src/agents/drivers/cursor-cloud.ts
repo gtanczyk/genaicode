@@ -236,6 +236,7 @@ export function cursorCloudProvider(options: CursorCloudOptions = {}): ManagedPr
     name,
     sessions,
     capabilities: {
+      remote: true,
       usage: true,
       mcp: true,
       resume: true,

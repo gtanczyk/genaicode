@@ -1307,7 +1307,11 @@ describe('web UI server', () => {
       const store = ui.controller.artifacts!;
       ui.controller.submit('hi');
       await ui.controller.session.idle();
-      expect(agent.tasks[0].mcpServers).toEqual([expect.objectContaining({ name: 'artifacts' })]);
+      // And `ask_user`, since this agent has no way of its own to ask.
+      expect(agent.tasks[0].mcpServers).toEqual([
+        expect.objectContaining({ name: 'artifacts' }),
+        expect.objectContaining({ name: 'genaicode_ask' }),
+      ]);
       const artifact = await store.publish({ title: 'Page', content: '<script>top.x=1</script>', format: 'html' });
       expect(ui.controller.get().session.turns[0].entries.at(-1)).toEqual({ kind: 'artifact', artifact });
       // No token: the id is the capability.

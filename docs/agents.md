@@ -883,8 +883,8 @@ const run = claude().run({
 ### Questions
 
 An agent can also ask the person to choose: Claude Code's `AskUserQuestion`, Codex's
-`request_user_input`. On drivers with `capabilities.questions` (`claude`, `codexLive`) such a
-request has `kind: 'question'` and `questions`, and goes to `onQuestion`, never to `onApproval`:
+`request_user_input` (Plan mode only). Such a request has `kind: 'question'` and `questions`,
+and goes to `onQuestion`, never to `onApproval`:
 
 ```ts
 const run = claude().run({
@@ -908,6 +908,14 @@ const run = claude().run({
 - Claude Code asks through its permission prompts, so `claude()` needs `onApproval` or
   `permissions.approval` beside `onQuestion`. Codex offers `request_user_input` in its Plan mode
   only, unless its experimental `default_mode_request_user_input` feature is on.
+- Agents without a way of their own (no `capabilities.questions`: Codex outside Plan mode,
+  Antigravity, Gemini, Muse...) can get `ask_user`, an MCP tool genaicode serves:
+  `startQuestionChannel()` gives an `mcpServer` and `bind(handler)`, and
+  `createAgentSession({ questions: channel })` hands it to every agent that takes MCP servers
+  and has no `capabilities.questions` (nor `capabilities.remote`: managed and hosted agents run
+  elsewhere and cannot reach this machine's loopback). Its questions show and are answered like
+  the agent's own; the tool returns the answers as text, and Codex is told to wait up to a day
+  for it (`toolTimeoutSec` on the server). `genaicode chat` and `ui` do this.
 - In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
   it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
   the options, and `genaicode chat` asks in the terminal.

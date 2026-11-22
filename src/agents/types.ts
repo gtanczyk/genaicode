@@ -138,14 +138,21 @@ export type QuestionHandler = (
 ) => QuestionAnswers | undefined | Promise<QuestionAnswers | undefined>;
 
 /** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
-export type McpServer =
+export type McpServer = (
   | { name: string; url: string; headers?: Readonly<Record<string, string>> }
   | {
       name: string;
       command: string;
       args?: readonly string[];
       env?: Readonly<Record<string, string>>;
-    };
+    }
+) & {
+  /**
+   * How long the agent waits for one tool call, in seconds, where it can be told (Codex's
+   * `tool_timeout_sec`, default 60). For tools that wait for a person, like `ask_user`.
+   */
+  toolTimeoutSec?: number;
+};
 
 /**
  * Something an agent published for the user to look at (`publish_artifact`): a page, an image,
@@ -307,12 +314,22 @@ export interface AgentCapabilities {
   rateLimits?: boolean;
   /** `AgentRun.steer` can add input to a running task. */
   steer?: boolean;
-  /** The agent's questions to the person reach `AgentTask.onQuestion`. */
+  /**
+   * The agent asks the person through a tool of its own, in every mode, and its questions reach
+   * `AgentTask.onQuestion` (Claude Code's `AskUserQuestion`). Without it a session gives the agent
+   * `ask_user` (`AgentSessionOptions.questions`). `codexLive()` passes Codex's own
+   * `request_user_input` on too, but Codex offers that in Plan mode only.
+   */
   questions?: boolean;
   /** Permission prompts reach `AgentTask.onApproval`. */
   approvals?: boolean;
   /** Honors `AgentTask.mcpServers`. */
   mcp?: boolean;
+  /**
+   * Runs on a provider's servers (managed and hosted agents): MCP servers on this machine's
+   * loopback do not reach it, so a session gives it no `ask_user`.
+   */
+  remote?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
   /** `AgentTask.permissions` values the driver can translate. Absent: none. */
