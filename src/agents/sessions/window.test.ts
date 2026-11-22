@@ -90,6 +90,28 @@ it('weighs a Codex thread whose counter started over by the tokens of the period
     path: file('a.jsonl', [said(), { ...said(), timestamp: at(2) }]),
   });
   expect((await partsSince([again], since)).get(again)).toEqual({ part: 0, tokens: 0 });
+  // A call that read everything from cache is no new work, and no counter starting over.
+  const cached = session('codex', 'c', {
+    startedAt: now - 3 * day,
+    path: file('cached.jsonl', [
+      {
+        ...counted(3, 1_000, 1_000, 0),
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 1_000,
+              cached_input_tokens: 1_000,
+              output_tokens: 0,
+              total_tokens: 1_000,
+            },
+          },
+        },
+      },
+      counted(2, 1_100, 1_000, 10),
+    ]),
+  });
+  expect((await partsSince([cached], since)).get(cached)).toEqual({ part: 1, tokens: 110 });
   // Both counters inside the period, in a thread that began there: read all the same.
   const both = session('codex', 'b', {
     startedAt: now - 3 * day,

@@ -36,8 +36,11 @@ async function eachLine(file: string, take: (line: string) => void): Promise<boo
 
 /** Codex's count without the input it read again from its cache. */
 function codexWeight(report: Record<string, unknown>): number {
-  const fresh = Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens));
-  return fresh + count(report.output_tokens) || count(report.total_tokens);
+  // Only a report without its parts is counted by its total: all input from cache is no new work.
+  if (typeof report.input_tokens !== 'number' && typeof report.output_tokens !== 'number') {
+    return count(report.total_tokens);
+  }
+  return Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens)) + count(report.output_tokens);
 }
 
 /**
