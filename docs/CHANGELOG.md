@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Desktop app's Homebrew cask: `brew info` no longer warns about the `verified` URL parameter and the `">= :ventura"` form of `depends_on macos`. The README says Homebrew 7 needs `brew trust gtanczyk/genaicode` before the install
+- Desktop app's Homebrew cask: `brew info` no longer warns about the `verified` URL parameter and the `">= :ventura"` form of `depends_on macos`. The README says Homebrew 7 needs `brew trust gtanczyk/genaicode` before the install (#294)
 
 ## 2.52.1 — 2026-11-22
 
