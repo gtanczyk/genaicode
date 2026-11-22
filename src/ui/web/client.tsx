@@ -592,6 +592,7 @@ function App() {
                   token={token}
                   onTopic={(id) => {
                     setTopic(id);
+                    setOwn(false);
                     setPanel('sessions');
                   }}
                 />
