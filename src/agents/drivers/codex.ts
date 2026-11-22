@@ -99,22 +99,31 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   return [...args, ...positionalPrompt(task.prompt)];
 }
 
-/** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
-export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
-  const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
-  if (!options.onlyTaskMcpServers) return prepared;
+/**
+ * `-c` overrides that switch off every MCP server Codex has in its own config, so a run sees the
+ * task's only. Rejects when the list cannot be read, or when a task server reuses a listed name.
+ */
+export async function codexOwnServersOff(command: string, task: AgentTask, signal?: AbortSignal): Promise<string[]> {
   let listed: string[] = [];
-  const others = await configuredMcpServers(options.command ?? 'codex', task, (listing) => {
-    const servers = codexMcpServers(listing);
-    listed = servers.map((server) => server.name);
-    return servers;
-  });
+  const others = await configuredMcpServers(
+    command,
+    task,
+    (listing) => {
+      const servers = codexMcpServers(listing);
+      listed = servers.map((server) => server.name);
+      return servers;
+    },
+    signal,
+  );
   // `-c` merges into a table the config already has (a stdio server keeps its `command` next to the
   // task's `url`), and no override removes a key: a task server must not reuse a configured name.
   const clash = task.mcpServers?.find((server) => listed.includes(server.name));
   if (clash) {
-    throw new Error(
-      `Codex already has an MCP server named "${clash.name}"; the task's server would merge into it. Give the task's server another name.`,
+    throw Object.assign(
+      new Error(
+        `Codex already has an MCP server named "${clash.name}"; the task's server would merge into it. Give the task's server another name.`,
+      ),
+      { code: 'MCP_NAME_CLASH' },
     );
   }
   const off = others.flatMap(({ name, transport }) => {
@@ -127,6 +136,14 @@ export async function prepareCodex(task: AgentTask, options: CodexAgentOptions =
     ]);
     return ['-c', `${key}.enabled=false`, ...keep];
   });
+  return off;
+}
+
+/** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
+export async function prepareCodex(task: AgentTask, options: CodexAgentOptions = {}): Promise<PreparedRun> {
+  const prepared = withCodexMcp(task, codexArgs(task, options), { approveTools: options.allowMcpTools ?? true });
+  if (!options.onlyTaskMcpServers) return prepared;
+  const off = await codexOwnServersOff(options.command ?? 'codex', task);
   return { ...prepared, args: [...off, ...prepared.args] };
 }
 

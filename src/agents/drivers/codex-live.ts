@@ -6,7 +6,8 @@ import type { AgentEvent, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import type { AgentTask } from '../types.js';
-import { CODEX_SANDBOX, codexProblem, withCodexMcp, type CodexSandbox } from './codex.js';
+import type { PrepareContext, PreparedRun } from '../prepare.js';
+import { CODEX_SANDBOX, codexOwnServersOff, codexProblem, withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -16,6 +17,12 @@ export interface CodexLiveOptions {
   sandbox?: CodexSandbox;
   /** How long to wait for the server to acknowledge each request. Default 60 s. */
   requestTimeoutMs?: number;
+  /**
+   * Switch off every MCP server Codex would load from its own config, leaving only the task's.
+   * Lists them with `codex mcp list --json` first. `true`: the run fails if that fails.
+   * `'when-listed'`: a Codex that cannot list them runs with its own servers, and says so.
+   */
+  onlyTaskMcpServers?: boolean | 'when-listed';
 }
 
 /**
@@ -48,12 +55,32 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
       codexThreadPolicy(task, options);
       return [...(task.extraArgs ?? []), 'app-server'];
     },
-    prepare: (task) => {
-      codexThreadPolicy(task, options);
-      return withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
-    },
+    prepare: (task, context) => prepareCodexLive(task, options, context),
     drive: (session) => driveCodex(session, options),
   });
+}
+
+/** The app server's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others off. */
+export async function prepareCodexLive(
+  task: AgentTask,
+  options: CodexLiveOptions = {},
+  context?: Partial<PrepareContext>,
+): Promise<PreparedRun> {
+  codexThreadPolicy(task, options);
+  const prepared = withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
+  if (!options.onlyTaskMcpServers) return prepared;
+  let off: string[];
+  try {
+    // Stopping the turn stops the listing too.
+    off = await codexOwnServersOff(options.command ?? 'codex', task, context?.signal);
+  } catch (error) {
+    // A name clash is the caller's to fix, and a missing CLI fails the run as it would anyway.
+    const code = (error as { code?: unknown }).code;
+    if (options.onlyTaskMcpServers !== 'when-listed' || code !== undefined) throw error;
+    context?.emit?.({ type: 'stderr', text: `${(error as Error).message}; Codex runs with its own MCP servers.\n` });
+    return prepared;
+  }
+  return { ...prepared, args: [...off, ...prepared.args] };
 }
 
 /** `thread/start` sandbox and approval policy for a task. */

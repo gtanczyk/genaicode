@@ -101,6 +101,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
+      /** `--agent-mcp`: Codex keeps the MCP servers of its own config. */
+      agentMcp?: true;
       /** `--no-artifacts`. */
       artifacts?: false;
       /** `--sessions`: give the agent the session index (`sessions_list`, `sessions_read`...). */
@@ -514,6 +516,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       'max-cost': { type: 'string' as const },
       fallback: { type: 'string' as const, multiple: true as const },
       'no-artifacts': { type: 'boolean' as const },
+      'agent-mcp': { type: 'boolean' as const },
       sessions: { type: 'boolean' as const },
       ...(command === 'ui'
         ? { 'no-open': { type: 'boolean' as const }, 'exit-with-stdin': { type: 'boolean' as const } }
@@ -569,6 +572,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       exitWithStdin: extra['exit-with-stdin'] === true,
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
+      ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),
       ...(command === 'tower' || values.sessions === true ? { sessions: true } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
