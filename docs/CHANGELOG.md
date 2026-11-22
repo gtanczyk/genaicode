@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode ui` and the desktop app: **New chat** in the header starts a new conversation with an empty screen (`/clear` in `chat` too), and in the desktop app **Chats** lists the conversations you had in the app itself, apart from the sessions of every agent. `AgentSession.clear()` (#PRNUM)
+- `genaicode ui` and the desktop app: **New chat** in the header starts a new conversation with an empty screen (`/clear` in `chat` too), and in the desktop app **Chats** lists the conversations you had in the app itself, apart from the sessions of every agent. `AgentSession.clear()` (#291)
 - Desktop app: it comes back to the conversation it had last, with its history, after a restart or an update. `genaicode ui --restore` does the same for any directory (#290)
 - Desktop app: an update says what it is doing: **Downloading update…** while it downloads and **Relaunching…** while it installs, in the window's header and in the menu bar (#290)
 - `sessions_send` queues a message for a session that is working right now, instead of refusing it: the tool answers "Queued", the chat says so, and the message goes as that session's next turn once the current one ends, several in order (#287)
