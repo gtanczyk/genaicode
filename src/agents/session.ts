@@ -4,6 +4,7 @@ import { shouldFailOver } from './failover.js';
 import { packApproval, PackActionError, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
+import { shownAnswers } from './live-agent.js';
 import type {
   AgentBudget,
   AgentEvent,
@@ -17,6 +18,7 @@ import type {
   CodingAgent,
   McpServer,
   QuestionAnswers,
+  QuestionHandler,
   RateLimit,
 } from './types.js';
 
@@ -161,6 +163,12 @@ export interface AgentSessionOptions {
    * (`store.read()` with `artifactResponse()`).
    */
   artifacts?: { store: ArtifactStore; mcpServer?: McpServer };
+  /**
+   * Give agents that have no way of their own to ask the person (no `capabilities.questions`)
+   * the `ask_user` tool: the result of `startQuestionChannel()`. Its questions wait in
+   * `approvals` like the agent's own, for `answer()`, in the turn that is running.
+   */
+  questions?: { mcpServer: McpServer; bind(handler: QuestionHandler | undefined): void };
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -548,6 +556,24 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
   };
 
+  // `ask_user` calls land in the turn that is running; between turns nobody is asked.
+  options.questions?.bind(async (request) => {
+    const turn = state.turns.at(-1);
+    if (closed || !run || !turn || turn.result) return undefined;
+    const answers = await onQuestion(turn.id, request, controller?.signal);
+    // No agent event follows a question of the session's own tool: its entry records the answer here.
+    const shown = shownAnswers(request, answers);
+    updateTurn(turn.id, (asked) => ({
+      ...asked,
+      entries: asked.entries.map((entry) =>
+        entry.kind === 'approval' && entry.request.id === request.id && !entry.decision
+          ? { ...entry, decision: answers ? 'approve' : 'deny', ...(shown ? { answers: shown } : {}) }
+          : entry,
+      ),
+    }));
+    return answers;
+  });
+
   const denyPending = () => {
     for (const resolve of waiting.values()) resolve('deny');
     waiting.clear();
@@ -700,10 +726,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     try {
       if (left?.spent) throw new Error(left.spent);
       const budget = tighterBudget(left?.budget, options.task?.budget);
-      const artifactServer = turnAgent.capabilities.mcp ? options.artifacts?.mcpServer : undefined;
+      const extraServers = turnAgent.capabilities.mcp
+        ? [
+            ...(options.artifacts?.mcpServer ? [options.artifacts.mcpServer] : []),
+            ...(options.questions && !turnAgent.capabilities.questions ? [options.questions.mcpServer] : []),
+          ]
+        : [];
       current = turnAgent.run({
         ...options.task,
-        ...(artifactServer ? { mcpServers: [...(options.task?.mcpServers ?? []), artifactServer] } : {}),
+        ...(extraServers.length ? { mcpServers: [...(options.task?.mcpServers ?? []), ...extraServers] } : {}),
         ...(budget ? { budget } : {}),
         prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
@@ -1018,6 +1049,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       closed = true;
       for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
+      options.questions?.bind(undefined);
       if (state.notes?.length) set({ notes: [] });
       this.stop();
       listeners.clear();

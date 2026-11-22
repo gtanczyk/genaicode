@@ -307,7 +307,12 @@ export interface AgentCapabilities {
   rateLimits?: boolean;
   /** `AgentRun.steer` can add input to a running task. */
   steer?: boolean;
-  /** The agent's questions to the person reach `AgentTask.onQuestion`. */
+  /**
+   * The agent asks the person through a tool of its own, in every mode, and its questions reach
+   * `AgentTask.onQuestion` (Claude Code's `AskUserQuestion`). Without it a session gives the agent
+   * `ask_user` (`AgentSessionOptions.questions`). `codexLive()` passes Codex's own
+   * `request_user_input` on too, but Codex offers that in Plan mode only.
+   */
   questions?: boolean;
   /** Permission prompts reach `AgentTask.onApproval`. */
   approvals?: boolean;
