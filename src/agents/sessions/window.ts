@@ -56,7 +56,7 @@ interface RolloutScan {
   /** The counter's last figure. */
   previous: number;
   reports: number;
-  /** The total after a report and its time, one per minute at most, in the file's order. */
+  /** The total after each report that added to it, with its time, in the file's order. */
   points: Array<[at: number, total: number]>;
 }
 
@@ -107,9 +107,8 @@ function takeLine(scan: RolloutScan, text: string): void {
   scan.previous = running;
   const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
   if (Number.isNaN(at)) return;
-  const last = scan.points.at(-1);
-  if (last && Math.floor(last[0] / 60_000) === Math.floor(at / 60_000)) scan.points.pop();
-  scan.points.push([at, scan.total]);
+  // A report that added nothing says nothing new about where the total stood.
+  if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
 }
 
 function workSince(scan: RolloutScan, since: number): WorkWithin | undefined {
@@ -128,23 +127,42 @@ function workSince(scan: RolloutScan, since: number): WorkWithin | undefined {
     : { part: 0, tokens: 0 };
 }
 
+/** A usage report is a short line: a longer one (a tool's output) is passed over unread. */
+const MAX_LINE = 1024 * 1024;
+
 /** Read what the rollout gained since `scan`. Returns the scan up to its last whole line, and one with the unfinished line too. */
 async function readOn(file: string, scan: RolloutScan): Promise<{ kept: RolloutScan; all: RolloutScan }> {
-  let rest = Buffer.alloc(0);
+  // The line so far, in the pieces it came in: joined once, when its end arrives.
+  let pieces: Buffer[] = [];
+  let length = 0;
+  const line = (last?: Buffer): string | undefined => {
+    const whole = length + (last?.length ?? 0);
+    if (whole > MAX_LINE) return undefined;
+    return (pieces.length ? Buffer.concat(last ? [...pieces, last] : pieces, whole) : last!).toString('utf8');
+  };
   for await (const chunk of createReadStream(file, { start: scan.offset }) as AsyncIterable<Buffer>) {
-    let data = rest.length ? Buffer.concat([rest, chunk]) : chunk;
+    let start = 0;
     let end: number;
-    while ((end = data.indexOf(10)) !== -1) {
-      takeLine(scan, data.toString('utf8', 0, end));
-      scan.offset += end + 1;
-      data = data.subarray(end + 1);
+    while ((end = chunk.indexOf(10, start)) !== -1) {
+      const last = chunk.subarray(start, end);
+      const text = line(last);
+      if (text !== undefined) takeLine(scan, text);
+      scan.offset += length + last.length + 1;
+      pieces = [];
+      length = 0;
+      start = end + 1;
     }
-    rest = data;
+    if (start < chunk.length) {
+      // Past the longest line worth reading only its length is kept.
+      if (length <= MAX_LINE) pieces.push(chunk.subarray(start));
+      length += chunk.length - start;
+    }
   }
-  if (!rest.length) return { kept: scan, all: scan };
+  const rest = length ? line() : undefined;
+  if (rest === undefined) return { kept: scan, all: scan };
   // A last line without its end may still be written: counted now, read again next time.
   const all = { ...scan, points: [...scan.points] };
-  takeLine(all, rest.toString('utf8'));
+  takeLine(all, rest);
   return { kept: scan, all };
 }
 

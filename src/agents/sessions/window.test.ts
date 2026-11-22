@@ -176,6 +176,19 @@ it('reads a long Codex rollout once, then only what it gained', async () => {
   const long = session('codex', 'long', { startedAt: now - 30 * day, path: file('long.jsonl', lines) });
   expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 100 / 5_100, tokens: 100 });
   expect(readdirSync(join(dir, 'home', 'cache', 'rollouts'))).toHaveLength(1);
+  // Two reports in one minute, the period starting between them: only the second is in it.
+  const close = session('codex', 'close', {
+    path: file('close.jsonl', [
+      { ...counted(0, 100_000, 0, 0), timestamp: '2026-11-22T08:00:10Z' },
+      { ...counted(0, 100_100, 0, 0), timestamp: '2026-11-22T08:00:40Z' },
+    ]),
+  });
+  expect((await partsSince([close], Date.parse('2026-11-22T08:00:30Z'), { env })).get(close)?.tokens).toBe(100);
+  // A line longer than any report (a tool's output) is passed over, whole or not.
+  const wide = session('codex', 'wide', {
+    path: file('wide.jsonl', [counted(1, 10, 0, 0), { text: 'token_count'.repeat(200_000) }, counted(1, 30, 0, 0)]),
+  });
+  expect((await partsSince([wide], since, { env })).get(wide)?.tokens).toBe(30);
   // The last line had no end yet: it is read again, not counted twice.
   appendFileSync(long.path!, `\n${JSON.stringify(counted(0, 5_400, 0, 0))}\n`);
   expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 400 / 5_400, tokens: 400 });
