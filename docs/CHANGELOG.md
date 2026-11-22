@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode chat`, `ui` and `tower` run Codex and Muse over their live drivers (`codexLive`, `museLive`), as a pack already did: "Ask first" asks before a step outside the sandbox, a message sent mid-turn steers the run, Codex's plan limits show, and an edit by Codex shows its diff. `genaicode run` keeps the headless drivers (#PRNUM)
+- `genaicode chat`, `ui` and `tower` run Codex and Muse over their live drivers (`codexLive`, `museLive`), as a pack already did: "Ask first" asks before a step outside the sandbox, a message sent mid-turn steers the run, Codex's plan limits show, and an edit by Codex shows its diff. `genaicode run` keeps the headless drivers (#266)
 - `<AgentChat>`: an edit an agent reports as changed files (Codex) shows its diff like an edit step, and a link to a file in a reply (`[a.txt](/path/a.txt)`) shows as its label and opens the file with `onOpenFile`. The `file-change` event and the session `files` entry take an optional `diff` (#265)
 - `genaicode ui`: the plan limits, agent, model, approval mode and the attach button sit in one row under the prompt field, which holds the text and Send only. `<AgentChat composerExtras>` renders in that row, with the attach buttons (#264)
 - `genaicode ui`: the path of a file the agent edited or read opens the file beside the chat (text files inside the project only). `<AgentChat>` takes `onOpenFile` to make those paths buttons, and `toolPath` is exported from `genaicode/react` (#262)
