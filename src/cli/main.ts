@@ -332,8 +332,8 @@ Chat and UI options:
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
-      --agent-mcp         Codex also starts the MCP servers of its own config. Without it, a
-                          chat gives Codex only the servers above and its own tools
+      --agent-mcp         Codex keeps its plugins and the MCP servers of its own config. Without
+                          it, a chat gives Codex only the servers above and its own tools
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
       --sessions          Give the agent read access to the session index. Ask what needs your

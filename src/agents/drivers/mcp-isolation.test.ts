@@ -26,7 +26,7 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
       { prompt: 'go', cwd: dir, mcpServers: [app] },
       { command, onlyTaskMcpServers: true },
     );
-    expect(prepared.args.slice(0, 4)).toEqual([
+    expect(prepared.args.slice(2, 6)).toEqual([
       '-c',
       'mcp_servers.github.enabled=false',
       '-c',
@@ -39,7 +39,12 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     const command = fakeCli('codex-live', [{ name: 'github' }]);
     const task = { prompt: 'go', cwd: dir, mcpServers: [app] };
     const prepared = await prepareCodexLive(task, { command, onlyTaskMcpServers: true });
-    expect(prepared.args.slice(0, 2)).toEqual(['-c', 'mcp_servers.github.enabled=false']);
+    expect(prepared.args.slice(0, 4)).toEqual([
+      '-c',
+      'features.plugins=false',
+      '-c',
+      'mcp_servers.github.enabled=false',
+    ]);
     expect(prepared.args.at(-1)).toBe('app-server');
     expect((await prepareCodexLive(task, { command })).args).not.toContain('mcp_servers.github.enabled=false');
 
@@ -85,7 +90,7 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
       { name: 'web', transport: { type: 'streamable_http', url: 'https://mcp.example/web' } },
     ]);
     const prepared = await prepareCodex({ prompt: 'go', cwd: dir }, { command, onlyTaskMcpServers: true });
-    expect(prepared.args.slice(0, 8)).toEqual([
+    expect(prepared.args.slice(2, 10)).toEqual([
       '-c',
       'mcp_servers.docs.enabled=false',
       '-c',

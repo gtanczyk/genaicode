@@ -100,8 +100,8 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
 }
 
 /**
- * `-c` overrides that switch off every MCP server Codex has in its own config, so a run sees the
- * task's only. Rejects when the list cannot be read, or when a task server reuses a listed name.
+ * `-c` overrides that switch off every MCP server Codex has in its own config, and its plugins with
+ * theirs, so a run sees the task's only. Rejects when the list cannot be read, or when a task server reuses a listed name.
  */
 export async function codexOwnServersOff(command: string, task: AgentTask, signal?: AbortSignal): Promise<string[]> {
   let listed: string[] = [];
@@ -136,7 +136,9 @@ export async function codexOwnServersOff(command: string, task: AgentTask, signa
     ]);
     return ['-c', `${key}.enabled=false`, ...keep];
   });
-  return off;
+  // A plugin installed from a remote marketplace starts MCP servers the listing does not name, and
+  // no override reaches one plugin: the run goes without Codex's plugins altogether.
+  return ['-c', 'features.plugins=false', ...off];
 }
 
 /** The run's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others switched off. */
