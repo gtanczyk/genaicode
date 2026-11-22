@@ -17,6 +17,9 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 /// How often a running app looks again: it can stay in the menu bar for days.
 const EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
+/// Where a version the app cannot install itself is downloaded from.
+const RELEASES: &str = "https://github.com/gtanczyk/genaicode/releases/latest";
+
 /// An offer is on screen or an update is downloading: a second look would only ask twice.
 static BUSY: AtomicBool = AtomicBool::new(false);
 /// The user said "Later": the looks the app makes on its own stay quiet until it starts again.
@@ -66,7 +69,26 @@ pub fn check(app: &AppHandle, asked: bool) {
     });
 }
 
+/// A package the system installed (.deb, .rpm) is the package manager's to replace: on Linux
+/// only an AppImage can install its own update.
+fn replaces_itself() -> bool {
+    !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
+}
+
 fn offer(app: AppHandle, update: Update) {
+    if !replaces_itself() {
+        // Said once per run: the looks the app makes on its own stay quiet afterwards.
+        LATER.store(true, Ordering::Relaxed);
+        BUSY.store(false, Ordering::SeqCst);
+        return say(
+            &app,
+            MessageDialogKind::Info,
+            format!(
+                "Genaicode {} is available. You have {}.\n\nGet it from {RELEASES}",
+                update.version, update.current_version
+            ),
+        );
+    }
     let message = format!(
         "Genaicode {} is available. You have {}.\n\nInstalling it restarts the app and stops the agents it runs.",
         update.version, update.current_version

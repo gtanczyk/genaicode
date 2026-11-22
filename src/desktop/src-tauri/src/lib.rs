@@ -96,14 +96,22 @@ fn login_env() -> Option<Vec<(String, String)>> {
     vars.iter().any(|(name, _)| name == "PATH").then_some(vars)
 }
 
-/// Node.js ships as an external binary beside the app's executable.
-fn node_binary() -> Result<PathBuf, String> {
+/// Node.js ships beside the app's executable. On Linux that directory is `/usr/bin` in a
+/// package, where a `node` of ours would replace the system's, so there it lives in the runtime.
+fn node_binary(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("GENAICODE_DESKTOP_NODE") {
         return Ok(path.into());
     }
-    let exe = env::current_exe().map_err(|error| error.to_string())?;
-    let name = if cfg!(windows) { "node.exe" } else { "node" };
-    let path = exe.parent().ok_or("the app has no directory")?.join(name);
+    let path = if cfg!(target_os = "linux") {
+        app.path()
+            .resource_dir()
+            .map_err(|error| error.to_string())?
+            .join("runtime/bin/node")
+    } else {
+        let exe = env::current_exe().map_err(|error| error.to_string())?;
+        let name = if cfg!(windows) { "node.exe" } else { "node" };
+        exe.parent().ok_or("the app has no directory")?.join(name)
+    };
     path.exists()
         .then_some(path.clone())
         .ok_or_else(|| format!("Node.js is missing from the app ({}).", path.display()))
@@ -125,7 +133,7 @@ fn genaicode_cli(app: &AppHandle) -> Result<PathBuf, String> {
 
 /// The bundled Node.js on the bundled genaicode, with the user's environment.
 fn genaicode(app: &AppHandle, shell: &mut Shell) -> Result<Command, String> {
-    let node = node_binary()?;
+    let node = node_binary(app)?;
     let cli = genaicode_cli(app)?;
     if shell.login.is_none() {
         shell.login = login_env();

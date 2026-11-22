@@ -1,0 +1,7 @@
+{
+  "mainBinaryName": "genaicode-desktop",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "externalBin": []
+  }
+}
