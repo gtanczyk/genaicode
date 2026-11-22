@@ -64,7 +64,7 @@ button.chip:hover { border-color: var(--accent); }
 .run-with select, .run-with button { cursor: pointer; }
 .gc-under .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
 .run-with .chip { margin-right: 4px; padding: 2px 9px; }
-.run-with input { max-width: 16em; text-overflow: ellipsis; field-sizing: content; min-width: 7em; }
+.run-with input { max-width: 16em; text-overflow: ellipsis; field-sizing: content; min-width: 4em; }
 .run-with input::placeholder { color: var(--faint); }
 .run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
 .run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

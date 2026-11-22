@@ -147,6 +147,8 @@ export interface AgentChatProps {
   composerExtras?: ReactNode;
   /** Line under the composer. Default: the keys. Pass null for none. */
   hint?: ReactNode;
+  /** A tooltip on the message box, e.g. its keys when `hint` is `null`. */
+  composerTitle?: string;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
   disabled?: boolean;
   autoFocus?: boolean;
@@ -507,6 +509,7 @@ export function AgentChat(props: AgentChatProps) {
               autoFocus={props.autoFocus}
               value={draft}
               placeholder={placeholder}
+              title={props.composerTitle}
               aria-label="Message"
               onChange={(event) => {
                 setDraft(event.target.value);

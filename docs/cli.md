@@ -361,7 +361,7 @@ stores genaicode can read conversations from (every agent `genaicode sessions` l
 
 The wolf from genaicode 1.0 is back. When the agent asks for approval or finishes, the
 browser UI barks if its tab is in the background and counts those events in the tab title.
-The terminal UI rings the terminal bell instead. `/bark off` (or the Bark button) quiets it.
+The terminal UI rings the terminal bell instead. `/bark off` quiets it.
 
 <p align="center">
   <picture>
