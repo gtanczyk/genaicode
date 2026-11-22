@@ -729,7 +729,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const extraServers = turnAgent.capabilities.mcp
         ? [
             ...(options.artifacts?.mcpServer ? [options.artifacts.mcpServer] : []),
-            ...(options.questions && !turnAgent.capabilities.questions ? [options.questions.mcpServer] : []),
+            ...(options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote
+              ? [options.questions.mcpServer]
+              : []),
           ]
         : [];
       current = turnAgent.run({

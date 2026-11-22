@@ -140,7 +140,8 @@ export async function startQuestionChannel(options: { name?: string } = {}): Pro
     instructions: `Use ${ASK_USER_TOOL} when a choice is the user's to make; it shows them your options.`,
   });
   return {
-    mcpServer: server.mcpServer,
+    // The call waits for a person: agents that can be told so wait up to a day (Codex: 60 s by default).
+    mcpServer: { ...server.mcpServer, toolTimeoutSec: 86_400 },
     bind(next) {
       handler = next;
     },

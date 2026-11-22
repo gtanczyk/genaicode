@@ -333,6 +333,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     name,
     sessions,
     capabilities: {
+      remote: true,
       usage: true,
       mcp: true,
       resume: true,

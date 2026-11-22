@@ -224,6 +224,7 @@ export function codexMcpOverrides(
       }
       if (entries.length) set(`${key}.env_vars`, JSON.stringify(entries.map(([name]) => name)));
     }
+    if (server.toolTimeoutSec) set(`${key}.tool_timeout_sec`, String(server.toolTimeoutSec));
     if (options.approveTools) set(`${key}.default_tools_approval_mode`, '"approve"');
   });
   return { args, env };

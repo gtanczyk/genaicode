@@ -138,14 +138,21 @@ export type QuestionHandler = (
 ) => QuestionAnswers | undefined | Promise<QuestionAnswers | undefined>;
 
 /** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
-export type McpServer =
+export type McpServer = (
   | { name: string; url: string; headers?: Readonly<Record<string, string>> }
   | {
       name: string;
       command: string;
       args?: readonly string[];
       env?: Readonly<Record<string, string>>;
-    };
+    }
+) & {
+  /**
+   * How long the agent waits for one tool call, in seconds, where it can be told (Codex's
+   * `tool_timeout_sec`, default 60). For tools that wait for a person, like `ask_user`.
+   */
+  toolTimeoutSec?: number;
+};
 
 /**
  * Something an agent published for the user to look at (`publish_artifact`): a page, an image,
@@ -318,6 +325,11 @@ export interface AgentCapabilities {
   approvals?: boolean;
   /** Honors `AgentTask.mcpServers`. */
   mcp?: boolean;
+  /**
+   * Runs on a provider's servers (managed and hosted agents): MCP servers on this machine's
+   * loopback do not reach it, so a session gives it no `ask_user`.
+   */
+  remote?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
   /** `AgentTask.permissions` values the driver can translate. Absent: none. */

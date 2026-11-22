@@ -132,6 +132,8 @@ describe('question channel in a session', () => {
       await session.idle();
       expect(replies).toEqual(['The user answered:\nWhich database? Postgres\n(1 left unanswered.)']);
       expect(tasks[0]!.mcpServers?.map((server) => server.name)).toEqual(['genaicode_ask']);
+      // A person may take minutes: Codex is told to wait (its own default is 60 s).
+      expect(tasks[0]!.mcpServers?.[0]?.toolTimeoutSec).toBe(86_400);
       expect(session.get().turns[0]!.entries).toContainEqual({
         kind: 'approval',
         request,
@@ -144,10 +146,10 @@ describe('question channel in a session', () => {
     }
   });
 
-  it('leaves it out for agents that ask on their own or take no MCP servers', async () => {
+  it('leaves it out for agents that ask on their own, run remotely or take no MCP servers', async () => {
     const channel = await startQuestionChannel();
     try {
-      for (const capabilities of [{ mcp: true, questions: true }, {}]) {
+      for (const capabilities of [{ mcp: true, questions: true }, { mcp: true, remote: true }, {}]) {
         const { agent, tasks } = askingAgent(capabilities);
         const session = createAgentSession({ agent, cwd: '.', questions: channel });
         session.send('go');

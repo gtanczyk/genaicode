@@ -912,8 +912,10 @@ const run = claude().run({
   Antigravity, Gemini, Muse...) can get `ask_user`, an MCP tool genaicode serves:
   `startQuestionChannel()` gives an `mcpServer` and `bind(handler)`, and
   `createAgentSession({ questions: channel })` hands it to every agent that takes MCP servers
-  and has no `capabilities.questions`. Its questions show and are answered like the agent's own;
-  the tool returns the answers as text. `genaicode chat` and `ui` do this.
+  and has no `capabilities.questions` (nor `capabilities.remote`: managed and hosted agents run
+  elsewhere and cannot reach this machine's loopback). Its questions show and are answered like
+  the agent's own; the tool returns the answers as text, and Codex is told to wait up to a day
+  for it (`toolTimeoutSec` on the server). `genaicode chat` and `ui` do this.
 - In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
   it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
   the options, and `genaicode chat` asks in the terminal.
