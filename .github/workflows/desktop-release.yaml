@@ -10,6 +10,10 @@ name: Desktop app release
 #   APPLE_API_KEY_ID             App Store Connect API key id (notarization)
 #   APPLE_API_ISSUER             its issuer id
 #   APPLE_API_KEY_P8             the key itself, the text of AuthKey_<id>.p8
+#   TAURI_SIGNING_PRIVATE_KEY    the key that signs the app's own updates (`npx tauri signer generate`);
+#                                its public half is `plugins.updater.pubkey` in tauri.conf.json.
+#                                Without it the release gets the .dmg only, and no app learns of it.
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   the password of that key, when it has one
 # Without APPLE_CERTIFICATE the run stops before building: the plain build is desktop.yaml's.
 on:
   workflow_run:
@@ -161,6 +165,8 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
@@ -168,7 +174,15 @@ jobs:
           printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
           chmod 600 "$key"
           export APPLE_API_KEY_PATH="$key"
-          npx tauri build --bundles app,dmg --config "{\"version\":\"$VERSION\"}"
+          # The archive running apps update from is made only when there is a key to sign it with.
+          config="{\"version\":\"$VERSION\"}"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            config="{\"version\":\"$VERSION\",\"bundle\":{\"createUpdaterArtifacts\":true}}"
+          else
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            echo "::notice::No TAURI_SIGNING_PRIVATE_KEY secret: this release carries no update for running apps."
+          fi
+          npx tauri build --bundles app,dmg --config "$config"
           rm "$key"
       - name: Check what Apple will say on another Mac
         if: steps.signing.outputs.ready == 'true'
@@ -188,6 +202,26 @@ jobs:
           cp "$built" "$out"
           ls -lh "$out"
           echo "file=$out" >> "$GITHUB_OUTPUT"
+          # What running apps update from: the signed archive of the app and the file that names it.
+          archive="$bundle/macos/Genaicode.app.tar.gz"
+          if [ -f "$archive" ] && [ -f "$archive.sig" ]; then
+            mkdir "$RUNNER_TEMP/unpacked"
+            tar -xzf "$archive" -C "$RUNNER_TEMP/unpacked"
+            xcrun stapler validate "$RUNNER_TEMP/unpacked/Genaicode.app"
+            case "$(uname -m)" in
+              arm64) target=darwin-aarch64 ;;
+              *) target=darwin-x86_64 ;;
+            esac
+            update="genaicode-$VERSION-macos-$(uname -m).app.tar.gz"
+            cp "$archive" "$update"
+            VERSION="$VERSION" TARGET="$target" SIGNATURE="$(cat "$archive.sig")" \
+              URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/$update" \
+              node -e 'const { VERSION, TARGET, SIGNATURE, URL } = process.env;
+                require("fs").writeFileSync("latest.json", JSON.stringify({ version: VERSION, pub_date: new Date().toISOString(),
+                  platforms: { [TARGET]: { signature: SIGNATURE, url: URL } } }, null, 2) + "\n");'
+            cat latest.json
+            echo "update=$update" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
         if: steps.signing.outputs.ready == 'true'
         with:
@@ -200,7 +234,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           FILE: ${{ steps.dmg.outputs.file }}
-        run: gh release upload "v$VERSION" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
+          UPDATE: ${{ steps.dmg.outputs.update }}
+        run: |
+          set -euo pipefail
+          gh release upload "v$VERSION" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
+          # latest.json goes last: once it is there, running apps are offered this version.
+          if [ -n "$UPDATE" ]; then
+            gh release upload "v$VERSION" "$UPDATE" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "v$VERSION" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          fi
       - name: Remove the keychain
         if: always() && steps.signing.outputs.ready == 'true'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

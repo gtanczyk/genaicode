@@ -54,6 +54,18 @@ Developer ID Application certificate with its key, a `.p12` in base64), `APPLE_C
 `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` and `APPLE_API_KEY_P8` (an App Store Connect API key, for the
 notarization). Without the certificate the run ends before it builds.
 
+## Updates
+
+The app looks for a newer version at start, every six hours while it runs and on **Check for
+Updates…** in its menu, and offers to install it: it never installs unasked, because that restarts
+the app and stops the agents it runs. It reads `latest.json` of the newest GitHub Release, which
+the release workflow adds with `genaicode-<version>-macos-arm64.app.tar.gz`, the archive the app
+updates from. That archive is signed with a key of its own (`npx tauri signer generate`): its
+private half is the secret `TAURI_SIGNING_PRIVATE_KEY` (with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`)
+in the `apple` environment, its public half is `plugins.updater.pubkey` in
+`src-tauri/tauri.conf.json`. An app accepts only an update signed with that key, so losing the
+private key means a manual download for everyone. Without the secret a release gets the `.dmg` only.
+
 | Variable                 | For development                                         |
 | ------------------------ | ------------------------------------------------------- |
 | `GENAICODE_DESKTOP_CWD`  | Project folder to open, instead of the remembered one   |

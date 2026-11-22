@@ -9,6 +9,7 @@
 //! questions that can be answered from outside their agent.
 
 mod tower;
+mod update;
 
 use std::{
     env, fs,
@@ -28,6 +29,7 @@ use tauri::{
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 const OPEN_FOLDER: &str = "open-folder";
+const CHECK_UPDATES: &str = "check-updates";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
 /// `deny:<question>` and `open:<index of the session in the last snapshot>`.
 const TRAY: &str = "tower";
@@ -554,6 +556,8 @@ fn on_menu(app: &AppHandle, id: &str) {
         choose_folder(app);
     } else if id == SHOW {
         show(app);
+    } else if id == CHECK_UPDATES {
+        update::check(app, true);
     } else if id == QUIT {
         app.exit(0);
     } else if let Some(ask) = id.strip_prefix("approve:") {
@@ -576,6 +580,7 @@ pub fn run() {
             show(app)
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![open_folder])
         .manage(ShellState::default())
         .on_window_event(|window, event| {
@@ -598,8 +603,20 @@ pub fn run() {
                 Some("CmdOrCtrl+O"),
             )?;
             let project = Submenu::with_items(handle, "Project", true, &[&open])?;
+            let updates = MenuItem::with_id(
+                handle,
+                CHECK_UPDATES,
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?;
             let menu = Menu::default(handle)?;
             menu.append(&project)?;
+            // Under the app's own menu on macOS, where such an item is looked for.
+            match menu.items()?.first().and_then(|item| item.as_submenu()) {
+                Some(first) if cfg!(target_os = "macos") => first.insert(&updates, 1)?,
+                _ => project.append(&updates)?,
+            }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
             let mut tray = TrayIconBuilder::with_id(TRAY)
@@ -617,6 +634,7 @@ pub fn run() {
                 Some(folder) => start(handle, folder),
                 None => choose_folder(handle),
             }
+            update::watch(handle);
             Ok(())
         })
         .build(tauri::generate_context!())
