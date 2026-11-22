@@ -167,6 +167,8 @@ describe('paths through symlinks and the command directory', () => {
   writeFileSync(join(secret, 'key.txt'), 'x');
   writeFileSync(join(project, 'src', 'a.ts'), 'x');
   symlinkSync(secret, join(project, 'linked'));
+  mkdirSync(join(project, 'a', 'b'), { recursive: true });
+  symlinkSync(join(project, 'a', 'b'), join(project, 'inner'));
 
   it('refuses a read through a symlink out of the project', () => {
     expect(isReadOnlyCommand('cat src/a.ts', project)).toBe(true);
@@ -181,6 +183,9 @@ describe('paths through symlinks and the command directory', () => {
     expect(isReadOnlyCommand('cd missing && cat ../secret/key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cd src | cat ../a.ts', project)).toBe(false);
     expect(isReadOnlyCommand('ls || cd src && cat a.ts', project)).toBe(false);
+    expect(isReadOnlyCommand('cd inner && cd .. && cat ../secret/key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cd a/b && cd .. && cat b/../../src/a.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('find -files0-from list -type f', project)).toBe(false);
   });
 
   it('checks the directory the request says the command runs in', () => {

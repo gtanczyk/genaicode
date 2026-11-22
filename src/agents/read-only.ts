@@ -236,7 +236,8 @@ function readerCommand(words: string[], base: string, env: NodeJS.ProcessEnv): b
   }
   // Following symlinks could read outside the project.
   if ((name === 'ls' || name === 'du' || name === 'find') && args.some((arg) => /^-[^-]*[LH]/.test(arg))) return false;
-  if (name === 'find') return !args.some((arg) => FIND_WRITERS.has(arg) || arg === '-L' || arg === '-follow');
+  if (name === 'find')
+    return !args.some((arg) => FIND_WRITERS.has(arg) || ['-L', '-follow', '-files0-from'].includes(arg));
   if (name === 'sed') {
     // Only `sed -n '<lines>p'`: other scripts can write (`w`) or run (`e`).
     const [flag, script, ...files] = args;
@@ -339,7 +340,8 @@ function readsOnly(command: string | readonly string[], base: string, root: stri
       // Only where the next command surely runs there: not in a pipe, not after `||`.
       if ((ops[i] !== undefined && ops[i] !== '&&') || (ops[i + 1] !== undefined && ops[i + 1] !== '&&')) return false;
       const next = realTarget(path.resolve(base, words[1]!));
-      if (!existsSync(next)) return false;
+      // Through a symlink, `cd ..` would climb the link's path, not the target's.
+      if (!existsSync(next) || next !== path.resolve(realTarget(base), words[1]!)) return false;
       base = next;
     }
   }
