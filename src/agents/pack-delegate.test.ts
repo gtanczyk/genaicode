@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -46,7 +47,7 @@ describe('pack delegation for a chat agent', () => {
   it('runs a task in another directory, passes read-only commands and asks for the rest', async () => {
     const home = mkdtempSync(join(root, 'home-'));
     const game = join(root, 'game');
-    mkdirSync(game);
+    execFileSync('git', ['init', '-q', game]);
     const asked: string[] = [];
     const member = fake('agy', async (task) => {
       expect(task.cwd).toBe(game);
@@ -91,8 +92,9 @@ describe('pack delegation for a chat agent', () => {
     expect(prompt).toContain('agy');
   });
 
-  it('asks for read-only commands too with readOnlyCommands: ask', async () => {
+  it('asks for read-only commands with readOnlyCommands: ask, and outside a repository', async () => {
     const cwd = mkdtempSync(join(root, 'ask-'));
+    execFileSync('git', ['init', '-q', cwd]);
     const asked: string[] = [];
     const member = fake('agy', async (task) => {
       await task.onApproval!({ id: 'r', kind: 'command', detail: { command: 'ls' } });
@@ -108,6 +110,17 @@ describe('pack delegation for a chat agent', () => {
     await pack({ lead, members: [member], readOnlyCommands: 'ask' }).run({
       prompt: 'go',
       cwd,
+      onApproval: (request) => {
+        asked.push(request.id);
+        return 'approve';
+      },
+    }).result;
+    expect(asked).toEqual(['t1:r']);
+    asked.length = 0;
+    const plain = mkdtempSync(join(root, 'plain-'));
+    await pack({ lead, members: [member] }).run({
+      prompt: 'go',
+      cwd: plain,
       onApproval: (request) => {
         asked.push(request.id);
         return 'approve';

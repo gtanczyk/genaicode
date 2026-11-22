@@ -106,10 +106,10 @@ function tokenize(command: string): Token[] | undefined {
       if (double) i++;
     } else if (command.startsWith('2>/dev/null', i) && word === undefined) {
       i += '2>/dev/null'.length - 1;
-    } else if ('$`;<>()\n\r{}!#'.includes(c)) {
+    } else if ('$`;<>()\n\r{}!#*?[]'.includes(c)) {
+      // Globs too: a file named `-e` would become an option after the check.
       return undefined;
     } else {
-      // Globs and `~` expand to paths, which a reader only reads.
       word = (word ?? '') + c;
     }
   }

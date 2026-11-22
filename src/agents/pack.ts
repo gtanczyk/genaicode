@@ -1,4 +1,5 @@
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import type { TokenUsage } from '../core/types.js';
 import { findExecutable } from './discovery.js';
@@ -578,7 +579,12 @@ export function pack(options: PackOptions): Pack {
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
 
         const onApproval = task.onApproval;
-        const readOnly = options.readOnlyCommands !== 'ask';
+        // Only inside a repository the lead named, never `/` or the home folder as a whole.
+        const readOnly =
+          options.readOnlyCommands !== 'ask' &&
+          !!repo &&
+          repo !== path.parse(repo).root &&
+          repo !== projectDirectory(homedir());
         const run = startRun(agent, {
           prompt,
           cwd: sub.cwd,

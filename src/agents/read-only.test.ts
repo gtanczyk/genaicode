@@ -22,7 +22,7 @@ describe('isReadOnlyCommand', () => {
       'git status && git branch -a',
       'find . -name "*.ts" -type f',
       "sed -n '10,40p' src/a.ts",
-      'wc -l src/*.ts 2>/dev/null',
+      'wc -l src/a.ts 2>/dev/null',
       'cd games/knights && ls',
       `cat ${cwd}/README.md`,
     ])
@@ -58,6 +58,8 @@ describe('isReadOnlyCommand', () => {
       'node -e 1',
       'bash -c "rm x"',
       './tools/cat a.txt',
+      "sed -n '1p' *",
+      'cat [ab].txt',
       './bash -c ls',
       '/tmp/x/cat a',
       'uniq in.txt out.txt',
@@ -130,7 +132,7 @@ describe('paths through symlinks and the command directory', () => {
 
   it('refuses a read through a symlink out of the project', () => {
     expect(isReadOnlyCommand('cat src/a.ts', project)).toBe(true);
-    expect(isReadOnlyCommand('ls src/*.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('ls src/*.ts', project)).toBe(false);
     expect(isReadOnlyCommand('cat linked/key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cat linked/*', project)).toBe(false);
     expect(isReadOnlyCommand('cd linked && cat key.txt', project)).toBe(false);

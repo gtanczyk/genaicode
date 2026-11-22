@@ -11,7 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode chat`, `ui` and `tower --delegate`: every agent may hand work to the other installed agents through the pack tools, so a delegated agent's approvals come to the chat. Before, asked for a second opinion from Antigravity, Claude started `agy` from its shell, where Antigravity could not ask and came back empty. The desktop app turns it on. A turn that delegates nothing looks as before (#288)
-- `pack()`: a delegated agent's commands that only read inside its directory (`ls`, `cat`, `rg`, `git log`, `git diff`...) pass without asking; `readOnlyCommands: 'ask'` keeps asking. `delegate` takes a `cwd` for work in another directory. `isReadOnlyCommand()` and `delegationBrief` are exported (#288)
+- `pack()`: a delegated agent's commands that only read inside its directory, a git repository (`ls`, `cat`, `rg`, `git log`, `git diff`...), pass without asking; `readOnlyCommands: 'ask'` keeps asking. `delegate` takes a `cwd` for work in another directory. `isReadOnlyCommand()` and `delegationBrief` are exported (#288)
 
 ## 2.51.0 — 2026-11-22
 

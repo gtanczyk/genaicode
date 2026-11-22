@@ -253,7 +253,8 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
   prefixed with the task id and the summary names the agent. A request to run a command that only
   reads inside the task's directory (`ls`, `cat`, `rg`, `git log`/`diff`/`status`, `sed -n '1,20p'`,
   joined by `&&` or `|`; `isReadOnlyCommand()` decides) is approved without asking, so a review
-  is not stopped by its first `ls`. `readOnlyCommands: 'ask'` asks for those too.
+  is not stopped by its first `ls`. That holds only in a git repository (not `/` or the home
+  folder), for programs from PATH or a system `bin`, without globs, and with symlinks followed. `readOnlyCommands: 'ask'` asks for those too.
 - `delegate` takes an optional `cwd`, absolute or relative to the lead's, for work in another
   directory than the lead's own.
 - `delegationBrief` is a short briefing for a lead that mostly works by itself: the tools are
