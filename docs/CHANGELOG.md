@@ -16,7 +16,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Session tools: their instructions tell the agent to look at the sessions first when asked what is going on or how work is progressing, and at files and git after that. In the desktop app the agent answered such a question from git alone, because Claude Code keeps most of these tools behind a tool search (#PRNUM)
+- Session tools: their instructions tell the agent to look at the sessions first when asked what is going on or how work is progressing, and at files and git after that. In the desktop app the agent answered such a question from git alone, because Claude Code keeps most of these tools behind a tool search (#279)
 
 ## 2.49.1 — 2026-11-22
 
