@@ -4,7 +4,7 @@ name: Desktop app release
 # .dmg to the GitHub Release of that version. Two doors:
 #   - "Publish to npm" finished: the app of the version it released
 #   - Run workflow in Actions, for a version that already has a v* tag
-# Secrets (repository settings, never in the code):
+# Secrets of the `apple` environment (limited to the default branch), never in the code:
 #   APPLE_CERTIFICATE            the Developer ID Application certificate with its key, a .p12 in base64
 #   APPLE_CERTIFICATE_PASSWORD   the password of that .p12
 #   APPLE_API_KEY_ID             App Store Connect API key id (notarization)
@@ -37,6 +37,8 @@ jobs:
        github.event.workflow_run.event != 'pull_request' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: macos-latest
+    # The Apple secrets live in this environment, which only the default branch may use.
+    environment: apple
     timeout-minutes: 60
     steps:
       - name: Signing is set up
