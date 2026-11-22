@@ -777,7 +777,8 @@ img.gc-artifact-view {
   border-radius: 14px;
   padding: 8px 8px 8px 14px;
 }
-.gc-box .gc-icon {
+.gc-box .gc-icon,
+.gc-under .gc-icon {
   display: grid;
   place-items: center;
   width: 32px;
@@ -789,13 +790,16 @@ img.gc-artifact-view {
   background: transparent;
   border-color: transparent;
 }
-.gc-box .gc-icon + .gc-icon {
+.gc-box .gc-icon + .gc-icon,
+.gc-under .gc-icon + .gc-icon {
   margin-left: -4px;
 }
-.gc-box .gc-icon:hover:not(:disabled) {
+.gc-box .gc-icon:hover:not(:disabled),
+.gc-under .gc-icon:hover:not(:disabled) {
   color: var(--_text);
 }
-.gc-box .gc-icon.gc-recording {
+.gc-box .gc-icon.gc-recording,
+.gc-under .gc-icon.gc-recording {
   color: #fff;
   background: var(--_danger, #e5484d);
   border-color: transparent;
@@ -815,8 +819,18 @@ img.gc-artifact-view {
 .gc-box.gc-stacked textarea {
   flex: 1 0 100%;
 }
-.gc-box .gc-grow {
+.gc-box .gc-grow,
+.gc-under .gc-grow {
   flex: 1;
+}
+/* Host controls (agent, model, mode) and the attach buttons, in a row under the field. */
+.gc-under {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0 6px 0 14px;
 }
 .gc-attachments {
   display: flex;
@@ -892,7 +906,8 @@ img.gc-artifact-view {
   margin-bottom: 8px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .gc-box .gc-icon.gc-recording {
+  .gc-box .gc-icon.gc-recording,
+  .gc-under .gc-icon.gc-recording {
     animation: none;
   }
 }
