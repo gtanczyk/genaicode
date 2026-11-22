@@ -673,9 +673,11 @@ async function lastSessionIn(
         : [],
     ),
   );
-  const listing = await listSessions(sources, { limit: 200, live: false, ...(env ? { env } : {}) }).catch(
-    () => undefined,
-  );
+  // Asked of those agents and for this directory only: newer work elsewhere must not crowd it out.
+  const listing = await listSessions(
+    sources.filter((source) => usable.has(source.name)),
+    { cwd, limit: 200, live: false, ...(env ? { env } : {}) },
+  ).catch(() => undefined);
   for (const session of listing?.sessions ?? []) {
     const agent = usable.get(session.source);
     if (!agent || session.where !== 'local' || !session.cwd) continue;

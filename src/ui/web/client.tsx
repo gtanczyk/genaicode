@@ -287,6 +287,11 @@ function App() {
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
   // Said at once: installing takes a few seconds before the app goes away.
   const [relaunching, setRelaunching] = useState(false);
+  // An install that failed leaves the update waiting again: the button can be pressed once more.
+  const waits = config?.update;
+  useEffect(() => {
+    if (waits?.ready) setRelaunching(false);
+  }, [waits]);
   const hasProject = config ? config.project !== false : !root.dataset.noProject;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
