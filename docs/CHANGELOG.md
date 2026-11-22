@@ -8,15 +8,17 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.49.2 — 2026-11-22
+
+### Fixed
+
+- Session tools: their instructions tell the agent to look at the sessions first when asked what is going on or how work is progressing, and at files and git after that. In the desktop app the agent answered such a question from git alone, because Claude Code keeps most of these tools behind a tool search (#279)
+
 ### Internal
 
 - Desktop app: a release workflow builds the macOS app after each npm release, signs it with the Developer ID certificate, has Apple notarize it and adds the `.dmg` to the GitHub Release. It runs once the Apple secrets are in the repository (#276)
 - Desktop app: its name is Genaicode, with a capital letter (the app, its window and its menu bar items), and a second launch shows the app that already runs instead of starting another (#277)
 - Desktop app: it updates itself. It looks for a newer version at start, every six hours and on **Check for Updates…**, offers it, and installs it only when told to. The release workflow adds the signed archive it updates from and `latest.json` to each GitHub Release, once the `TAURI_SIGNING_PRIVATE_KEY` secret is set (#278)
-
-### Fixed
-
-- Session tools: their instructions tell the agent to look at the sessions first when asked what is going on or how work is progressing, and at files and git after that. In the desktop app the agent answered such a question from git alone, because Claude Code keeps most of these tools behind a tool search (#279)
 
 ## 2.49.1 — 2026-11-22
 
