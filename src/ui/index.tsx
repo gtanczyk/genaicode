@@ -147,20 +147,22 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
   const watchEnd = options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY);
   const found = await new Promise<boolean>((resolve) => {
     if (options.signal?.aborted) return resolve(false);
-    const stop = () => resolve(false);
+    const settle = (value: boolean) => {
+      options.signal?.removeEventListener('abort', stop);
+      if (watchEnd) {
+        options.stdin.off('end', stop);
+        // A stream left flowing would keep the process alive after a signal.
+        options.stdin.pause();
+      }
+      resolve(value);
+    };
+    const stop = () => settle(false);
     options.signal?.addEventListener('abort', stop, { once: true });
     if (watchEnd) {
       options.stdin.once('end', stop);
       options.stdin.resume();
     }
-    void page.found.then(() => {
-      options.signal?.removeEventListener('abort', stop);
-      if (watchEnd) {
-        options.stdin.off('end', stop);
-        options.stdin.pause();
-      }
-      resolve(true);
-    });
+    void page.found.then(() => settle(true));
   });
   await page.close();
   return found ? { port: page.port, token: page.token } : null;

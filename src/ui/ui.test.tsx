@@ -1206,6 +1206,30 @@ describe('web UI server', () => {
     (stdin as unknown as PassThrough).end();
     expect(await done).toBe(0);
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+    // A signal stops it as well, and leaves the pipe paused so the process can end.
+    const pipe = new PassThrough();
+    const abort = new AbortController();
+    errors = '';
+    const again = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env: { PATH: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: pipe as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+      signal: abort.signal,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    expect(pipe.isPaused()).toBe(false);
+    abort.abort();
+    expect(await again).toBe(0);
+    expect(pipe.isPaused()).toBe(true);
+    expect(pipe.listenerCount('end')).toBe(0);
     rmSync(empty, { recursive: true, force: true });
   });
 
