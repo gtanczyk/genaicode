@@ -52,6 +52,7 @@ async function codexPart(file: string, since: number): Promise<WorkWithin | unde
   let total = 0;
   let before = 0;
   let previous = 0;
+  let reports = 0;
   const done = await eachLine(file, (text) => {
     if (!text.includes('token_count') && !text.includes('token_usage_record')) return;
     let line: unknown;
@@ -68,6 +69,7 @@ async function codexPart(file: string, since: number): Promise<WorkWithin | unde
           ? line.payload.info.total_token_usage
           : undefined;
     if (!isRecord(report)) return;
+    reports += 1;
     const running = codexWeight(report);
     // A counter that starts over (a thread taken up by another process) goes on from where it was:
     // it is lower than before, or it equals its own latest call, which only a first call does.
@@ -80,7 +82,9 @@ async function codexPart(file: string, since: number): Promise<WorkWithin | unde
     if (at < since) before = total;
   });
   // The tokens themselves too: the session's own figure is its latest counter, not this sum.
-  return done && total > 0 ? { part: (total - before) / total, tokens: total - before } : undefined;
+  // Reports that add up to nothing (all read from cache) are a measured zero, not a missing figure.
+  if (!done || reports === 0) return undefined;
+  return total > 0 ? { part: (total - before) / total, tokens: total - before } : { part: 0, tokens: 0 };
 }
 
 /**

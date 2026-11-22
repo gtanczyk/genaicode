@@ -112,6 +112,13 @@ it('weighs a Codex thread whose counter started over by the tokens of the period
     ]),
   });
   expect((await partsSince([cached], since)).get(cached)).toEqual({ part: 1, tokens: 110 });
+  // Nothing but cache, ever: a measured zero, not a figure to guess from the session's total.
+  const idle = session('codex', 'i', {
+    startedAt: now - 30 * day,
+    usage: { totalTokens: 1_000 },
+    path: file('idle.jsonl', [counted(1, 1_000, 1_000, 0)]),
+  });
+  expect((await partsSince([idle], since)).get(idle)).toEqual({ part: 0, tokens: 0 });
   // Both counters inside the period, in a thread that began there: read all the same.
   const both = session('codex', 'b', {
     startedAt: now - 3 * day,
