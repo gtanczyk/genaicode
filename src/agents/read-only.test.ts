@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import { isReadOnlyApproval, isReadOnlyCommand } from './read-only.js';
 
 const cwd = '/work/game';
@@ -51,6 +54,13 @@ describe('isReadOnlyCommand', () => {
       'npm test',
       'node -e 1',
       'bash -c "rm x"',
+      './tools/cat a.txt',
+      './bash -c ls',
+      '/tmp/x/cat a',
+      'uniq in.txt out.txt',
+      'find -L . -name x',
+      'rg -L foo',
+      'grep -R foo .',
       '',
     ])
       expect(ro(command), command).toBe(false);
@@ -80,5 +90,39 @@ describe('isReadOnlyApproval', () => {
     ).toBe(false);
     expect(isReadOnlyApproval({ id: 'c4', kind: 'file-change', detail: { command: 'ls' } }, cwd)).toBe(false);
     expect(isReadOnlyApproval({ id: 'c5', kind: 'command', summary: 'ls' }, cwd)).toBe(false);
+  });
+});
+
+describe('paths through symlinks and the command directory', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-ro-')));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const project = join(dir, 'project');
+  const secret = join(dir, 'secret');
+  mkdirSync(join(project, 'src'), { recursive: true });
+  mkdirSync(secret);
+  writeFileSync(join(secret, 'key.txt'), 'x');
+  writeFileSync(join(project, 'src', 'a.ts'), 'x');
+  symlinkSync(secret, join(project, 'linked'));
+
+  it('refuses a read through a symlink out of the project', () => {
+    expect(isReadOnlyCommand('cat src/a.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('ls src/*.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('cat linked/key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cat linked/*', project)).toBe(false);
+    expect(isReadOnlyCommand('cd linked && cat key.txt', project)).toBe(false);
+    expect(isReadOnlyCommand('cd src && cat a.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('cd src && cat ../../secret/key.txt', project)).toBe(false);
+  });
+
+  it('checks the directory the request says the command runs in', () => {
+    const request = (cwd?: string) => ({
+      id: 'x',
+      kind: 'command' as const,
+      detail: { command: ['cat', 'key.txt'], ...(cwd !== undefined ? { cwd } : {}) },
+    });
+    expect(isReadOnlyApproval(request(secret), project)).toBe(false);
+    expect(isReadOnlyApproval(request(join(project, 'linked')), project)).toBe(false);
+    expect(isReadOnlyApproval(request(join(project, 'src')), project)).toBe(true);
+    expect(isReadOnlyApproval(request(), project)).toBe(true);
   });
 });
