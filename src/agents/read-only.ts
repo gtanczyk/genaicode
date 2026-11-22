@@ -28,7 +28,6 @@ const READERS = new Set([
   'true',
   'nl',
   'cut',
-  'sort',
   'diff',
   'cd',
 ]);
@@ -147,10 +146,33 @@ function gitRunsHelpers(dir: string): boolean {
 // Long options that name a program to run (`--hostname-bin`, `--compress-program`, `--pager`...).
 const RUNS_PROGRAM = /^--[\w-]*(-bin|exec|command|program|pager)(=|$)/;
 
+// Long options that write or run something. GNU tools and git take any unique prefix (`--out`).
+const RISKY_LONG = [
+  'output',
+  'ext-diff',
+  'textconv',
+  'filters',
+  'open-files-in-pager',
+  'pre',
+  'pre-glob',
+  'hostname-bin',
+  'follow',
+  'dereference-recursive',
+  'exec',
+  'delete',
+];
+
+function riskyOption(arg: string): boolean {
+  if (RUNS_PROGRAM.test(arg)) return true;
+  if (!arg.startsWith('--') || arg === '--') return false;
+  const name = arg.slice(2).split('=')[0]!;
+  return RISKY_LONG.some((risky) => risky.startsWith(name));
+}
+
 function readerCommand(words: string[], base: string): boolean {
   const [program, ...args] = words;
   const name = program && programName(program);
-  if (!name || args.some((arg) => RUNS_PROGRAM.test(arg))) return false;
+  if (!name || args.some(riskyOption)) return false;
   if (name === 'git') {
     // Options before the subcommand (`-C dir`, `--no-pager`) only; `-c` could set a program to run.
     let i = 0;
@@ -186,8 +208,6 @@ function readerCommand(words: string[], base: string): boolean {
     const [flag, script, ...files] = args;
     return flag === '-n' && !!script && /^\d+(,\d+|,\$)?p$/.test(script) && files.every((f) => !f.startsWith('-'));
   }
-  if (name === 'sort')
-    return !args.some((arg) => /^-[a-zA-Z]*o/.test(arg) || arg.startsWith('--output') || arg.startsWith('--compress'));
   if (name === 'rg')
     return !args.some(
       (arg) => arg === '--pre' || arg.startsWith('--pre=') || arg === '--follow' || /^-[a-zA-Z]*L/.test(arg),

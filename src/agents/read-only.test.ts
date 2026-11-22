@@ -28,7 +28,7 @@ describe('isReadOnlyCommand', () => {
     ])
       expect(ro(command), command).toBe(true);
     expect(ro(['/bin/zsh', '-lc', 'git status'])).toBe(true);
-    expect(ro("bash -lc 'ls src | sort'")).toBe(true);
+    expect(ro("bash -lc 'ls src | head'")).toBe(true);
   });
 
   it('refuses writes, expansion, redirection and paths outside the project', () => {
@@ -52,6 +52,10 @@ describe('isReadOnlyCommand', () => {
       'git -c core.pager=sh log',
       'git diff --output=x',
       'sort -o x y',
+      'sort a',
+      'git diff --out=x',
+      'git log --ext',
+      'grep --derefer foo .',
       'rg --pre ./run foo',
       'ls & rm x',
       'npm test',
