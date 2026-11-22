@@ -867,6 +867,30 @@ describe('web UI server', () => {
     expect(parseCommand(null)).toBeUndefined();
   });
 
+  it('tells the page when it names no project', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const ui = await startWebUi({
+      controller: chat,
+      clientScript: '',
+      title: { version: '1', cwd: '/w', project: false },
+      token: 't0k',
+    });
+    try {
+      expect(await (await fetch(ui.url)).text()).toContain('data-no-project="1"');
+      const events = await fetch(`${ui.url.replace(/\?.*$/, '')}api/events`, {
+        headers: { 'x-genaicode-token': 't0k' },
+      });
+      const reader = events.body!.getReader();
+      let initial = '';
+      while (!initial.includes('event: config')) initial += new TextDecoder().decode((await reader.read()).value);
+      expect(initial).toContain('"project":false');
+      await reader.cancel();
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
   it('serves the page and events only with the token, and runs commands', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: '/w', env });

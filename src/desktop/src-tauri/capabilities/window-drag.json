@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "window-drag",
-  "description": "The window has no title bar of its own on macOS: the page's header is it. The start page and the genaicode ui page (local server only) may move the window and zoom it on a double click, nothing else.",
+  "description": "The window has no title bar of its own on macOS: the page's header is it. The starting page and the genaicode ui page (local server only) may move the window and zoom it on a double click, nothing else.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]

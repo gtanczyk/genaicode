@@ -11,15 +11,16 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 | `Contents/MacOS/node`         | The official Node.js binary, version and checksums in `node-runtime.json` |
 | `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
 
-On start the shell asks for a project folder (remembered for next time, **Project → Open Folder…**
-changes it), reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
-`node cli.js ui --sessions --no-open --exit-with-stdin --cwd <folder>` and shows the address that prints. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
+The app has no project folder: it works where your agents work, and its chat is about their
+sessions in every project. On start the shell reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
+`node cli.js ui --sessions --no-project --no-open --exit-with-stdin --cwd ~/.genaicode/home` (a
+directory of the app's own, outside every project) and shows the address that prints. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
 empty chat opens on your topics: those that wait for you, those agents work on, and each agent's plan limits; a topic opens its sessions. The
 page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
 
 It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
-how many. A session opens its project in the window; a question an agent holds open for an answer
+how many. A session shows the window; a question an agent holds open for an answer
 from outside (`genaicode hooks install --answer`) has **Approve** and **Deny**, which run
 `sessions approve|deny <question>`. Above them the menu shows how much of each agent's plan is used
 (`claude: 5h 62% · 7d 41%`), from the `limits` of the same watch. Once `genaicode topics refresh`
@@ -68,7 +69,7 @@ private key means a manual download for everyone. Without the secret a release g
 
 | Variable                 | For development                                         |
 | ------------------------ | ------------------------------------------------------- |
-| `GENAICODE_DESKTOP_CWD`  | Project folder to open, instead of the remembered one   |
+| `GENAICODE_DESKTOP_CWD`  | Directory the chat runs in, instead of the app's own    |
 | `GENAICODE_DESKTOP_NODE` | Node.js binary to run, instead of the bundled one       |
 | `GENAICODE_DESKTOP_CLI`  | `cli.js` to run, e.g. `dist/cli.js` of the working tree |
 

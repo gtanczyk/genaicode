@@ -371,6 +371,9 @@ describe('parseCli', () => {
     });
     expect(parseCli(['chat'])).toMatchObject({ mcpServers: [] });
     expect(parseCli(['ui', '--exit-with-stdin'])).toMatchObject({ exitWithStdin: true });
+    expect(parseCli(['ui', '--sessions', '--no-project'])).toMatchObject({ noProject: true, sessions: true });
+    expect(() => parseCli(['ui', '--no-project'])).toThrow('--no-project goes with --sessions');
+    expect(() => parseCli(['chat', '--sessions', '--no-project'])).toThrow();
     expect(() => parseCli(['chat', '--exit-with-stdin'])).toThrow(UsageError);
     expect(() => parseCli(['ui', '--mcp', 'game'])).toThrow(UsageError);
   });

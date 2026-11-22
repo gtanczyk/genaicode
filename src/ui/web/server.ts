@@ -21,7 +21,8 @@ export interface WebUiOptions {
   /** The bundled browser script served at /app.js. */
   clientScript: string;
   /** Shown in the page header. */
-  title: { version: string; cwd: string };
+  /** `project: false`: the page names no project, `cwd` is only where the chat's agent runs. */
+  title: { version: string; cwd: string; project?: boolean };
   /** Default 127.0.0.1. The UI can run any command through the agent, so keep it local. */
   host?: string;
   /** Default 0 (a free port). */
@@ -389,7 +390,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
       res.write(
-        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, sessions: !!options.sessions, uploads: !!options.uploads, files: !!options.files })}\n\n`,
+        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, project: options.title.project !== false, sessions: !!options.sessions, uploads: !!options.uploads, files: !!options.files })}\n\n`,
       );
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
