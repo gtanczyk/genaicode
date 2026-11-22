@@ -161,8 +161,8 @@ interface PageConfig {
   sessions: boolean;
   uploads?: boolean;
   files?: boolean;
-  /** A newer version of the app that shows this page is downloaded: it installs on a relaunch. */
-  update?: string;
+  /** A newer version of the app that shows this page: downloading, or ready to install on a relaunch. */
+  update?: { version: string; ready: boolean; installing?: boolean };
 }
 
 function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
@@ -285,6 +285,13 @@ function App() {
   const root = document.getElementById('root')!;
   const { view, config, connected, rejected } = useView();
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
+  // Said at once: installing takes a few seconds before the app goes away.
+  const [relaunching, setRelaunching] = useState(false);
+  // An install that failed leaves the update waiting again: the button can be pressed once more.
+  const waits = config?.update;
+  useEffect(() => {
+    if (waits?.ready) setRelaunching(false);
+  }, [waits]);
   const hasProject = config ? config.project !== false : !root.dataset.noProject;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
@@ -292,6 +299,8 @@ function App() {
   // The Sessions view takes the chat's place; the chat keeps running behind it.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
   const showSessions = panel === 'sessions';
+  // Only the conversations this chat had itself, not every agent's sessions.
+  const [own, setOwn] = useState(false);
   // The topic picked on the start screen: the Sessions view shows only it.
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
@@ -321,7 +330,7 @@ function App() {
         return Promise.resolve(false);
       }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
-      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
+      if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
       return command({ type: 'submit', text }).then(
         () => true,
         () => true,
@@ -427,6 +436,31 @@ function App() {
           <>
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
+            {session.turns.length && !showSessions ? (
+              <button
+                className="chip off"
+                title="Start a new conversation: a fresh agent session and an empty screen. This one stays in the list."
+                onClick={() => {
+                  dropWaiting();
+                  void command({ type: 'submit', text: '/clear' });
+                }}
+              >
+                New chat
+              </button>
+            ) : null}
+            {hasSessions && !hasProject && !showSessions ? (
+              <button
+                className="chip off"
+                title="The conversations you had in this app"
+                onClick={() => {
+                  setTopic(undefined);
+                  setOwn(true);
+                  setPanel('sessions');
+                }}
+              >
+                Chats
+              </button>
+            ) : null}
             {hasSessions ? (
               <button
                 className={`chip${showSessions ? '' : ' off'}`}
@@ -434,6 +468,7 @@ function App() {
                 aria-pressed={showSessions}
                 onClick={() => {
                   setTopic(undefined);
+                  setOwn(false);
                   setPanel(showSessions ? 'chat' : 'sessions');
                 }}
               >
@@ -454,12 +489,26 @@ function App() {
         {config?.update ? (
           <button
             className="chip update"
-            title={`Version ${config.update} is downloaded. Relaunching installs it and stops the agents this app runs.`}
-            onClick={() =>
-              void fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } }).catch(() => {})
+            disabled={!config.update.ready || relaunching}
+            title={
+              config.update.installing
+                ? `Version ${config.update.version} is being installed. The app starts again in a moment.`
+                : config.update.ready
+                  ? `Version ${config.update.version} is downloaded. Relaunching installs it and stops the agents this app runs.`
+                  : `Version ${config.update.version} is downloading. Nothing installs before you choose it.`
             }
+            onClick={() => {
+              setRelaunching(true);
+              fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
+                .then((reply) => reply.ok || setRelaunching(false))
+                .catch(() => setRelaunching(false));
+            }}
           >
-            Relaunch to update
+            {relaunching || config.update.installing
+              ? 'Relaunching…'
+              : config.update.ready
+                ? 'Relaunch to update'
+                : 'Downloading update…'}
           </button>
         ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
@@ -470,6 +519,8 @@ function App() {
           cwd={cwd}
           topic={topic}
           onAllTopics={() => setTopic(undefined)}
+          own={own}
+          onAllSessions={() => setOwn(false)}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             // What still waits here was meant for the conversation that is left.
@@ -541,6 +592,7 @@ function App() {
                   token={token}
                   onTopic={(id) => {
                     setTopic(id);
+                    setOwn(false);
                     setPanel('sessions');
                   }}
                 />

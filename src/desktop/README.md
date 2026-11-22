@@ -24,8 +24,8 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 Without any agent CLI on the machine the window shows how to get one and goes on to the chat once
 one is installed. The app has no project folder: it works where your agents work, and its chat is about their
 sessions in every project. On start the shell reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
-`node cli.js ui --sessions --no-project --no-open --exit-with-stdin --cwd ~/.genaicode/home` (a
-directory of the app's own, outside every project) and shows the address that prints. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
+`node cli.js ui --sessions --no-project --no-open --exit-with-stdin --restore --cwd ~/.genaicode/home` (a
+directory of the app's own, outside every project) and shows the address that prints. `--restore` brings back the conversation the app had last, so a restart or an update does not lose it. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
 empty chat opens on your topics: those that wait for you, those agents work on, and each agent's plan limits; a topic opens its sessions. The
 page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
 
@@ -84,10 +84,10 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 ## Updates
 
 The app looks for a newer version at start, every six hours while it runs and on **Check for
-Updates…** in its menu. It downloads one quietly and then offers **Relaunch to update** in the
-window's header and in the menu bar: it never installs unasked, because that restarts the app and
+Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Relaunch to update** in the
+window's header and in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
 stops the agents it runs. The shell tells the page through the server it started: it writes
-`update-ready <version>` to the server's stdin, and the page's button makes the server print
+`update-downloading <version>`, `update-ready <version>` and `update-installing <version>` to the server's stdin, and the page's button makes the server print
 `Relaunch to update` on stderr, which the shell reads. It reads `latest.json` of the newest GitHub Release, which
 the release workflow adds with the archive each platform updates from
 (`genaicode-<version>-macos-<arch>.app.tar.gz`; on Linux the AppImage itself). On Linux only an

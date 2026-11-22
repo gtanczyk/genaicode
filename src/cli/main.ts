@@ -334,6 +334,8 @@ Chat and UI options:
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
+      --restore           (ui) Open on the conversation the chat in this directory had last,
+                          with its agent, unless --from or --resume names another
       --no-project        (ui) The page names no project: for a chat about the sessions of
                           every project, as the desktop app runs it
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
@@ -655,6 +657,40 @@ async function runEmbed(
 }
 
 /**
+ * The newest conversation somebody had in exactly `cwd` with an agent this chat can run and that
+ * is installed: with `only`, that agent's. A store that cannot be read only means nothing to restore.
+ */
+async function lastSessionIn(
+  cwd: string,
+  sources: readonly SessionSource[],
+  agents: readonly CodingAgent[],
+  only: string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<{ id: string; agent: string } | undefined> {
+  const dir = await fs.realpath(cwd).catch(() => cwd);
+  const usable = new Map(
+    detectAgents(agents, env).flatMap(({ agent, path }) =>
+      path && agent.capabilities.resume && agent.sessions && (!only || agent.name === only)
+        ? [[agent.sessions.name, agent.name] as const]
+        : [],
+    ),
+  );
+  // Asked of those agents and for this directory only: newer work elsewhere must not crowd it out.
+  const listing = await listSessions(
+    sources.filter((source) => usable.has(source.name)),
+    // With those of one prompt: such a chat reads like a program's run in the agent's store.
+    { cwd, limit: 200, live: false, automated: true, ...(env ? { env } : {}) },
+  ).catch(() => undefined);
+  for (const session of listing?.sessions ?? []) {
+    const agent = usable.get(session.source);
+    if (!agent || session.where !== 'local' || !session.cwd) continue;
+    const theirs = await fs.realpath(session.cwd).catch(() => session.cwd);
+    if (theirs === dir) return { id: session.id, agent };
+  }
+  return undefined;
+}
+
+/**
  * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
  * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
  * the headless ones. Codex gets the chat's MCP servers only, unless `agentMcp` keeps its own.
@@ -800,6 +836,15 @@ async function runUi(
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
+  // `--restore`: the conversation this directory's chat had last, so a restart loses nothing.
+  let restored: string | undefined;
+  if (options.kind === 'ui' && options.restore && !options.from && !options.resume && !options.pack) {
+    const last = await lastSessionIn(resolve(cli.cwd, options.cwd ?? '.'), indexed, agents, options.agent, cli.env);
+    if (last) {
+      restored = last.id;
+      initial ??= last.agent;
+    }
+  }
   const ui = await (cli.loadUi ?? loadBundledUi)();
   // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
   // ...and a way to pass a message to one of them, which the person allows first.
@@ -834,7 +879,7 @@ async function runUi(
     model: options.model,
     effort: options.effort,
     resume: options.resume,
-    ...(options.from ? { continueFrom: options.from } : {}),
+    ...(options.from ? { continueFrom: options.from } : restored ? { continueFrom: restored } : {}),
     approveAll: options.approveAll,
     env: cli.env,
     version: packageVersion(),

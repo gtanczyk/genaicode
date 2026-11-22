@@ -217,7 +217,8 @@ the project, open approval questions and the latest reply. `npx genaicode sessio
 the same read-only tools over stdio. The agent can read what the other sessions said and what
 their open questions ask. Ask it to pass something to another session ("tell Codex in
 knights that...") and it sends it with `sessions_send`; you allow the first message to each
-session in the chat. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
+session in the chat. A session that is working gets it as its next turn, once the current one
+ends. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
 ### Open the session tower
 
@@ -395,9 +396,17 @@ sandboxed frame with no network and no access to the UI (see
 `--no-artifacts` leaves it out.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
-Such an app can also write `update-ready <version>` to that stdin once it has a newer version of
-itself ready: the page then shows **Relaunch to update**, and a click prints the line
-`Relaunch to update` on stderr for the app to act on.
+Such an app can also write `update-downloading <version>` to that stdin while it downloads a newer
+version of itself and `update-ready <version>` once that waits: the page shows **Downloading
+update…** and then **Relaunch to update**, and a click prints the line `Relaunch to update` on
+stderr for the app to act on. `update-installing <version>` shows **Relaunching…** and
+`update-none` takes the notice away.
+**New chat** in the page's header (or `/clear`) starts a new conversation: a fresh agent session and an
+empty screen; the old one stays in the agent's own store. With `--no-project`, **Chats** lists the
+conversations that ran in the chat's own directory, apart from every agent's sessions.
+With `--restore` the page opens on the conversation the chat in this directory had last, with
+its agent and its history, so stopping and starting the server loses nothing; `--from` or
+`--resume` name another one.
 While no agent CLI is installed, `genaicode ui` does not give up: its link shows which agents
 it can use, the command that installs each and how to sign in, and it moves on to the chat by
 itself once one is found (it looks every few seconds and on **Check again**).

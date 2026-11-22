@@ -206,6 +206,11 @@ export interface AgentSession {
   /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
   /**
+   * Start a new conversation: `reset()`, and the transcript and what waits for a turn are dropped
+   * too. Usage and the budget stay. Returns false while a turn is running.
+   */
+  clear(): boolean;
+  /**
    * Take over a conversation that happened elsewhere (`readSession()` gives the turns of another
    * agent's session). The turns join the transcript, and the next turn hands them over to the
    * current agent the way a switch does. With `sessionId`, the turns are the current agent's own
@@ -917,6 +922,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
+    },
+    clear() {
+      if (state.status === 'running' || closed) return false;
+      explicitResume = undefined;
+      known.clear();
+      missedAfter = undefined;
+      resetAt = nextTurnId - 1;
+      set({ sessionId: undefined, turns: [], queued: [], notes: [] });
+      return true;
     },
     adopt(turns, adoptOptions) {
       if (state.status === 'running' || closed) return false;

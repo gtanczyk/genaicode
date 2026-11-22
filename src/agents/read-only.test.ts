@@ -113,6 +113,8 @@ describe('git helpers', () => {
       execFileSync('git', ['config', 'log.showSignature', 'true'], { cwd: repo });
       expect(isReadOnlyCommand('git log', repo)).toBe(false);
       expect(isReadOnlyCommand('git log --show-signature -1', cwd)).toBe(false);
+      expect(isReadOnlyCommand('du -a --files0-from=list', cwd)).toBe(false);
+      expect(isReadOnlyCommand('wc --files0-from list', cwd)).toBe(false);
       expect(isReadOnlyCommand("git log --format='%h %G?'", cwd)).toBe(false);
       expect(isReadOnlyCommand('rg foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(false);
       expect(isReadOnlyCommand('rg --no-config foo', cwd, { RIPGREP_CONFIG_PATH: '/tmp/rc' })).toBe(true);

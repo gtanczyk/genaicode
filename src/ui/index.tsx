@@ -27,7 +27,7 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
-import { startWebUi, type HostApp, type WebAsset, type WebUi } from './web/server.js';
+import { startWebUi, type HostApp, type HostUpdate, type WebAsset, type WebUi } from './web/server.js';
 import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
@@ -172,32 +172,43 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
   return found ? { port: page.port, token: page.token } : null;
 }
 
-/** What the host app wrote to stdin to say that version `version` of it waits for a relaunch. */
-const UPDATE_READY = /^update-ready ([0-9A-Za-z.+-]{1,40})$/;
+/** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
+const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
 
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
- * says `update-ready <version>` on stdin once it has downloaded a newer version of itself; the
- * page then offers "Relaunch to update", and a click prints `RELAUNCH_LINE` on stderr.
+ * says `update-downloading <version>` on stdin while it downloads a newer version of itself,
+ * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
+ * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
+ * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr.
  */
 function hostApp(options: WebRunOptions): HostApp {
-  let version: string | undefined;
+  let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
   options.stdin.on('data', (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
     rest = (lines.pop() ?? '').slice(-200);
     for (const line of lines) {
-      const found = UPDATE_READY.exec(line.trim())?.[1];
-      if (!found || found === version) continue;
-      version = found;
+      const found = UPDATE_LINE.exec(line.trim());
+      if (!found) continue;
+      // `update-none`: a download that failed, so there is nothing to show any more.
+      const next: HostUpdate | undefined = found[3]
+        ? undefined
+        : {
+            version: found[2]!,
+            ready: found[1] === 'ready',
+            ...(found[1] === 'installing' ? { installing: true as const } : {}),
+          };
+      if (JSON.stringify(update) === JSON.stringify(next)) continue;
+      update = next;
       for (const listener of listeners) listener();
     }
   });
   return {
-    update: () => version,
+    update: () => update,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -313,9 +324,14 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       hostApp: options.hostApp,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
-      sessions: async (query) => {
+      sessions: async ({ own, ...query }) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
-        const listing = await listSessions(sources, { ...query, ...(options.env ? { env: options.env } : {}) });
+        const listing = await listSessions(sources, {
+          ...query,
+          // The chat's own conversations: asked for its directory, with the one-prompt ones too.
+          ...(own ? { cwd: options.cwd, automated: true, live: false } : {}),
+          ...(options.env ? { env: options.env } : {}),
+        });
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);

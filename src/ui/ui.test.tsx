@@ -269,6 +269,34 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('/clear empties the conversation and its notices', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    chat.submit('hi');
+    await chat.session.idle();
+    chat.submit('/help');
+    expect(chat.get().session.turns).toHaveLength(1);
+    expect(chat.submit('/clear')).toBe('ok');
+    expect(chat.get()).toMatchObject({ notices: [], session: { turns: [], sessionId: undefined } });
+    chat.close();
+  });
+
+  it('/clear starts the terminal transcript over', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="test" />);
+    try {
+      chat.submit('remember the heron');
+      await chat.session.idle();
+      await vi.waitFor(() => expect(app.frames.join('')).toContain('remember the heron'));
+      chat.submit('/clear');
+      // The header prints again, as on a cleared screen. (The test renderer keeps all it ever
+      // printed; a terminal gets the escape that wipes it first.)
+      await vi.waitFor(() => expect(app.lastFrame()!.split('🐺 genaicode test')).toHaveLength(3));
+    } finally {
+      app.unmount();
+      chat.close();
+    }
+  });
+
   it('sets the effort for the next prompt with /effort, in the words the agent takes', async () => {
     const thinker = { ...echoAgent('thinker'), capabilities: { resume: true, effort: ['low', 'high'] } };
     const chat = createChatController({ agents: [thinker, echoAgent('plain')], cwd: '/w', env });
@@ -1263,8 +1291,16 @@ describe('web UI server', () => {
     };
     await read('event: config');
     expect(seen).not.toContain('"update"');
-    stdin.write('something else\nupdate-ready 9.9.9; rm -rf\nupdate-ready 9.9.9\n');
-    await read('"update":"9.9.9"');
+    stdin.write('something else\nupdate-ready 9.9.9; rm -rf\nupdate-downloading 9.9.9\n');
+    await read('"update":{"version":"9.9.9","ready":false}');
+    // Still downloading: there is nothing to install yet.
+    expect((await relaunch()).status).toBe(404);
+    // A failed download takes it away again; an install under way is said and cannot be asked twice.
+    stdin.write('update-none\nupdate-installing 9.9.9\n');
+    await read('"update":{"version":"9.9.9","ready":false,"installing":true}');
+    expect((await relaunch()).status).toBe(404);
+    stdin.write('update-ready 9.9.9\n');
+    await read('"update":{"version":"9.9.9","ready":true}');
     expect((await relaunch({ 'x-genaicode-token': 'wrong' })).status).toBe(403);
     expect(errors).not.toContain('Relaunch to update');
     expect((await relaunch()).status).toBe(200);

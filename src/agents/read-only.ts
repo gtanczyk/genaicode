@@ -173,6 +173,8 @@ const RISKY_LONG = [
   'dereference-recursive',
   'exec',
   'delete',
+  // Reads paths listed inside a file, past the path check.
+  'files0-from',
   // Signature checks run gpg.program.
   'show-signature',
   // `git log --help` runs the configured man viewer.

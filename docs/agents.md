@@ -591,9 +591,13 @@ message there as a new turn, with that session's own agent in its own directory.
 message to each session shows as an approval in the chat, with the recipient and the exact
 text; once allowed, later messages to that session go without asking until the chat closes.
 With auto-approve on (`--yes`, `/auto`) nothing is asked. The tool returns once the message is
-sent, and the chat shows the session's answer when its turn ends. Only a waiting or unfinished
-local session takes a message, as with `sessions send`; closing the chat stops a turn still
-running there. In code: `sessionSendTool(agents, gate)` with a `SessionSendGate` the chat
+sent, and the chat shows the session's answer when its turn ends. A session that is working right
+now (or waits for an approval) gets the message queued: the tool answers "Queued for ...", the
+chat says so, and the message goes as that session's next turn once the current one ends. Several
+messages to one session go in order, one turn each. A queued message is dropped when the chat
+closes first or the session still works after 6 hours (`maxWaitMs`). The agent in the other
+session is not interrupted: its CLI offers no way in from outside mid-turn. Closing the chat
+stops a turn still running there. In code: `sessionSendTool(agents, gate)` with a `SessionSendGate` the chat
 attaches to, and `AgentSession.ask()` for the question.
 
 When the tower runs a pack, its lead also receives `propose_session_message` on the pack MCP

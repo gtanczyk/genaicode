@@ -38,7 +38,14 @@ export interface WebUiOptions {
    * Lists the sessions the agents keep (`listSessions`), for the page's Sessions view at
    * /api/sessions. `since` is epoch milliseconds. Without it the page has no such view.
    */
-  sessions?: (query: { since?: number }) => Promise<WebSessionListing>;
+  sessions?: (query: {
+    since?: number;
+    /**
+     * Only the conversations of the chat's own directory, and all of them: a chat of one prompt
+     * reads like a program's run in the agent's store, and the listing leaves those out otherwise.
+     */
+    own?: boolean;
+  }) => Promise<WebSessionListing>;
   /** Run a turn in the named local session. Enabled only in the standalone tower. */
   sendPrompt?: (
     source: string,
@@ -81,9 +88,17 @@ export interface WebUiOptions {
  * What a host app tells the page and takes from it. Today one thing: a newer version of the app
  * is downloaded, and the page's "Relaunch to update" asks the app to install it.
  */
+export interface HostUpdate {
+  version: string;
+  /** Downloaded: a relaunch installs it. */
+  ready: boolean;
+  /** The relaunch was chosen and the app is replacing itself. */
+  installing?: true;
+}
+
 export interface HostApp {
-  /** The version that waits for a relaunch, once there is one. */
-  update(): string | undefined;
+  /** The newer version of the app, once one is known: still downloading, or waiting for a relaunch. */
+  update(): HostUpdate | undefined;
   /** Calls `listener` when `update()` changes. Returns the way to stop. */
   subscribe(listener: () => void): () => void;
   /** The person asked for the relaunch. */
@@ -451,9 +466,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       if (!options.sessions) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
       const days = Number(url.searchParams.get('days'));
-      const listing = await options.sessions(
-        Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {},
-      );
+      const listing = await options.sessions({
+        ...(Number.isFinite(days) && days > 0 ? { since: Date.now() - Math.min(days, 3650) * 86_400_000 } : {}),
+        ...(url.searchParams.get('own') === '1' ? { own: true } : {}),
+      });
       return send(res, 200, 'application/json', JSON.stringify(listing));
     }
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
@@ -556,8 +572,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      // Only what the host itself announced can be asked for.
-      if (!options.hostApp?.update()) return send(res, 404, 'application/json', '{"ok":false}');
+      // Only what the host itself announced as ready can be asked for.
+      if (!options.hostApp?.update()?.ready) return send(res, 404, 'application/json', '{"ok":false}');
       options.hostApp.relaunch();
       return send(res, 200, 'application/json', '{"ok":true}');
     }

@@ -51,6 +51,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
     help: 'take over a session of any agent in this directory (ids: genaicode sessions)',
   },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
+  { name: '/clear', help: 'start a new conversation: a fresh agent session and an empty transcript' },
   { name: '/stop', help: 'stop the running turn, drop queued prompts, end !commands' },
   { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
   { name: '/auto', args: '[on|off]', help: 'approve every permission request the agent asks for, or ask again' },
@@ -67,6 +68,7 @@ export type SlashCommand =
   /** No `names` and no `off`: show the list. */
   | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
+  | { kind: 'clear' }
   | { kind: 'continue'; id?: string }
   | { kind: 'waiting'; project?: string }
   | { kind: 'read'; id?: string }
@@ -146,6 +148,8 @@ export function parseSlash(text: string): SlashCommand | undefined {
     case '/new':
     case '/reset':
       return { kind: 'new' };
+    case '/clear':
+      return { kind: 'clear' };
     case '/stop':
       return { kind: 'stop' };
     case '/bark':

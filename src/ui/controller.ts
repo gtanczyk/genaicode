@@ -408,13 +408,17 @@ export function createChatController(options: ChatOptions): ChatController {
   };
   let sends = 0;
   const offSend = options.sessionSend?.attach({
-    confirm: async (target, text) =>
+    confirm: async (target, text, { queued } = {}) =>
       (await session.ask({
         id: `sessions-send-${++sends}`,
         kind: 'other',
-        summary: plainSessionText(`Send to ${label(target)} (${target.cwd}):\n${text}`),
-        detail: { tool: 'sessions_send', target, text },
+        summary: plainSessionText(
+          `${queued ? 'Queue for' : 'Send to'} ${label(target)} (${target.cwd})${queued ? ', after its current turn' : ''}:\n${text}`,
+        ),
+        detail: { tool: 'sessions_send', target, text, ...(queued ? { queued } : {}) },
       })) === 'approve',
+    queued: (target) =>
+      notice(plainSessionText(`${label(target)} is working: the message goes when its current turn ends.`)),
     done: (target, { result, error }) => {
       const failed = error ?? (result && !result.ok ? (result.error ?? result.status) : undefined);
       if (failed) return notice(plainSessionText(`${label(target)} did not take the message: ${failed}`), 'error');
@@ -566,6 +570,12 @@ export function createChatController(options: ChatOptions): ChatController {
         case 'new':
           session.reset();
           notice('Next prompt starts a new agent session.');
+          return 'ok';
+        case 'clear':
+          if (session.clear()) {
+            notices = [];
+            publish();
+          } else notice('A turn is running. /stop it first, then /clear.', 'error');
           return 'ok';
         case 'stop':
           stopAll();

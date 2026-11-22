@@ -103,6 +103,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `ui --no-project`: the page names no project, for a chat about the sessions of every one. */
       noProject?: true;
+      /** `ui --restore`: open on the conversation this directory's chat had last. */
+      restore?: true;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
       mcpServers: McpServer[];
       /** `--agent-mcp`: Codex keeps the MCP servers of its own config. */
@@ -528,6 +530,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
             'no-open': { type: 'boolean' as const },
             'exit-with-stdin': { type: 'boolean' as const },
             'no-project': { type: 'boolean' as const },
+            restore: { type: 'boolean' as const },
           }
         : { web: { type: 'boolean' as const } }),
     };
@@ -542,7 +545,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
         options: parseOptions,
       }),
     );
-    const extra = values as { 'no-open'?: boolean; web?: boolean; 'exit-with-stdin'?: boolean; 'no-project'?: boolean };
+    const extra = values as {
+      'no-open'?: boolean;
+      web?: boolean;
+      'exit-with-stdin'?: boolean;
+      'no-project'?: boolean;
+      restore?: boolean;
+    };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
     let pack: PackSpec | undefined;
     if (barePack) {
@@ -585,6 +594,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
       ...(extra['no-project'] === true ? { noProject: true as const } : {}),
+      ...(extra.restore === true ? { restore: true as const } : {}),
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
       ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),
