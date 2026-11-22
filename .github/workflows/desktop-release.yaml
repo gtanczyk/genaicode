@@ -133,6 +133,13 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         with:
           ref: refs/tags/v${{ needs.plan.outputs.version }}
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
       - uses: actions/setup-node@v4
         if: steps.signing.outputs.ready == 'true'
         with:
@@ -235,7 +242,7 @@ jobs:
             esac
             update="genaicode-$VERSION-macos-$(uname -m).app.tar.gz"
             cp "$archive" "out/$update"
-            node src/desktop/scripts/release-files.mjs platform --target "$target" --file "$update" \
+            node .release-tools/src/desktop/scripts/release-files.mjs platform --target "$target" --file "$update" \
               --signature "$archive.sig" --version "$VERSION" > "out/$target.platform.json"
           fi
           ls -lh out
@@ -259,12 +266,15 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/v${{ needs.plan.outputs.version }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
       # A tag from before the app had a Linux build has nothing to build here.
       - name: This version builds on Linux
         id: linux
@@ -305,7 +315,7 @@ jobs:
         run: |
           set -euo pipefail
           bundle="src/desktop/src-tauri/target/release/bundle"
-          bash src/desktop/scripts/check-linux.sh "$bundle"
+          bash .release-tools/src/desktop/scripts/check-linux.sh "$bundle"
           mkdir out
           appimage="$(ls "$bundle"/appimage/*.AppImage | head -1)"
           name="genaicode-$VERSION-linux-$(uname -m).AppImage"
@@ -313,7 +323,7 @@ jobs:
           cp "$(ls "$bundle"/deb/*.deb | head -1)" "out/genaicode-$VERSION-linux-$(uname -m).deb"
           # An AppImage is its own update: the same file, with what latest.json says of it.
           if [ -f "$appimage.sig" ]; then
-            node src/desktop/scripts/release-files.mjs platform --target "linux-$(uname -m)" --file "$name" \
+            node .release-tools/src/desktop/scripts/release-files.mjs platform --target "linux-$(uname -m)" --file "$name" \
               --signature "$appimage.sig" --version "$VERSION" > "out/linux-$(uname -m).platform.json"
           fi
           ls -lh out
@@ -336,12 +346,15 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/v${{ needs.plan.outputs.version }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
       - uses: actions/download-artifact@v4
         with:
           pattern: desktop-*
@@ -359,9 +372,7 @@ jobs:
             exit 0
           fi
           echo "any=true" >> "$GITHUB_OUTPUT"
-          if [ -f src/desktop/scripts/release-files.mjs ]; then
-            node src/desktop/scripts/release-files.mjs latest --version "$VERSION" --from out
-          fi
+          node .release-tools/src/desktop/scripts/release-files.mjs latest --version "$VERSION" --from out
       - name: Add the downloads to the release
         if: steps.files.outputs.any == 'true' && needs.plan.outputs.release == 'true'
         env:
@@ -398,14 +409,14 @@ jobs:
             echo "::notice::No HOMEBREW_TAP_TOKEN secret: the cask stays as it is."
             exit 0
           fi
-          if [ ! -f "$arm" ] || [ ! -f "$intel" ] || [ ! -f src/desktop/scripts/cask.mjs ]; then
+          if [ ! -f "$arm" ] || [ ! -f "$intel" ]; then
             echo "::warning::The cask needs the .dmg of both kinds of Mac: it stays as it is."
             exit 0
           fi
           tap="$RUNNER_TEMP/tap"
           git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/gtanczyk/homebrew-genaicode.git" "$tap"
           mkdir -p "$tap/Casks"
-          node src/desktop/scripts/cask.mjs --version "$VERSION" \
+          node .release-tools/src/desktop/scripts/cask.mjs --version "$VERSION" \
             --arm64 "$(sha256sum "$arm" | cut -d' ' -f1)" --x86_64 "$(sha256sum "$intel" | cut -d' ' -f1)" \
             > "$tap/Casks/genaicode.rb"
           cd "$tap"
