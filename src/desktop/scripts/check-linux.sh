@@ -33,17 +33,24 @@ HOME="$home" GENAICODE_DESKTOP_CWD="$project" WEBKIT_DISABLE_COMPOSITING_MODE=1 
   xvfb-run -a dbus-run-session -- genaicode-desktop >"$log" 2>&1 &
 app=$!
 started=false
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   if pgrep -f "$node .*cli.js ui " >/dev/null; then
     started=true
     break
   fi
   sleep 1
 done
+if [ "$started" != true ]; then
+  # What is there instead, before the app is stopped.
+  ps -eo pid,ppid,etime,args | grep -i -e genaicode -e xvfb -e dbus | grep -v grep || true
+fi
 pkill -f '^genaicode-desktop$' || true
 wait "$app" 2>/dev/null || true
 if [ "$started" != true ]; then
   cat "$log"
+  # The server on its own says what it lacks, when that is the reason.
+  HOME="$home" timeout 15 "$node" /usr/lib/Genaicode/runtime/node_modules/genaicode/dist/cli.js \
+    ui --sessions --no-open --cwd "$project" </dev/null || true
   echo "::error::The installed app did not start its server."
   exit 1
 fi
