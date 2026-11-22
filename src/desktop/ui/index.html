@@ -35,15 +35,6 @@
         margin: 0 0 1.25rem;
         opacity: 0.7;
       }
-      button {
-        font: inherit;
-        padding: 0.5rem 1.25rem;
-        border-radius: 8px;
-        border: 0;
-        background: #3b5bdb;
-        color: #fff;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
@@ -51,13 +42,7 @@
     <div data-tauri-drag-region style="position: fixed; inset: 0 0 auto 0; height: 52px"></div>
     <main>
       <h1>Genaicode</h1>
-      <p>Choose a project folder to start a chat with your coding agent there.</p>
-      <button id="open" type="button">Open Folder…</button>
+      <p>Starting…</p>
     </main>
-    <script>
-      document.getElementById('open').addEventListener('click', () => {
-        window.__TAURI_INTERNALS__.invoke('open_folder');
-      });
-    </script>
   </body>
 </html>

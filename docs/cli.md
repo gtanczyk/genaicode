@@ -388,6 +388,12 @@ sandboxed frame with no network and no access to the UI (see
 `--no-artifacts` leaves it out.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
+While no agent CLI is installed, `genaicode ui` does not give up: its link shows which agents
+it can use, the command that installs each and how to sign in, and it moves on to the chat by
+itself once one is found (it looks every few seconds and on **Check again**).
+With `--sessions --no-project` the page names no project and suggests questions about the work
+of every agent: the chat is then about the sessions, wherever they run, and `--cwd` is only
+where its own agent starts. The desktop app runs it this way.
 
 `genaicode ui` listens on the loopback address and prints a link with a random access
 token. Opening it in a browser moves the token into origin-isolated `sessionStorage`, strips

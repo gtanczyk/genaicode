@@ -867,6 +867,30 @@ describe('web UI server', () => {
     expect(parseCommand(null)).toBeUndefined();
   });
 
+  it('tells the page when it names no project', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const ui = await startWebUi({
+      controller: chat,
+      clientScript: '',
+      title: { version: '1', cwd: '/w', project: false },
+      token: 't0k',
+    });
+    try {
+      expect(await (await fetch(ui.url)).text()).toContain('data-no-project="1"');
+      const events = await fetch(`${ui.url.replace(/\?.*$/, '')}api/events`, {
+        headers: { 'x-genaicode-token': 't0k' },
+      });
+      const reader = events.body!.getReader();
+      let initial = '';
+      while (!initial.includes('event: config')) initial += new TextDecoder().decode((await reader.read()).value);
+      expect(initial).toContain('"project":false');
+      await reader.cancel();
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
   it('serves the page and events only with the token, and runs commands', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: '/w', env });
@@ -1106,6 +1130,107 @@ describe('web UI server', () => {
     abort.abort();
     expect(await done).toBe(0);
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+  });
+
+  it('says how to get an agent while none is installed, then opens the chat on the same link', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
+    let errors = '';
+    const opened: string[] = [];
+    const abort = new AbortController();
+    const done = runWeb({
+      agents: [echoAgent('claude', 'claude'), echoAgent('other', 'other-agent')],
+      cwd: '/w',
+      env: { PATH: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      openUrl: (url) => opened.push(url),
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      expect(errors).toContain('no agent CLI found');
+      const url = /Open (\S+)/.exec(errors)![1];
+      const token = new URL(url).searchParams.get('token')!;
+      expect((await fetch(url.replace(/\?.*$/, ''))).status).toBe(403);
+      const html = await (await fetch(url)).text();
+      expect(html).toContain('Connect a coding agent');
+      expect(html).toContain('curl -fsSL https://claude.ai/install.sh | bash');
+      expect(html).toContain('other-agent');
+      const check = () =>
+        fetch(new URL('/api/agents', url), { method: 'POST', headers: { 'x-genaicode-token': token } });
+      expect((await fetch(new URL('/api/agents', url), { method: 'POST' })).status).toBe(403);
+      expect(await (await check()).json()).toEqual({
+        agents: [
+          { command: 'claude', installed: false },
+          { command: 'other-agent', installed: false },
+        ],
+      });
+      // The agent arrives: the next look finds it and the chat takes the page's place.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\n', { mode: 0o755 });
+      expect((await (await check()).json()).agents[1]).toEqual({ command: 'other-agent', installed: true });
+      await until(() => /· other in \/w/.test(errors));
+      expect(/· other in \/w\nOpen (\S+)/.exec(errors)![1]).toBe(url);
+      expect(await (await fetch(url)).text()).toContain('id="root"');
+      expect(opened).toEqual([url]);
+    } finally {
+      abort.abort();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('the page about a missing agent stops with stdin too', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
+    const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env: { PATH: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    expect((await fetch(url)).status).toBe(200);
+    (stdin as unknown as PassThrough).end();
+    expect(await done).toBe(0);
+    expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+    // A signal stops it as well, and leaves the pipe paused so the process can end.
+    const pipe = new PassThrough();
+    const abort = new AbortController();
+    errors = '';
+    const again = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env: { PATH: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: pipe as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+      signal: abort.signal,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    expect(pipe.isPaused()).toBe(false);
+    abort.abort();
+    expect(await again).toBe(0);
+    expect(pipe.isPaused()).toBe(true);
+    expect(pipe.listenerCount('end')).toBe(0);
+    rmSync(empty, { recursive: true, force: true });
   });
 
   it('stops when stdin ends with exitWithStdin', async () => {

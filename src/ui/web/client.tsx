@@ -156,6 +156,8 @@ function usePlanLimits(agent: string | undefined, running: boolean): RateLimit[]
 
 interface PageConfig {
   cwd: string;
+  /** False when the page names no project (`ui --no-project`). */
+  project?: boolean;
   sessions: boolean;
   uploads?: boolean;
   files?: boolean;
@@ -274,11 +276,14 @@ function useBark(view: ChatView | undefined) {
 const ATTACH = { max: 8 };
 
 const IDEAS = ['Explain how this project is organized', 'Find and fix a failing test', 'Add a --verbose flag'];
+/** Without a project the chat is about the work of every agent. */
+const IDEAS_ANYWHERE = ['What is waiting for me?', 'What are my agents working on?', 'Sum up what got done today'];
 
 function App() {
   const root = document.getElementById('root')!;
   const { view, config, connected, rejected } = useView();
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
+  const hasProject = config ? config.project !== false : !root.dataset.noProject;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
   const [model, setModel] = useState<string>();
@@ -410,7 +415,7 @@ function App() {
         <div className="brand">
           <img src="/assets/wolf-64.png" alt="" /> genaicode <small>{root.dataset.version}</small>
         </div>
-        {cwd ? (
+        {cwd && hasProject ? (
           <span className="cwd" title={cwd}>
             {cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd}
           </span>
@@ -510,8 +515,14 @@ function App() {
           session ? (
             <div className="gc-empty">
               <div className="wolf" role="img" aria-label="genaicode wolf" />
-              <h1>What should {session.agent} work on?</h1>
-              <div>It works in {cwd}, with its own login, tools and permissions.</div>
+              <h1>
+                {hasProject ? `What should ${session.agent} work on?` : `What should ${session.agent} look into?`}
+              </h1>
+              <div>
+                {hasProject
+                  ? `It works in ${cwd}, with its own login, tools and permissions.`
+                  : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+              </div>
               {hasSessions ? (
                 <Home
                   token={token}
@@ -522,7 +533,7 @@ function App() {
                 />
               ) : null}
               <div className="ideas">
-                {IDEAS.map((idea) => (
+                {(hasProject ? IDEAS : IDEAS_ANYWHERE).map((idea) => (
                   <button key={idea} onClick={() => void submit(idea)}>
                     {idea}
                   </button>

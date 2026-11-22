@@ -13,6 +13,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Desktop app for Linux: each release carries an AppImage (it updates itself) and a `.deb` for x86_64. The panel icon with the waiting sessions works where the desktop shows status icons; the package installs `genaicode-desktop` and leaves the `genaicode` command and the system's Node.js alone (#284)
 - Desktop app for Intel Macs: a second `.dmg`, beside the one for Apple silicon (#284)
 - Desktop app from Homebrew: `brew install --cask gtanczyk/genaicode/genaicode`. Each release also carries its downloads under names without the version, so `releases/latest/download/Genaicode-macos-arm64.dmg` is always the newest (#284)
+- `genaicode ui` and the desktop app: with no agent CLI installed they no longer stop with an error. The page lists the agents genaicode can use, the command that installs each and how to sign in, and opens the chat by itself once one is found (#283)
+- Desktop app: it has no project folder any more. It works where your agents work: no folder question at start, no Project menu, and its chat is about the sessions of every project. `genaicode ui --sessions --no-project` gives the same page in a browser (#281)
 
 ## 2.49.2 — 2026-11-22
 

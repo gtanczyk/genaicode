@@ -121,7 +121,7 @@ pub fn working(topics: &[Topic]) -> Vec<String> {
 pub enum Entry {
     /// Text only: nothing waits, or how many more do than fit.
     Note(String),
-    /// A session that waits for a reply: choosing it opens its project.
+    /// A session that waits for a reply: choosing it shows the window.
     Session { session: usize, label: String },
     /// A question that can be answered from here.
     Question {
