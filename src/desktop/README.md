@@ -84,8 +84,11 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 ## Updates
 
 The app looks for a newer version at start, every six hours while it runs and on **Check for
-Updates…** in its menu, and offers to install it: it never installs unasked, because that restarts
-the app and stops the agents it runs. It reads `latest.json` of the newest GitHub Release, which
+Updates…** in its menu. It downloads one quietly and then offers **Relaunch to update** in the
+window's header and in the menu bar: it never installs unasked, because that restarts the app and
+stops the agents it runs. The shell tells the page through the server it started: it writes
+`update-ready <version>` to the server's stdin, and the page's button makes the server print
+`Relaunch to update` on stderr, which the shell reads. It reads `latest.json` of the newest GitHub Release, which
 the release workflow adds with the archive each platform updates from
 (`genaicode-<version>-macos-<arch>.app.tar.gz`; on Linux the AppImage itself). On Linux only an
 AppImage installs its own update: an app from the `.deb` says that a newer version is out and where

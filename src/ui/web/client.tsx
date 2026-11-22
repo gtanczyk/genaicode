@@ -161,6 +161,8 @@ interface PageConfig {
   sessions: boolean;
   uploads?: boolean;
   files?: boolean;
+  /** A newer version of the app that shows this page is downloaded: it installs on a relaunch. */
+  update?: string;
 }
 
 function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
@@ -448,6 +450,17 @@ function App() {
               </button>
             )}
           </>
+        ) : null}
+        {config?.update ? (
+          <button
+            className="chip update"
+            title={`Version ${config.update} is downloaded. Relaunching installs it and stops the agents this app runs.`}
+            onClick={() =>
+              void fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } }).catch(() => {})
+            }
+          >
+            Relaunch to update
+          </button>
         ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>

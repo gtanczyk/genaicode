@@ -8,6 +8,14 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Desktop app: an update downloads quietly and waits as **Relaunch to update** in the window's header and in the menu bar, instead of a dialog that interrupts. Nothing installs before you choose it. An app that starts `genaicode ui --exit-with-stdin` can offer the same by writing `update-ready <version>` to its stdin (#285)
+
+### Fixed
+
+- Desktop app: **Check for Updates…** in the minutes when a new release exists but its app is still being built says so, instead of the error "Could not fetch a valid release JSON" (#285)
+
 ## 2.50.0 — 2026-11-22
 
 ### Added
