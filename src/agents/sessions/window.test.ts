@@ -196,7 +196,11 @@ it('reads a long Codex rollout once, then only what it gained', async () => {
   // A later run starts from what the earlier one kept: the rollout's start is not read again.
   vi.resetModules();
   const later = await import('./window.js');
-  const kept = join(dir, 'home', 'cache', 'rollouts', readdirSync(join(dir, 'home', 'cache', 'rollouts'))[0]!);
+  // The other long rollout above has a scan there too: this thread's is the one that stopped at 5,000.
+  const scans = join(dir, 'home', 'cache', 'rollouts');
+  const kept = readdirSync(scans)
+    .map((name) => join(scans, name))
+    .find((path) => readFileSync(path, 'utf8').includes('"total":5000'))!;
   // Marked, to see that it is what the later run goes on from.
   writeFileSync(kept, readFileSync(kept, 'utf8').replace('"total":5000', '"total":6000'));
   expect((await later.partsSince([long], 0, { env })).get(long)?.tokens).toBe(6_400);

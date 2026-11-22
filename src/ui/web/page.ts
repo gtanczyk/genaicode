@@ -50,6 +50,7 @@ body { background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif,
 #root > .gc-chat { flex: 1; height: auto; background: transparent; position: relative; z-index: 1; }
 button, input, select, textarea { font: inherit; color: inherit; }
 header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; position: relative; z-index: 1; }
+.mac-app header.bar { padding-left: 88px; min-height: 34px; user-select: none; -webkit-user-select: none; cursor: default; }
 .brand { font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
 .brand img { width: 24px; height: 24px; image-rendering: pixelated; }
 .wolf { width: 180px; height: 180px; margin: 0 auto 12px; background: var(--wolf) center / contain no-repeat; }

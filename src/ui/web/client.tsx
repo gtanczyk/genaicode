@@ -290,6 +290,8 @@ function App() {
   const session = view?.session;
   const running = session?.status === 'running';
   root.classList.toggle('has-turns', !!session?.turns.length);
+  // The Mac app draws the window's buttons over the page: the header leaves them room.
+  root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
   const plan = usePlanLimits(session?.agent, running);
   // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
   const rateLimits = session?.rateLimits?.length ? session.rateLimits : plan;
@@ -412,7 +414,8 @@ function App() {
 
   return (
     <>
-      <header className="bar">
+      {/* In the desktop app the header is the window's title bar: it moves the window. */}
+      <header className="bar" data-tauri-drag-region="deep">
         <div className="brand">
           <img src="/assets/wolf-64.png" alt="" /> genaicode <small>{root.dataset.version}</small>
         </div>
