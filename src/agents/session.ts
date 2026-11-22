@@ -271,7 +271,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
   // Per agent: its own session and the last turn that session knows about.
-  const known = new Map<CodingAgent, { sessionId?: string; upTo: number }>(
+  const known = new Map<CodingAgent, { sessionId?: string; upTo: number; effort?: string }>(
     options.resume ? [[options.agent, { sessionId: options.resume, upTo: 0 }]] : [],
   );
   // Turns after this id are news to the current agent; undefined: it knows everything.
@@ -520,7 +520,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     // Limits belong to the agent that reported them.
     // An effort is a word of the agent's own: one the next agent does not know goes back to its default.
     const effort =
-      state.effort !== undefined && next.capabilities.effort?.includes(state.effort) ? state.effort : undefined;
+      // A session that keeps its effort is resumed at the one it started with.
+      sessionId && next.capabilities.effortAtStart
+        ? before!.effort
+        : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
+          ? state.effort
+          : undefined;
     set({ agent: next.name, sessionId, rateLimits: [], effort });
   };
 
@@ -593,6 +598,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     noteTurn = nextIsNote ? { id: turnId, text: prompt } : undefined;
     nextIsNote = false;
     const turnAgent = agent;
+    const turnEffort = state.effort;
     runningAgent = turnAgent;
     const own = () => agent === turnAgent;
     let preamble = '';
@@ -648,7 +654,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
         cwd: state.cwd,
         model: state.model,
-        effort: state.effort,
+        effort: turnEffort,
         resume,
         signal: turnController.signal,
         onApproval: (request, signal) => onApproval(turnId, request, signal),
@@ -708,7 +714,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (own()) set({ sessionId: undefined });
       } else {
         // The agent heard everything up to this turn, through its session or this turn's handoff.
-        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId });
+        if (sessionId || result.ok) known.set(turnAgent, { sessionId, upTo: turnId, effort: turnEffort });
         if (own()) {
           if (sessionId || result.ok) missedAfter = undefined;
           if (sessionId) set({ sessionId });
@@ -890,7 +896,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             : `${agent.name} takes no effort setting.`,
         );
       // Such an agent would refuse every next prompt of the session it already has.
-      if (agent.capabilities.effortAtStart && state.sessionId !== undefined && effort !== state.effort)
+      // The same while its first turn runs: the session being made already has the effort it got.
+      const started = state.sessionId !== undefined || (runningAgent === agent && !forgetAfterTurn);
+      if (agent.capabilities.effortAtStart && started && effort !== state.effort)
         throw new Error(`${agent.name} keeps the effort its session started with. /new starts a fresh one.`);
       set({ effort });
     },

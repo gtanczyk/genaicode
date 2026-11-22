@@ -308,7 +308,22 @@ describe('chat controller', () => {
     kept.submit('/new');
     kept.submit('/effort high');
     expect(kept.get().session.effort).toBe('high');
+    // While its first turn runs the session is already made with that effort.
+    kept.submit('again');
+    kept.submit('/effort low');
+    expect(kept.get().session.effort).toBe('high');
+    await kept.session.idle();
     kept.close();
+    // Back at such an agent, its session is resumed at the effort it started with.
+    const other = { ...echoAgent('other'), capabilities: { resume: true, effort: ['low', 'high'] } };
+    const both = createChatController({ agents: [fixed, other], cwd: '/w', env, effort: 'low' });
+    both.submit('hi');
+    await both.session.idle();
+    both.submit('/agent other');
+    both.submit('/effort high');
+    both.submit('/agent fixed');
+    expect(both.get().session.effort).toBe('low');
+    both.close();
   });
 
   it('toggles the bark', () => {
