@@ -119,6 +119,9 @@ jobs:
           security unlock-keychain -p "$password" "$keychain"
           security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           rm "$RUNNER_TEMP/certificate.p12"
+          # The identity counts as valid only with Apple's Developer ID intermediate beside it.
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
