@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `sessions_send` queues a message for a session that is working right now, instead of refusing it: the tool answers "Queued", the chat says so, and the message goes as that session's next turn once the current one ends, several in order (#287)
+
 ## 2.51.0 — 2026-11-22
 
 ### Added

@@ -217,7 +217,8 @@ the project, open approval questions and the latest reply. `npx genaicode sessio
 the same read-only tools over stdio. The agent can read what the other sessions said and what
 their open questions ask. Ask it to pass something to another session ("tell Codex in
 knights that...") and it sends it with `sessions_send`; you allow the first message to each
-session in the chat. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
+session in the chat. A session that is working gets it as its next turn, once the current one
+ends. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
 ### Open the session tower
 
