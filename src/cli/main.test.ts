@@ -92,14 +92,12 @@ describe('parseCli', () => {
     });
     expect(await main(cli)).toBe(EXIT_OK);
   });
-  it('runs Codex and Muse over their live drivers in chat and ui, with or without a pack', async () => {
+  it('runs Codex over its live driver in chat and ui, with or without a pack', async () => {
     const inspect = async (launch: UiLaunch) => {
-      for (const name of ['codex', 'muse']) {
-        expect(launch.agents.find((agent) => agent.name === name)?.capabilities).toMatchObject({
-          approvals: true,
-          steer: true,
-        });
-      }
+      const codex = launch.agents.find((agent) => agent.name === 'codex');
+      expect(codex?.capabilities).toMatchObject({ approvals: true, steer: true });
+      // Muse stays headless there: its live session keeps the model it started with.
+      expect(launch.agents.find((agent) => agent.name === 'muse')?.capabilities.steer).toBeFalsy();
       return 0;
     };
     const loadUi = async () => ({ runWeb: inspect, runChat: inspect });

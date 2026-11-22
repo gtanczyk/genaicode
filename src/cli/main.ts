@@ -647,13 +647,16 @@ async function runEmbed(
 }
 
 /**
- * The agents of `chat`, `ui` and `tower`: Codex and Muse over their live protocols, which ask
- * before a step, take a message mid-turn and show the diff of an edit. `run` keeps the headless ones.
+ * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
+ * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
+ * the headless ones.
  */
-export function interactiveAgents(agents: readonly CodingAgent[]): CodingAgent[] {
+export function interactiveAgents(agents: readonly CodingAgent[], pack = false): CodingAgent[] {
   return agents.map((agent) => {
     if (agent.name === 'codex') return codexLive();
-    if (agent.name === 'muse') return museLive();
+    // Live Muse keeps the model its session started with, so outside a pack it stays headless,
+    // where the model picker applies to every turn.
+    if (agent.name === 'muse' && pack) return museLive();
     return agent;
   });
 }
@@ -685,7 +688,7 @@ async function runUi(
       cli.stderr.write('--pack already provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    const packAgents = agents;
+    const packAgents = cli.agents ?? interactiveAgents(agents, true);
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     let lead: CodingAgent;
     let members: CodingAgent[];
