@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.52.0 — 2026-11-22
+
 ### Added
 
 - `genaicode chat`, `ui` and `tower --delegate`: every agent may hand work to the other installed agents through the pack tools, so a delegated agent's approvals come to the chat. Before, asked for a second opinion from Antigravity, Claude started `agy` from its shell, where Antigravity could not ask and came back empty. The desktop app turns it on. A turn that delegates nothing looks as before (#288)
