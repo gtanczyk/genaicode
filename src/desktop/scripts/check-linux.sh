@@ -29,6 +29,11 @@ node=/usr/lib/Genaicode/runtime/bin/node
 project="$(mktemp -d)"
 home="$(mktemp -d)"
 log="$home/app.log"
+# The server starts only where an agent CLI is installed: a stand-in is enough to be found.
+agents="$(mktemp -d)"
+printf '#!/bin/sh\nexit 0\n' >"$agents/claude"
+chmod +x "$agents/claude"
+export PATH="$agents:$PATH"
 HOME="$home" GENAICODE_DESKTOP_CWD="$project" WEBKIT_DISABLE_COMPOSITING_MODE=1 \
   xvfb-run -a dbus-run-session -- genaicode-desktop >"$log" 2>&1 &
 app=$!
