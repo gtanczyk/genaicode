@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, expect, it, vi } from 'vitest';
 import type { AgentResult, AgentRun, CodingAgent } from '../types.js';
 import { createAgentSession } from '../session.js';
+import { claimSession } from './send-lock.js';
 import { SessionSendGate, sessionSendTool } from './send-tool.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
@@ -215,4 +216,22 @@ it('drops a queued message when the wait runs out or the chat closes', async () 
   await expect(sessionSendTool([agent], gate, { env }).call({ id: session.id, text: 'Hi' })).rejects.toThrow(
     /waiting or unfinished/,
   );
+});
+
+it('waits when another sender holds the session after the check, instead of dropping the message', async () => {
+  const agent = owner([{ ...session }]);
+  const gate = new SessionSendGate();
+  const queued = vi.fn();
+  const done = vi.fn();
+  gate.attach({ confirm: async () => true, queued, done });
+  const release = claimSession('store', session.id, env)!;
+  expect(await sessionSendTool([agent], gate, { env, pollMs: 5 }).call({ id: session.id, text: 'Hold on.' })).toMatch(
+    /^Sent/,
+  );
+  await vi.waitFor(() => expect(queued).toHaveBeenCalledTimes(1));
+  expect(agent.run).not.toHaveBeenCalled();
+  release();
+  await gate.settled();
+  expect(agent.run).toHaveBeenCalledTimes(1);
+  expect(done).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }), { result: ok });
 });

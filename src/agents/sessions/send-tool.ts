@@ -179,7 +179,16 @@ export function sessionSendTool(
         });
       const deliver = async () => {
         try {
-          const result = queued ? await whenFree(send, options) : await send();
+          // The session can start a turn, or another sender take it, after the check: then it waits too.
+          const result = await whenFree(send, options, {
+            // A refusal for its state waits only while the session is in a turn, not when it was archived.
+            retry: async (error) => {
+              if (error.reason !== 'state') return true;
+              const now = await findSession(stores, target.id, query);
+              return !!now && (await isWorking(error, now.session, options.env));
+            },
+            onWait: () => !queued && gate.noteQueued(target, text),
+          });
           gate.report(target, { result });
         } catch (error) {
           gate.report(target, { error: error instanceof Error ? error.message : String(error) });
@@ -214,7 +223,12 @@ async function isWorking(error: SessionSendError, found: SessionInfo, env?: Node
 }
 
 /** Send once the session's turn is over: retry while it still says it is working, until the wait runs out. */
-async function whenFree(send: () => Promise<AgentResult>, options: SessionSendToolOptions): Promise<AgentResult> {
+async function whenFree(
+  send: () => Promise<AgentResult>,
+  options: SessionSendToolOptions,
+  { retry, onWait }: { retry(error: SessionSendError): Promise<boolean>; onWait?(): void },
+): Promise<AgentResult> {
+  let waited = false;
   const pollMs = options.pollMs ?? POLL_MS;
   const until = Date.now() + (options.maxWaitMs ?? MAX_WAIT_MS);
   for (;;) {
@@ -222,7 +236,11 @@ async function whenFree(send: () => Promise<AgentResult>, options: SessionSendTo
     try {
       return await send();
     } catch (error) {
-      if (!(error instanceof SessionSendError) || !WAIT_REASONS.has(error.reason)) throw error;
+      if (!(error instanceof SessionSendError) || !WAIT_REASONS.has(error.reason) || !(await retry(error))) throw error;
+      if (!waited) {
+        waited = true;
+        onWait?.();
+      }
       if (Date.now() >= until)
         throw new Error(
           `It was still working after ${Math.round((options.maxWaitMs ?? MAX_WAIT_MS) / 60_000)} min; the queued message was not sent.`,
