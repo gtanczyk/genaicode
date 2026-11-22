@@ -30,12 +30,14 @@ const tokens = (session: SessionInfo): number =>
  * Where each agent's work went: the part of it every topic took, among `sessions` (list them with
  * `automated: true`, or scheduled runs are missing from the picture). A session weighs what its
  * agent says it used in its whole life: the estimated price where the agent keeps one, else
- * tokens. Only the proportions mean something, so no amount is returned: a subscription is not
+ * tokens. For a period, pass `within` (`partsSince()`): the part of each session's work that falls
+ * in it, or a long session touched once counts whole. Only the proportions mean something, so no amount is returned: a subscription is not
  * charged by them. Agents whose sessions say nothing about use are left out.
  */
 export function topicShares(
   sessions: readonly SessionInfo[],
   store: Pick<TopicStore, 'topics' | 'sessions'>,
+  within?: ReadonlyMap<SessionInfo, number>,
 ): AgentShares[] {
   const names = new Map(store.topics.map((topic) => [topic.id, topic.name]));
   const agents = new Map<string, SessionInfo[]>();
@@ -43,7 +45,8 @@ export function topicShares(
   const found: AgentShares[] = [];
   for (const [agent, own] of agents) {
     const by = own.some((session) => (session.costUsd ?? 0) > 0) ? 'cost' : 'tokens';
-    const weight = (session: SessionInfo) => (by === 'cost' ? (session.costUsd ?? 0) : tokens(session));
+    const weight = (session: SessionInfo) =>
+      (by === 'cost' ? (session.costUsd ?? 0) : tokens(session)) * (within?.get(session) ?? 1);
     const parts = new Map<string, WorkShare & { weight: number }>();
     let total = 0;
     for (const session of own) {

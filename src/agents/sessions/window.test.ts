@@ -1,0 +1,95 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, expect, it } from 'vitest';
+import { topicShares } from './shares.js';
+import type { SessionInfo } from './types.js';
+import { partsSince } from './window.js';
+
+const dir = mkdtempSync(join(tmpdir(), 'genaicode-window-'));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+const day = 86_400_000;
+const now = Date.parse('2026-11-22T08:00:00Z');
+const since = now - 7 * day;
+const at = (daysAgo: number) => new Date(now - daysAgo * day).toISOString();
+
+const file = (name: string, lines: unknown[]) => {
+  const path = join(dir, name);
+  writeFileSync(path, lines.map((line) => JSON.stringify(line)).join('\n'));
+  return path;
+};
+const session = (source: string, id: string, over: Partial<SessionInfo>): SessionInfo => ({
+  source,
+  agent: source,
+  id,
+  where: 'local',
+  updatedAt: now - day,
+  ...over,
+});
+const counted = (daysAgo: number, input: number, cached: number, output: number) => ({
+  timestamp: at(daysAgo),
+  type: 'event_msg',
+  payload: {
+    type: 'token_count',
+    info: { total_token_usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output } },
+  },
+});
+
+it('counts only what a Codex thread did in the period, without input read again from cache', async () => {
+  // Months of work, then one prompt in the period: 1,000 of 101,000 new tokens.
+  const old = session('codex', 'old', {
+    startedAt: now - 80 * day,
+    usage: { totalTokens: 2_000_000 },
+    path: file('old.jsonl', [
+      counted(60, 900_000, 800_000, 0),
+      counted(30, 1_900_000, 1_800_000, 0),
+      counted(6, 2_000_800, 1_900_000, 200),
+    ]),
+  });
+  const fresh = session('codex', 'fresh', { startedAt: now - 2 * day, usage: { totalTokens: 100_000 } });
+  const parts = await partsSince([old, fresh], since);
+  expect(parts.get(old)).toBeCloseTo(1_000 / 101_000, 5);
+  expect(parts.has(fresh)).toBe(false);
+
+  const store = {
+    topics: [
+      { id: 'k', name: 'Kids' },
+      { id: 'g', name: 'Knights' },
+    ],
+    sessions: { 'codex:old': 'k', 'codex:fresh': 'g' },
+  };
+  // Whole-life figures put the old thread first; the period's put it last.
+  expect(topicShares([old, fresh], store)[0]!.shares[0]!.name).toBe('Kids');
+  const within = topicShares([old, fresh], store, parts)[0]!.shares;
+  expect(within.map((share) => share.name)).toEqual(['Knights', 'Kids']);
+  expect(within[1]!.share).toBeLessThan(0.2);
+});
+
+it('weighs a Claude Code transcript by the answers of the period, each counted once', async () => {
+  const answer = (id: string, daysAgo: number, output: number) => ({
+    type: 'assistant',
+    timestamp: at(daysAgo),
+    message: { id, usage: { input_tokens: 0, output_tokens: output } },
+  });
+  const claude = session('claude', 'c', {
+    startedAt: now - 20 * day,
+    costUsd: 10,
+    path: file('c.jsonl', [answer('m1', 15, 300), answer('m2', 2, 100), answer('m2', 2, 100)]),
+  });
+  expect((await partsSince([claude], since)).get(claude)).toBeCloseTo(0.25, 5);
+});
+
+it('estimates from the lifetime where no file says, and keeps a session whose start is unknown whole', async () => {
+  const noFile = session('gemini', 'g', { startedAt: now - 15 * day, updatedAt: now - day });
+  const gone = session('codex', 'x', {
+    startedAt: now - 15 * day,
+    updatedAt: now - day,
+    path: join(dir, 'none.jsonl'),
+  });
+  const unknown = session('gemini', 'u', {});
+  const parts = await partsSince([noFile, gone, unknown], since);
+  expect(parts.get(noFile)).toBeCloseTo(6 / 14, 5);
+  expect(parts.get(gone)).toBeCloseTo(6 / 14, 5);
+  expect(parts.get(unknown)).toBe(1);
+});
