@@ -266,6 +266,9 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/v${{ needs.plan.outputs.version }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
