@@ -19,7 +19,6 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Fixed
 
 - `genaicode ui`: the agent, model and approval controls in the prompt box have an outline, so they read as controls. A note Codex sends about a hook timeout it clamps no longer shows as an error in the conversation (it is a `stderr` event) (#263)
-
 - Sessions a program started in a temporary directory or in a `.genaicode/worktrees` worktree, and Antigravity command-line runs outside any project, no longer show in session listings or topics (`sessions --automated` lists them) (#256)
 
 ## 2.48.0 — 2026-11-21
